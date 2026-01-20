@@ -290,12 +290,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                     <th className="py-3 px-2 text-center w-20">체력</th>
                                     <th className="py-3 px-4 text-center w-16">POS</th>
                                     <th className="py-3 px-4 text-center w-20">OVR</th>
+                                    {/* 6개 대표 레이팅 컬럼 주석 처리 
                                     <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">ATH</th>
                                     <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">OUT</th>
                                     <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">INS</th>
                                     <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">PLM</th>
                                     <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">DEF</th>
                                     <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">REB</th>
+                                    */}
                                     <th className="py-3 px-1 text-center w-44 whitespace-nowrap">선발 포지션</th>
                                     <th className="py-3 px-1 text-center w-14">스토퍼</th>
                                     <th className="py-3 px-1 text-center w-24 whitespace-nowrap">시간 제한</th>
@@ -331,12 +333,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                             </td>
                                             <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><span className="text-[10px] font-black text-white px-2 py-0.5 rounded-md border border-white/10 uppercase">{p.position}</span></div></td>
                                             <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-sm !mx-0"}>{p.ovr}</div></div></td>
+                                            {/* 6개 대표 레이팅 셀 주석 처리
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.out)}`}>{p.out}</div></div></td>
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ins)}`}>{p.ins}</div></div></td>
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.plm)}`}>{p.plm}</div></div></td>
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.def)}`}>{p.def}</div></div></td>
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.reb)}`}>{p.reb}</div></div></td>
+                                            */}
                                             <td className="py-3 px-1">
                                                 <div className="flex justify-center h-10 items-center">
                                                     <div className="flex bg-slate-950/80 p-1 rounded-xl border border-white/5 shadow-inner">
@@ -377,12 +381,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                     <th className="py-3 px-8">이름</th>
                                     <th className="py-3 px-4 text-center w-16">POS</th>
                                     <th className="py-3 px-4 text-center w-20">OVR</th>
+                                    {/* 상대 전력 분석 탭에서도 동일하게 주석 처리
                                     <th className="py-3 px-2 text-center w-16">ATH</th>
                                     <th className="py-3 px-2 text-center w-16">OUT</th>
                                     <th className="py-3 px-2 text-center w-16">INS</th>
                                     <th className="py-3 px-2 text-center w-16">PLM</th>
                                     <th className="py-3 px-2 text-center w-16">DEF</th>
                                     <th className="py-3 px-2 text-center w-16">REB</th>
+                                    */}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
@@ -398,12 +404,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                                 <div className="flex items-center justify-center h-10"><span className="text-[10px] font-black text-white px-2 py-0.5 rounded-md border border-white/10 uppercase">{p.position}</span></div>
                                             </td>
                                             <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-sm !mx-0"}>{p.ovr}</div></div></td>
+                                            {/* 
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.out)}`}>{p.out}</div></div></td>
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ins)}`}>{p.ins}</div></div></td>
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.plm)}`}>{p.plm}</div></div></td>
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.def)}`}>{p.def}</div></div></td>
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.reb)}`}>{p.reb}</div></div></td>
+                                            */}
                                         </tr>
                                     );
                                 })}
