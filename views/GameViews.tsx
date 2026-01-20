@@ -1,126 +1,74 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap } from 'lucide-react';
-import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic } from './types';
-import { getOvrBadgeStyle } from './SharedComponents';
-import { GameTactics } from './gameEngine';
+import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic } from '../types';
+import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { GameTactics } from '../services/gameEngine';
 
-/**
- * GameSimulatingView Component
- * 
- * Displays a visual simulation of a basketball game in progress.
- * It shows a match-up header, a stylized basketball court with random shot visualizations,
- * and a progress bar indicating the simulation status.
- * 
- * @param homeTeam - The home team object
- * @param awayTeam - The away team object
- * @param userTeamId - ID of the user's team to determine home/away perspective
- */
 export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, userTeamId?: string | null }> = ({ homeTeam, awayTeam, userTeamId }) => {
-  // State to track the simulation progress (0% to 100%)
   const [progress, setProgress] = useState(0);
-  // State to store randomly generated shot events for visualization on the court
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
   
   useEffect(() => {
-    // 1. Progress Bar Timer: Increments progress every 30ms until it reaches 100%
     const timer = setInterval(() => setProgress(p => (p >= 100 ? 100 : p + 1)), 30);
     
-    // 2. Shot Simulation Timer: Generates visual shot effects every 150ms
     const shotTimer = setInterval(() => {
         setShots(prev => {
-            // Randomly decide if the shot is taking place on the Home side (Right) or Away side (Left)
             const isHome = Math.random() > 0.5;
-            // Randomly decide if the shot is a make (Green dot) or miss (Red X)
             const isMake = Math.random() > 0.5;
-            
-            // Hoop X coordinates on a 94x50 court grid
-            // Right Hoop (Home): ~88.75, Left Hoop (Away): ~5.25
             const hoopX = isHome ? 88.75 : 5.25;
-            const direction = isHome ? -1 : 1; // Direction multiplier to place shots towards the center relative to hoop
-            
-            // Randomize shot location
-            const dist = Math.random() * 28; // Distance from the hoop (0 to ~3pt line extended)
-            const angle = (Math.random() * Math.PI) - (Math.PI / 2); // Random angle in a semi-circle facing the court
-            
-            // Calculate final X, Y coordinates, clamped to stay within court boundaries
+            const direction = isHome ? -1 : 1;
+            const dist = Math.random() * 28;
+            const angle = (Math.random() * Math.PI) - (Math.PI / 2);
             const x = Math.max(2, Math.min(92, hoopX + Math.cos(angle) * dist * direction));
             const y = Math.max(2, Math.min(48, 25 + Math.sin(angle) * dist));
-            
-            // Append new shot and keep only the last 30 to prevent DOM congestion
             return [...prev.slice(-30), { id: Date.now(), x, y, isMake }];
         });
     }, 150);
-    
-    // Cleanup intervals when component unmounts
     return () => { clearInterval(timer); clearInterval(shotTimer); };
   }, []);
 
   if (!homeTeam || !awayTeam) return null;
-
-  // Determine if the user is playing as the away team to adjust the VS display
   const isUserAway = userTeamId === awayTeam.id;
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-8">
       <div className="w-full max-w-4xl space-y-8 flex flex-col items-center">
-        {/* Matchup Header: Away Team (Left) vs Home Team (Right) */}
         <div className="flex justify-between w-full px-8 items-center">
-           {/* AWAY TEAM Display */}
            <div className="flex items-center gap-6">
              <img src={awayTeam.logo} className="w-24 h-24 object-contain" alt="" />
              <span className="text-4xl font-black oswald text-white">{awayTeam.name}</span>
            </div>
-           
-           {/* VS Indicator: Shows '@' if user is Away (e.g. User @ HomeTeam), otherwise 'VS' */}
            <span className="text-4xl font-black text-slate-700 oswald">{isUserAway ? '@' : 'VS'}</span>
-           
-           {/* HOME TEAM Display */}
            <div className="flex items-center gap-6">
              <span className="text-4xl font-black oswald text-white">{homeTeam.name}</span>
              <img src={homeTeam.logo} className="w-24 h-24 object-contain" alt="" />
            </div>
         </div>
-        
-        {/* Basketball Court Visualizer */}
         <div className="relative w-full aspect-[94/50] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl">
-            {/* SVG Background representing court lines */}
             <svg viewBox="0 0 94 50" className="absolute inset-0 w-full h-full">
                 <rect width="94" height="50" fill="#0f172a" />
                 <g fill="none" stroke="#334155" strokeWidth="0.3">
                     <rect x="0" y="0" width="94" height="50" />
-                    <line x1="47" y1="0" x2="47" y2="50" /> {/* Half Court Line */}
-                    <circle cx="47" cy="25" r="6" /> {/* Center Circle */}
+                    <line x1="47" y1="0" x2="47" y2="50" />
+                    <circle cx="47" cy="25" r="6" />
                     <circle cx="47" cy="25" r="2" fill="#334155" />
-                    
-                    {/* Left Side (Away Hoop) Area */}
-                    <rect x="0" y="17" width="19" height="16" /> {/* Paint */}
-                    <circle cx="19" cy="25" r="6" strokeDasharray="1,1" /> {/* Free Throw Circle */}
-                    <path d="M 0 3 L 14 3 A 23.75 23.75 0 0 1 14 47 L 0 47" /> {/* 3pt Line */}
-                    <circle cx="5.25" cy="25" r="1.5" /> {/* Hoop */}
-                    
-                    {/* Right Side (Home Hoop) Area */}
-                    <rect x="75" y="17" width="19" height="16" /> {/* Paint */}
-                    <circle cx="75" cy="25" r="6" strokeDasharray="1,1" /> {/* Free Throw Circle */}
-                    <path d="M 94 3 L 80 3 A 23.75 23.75 0 0 0 80 47 L 94 47" /> {/* 3pt Line */}
-                    <circle cx="88.75" cy="25" r="1.5" /> {/* Hoop */}
+                    <rect x="0" y="17" width="19" height="16" />
+                    <circle cx="19" cy="25" r="6" strokeDasharray="1,1" />
+                    <path d="M 0 3 L 14 3 A 23.75 23.75 0 0 1 14 47 L 0 47" />
+                    <circle cx="5.25" cy="25" r="1.5" />
+                    <rect x="75" y="17" width="19" height="16" />
+                    <circle cx="75" cy="25" r="6" strokeDasharray="1,1" />
+                    <path d="M 94 3 L 80 3 A 23.75 23.75 0 0 0 80 47 L 94 47" />
+                    <circle cx="88.75" cy="25" r="1.5" />
                 </g>
             </svg>
-            
-            {/* Render Simulated Shots overlaying the court */}
             {shots.map(s => (
                 <div key={s.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-opacity duration-1000" style={{ left: `${(s.x / 94) * 100}%`, top: `${(s.y / 50) * 100}%` }}>
-                    {s.isMake ? 
-                        // Green Dot for Made Shot
-                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)] border border-emerald-300"></div> : 
-                        // Red X for Missed Shot
-                        <X size={12} className="text-red-500/60 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" strokeWidth={3} />
-                    }
+                    {s.isMake ? <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)] border border-emerald-300"></div> : <X size={12} className="text-red-500/60 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" strokeWidth={3} />}
                 </div>
             ))}
         </div>
-        
-        {/* Loading / Progress Indicator */}
         <div className="w-full max-w-md space-y-4">
           <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 shadow-inner">
              <div className="bg-indigo-500 h-full transition-all duration-300 shadow-[0_0_15px_rgba(99,102,241,0.6)]" style={{ width: `${progress}%` }}></div>
@@ -146,9 +94,7 @@ const ResultBoxScore: React.FC<{ team: Team, box: PlayerBoxScore[], isFirst?: bo
   const maxStats = useMemo(() => {
     const stats = {
         pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
-        fgm: 0, fga: 0, fgp: 0,
-        p3m: 0, p3a: 0, p3p: 0,
-        ftm: 0, fta: 0, ftp: 0
+        fgm: 0, fga: 0, fgp: 0, p3m: 0, p3a: 0, p3p: 0, ftm: 0, fta: 0, ftp: 0
     };
     box.forEach(p => {
         stats.pts = Math.max(stats.pts, p.pts);
@@ -331,7 +277,6 @@ export const GameResultView: React.FC<{
              </div>
 
              <div className="flex items-center justify-center gap-16 w-full max-w-4xl">
-                 {/* AWAY TEAM (Left) */}
                  <div className="flex flex-col items-center gap-4">
                      <img src={result.away.logo} className="w-24 h-24 object-contain drop-shadow-2xl" alt="" />
                      <div className="flex flex-col items-center">
@@ -339,13 +284,11 @@ export const GameResultView: React.FC<{
                         <span className="text-sm font-bold text-slate-400 tracking-widest mt-1">{awayRecord}</span>
                      </div>
                  </div>
-                 {/* SCORE (Away - Home) */}
                  <div className="flex items-center gap-8">
                      <span className={`text-7xl font-black oswald drop-shadow-2xl ${result.awayScore > result.homeScore ? 'text-white' : 'text-slate-500'}`}>{Math.round(result.awayScore)}</span>
                      <span className="text-3xl font-black text-slate-700">-</span>
                      <span className={`text-7xl font-black oswald drop-shadow-2xl ${result.homeScore > result.awayScore ? 'text-white' : 'text-slate-500'}`}>{Math.round(result.homeScore)}</span>
                  </div>
-                 {/* HOME TEAM (Right) */}
                  <div className="flex flex-col items-center gap-4">
                      <img src={result.home.logo} className="w-24 h-24 object-contain drop-shadow-2xl" alt="" />
                      <div className="flex flex-col items-center">
@@ -356,7 +299,6 @@ export const GameResultView: React.FC<{
              </div>
          </div>
 
-         {/* AI Game Analysis */}
          <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl relative z-10">
              <div className="flex items-center gap-3 mb-6">
                  <div className="p-2 bg-indigo-500/10 rounded-lg"><Zap size={20} className="text-indigo-400" /></div>

@@ -1,14 +1,12 @@
+
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { PlayerBoxScore } from './types';
+import { PlayerBoxScore } from '../types';
 import { GameTactics } from './gameEngine'; 
 
-/**
- * Helper function to retry an async operation with exponential backoff.
- */
 async function retryWithBackoff<T>(
   operation: () => Promise<T>,
-  retries: number = 2, // Reduced retries to fail faster to fallback on quota issues
-  delay: number = 2000 // Increased initial delay to handle RPM limits better
+  retries: number = 2,
+  delay: number = 2000
 ): Promise<T> {
   try {
     return await operation();
@@ -16,12 +14,10 @@ async function retryWithBackoff<T>(
     const status = error?.status || error?.response?.status;
     const message = error?.message || error?.response?.message || '';
     
-    // Check for rate limits or server errors
     const isRateLimit = status === 429 || status === 'RESOURCE_EXHAUSTED' || message.includes('quota') || message.includes('RESOURCE_EXHAUSTED');
     const isServerError = typeof status === 'number' && status >= 500;
 
     if (retries > 0 && (isRateLimit || isServerError)) {
-      // console.debug(`Gemini API transient error (${status}). Retrying...`);
       await new Promise(resolve => setTimeout(resolve, delay));
       return retryWithBackoff(operation, retries - 1, delay * 2);
     } else {
@@ -39,74 +35,14 @@ export async function generateNewsTicker(teamName: string, recentEvents: string[
     `League Info: 모든 팀들이 플레이오프 진출을 위한 로스터 최적화에 집중하고 있습니다.`
   ];
 
-  // NOTE: API Quota 문제 및 사용자 요청으로 인한 일시적 API 비활성화
   return fallbackNews;
-
-  /*
-  if (!apiKey) {
-    return fallbackNews;
-  }
-
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `Act as an NBA reporter like Woj or Shams. 
-    Generate news in KOREAN language.
-    Context: 2025-26 Season. Team: ${teamName}.
-    Events: ${recentEvents.join(', ')}.
-    Generate 3 short, punchy news tickers (max 15 words each). 
-    Use the format "Woj/Shams: [내용]"`;
-
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    }));
-    return response.text?.split('\n').filter(l => l.trim() !== '') || fallbackNews;
-  } catch (error: any) {
-    // Gracefully handle quota errors without cluttering console with stack traces
-    const isQuota = error?.status === 429 || error?.status === 'RESOURCE_EXHAUSTED' || error?.message?.includes('quota');
-    if (isQuota) {
-      console.warn("Gemini API quota exceeded (News Ticker). Using fallback content.");
-    } else {
-      console.error("Gemini Error (News Ticker):", error);
-    }
-    return fallbackNews;
-  }
-  */
 }
 
 export async function generateOwnerWelcome(teamName: string) {
   const apiKey = process.env.API_KEY;
   const fallbackMessage = `[OWNER]: ${teamName}에 오신 것을 환영합니다. 우리의 목표와 실현 가능성을 점검해주십시오.`;
   
-  // NOTE: API Quota 문제 및 사용자 요청으로 인한 일시적 API 비활성화
   return fallbackMessage;
-
-  /*
-  if (!apiKey) return fallbackMessage;
-
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `You are the owner of the NBA team "${teamName}". 
-    Welcome the new General Manager who just took over the team.
-    Generate a one-sentence, charismatic welcome message in KOREAN.
-    The tone should be professional and high-stakes.
-    Example: "단장님, ${teamName}의 영광을 되찾아올 준비가 되셨길 바랍니다."`;
-
-    const response = await retryWithBackoff<GenerateContentResponse>(() => ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
-      contents: prompt,
-    }));
-    return `[OWNER]: ${response.text?.trim() || "함께 우승을 향해 나아갑시다."}`;
-  } catch (error: any) {
-    const isQuota = error?.status === 429 || error?.status === 'RESOURCE_EXHAUSTED' || error?.message?.includes('quota');
-    if (isQuota) {
-      console.warn("Gemini API quota exceeded (Owner Welcome). Using fallback content.");
-    } else {
-      console.error("Gemini Error (Owner Welcome):", error);
-    }
-    return fallbackMessage;
-  }
-  */
 }
 
 export async function generateGameRecapNews(gameResult: {
@@ -127,7 +63,6 @@ export async function generateGameRecapNews(gameResult: {
                 (gameResult.myTeamId === gameResult.away.id && gameResult.awayScore > gameResult.homeScore);
   const myTeamName = gameResult.myTeamId === gameResult.home.id ? gameResult.home.name : gameResult.away.name;
 
-  // Fallback content in case of failure or missing API key
   const fallbackRecap = [
     `[속보] ${winner}, ${loser} 상대로 ${Math.abs(gameResult.homeScore - gameResult.awayScore)}점차 승리`,
     isWin 
@@ -149,18 +84,15 @@ export async function generateGameRecapNews(gameResult: {
     const myScore = isMyTeamHome ? gameResult.homeScore : gameResult.awayScore;
     const opponentScore = isMyTeamHome ? gameResult.awayScore : gameResult.homeScore;
     
-    // Safety check for empty boxes or undefined data
     if (!gameResult.homeBox || !gameResult.awayBox) return fallbackRecap;
 
     const myBox = isMyTeamHome ? gameResult.homeBox : gameResult.awayBox;
     const oppBox = isMyTeamHome ? gameResult.awayBox : gameResult.homeBox;
     
-    // Avoid mutating original array with sort
     const myTopPerformer = [...myBox].sort((a, b) => b.pts - a.pts)[0];
     const oppTopPerformer = [...oppBox].sort((a, b) => b.pts - a.pts)[0];
 
     const offenseTacticsDisplay = gameResult.userTactics?.offenseTactics?.map(t => {
-      // Fix: Use correct OffenseTactic string literals as defined in types.ts
       switch(t) {
         case 'Balance': return '밸런스 오펜스';
         case 'PaceAndSpace': return '페이스 & 스페이스';

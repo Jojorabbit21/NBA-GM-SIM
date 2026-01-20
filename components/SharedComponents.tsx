@@ -2,8 +2,8 @@
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database } from 'lucide-react';
-import { Team, Player } from './types';
-import { getTeamLogoUrl } from './constants';
+import { Team, Player } from '../types';
+import { getTeamLogoUrl } from '../utils/constants';
 
 export const getOvrBadgeStyle = (ovr: number) => {
   const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto ";

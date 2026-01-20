@@ -7,22 +7,23 @@ import {
 import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
 import { 
   INITIAL_TEAMS_DATA, getTeamLogoUrl, 
-  parseRostersCSV, generateSeasonSchedule, parseScheduleCSV, exportScheduleToCSV,
+  mapDatabasePlayerToRuntimePlayer, mapDatabaseScheduleToRuntimeGame,
+  generateSeasonSchedule, exportScheduleToCSV,
   SEASON_START_DATE
-} from './constants';
-import { simulateGame, GameTactics, RosterUpdate } from './gameEngine';
-import { generateNewsTicker, generateOwnerWelcome } from './geminiService';
-import { NavItem, Toast } from './SharedComponents';
-import { TeamSelectView } from './TeamSelectView';
-import { DashboardView } from './DashboardView';
-import { RosterView } from './RosterView';
-import { StandingsView } from './StandingsView';
-import { ScheduleView } from './ScheduleView';
-import { TransactionsView } from './TransactionsView';
-import { PlayoffsView } from './PlayoffsView';
-import { GameSimulatingView, GameResultView } from './GameViews';
-import { supabase } from './supabaseClient'; // Import Supabase
-import { AuthView } from './AuthView'; // Import Auth View
+} from './utils/constants';
+import { simulateGame, GameTactics, RosterUpdate } from './services/gameEngine';
+import { generateNewsTicker, generateOwnerWelcome } from './services/geminiService';
+import { NavItem, Toast } from './components/SharedComponents';
+import { TeamSelectView } from './views/TeamSelectView';
+import { DashboardView } from './views/DashboardView';
+import { RosterView } from './views/RosterView';
+import { StandingsView } from './views/StandingsView';
+import { ScheduleView } from './views/ScheduleView';
+import { TransactionsView } from './views/TransactionsView';
+import { PlayoffsView } from './views/PlayoffsView';
+import { GameSimulatingView, GameResultView } from './views/GameViews';
+import { supabase } from './services/supabaseClient';
+import { AuthView } from './views/AuthView';
 
 const DEFAULT_TACTICS: GameTactics = {
   offenseTactics: ['Balance'],
@@ -80,34 +81,36 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // [INIT] Load Static Data (Rosters)
+  // [INIT] Load Static Data (Rosters) from Supabase
   useEffect(() => {
     const initializeGlobal = async () => {
       try {
-        const divisions = ['atlantic', 'central', 'southeast', 'northwest', 'pacific', 'southwest'];
-        let fullRosterMap: Record<string, any> = {};
+        // Fetch all players from Supabase table 'players'
+        const { data: dbPlayers, error } = await supabase.from('players').select('*');
+        
+        if (error) {
+            console.error("Supabase Roster Load Error:", error);
+            throw error;
+        }
 
-        const rosterResults = await Promise.all(
-          divisions.map(async (div) => {
-            try {
-              const res = await fetch(`./roster_${div}.csv`);
-              if (res.ok) {
-                const csv = await res.text();
-                return parseRostersCSV(csv);
-              }
-              return {};
-            } catch (e) {
-              console.error(`Failed to load roster for ${div}`, e);
-              return {};
-            }
-          })
-        );
-
-        rosterResults.forEach(map => {
-          Object.keys(map).forEach(teamId => {
-            fullRosterMap[teamId] = map[teamId];
-          });
-        });
+        // Group players by team name/city logic or similar
+        // IMPORTANT: The DB 'team' column likely contains team names (e.g. '보스턴 셀틱스')
+        // We need to map these to our Team IDs.
+        
+        const fullRosterMap: Record<string, any[]> = {};
+        
+        if (dbPlayers) {
+            dbPlayers.forEach((p: any) => {
+                const teamName = p.team; // e.g. "보스턴 셀틱스"
+                // Find matching team in INITIAL_TEAMS_DATA
+                const t = INITIAL_TEAMS_DATA.find(it => it.name === teamName || `${it.city} ${it.name}` === teamName);
+                if (t) {
+                    if (!fullRosterMap[t.id]) fullRosterMap[t.id] = [];
+                    // Convert DB row to Player object
+                    fullRosterMap[t.id].push(mapDatabasePlayerToRuntimePlayer(p, t.id));
+                }
+            });
+        }
 
         const initializedTeams: Team[] = INITIAL_TEAMS_DATA.map(t => ({
           ...t, conference: t.conference as any, division: t.division as any,
@@ -155,20 +158,20 @@ const App: React.FC = () => {
         setPlayoffSeries(gd.playoffSeries || []);
         setToastMessage("클라우드에서 저장된 게임을 불러왔습니다.");
     } else {
-        // New Game Setup
+        // New Game Setup - Load Schedule from DB
         try {
-            const res = await fetch('./schedule.csv');
-            if (res.ok) {
-              const csvText = await res.text();
-              const parsedSchedule = parseScheduleCSV(csvText, teams);
-              if (parsedSchedule.length > 0) {
-                 setSchedule(parsedSchedule);
-                 setCurrentSimDate(parsedSchedule[0].date);
-              } else {
-                 throw new Error("Empty schedule parsed");
-              }
+            const { data: dbSchedule, error: schError } = await supabase
+                .from('schedule')
+                .select('*');
+            
+            if (schError) throw schError;
+
+            if (dbSchedule && dbSchedule.length > 0) {
+                const parsedSchedule = mapDatabaseScheduleToRuntimeGame(dbSchedule);
+                setSchedule(parsedSchedule);
+                setCurrentSimDate(parsedSchedule[0].date);
             } else {
-              throw new Error("No schedule file");
+                throw new Error("No schedule data in DB");
             }
         } catch (e) {
             console.warn("Falling back to random schedule generation", e);
@@ -226,8 +229,6 @@ const App: React.FC = () => {
   }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, session]);
 
   const handleExecuteSim = useCallback((tactics: GameTactics) => {
-    // ... (This function remains largely the same, logic is inside gameEngine)
-    // Just copying the logic to trigger state updates
     if (!myTeamId || teams.length === 0) return;
 
     setUserTactics(tactics);
@@ -240,10 +241,6 @@ const App: React.FC = () => {
     const backgroundGames = schedule.filter(g => !g.played && g.id !== gameToSim.id && new Date(g.date) <= targetDate);
 
     setView('GameSim');
-
-    // ... (Simulation Logic kept identical to previous App.tsx but shortened for brevity here) ...
-    // Note: In a real implementation, I would copy the full simulation logic here.
-    // For this XML response, assume the simulateGame call and state updates happen here exactly as before.
     
     // --- [INJECTED SIMULATION LOGIC START] ---
     const lastPlayedMap: Record<string, number> = {};

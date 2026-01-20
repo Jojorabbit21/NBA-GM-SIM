@@ -3,8 +3,8 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Users, Activity, ChevronDown, Search, CheckCircle2, CalendarClock, ArrowUp, ArrowDown 
 } from 'lucide-react';
-import { Team, Player } from './types';
-import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from './SharedComponents';
+import { Team, Player } from '../types';
+import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
 
 interface RosterViewProps {
   allTeams: Team[];

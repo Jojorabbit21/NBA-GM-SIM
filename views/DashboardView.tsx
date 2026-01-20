@@ -1,9 +1,9 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2 } from 'lucide-react';
-import { Team, Game, Player, OffenseTactic, DefenseTactic } from './types';
-import { GameTactics, TacticalSliders, generateAutoTactics } from './gameEngine';
-import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from './SharedComponents';
+import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
+import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
+import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
 
 interface DashboardViewProps {
   team: Team;
