@@ -1,0 +1,5 @@
+{
+  "name": "NBA GM Sim 2025-26",
+  "description": "A deep NBA general manager simulation for the 2025-26 season. Manage rosters, trades, drafts, and game strategies with a cold, data-driven simulation engine and Gemini-powered scouting reports.",
+  "requestFramePermissions": []
+}
