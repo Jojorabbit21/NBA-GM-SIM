@@ -33,7 +33,8 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
   <div className="space-y-2 group/slider">
     <div className="flex justify-between items-end">
       <div className="flex items-center gap-1.5 relative">
-        <span className="text-xs font-black text-slate-400 uppercase tracking-tight cursor-help">{label}</span>
+        {/* 슬라이더 제목 사이즈 상향: text-xs -> text-sm */}
+        <span className="text-sm font-black text-slate-400 uppercase tracking-tight cursor-help">{label}</span>
         {tooltip && (
             <div className="relative group/tooltip">
                 <HelpCircle size={12} className="text-slate-600 hover:text-indigo-400 transition-colors cursor-help" />
@@ -44,7 +45,8 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
             </div>
         )}
       </div>
-      <span className="text-sm font-black text-indigo-400 font-mono">{value}</span>
+      {/* 슬라이더 수치(티커) 사이즈 상향: text-sm -> text-base */}
+      <span className="text-base font-black text-indigo-400 font-mono">{value}</span>
     </div>
     <div className="relative flex items-center h-6">
        <input 
@@ -56,7 +58,8 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
        />
     </div>
-    <div className="flex justify-between text-[9px] font-bold text-slate-600 uppercase tracking-tighter">
+    {/* 하단 라벨 사이즈 상향: 9px -> 11px */}
+    <div className="flex justify-between text-[11px] font-bold text-slate-600 uppercase tracking-tighter">
        <span>{leftLabel || 'Low'}</span>
        <span>{rightLabel || 'High'}</span>
     </div>
@@ -287,7 +290,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                             <thead>
                                 <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
                                     <th className="py-3 px-8 min-w-[150px]">이름</th>
-                                    <th className="py-3 px-2 text-center w-20">체력</th>
+                                    <th className="py-3 px-2 text-center w-24">체력</th>
                                     <th className="py-3 px-4 text-center w-16">POS</th>
                                     <th className="py-3 px-4 text-center w-20">OVR</th>
                                     {/* 로테이션 관리에서는 6개 대표 레이팅 컬럼 주석 유지 */}
@@ -324,15 +327,19 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-2 text-center w-20">
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <div className="w-8 h-1.5 bg-slate-800 rounded-full overflow-hidden ring-1 ring-white/10" title={`Condition: ${cond}%`}>
+                                            <td className="py-3 px-2 text-center w-24">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <div className="w-12 h-2.5 bg-slate-800 rounded-full overflow-hidden ring-1 ring-white/10 shadow-inner" title={`Condition: ${cond}%`}>
                                                         <div className={`h-full ${condColor} transition-all duration-500`} style={{ width: `${cond}%` }} />
                                                     </div>
-                                                    <span className={`text-[9px] font-black leading-none ${condColor.replace('bg-', 'text-')}`}>{cond}</span>
+                                                    <span className={`text-[11px] font-black leading-none min-w-[20px] text-right ${condColor.replace('bg-', 'text-')}`}>{cond}</span>
                                                 </div>
                                             </td>
-                                            <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><span className="text-[10px] font-black text-white px-2 py-0.5 rounded-md border border-white/10 uppercase">{p.position}</span></div></td>
+                                            <td className="py-3 px-4 text-center">
+                                                <div className="flex items-center justify-center h-10">
+                                                    <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
+                                                </div>
+                                            </td>
                                             <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-sm !mx-0"}>{p.ovr}</div></div></td>
                                             {/*
                                             <td className="py-3 px-2 text-center hidden min-[1800px]:table-cell"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
@@ -367,7 +374,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                                         else { next[p.id] = Math.min(48, Math.max(0, parseInt(val) || 0)); }
                                                         onUpdateTactics({ ...tactics, minutesLimits: next });
                                                     }} className="w-14 h-10 bg-slate-950 border border-white/5 rounded-lg py-1.5 text-center text-sm font-black text-white focus:outline-none focus:border-indigo-500/50 transition-all" />
-                                                    <span className="text-[9px] font-black text-slate-600 uppercase">분</span>
+                                                    <span className="text-[11px] font-black text-slate-500 uppercase tracking-tighter">분</span>
                                                 </div>
                                             </td>
                                         </tr>
@@ -401,7 +408,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                                 </div>
                                             </td>
                                             <td className="py-3 px-4 text-center">
-                                                <div className="flex items-center justify-center h-10"><span className="text-[10px] font-black text-white px-2 py-0.5 rounded-md border border-white/10 uppercase">{p.position}</span></div>
+                                                <div className="flex items-center justify-center h-10">
+                                                    <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
+                                                </div>
                                             </td>
                                             <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-sm !mx-0"}>{p.ovr}</div></div></td>
                                             <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
@@ -447,8 +456,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                     <button key={t} onClick={() => handleTacticToggle(t)} className={`w-full relative p-4 rounded-2xl border text-left overflow-hidden transition-all ${isActive ? `bg-slate-900/90 ${border} shadow-xl ring-1 ring-white/10` : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
                                         <div className="flex justify-between items-center relative z-10">
                                             <div>
-                                                <div className={`font-black text-sm uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{OFFENSE_TACTIC_INFO[t].label}</div>
-                                                <div className={`text-[10px] mt-1 opacity-60 ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>{OFFENSE_TACTIC_INFO[t].desc}</div>
+                                                {/* 공격 전술 제목 상향: text-sm -> text-base */}
+                                                <div className={`font-black text-base uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{OFFENSE_TACTIC_INFO[t].label}</div>
+                                                {/* 공격 전술 설명 상향: text-[10px] -> text-xs */}
+                                                <div className={`text-xs mt-1 opacity-60 ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>{OFFENSE_TACTIC_INFO[t].desc}</div>
                                             </div>
                                             <div className={`text-2xl font-black oswald leading-none ${isActive ? text : 'text-slate-600'}`}>
                                                 {score}<span className="text-sm opacity-50 ml-0.5">%</span>
@@ -477,8 +488,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
 
                                     return (
                                         <button key={t} onClick={() => toggleDefTactic(t)} className={`relative p-4 rounded-2xl border text-left transition-all ${isActive ? 'bg-indigo-600 border-indigo-400 shadow-xl' : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
-                                            <div className={`font-black text-xs uppercase tracking-tight mb-2 ${isActive ? 'text-white' : 'text-slate-400'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
-                                            <div className={`text-xl font-black oswald leading-none ${isActive ? 'text-white' : 'text-slate-600'}`}>{score}%</div>
+                                            {/* 수비 전술 제목 상향: text-xs -> text-sm */}
+                                            <div className={`font-black text-sm uppercase tracking-tight mb-2 ${isActive ? 'text-white' : 'text-slate-400'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
+                                            {/* 수비 효율 수치 상향: text-xl -> text-2xl */}
+                                            <div className={`text-2xl font-black oswald leading-none ${isActive ? 'text-white' : 'text-slate-600'}`}>{score}%</div>
                                         </button>
                                     );
                                 })}
@@ -490,7 +503,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                     return (
                                         <button key={t} onClick={() => toggleDefTactic(t)} className={`w-full relative p-5 rounded-2xl border text-left transition-all ${isActive ? 'bg-fuchsia-600 border-fuchsia-400 shadow-[0_0_30px_rgba(192,38,211,0.2)]' : 'bg-slate-950/40 border-white/5 hover:border-fuchsia-500/30 group'}`}>
                                             <div className="flex justify-between items-start relative z-10">
-                                                <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${isActive ? 'bg-white/20' : 'bg-slate-800'}`}><ShieldAlert size={18} className={isActive ? 'text-white' : 'text-fuchsia-500'} /></div><div><div className={`font-black text-sm uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{DEFENSE_TACTIC_INFO[t].label}</div><div className={`text-[10px] mt-1 opacity-70 ${isActive ? 'text-white' : 'text-slate-500'}`}>{DEFENSE_TACTIC_INFO[t].desc}</div></div></div>
+                                                <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${isActive ? 'bg-white/20' : 'bg-slate-800'}`}><ShieldAlert size={18} className={isActive ? 'text-white' : 'text-fuchsia-500'} /></div>
+                                                <div>
+                                                    {/* 에이스 스토퍼 제목 상향: text-sm -> text-base */}
+                                                    <div className={`font-black text-base uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
+                                                    {/* 에이스 스토퍼 설명 상향: text-[10px] -> text-xs */}
+                                                    <div className={`text-xs mt-1 opacity-70 ${isActive ? 'text-white' : 'text-slate-500'}`}>{DEFENSE_TACTIC_INFO[t].desc}</div>
+                                                </div></div>
                                                 <div className="text-right"><div className={`text-2xl font-black oswald leading-none ${isActive ? 'text-white' : 'text-slate-600'}`}>{score}%</div></div>
                                             </div>
                                         </button>
