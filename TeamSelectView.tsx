@@ -1,0 +1,123 @@
+
+import React, { useMemo } from 'react';
+import { Loader2, Wifi, WifiOff } from 'lucide-react';
+import { Team } from './types';
+import { isSupabaseConfigured } from './supabaseClient';
+
+interface TeamSelectViewProps {
+  teams: Team[];
+  isInitializing: boolean;
+  onSelectTeam: (id: string) => void;
+}
+
+const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: string) => void }> = ({ team, colorClass, onSelect }) => (
+  <button 
+    onClick={() => onSelect(team.id)} 
+    className={`group relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 xl:w-20 xl:h-20 2xl:w-24 2xl:h-24 rounded-full bg-slate-900/40 border-2 border-slate-800 transition-all duration-300 hover:scale-125 hover:bg-slate-900 hover:z-50 hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] ${colorClass}`}
+    title={`${team.city} ${team.name}`}
+  >
+    <img src={team.logo} className="w-9 h-9 lg:w-10 lg:h-10 xl:w-12 xl:h-12 2xl:w-16 2xl:h-16 object-contain drop-shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" alt={team.name} />
+  </button>
+);
+
+export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitializing, onSelectTeam }) => {
+  const eastTeams = useMemo(() => teams.filter(t => t.conference === 'East'), [teams]);
+  const westTeams = useMemo(() => teams.filter(t => t.conference === 'West'), [teams]);
+
+  return (
+    <div className="h-screen w-full bg-slate-950 flex flex-col overflow-hidden relative ko-normal pretendard selection:bg-indigo-500/30">
+      
+      {/* Loading Overlay */}
+      {isInitializing && (
+        <div className="fixed inset-0 bg-slate-950/90 z-[100] flex flex-col items-center justify-center backdrop-blur-xl animate-in fade-in duration-300">
+           <div className="text-center space-y-8">
+             <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto opacity-50" />
+             <div className="space-y-2">
+               <h3 className="text-4xl font-semibold pretendard text-white tracking-tight">시뮬레이션 가동 준비중...</h3>
+               <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] animate-pulse">2025년 10월 21일로 날짜 설정 중...</p>
+             </div>
+           </div>
+        </div>
+      )}
+
+      {/* Enhanced Header */}
+      <header className="flex-shrink-0 h-32 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-md flex items-center justify-center relative z-20">
+        <div className="flex items-center gap-8">
+          <img src="https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg" className="h-16 opacity-90 drop-shadow-2xl" alt="NBA" />
+          <div className="h-12 w-[2px] bg-slate-700/50"></div>
+          <div>
+            <h1 className="text-5xl font-black bebas text-white tracking-widest leading-none drop-shadow-lg">
+              NBA GM SIM <span className="text-indigo-500">2026</span>
+            </h1>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] leading-none mt-2 text-shadow-sm">
+              Select Your Franchise
+            </p>
+          </div>
+        </div>
+      </header>
+
+      {/* Split Main Content */}
+      <div className="flex-1 flex relative min-h-0">
+        {/* Center Divider Gradient */}
+        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-gradient-to-b from-slate-800 via-slate-700 to-slate-800 z-10 hidden lg:block"></div>
+        
+        {/* Eastern Conference (Left) */}
+        <div className="flex-1 relative flex flex-col p-4 lg:p-8 border-r border-slate-800/50 min-h-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 via-transparent to-transparent pointer-events-none"></div>
+          
+          <div className="relative z-10 flex flex-col h-full items-center justify-center gap-8">
+            <div className="flex-shrink-0 flex items-center justify-center">
+               <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-blue-100 flex items-center gap-3 text-shadow-sm">
+                 동부 컨퍼런스
+               </h2>
+            </div>
+            
+            <div className="grid grid-cols-5 gap-3 lg:gap-5 xl:gap-8 content-center">
+              {eastTeams.map(t => (
+                <LogoTeamButton 
+                    key={t.id} 
+                    team={t} 
+                    colorClass="hover:border-blue-400 hover:shadow-blue-500/30" 
+                    onSelect={onSelectTeam} 
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Western Conference (Right) */}
+        <div className="flex-1 relative flex flex-col p-4 lg:p-8 min-h-0">
+          <div className="absolute inset-0 bg-gradient-to-bl from-red-900/10 via-transparent to-transparent pointer-events-none"></div>
+          
+          <div className="relative z-10 flex flex-col h-full items-center justify-center gap-8">
+            <div className="flex-shrink-0 flex items-center justify-center">
+               <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-red-100 flex items-center gap-3 text-shadow-sm">
+                 서부 컨퍼런스
+               </h2>
+            </div>
+
+            <div className="grid grid-cols-5 gap-3 lg:gap-5 xl:gap-8 content-center">
+              {westTeams.map(t => (
+                <LogoTeamButton 
+                    key={t.id} 
+                    team={t} 
+                    colorClass="hover:border-red-400 hover:shadow-red-500/30" 
+                    onSelect={onSelectTeam} 
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      {/* Footer / Status Bar */}
+      <div className="flex-shrink-0 h-8 bg-slate-950 border-t border-slate-900 flex items-center justify-between px-6 text-[10px] font-bold text-slate-600 uppercase tracking-widest z-20 relative">
+        <span>Ver 5.0.0 &bull; Powered by Gemini AI &bull; Season 2025-26</span>
+        <div className={`flex items-center gap-2 ${isSupabaseConfigured ? 'text-emerald-500' : 'text-red-500'}`}>
+            {isSupabaseConfigured ? <Wifi size={12} /> : <WifiOff size={12} />}
+            <span>{isSupabaseConfigured ? 'SERVER CONNECTED' : 'SERVER DISCONNECTED (CHECK .ENV)'}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
