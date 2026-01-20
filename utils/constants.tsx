@@ -66,51 +66,95 @@ const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
   "Dejounte Murray": { type: "Achilles", returnDate: "2026-01-15" }
 };
 
+export const parseCSVToObjects = (csv: string): any[] => {
+    const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
+    if (lines.length < 2) return [];
+    
+    // Remove BOM if present
+    let headersLine = lines[0];
+    if (headersLine.charCodeAt(0) === 0xFEFF) {
+        headersLine = headersLine.slice(1);
+    }
+
+    const headers = headersLine.split(',').map(h => h.trim());
+    const result = [];
+    
+    for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        
+        // Skip if column count significantly mismatches
+        if (values.length < headers.length - 2) continue;
+        
+        const obj: any = {};
+        headers.forEach((h, index) => {
+            const val = values[index];
+            // Basic number conversion for numeric-like strings, keeping others as strings
+            if (val !== '' && !isNaN(Number(val))) {
+                obj[h] = Number(val);
+            } else {
+                obj[h] = val;
+            }
+        });
+        result.push(obj);
+    }
+    return result;
+};
+
 // Helper to calculate aggregated attributes and OVR
+// Enhanced to handle both Snake Case (DB) and Short Codes/Upper Case (CSV raw)
 const calculateAttributes = (p: any) => {
     const avg = (nums: number[]) => Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 
-    // Default values if data missing
-    const speed = p.speed || 50;
-    const agility = p.agility || 50;
-    const strength = p.strength || 50;
-    const vertical = p.vertical || 50;
-    const stamina = p.stamina || 50;
-    const hustle = p.hustle || 50;
-    const durability = p.durability || 50;
+    // Helper for robust property access
+    const getVal = (...keys: string[]) => {
+        for (const k of keys) {
+            if (p[k] !== undefined && p[k] !== null) return parseInt(p[k], 10);
+            if (p[k.toLowerCase()] !== undefined && p[k.toLowerCase()] !== null) return parseInt(p[k.toLowerCase()], 10);
+            if (p[k.toUpperCase()] !== undefined && p[k.toUpperCase()] !== null) return parseInt(p[k.toUpperCase()], 10);
+        }
+        return 50; // Default
+    };
+
+    const speed = getVal('speed', 'SPD');
+    const agility = getVal('agility', 'AGI');
+    const strength = getVal('strength', 'STR');
+    const vertical = getVal('vertical', 'VERT', 'JMP');
+    const stamina = getVal('stamina', 'STA');
+    const hustle = getVal('hustle', 'HUS');
+    const durability = getVal('durability', 'DUR');
     
-    const closeShot = p.close_shot || p.closeShot || 50;
-    const midRange = p.mid_range || p.midRange || 50;
-    const threeCorner = p.three_corner || p.threeCorner || 50;
-    const three45 = p.three_45 || p.three45 || 50;
-    const threeTop = p.three_top || p.threeTop || 50;
-    const ft = p.ft || 50;
-    const shotIq = p.shot_iq || p.shotIq || 50;
-    const offConsist = p.off_consist || p.offConsist || 50;
+    const closeShot = getVal('close_shot', 'closeShot', 'CLOSE');
+    const midRange = getVal('mid_range', 'midRange', 'MID');
+    const threeCorner = getVal('three_corner', 'threeCorner', '3C');
+    const three45 = getVal('three_45', 'three45', '3_45');
+    const threeTop = getVal('three_top', 'threeTop', '3T');
+    const ft = getVal('ft', 'FT');
+    const shotIq = getVal('shot_iq', 'shotIq', 'SIQ');
+    const offConsist = getVal('off_consist', 'offConsist', 'OCON', 'OCN');
 
-    const layup = p.layup || 50;
-    const dunk = p.dunk || 50;
-    const postPlay = p.post_play || p.postPlay || 50;
-    const drawFoul = p.draw_foul || p.drawFoul || 50;
-    const hands = p.hands || 50;
+    const layup = getVal('layup', 'LAY');
+    const dunk = getVal('dunk', 'DNK');
+    const postPlay = getVal('post_play', 'postPlay', 'POST');
+    const drawFoul = getVal('draw_foul', 'drawFoul', 'DRAW', 'DRF');
+    const hands = getVal('hands', 'HANDS', 'HND');
 
-    const passAcc = p.pass_acc || p.passAcc || 50;
-    const handling = p.handling || 50;
-    const spdBall = p.spd_ball || p.spdBall || 50;
-    const passIq = p.pass_iq || p.passIq || 50;
-    const passVision = p.pass_vision || p.passVision || 50;
+    const passAcc = getVal('pass_acc', 'passAcc', 'PACC', 'PAS');
+    const handling = getVal('handling', 'HANDL', 'HDL');
+    const spdBall = getVal('spd_ball', 'spdBall', 'SPWB');
+    const passIq = getVal('pass_iq', 'passIq', 'PIQ', 'IQ');
+    const passVision = getVal('pass_vision', 'passVision', 'PVIS', 'VIS');
 
-    const intDef = p.int_def || p.intDef || 50;
-    const perDef = p.per_def || p.perDef || 50;
-    const lockdown = p.lockdown || 50;
-    const steal = p.steal || 50;
-    const block = p.block || p.blk || 50;
-    const helpDefIq = p.help_def_iq || p.helpDefIq || 50;
-    const passPerc = p.pass_perc || p.passPerc || 50;
-    const defConsist = p.def_consist || p.defConsist || 50;
+    const intDef = getVal('int_def', 'intDef', 'IDEF', 'INT');
+    const perDef = getVal('per_def', 'perDef', 'PDEF', 'PER');
+    const lockdown = getVal('lockdown', 'LOCK');
+    const steal = getVal('steal', 'STL');
+    const block = getVal('block', 'blk', 'BLK');
+    const helpDefIq = getVal('help_def_iq', 'helpDefIq', 'HDEF');
+    const passPerc = getVal('pass_perc', 'passPerc', 'PPER', 'PRC');
+    const defConsist = getVal('def_consist', 'defConsist', 'DCON', 'DCN');
 
-    const offReb = p.off_reb || p.offReb || 50;
-    const defReb = p.def_reb || p.defReb || (offReb + 15);
+    const offReb = getVal('off_reb', 'offReb', 'OREB', 'ORB');
+    const defReb = getVal('def_reb', 'defReb', 'DREB', 'DRB') || (offReb + 15);
 
     // Aggregates
     const ath = avg([speed, agility, strength, vertical, stamina, hustle, durability]);
@@ -120,13 +164,21 @@ const calculateAttributes = (p: any) => {
     const def = avg([intDef, perDef, lockdown, steal, block, helpDefIq, passPerc, defConsist]);
     const reb = avg([offReb, defReb]);
 
+    // Robust String Fields
+    const position = p.position || p.Position || p.POSITION || 'PG';
+    const heightCm = p.height || p.Height || 200;
+    const name = p.name || p.Name || p.NAME || 'Unknown';
+    const age = p.age || p.Age || 20;
+    const height = p.height || p.Height || 200;
+    const weight = p.weight || p.Weight || 95;
+    const salary = p.salary || p.Salary || 1;
+    const contractYears = p.contract_years || p.contractYears || p.ContractYears || 1;
+
     // OVR Calculation
     let ovrRaw = 0;
-    const position = p.position || 'PG';
-    const heightCm = p.height || 200;
     const threeAvg = (threeCorner + three45 + threeTop) / 3;
-    const intangibles = p.intangibles || 50;
-    const potential = p.potential || 70;
+    const intangibles = getVal('intangibles', 'INTANGIBLES', 'INT'); // Note: INT sometimes means INT DEF, check context
+    const potential = getVal('potential', 'POT');
 
     const calcNewOvr = (weights: {val: number, w: number}[]) => {
         let totalVal = 0;
@@ -202,7 +254,10 @@ const calculateAttributes = (p: any) => {
         passAcc, handling, spdBall, passIq, passVision,
         intDef, perDef, lockdown, steal, block, helpDefIq, passPerc, defConsist,
         offReb, defReb,
-        intangibles, potential
+        intangibles, potential,
+        
+        // Pass through core props to ensure they exist even if keys differ
+        name, age, height, weight, salary, contractYears, position
     };
 };
 
@@ -210,25 +265,25 @@ export const mapDatabasePlayerToRuntimePlayer = (dbPlayer: any, teamId: string):
     const calc = calculateAttributes(dbPlayer);
     
     // Check known injuries override
-    let health = dbPlayer.health || 'Healthy';
+    let health = dbPlayer.health || dbPlayer.Health || 'Healthy';
     let injuryType = undefined;
     let returnDate = undefined;
     
-    if (KNOWN_INJURIES[dbPlayer.name]) {
+    if (KNOWN_INJURIES[calc.name]) {
         health = 'Injured';
-        injuryType = KNOWN_INJURIES[dbPlayer.name].type;
-        returnDate = KNOWN_INJURIES[dbPlayer.name].returnDate;
+        injuryType = KNOWN_INJURIES[calc.name].type;
+        returnDate = KNOWN_INJURIES[calc.name].returnDate;
     }
 
     return {
-        id: dbPlayer.id || `${teamId}-${dbPlayer.name.toLowerCase().replace(/ /g, '-')}`,
-        name: dbPlayer.name,
-        position: dbPlayer.position,
-        age: dbPlayer.age,
-        height: dbPlayer.height,
-        weight: dbPlayer.weight,
-        salary: dbPlayer.salary,
-        contractYears: dbPlayer.contract_years,
+        id: dbPlayer.id || `${teamId}-${calc.name.toLowerCase().replace(/ /g, '-')}`,
+        name: calc.name,
+        position: calc.position,
+        age: calc.age,
+        height: calc.height,
+        weight: calc.weight,
+        salary: calc.salary,
+        contractYears: calc.contractYears,
         health: health,
         injuryType: injuryType,
         returnDate: returnDate,
@@ -249,9 +304,13 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
     const createdGameKeys = new Set<string>();
 
     dbGames.forEach((row, i) => {
-        const teamFull = row.team_name || row.team;
-        const oppFull = row.opponent_name || row.opponent;
+        // Robust key access for Team/Opponent
+        const teamFull = row.team_name || row.team || row.Team;
+        const oppFull = row.opponent_name || row.opponent || row.Opponent;
+        const dateStrRaw = row.date || row.Date;
         
+        if (!teamFull || !oppFull || !dateStrRaw) return;
+
         const findTeamId = (name: string) => {
             const t = INITIAL_TEAMS_DATA.find(t => t.name === name || t.city === name || `${t.city} ${t.name}` === name);
             return t ? t.id : null;
@@ -263,9 +322,10 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
         if (!teamId || !oppId) return;
 
         let homeId, awayId;
+        const site = row.site || row.Site || '';
         // In CSV/DB 'site' usually refers to where the 'team' is playing relative to 'opponent'
         // If site is '홈' (Home), then 'team' is home.
-        if (row.site === '홈' || row.site === 'Home') {
+        if (site === '홈' || site === 'Home' || site === 'home') {
             homeId = teamId;
             awayId = oppId;
         } else {
@@ -273,7 +333,18 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
             awayId = teamId;
         }
 
-        const dateStr = row.date; // Assuming YYYY-MM-DD from Supabase date column
+        // Handle Date parsing if standard string (e.g. "Wed Oct 22 2025")
+        // The previous CSV parser converted it, but from DB it might come as is.
+        // We need YYYY-MM-DD for the system.
+        let dateStr = dateStrRaw;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStrRaw)) {
+             // Attempt to parse standard date string
+             const d = new Date(dateStrRaw);
+             if (!isNaN(d.getTime())) {
+                 dateStr = d.toISOString().split('T')[0];
+             }
+        }
+
         const gameKey = `${dateStr}_${homeId}_${awayId}`;
 
         if (!createdGameKeys.has(gameKey)) {
@@ -284,8 +355,8 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
                 awayTeamId: awayId,
                 date: dateStr,
                 played: false, // Default to false unless score exists, logic handled in App
-                homeScore: row.tm_score || undefined,
-                awayScore: row.opp_score || undefined
+                homeScore: row.tm_score || row.TmScore || undefined,
+                awayScore: row.opp_score || row.OppScore || undefined
             });
         }
     });
@@ -295,8 +366,6 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
 
 // Deprecated CSV parsers (kept if needed for fallback, but main logic moved to map helpers)
 export function parseRostersCSV(csv: string): Record<string, Player[]> {
-    // Legacy support wrapper or remove if fully migrated
-    // For now, let's keep the existing implementation but reuse the calculator
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     const rosterMap: Record<string, Player[]> = {};
 
@@ -308,7 +377,6 @@ export function parseRostersCSV(csv: string): Record<string, Player[]> {
         const teamData = INITIAL_TEAMS_DATA.find(t => `${t.city} ${t.name}` === teamFull || t.name === teamFull);
         const teamKey = teamData?.id || 'unknown';
         
-        // Mock object to match DB structure expected by calculator
         const mockRow = {
             name: values[1],
             position: values[2],

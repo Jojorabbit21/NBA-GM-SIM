@@ -2,14 +2,14 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
-  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud
+  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2
 } from 'lucide-react';
 import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
 import { 
   INITIAL_TEAMS_DATA, getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, mapDatabaseScheduleToRuntimeGame,
   generateSeasonSchedule, exportScheduleToCSV,
-  SEASON_START_DATE
+  SEASON_START_DATE, parseCSVToObjects
 } from './utils/constants';
 import { simulateGame, GameTactics, RosterUpdate } from './services/gameEngine';
 import { generateNewsTicker, generateOwnerWelcome } from './services/geminiService';
@@ -37,6 +37,7 @@ const DEFAULT_TACTICS: GameTactics = {
 const App: React.FC = () => {
   // Auth State
   const [session, setSession] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true); // Prevent flash of login screen
   
   // Game State
   const [view, setView] = useState<AppView>('TeamSelect');
@@ -70,43 +71,76 @@ const App: React.FC = () => {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      setAuthLoading(false);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      setAuthLoading(false);
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  // [INIT] Load Static Data (Rosters) from Supabase
+  // [INIT] Load Static Data (Rosters) from Supabase or Fallback CSV
   useEffect(() => {
     const initializeGlobal = async () => {
       try {
-        // Fetch all players from Supabase table 'players'
+        let combinedPlayers: any[] = [];
+        
+        // 1. Try Loading from Supabase
         const { data: dbPlayers, error } = await supabase.from('players').select('*');
         
-        if (error) {
-            console.error("Supabase Roster Load Error:", error);
-            throw error;
+        if (error || !dbPlayers || dbPlayers.length === 0) {
+            console.warn("Supabase Roster Load Failed or Empty (Switching to CSV fallback):", error ? JSON.stringify(error, null, 2) : "No data returned");
+            
+            // 2. Fallback to Local CSVs if Supabase fails
+            const rosterFiles = [
+                'roster_atlantic.csv', 
+                'roster_central.csv', 
+                'roster_southeast.csv', 
+                'roster_northwest.csv', 
+                'roster_pacific.csv', 
+                'roster_southwest.csv'
+            ];
+            
+            for (const file of rosterFiles) {
+                try {
+                    const res = await fetch(`/${file}`);
+                    if (res.ok) {
+                        const txt = await res.text();
+                        const parsed = parseCSVToObjects(txt);
+                        combinedPlayers.push(...parsed);
+                    } else {
+                        console.error(`Failed to fetch ${file}: ${res.status}`);
+                    }
+                } catch (e) {
+                    console.error(`CSV Load Error for ${file}`, e);
+                }
+            }
+        } else {
+            combinedPlayers = dbPlayers;
         }
 
-        // Group players by team name/city logic or similar
-        // IMPORTANT: The DB 'team' column likely contains team names (e.g. '보스턴 셀틱스')
-        // We need to map these to our Team IDs.
-        
+        // Group players by team
         const fullRosterMap: Record<string, any[]> = {};
         
-        if (dbPlayers) {
-            dbPlayers.forEach((p: any) => {
-                const teamName = p.team; // e.g. "보스턴 셀틱스"
-                // Find matching team in INITIAL_TEAMS_DATA
-                const t = INITIAL_TEAMS_DATA.find(it => it.name === teamName || `${it.city} ${it.name}` === teamName);
+        if (combinedPlayers.length > 0) {
+            combinedPlayers.forEach((p: any) => {
+                // IMPORTANT: Handle both lowercase 'team' and capitalized 'Team' keys
+                const teamName = p.team || p.Team || p.TEAM; 
+                if (!teamName) return;
+
+                const t = INITIAL_TEAMS_DATA.find(it => 
+                    it.name === teamName || 
+                    `${it.city} ${it.name}` === teamName ||
+                    it.name.toLowerCase() === teamName.toLowerCase()
+                );
+                
                 if (t) {
                     if (!fullRosterMap[t.id]) fullRosterMap[t.id] = [];
-                    // Convert DB row to Player object
                     fullRosterMap[t.id].push(mapDatabasePlayerToRuntimePlayer(p, t.id));
                 }
             });
@@ -158,25 +192,40 @@ const App: React.FC = () => {
         setPlayoffSeries(gd.playoffSeries || []);
         setToastMessage("클라우드에서 저장된 게임을 불러왔습니다.");
     } else {
-        // New Game Setup - Load Schedule from DB
-        try {
-            const { data: dbSchedule, error: schError } = await supabase
-                .from('schedule')
-                .select('*');
-            
-            if (schError) throw schError;
-
-            if (dbSchedule && dbSchedule.length > 0) {
-                const parsedSchedule = mapDatabaseScheduleToRuntimeGame(dbSchedule);
-                setSchedule(parsedSchedule);
-                setCurrentSimDate(parsedSchedule[0].date);
-            } else {
-                throw new Error("No schedule data in DB");
+        // New Game Setup
+        let loadedSchedule: Game[] = [];
+        
+        // 1. Try Loading Schedule from Supabase
+        const { data: dbSchedule, error: schError } = await supabase
+            .from('schedule')
+            .select('*');
+        
+        if (!schError && dbSchedule && dbSchedule.length > 0) {
+            loadedSchedule = mapDatabaseScheduleToRuntimeGame(dbSchedule);
+        } else {
+            // 2. Fallback to Local CSV
+            console.warn("Supabase Schedule Load Failed (Switching to CSV fallback)", schError);
+            try {
+                const res = await fetch('/schedule.csv');
+                if (res.ok) {
+                    const txt = await res.text();
+                    // Map raw objects to format expected by mapDatabaseScheduleToRuntimeGame
+                    const rawObjs = parseCSVToObjects(txt);
+                    loadedSchedule = mapDatabaseScheduleToRuntimeGame(rawObjs);
+                }
+            } catch (e) {
+                console.error("Schedule CSV Load Failed", e);
             }
-        } catch (e) {
-            console.warn("Falling back to random schedule generation", e);
+        }
+
+        if (loadedSchedule.length > 0) {
+            setSchedule(loadedSchedule);
+            setCurrentSimDate(loadedSchedule[0].date);
+        } else {
+            console.warn("Falling back to random schedule generation");
             setSchedule(generateSeasonSchedule(teamId));
         }
+
         setUserTactics(DEFAULT_TACTICS);
         setPlayoffSeries([]);
     }
@@ -453,6 +502,16 @@ const App: React.FC = () => {
     setMyTeamId(null);
     setView('TeamSelect');
   };
+
+  // Auth Loading State
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 text-slate-200">
+        <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
+        <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Connecting to Server...</p>
+      </div>
+    );
+  }
 
   // If not logged in, show Auth View
   if (!session) {
