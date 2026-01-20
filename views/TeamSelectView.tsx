@@ -1,8 +1,8 @@
 
 import React, { useMemo } from 'react';
 import { Loader2, Wifi, WifiOff } from 'lucide-react';
-import { Team } from './types';
-import { isSupabaseConfigured } from './supabaseClient';
+import { Team } from '../types';
+import { isSupabaseConfigured } from '../services/supabaseClient';
 
 interface TeamSelectViewProps {
   teams: Team[];

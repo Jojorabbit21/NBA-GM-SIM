@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Save, Calendar, CheckCircle2, Search, ChevronDown } from 'lucide-react';
-import { Team, Game } from './types';
+import { Team, Game } from '../types';
 
 interface ScheduleViewProps {
   schedule: Game[];

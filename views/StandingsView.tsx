@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
-import { Team } from './types';
+import { Team } from '../types';
 import { Loader2 } from 'lucide-react';
 
 interface StandingsViewProps {
