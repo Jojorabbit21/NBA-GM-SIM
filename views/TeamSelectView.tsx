@@ -34,7 +34,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
              <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto opacity-50" />
              <div className="space-y-2">
                <h3 className="text-4xl font-semibold pretendard text-white tracking-tight">시뮬레이션 가동 준비중...</h3>
-               <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] animate-pulse">2025년 10월 21일로 날짜 설정 중...</p>
+               <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] animate-pulse">2025년 10월 20일로 날짜 설정 중...</p>
              </div>
            </div>
         </div>

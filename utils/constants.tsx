@@ -1,7 +1,7 @@
 
 import { Player, SeasonStats, Game, Team } from '../types';
 
-export const SEASON_START_DATE = '2025-10-21';
+export const SEASON_START_DATE = '2025-10-20';
 export const TRADE_DEADLINE = '2026-02-06';
 
 export const INITIAL_STATS = (): SeasonStats => ({
@@ -148,7 +148,7 @@ const calculateAttributes = (p: any) => {
     const perDef = getVal('per_def', 'perDef', 'PDEF', 'PER');
     const lockdown = getVal('lockdown', 'LOCK');
     const steal = getVal('steal', 'STL');
-    const block = getVal('block', 'blk', 'BLK');
+    const blk = getVal('block', 'blk', 'BLK');
     const helpDefIq = getVal('help_def_iq', 'helpDefIq', 'HDEF');
     const passPerc = getVal('pass_perc', 'passPerc', 'PPER', 'PRC');
     const defConsist = getVal('def_consist', 'defConsist', 'DCON', 'DCN');
@@ -161,7 +161,7 @@ const calculateAttributes = (p: any) => {
     const out = avg([closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist]);
     const ins = avg([layup, dunk, postPlay, drawFoul, hands]);
     const plm = avg([passAcc, handling, spdBall, passIq, passVision]);
-    const def = avg([intDef, perDef, lockdown, steal, block, helpDefIq, passPerc, defConsist]);
+    const def = avg([intDef, perDef, lockdown, steal, blk, helpDefIq, passPerc, defConsist]);
     const reb = avg([offReb, defReb]);
 
     // Robust String Fields
@@ -195,7 +195,7 @@ const calculateAttributes = (p: any) => {
         ovrRaw = calcNewOvr([
             { val: closeShot, w: 8 }, { val: midRange, w: 3 }, { val: threeAvg, w: 7 }, { val: ft, w: 5 }, { val: shotIq, w: 5 }, { val: offConsist, w: 5 },
             { val: layup, w: 2 }, { val: dunk, w: 0 }, { val: postPlay, w: 1 }, { val: drawFoul, w: 5 }, { val: hands, w: 2 },
-            { val: intDef, w: 0 }, { val: perDef, w: 5 }, { val: steal, w: 0 }, { val: block, w: 0 }, { val: helpDefIq, w: 3 }, { val: passPerc, w: 0 }, { val: defConsist, w: 1 },
+            { val: intDef, w: 0 }, { val: perDef, w: 5 }, { val: steal, w: 0 }, { val: blk, w: 0 }, { val: helpDefIq, w: 3 }, { val: passPerc, w: 0 }, { val: defConsist, w: 1 },
             { val: offReb, w: 2 }, { val: defReb, w: 0 },
             { val: speed, w: 0 }, { val: agility, w: 3 }, { val: strength, w: 0 }, { val: vertical, w: 0 }, { val: stamina, w: 5 }, { val: hustle, w: 0 }, { val: durability, w: 3 },
             { val: passAcc, w: 10 }, { val: handling, w: 7 }, { val: spdBall, w: 7 }, { val: passVision, w: 7 }, { val: passIq, w: 10 },
@@ -205,7 +205,7 @@ const calculateAttributes = (p: any) => {
         ovrRaw = calcNewOvr([
             { val: closeShot, w: 5 }, { val: midRange, w: 8 }, { val: threeAvg, w: 10 }, { val: ft, w: 5 }, { val: shotIq, w: 6 }, { val: offConsist, w: 7 },
             { val: layup, w: 2 }, { val: dunk, w: 0 }, { val: postPlay, w: 0 }, { val: drawFoul, w: 6 }, { val: hands, w: 1 },
-            { val: intDef, w: 0 }, { val: perDef, w: 5 }, { val: steal, w: 0 }, { val: block, w: 0 }, { val: helpDefIq, w: 5 }, { val: passPerc, w: 0 }, { val: defConsist, w: 0 },
+            { val: intDef, w: 0 }, { val: perDef, w: 5 }, { val: steal, w: 0 }, { val: blk, w: 0 }, { val: helpDefIq, w: 5 }, { val: passPerc, w: 0 }, { val: defConsist, w: 0 },
             { val: offReb, w: 3 }, { val: defReb, w: 1 },
             { val: speed, w: 8 }, { val: agility, w: 2 }, { val: strength, w: 1 }, { val: vertical, w: 1 }, { val: stamina, w: 2 }, { val: hustle, w: 2 }, { val: durability, w: 1 },
             { val: passAcc, w: 7 }, { val: handling, w: 2 }, { val: spdBall, w: 1 }, { val: passVision, w: 2 }, { val: passIq, w: 2 },
@@ -215,7 +215,7 @@ const calculateAttributes = (p: any) => {
         ovrRaw = calcNewOvr([
             { val: closeShot, w: 4 }, { val: midRange, w: 2 }, { val: threeAvg, w: 2 }, { val: ft, w: 2 }, { val: shotIq, w: 2 }, { val: offConsist, w: 5 },
             { val: layup, w: 4 }, { val: dunk, w: 1 }, { val: postPlay, w: 0 }, { val: drawFoul, w: 3 }, { val: hands, w: 3},
-            { val: intDef, w: 4 }, { val: perDef, w: 4 }, { val: steal, w: 2 }, { val: block, w: 2 }, { val: helpDefIq, w: 4 }, { val: passPerc, w: 3 }, { val: defConsist, w: 3 },
+            { val: intDef, w: 4 }, { val: perDef, w: 4 }, { val: steal, w: 2 }, { val: blk, w: 2 }, { val: helpDefIq, w: 4 }, { val: passPerc, w: 3 }, { val: defConsist, w: 3 },
             { val: offReb, w: 3 }, { val: defReb, w: 3 },
             { val: speed, w: 3 }, { val: agility, w: 3 }, { val: strength, w: 1 }, { val: vertical, w: 2 }, { val: stamina, w: 3 }, { val: hustle, w: 3 }, { val: durability, w: 3 },
             { val: passAcc, w: 1 }, { val: handling, w: 1 }, { val: spdBall, w: 1 }, { val: passVision, w: 1 }, { val: passIq, w: 3 },
@@ -225,7 +225,7 @@ const calculateAttributes = (p: any) => {
         ovrRaw = calcNewOvr([
             { val: closeShot, w: 5 }, { val: midRange, w: 1 }, { val: threeAvg, w: 1 }, { val: ft, w: 4 }, { val: shotIq, w: 1 }, { val: offConsist, w: 5 },
             { val: layup, w: 3 }, { val: dunk, w: 4 }, { val: postPlay, w: 4 }, { val: drawFoul, w: 4 }, { val: hands, w: 5},
-            { val: intDef, w: 6 }, { val: perDef, w: 1 }, { val: steal, w: 1 }, { val: block, w: 4 }, { val: helpDefIq, w: 2 }, { val: passPerc, w: 1 }, { val: defConsist, w: 5 },
+            { val: intDef, w: 6 }, { val: perDef, w: 1 }, { val: steal, w: 1 }, { val: blk, w: 4 }, { val: helpDefIq, w: 2 }, { val: passPerc, w: 1 }, { val: defConsist, w: 5 },
             { val: offReb, w: 4 }, { val: defReb, w: 6 },
             { val: speed, w: 2 }, { val: agility, w: 2 }, { val: strength, w: 5 }, { val: vertical, w: 5 }, { val: stamina, w: 4 }, { val: hustle, w: 4 }, { val: durability, w: 5 },
             { val: passAcc, w: 1}, { val: handling, w: 1 }, { val: spdBall, w: 1 }, { val: passVision, w: 1 }, { val: passIq, w: 1 },
@@ -235,7 +235,7 @@ const calculateAttributes = (p: any) => {
         ovrRaw = calcNewOvr([
             { val: closeShot, w: 10 }, { val: midRange, w: 2 }, { val: threeAvg, w: 2 }, { val: ft, w: 2 }, { val: shotIq, w: 3 }, { val: offConsist, w: 5 },
             { val: layup, w: 8 }, { val: dunk, w: 10 }, { val: postPlay, w: 10 }, { val: drawFoul, w: 5 }, { val: hands, w: 5},
-            { val: intDef, w: 12 }, { val: perDef, w: 1 }, { val: steal, w: 1 }, { val: block, w: 8 }, { val: helpDefIq, w: 1 }, { val: passPerc, w: 1 }, { val: defConsist, w: 6 },
+            { val: intDef, w: 12 }, { val: perDef, w: 1 }, { val: steal, w: 1 }, { val: blk, w: 8 }, { val: helpDefIq, w: 1 }, { val: passPerc, w: 1 }, { val: defConsist, w: 6 },
             { val: offReb, w: 8 }, { val: defReb, w: 8 },
             { val: speed, w: 2 }, { val: agility, w: 2 }, { val: strength, w: 6 }, { val: vertical, w: 8 }, { val: stamina, w: 2 }, { val: hustle, w: 1 }, { val: durability, w: 6 },
             { val: passAcc, w: 1}, { val: handling, w: 1 }, { val: spdBall, w: 1 }, { val: passVision, w: 1 }, { val: passIq, w: 1 },
@@ -252,7 +252,7 @@ const calculateAttributes = (p: any) => {
         closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist,
         layup, dunk, postPlay, drawFoul, hands,
         passAcc, handling, spdBall, passIq, passVision,
-        intDef, perDef, lockdown, steal, block, helpDefIq, passPerc, defConsist,
+        intDef, perDef, lockdown, steal, blk, helpDefIq, passPerc, defConsist,
         offReb, defReb,
         intangibles, potential,
         
@@ -261,42 +261,49 @@ const calculateAttributes = (p: any) => {
     };
 };
 
-export const mapDatabasePlayerToRuntimePlayer = (dbPlayer: any, teamId: string): Player => {
-    const calc = calculateAttributes(dbPlayer);
+export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
+    const attrs = calculateAttributes(p);
     
-    // Check known injuries override
-    let health = dbPlayer.health || dbPlayer.Health || 'Healthy';
-    let injuryType = undefined;
-    let returnDate = undefined;
-    
-    if (KNOWN_INJURIES[calc.name]) {
+    // Check known injuries
+    const known = KNOWN_INJURIES[attrs.name];
+    let health: 'Healthy' | 'Injured' | 'Day-to-Day' = 'Healthy';
+    if (known) {
         health = 'Injured';
-        injuryType = KNOWN_INJURIES[calc.name].type;
-        returnDate = KNOWN_INJURIES[calc.name].returnDate;
+    } else if (p.health === 'Injured' || p.health === 'Day-to-Day') {
+        health = p.health;
+    } else if (p.Health === 'Injured' || p.Health === 'Day-to-Day') {
+        health = p.Health;
     }
+    
+    const injuryType = known ? known.type : (p.injuryType || p.injury_type);
+    const returnDate = known ? known.returnDate : (p.returnDate || p.return_date);
+
+    // Sanitize ID
+    let id = p.id;
+    if (!id) {
+        // Fallback ID generation
+        const cleanName = attrs.name.replace(/[^a-zA-Z0-9]/g, '');
+        id = `${teamId}_${cleanName}`;
+    }
+    id = String(id);
 
     return {
-        id: dbPlayer.id || `${teamId}-${calc.name.toLowerCase().replace(/ /g, '-')}`,
-        name: calc.name,
-        position: calc.position,
-        age: calc.age,
-        height: calc.height,
-        weight: calc.weight,
-        salary: calc.salary,
-        contractYears: calc.contractYears,
-        health: health,
-        injuryType: injuryType,
-        returnDate: returnDate,
+        id,
+        ...attrs,
+        position: attrs.position as any,
+        health,
+        injuryType,
+        returnDate,
         condition: 100,
-        revealedPotential: calc.potential,
-        
-        // Spread calculated attributes
-        ...calc,
-        
-        blk: calc.block, // map 'block' to 'blk'
-
+        revealedPotential: attrs.potential,
         stats: INITIAL_STATS()
     };
+};
+
+// FIX: Robust date parser map
+const MONTH_MAP: Record<string, string> = { 
+    Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', 
+    Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' 
 };
 
 export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
@@ -305,13 +312,22 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
 
     dbGames.forEach((row, i) => {
         // Robust key access for Team/Opponent
-        const teamFull = row.team_name || row.team || row.Team;
-        const oppFull = row.opponent_name || row.opponent || row.Opponent;
+        // FIX: Add trim to handle potential whitespace issues
+        const teamFull = (row.team_name || row.team || row.Team || '').trim();
+        const oppFull = (row.opponent_name || row.opponent || row.Opponent || '').trim();
         const dateStrRaw = row.date || row.Date;
         
         if (!teamFull || !oppFull || !dateStrRaw) return;
 
         const findTeamId = (name: string) => {
+            // Handle specific CSV spelling variants (Typos/Alternate spellings)
+            if (name === '팀버울브즈') return 'min'; 
+            if (name === '너겟츠') return 'den';
+
+            // Also check if the name IS the ID directly
+            const directMatch = INITIAL_TEAMS_DATA.find(t => t.id === name.toLowerCase());
+            if (directMatch) return directMatch.id;
+
             const t = INITIAL_TEAMS_DATA.find(t => t.name === name || t.city === name || `${t.city} ${t.name}` === name);
             return t ? t.id : null;
         };
@@ -333,16 +349,35 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
             awayId = teamId;
         }
 
-        // Handle Date parsing if standard string (e.g. "Wed Oct 22 2025")
-        // The previous CSV parser converted it, but from DB it might come as is.
-        // We need YYYY-MM-DD for the system.
+        // Handle Date parsing
+        // FIX: Handle manual parsing for "Wed Oct 22 2025" format to avoid timezone shift
         let dateStr = dateStrRaw;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStrRaw)) {
-             // Attempt to parse standard date string
-             const d = new Date(dateStrRaw);
-             if (!isNaN(d.getTime())) {
-                 dateStr = d.toISOString().split('T')[0];
-             }
+        
+        // 1. Try ISO YYYY-MM-DD
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStrRaw)) {
+            dateStr = dateStrRaw;
+        } 
+        // 2. Try CSV Format "Wed Oct 22 2025"
+        else {
+            const parts = dateStrRaw.split(' ').filter((p: string) => p.trim() !== '');
+            // Expecting [DayOfWeek, Month, Day, Year] e.g. ["Tue", "Oct", "21", "2025"]
+            if (parts.length === 4) {
+               const month = MONTH_MAP[parts[1]];
+               const day = parts[2].padStart(2, '0');
+               const year = parts[3];
+               if (month && day && year) {
+                   dateStr = `${year}-${month}-${day}`;
+               }
+            } else {
+                // Fallback to Date object if manual parsing fails
+                const d = new Date(dateStrRaw);
+                if (!isNaN(d.getTime())) {
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const day = String(d.getDate()).padStart(2, '0');
+                    dateStr = `${year}-${month}-${day}`;
+                }
+            }
         }
 
         const gameKey = `${dateStr}_${homeId}_${awayId}`;
@@ -354,7 +389,7 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
                 homeTeamId: homeId,
                 awayTeamId: awayId,
                 date: dateStr,
-                played: false, // Default to false unless score exists, logic handled in App
+                played: false, 
                 homeScore: row.tm_score || row.TmScore || undefined,
                 awayScore: row.opp_score || row.OppScore || undefined
             });

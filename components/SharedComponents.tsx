@@ -1,53 +1,55 @@
 
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database } from 'lucide-react';
+import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database, Lock, ShieldAlert } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getTeamLogoUrl } from '../utils/constants';
 
 export const getOvrBadgeStyle = (ovr: number) => {
   const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto ";
-  if (ovr >= 95) return baseClass + 'bg-[linear-gradient(rgb(255,150,223),rgb(173,56,138))] text-white shadow-[0_0_20px_rgba(255,150,223,0.7)] ring-1 ring-fuchsia-300 animate-pulse-subtle';
-  if (ovr >= 90) return baseClass + 'bg-gradient-to-br from-red-500 to-red-800 text-white shadow-red-900/40';
-  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-blue-500 to-blue-800 text-white shadow-blue-900/40';
-  if (ovr >= 80) return baseClass + 'bg-gradient-to-br from-emerald-500 to-emerald-800 text-white shadow-emerald-900/40';
-  if (ovr >= 75) return baseClass + 'bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-amber-900/40';
-  if (ovr >= 70) return baseClass + 'bg-gradient-to-br from-amber-700 to-amber-900 text-white shadow-amber-950/40';
-  return baseClass + 'bg-gradient-to-br from-slate-700 to-slate-900 text-slate-300 border border-slate-600';
+  
+  // 95+ - Pink Diamond (Bright Magenta + Outline + Glow)
+  if (ovr >= 95) return baseClass + 'bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-fuchsia-700 text-white shadow-[0_0_25px_rgba(232,121,249,0.9)] border-2 border-white/80 ring-2 ring-fuchsia-500/50';
+  
+  // 90-94 - Red
+  if (ovr >= 90) return baseClass + 'bg-gradient-to-br from-red-600 via-red-500 to-rose-600 text-white shadow-red-500/40 border border-red-400';
+  
+  // 85-89 - Blue
+  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 text-white shadow-blue-500/40 border border-blue-400';
+  
+  // 80-84 - Green
+  if (ovr >= 80) return baseClass + 'bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-emerald-500/40 border border-emerald-400';
+  
+  // 75-79 - Gold
+  if (ovr >= 75) return baseClass + 'bg-gradient-to-br from-yellow-500 via-amber-500 to-orange-500 text-white shadow-amber-500/40 border border-amber-400';
+  
+  // 70-74 - Silver
+  if (ovr >= 70) return baseClass + 'bg-gradient-to-br from-slate-400 via-gray-400 to-zinc-500 text-white shadow-slate-500/40 border border-slate-300';
+  
+  // < 70 - Bronze
+  return baseClass + 'bg-gradient-to-br from-orange-800 via-amber-900 to-yellow-950 text-orange-200 shadow-orange-900/40 border border-amber-800';
 };
 
 export const getRankStyle = (val: number) => {
-  const baseClass = "w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-md font-black text-xs md:text-sm transition-all ";
+  const baseClass = "w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-md font-black text-xs md:text-sm transition-all border ";
   
-  // 95+: Sky (God Tier)
-  if (val >= 95) return baseClass + 'bg-sky-500/20 text-sky-400 border border-sky-500/30 shadow-[0_0_10px_rgba(14,165,233,0.2)]';
+  // 95+ (Elite): Cyan/Blue with Glow
+  if (val >= 95) return baseClass + 'bg-cyan-500/20 text-cyan-300 border-cyan-400/50 shadow-[0_0_10px_rgba(34,211,238,0.4)]';
+
+  // 90-94 (Great): Emerald
+  if (val >= 90) return baseClass + 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
   
-  // 90-94: Cyan (Elite)
-  if (val >= 90) return baseClass + 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
+  // 80-89 (Good): Green
+  if (val >= 80) return baseClass + 'bg-green-500/20 text-green-400 border-green-500/50';
   
-  // 85-89: Teal (Great)
-  if (val >= 85) return baseClass + 'bg-teal-500/20 text-teal-400 border border-teal-500/30';
+  // 70-79 (Average): Yellow
+  if (val >= 70) return baseClass + 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50';
   
-  // 80-84: Emerald (Very Good)
-  if (val >= 80) return baseClass + 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+  // 60-69 (Below Avg): Orange
+  if (val >= 60) return baseClass + 'bg-orange-500/20 text-orange-400 border-orange-500/50';
   
-  // 75-79: Green (Good)
-  if (val >= 75) return baseClass + 'bg-green-500/20 text-green-400 border border-green-500/30';
-  
-  // 70-74: Lime (Above Average)
-  if (val >= 70) return baseClass + 'bg-lime-500/20 text-lime-400 border border-lime-500/30';
-  
-  // 65-69: Yellow (Average)
-  if (val >= 65) return baseClass + 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30';
-  
-  // 60-64: Amber/Orange (Below Average)
-  if (val >= 60) return baseClass + 'bg-orange-500/20 text-orange-400 border border-orange-500/30';
-  
-  // 50-59: Red (Bad)
-  if (val >= 50) return baseClass + 'bg-red-600/20 text-red-400 border border-red-600/30';
-  
-  // < 50: Dark Red (Very Bad)
-  return baseClass + 'bg-red-950/40 text-red-600 border border-red-900/50';
+  // < 60 (Low): Red
+  return baseClass + 'bg-red-500/20 text-red-400 border-red-500/50';
 };
 
 export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
@@ -90,11 +92,10 @@ export const TeamCard: React.FC<{ team: Team, onSelect: () => void }> = ({ team,
   </button>
 );
 
-export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, onClose: () => void }> = ({ player, teamName, onClose }) => {
+export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, teamId?: string, onClose: () => void }> = ({ player, teamName, teamId, onClose }) => {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Prevent background scrolling
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
     
@@ -112,8 +113,6 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, on
     };
   }, [onClose]);
 
-  // Try to determine team ID from player ID structure (teamid-firstname-lastname)
-  const teamId = player.id.includes('-') ? player.id.split('-')[0] : '';
   const teamLogo = teamId ? getTeamLogoUrl(teamId) : null;
 
   const attrGroups = [
@@ -194,26 +193,20 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, on
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
       <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-5xl shadow-2xl flex flex-col overflow-hidden max-h-[90vh] mx-4 relative animate-in zoom-in-95 duration-200">
-        
-        {/* Header */}
         <div className="bg-slate-950 px-8 py-6 border-b border-slate-800 flex justify-between items-center flex-shrink-0">
            <div className="flex items-center gap-8">
-              {/* Badges */}
               <div className="flex gap-4">
                   <div className="flex flex-col items-center gap-1">
-                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OVR</span>
                      <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl"}>{player.ovr}</div>
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OVR</span>
                   </div>
                   <div className="flex flex-col items-center gap-1">
-                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">POT</span>
                      <div className={getOvrBadgeStyle(player.potential) + " !w-16 !h-16 !text-3xl !rounded-2xl opacity-80"}>{player.potential}</div>
+                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">POT</span>
                   </div>
               </div>
-
-              {/* Player Info - Single Line with Logo */}
               <div className="flex flex-col">
-                 <h2 className="text-4xl font-black text-white uppercase oswald tracking-tight leading-none mb-2">{player.name}</h2>
-                 
+                 <h2 className="text-4xl font-black text-white uppercase pretendard tracking-tight leading-none mb-2">{player.name}</h2>
                  <div className="flex items-center gap-4 text-sm font-bold text-slate-400 bg-slate-900/50 px-4 py-2 rounded-xl border border-slate-800">
                     <div className="flex items-center gap-2">
                         {teamLogo && <img src={teamLogo} className="w-6 h-6 object-contain" alt={teamName} />}
@@ -230,13 +223,10 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, on
                  </div>
               </div>
            </div>
-           
            <button onClick={onClose} className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-2xl transition-colors shadow-lg border border-slate-700">
               <X size={24} />
            </button>
         </div>
-
-        {/* Content */}
         <div className="flex-1 overflow-y-auto p-8 bg-slate-900/50 custom-scrollbar">
            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {attrGroups.map((group, idx) => (
@@ -257,7 +247,6 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, on
               ))}
            </div>
         </div>
-
       </div>
     </div>,
     document.body

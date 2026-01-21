@@ -44,6 +44,15 @@ export const TRADE_CONFIG = {
         CONSOLIDATION_TAX: 0.05,
         STAR_OVR_THRESHOLD: 85,
         HIGH_VALUE_THRESHOLD: 5000,
+    },
+    DILUTION: {
+        // 쓰레기 선수 덤핑 방지 설정
+        PACKAGE_SIZE_TRIGGER: 3, // 3명 이상일 때 검사
+        ANCHOR_OVR_LOW: 76, // 패키지 내 최고 선수가 이 수치 미만이면 가치 폭락
+        ANCHOR_OVR_MID: 81, // 패키지 내 최고 선수가 이 수치 미만이면 가치 하락
+        LOW_ANCHOR_PENALTY: 0.50, // 50% 가치만 인정
+        MID_ANCHOR_PENALTY: 0.80, // 80% 가치만 인정
+        ROSTER_CLOG_PENALTY: 0.90, // 로스터 공간 차지 페널티
     }
 };
 
@@ -797,6 +806,7 @@ function getContextualTradeValue(player: Player, teamContext: Team, isAcquiring:
 
 export function generateTradeOffers(players: Player[], myTeam: Team, allTeams: Team[]): TradeOffer[] {
     const C = TRADE_CONFIG.ACCEPTANCE;
+    const D = TRADE_CONFIG.DILUTION; // 가치 희석 관련 설정
     const offers: TradeOffer[] = [];
     if (players.length === 0) return offers;
 
@@ -806,9 +816,31 @@ export function generateTradeOffers(players: Player[], myTeam: Team, allTeams: T
         if (targetTeam.id === myTeam.id) return;
 
         let userPackageValueToAI = 0;
+        let maxUserOvr = 0; // 패키지 내 최고 OVR 추적
+
         players.forEach(p => {
             userPackageValueToAI += getContextualTradeValue(p, targetTeam, true);
+            if (p.ovr > maxUserOvr) maxUserOvr = p.ovr;
         });
+
+        // ==========================================
+        //  [NEW] Quality Over Quantity Penalty Logic
+        // ==========================================
+        if (players.length >= D.PACKAGE_SIZE_TRIGGER) {
+            // 1. 앵커(에이스급) 부재 페널티
+            if (maxUserOvr < D.ANCHOR_OVR_LOW) {
+                userPackageValueToAI *= D.LOW_ANCHOR_PENALTY; // 가치 50% 삭감 (쓰레기 덤핑 방지)
+            } else if (maxUserOvr < D.ANCHOR_OVR_MID) {
+                userPackageValueToAI *= D.MID_ANCHOR_PENALTY; // 가치 20% 삭감 (롤플레이어 모음 방지)
+            }
+
+            // 2. 로스터 클로깅 페널티 (단순 머릿수 채우기 방지)
+            const lowTierCount = players.filter(p => p.ovr < 75).length;
+            if (lowTierCount >= 2) {
+                userPackageValueToAI *= D.ROSTER_CLOG_PENALTY;
+            }
+        }
+        // ==========================================
 
         const candidates = [...targetTeam.roster].sort((a,b) => a.ovr - b.ovr);
         

@@ -327,7 +327,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   return (
     <div className="space-y-6 flex flex-col animate-in fade-in duration-500">
-      {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={selectedTeam.name} onClose={() => setViewPlayer(null)} />}
+      {viewPlayer && selectedTeam && <PlayerDetailModal player={viewPlayer} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} />}
       
       {/* Header with Team Selector */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0">
@@ -422,11 +422,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                        <>
                          <SortHeader label="POS" sortKey="position" width="60px" />
                          <SortHeader label="AGE" sortKey="age" width="50px" />
-                         <SortHeader label="HGT" sortKey="height" width="50px" />
-                         <SortHeader label="WGT" sortKey="weight" width="50px" />
                          <SortHeader label="Salary" sortKey="salary" width="80px" />
-                         <SortHeader label="OVR" sortKey="ovr" width="60px" />
-                         <SortHeader label="POT" sortKey="potential" width="60px" className="border-r-2 border-slate-700/60 pl-2" />
+                         <SortHeader label="OVR" sortKey="ovr" width="60px" className="border-r-2 border-slate-700/60 pl-2" />
                        </>
                      )}
                      {tab === 'roster' ? (
@@ -479,14 +476,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                   <span className="text-[10px] font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase tracking-tight">{p.position}</span>
                               </td>
                               <td className="px-2 py-3 text-center text-xs font-medium text-slate-500">{p.age}</td>
-                              <td className="px-2 py-3 text-center text-xs font-medium text-slate-500">{p.height}cm</td>
-                              <td className="px-2 py-3 text-center text-xs font-medium text-slate-500">{p.weight}kg</td>
-                              <td className="px-2 py-3 text-center font-mono font-black text-slate-400 text-xs">${p.salary.toFixed(1)}M</td>
-                              <td className="px-1 py-3 text-center">
-                                <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-sm !mx-auto cursor-help"} title="Overall Rating">{p.ovr}</div>
-                              </td>
+                              <td className="px-2 py-3 text-center text-xs font-medium text-slate-500">${p.salary.toFixed(1)}M</td>
                               <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2">
-                                <div className={getOvrBadgeStyle(p.potential) + " !w-9 !h-9 !text-sm !mx-auto cursor-help opacity-90"} title="Potential">{p.potential}</div>
+                                <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto cursor-help"} title="Overall Rating">{p.ovr}</div>
                               </td>
                             </>
                           )}
@@ -494,8 +486,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               ROSTER_COLUMNS[rosterCategory].map(col => {
                                   const val = p[col.key as keyof Player] as number;
                                   return (
-                                      <td key={col.key} className={`px-1 py-3 text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60 pl-2' : ''}`}>
-                                          <div className={`mx-auto !w-9 !h-9 !text-sm ${getRankStyle(val)}`}>{val}</div>
+                                      <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60' : ''}`}>
+                                          <div className={getRankStyle(val) + " !mx-auto"}>{val}</div>
                                       </td>
                                   );
                               })
@@ -533,14 +525,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                              <>
                                <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
                                <td className="px-2 py-4 text-center text-xs font-bold text-slate-300">{teamStats.age}</td>
-                               <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
-                               <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
                                <td className="px-2 py-4 text-center font-mono font-black text-slate-200 text-xs">${teamStats.salary.toFixed(1)}M</td>
-                               <td className="px-1 py-4 text-center">
-                                   <div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-sm !mx-auto"}>{teamStats.ovr}</div>
-                               </td>
                                <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2">
-                                   <div className={getOvrBadgeStyle(teamStats.pot) + " !w-9 !h-9 !text-sm !mx-auto"}>{teamStats.pot}</div>
+                                   <div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div>
                                </td>
                              </>
                            )}
@@ -548,8 +535,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                ROSTER_COLUMNS[rosterCategory].map(col => {
                                    const avgVal = teamStats.getAvg(col.key as keyof Player);
                                    return (
-                                       <td key={col.key} className={`px-1 py-4 text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40 pl-2' : ''}`}>
-                                           <div className={`mx-auto !w-9 !h-9 !text-sm ${getRankStyle(avgVal)}`}>{avgVal}</div>
+                                       <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}>
+                                           <div className={getRankStyle(avgVal) + " !mx-auto"}>{avgVal}</div>
                                        </td>
                                    )
                                })
