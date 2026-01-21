@@ -44,8 +44,8 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
            <div className="text-center space-y-8">
              <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto opacity-50" />
              <div className="space-y-2">
-               <h3 className="text-4xl font-semibold pretendard text-white tracking-tight">시뮬레이션 가동 준비중...</h3>
-               <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] animate-pulse">2025년 10월 20일로 날짜 설정 중...</p>
+               <h3 className="text-4xl font-semibold pretendard text-white tracking-tight">데이터 로딩 중...</h3>
+               <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] animate-pulse">SUPABASE DB 연결 확인 중</p>
              </div>
            </div>
         </div>
@@ -56,7 +56,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
         <div className="absolute right-8 top-8 flex flex-col gap-2 items-end">
             <div className={`px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-wider flex items-center gap-2 ${dataSource === 'DB' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
                 {dataSource === 'DB' ? <Database size={12} /> : <FileSpreadsheet size={12} />}
-                <span>Data Source: {dataSource === 'DB' ? 'Live Database' : 'Local CSV (Fallback)'}</span>
+                <span>Data Source: {dataSource === 'DB' ? 'LIVE DATABASE (SUPABASE)' : 'LOCAL CSV (FALLBACK)'}</span>
             </div>
             {onReload && (
                 <button 
@@ -65,7 +65,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
                     className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
                 >
                     <RefreshCw size={12} className={isReloading ? 'animate-spin' : ''} />
-                    <span>DB 데이터 새로고침</span>
+                    <span>DB 강제 새로고침 (한글 이름 반영)</span>
                 </button>
             )}
         </div>
@@ -86,28 +86,16 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
 
       {/* Split Main Content */}
       <div className="flex-1 flex relative min-h-0">
-        {/* Center Divider Gradient */}
         <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-gradient-to-b from-slate-800 via-slate-700 to-slate-800 z-10 hidden lg:block"></div>
         
         {/* Eastern Conference (Left) */}
         <div className="flex-1 relative flex flex-col p-4 lg:p-8 border-r border-slate-800/50 min-h-0">
           <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 via-transparent to-transparent pointer-events-none"></div>
-          
           <div className="relative z-10 flex flex-col h-full items-center justify-center gap-8">
-            <div className="flex-shrink-0 flex items-center justify-center">
-               <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-blue-100 flex items-center gap-3 text-shadow-sm">
-                 동부 컨퍼런스
-               </h2>
-            </div>
-            
+            <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-blue-100 flex items-center gap-3">동부 컨퍼런스</h2>
             <div className="grid grid-cols-5 gap-3 lg:gap-5 xl:gap-8 content-center">
               {eastTeams.map(t => (
-                <LogoTeamButton 
-                    key={t.id} 
-                    team={t} 
-                    colorClass="hover:border-blue-400 hover:shadow-blue-500/30" 
-                    onSelect={onSelectTeam} 
-                />
+                <LogoTeamButton key={t.id} team={t} colorClass="hover:border-blue-400" onSelect={onSelectTeam} />
               ))}
             </div>
           </div>
@@ -116,34 +104,22 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
         {/* Western Conference (Right) */}
         <div className="flex-1 relative flex flex-col p-4 lg:p-8 min-h-0">
           <div className="absolute inset-0 bg-gradient-to-bl from-red-900/10 via-transparent to-transparent pointer-events-none"></div>
-          
           <div className="relative z-10 flex flex-col h-full items-center justify-center gap-8">
-            <div className="flex-shrink-0 flex items-center justify-center">
-               <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-red-100 flex items-center gap-3 text-shadow-sm">
-                 서부 컨퍼런스
-               </h2>
-            </div>
-
+            <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-red-100 flex items-center gap-3">서부 컨퍼런스</h2>
             <div className="grid grid-cols-5 gap-3 lg:gap-5 xl:gap-8 content-center">
               {westTeams.map(t => (
-                <LogoTeamButton 
-                    key={t.id} 
-                    team={t} 
-                    colorClass="hover:border-red-400 hover:shadow-red-500/30" 
-                    onSelect={onSelectTeam} 
-                />
+                <LogoTeamButton key={t.id} team={t} colorClass="hover:border-red-400" onSelect={onSelectTeam} />
               ))}
             </div>
           </div>
         </div>
       </div>
       
-      {/* Footer / Status Bar */}
       <div className="flex-shrink-0 h-8 bg-slate-950 border-t border-slate-900 flex items-center justify-between px-6 text-[10px] font-bold text-slate-600 uppercase tracking-widest z-20 relative">
-        <span>Ver 5.0.0 &bull; Powered by Gemini AI &bull; Season 2025-26</span>
+        <span>Season 2025-26 &bull; Korean Translation Database Active</span>
         <div className={`flex items-center gap-2 ${isSupabaseConfigured ? 'text-emerald-500' : 'text-red-500'}`}>
             {isSupabaseConfigured ? <Wifi size={12} /> : <WifiOff size={12} />}
-            <span>{isSupabaseConfigured ? 'SERVER CONNECTED' : 'SERVER DISCONNECTED (CHECK .ENV)'}</span>
+            <span>{isSupabaseConfigured ? 'SERVER CONNECTED' : 'SERVER DISCONNECTED'}</span>
         </div>
       </div>
     </div>
