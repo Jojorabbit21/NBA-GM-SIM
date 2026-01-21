@@ -79,7 +79,7 @@ const TradeConfirmModal: React.FC<{
                                 <td className="py-3 px-6"><span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[9px] font-black rounded uppercase">OUT</span></td>
                                 <td className="py-3 px-2 text-xs font-bold text-slate-400">{userTeam.name}</td>
                                 <td className="py-3 px-2 text-sm font-black text-slate-200">{p.name}</td>
-                                <td className="py-3 px-2 text-center"><div className={getOvrBadgeStyle(p.ovr) + " !w-7 !h-7 !text-[10px]"}>{p.ovr}</div></td>
+                                <td className="py-3 px-2 text-center"><div className={getOvrBadgeStyle(p.ovr) + " !w-7 !h-7 !text-sm"}>{p.ovr}</div></td>
                                 <td className="py-3 px-2 text-center text-[10px] font-bold text-slate-500">{p.position}</td>
                                 <td className="py-3 px-6 text-right font-mono text-xs font-black text-red-400">-${p.salary.toFixed(1)}M</td>
                             </tr>
@@ -89,7 +89,7 @@ const TradeConfirmModal: React.FC<{
                                 <td className="py-3 px-6"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-black rounded uppercase">IN</span></td>
                                 <td className="py-3 px-2 text-xs font-bold text-slate-400">{targetTeam.name}</td>
                                 <td className="py-3 px-2 text-sm font-black text-slate-200">{p.name}</td>
-                                <td className="py-3 px-2 text-center"><div className={getOvrBadgeStyle(p.ovr) + " !w-7 !h-7 !text-[10px]"}>{p.ovr}</div></td>
+                                <td className="py-3 px-2 text-center"><div className={getOvrBadgeStyle(p.ovr) + " !w-7 !h-7 !text-sm"}>{p.ovr}</div></td>
                                 <td className="py-3 px-2 text-center text-[10px] font-bold text-slate-500">{p.position}</td>
                                 <td className="py-3 px-6 text-right font-mono text-xs font-black text-emerald-400">+${p.salary.toFixed(1)}M</td>
                             </tr>
@@ -176,7 +176,7 @@ const OfferCard: React.FC<{ offer: TradeOffer, teams: Team[], onAccept: () => vo
                 {offer.players.map(p => (
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-900/60 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-sm"}>{p.ovr}</div></div>
+                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>
                          <div className="font-bold text-sm text-slate-100 truncate hover:text-indigo-400 hover:underline">{p.name}</div>
                          <div className="text-[10px] text-slate-500 uppercase font-black tracking-tight">{p.position}</div>
@@ -213,7 +213,7 @@ const RequirementCard: React.FC<{ requirement: TradeOffer, targetPlayers: Player
                 {requirement.players.map(p => (
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-900/60 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-sm"}>{p.ovr}</div></div>
+                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>
                          <div className="font-bold text-sm text-slate-100 truncate hover:text-indigo-400 hover:underline">{p.name}</div>
                          <div className="text-[10px] text-slate-500 uppercase font-black tracking-tight">{p.position}</div>
@@ -326,11 +326,14 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     return teams.filter(t => t.id !== team.id).sort((a, b) => b.city.localeCompare(a.city));
   }, [teams, team?.id]);
 
+  const getPlayerTeam = (p: Player) => teams.find(t => t.roster.some(rp => rp.id === p.id));
+  const playerTeam = viewPlayer ? getPlayerTeam(viewPlayer) : null;
+
   if (!team) return null;
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
-       {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={viewPlayer.id.split('-')[0] === team.id ? team.name : teams.find(t => t.id === proposalTargetTeamId)?.name} onClose={() => setViewPlayer(null)} />}
+       {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
        {pendingTrade && (
          <TradeConfirmModal userAssets={pendingTrade.userAssets} targetAssets={pendingTrade.targetAssets} userTeam={team} targetTeam={pendingTrade.targetTeam} onConfirm={executeTrade} onCancel={() => setPendingTrade(null)} />
        )}

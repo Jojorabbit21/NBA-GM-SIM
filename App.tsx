@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
-  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2
+  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Database, Copy, Check, X, BarChart3
 } from 'lucide-react';
 import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
 import { 
@@ -22,6 +22,8 @@ import { ScheduleView } from './views/ScheduleView';
 import { TransactionsView } from './views/TransactionsView';
 import { PlayoffsView } from './views/PlayoffsView';
 import { GameSimulatingView, GameResultView } from './views/GameViews';
+import { OnboardingView } from './views/OnboardingView';
+import { LeaderboardView } from './views/LeaderboardView';
 import { supabase } from './services/supabaseClient';
 import { AuthView } from './views/AuthView';
 
@@ -32,6 +34,104 @@ const DEFAULT_TACTICS: GameTactics = {
   starters: { PG: '', SG: '', SF: '', PF: '', C: '' },
   minutesLimits: {},
   stopperId: undefined
+};
+
+// SQL Setup Helper Component
+const DbSetupHelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const [copied, setCopied] = useState(false);
+    
+    const sqlScript = `-- 1. saves 테이블 (게임 저장) 생성 및 RLS 설정
+create table if not exists public.saves (
+  user_id uuid references auth.users not null,
+  team_id text not null,
+  game_data jsonb,
+  updated_at timestamptz default now(),
+  primary key (user_id, team_id)
+);
+
+alter table public.saves enable row level security;
+
+drop policy if exists "Users can all on own saves" on public.saves;
+create policy "Users can all on own saves" on public.saves for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- 2. profiles 테이블 (회원가입/닉네임) 생성 및 RLS 설정
+create table if not exists public.profiles (
+  id uuid references auth.users not null primary key,
+  email text,
+  nickname text
+);
+
+alter table public.profiles enable row level security;
+
+drop policy if exists "Users can insert own profile" on public.profiles;
+drop policy if exists "Users can read own profile" on public.profiles;
+drop policy if exists "Users can update own profile" on public.profiles;
+
+create policy "Users can insert own profile" on public.profiles for insert to authenticated with check (auth.uid() = id);
+create policy "Users can read own profile" on public.profiles for select to authenticated using (auth.uid() = id);
+create policy "Users can update own profile" on public.profiles for update to authenticated using (auth.uid() = id);
+
+-- 3. (권장) 회원가입 시 프로필 자동 생성 트리거
+-- 이 스크립트는 auth.users 테이블에 새 유저가 생길 때 자동으로 profiles 테이블에도 행을 추가합니다.
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email, nickname)
+  values (new.id, new.email, new.raw_user_meta_data->>'nickname')
+  on conflict (id) do nothing;
+  return new;
+end;
+$$ language plpgsql security definer;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();`;
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(sqlScript);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200 ko-normal">
+            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+                <div className="flex justify-between items-start mb-6">
+                    <div className="space-y-1">
+                        <h3 className="text-2xl font-black text-white uppercase flex items-center gap-3">
+                            <Database className="text-indigo-500" /> 데이터베이스 설정 필요
+                        </h3>
+                        <p className="text-slate-400 text-sm font-bold">
+                            Supabase SQL Editor에서 아래 스크립트를 실행하여 테이블 및 권한을 설정하세요.
+                        </p>
+                    </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl text-slate-500 hover:text-white transition-colors">
+                        <X size={24} />
+                    </button>
+                </div>
+
+                <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 overflow-y-auto custom-scrollbar relative group">
+                    <pre className="text-[11px] md:text-xs font-mono text-emerald-400 whitespace-pre-wrap leading-relaxed">
+                        {sqlScript}
+                    </pre>
+                    <button 
+                        onClick={handleCopy}
+                        className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg shadow-lg border border-slate-700 transition-all flex items-center gap-2"
+                    >
+                        {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                        <span className="text-xs font-bold">{copied ? '복사됨!' : 'SQL 복사'}</span>
+                    </button>
+                </div>
+
+                <div className="mt-6 flex justify-end">
+                    <button onClick={onClose} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl uppercase tracking-widest text-xs transition-all shadow-lg">
+                        확인 완료
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 const App: React.FC = () => {
@@ -53,17 +153,16 @@ const App: React.FC = () => {
   
   const [rosterTargetId, setRosterTargetId] = useState<string | null>(null);
 
-  const initialFormattedDate = useMemo(() => {
-    return new Date(SEASON_START_DATE).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-  }, []);
-
-  const [currentSimDate, setCurrentSimDate] = useState<string>(initialFormattedDate);
+  // Initialize strictly with SEASON_START_DATE string to avoid timezone shifts
+  const [currentSimDate, setCurrentSimDate] = useState<string>(SEASON_START_DATE);
+  
   const [isInitializing, setIsInitializing] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // Cloud Save Indicator
   const [hasWritePermission, setHasWritePermission] = useState(true); // RLS Check
   
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showDbHelp, setShowDbHelp] = useState(false); // DB Setup Modal
   
   const marqueeRef = useRef<HTMLDivElement>(null);
   const [marqueeDuration, setMarqueeDuration] = useState(60);
@@ -197,6 +296,7 @@ const App: React.FC = () => {
                 setIsDataLoaded(true);
                 setView('Dashboard');
                 setToastMessage("저장된 게임을 불러왔습니다.");
+                setHasWritePermission(true);
                 
                 const teamData = INITIAL_TEAMS_DATA.find(t => t.id === saveData.team_id);
                 if (teamData) {
@@ -239,16 +339,42 @@ const App: React.FC = () => {
     // Explicitly assume New Game if we are here
     let loadedSchedule: Game[] = [];
     
-    // 1. Try Loading Schedule from Supabase
-    const { data: dbSchedule, error: schError } = await supabase
-        .from('schedule')
-        .select('*');
+    // 1. Try Loading Schedule from Supabase (Paginated)
+    let allScheduleRows: any[] = [];
+    let fetchError = null;
+    try {
+        let from = 0;
+        const step = 1000;
+        let more = true;
+        
+        while (more) {
+            const { data, error } = await supabase
+                .from('schedule')
+                .select('*')
+                .range(from, from + step - 1);
+            
+            if (error) {
+                fetchError = error;
+                break;
+            }
+            
+            if (data && data.length > 0) {
+                allScheduleRows = [...allScheduleRows, ...data];
+                if (data.length < step) more = false;
+                from += step;
+            } else {
+                more = false;
+            }
+        }
+    } catch (e) {
+        console.error("Schedule Fetch Exception:", e);
+    }
     
-    if (!schError && dbSchedule && dbSchedule.length > 0) {
-        loadedSchedule = mapDatabaseScheduleToRuntimeGame(dbSchedule);
+    if (!fetchError && allScheduleRows.length > 0) {
+        loadedSchedule = mapDatabaseScheduleToRuntimeGame(allScheduleRows);
     } else {
         // 2. Fallback to Local CSV
-        console.warn("Supabase Schedule Load Failed (Switching to CSV fallback)", schError);
+        console.warn("Supabase Schedule Load Failed or Empty (Switching to CSV fallback)", fetchError);
         try {
             const res = await fetch('/schedule.csv');
             if (res.ok) {
@@ -264,10 +390,13 @@ const App: React.FC = () => {
 
     if (loadedSchedule.length > 0) {
         setSchedule(loadedSchedule);
-        setCurrentSimDate(loadedSchedule[0].date);
+        const firstGameDate = loadedSchedule[0].date;
+        const startStr = SEASON_START_DATE; 
+        setCurrentSimDate(firstGameDate < startStr ? firstGameDate : startStr);
     } else {
         console.warn("Falling back to random schedule generation");
         setSchedule(generateSeasonSchedule(teamId));
+        setCurrentSimDate(SEASON_START_DATE);
     }
 
     setUserTactics(DEFAULT_TACTICS);
@@ -281,12 +410,13 @@ const App: React.FC = () => {
     
     setIsDataLoaded(true); 
     setIsInitializing(false); 
-    setView('Dashboard');
+    
+    // CHANGED: Instead of Dashboard, go to Onboarding first for new games
+    setView('Onboarding'); 
   }, [teams, session, isDataLoaded, myTeamId]);
 
-  // [CLOUD SAVE] Logic (Auto-save)
-  useEffect(() => {
-    const saveToCloud = async () => {
+  // [CLOUD SAVE] Reusable function
+  const saveToCloud = useCallback(async () => {
         if (!isDataLoaded || !myTeamId || !session?.user) return;
         if (!hasWritePermission) return; // Don't try if permission denied
 
@@ -311,21 +441,34 @@ const App: React.FC = () => {
 
         if (error) {
             console.error("Cloud Save Failed:", error);
-            if (error.code === '42501') {
+            // Check specifically for network failure / fetch error
+            if (error.message && error.message.includes("Failed to fetch")) {
+                 setToastMessage("서버 연결 실패: Supabase 프로젝트가 정지되었거나 네트워크 문제입니다.");
+            }
+            // 42501: RLS Permission Denied, 42P01: Undefined Table (missing table)
+            else if (error.code === '42501' || error.code === '42P01') {
                 setHasWritePermission(false);
-                setToastMessage("DB 저장 권한 오류: Supabase SQL Editor에서 RLS 정책을 설정해주세요.");
+                setToastMessage("DB 설정 오류: RLS 정책이나 테이블이 없습니다. 좌측 하단 붉은색 DB 아이콘을 클릭하여 설정을 확인하세요.");
             } else {
                 setToastMessage("클라우드 저장 실패! 네트워크를 확인하세요.");
             }
         }
         setIsSaving(false);
-    };
+  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, session, hasWritePermission]);
 
+  const handleCompleteOnboarding = () => {
+      setView('Dashboard');
+      // Trigger immediate save to persist the new game state (Team selection & Schedule init)
+      saveToCloud();
+      setToastMessage("구단 데이터가 클라우드에 저장되었습니다.");
+  };
+
+  // [CLOUD SAVE] Auto-save Logic (Debounced)
+  useEffect(() => {
     // Debounce save to avoid too many requests
     const timeoutId = setTimeout(saveToCloud, 2000);
     return () => clearTimeout(timeoutId);
-
-  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, session, hasWritePermission]);
+  }, [saveToCloud]);
 
   const handleExecuteSim = useCallback((tactics: GameTactics) => {
     // ... [Same Sim Logic] ...
@@ -508,7 +651,12 @@ const App: React.FC = () => {
         }
 
         setSchedule(updatedSchedule);
-        setCurrentSimDate(gameToSim.date);
+        
+        // Calculate the next day after the played game using UTC to avoid timezone shift
+        const gameDate = new Date(gameToSim.date);
+        gameDate.setUTCDate(gameDate.getUTCDate() + 1);
+        setCurrentSimDate(gameDate.toISOString().split('T')[0]);
+
         setLastGameResult({ 
             home, away, homeScore: userResult.homeScore, awayScore: userResult.awayScore, 
             homeBox: userResult.homeBox, awayBox: userResult.awayBox, 
@@ -560,7 +708,8 @@ const App: React.FC = () => {
     setPlayoffSeries([]);
     setUserTactics(DEFAULT_TACTICS);
     setNews(["NBA 2025-26 시즌 구단 운영 시스템 활성화 완료."]);
-    setCurrentSimDate(initialFormattedDate);
+    // Reset to start date
+    setCurrentSimDate(SEASON_START_DATE);
     setLastGameResult(null);
     setActiveGame(null);
     setIsDataLoaded(false); 
@@ -583,6 +732,13 @@ const App: React.FC = () => {
     setView('TeamSelect');
   };
 
+  // Safe Date Display (YYYY-MM-DD string parsing)
+  const displayDate = useMemo(() => {
+    if (!currentSimDate) return "DATE ERROR";
+    const [y, m, d] = currentSimDate.split('-').map(Number);
+    return `${y}년 ${m}월 ${d}일`;
+  }, [currentSimDate]);
+
   // Auth Loading State
   if (authLoading) {
     return (
@@ -600,6 +756,13 @@ const App: React.FC = () => {
 
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isInitializing} onSelectTeam={handleTeamSelection} />;
   
+  if (view === 'Onboarding' && myTeamId) {
+      const selectedTeam = teams.find(t => t.id === myTeamId);
+      if (selectedTeam) {
+          return <OnboardingView team={selectedTeam} onComplete={handleCompleteOnboarding} />;
+      }
+  }
+
   if (view === 'GameSim') {
     const h = teams.find(t => t.id === activeGame?.homeTeamId);
     const a = teams.find(t => t.id === activeGame?.awayTeamId);
@@ -613,12 +776,14 @@ const App: React.FC = () => {
   if (view === 'GameResult' && lastGameResult) return <GameResultView result={lastGameResult} myTeamId={myTeamId!} onFinish={() => setView('Dashboard')} />;
 
   const myTeam = teams.find(t => t.id === myTeamId);
-  const displayDate = new Date(currentSimDate).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
       
+      {/* Database Setup Help Modal */}
+      {showDbHelp && <DbSetupHelpModal onClose={() => setShowDbHelp(false)} />}
+
       {/* Hard Reset Confirmation Modal */}
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -662,12 +827,20 @@ const App: React.FC = () => {
         </div>
         <div className="px-8 py-5 border-b border-slate-800 bg-slate-800/20 flex justify-between items-center">
             <div className="flex items-center gap-3"><Clock className="text-indigo-400" size={16} /><div className="flex flex-col"><span className="text-[10px] font-black uppercase text-slate-500">TODAY</span><span className="text-sm font-bold text-white oswald uppercase">{displayDate}</span></div></div>
-            {isSaving && <Cloud size={16} className="text-emerald-500 animate-pulse" />}
+            <div className="flex items-center gap-3">
+                {isSaving && <Cloud size={16} className="text-emerald-500 animate-pulse" />}
+                {!hasWritePermission && (
+                    <button onClick={() => setShowDbHelp(true)} className="p-1 hover:bg-red-500/20 rounded-md transition-colors" title="DB 설정 오류 (클릭)">
+                        <Database size={16} className="text-red-500 animate-pulse" />
+                    </button>
+                )}
+            </div>
         </div>
         <nav className="flex-1 p-6 space-y-3">
             <NavItem active={view === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => setView('Dashboard')} />
             <NavItem active={view === 'Roster'} icon={<Users size={20}/>} label="로스터 & 기록" onClick={() => { setRosterTargetId(myTeamId); setView('Roster'); }} />
             <NavItem active={view === 'Standings'} icon={<Trophy size={20}/>} label="순위표" onClick={() => setView('Standings')} />
+            <NavItem active={view === 'Leaderboard'} icon={<BarChart3 size={20}/>} label="리더보드" onClick={() => setView('Leaderboard')} />
             <NavItem active={view === 'Playoffs'} icon={<Swords size={20}/>} label="플레이오프" onClick={() => setView('Playoffs')} />
             <NavItem active={view === 'Schedule'} icon={<CalendarIcon size={20}/>} label="일정" onClick={() => setView('Schedule')} />
             <NavItem active={view === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => setView('Transactions')} />
@@ -695,6 +868,7 @@ const App: React.FC = () => {
           {view === 'Dashboard' && myTeam && <DashboardView team={myTeam} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics} onUpdateTactics={setUserTactics} />}
           {view === 'Roster' && <RosterView allTeams={teams} myTeamId={myTeamId!} initialTeamId={rosterTargetId} />}
           {view === 'Standings' && <StandingsView teams={teams} onTeamClick={id => { setRosterTargetId(id); setView('Roster'); }} />}
+          {view === 'Leaderboard' && <LeaderboardView teams={teams} />}
           {view === 'Playoffs' && <PlayoffsView teams={teams} schedule={schedule} series={playoffSeries} setSeries={setPlayoffSeries} setSchedule={setSchedule} myTeamId={myTeamId!} />}
           {view === 'Schedule' && <ScheduleView schedule={schedule} teamId={myTeamId!} teams={teams} onExport={onExport} currentSimDate={currentSimDate} />}
           {view === 'Transactions' && myTeam && <TransactionsView team={myTeam} teams={teams} setTeams={setTeams} addNews={n => setNews(p => [...n, ...p].slice(0, 15))} onShowToast={setToastMessage} currentSimDate={currentSimDate} />}

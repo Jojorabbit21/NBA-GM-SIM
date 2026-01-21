@@ -157,4 +157,4 @@ export interface TradeOffer {
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
 
-export type AppView = 'Dashboard' | 'Standings' | 'Roster' | 'Schedule' | 'Transactions' | 'Draft' | 'TeamSelect' | 'GamePrep' | 'GameSim' | 'GameResult' | 'Playoffs';
+export type AppView = 'Dashboard' | 'Standings' | 'Leaderboard' | 'Roster' | 'Schedule' | 'Transactions' | 'Draft' | 'TeamSelect' | 'Onboarding' | 'GamePrep' | 'GameSim' | 'GameResult' | 'Playoffs';
