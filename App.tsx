@@ -728,7 +728,17 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     await supabase.auth.signOut();
     setSession(null);
+    // Reset all game states to ensure clean slate for next login or guest view
     setMyTeamId(null);
+    setSchedule([]);
+    setPlayoffSeries([]);
+    setUserTactics(DEFAULT_TACTICS);
+    setNews(["NBA 2025-26 시즌 구단 운영 시스템 활성화 완료."]);
+    setCurrentSimDate(SEASON_START_DATE);
+    setLastGameResult(null);
+    setActiveGame(null);
+    setIsDataLoaded(false); // This is the key fix to trigger auto-load on next login
+    setHasWritePermission(true);
     setView('TeamSelect');
   };
 
