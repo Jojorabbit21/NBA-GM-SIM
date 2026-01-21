@@ -160,6 +160,7 @@ const App: React.FC = () => {
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // Cloud Save Indicator
   const [hasWritePermission, setHasWritePermission] = useState(true); // RLS Check
+  const [dataSource, setDataSource] = useState<'DB' | 'CSV'>('DB'); // Track where data came from
   
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showDbHelp, setShowDbHelp] = useState(false); // DB Setup Modal
@@ -188,12 +189,14 @@ const App: React.FC = () => {
   const loadBaseData = useCallback(async () => {
     try {
       let combinedPlayers: any[] = [];
+      let source: 'DB' | 'CSV' = 'DB';
       
       // 1. Try Loading from Supabase
       const { data: dbPlayers, error } = await supabase.from('players').select('*');
       
       if (error || !dbPlayers || dbPlayers.length === 0) {
           console.warn("Supabase Roster Load Failed or Empty (Switching to CSV fallback):", error ? JSON.stringify(error, null, 2) : "No data returned");
+          source = 'CSV';
           
           // 2. Fallback to Local CSVs if Supabase fails
           const rosterFiles = [
@@ -223,18 +226,23 @@ const App: React.FC = () => {
           combinedPlayers = dbPlayers;
       }
 
+      setDataSource(source);
+
       // Group players by team
       const fullRosterMap: Record<string, any[]> = {};
       
       if (combinedPlayers.length > 0) {
           combinedPlayers.forEach((p: any) => {
-              const teamName = p.team || p.Team || p.TEAM; 
+              // Ensure we check DB column names (lowercase usually) and CSV headers
+              const teamName = p.team || p.Team || p.TEAM || p.team_name; 
               if (!teamName) return;
 
               const t = INITIAL_TEAMS_DATA.find(it => 
                   it.name === teamName || 
                   `${it.city} ${it.name}` === teamName ||
-                  it.name.toLowerCase() === teamName.toLowerCase()
+                  it.name.toLowerCase() === teamName.toLowerCase() ||
+                  // Handle Korean Team Name matching directly
+                  it.name === teamName.replace(it.city, '').trim()
               );
               
               if (t) {
@@ -250,6 +258,11 @@ const App: React.FC = () => {
         logo: getTeamLogoUrl(t.id)
       }));
       setTeams(initializedTeams);
+      
+      if (source === 'CSV') {
+          // If fallback occurred, notify user subtly via log or toast if desired
+          console.log("Loaded data from CSV Fallback");
+      }
     } catch (err) { 
       console.error("Critical Roster Loading Error:", err); 
     }
@@ -295,7 +308,7 @@ const App: React.FC = () => {
                 // Mark as loaded and switch view directly to Dashboard
                 setIsDataLoaded(true);
                 setView('Dashboard');
-                setToastMessage("저장된 게임을 불러왔습니다.");
+                setToastMessage("저장된 게임을 불러왔습니다. (DB 변경사항은 새 게임 시 적용됩니다)");
                 setHasWritePermission(true);
                 
                 const teamData = INITIAL_TEAMS_DATA.find(t => t.id === saveData.team_id);
@@ -764,7 +777,7 @@ const App: React.FC = () => {
     return <AuthView />;
   }
 
-  if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isInitializing} onSelectTeam={handleTeamSelection} />;
+  if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isInitializing} onSelectTeam={handleTeamSelection} onReload={loadBaseData} dataSource={dataSource} />;
   
   if (view === 'Onboarding' && myTeamId) {
       const selectedTeam = teams.find(t => t.id === myTeamId);
