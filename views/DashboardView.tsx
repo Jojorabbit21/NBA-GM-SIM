@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2 } from 'lucide-react';
+import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock } from 'lucide-react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
 import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -25,7 +25,7 @@ const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }
 
 const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: string }> = {
   'ManToManPerimeter': { label: '맨투맨 & 퍼리미터', desc: '대인 방어 및 외곽 억제' },
-  'ZoneDefense': { label: '존 디펜스', desc: '지역 방어 및 골밑 보호' },
+  'ZoneDefense': { label: '지역 방어 및 골밑 보호', desc: '지역 방어 및 골밑 보호' },
   'AceStopper': { label: '에이스 스토퍼', desc: '상대 주득점원 봉쇄 지시' }
 };
 
@@ -33,7 +33,6 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
   <div className="space-y-2 group/slider">
     <div className="flex justify-between items-end">
       <div className="flex items-center gap-1.5 relative">
-        {/* 슬라이더 제목 사이즈 상향: text-xs -> text-sm */}
         <span className="text-sm font-black text-slate-400 uppercase tracking-tight cursor-help">{label}</span>
         {tooltip && (
             <div className="relative group/tooltip">
@@ -45,7 +44,6 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
             </div>
         )}
       </div>
-      {/* 슬라이더 수치(티커) 사이즈 상향: text-sm -> text-base */}
       <span className="text-base font-black text-indigo-400 font-mono">{value}</span>
     </div>
     <div className="relative flex items-center h-6">
@@ -58,7 +56,6 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
        />
     </div>
-    {/* 하단 라벨 사이즈 상향: 9px -> 11px */}
     <div className="flex justify-between text-[11px] font-bold text-slate-600 uppercase tracking-tighter">
        <span>{leftLabel || 'Low'}</span>
        <span>{rightLabel || 'High'}</span>
@@ -79,13 +76,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
   const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   
-  // Use passed props instead of local state
   const { offenseTactics: offTactics, defenseTactics: defTactics, sliders, starters, minutesLimits, stopperId } = tactics;
   
   const healthySorted = useMemo(() => (team?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
+  const injuredSorted = useMemo(() => (team?.roster || []).filter(p => p.health === 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
   const oppHealthySorted = useMemo(() => (opponent?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [opponent?.roster]);
   
-  // 선발 라인업 초기화 로직 보강
   useEffect(() => {
     if (healthySorted.length >= 5 && Object.values(starters).every(v => v === '')) {
       const newStarters = {
@@ -99,7 +95,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
     }
   }, [healthySorted, starters, tactics, onUpdateTactics]);
 
-  // Stopper ID Auto-cleanup/init
   useEffect(() => {
     if (!defTactics.includes('AceStopper')) {
       if (stopperId !== undefined) onUpdateTactics({ ...tactics, stopperId: undefined });
@@ -114,7 +109,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
     return Math.round(team.roster.reduce((s, p) => s + p.ovr, 0) / team.roster.length);
   }, [team?.roster]);
 
-  const oppOvr = useMemo(() => {
+  const opponentOvrValue = useMemo(() => {
     if (!opponent?.roster?.length) return 0;
     return Math.round(opponent.roster.reduce((s, p) => s + p.ovr, 0) / opponent.roster.length);
   }, [opponent?.roster]);
@@ -252,7 +247,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                     <div className="text-3xl font-black text-slate-400 oswald tracking-[0.1em] leading-none">{nextGame && !isHome ? '@' : 'VS'}</div>
                 </div>
                 <div className="flex items-center gap-6">
-                    <div className={getOvrBadgeStyle(oppOvr) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{oppOvr || '??'}</div>
+                    <div className={getOvrBadgeStyle(opponentOvrValue) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{opponentOvrValue || '??'}</div>
                     <div className="flex flex-col items-end">
                         <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{opponent?.name || 'UNKNOWN'}</span>
                         <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{opponent?.wins || 0}W - {opponent?.losses || 0}L</span>
@@ -291,90 +286,137 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-x-auto custom-scrollbar">
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {activeRosterTab === 'mine' ? (
-                        <table className="w-full text-left border-collapse table-fixed">
-                            <thead>
-                                <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                    <th className="py-3 px-8 min-w-[150px]">이름</th>
-                                    <th className="py-3 px-2 text-center w-24">체력</th>
-                                    <th className="py-3 px-4 text-center w-16">POS</th>
-                                    <th className="py-3 px-4 text-center w-20">OVR</th>
-                                    {/* 
-                                    <th className="py-3 px-2 text-center w-16 hidden min-[1800px]:table-cell">ATH</th>
-                                    ...
-                                    */}
-                                    <th className="py-3 px-1 text-center w-44 whitespace-nowrap">선발 포지션</th>
-                                    <th className="py-3 px-1 text-center w-14">스토퍼</th>
-                                    <th className="py-3 px-1 text-center w-24 whitespace-nowrap">시간 제한</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {healthySorted.map(p => {
-                                    const isStarter = Object.values(starters).includes(p.id);
-                                    const isSelectedStopper = stopperId === p.id;
-                                    const cond = p.condition || 100;
-                                    
-                                    let condColor = 'bg-emerald-500';
-                                    if (cond < 60) condColor = 'bg-red-500';
-                                    else if (cond < 80) condColor = 'bg-amber-500';
+                        <div className="flex flex-col">
+                            {/* Healthy Players Table */}
+                            <table className="w-full text-left border-collapse table-fixed">
+                                <thead>
+                                    <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
+                                        <th className="py-3 px-8 min-w-[150px]">이름</th>
+                                        <th className="py-3 px-2 text-center w-24">체력</th>
+                                        <th className="py-3 px-4 text-center w-16">POS</th>
+                                        <th className="py-3 px-4 text-center w-20">OVR</th>
+                                        <th className="py-3 px-1 text-center w-44 whitespace-nowrap">선발 포지션</th>
+                                        <th className="py-3 px-1 text-center w-14">스토퍼</th>
+                                        <th className="py-3 px-1 text-center w-24 whitespace-nowrap">시간 제한</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {healthySorted.map(p => {
+                                        const isStarter = Object.values(starters).includes(p.id);
+                                        const isSelectedStopper = stopperId === p.id;
+                                        const cond = p.condition || 100;
+                                        
+                                        let condColor = 'bg-emerald-500';
+                                        if (cond < 60) condColor = 'bg-red-500';
+                                        else if (cond < 80) condColor = 'bg-amber-500';
 
-                                    return (
-                                        <tr key={p.id} className={`transition-all ${isStarter ? 'bg-emerald-500/10' : 'hover:bg-white/5'}`}>
-                                            <td className="py-3 px-8 min-w-[150px] cursor-pointer" onClick={() => setViewPlayer(p)}>
-                                                <div className="flex flex-col justify-center h-10">
-                                                    <div className="flex items-center gap-2">
-                                                        <span className={`font-black text-sm break-keep leading-tight hover:text-indigo-400 hover:underline ${isStarter ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                        return (
+                                            <tr key={p.id} className={`transition-all ${isStarter ? 'bg-emerald-500/10' : 'hover:bg-white/5'}`}>
+                                                <td className="py-3 px-8 min-w-[150px] cursor-pointer" onClick={() => setViewPlayer(p)}>
+                                                    <div className="flex flex-col justify-center h-10">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className={`font-black text-base break-keep leading-tight hover:text-indigo-400 hover:underline ${isStarter ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-2 text-center w-24">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    <div className="w-12 h-2.5 bg-slate-800 rounded-full overflow-hidden ring-1 ring-white/10 shadow-inner" title={`Condition: ${cond}%`}>
-                                                        <div className={`h-full ${condColor} transition-all duration-500`} style={{ width: `${cond}%` }} />
+                                                </td>
+                                                <td className="py-3 px-2 text-center w-24">
+                                                    <div className="flex items-center justify-center gap-2">
+                                                        <div className="w-12 h-2.5 bg-slate-800 rounded-full overflow-hidden ring-1 ring-white/10 shadow-inner" title={`Condition: ${cond}%`}>
+                                                            <div className={`h-full ${condColor} transition-all duration-500`} style={{ width: `${cond}%` }} />
+                                                        </div>
+                                                        <span className={`text-[11px] font-black leading-none min-w-[20px] text-right ${condColor.replace('bg-', 'text-')}`}>{cond}</span>
                                                     </div>
-                                                    <span className={`text-[11px] font-black leading-none min-w-[20px] text-right ${condColor.replace('bg-', 'text-')}`}>{cond}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 text-center">
-                                                <div className="flex items-center justify-center h-10">
-                                                    <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.ovr}</div></div></td>
-                                            <td className="py-3 px-1">
-                                                <div className="flex justify-center h-10 items-center">
-                                                    <div className="flex bg-slate-950/80 p-1 rounded-xl border border-white/5 shadow-inner">
-                                                        {(['PG', 'SG', 'SF', 'PF', 'C'] as const).map(slot => (
-                                                            <button key={slot} onClick={() => handleAssignStarter(p.id, slot)} className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${starters[slot] === p.id ? 'bg-indigo-600 text-white shadow-lg scale-110 z-10' : 'text-slate-600 hover:text-slate-400'}`}>{slot}</button>
-                                                        ))}
+                                                </td>
+                                                <td className="py-3 px-4 text-center">
+                                                    <div className="flex items-center justify-center h-10">
+                                                        <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-1 text-center">
-                                                <div className="flex justify-center h-10 items-center">
-                                                    <button disabled={!isAceStopperActive} onClick={() => onUpdateTactics({...tactics, stopperId: isSelectedStopper ? undefined : p.id})} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border ${!isAceStopperActive ? 'opacity-20 cursor-not-allowed border-slate-800 bg-slate-900' : isSelectedStopper ? 'bg-fuchsia-600 border-fuchsia-400 text-white shadow-[0_0_15px_rgba(192,38,211,0.4)] scale-110' : 'bg-slate-950 border-white/5 text-slate-600 hover:border-fuchsia-500/30'}`}>
-                                                        {isAceStopperActive ? (isSelectedStopper ? <Lock size={16} /> : <ShieldAlert size={16} />) : <Lock size={16} />}
-                                                    </button>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-1 text-center">
-                                                <div className="flex items-center justify-center gap-2 h-10">
-                                                    <input type="number" min="0" max="48" placeholder="-" value={minutesLimits[p.id] !== undefined ? minutesLimits[p.id] : ''} onChange={e => {
-                                                        const val = e.target.value;
-                                                        const next = { ...minutesLimits };
-                                                        if (val === '') { delete next[p.id]; }
-                                                        else { next[p.id] = Math.min(48, Math.max(0, parseInt(val) || 0)); }
-                                                        onUpdateTactics({ ...tactics, minutesLimits: next });
-                                                    }} className="w-14 h-10 bg-slate-950 border border-white/5 rounded-lg py-1.5 text-center text-sm font-black text-white focus:outline-none focus:border-indigo-500/50 transition-all" />
-                                                    <span className="text-[11px] font-black text-slate-500 uppercase tracking-tighter">분</span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                                </td>
+                                                <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.ovr}</div></div></td>
+                                                <td className="py-3 px-1">
+                                                    <div className="flex justify-center h-10 items-center">
+                                                        <div className="flex bg-slate-950/80 p-1 rounded-xl border border-white/5 shadow-inner">
+                                                            {(['PG', 'SG', 'SF', 'PF', 'C'] as const).map(slot => (
+                                                                <button key={slot} onClick={() => handleAssignStarter(p.id, slot)} className={`w-8 h-8 rounded-lg text-[10px] font-black transition-all ${starters[slot] === p.id ? 'bg-indigo-600 text-white shadow-lg scale-110 z-10' : 'text-slate-600 hover:text-slate-400'}`}>{slot}</button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-1 text-center">
+                                                    <div className="flex justify-center h-10 items-center">
+                                                        <button disabled={!isAceStopperActive} onClick={() => onUpdateTactics({...tactics, stopperId: isSelectedStopper ? undefined : p.id})} className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all border ${!isAceStopperActive ? 'opacity-20 cursor-not-allowed border-slate-800 bg-slate-900' : isSelectedStopper ? 'bg-fuchsia-600 border-fuchsia-400 text-white shadow-[0_0_15px_rgba(192,38,211,0.4)] scale-110' : 'bg-slate-950 border-white/5 text-slate-600 hover:border-fuchsia-500/30'}`}>
+                                                            {isAceStopperActive ? (isSelectedStopper ? <Lock size={16} /> : <ShieldAlert size={16} />) : <Lock size={16} />}
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 px-1 text-center">
+                                                    <div className="flex items-center justify-center gap-2 h-10">
+                                                        <input type="number" min="0" max="48" placeholder="-" value={minutesLimits[p.id] !== undefined ? minutesLimits[p.id] : ''} onChange={e => {
+                                                            const val = e.target.value;
+                                                            const next = { ...minutesLimits };
+                                                            if (val === '') { delete next[p.id]; }
+                                                            else { next[p.id] = Math.min(48, Math.max(0, parseInt(val) || 0)); }
+                                                            onUpdateTactics({ ...tactics, minutesLimits: next });
+                                                        }} className="w-14 h-10 bg-slate-950 border border-white/5 rounded-lg py-1.5 text-center text-sm font-black text-white focus:outline-none focus:border-indigo-500/50 transition-all" />
+                                                        <span className="text-[11px] font-black text-slate-500 uppercase tracking-tighter">분</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+
+                            {/* Injured Players Section */}
+                            {injuredSorted.length > 0 && (
+                                <div className="flex flex-col mt-10 border-t border-white/10 bg-red-950/5">
+                                    <div className="px-8 py-4 bg-red-950/20 flex items-center gap-3 border-b border-white/5">
+                                        <ShieldAlert size={18} className="text-red-500" />
+                                        <h4 className="text-sm font-black uppercase text-red-400 tracking-[0.2em] oswald">Injured Reserve (부상자 명단)</h4>
+                                    </div>
+                                    <table className="w-full text-left border-collapse table-fixed">
+                                        <thead>
+                                            <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5 bg-slate-950/30">
+                                                <th className="py-3 px-8 min-w-[150px]">이름</th>
+                                                <th className="py-3 px-4 text-right w-16">POS</th>
+                                                <th className="py-3 px-4 text-right w-20">OVR</th>
+                                                <th className="py-3 px-4 text-right w-60">부상 상태</th>
+                                                <th className="py-3 px-8 text-right min-w-[180px]">복귀 예정일</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-white/5">
+                                            {injuredSorted.map(p => (
+                                                <tr key={p.id} className="hover:bg-red-500/5 transition-all group">
+                                                    <td className="py-4 px-8 cursor-pointer" onClick={() => setViewPlayer(p)}>
+                                                        <span className="font-black text-base text-slate-400 group-hover:text-red-400">{p.name}</span>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-right">
+                                                        <span className="text-xs font-black text-slate-600 px-2 py-1 rounded-md border border-white/5 uppercase tracking-tighter">{p.position}</span>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-right">
+                                                        <div className="flex items-center justify-end">
+                                                            <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-0"}>{p.ovr}</div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-right">
+                                                        <span className="pretendard text-base font-bold text-red-500 whitespace-nowrap">
+                                                            {p.injuryType || '상태 점검 중'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-4 px-8 text-right">
+                                                        <span className="pretendard text-base font-black text-slate-400 tracking-tight">
+                                                            {p.returnDate || '미정'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            )}
+                        </div>
                     ) : (
                         <table className="w-full text-left border-collapse table-fixed">
                             <thead>
@@ -396,7 +438,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                         <tr key={p.id} className="hover:bg-white/5 transition-all">
                                             <td className="py-3 px-8 cursor-pointer" onClick={() => setViewPlayer(p)}>
                                                 <div className="flex flex-col justify-center h-10">
-                                                    <span className="font-black text-sm break-keep leading-tight text-slate-300 hover:text-white hover:underline">{p.name}</span>
+                                                    <span className="font-black text-base break-keep leading-tight text-slate-300 hover:text-white hover:underline">{p.name}</span>
                                                 </div>
                                             </td>
                                             <td className="py-3 px-4 text-center">
@@ -422,7 +464,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
 
             {/* Right Panel: Tactics Settings */}
             <div className="lg:col-span-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar bg-slate-900/40">
-                {/* ... (rest of tactics panel logic remains same) ... */}
                 <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-[88px] flex-shrink-0">
                     <div className="flex items-center gap-4">
                         <Activity size={24} className="text-indigo-400" />

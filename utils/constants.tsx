@@ -50,27 +50,77 @@ export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, confe
   { id: 'sas', name: '스퍼스', city: '샌안토니오', conference: 'West', division: 'Southwest' },
 ];
 
+/**
+ * 극한의 정규화: 모든 공백, 점, 하이픈 제거 및 소문자화.
+ * 영문/한글 이름 불일치 문제를 해결하기 위해 사용됩니다.
+ */
+export const normalizeName = (name: string): string => {
+    if (!name) return "";
+    return name
+        .replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '') // 공백 및 특수기호 제거
+        .replace(/(II|III|IV|Jr|Sr)$/i, '') // 접미사 제거
+        .toLowerCase()
+        .trim();
+};
+
 const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
-  "Jayson Tatum": { type: "ACL", returnDate: "2026-07-01" },
-  "Tyrese Haliburton": { type: "ACL", returnDate: "2026-07-01" },
-  "Taurean Prince": { type: "Unknown", returnDate: "2026-06-15" },
-  "Scoot Henderson": { type: "Hamstring", returnDate: "2025-11-05" },
-  "Seth Curry": { type: "Lower Back", returnDate: "2025-12-01" },
-  "Bradley Beal": { type: "Left Hip", returnDate: "2026-06-01" },
-  "Kyrie Irving": { type: "Knee", returnDate: "2026-07-01" },
-  "Dereck Lively": { type: "Right Foot Surgery", returnDate: "2026-02-15" },
-  "Zach Edey": { type: "Ankle", returnDate: "2026-02-01" },
-  "Scotty Pippen Jr": { type: "Left Toe", returnDate: "2026-04-01" },
-  "Brandon Clarke": { type: "Ankle", returnDate: "2026-03-01" },
-  "Ty Jerome": { type: "Calf", returnDate: "2026-03-15" },
-  "Dejounte Murray": { type: "Achilles", returnDate: "2026-01-15" }
+  // 제이슨 테이텀
+  "jaysontatum": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
+  "제이슨테이텀": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
+  
+  // 타이리스 할리버튼
+  "tyresehaliburton": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
+  "타이리스할리버튼": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
+  
+  // 토린 프린스 (Taurean Prince) - 핵심 수정 대상
+  "taureanprince": { type: "목 수술 (6월 복귀 예정)", returnDate: "2026-06-15" },
+  "토린프린스": { type: "목 수술 (6월 복귀 예정)", returnDate: "2026-06-15" },
+  
+  // 스쿳 헨더슨
+  "scoothenderson": { type: "햄스트링 부상", returnDate: "2025-11-05" },
+  "스쿳헨더슨": { type: "햄스트링 부상", returnDate: "2025-11-05" },
+  
+  // 세스 커리
+  "sethcurry": { type: "허리 부상 (요추 통증)", returnDate: "2025-12-01" },
+  "세스커리": { type: "허리 부상 (요추 통증)", returnDate: "2025-12-01" },
+  
+  // 브래들리 빌
+  "bradleybeal": { type: "왼쪽 고관절 (시즌 아웃)", returnDate: "2026-06-01" },
+  "브래들리빌": { type: "왼쪽 고관절 (시즌 아웃)", returnDate: "2026-06-01" },
+  
+  // 카이리 어빙
+  "kyrieirving": { type: "무릎 부상 수술", returnDate: "2026-07-01" },
+  "카이리어빙": { type: "무릎 부상 수술", returnDate: "2026-07-01" },
+  
+  // 데릭 라이블리
+  "derecklively": { type: "오른발 수술 (2월 복귀)", returnDate: "2026-02-15" },
+  "데릭라이블리": { type: "오른발 수술 (2월 복귀)", returnDate: "2026-02-15" },
+  
+  // 자크 이디
+  "zachedey": { type: "발목 염좌 (2월 복귀)", returnDate: "2026-02-01" },
+  "잭이디": { type: "발목 염좌 (2월 복귀)", returnDate: "2026-02-01" },
+  
+  // 스카티 피펜 주니어
+  "scottypippen": { type: "왼쪽 발가락 골절", returnDate: "2026-04-01" },
+  "스카티피펜주니어": { type: "왼쪽 발가락 골절", returnDate: "2026-04-01" },
+  
+  // 브랜던 클락
+  "brandonclarke": { type: "발목 부상", returnDate: "2026-03-01" },
+  "브랜던클락": { type: "발목 부상", returnDate: "2026-03-01" },
+  
+  // 타이 제롬
+  "tyjerome": { type: "종아리 부상", returnDate: "2026-03-15" },
+  "타이제롬": { type: "종아리 부상", returnDate: "2026-03-15" },
+  
+  // 디존테 머레이
+  "dejountemurray": { type: "아킬레스건 통증", returnDate: "2026-01-15" },
+  "디존테머레이": { type: "아킬레스건 통증", returnDate: "2026-01-15" }
 };
 
 export const parseCSVToObjects = (csv: string): any[] => {
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lines.length < 2) return [];
     
-    // Remove BOM if present
     let headersLine = lines[0];
     if (headersLine.charCodeAt(0) === 0xFEFF) {
         headersLine = headersLine.slice(1);
@@ -81,14 +131,11 @@ export const parseCSVToObjects = (csv: string): any[] => {
     
     for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',').map(v => v.trim());
-        
-        // Skip if column count significantly mismatches
         if (values.length < headers.length - 2) continue;
         
         const obj: any = {};
         headers.forEach((h, index) => {
             const val = values[index];
-            // Basic number conversion for numeric-like strings, keeping others as strings
             if (val !== '' && !isNaN(Number(val))) {
                 obj[h] = Number(val);
             } else {
@@ -100,19 +147,16 @@ export const parseCSVToObjects = (csv: string): any[] => {
     return result;
 };
 
-// Helper to calculate aggregated attributes and OVR
-// Enhanced to handle both Snake Case (DB) and Short Codes/Upper Case (CSV raw)
 const calculateAttributes = (p: any) => {
     const avg = (nums: number[]) => Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 
-    // Helper for robust property access
     const getVal = (...keys: string[]) => {
         for (const k of keys) {
             if (p[k] !== undefined && p[k] !== null) return parseInt(p[k], 10);
             if (p[k.toLowerCase()] !== undefined && p[k.toLowerCase()] !== null) return parseInt(p[k.toLowerCase()], 10);
             if (p[k.toUpperCase()] !== undefined && p[k.toUpperCase()] !== null) return parseInt(p[k.toUpperCase()], 10);
         }
-        return 50; // Default
+        return 50; 
     };
 
     const speed = getVal('speed', 'SPD');
@@ -156,7 +200,6 @@ const calculateAttributes = (p: any) => {
     const offReb = getVal('off_reb', 'offReb', 'OREB', 'ORB');
     const defReb = getVal('def_reb', 'defReb', 'DREB', 'DRB') || (offReb + 15);
 
-    // Aggregates
     const ath = avg([speed, agility, strength, vertical, stamina, hustle, durability]);
     const out = avg([closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist]);
     const ins = avg([layup, dunk, postPlay, drawFoul, hands]);
@@ -164,20 +207,18 @@ const calculateAttributes = (p: any) => {
     const def = avg([intDef, perDef, lockdown, steal, blk, helpDefIq, passPerc, defConsist]);
     const reb = avg([offReb, defReb]);
 
-    // Robust String Fields
     const position = p.position || p.Position || p.POSITION || 'PG';
     const heightCm = p.height || p.Height || 200;
-    const name = p.name || p.Name || p.NAME || 'Unknown';
+    const name = (p.name || p.Name || p.NAME || 'Unknown').trim();
     const age = p.age || p.Age || 20;
     const height = p.height || p.Height || 200;
     const weight = p.weight || p.Weight || 95;
     const salary = p.salary || p.Salary || 1;
     const contractYears = p.contract_years || p.contractYears || p.ContractYears || 1;
 
-    // OVR Calculation
     let ovrRaw = 0;
     const threeAvg = (threeCorner + three45 + threeTop) / 3;
-    const intangibles = getVal('intangibles', 'INTANGIBLES', 'INT'); // Note: INT sometimes means INT DEF, check context
+    const intangibles = getVal('intangibles', 'INTANGIBLES', 'INT'); 
     const potential = getVal('potential', 'POT');
 
     const calcNewOvr = (weights: {val: number, w: number}[]) => {
@@ -255,8 +296,6 @@ const calculateAttributes = (p: any) => {
         intDef, perDef, lockdown, steal, blk, helpDefIq, passPerc, defConsist,
         offReb, defReb,
         intangibles, potential,
-        
-        // Pass through core props to ensure they exist even if keys differ
         name, age, height, weight, salary, contractYears, position
     };
 };
@@ -264,26 +303,43 @@ const calculateAttributes = (p: any) => {
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
     const attrs = calculateAttributes(p);
     
-    // Check known injuries
-    const known = KNOWN_INJURIES[attrs.name];
+    // Robust Lookup: Search normalized name in the normalized keys of KNOWN_INJURIES
+    const searchName = normalizeName(attrs.name);
+    // 딕셔너리의 키를 하나씩 정규화하여 현재 선수 이름과 비교 (한글/영문 모두 지원)
+    const knownKey = Object.keys(KNOWN_INJURIES).find(k => normalizeName(k) === searchName);
+    const known = knownKey ? KNOWN_INJURIES[knownKey] : undefined;
+    
     let health: 'Healthy' | 'Injured' | 'Day-to-Day' = 'Healthy';
+    
+    // 1. KNOWN_INJURIES 리스트가 있으면 무조건 'Injured'로 강제 설정
     if (known) {
         health = 'Injured';
-    } else if (p.health === 'Injured' || p.health === 'Day-to-Day') {
-        health = p.health;
-    } else if (p.Health === 'Injured' || p.Health === 'Day-to-Day') {
-        health = p.Health;
+    } else {
+        // 2. 리스트에 없으면 데이터베이스(CSV)의 상태를 확인
+        const dbStatus = (p.health || p.Health || p.status || "").toLowerCase();
+        if (dbStatus.includes('injured') || dbStatus.includes('out') || dbStatus.includes('dtd') || dbStatus.includes('day')) {
+            health = dbStatus.includes('injured') || dbStatus.includes('out') ? 'Injured' : 'Day-to-Day';
+        }
     }
-    
-    const injuryType = known ? known.type : (p.injuryType || p.injury_type);
-    const returnDate = known ? known.returnDate : (p.returnDate || p.return_date);
 
-    // Sanitize ID
+    // 부상 정보 텍스트 결정 (Known 리스트 우선)
+    let injuryType = "";
+    if (known) {
+        injuryType = known.type;
+    } else if (p.injuryType || p.injury_type || p.Injury) {
+        injuryType = p.injuryType || p.injury_type || p.Injury;
+    } else if (health !== 'Healthy') {
+        injuryType = "재활 중 (상태 점검 필요)";
+    }
+
+    // 복귀 예정일 결정 (Known 리스트 우선)
+    const returnDate = known ? known.returnDate : (p.returnDate || p.return_date || (health !== 'Healthy' ? '미정' : undefined));
+
     let id = p.id;
     if (!id) {
-        // Fallback ID generation
-        const cleanName = attrs.name.replace(/[^a-zA-Z0-9]/g, '');
-        id = `${teamId}_${cleanName}`;
+        // ID 생성 시에도 정규화된 이름을 사용하여 안정적인 ID 생성
+        const idName = searchName || attrs.name.replace(/[^a-zA-Z0-9가-힣]/g, '');
+        id = `${teamId}_${idName}`;
     }
     id = String(id);
 
@@ -292,15 +348,14 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         ...attrs,
         position: attrs.position as any,
         health,
-        injuryType,
+        injuryType: injuryType || undefined,
         returnDate,
-        condition: 100,
+        condition: health === 'Healthy' ? 100 : 40,
         revealedPotential: attrs.potential,
         stats: INITIAL_STATS()
     };
 };
 
-// FIX: Robust date parser map
 const MONTH_MAP: Record<string, string> = { 
     Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', 
     Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' 
@@ -311,8 +366,6 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
     const createdGameKeys = new Set<string>();
 
     dbGames.forEach((row, i) => {
-        // Robust key access for Team/Opponent
-        // FIX: Add trim to handle potential whitespace issues
         const teamFull = (row.team_name || row.team || row.Team || '').trim();
         const oppFull = (row.opponent_name || row.opponent || row.Opponent || '').trim();
         const dateStrRaw = row.date || row.Date;
@@ -320,14 +373,10 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
         if (!teamFull || !oppFull || !dateStrRaw) return;
 
         const findTeamId = (name: string) => {
-            // Handle specific CSV spelling variants (Typos/Alternate spellings)
-            if (name === '팀버울브즈') return 'min'; 
-            if (name === '너겟츠') return 'den';
-
-            // Also check if the name IS the ID directly
+            if (name === '팀버울브즈' || name === '팀버울브스') return 'min'; 
+            if (name === '너겟츠' || name === '너게츠') return 'den';
             const directMatch = INITIAL_TEAMS_DATA.find(t => t.id === name.toLowerCase());
             if (directMatch) return directMatch.id;
-
             const t = INITIAL_TEAMS_DATA.find(t => t.name === name || t.city === name || `${t.city} ${t.name}` === name);
             return t ? t.id : null;
         };
@@ -339,37 +388,23 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
 
         let homeId, awayId;
         const site = row.site || row.Site || '';
-        // In CSV/DB 'site' usually refers to where the 'team' is playing relative to 'opponent'
-        // If site is '홈' (Home), then 'team' is home.
         if (site === '홈' || site === 'Home' || site === 'home') {
-            homeId = teamId;
-            awayId = oppId;
+            homeId = teamId; awayId = oppId;
         } else {
-            homeId = oppId;
-            awayId = teamId;
+            homeId = oppId; awayId = teamId;
         }
 
-        // Handle Date parsing
-        // FIX: Handle manual parsing for "Wed Oct 22 2025" format to avoid timezone shift
         let dateStr = dateStrRaw;
-        
-        // 1. Try ISO YYYY-MM-DD
         if (/^\d{4}-\d{2}-\d{2}$/.test(dateStrRaw)) {
             dateStr = dateStrRaw;
-        } 
-        // 2. Try CSV Format "Wed Oct 22 2025"
-        else {
+        } else {
             const parts = dateStrRaw.split(' ').filter((p: string) => p.trim() !== '');
-            // Expecting [DayOfWeek, Month, Day, Year] e.g. ["Tue", "Oct", "21", "2025"]
             if (parts.length === 4) {
                const month = MONTH_MAP[parts[1]];
                const day = parts[2].padStart(2, '0');
                const year = parts[3];
-               if (month && day && year) {
-                   dateStr = `${year}-${month}-${day}`;
-               }
+               if (month && day && year) { dateStr = `${year}-${month}-${day}`; }
             } else {
-                // Fallback to Date object if manual parsing fails
                 const d = new Date(dateStrRaw);
                 if (!isNaN(d.getTime())) {
                     const year = d.getFullYear();
@@ -381,7 +416,6 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
         }
 
         const gameKey = `${dateStr}_${homeId}_${awayId}`;
-
         if (!createdGameKeys.has(gameKey)) {
             createdGameKeys.add(gameKey);
             games.push({
@@ -399,7 +433,6 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
     return games.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
-// Deprecated CSV parsers (kept if needed for fallback, but main logic moved to map helpers)
 export function parseRostersCSV(csv: string): Record<string, Player[]> {
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     const rosterMap: Record<string, Player[]> = {};
@@ -471,13 +504,13 @@ export function parseRostersCSV(csv: string): Record<string, Player[]> {
 export function parseScheduleCSV(csv: string, teams: Team[]): Game[] {
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     const dbRows = [];
-    const startIndex = lines[0].toLowerCase().includes('date') ? 1 : 0;
+    const startIndex = (lines[0] && lines[0].toLowerCase().includes('date')) ? 1 : 0;
 
     for(let i=startIndex; i<lines.length; i++) {
         const cols = lines[i].split(',').map(c => c.trim());
         if (cols.length < 4) continue;
         dbRows.push({
-            date: new Date(cols[0]).toISOString().split('T')[0], // Convert format
+            date: new Date(cols[0]).toISOString().split('T')[0], 
             team_name: cols[1],
             site: cols[2],
             opponent_name: cols[3],

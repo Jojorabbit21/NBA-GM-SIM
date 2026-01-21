@@ -451,7 +451,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               <div className="flex items-center gap-3">
                                   <div className="flex flex-col min-w-0">
                                       <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                                          <span className="text-sm font-black text-white truncate max-w-[140px] group-hover:text-indigo-400 decoration-indigo-500/50 underline-offset-4 group-hover:underline">{p.name}</span>
+                                          <span className="text-base font-black text-white truncate max-w-[160px] group-hover:text-indigo-400 decoration-indigo-500/50 underline-offset-4 group-hover:underline">{p.name}</span>
                                           {p.health === 'Injured' && (
                                               <div className="group/tooltip relative">
                                                   <span className="px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase cursor-help shadow-sm">OUT</span>
