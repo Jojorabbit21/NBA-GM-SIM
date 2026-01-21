@@ -6,28 +6,28 @@ import { Team, Player } from '../types';
 import { getTeamLogoUrl } from '../utils/constants';
 
 export const getOvrBadgeStyle = (ovr: number) => {
-  const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto ";
+  const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
   
   // 95+ - Pink Diamond (Bright Magenta + Outline + Glow)
   if (ovr >= 95) return baseClass + 'bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-fuchsia-700 text-white shadow-[0_0_25px_rgba(232,121,249,0.9)] border-2 border-white/80 ring-2 ring-fuchsia-500/50';
   
-  // 90-94 - Red
-  if (ovr >= 90) return baseClass + 'bg-gradient-to-br from-red-600 via-red-500 to-rose-600 text-white shadow-red-500/40 border border-red-400';
+  // 90-94 - Red (Elite)
+  if (ovr >= 90) return baseClass + 'bg-gradient-to-br from-red-500 via-red-600 to-rose-700 text-white shadow-red-500/40 border border-red-400';
   
-  // 85-89 - Blue
-  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-blue-600 via-blue-500 to-indigo-600 text-white shadow-blue-500/40 border border-blue-400';
+  // 85-89 - Blue (All-Star)
+  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white shadow-blue-500/40 border border-blue-400';
   
-  // 80-84 - Green
-  if (ovr >= 80) return baseClass + 'bg-gradient-to-br from-emerald-600 via-emerald-500 to-teal-600 text-white shadow-emerald-500/40 border border-emerald-400';
+  // 80-84 - Green (Starter)
+  if (ovr >= 80) return baseClass + 'bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 text-white shadow-emerald-500/40 border border-emerald-400';
   
-  // 75-79 - Gold
-  if (ovr >= 75) return baseClass + 'bg-gradient-to-br from-yellow-500 via-amber-500 to-orange-500 text-white shadow-amber-500/40 border border-amber-400';
+  // 75-79 - Gold (Solid)
+  if (ovr >= 75) return baseClass + 'bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600 text-white shadow-amber-500/40 border border-amber-300';
   
-  // 70-74 - Silver
-  if (ovr >= 70) return baseClass + 'bg-gradient-to-br from-slate-400 via-gray-400 to-zinc-500 text-white shadow-slate-500/40 border border-slate-300';
+  // 70-74 - Silver (Brightened)
+  if (ovr >= 70) return baseClass + 'bg-gradient-to-br from-slate-300 via-slate-400 to-zinc-600 text-white shadow-slate-500/30 border border-slate-200';
   
-  // < 70 - Bronze
-  return baseClass + 'bg-gradient-to-br from-orange-800 via-amber-900 to-yellow-950 text-orange-200 shadow-orange-900/40 border border-amber-800';
+  // < 70 - Bronze (Brightened & High Contrast)
+  return baseClass + 'bg-gradient-to-br from-amber-600 via-amber-800 to-stone-900 text-amber-100 shadow-orange-900/40 border border-amber-500/50';
 };
 
 export const getRankStyle = (val: number) => {
@@ -197,11 +197,11 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
            <div className="flex items-center gap-8">
               <div className="flex gap-4">
                   <div className="flex flex-col items-center gap-1">
-                     <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl"}>{player.ovr}</div>
+                     <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl ring-4 ring-white/5"}>{player.ovr}</div>
                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OVR</span>
                   </div>
                   <div className="flex flex-col items-center gap-1">
-                     <div className={getOvrBadgeStyle(player.potential) + " !w-16 !h-16 !text-3xl !rounded-2xl opacity-80"}>{player.potential}</div>
+                     <div className={getOvrBadgeStyle(player.potential) + " !w-16 !h-16 !text-3xl !rounded-2xl opacity-100"}>{player.potential}</div>
                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">POT</span>
                   </div>
               </div>
