@@ -12,7 +12,15 @@ interface ScheduleViewProps {
 }
 
 export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, teams, onExport, currentSimDate }) => {
-  const [currentDate, setCurrentDate] = useState(new Date(2025, 9, 1)); 
+  const [currentDate, setCurrentDate] = useState(() => {
+    // 시뮬레이션 현재 날짜를 기반으로 달력 초기화
+    if (currentSimDate) {
+      const d = new Date(currentSimDate);
+      // 해당 월의 1일로 설정하여 달력 뷰가 해당 월을 가리키도록 함
+      return new Date(d.getFullYear(), d.getMonth(), 1);
+    }
+    return new Date(2025, 9, 1); // Fallback: 10월
+  }); 
   const [selectedTeamId, setSelectedTeamId] = useState<string>(teamId);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -183,7 +191,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
              const oppId = isHome ? game?.awayTeamId : game?.homeTeamId;
              const opp = teams.find(t => t.id === oppId);
              
-             let bgStyle = isToday ? "bg-indigo-500/10 ring-1 ring-indigo-500/80 z-10" : "bg-slate-950/40";
+             // Base style based on Game Status
+             let bgStyle = "bg-slate-950/40";
              let isWon = false;
 
              if (game?.played) {
@@ -191,6 +200,15 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
                 bgStyle = isWon ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-red-900/50 border-red-500/30';
              } else if (game) {
                 bgStyle = 'bg-slate-800/40 hover:bg-slate-800/60';
+             } else if (isToday) {
+                // If it is today AND no game, use today's background
+                bgStyle = "bg-indigo-500/10";
+             }
+
+             // Ensure Today Outline is always applied if it is today
+             // Use ring-inset to keep the border inside the cell and prevent clipping
+             if (isToday) {
+                 bgStyle += " ring-2 ring-indigo-600 ring-inset z-10";
              }
 
              return (

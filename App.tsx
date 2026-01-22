@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
-  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Database, Copy, Check, X, BarChart3
+  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Database, Copy, Check, X, BarChart3,
+  MonitorX
 } from 'lucide-react';
 import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
 import { 
@@ -61,11 +62,12 @@ alter table public.saves enable row level security;
 drop policy if exists "Users can all on own saves" on public.saves;
 create policy "Users can all on own saves" on public.saves for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
--- 2. profiles 테이블 (회원가입/닉네임) 생성 및 RLS 설정
+-- 2. profiles 테이블 (회원가입/닉네임/중복로그인방지) 생성 및 RLS 설정
 create table if not exists public.profiles (
   id uuid references auth.users not null primary key,
   email text,
-  nickname text
+  nickname text,
+  active_device_id text
 );
 
 alter table public.profiles enable row level security;
@@ -77,6 +79,9 @@ drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can insert own profile" on public.profiles for insert to authenticated with check (auth.uid() = id);
 create policy "Users can read own profile" on public.profiles for select to authenticated using (auth.uid() = id);
 create policy "Users can update own profile" on public.profiles for update to authenticated using (auth.uid() = id);
+
+-- (기존 테이블 업데이트용) active_device_id 컬럼이 없다면 추가
+alter table public.profiles add column if not exists active_device_id text;
 
 -- 3. (권장) 회원가입 시 프로필 자동 생성 트리거
 create or replace function public.handle_new_user()
@@ -92,7 +97,10 @@ $$ language plpgsql security definer;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
-  for each row execute procedure public.handle_new_user();`;
+  for each row execute procedure public.handle_new_user();
+
+-- 4. Realtime 활성화 (중복 로그인 감지용)
+alter publication supabase_realtime add table public.profiles;`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(sqlScript);
@@ -175,6 +183,10 @@ const App: React.FC = () => {
   const tickerContentRef = useRef<HTMLDivElement>(null);
   const [isTickerScroll, setIsTickerScroll] = useState(false);
 
+  // Duplicate Login Prevention
+  // Create a unique ID for this specific browser session instance
+  const [deviceId] = useState(() => self.crypto.randomUUID());
+
   // [Analytics] Initialize GA
   useEffect(() => {
     initGA();
@@ -210,6 +222,55 @@ const App: React.FC = () => {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // [Duplicate Login Check]
+  useEffect(() => {
+    if (!session?.user) return;
+
+    let mySubscription: any = null;
+
+    const enforceSingleSession = async () => {
+        // 1. 현재 기기의 ID를 DB에 등록 (내가 주인이다)
+        // 이 작업은 로그인 직후 또는 페이지 로드 시 실행되어 이 탭을 활성 세션으로 만듭니다.
+        const { error } = await supabase
+            .from('profiles')
+            .update({ active_device_id: deviceId })
+            .eq('id', session.user.id);
+
+        if (error) {
+            console.error("Failed to update active device:", error);
+            // DB 컬럼이 없을 수 있으므로 조용히 실패 (하위 호환성)
+            return; 
+        }
+
+        // 2. Realtime 구독: DB의 active_device_id가 변경되는지 감시
+        mySubscription = supabase
+            .channel(`profile_guard_${session.user.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: `id=eq.${session.user.id}`
+                },
+                (payload) => {
+                    const newActiveDevice = payload.new.active_device_id;
+                    // DB에 기록된 활성 기기 ID가 내 기기 ID와 다르다면, 누군가 다른 곳에서 로그인 한 것임
+                    if (newActiveDevice && newActiveDevice !== deviceId) {
+                        handleLogout(true); // 강제 로그아웃
+                    }
+                }
+            )
+            .subscribe();
+    };
+
+    enforceSingleSession();
+
+    return () => {
+        if (mySubscription) supabase.removeChannel(mySubscription);
+    };
+  }, [session, deviceId]);
 
   // [INIT] Reusable Function to Load Base Roster Data
   const loadBaseData = useCallback(async () => {
@@ -405,10 +466,15 @@ const App: React.FC = () => {
     setToastMessage("데이터가 초기화되었습니다. DB의 최신 정보를 불러왔습니다.");
   };
 
-  const handleLogout = async () => {
+  const handleLogout = async (isForced: boolean = false) => {
     await supabase.auth.signOut();
     setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); 
     setIsDataLoaded(false); setView('TeamSelect');
+    
+    if (isForced) {
+        // 약간의 지연 후 메시지를 표시하여 화면 전환 후 보이게 함
+        setTimeout(() => setToastMessage("다른 기기에서 로그인하여 접속이 종료되었습니다."), 500);
+    }
   };
 
   // Fixed Export function to resolve reference error
@@ -691,7 +757,7 @@ const App: React.FC = () => {
             </nav>
             <div className="p-6 border-t border-slate-800 space-y-2">
             <button onClick={() => setShowResetConfirm(true)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center gap-2"><RefreshCw size={14} /> 데이터 초기화</button>
-            <button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center gap-2"><LogOut size={14} /> 로그아웃</button>
+            <button onClick={() => handleLogout(false)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center gap-2"><LogOut size={14} /> 로그아웃</button>
             </div>
         </aside>
         
