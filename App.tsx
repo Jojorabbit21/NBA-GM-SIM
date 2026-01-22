@@ -635,7 +635,11 @@ const App: React.FC = () => {
 
       // Update News State
       if (scoreNews.length > 0) {
-          setNews(prev => [...scoreNews, ...prev].slice(0, 30));
+          setNews(prev => {
+              // Remove previous game results to avoid stacking old dates in the ticker
+              const filteredPrev = prev.filter(n => n.type !== 'game');
+              return [...scoreNews, ...filteredPrev].slice(0, 30);
+          });
       }
 
       // 5. Advance Date (Move to the next day)
@@ -855,7 +859,7 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <img 
                                             src={n.away.logo} 
-                                            className="w-7 h-7 object-contain drop-shadow-md flex-shrink-0" 
+                                            className="w-5 h-5 object-contain drop-shadow-md flex-shrink-0" 
                                             alt={n.away.name} 
                                             title={n.away.name} 
                                             loading="eager"
@@ -870,7 +874,7 @@ const App: React.FC = () => {
                                     <div className="flex items-center gap-2">
                                         <img 
                                             src={n.home.logo} 
-                                            className="w-7 h-7 object-contain drop-shadow-md flex-shrink-0" 
+                                            className="w-5 h-5 object-contain drop-shadow-md flex-shrink-0" 
                                             alt={n.home.name} 
                                             title={n.home.name} 
                                             loading="eager"
