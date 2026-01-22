@@ -43,10 +43,17 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
 
   useEffect(() => {
     if (isInitializing) {
+        // 초기 메시지도 랜덤으로 설정
+        setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
+
         const interval = setInterval(() => {
             setLoadingText(prev => {
-                const currentIndex = LOADING_MESSAGES.indexOf(prev);
-                const nextIndex = (currentIndex + 1) % LOADING_MESSAGES.length;
+                let nextIndex;
+                // 이전 메시지와 다른 메시지가 나올 때까지 랜덤 선택 (연속 중복 방지)
+                do {
+                    nextIndex = Math.floor(Math.random() * LOADING_MESSAGES.length);
+                } while (LOADING_MESSAGES[nextIndex] === prev && LOADING_MESSAGES.length > 1);
+                
                 return LOADING_MESSAGES[nextIndex];
             });
         }, 800);

@@ -206,7 +206,7 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
                   </div>
               </div>
               <div className="flex flex-col">
-                 <h2 className="text-4xl font-black text-white uppercase pretendard tracking-tight leading-none mb-2">{player.name}</h2>
+                 <h2 className="text-3xl font-black text-white uppercase pretendard tracking-tight leading-none mb-2">{player.name}</h2>
                  <div className="flex items-center gap-4 text-sm font-bold text-slate-400 bg-slate-900/50 px-4 py-2 rounded-xl border border-slate-800">
                     <div className="flex items-center gap-2">
                         {teamLogo && <img src={teamLogo} className="w-6 h-6 object-contain" alt={teamName} />}

@@ -71,6 +71,12 @@ export async function generateGameRecapNews(gameResult: {
     `[현장 반응] 경기장 분위기 고조, 양 팀 선수들 치열한 승부 펼쳐`
   ];
 
+  // =====================================================================================
+  // [QUOTA ISSUE] GenAI API Temporarily Disabled
+  // API 호출 로직을 주석 처리하여 기본 Fallback 메시지만 반환하도록 수정함.
+  // =====================================================================================
+  
+  /*
   if (!apiKey) {
     return fallbackRecap;
   }
@@ -161,4 +167,7 @@ export async function generateGameRecapNews(gameResult: {
     }
     return fallbackRecap;
   }
+  */
+
+  return fallbackRecap;
 }

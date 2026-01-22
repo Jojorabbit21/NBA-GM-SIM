@@ -71,13 +71,22 @@ const STATS_COLUMNS = [
   { key: 'mp', label: 'MIN' },
   { key: 'pts', label: 'PTS' },
   { key: 'reb', label: 'REB' },
+  { key: 'offReb', label: 'ORB' },
+  { key: 'defReb', label: 'DRB' },
   { key: 'ast', label: 'AST' },
   { key: 'stl', label: 'STL' },
   { key: 'blk', label: 'BLK' },
-  { key: 'fg%', label: 'FG%' },
-  { key: '3p%', label: '3P%' },
-  { key: 'ft%', label: 'FT%' },
   { key: 'tov', label: 'TOV' },
+  { key: 'fgm', label: 'FGM' },
+  { key: 'fga', label: 'FGA' },
+  { key: 'fg%', label: 'FG%' },
+  { key: 'p3m', label: '3PM' },
+  { key: 'p3a', label: '3PA' },
+  { key: '3p%', label: '3P%' },
+  { key: 'ftm', label: 'FTM' },
+  { key: 'fta', label: 'FTA' },
+  { key: 'ft%', label: 'FT%' },
+  { key: 'ts%', label: 'TS%' },
 ];
 
 const ATTRIBUTE_TOOLTIPS: Record<string, string> = {
@@ -190,6 +199,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     if (key === 'fg%') return s.fga > 0 ? s.fgm / s.fga : 0;
     if (key === '3p%') return s.p3a > 0 ? s.p3m / s.p3a : 0;
     if (key === 'ft%') return s.fta > 0 ? s.ftm / s.fta : 0;
+    if (key === 'ts%') {
+        const tsa = s.fga + 0.44 * s.fta;
+        return tsa > 0 ? s.pts / (2 * tsa) : 0;
+    }
     
     // Per Game Stats
     if (key in s) {
@@ -265,12 +278,22 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         return {
             pts: acc.pts + (p.stats.pts/g),
             reb: acc.reb + (p.stats.reb/g),
+            offReb: acc.offReb + (p.stats.offReb/g),
+            defReb: acc.defReb + (p.stats.defReb/g),
             ast: acc.ast + (p.stats.ast/g),
             stl: acc.stl + (p.stats.stl/g),
             blk: acc.blk + (p.stats.blk/g),
             tov: acc.tov + (p.stats.tov/g),
+            fgm: acc.fgm + (p.stats.fgm/g),
+            fga: acc.fga + (p.stats.fga/g),
+            p3m: acc.p3m + (p.stats.p3m/g),
+            p3a: acc.p3a + (p.stats.p3a/g),
+            ftm: acc.ftm + (p.stats.ftm/g),
+            fta: acc.fta + (p.stats.fta/g),
         };
-    }, { pts:0, reb:0, ast:0, stl:0, blk:0, tov:0 });
+    }, { pts:0, reb:0, offReb:0, defReb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0 });
+
+    const totalTSA = totalStats.fga + 0.44 * totalStats.fta;
 
     return {
         salary: totalSalary,
@@ -281,13 +304,22 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         stats: {
             pts: (avgStats.pts / safeCount).toFixed(1),
             reb: (avgStats.reb / safeCount).toFixed(1),
+            offReb: (avgStats.offReb / safeCount).toFixed(1),
+            defReb: (avgStats.defReb / safeCount).toFixed(1),
             ast: (avgStats.ast / safeCount).toFixed(1),
             stl: (avgStats.stl / safeCount).toFixed(1),
             blk: (avgStats.blk / safeCount).toFixed(1),
             tov: (avgStats.tov / safeCount).toFixed(1),
+            fgm: (avgStats.fgm / safeCount).toFixed(1),
+            fga: (avgStats.fga / safeCount).toFixed(1),
+            p3m: (avgStats.p3m / safeCount).toFixed(1),
+            p3a: (avgStats.p3a / safeCount).toFixed(1),
+            ftm: (avgStats.ftm / safeCount).toFixed(1),
+            fta: (avgStats.fta / safeCount).toFixed(1),
             fgPct: totalStats.fga > 0 ? ((totalStats.fgm / totalStats.fga) * 100).toFixed(1) + '%' : '0.0%',
             p3Pct: totalStats.p3a > 0 ? ((totalStats.p3m / totalStats.p3a) * 100).toFixed(1) + '%' : '0.0%',
             ftPct: totalStats.fta > 0 ? ((totalStats.ftm / totalStats.fta) * 100).toFixed(1) + '%' : '0.0%',
+            tsPct: totalTSA > 0 ? ((totalStats.pts / (2 * totalTSA)) * 100).toFixed(1) + '%' : '0.0%',
         }
     };
   }, [selectedTeam]);
@@ -439,7 +471,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                         ))
                      ) : (
                         STATS_COLUMNS.map(col => (
-                            <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" />
+                            <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />
                         ))
                      )}
                   </tr>
@@ -503,6 +535,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       else if (k === '3p%') { n = stats.p3m; d = stats.p3a; }
                                       else if (k === 'ft%') { n = stats.ftm; d = stats.fta; }
                                       valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                  } else if (k === 'ts%') {
+                                      const tsa = stats.fga + 0.44 * stats.fta;
+                                      valStr = tsa > 0 ? ((stats.pts / (2 * tsa)) * 100).toFixed(1) + '%' : '0.0%';
                                   } else {
                                       // Per Game stats
                                       const games = stats.g || 1;
@@ -510,7 +545,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       valStr = (total / games).toFixed(1);
                                   }
                                   return (
-                                      <td key={k} className="px-1 py-3 text-center font-black text-slate-300 text-xs tabular-nums">{valStr}</td>
+                                      <td key={k} className="px-1 py-2 align-middle text-right pr-3">
+                                          <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm tabular-nums">
+                                              {valStr}
+                                          </div>
+                                      </td>
                                   );
                               })
                           )}
@@ -545,14 +584,29 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                    let val = '-';
                                    if (col.key === 'pts') val = teamStats.stats.pts;
                                    else if (col.key === 'reb') val = teamStats.stats.reb;
+                                   else if (col.key === 'offReb') val = teamStats.stats.offReb;
+                                   else if (col.key === 'defReb') val = teamStats.stats.defReb;
                                    else if (col.key === 'ast') val = teamStats.stats.ast;
                                    else if (col.key === 'stl') val = teamStats.stats.stl;
                                    else if (col.key === 'blk') val = teamStats.stats.blk;
                                    else if (col.key === 'tov') val = teamStats.stats.tov;
+                                   else if (col.key === 'fgm') val = teamStats.stats.fgm;
+                                   else if (col.key === 'fga') val = teamStats.stats.fga;
                                    else if (col.key === 'fg%') val = teamStats.stats.fgPct;
+                                   else if (col.key === 'p3m') val = teamStats.stats.p3m;
+                                   else if (col.key === 'p3a') val = teamStats.stats.p3a;
                                    else if (col.key === '3p%') val = teamStats.stats.p3Pct;
+                                   else if (col.key === 'ftm') val = teamStats.stats.ftm;
+                                   else if (col.key === 'fta') val = teamStats.stats.fta;
                                    else if (col.key === 'ft%') val = teamStats.stats.ftPct;
-                                   return <td key={col.key} className="px-1 py-4 text-center text-xs font-black text-slate-300">{val}</td>
+                                   else if (col.key === 'ts%') val = teamStats.stats.tsPct;
+                                   return (
+                                       <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                           <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm">
+                                               {val}
+                                           </div>
+                                       </td>
+                                   );
                                })
                            )}
                        </tr>
