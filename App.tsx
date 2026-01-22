@@ -3,10 +3,11 @@ import React, { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Calendar, Trophy, ArrowLeftRight, LogOut, BarChart3 } from 'lucide-react';
 
 import { Team, Game, GameTactics, PlayoffSeries, AppView, NewsItem } from './types';
-import { INITIAL_TEAMS_DATA, SEASON_START_DATE, generateSeasonSchedule, exportScheduleToCSV } from './utils/constants';
+import { INITIAL_TEAMS_DATA, SEASON_START_DATE, generateSeasonSchedule, exportScheduleToCSV, parseRostersCSV, parseScheduleCSV, getTeamLogoUrl } from './utils/constants';
 import { simulateGame, generateAutoTactics } from './services/gameEngine';
 import { supabase, isSupabaseConfigured } from './services/supabaseClient';
 import { logEvent, initGA, logPageView } from './services/analytics';
+import { generateGameRecapNews } from './services/geminiService';
 
 // Views
 import { TeamSelectView } from './views/TeamSelectView';
@@ -63,25 +64,91 @@ const App: React.FC = () => {
     initGA();
   }, []);
 
-  // Load Data
+  // Auth Check
+  useEffect(() => {
+    const checkSession = async () => {
+        if (isSupabaseConfigured) {
+            const { data } = await supabase.auth.getSession();
+            if (data.session) {
+                setIsAuthenticated(true);
+            }
+        }
+    };
+    checkSession();
+
+    if (isSupabaseConfigured) {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            setIsAuthenticated(!!session);
+        });
+        return () => subscription.unsubscribe();
+    }
+  }, []);
+
+  // Load Data (Rosters & Schedule)
   useEffect(() => {
     const loadData = async () => {
       setIsInitializing(true);
       try {
-        const initialTeams = INITIAL_TEAMS_DATA.map(t => ({
-            ...t,
-            roster: [],
-            wins: 0,
-            losses: 0,
-            budget: 150,
-            salaryCap: 140,
-            luxuryTaxLine: 170,
-            logo: `https://a.espncdn.com/i/teamlogos/nba/500/${t.id === 'nop' ? 'no' : t.id === 'uta' ? 'utah' : t.id}.png`
-        } as Team));
-        
-        setTeams(initialTeams);
+        // 1. Load Rosters from multiple CSVs
+        const rosterFiles = [
+            '/roster_atlantic.csv', '/roster_central.csv', '/roster_southeast.csv',
+            '/roster_northwest.csv', '/roster_pacific.csv', '/roster_southwest.csv'
+        ];
+
+        const globalRosterMap: Record<string, any[]> = {};
+
+        await Promise.all(rosterFiles.map(async (file) => {
+            try {
+                const response = await fetch(file);
+                if (response.ok) {
+                    const text = await response.text();
+                    const map = parseRostersCSV(text);
+                    Object.keys(map).forEach(tid => {
+                        if (!globalRosterMap[tid]) globalRosterMap[tid] = [];
+                        globalRosterMap[tid].push(...map[tid]);
+                    });
+                }
+            } catch (err) {
+                console.warn(`Failed to load ${file}`, err);
+            }
+        }));
+
+        // 2. Initialize Teams with Roster Data
+        const loadedTeams = INITIAL_TEAMS_DATA.map(t => {
+            const teamRoster = globalRosterMap[t.id] || [];
+            return {
+                ...t,
+                roster: teamRoster,
+                wins: 0,
+                losses: 0,
+                budget: 150,
+                salaryCap: 140,
+                luxuryTaxLine: 170,
+                logo: getTeamLogoUrl(t.id)
+            } as Team;
+        });
+        setTeams(loadedTeams);
+
+        // 3. Load Schedule
+        try {
+            const schedRes = await fetch('/schedule.csv');
+            if (schedRes.ok) {
+                const schedText = await schedRes.text();
+                const parsedSchedule = parseScheduleCSV(schedText, loadedTeams);
+                setSchedule(parsedSchedule);
+            } else {
+                // Fallback Schedule Generation if CSV missing
+                console.warn("Schedule CSV missing, generating random schedule.");
+                setSchedule(generateSeasonSchedule('bos')); // ID doesn't matter for generation
+            }
+        } catch (e) {
+            console.error("Error loading schedule:", e);
+            setSchedule(generateSeasonSchedule('bos'));
+        }
+
       } catch (e) {
-        console.error(e);
+        console.error("Critical Error Loading Data:", e);
+        handleShowToast("데이터 로딩 중 오류가 발생했습니다. 새로고침 해주세요.");
       } finally {
         setIsInitializing(false);
       }
@@ -103,9 +170,6 @@ const App: React.FC = () => {
       const selectedTeam = teams.find(t => t.id === id);
       if (selectedTeam) {
           setTactics(generateAutoTactics(selectedTeam));
-          const sched = generateSeasonSchedule(id);
-          setSchedule(sched);
-          
           setHasSelectedTeam(true);
           setView('Onboarding'); 
           logEvent('Team', 'Select', id);
@@ -121,14 +185,6 @@ const App: React.FC = () => {
     setIsSimulating(true);
     
     const gamesToday = schedule.filter(g => g.date === currentSimDate && !g.played);
-    
-    if (gamesToday.length === 0) {
-        advanceDate();
-        setIsSimulating(false);
-        handleShowToast("오늘은 예정된 경기가 없습니다. 다음 날로 이동합니다.");
-        return;
-    }
-
     const userGameToday = gamesToday.find(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId);
     
     let updatedTeams = [...teams];
@@ -195,6 +251,8 @@ const App: React.FC = () => {
 
         const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
         if (schIdx !== -1) {
+            // [MEMORY OPTIMIZATION]
+            // Only keep detailed box scores for User games or Playoffs
             const shouldKeepBoxScore = isUserGame || game.isPlayoff;
             updatedSchedule[schIdx] = {
                 ...game,
@@ -219,6 +277,8 @@ const App: React.FC = () => {
     setTeams(updatedTeams);
     setSchedule(updatedSchedule);
 
+    // [TICKER OPTIMIZATION]
+    // Filter only new game results for the ticker, removing old ones to prevent accumulation
     const scoreNews: NewsItem[] = gamesToday
         .filter(g => !userGameToday || g.id !== userGameToday.id)
         .map(g => {
@@ -237,10 +297,17 @@ const App: React.FC = () => {
             return null;
         }).filter(Boolean) as NewsItem[];
     
-    setNews(prev => [...scoreNews, ...prev].slice(0, 30));
+    // Replace old game news with new game news, keep text news
+    setNews(prev => {
+        const textNews = prev.filter(n => n.type === 'text');
+        return [...scoreNews, ...textNews].slice(0, 30);
+    });
 
     if (userGameResultData) {
-        setActiveGameResult(userGameResultData);
+        // Generate Game Recap with Gemini
+        const recap = await generateGameRecapNews(userGameResultData);
+        
+        setActiveGameResult({ ...userGameResultData, recap });
         setShowGameSim(true);
         setTimeout(() => {
             setShowGameSim(false);
@@ -250,7 +317,11 @@ const App: React.FC = () => {
     } else {
         advanceDate();
         setIsSimulating(false);
-        handleShowToast(`${currentSimDate} 일정 시뮬레이션 완료`);
+        if (gamesToday.length > 0) {
+            handleShowToast(`${currentSimDate} 일정 시뮬레이션 완료 (${gamesToday.length}경기)`);
+        } else {
+            handleShowToast(`${currentSimDate} 예정된 경기가 없습니다.`);
+        }
     }
   };
 
@@ -267,16 +338,6 @@ const App: React.FC = () => {
       advanceDate();
   };
 
-  useEffect(() => {
-    if (!isSupabaseConfigured) {
-        return; 
-    }
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        setIsAuthenticated(!!session);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
   if (!isAuthenticated && isSupabaseConfigured) {
       return <AuthView />;
   }
@@ -288,8 +349,7 @@ const App: React.FC = () => {
             isInitializing={isInitializing} 
             onSelectTeam={handleSelectTeam} 
             onReload={async () => {
-                setIsInitializing(true);
-                setTimeout(() => setIsInitializing(false), 1000);
+                window.location.reload();
             }} 
         />
       );

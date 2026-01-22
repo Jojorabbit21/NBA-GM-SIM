@@ -1,5 +1,5 @@
 
-import { Team, Player, PlayerBoxScore, OffenseTactic, DefenseTactic, TradeOffer } from '../types';
+import { Team, Player, PlayerBoxScore, OffenseTactic, DefenseTactic, TradeOffer, GameTactics, TacticalSliders } from '../types';
 
 // ==========================================================================================
 //  🏀 NBA GM SIMULATOR - GAME ENGINE CONFIGURATION
@@ -98,25 +98,6 @@ export const SIM_CONFIG = {
         TOV_USAGE_FACTOR: 0.08,
     }
 };
-
-export interface TacticalSliders {
-  pace: number;
-  offReb: number;
-  defIntensity: number;
-  defReb: number;
-  fullCourtPress: number;
-  zoneUsage: number;
-  rotationFlexibility: number;
-}
-
-export interface GameTactics {
-  offenseTactics: OffenseTactic[];
-  defenseTactics: DefenseTactic[];
-  sliders: TacticalSliders;
-  starters: { PG: string; SG: string; SF: string; PF: string; C: string };
-  minutesLimits: Record<string, number>;
-  stopperId?: string;
-}
 
 export interface RosterUpdate {
     [playerId: string]: {
