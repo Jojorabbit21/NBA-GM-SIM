@@ -73,6 +73,9 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+-- 중요: Realtime 기능을 위해 profiles 테이블의 Publication 활성화
+alter publication supabase_realtime add table public.profiles;
+
 drop policy if exists "Users can insert own profile" on public.profiles;
 drop policy if exists "Users can read own profile" on public.profiles;
 drop policy if exists "Users can update own profile" on public.profiles;
@@ -184,9 +187,9 @@ const App: React.FC = () => {
   const [isTickerScroll, setIsTickerScroll] = useState(false);
 
   // Duplicate Login Prevention
-  // Create a unique ID for this specific browser session instance
   const [deviceId] = useState(() => self.crypto.randomUUID());
   const [isDuplicateSession, setIsDuplicateSession] = useState(false);
+  const [isSessionVerifying, setIsSessionVerifying] = useState(false); // 로딩 화면용 상태
 
   // [Analytics] Initialize GA
   useEffect(() => {
@@ -224,79 +227,147 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // [Heartbeat & Lock Check]
+  // [Heartbeat & Realtime Lock Check]
+  // 'Check-then-Claim' + Realtime Subscription for Mutually Exclusive Access
   useEffect(() => {
-    if (!session?.user || isDuplicateSession) return;
+    if (!session?.user) return;
 
     let heartbeatInterval: any;
+    let subscription: any;
 
-    const checkAndClaimSession = async () => {
+    const setupSession = async () => {
+        setIsSessionVerifying(true);
         try {
-            // 1. 현재 DB 상태 확인 (Check)
-            const { data: profile, error } = await supabase
+            // 1. 초기 상태 확인 (Check)
+            const { data: profile } = await supabase
                 .from('profiles')
                 .select('active_device_id, last_seen_at')
                 .eq('id', session.user.id)
                 .single();
 
-            if (error && error.code !== 'PGRST116') { // PGRST116: no rows found (not an error if new user)
-                console.error("Lock check error:", error);
-                return; 
-            }
-
             const now = Date.now();
-            let isLocked = false;
+            let shouldBlock = false;
 
-            if (profile?.active_device_id && profile.last_seen_at) {
+            if (profile && profile.active_device_id && profile.last_seen_at) {
                 const lastSeenTime = new Date(profile.last_seen_at).getTime();
                 const isActive = (now - lastSeenTime) < 60000; // 1분 이내 활동
 
-                // 내가 아닌 다른 기기가 활성 상태라면 잠금
+                // 다른 기기가 활성 상태라면 일단 차단 (사용자가 "여기서 접속"을 누르면 뺏어옴)
                 if (isActive && profile.active_device_id !== deviceId) {
-                    isLocked = true;
+                    shouldBlock = true;
                 }
             }
 
-            if (isLocked) {
+            if (shouldBlock) {
                 setIsDuplicateSession(true);
-                return; // Heartbeat 시작하지 않음
-            }
-
-            // 2. 세션 점유 (Claim)
-            // 잠겨있지 않다면 내 deviceId로 덮어쓰고 Heartbeat 시작
-            const updateHeartbeat = async () => {
+                setIsSessionVerifying(false);
+                // 여기서 return하면 구독 설정이 안 되므로, 차단 상태에서도 구독은 해야 함 (다른 기기가 나가면 알 수 있게?)
+                // 하지만 현재 로직상 차단된 상태에서는 Heartbeat를 안 보내는 게 중요.
+                // "여기서 접속하기"를 누르면 강제로 update를 날려서 뺏어올 것임.
+            } else {
+                // 2. 세션 점유 (Claim)
                 await supabase
                     .from('profiles')
-                    .update({ 
+                    .upsert({ 
+                        id: session.user.id,
+                        email: session.user.email,
                         active_device_id: deviceId,
                         last_seen_at: new Date().toISOString()
-                    })
-                    .eq('id', session.user.id);
-            };
+                    }, { onConflict: 'id' });
+                
+                setIsDuplicateSession(false);
+                setIsSessionVerifying(false);
+            }
 
-            await updateHeartbeat(); // 즉시 1회 실행
-            heartbeatInterval = setInterval(updateHeartbeat, 30000); // 30초마다 갱신
+            // 3. Realtime Subscription (다른 탭에서 뺏어가는 것을 즉시 감지)
+            const channel = supabase.channel(`profile:${session.user.id}`)
+                .on(
+                    'postgres_changes', 
+                    { 
+                        event: 'UPDATE', 
+                        schema: 'public', 
+                        table: 'profiles', 
+                        filter: `id=eq.${session.user.id}` 
+                    }, 
+                    (payload) => {
+                        const newDevice = payload.new.active_device_id;
+                        // DB의 device_id가 내 것과 다르면, 누군가 뺏어간 것임 -> 즉시 차단
+                        if (newDevice && newDevice !== deviceId) {
+                            setIsDuplicateSession(true);
+                        }
+                    }
+                )
+                .subscribe();
+            
+            subscription = channel;
+
+            // 4. 주기적 Heartbeat (내가 주인일 때만)
+            heartbeatInterval = setInterval(async () => {
+                // 화면이 잠겨있지 않을 때만 Heartbeat 전송
+                if (!isDuplicateSession) {
+                    await supabase
+                        .from('profiles')
+                        .update({ 
+                            last_seen_at: new Date().toISOString()
+                        })
+                        .eq('id', session.user.id)
+                        .eq('active_device_id', deviceId); // 내가 주인일 때만 시간 갱신 (Optimistic Concurrency)
+                }
+            }, 10000); // 10초마다 갱신
 
         } catch (err) {
             console.error("Session verification failed:", err);
+            setIsSessionVerifying(false); 
         }
     };
 
-    checkAndClaimSession();
+    setupSession();
 
-    // 3. 탭 종료 시 정리 시도
+    // 5. 탭 종료 시 정리 시도
     const handleUnload = () => {
+        // 내가 주인일 때만 active_device_id 해제
         if (!isDuplicateSession) {
-            navigator.sendBeacon && navigator.sendBeacon(''); 
+            const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/profiles?id=eq.${session.user.id}&active_device_id=eq.${deviceId}`;
+            const headers = {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.REACT_APP_SUPABASE_ANON_KEY}`,
+                'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY || '',
+                'Prefer': 'return=minimal'
+            };
+            const data = JSON.stringify({ active_device_id: null });
+            fetch(url, { method: 'PATCH', headers, body: data, keepalive: true });
         }
     };
     window.addEventListener('beforeunload', handleUnload);
 
     return () => {
         if (heartbeatInterval) clearInterval(heartbeatInterval);
+        if (subscription) supabase.removeChannel(subscription);
         window.removeEventListener('beforeunload', handleUnload);
     };
   }, [session, deviceId, isDuplicateSession]);
+
+  // "여기서 다시 접속하기" 핸들러 (강제 점유)
+  const handleForceLogin = async () => {
+      if (!session?.user) return;
+      setIsSessionVerifying(true);
+      try {
+          // 강제로 내 Device ID로 덮어씀 -> Realtime이 트리거되어 다른 탭들은 잠김
+          await supabase
+              .from('profiles')
+              .update({ 
+                  active_device_id: deviceId,
+                  last_seen_at: new Date().toISOString()
+              })
+              .eq('id', session.user.id);
+          
+          setIsDuplicateSession(false);
+          setIsSessionVerifying(false);
+      } catch (e) {
+          console.error("Force login failed", e);
+          setIsSessionVerifying(false);
+      }
+  };
 
   // [INIT] Reusable Function to Load Base Roster Data
   const loadBaseData = useCallback(async () => {
@@ -368,6 +439,9 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkExistingSave = async () => {
         if (!session?.user || isDataLoaded || teams.length === 0) return;
+        // 중복 세션이면 로드하지 않음 (충돌 방지)
+        if (isDuplicateSession) return;
+
         setIsInitializing(true);
         try {
             const { data: saveData, error } = await supabase
@@ -394,7 +468,7 @@ const App: React.FC = () => {
         finally { setIsInitializing(false); }
     };
     checkExistingSave();
-  }, [session, isDataLoaded, teams]);
+  }, [session, isDataLoaded, teams, isDuplicateSession]);
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
     if (!session?.user) return;
@@ -742,10 +816,10 @@ const App: React.FC = () => {
             <div className="w-full h-px bg-slate-800"></div>
             <p className="text-xs text-slate-500 font-bold">
                 데이터 무결성을 위해 동시 접속이 제한됩니다.<br/>
-                계속하려면 아래 버튼을 눌러주세요.
+                현재 기기에서 다시 접속하면 다른 기기의 연결이 종료됩니다.
             </p>
             <button 
-                onClick={() => window.location.reload()} 
+                onClick={handleForceLogin} 
                 className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"
             >
                 <RefreshCw size={18} /> 여기서 다시 접속하기
@@ -754,6 +828,14 @@ const App: React.FC = () => {
                 로그아웃
             </button>
         </div>
+    </div>
+  );
+
+  // [SESSION VERIFYING LOADING SCREEN]
+  if (isSessionVerifying) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
+      <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
+      <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Verifying Session...</p>
     </div>
   );
 
