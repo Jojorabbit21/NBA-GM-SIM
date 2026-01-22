@@ -1,8 +1,7 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
-  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Database, Copy, Check, X, BarChart3,
+  RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Copy, Check, X, BarChart3,
   MonitorX, Lock
 } from 'lucide-react';
 import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
@@ -44,113 +43,6 @@ type NewsItem =
   | { type: 'text'; content: string }
   | { type: 'game'; home: Team; away: Team; homeScore: number; awayScore: number };
 
-// SQL Setup Helper Component
-const DbSetupHelpModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-    const [copied, setCopied] = useState(false);
-    
-    const sqlScript = `-- 1. saves 테이블 (게임 저장) 생성 및 RLS 설정
-create table if not exists public.saves (
-  user_id uuid references auth.users not null,
-  team_id text not null,
-  game_data jsonb,
-  updated_at timestamptz default now(),
-  primary key (user_id, team_id)
-);
-
-alter table public.saves enable row level security;
-
-drop policy if exists "Users can all on own saves" on public.saves;
-create policy "Users can all on own saves" on public.saves for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
--- 2. profiles 테이블 (회원가입/닉네임/중복로그인방지) 생성 및 RLS 설정
-create table if not exists public.profiles (
-  id uuid references auth.users not null primary key,
-  email text,
-  nickname text,
-  active_device_id text,
-  last_seen_at timestamptz
-);
-
-alter table public.profiles enable row level security;
-
--- 중요: Realtime 기능을 위해 profiles 테이블의 Publication 활성화
-alter publication supabase_realtime add table public.profiles;
-
-drop policy if exists "Users can insert own profile" on public.profiles;
-drop policy if exists "Users can read own profile" on public.profiles;
-drop policy if exists "Users can update own profile" on public.profiles;
-
-create policy "Users can insert own profile" on public.profiles for insert to authenticated with check (auth.uid() = id);
-create policy "Users can read own profile" on public.profiles for select to authenticated using (auth.uid() = id);
-create policy "Users can update own profile" on public.profiles for update to authenticated using (auth.uid() = id);
-
--- (기존 테이블 업데이트용) 컬럼이 없다면 추가
-alter table public.profiles add column if not exists active_device_id text;
-alter table public.profiles add column if not exists last_seen_at timestamptz;
-
--- 3. (권장) 회원가입 시 프로필 자동 생성 트리거
-create or replace function public.handle_new_user()
-returns trigger as $$
-begin
-  insert into public.profiles (id, email, nickname)
-  values (new.id, new.email, new.raw_user_meta_data->>'nickname')
-  on conflict (id) do nothing;
-  return new;
-end;
-$$ language plpgsql security definer;
-
-drop trigger if exists on_auth_user_created on auth.users;
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute procedure public.handle_new_user();
-`;
-
-    const handleCopy = () => {
-        navigator.clipboard.writeText(sqlScript);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4 animate-in fade-in duration-200 ko-normal">
-            <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-2xl p-8 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
-                <div className="flex justify-between items-start mb-6">
-                    <div className="space-y-1">
-                        <h3 className="text-2xl font-black text-white uppercase flex items-center gap-3">
-                            <Database className="text-indigo-500" /> 데이터베이스 설정 필요
-                        </h3>
-                        <p className="text-slate-400 text-sm font-bold">
-                            Supabase SQL Editor에서 아래 스크립트를 실행하여 테이블 및 권한을 설정하세요.
-                        </p>
-                    </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl text-slate-500 hover:text-white transition-colors">
-                        <X size={24} />
-                    </button>
-                </div>
-
-                <div className="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-4 overflow-y-auto custom-scrollbar relative group">
-                    <pre className="text-[11px] md:text-xs font-mono text-emerald-400 whitespace-pre-wrap leading-relaxed">
-                        {sqlScript}
-                    </pre>
-                    <button 
-                        onClick={handleCopy}
-                        className="absolute top-4 right-4 p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg shadow-lg border border-slate-700 transition-all flex items-center gap-2"
-                    >
-                        {copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
-                        <span className="text-xs font-bold">{copied ? '복사됨!' : 'SQL 복사'}</span>
-                    </button>
-                </div>
-
-                <div className="mt-6 flex justify-end">
-                    <button onClick={onClose} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl uppercase tracking-widest text-xs transition-all shadow-lg">
-                        확인 완료
-                    </button>
-                </div>
-            </div>
-        </div>
-    );
-};
-
 const App: React.FC = () => {
   // Auth State
   const [session, setSession] = useState<any>(null);
@@ -179,7 +71,6 @@ const App: React.FC = () => {
   const [isSimulating, setIsSimulating] = useState(false); // New state for day sim
   
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const [showDbHelp, setShowDbHelp] = useState(false);
   
   // Ticker State
   const tickerContainerRef = useRef<HTMLDivElement>(null);
@@ -848,7 +739,6 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-      {showDbHelp && <DbSetupHelpModal onClose={() => setShowDbHelp(false)} />}
 
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
@@ -884,9 +774,6 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-3"><Clock className="text-indigo-400" size={16} /><span className="text-sm font-bold text-white oswald">{currentSimDate}</span></div>
                 <div className="flex items-center gap-3">
                     {isSaving && <Cloud size={16} className="text-emerald-500 animate-pulse" />}
-                    <button onClick={() => setShowDbHelp(true)} title="데이터베이스 설정 SQL 보기">
-                        <Database size={16} className={!hasWritePermission ? "text-red-500 animate-pulse" : "text-slate-600 hover:text-slate-400 transition-colors"} />
-                    </button>
                 </div>
             </div>
             <nav className="flex-1 p-6 space-y-3 overflow-y-auto custom-scrollbar">
