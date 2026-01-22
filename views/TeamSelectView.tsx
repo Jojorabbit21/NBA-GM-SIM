@@ -3,6 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Loader2, Wifi, WifiOff, RefreshCw, Database, FileSpreadsheet } from 'lucide-react';
 import { Team } from '../types';
 import { isSupabaseConfigured } from '../services/supabaseClient';
+import { logEvent } from '../services/analytics'; // Analytics Import
 
 interface TeamSelectViewProps {
   teams: Team[];
@@ -27,7 +28,10 @@ const LOADING_MESSAGES = [
 
 const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: string) => void }> = ({ team, colorClass, onSelect }) => (
   <button 
-    onClick={() => onSelect(team.id)} 
+    onClick={() => {
+        logEvent('Team Selection', 'Select', team.name); // Analytics Event
+        onSelect(team.id);
+    }} 
     className={`group relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 xl:w-20 xl:h-20 2xl:w-24 2xl:h-24 rounded-full bg-slate-900/40 border-2 border-slate-800 transition-all duration-300 hover:scale-125 hover:bg-slate-900 hover:z-50 hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] ${colorClass}`}
     title={`${team.city} ${team.name}`}
   >
@@ -63,6 +67,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
 
   const handleReload = async () => {
       if (onReload) {
+          logEvent('System', 'Force Reload DB'); // Analytics Event
           setIsReloading(true);
           await onReload();
           setTimeout(() => setIsReloading(false), 800);

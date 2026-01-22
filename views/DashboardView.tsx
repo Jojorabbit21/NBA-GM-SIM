@@ -1,9 +1,10 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock } from 'lucide-react';
+import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight } from 'lucide-react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
 import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { logEvent } from '../services/analytics'; // Analytics Import
 
 interface DashboardViewProps {
   team: Team;
@@ -12,6 +13,8 @@ interface DashboardViewProps {
   onSim: (tactics: GameTactics) => void;
   tactics: GameTactics;
   onUpdateTactics: (t: GameTactics) => void;
+  currentSimDate?: string;
+  isSimulating?: boolean;
 }
 
 const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
@@ -63,11 +66,18 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
   </div>
 );
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, schedule, onSim, tactics, onUpdateTactics }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, schedule, onSim, tactics, onUpdateTactics, currentSimDate, isSimulating }) => {
+  // Find the next game for the user's team
   const nextGame = useMemo(() => {
     if (!team?.id) return undefined;
     return schedule.find(g => !g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id));
   }, [schedule, team?.id]);
+
+  // Check if the user has a game scheduled for TODAY (currentSimDate)
+  const isGameToday = useMemo(() => {
+      if (!currentSimDate || !nextGame) return false;
+      return nextGame.date === currentSimDate;
+  }, [currentSimDate, nextGame]);
 
   const isHome = nextGame?.homeTeamId === team?.id;
   const opponentId = isHome ? nextGame?.awayTeamId : nextGame?.homeTeamId;
@@ -216,6 +226,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
     onUpdateTactics(autoTactics);
   };
 
+  // [Analytics] Wrapper for simulation trigger
+  const handleSimClick = () => {
+    logEvent('Game', 'Simulate', isGameToday ? 'Play Game' : 'Skip Day');
+    onSim(tactics);
+  };
+
   const isAceStopperActive = defTactics.includes('AceStopper');
 
   const getPlayerTeam = (p: Player) => {
@@ -246,20 +262,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                     <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1">{nextGame?.date || 'NEXT EVENT'}</div>
                     <div className="text-3xl font-black text-slate-400 oswald tracking-[0.1em] leading-none">{nextGame && !isHome ? '@' : 'VS'}</div>
                 </div>
-                <div className="flex items-center gap-6">
-                    <div className={getOvrBadgeStyle(opponentOvrValue) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{opponentOvrValue || '??'}</div>
-                    <div className="flex flex-col items-end">
-                        <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{opponent?.name || 'UNKNOWN'}</span>
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{opponent?.wins || 0}W - {opponent?.losses || 0}L</span>
+                {opponent ? (
+                    <div className="flex items-center gap-6">
+                        <div className={getOvrBadgeStyle(opponentOvrValue) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{opponentOvrValue || '??'}</div>
+                        <div className="flex flex-col items-end">
+                            <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{opponent?.name || 'UNKNOWN'}</span>
+                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{opponent?.wins || 0}W - {opponent?.losses || 0}L</span>
+                        </div>
+                        <img src={opponent?.logo} className="w-16 h-16 object-contain drop-shadow-2xl opacity-90" alt="" />
                     </div>
-                    <img src={opponent?.logo} className="w-16 h-16 object-contain drop-shadow-2xl opacity-90" alt="" />
-                </div>
+                ) : (
+                    <div className="flex items-center gap-4 text-slate-500">
+                        <div className="text-xl font-black uppercase oswald tracking-tight">상대 없음</div>
+                    </div>
+                )}
             </div>
             <div className="flex items-center pl-10 lg:border-l border-white/10">
-                <button onClick={() => onSim(tactics)} className="bg-indigo-600 hover:bg-indigo-500 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_15px_40px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10">
-                    <Zap size={22} className="group-hover:animate-pulse text-yellow-400 fill-yellow-400" />
-                    <span className="text-xl oswald uppercase tracking-widest text-white ko-tight">경기 시작</span>
-                </button>
+                {isGameToday ? (
+                    <button onClick={handleSimClick} disabled={isSimulating} className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_15px_40px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10">
+                        {isSimulating ? <Loader2 size={22} className="animate-spin" /> : <Zap size={22} className="group-hover:animate-pulse text-yellow-400 fill-yellow-400" />}
+                        <span className="text-xl oswald uppercase tracking-widest text-white ko-tight">{isSimulating ? '진행 중...' : '경기 시작'}</span>
+                    </button>
+                ) : (
+                    <button onClick={handleSimClick} disabled={isSimulating} className="bg-slate-700 hover:bg-blue-600 disabled:bg-slate-800 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.05] active:scale-95 border border-white/10 group ring-4 ring-white/5">
+                        {isSimulating ? <Loader2 size={22} className="animate-spin text-blue-300" /> : <CalendarClock size={22} className="text-blue-300" />}
+                        <div className="flex flex-col items-start">
+                            <span className="text-sm oswald uppercase tracking-widest text-white ko-tight leading-none">{isSimulating ? '시뮬레이션 중' : '내일로 이동'}</span>
+                            {!isSimulating && <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">Skip to Tomorrow</span>}
+                        </div>
+                    </button>
+                )}
             </div>
         </div>
 
@@ -270,7 +302,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                     <div className="flex items-center gap-6 h-full">
                         <button 
                             onClick={() => setActiveRosterTab('mine')}
-                            className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'mine' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                            className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'mine' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} `}
                         >
                             <Users size={24} />
                             <span className="text-2xl font-black uppercase oswald tracking-tight ko-tight">로테이션 관리</span>
@@ -278,7 +310,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                         <div className="w-[1px] h-6 bg-white/10"></div>
                         <button 
                             onClick={() => setActiveRosterTab('opponent')}
-                            className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                            disabled={!opponent}
+                            className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} ${!opponent ? 'opacity-50 cursor-not-allowed' : ''}`}
                         >
                             <Eye size={24} />
                             <span className="text-2xl font-black uppercase oswald tracking-tight ko-tight">상대 전력 분석</span>
@@ -418,46 +451,60 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                             )}
                         </div>
                     ) : (
-                        <table className="w-full text-left border-collapse table-fixed">
-                            <thead>
-                                <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                    <th className="py-3 px-8">이름</th>
-                                    <th className="py-3 px-4 text-center w-16">POS</th>
-                                    <th className="py-3 px-4 text-center w-20">OVR</th>
-                                    <th className="py-3 px-2 text-center w-16">ATH</th>
-                                    <th className="py-3 px-2 text-center w-16">OUT</th>
-                                    <th className="py-3 px-2 text-center w-16">INS</th>
-                                    <th className="py-3 px-2 text-center w-16">PLM</th>
-                                    <th className="py-3 px-2 text-center w-16">DEF</th>
-                                    <th className="py-3 px-2 text-center w-16">REB</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {oppHealthySorted.map((p) => {
-                                    return (
-                                        <tr key={p.id} className="hover:bg-white/5 transition-all">
-                                            <td className="py-3 px-8 cursor-pointer" onClick={() => setViewPlayer(p)}>
-                                                <div className="flex flex-col justify-center h-10">
-                                                    <span className="font-black text-base break-keep leading-tight text-slate-300 hover:text-white hover:underline">{p.name}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 text-center">
-                                                <div className="flex items-center justify-center h-10">
-                                                    <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
-                                                </div>
-                                            </td>
-                                            <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.ovr}</div></div></td>
-                                            <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
-                                            <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.out)}`}>{p.out}</div></div></td>
-                                            <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ins)}`}>{p.ins}</div></div></td>
-                                            <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.plm)}`}>{p.plm}</div></div></td>
-                                            <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.def)}`}>{p.def}</div></div></td>
-                                            <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.reb)}`}>{p.reb}</div></div></td>
+                        <div className="flex flex-col h-full">
+                            {opponent ? (
+                                <table className="w-full text-left border-collapse table-fixed">
+                                    <thead>
+                                        <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
+                                            <th className="py-3 px-8">이름</th>
+                                            <th className="py-3 px-4 text-center w-16">POS</th>
+                                            <th className="py-3 px-4 text-center w-20">OVR</th>
+                                            <th className="py-3 px-2 text-center w-16">ATH</th>
+                                            <th className="py-3 px-2 text-center w-16">OUT</th>
+                                            <th className="py-3 px-2 text-center w-16">INS</th>
+                                            <th className="py-3 px-2 text-center w-16">PLM</th>
+                                            <th className="py-3 px-2 text-center w-16">DEF</th>
+                                            <th className="py-3 px-2 text-center w-16">REB</th>
                                         </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5">
+                                        {oppHealthySorted.map((p) => {
+                                            return (
+                                                <tr key={p.id} className="hover:bg-white/5 transition-all">
+                                                    <td className="py-3 px-8 cursor-pointer" onClick={() => setViewPlayer(p)}>
+                                                        <div className="flex flex-col justify-center h-10">
+                                                            <span className="font-black text-base break-keep leading-tight text-slate-300 hover:text-white hover:underline">{p.name}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center">
+                                                        <div className="flex items-center justify-center h-10">
+                                                            <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.ovr}</div></div></td>
+                                                    <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
+                                                    <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.out)}`}>{p.out}</div></div></td>
+                                                    <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ins)}`}>{p.ins}</div></div></td>
+                                                    <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.plm)}`}>{p.plm}</div></div></td>
+                                                    <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.def)}`}>{p.def}</div></div></td>
+                                                    <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.reb)}`}>{p.reb}</div></div></td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <div className="flex-1 flex flex-col items-center justify-center text-slate-500 space-y-4">
+                                    <div className="p-6 bg-slate-800/30 rounded-full">
+                                        <Users size={48} className="opacity-20" />
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="font-black uppercase text-lg tracking-widest oswald text-slate-400">No Opponent</p>
+                                        <p className="text-xs font-bold mt-1">오늘 경기 일정이 없습니다.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>
