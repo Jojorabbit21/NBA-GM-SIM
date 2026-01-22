@@ -272,7 +272,7 @@ const App: React.FC = () => {
                 setRosterTargetId(saveData.team_id);
                 setIsDataLoaded(true);
                 setView('Dashboard');
-                setToastMessage("저장된 게임을 불러왔습니다. (DB 변경사항은 리셋 후 적용됩니다)");
+                setToastMessage("저장된 게임을 불러왔습니다.");
                 setHasWritePermission(true);
             }
         } catch (err) { console.error("Auto-load failed:", err); } 
