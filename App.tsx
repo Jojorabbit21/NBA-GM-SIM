@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
   RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Database, Copy, Check, X, BarChart3,
-  MonitorX
+  MonitorX, Lock
 } from 'lucide-react';
 import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
 import { 
@@ -186,6 +186,7 @@ const App: React.FC = () => {
   // Duplicate Login Prevention
   // Create a unique ID for this specific browser session instance
   const [deviceId] = useState(() => self.crypto.randomUUID());
+  const [isDuplicateSession, setIsDuplicateSession] = useState(false);
 
   // [Analytics] Initialize GA
   useEffect(() => {
@@ -223,44 +224,79 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // [Heartbeat] 주기적으로 생존 신고를 하여 세션을 유지
+  // [Heartbeat & Lock Check]
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user || isDuplicateSession) return;
 
-    // 1. 초기 접속 시 생존 신고
-    const beat = async () => {
-        await supabase
-            .from('profiles')
-            .update({ 
-                active_device_id: deviceId,
-                last_seen_at: new Date().toISOString()
-            })
-            .eq('id', session.user.id);
+    let heartbeatInterval: any;
+
+    const checkAndClaimSession = async () => {
+        try {
+            // 1. 현재 DB 상태 확인 (Check)
+            const { data: profile, error } = await supabase
+                .from('profiles')
+                .select('active_device_id, last_seen_at')
+                .eq('id', session.user.id)
+                .single();
+
+            if (error && error.code !== 'PGRST116') { // PGRST116: no rows found (not an error if new user)
+                console.error("Lock check error:", error);
+                return; 
+            }
+
+            const now = Date.now();
+            let isLocked = false;
+
+            if (profile?.active_device_id && profile.last_seen_at) {
+                const lastSeenTime = new Date(profile.last_seen_at).getTime();
+                const isActive = (now - lastSeenTime) < 60000; // 1분 이내 활동
+
+                // 내가 아닌 다른 기기가 활성 상태라면 잠금
+                if (isActive && profile.active_device_id !== deviceId) {
+                    isLocked = true;
+                }
+            }
+
+            if (isLocked) {
+                setIsDuplicateSession(true);
+                return; // Heartbeat 시작하지 않음
+            }
+
+            // 2. 세션 점유 (Claim)
+            // 잠겨있지 않다면 내 deviceId로 덮어쓰고 Heartbeat 시작
+            const updateHeartbeat = async () => {
+                await supabase
+                    .from('profiles')
+                    .update({ 
+                        active_device_id: deviceId,
+                        last_seen_at: new Date().toISOString()
+                    })
+                    .eq('id', session.user.id);
+            };
+
+            await updateHeartbeat(); // 즉시 1회 실행
+            heartbeatInterval = setInterval(updateHeartbeat, 30000); // 30초마다 갱신
+
+        } catch (err) {
+            console.error("Session verification failed:", err);
+        }
     };
-    beat();
 
-    // 2. 주기적으로(30초) 생존 신고 (Heartbeat)
-    // 이것이 멈추면(탭 종료 등) last_seen_at이 갱신되지 않아 나중에 다른 기기에서 접속 가능해짐
-    const interval = setInterval(beat, 30000);
+    checkAndClaimSession();
 
-    // 3. 탭 종료 시 정리 시도 (Best Effort)
+    // 3. 탭 종료 시 정리 시도
     const handleUnload = () => {
-        // 비콘 API 등을 사용할 수도 있지만, Supabase는 동기적 요청이 어려우므로 
-        // 30초 타임아웃 로직(AuthView에서 처리)에 의존하는 것이 안전함.
-        // 여기서는 가능한 경우 null로 업데이트 시도
-        navigator.sendBeacon && navigator.sendBeacon(
-            // 참고: 실제로는 sendBeacon으로 Supabase REST API를 직접 호출해야 하지만, 
-            // 복잡성을 피하기 위해 Heartbeat 타임아웃 방식에 주력합니다.
-            '' 
-        );
+        if (!isDuplicateSession) {
+            navigator.sendBeacon && navigator.sendBeacon(''); 
+        }
     };
     window.addEventListener('beforeunload', handleUnload);
 
     return () => {
-        clearInterval(interval);
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
         window.removeEventListener('beforeunload', handleUnload);
     };
-  }, [session, deviceId]);
+  }, [session, deviceId, isDuplicateSession]);
 
   // [INIT] Reusable Function to Load Base Roster Data
   const loadBaseData = useCallback(async () => {
@@ -415,7 +451,7 @@ const App: React.FC = () => {
   }, [teams, session, isDataLoaded, myTeamId]);
 
   const saveToCloud = useCallback(async () => {
-        if (!isDataLoaded || !myTeamId || !session?.user || !hasWritePermission) return;
+        if (!isDataLoaded || !myTeamId || !session?.user || !hasWritePermission || isDuplicateSession) return;
         setIsSaving(true);
         const { error } = await supabase.from('saves').upsert({ 
             user_id: session.user.id, 
@@ -428,7 +464,7 @@ const App: React.FC = () => {
             setToastMessage("클라우드 저장 실패! 네트워크 상태를 확인하세요.");
         }
         setIsSaving(false);
-  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, session, hasWritePermission]);
+  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, session, hasWritePermission, isDuplicateSession]);
 
   useEffect(() => {
     const timeoutId = setTimeout(saveToCloud, 3000);
@@ -464,6 +500,7 @@ const App: React.FC = () => {
     await supabase.auth.signOut();
     setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); 
     setIsDataLoaded(false); setView('TeamSelect');
+    setIsDuplicateSession(false);
   };
 
   // Fixed Export function to resolve reference error
@@ -687,6 +724,39 @@ const App: React.FC = () => {
   );
 
   if (!session) return <AuthView />;
+
+  // [DUPLICATE LOGIN BLOCK]
+  if (isDuplicateSession) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200 p-8 text-center relative overflow-hidden ko-normal">
+        <div className="absolute inset-0 pointer-events-none opacity-20 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-indigo-900 via-slate-950 to-slate-950"></div>
+        <div className="relative z-10 bg-slate-900/50 border border-slate-700 p-12 rounded-3xl shadow-2xl max-w-lg w-full flex flex-col items-center gap-6 backdrop-blur-md animate-in fade-in zoom-in duration-300">
+            <div className="p-6 bg-red-500/10 rounded-full border border-red-500/20 shadow-[0_0_30px_rgba(239,68,68,0.2)]">
+                <MonitorX size={64} className="text-red-500" />
+            </div>
+            <div className="space-y-2">
+                <h2 className="text-3xl font-black text-white uppercase tracking-tight">중복 로그인 감지</h2>
+                <p className="text-slate-400 font-medium leading-relaxed">
+                    다른 기기 또는 브라우저 탭에서<br/>이미 접속 중입니다.
+                </p>
+            </div>
+            <div className="w-full h-px bg-slate-800"></div>
+            <p className="text-xs text-slate-500 font-bold">
+                데이터 무결성을 위해 동시 접속이 제한됩니다.<br/>
+                계속하려면 아래 버튼을 눌러주세요.
+            </p>
+            <button 
+                onClick={() => window.location.reload()} 
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-xl uppercase tracking-widest transition-all shadow-lg active:scale-95 flex items-center justify-center gap-3"
+            >
+                <RefreshCw size={18} /> 여기서 다시 접속하기
+            </button>
+            <button onClick={handleLogout} className="text-slate-500 hover:text-slate-300 text-xs font-bold underline underline-offset-4 decoration-slate-700 hover:decoration-slate-400 transition-all">
+                로그아웃
+            </button>
+        </div>
+    </div>
+  );
+
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isInitializing} onSelectTeam={handleTeamSelection} onReload={loadBaseData} dataSource={dataSource} />;
   
   const myTeam = teams.find(t => t.id === myTeamId);
@@ -732,7 +802,9 @@ const App: React.FC = () => {
                 <div className="flex items-center gap-3"><Clock className="text-indigo-400" size={16} /><span className="text-sm font-bold text-white oswald">{currentSimDate}</span></div>
                 <div className="flex items-center gap-3">
                     {isSaving && <Cloud size={16} className="text-emerald-500 animate-pulse" />}
-                    {!hasWritePermission && <button onClick={() => setShowDbHelp(true)}><Database size={16} className="text-red-500" /></button>}
+                    <button onClick={() => setShowDbHelp(true)} title="데이터베이스 설정 SQL 보기">
+                        <Database size={16} className={!hasWritePermission ? "text-red-500 animate-pulse" : "text-slate-600 hover:text-slate-400 transition-colors"} />
+                    </button>
                 </div>
             </div>
             <nav className="flex-1 p-6 space-y-3 overflow-y-auto custom-scrollbar">
