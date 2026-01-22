@@ -30,25 +30,25 @@ export const getOvrBadgeStyle = (ovr: number) => {
 };
 
 export const getRankStyle = (val: number) => {
-  const baseClass = "w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-md font-black text-xs md:text-sm transition-all border ";
+  const baseClass = "w-8 h-8 md:w-9 md:h-9 flex items-center justify-center rounded-md font-medium text-xs md:text-sm transition-all border ";
   
   // 95+ (Elite): Cyan/Blue with Glow
-  if (val >= 95) return baseClass + 'bg-cyan-500/10 text-cyan-300 border-cyan-400/50 shadow-[0_0_10px_rgba(34,211,238,0.4)]';
+  if (val >= 95) return baseClass + 'bg-cyan-500/10 text-cyan-300 border-cyan-400/30 shadow-[0_0_10px_rgba(34,211,238,0.4)]';
 
   // 90-94 (Great): Emerald
-  if (val >= 90) return baseClass + 'bg-emerald-500/10 text-emerald-400 border-emerald-500/50';
+  if (val >= 90) return baseClass + 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
   
   // 80-89 (Good): Green
-  if (val >= 80) return baseClass + 'bg-green-500/10 text-green-400 border-green-500/50';
+  if (val >= 80) return baseClass + 'bg-green-500/10 text-green-400 border-green-500/30';
   
   // 70-79 (Average): Yellow
-  if (val >= 70) return baseClass + 'bg-yellow-500/10 text-yellow-400 border-yellow-500/50';
+  if (val >= 70) return baseClass + 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30';
   
   // 60-69 (Below Avg): Orange
-  if (val >= 60) return baseClass + 'bg-orange-500/10 text-orange-400 border-orange-500/50';
+  if (val >= 60) return baseClass + 'bg-orange-500/10 text-orange-400 border-orange-500/30';
   
   // < 60 (Low): Red
-  return baseClass + 'bg-red-500/10 text-red-400 border-red-500/50';
+  return baseClass + 'bg-red-500/10 text-red-400 border-red-500/30';
 };
 
 export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
