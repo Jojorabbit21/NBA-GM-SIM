@@ -757,7 +757,14 @@ const App: React.FC = () => {
                             ) : (
                                 <div className="flex items-center gap-2 bg-slate-900/40 px-3 py-1 rounded-lg border border-slate-700/50 backdrop-blur-sm hover:bg-slate-800/60 transition-colors">
                                     <div className="flex items-center gap-2">
-                                        <img src={n.away.logo} className="w-7 h-7 object-contain drop-shadow-md" alt={n.away.name} title={n.away.name} />
+                                        <img 
+                                            src={n.away.logo} 
+                                            className="w-7 h-7 object-contain drop-shadow-md flex-shrink-0" 
+                                            alt={n.away.name} 
+                                            title={n.away.name} 
+                                            loading="eager"
+                                            referrerPolicy="no-referrer"
+                                        />
                                     </div>
                                     <div className="flex items-center gap-2 px-2 border-x border-slate-700/50">
                                         <span className={`text-xs font-black font-mono ${n.awayScore > n.homeScore ? 'text-emerald-400' : 'text-slate-200'}`}>{n.awayScore}</span>
@@ -765,7 +772,14 @@ const App: React.FC = () => {
                                         <span className={`text-xs font-black font-mono ${n.homeScore > n.awayScore ? 'text-emerald-400' : 'text-slate-200'}`}>{n.homeScore}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <img src={n.home.logo} className="w-7 h-7 object-contain drop-shadow-md" alt={n.home.name} title={n.home.name} />
+                                        <img 
+                                            src={n.home.logo} 
+                                            className="w-7 h-7 object-contain drop-shadow-md flex-shrink-0" 
+                                            alt={n.home.name} 
+                                            title={n.home.name} 
+                                            loading="eager"
+                                            referrerPolicy="no-referrer"
+                                        />
                                     </div>
                                 </div>
                             )}
