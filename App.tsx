@@ -67,7 +67,8 @@ create table if not exists public.profiles (
   id uuid references auth.users not null primary key,
   email text,
   nickname text,
-  active_device_id text
+  active_device_id text,
+  last_seen_at timestamptz
 );
 
 alter table public.profiles enable row level security;
@@ -80,8 +81,9 @@ create policy "Users can insert own profile" on public.profiles for insert to au
 create policy "Users can read own profile" on public.profiles for select to authenticated using (auth.uid() = id);
 create policy "Users can update own profile" on public.profiles for update to authenticated using (auth.uid() = id);
 
--- (기존 테이블 업데이트용) active_device_id 컬럼이 없다면 추가
+-- (기존 테이블 업데이트용) 컬럼이 없다면 추가
 alter table public.profiles add column if not exists active_device_id text;
+alter table public.profiles add column if not exists last_seen_at timestamptz;
 
 -- 3. (권장) 회원가입 시 프로필 자동 생성 트리거
 create or replace function public.handle_new_user()
@@ -98,9 +100,7 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
-
--- 4. Realtime 활성화 (중복 로그인 감지용)
-alter publication supabase_realtime add table public.profiles;`;
+`;
 
     const handleCopy = () => {
         navigator.clipboard.writeText(sqlScript);
@@ -223,52 +223,42 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // [Duplicate Login Check]
+  // [Heartbeat] 주기적으로 생존 신고를 하여 세션을 유지
   useEffect(() => {
     if (!session?.user) return;
 
-    let mySubscription: any = null;
-
-    const enforceSingleSession = async () => {
-        // 1. 현재 기기의 ID를 DB에 등록 (내가 주인이다)
-        // 이 작업은 로그인 직후 또는 페이지 로드 시 실행되어 이 탭을 활성 세션으로 만듭니다.
-        const { error } = await supabase
+    // 1. 초기 접속 시 생존 신고
+    const beat = async () => {
+        await supabase
             .from('profiles')
-            .update({ active_device_id: deviceId })
+            .update({ 
+                active_device_id: deviceId,
+                last_seen_at: new Date().toISOString()
+            })
             .eq('id', session.user.id);
-
-        if (error) {
-            console.error("Failed to update active device:", error);
-            // DB 컬럼이 없을 수 있으므로 조용히 실패 (하위 호환성)
-            return; 
-        }
-
-        // 2. Realtime 구독: DB의 active_device_id가 변경되는지 감시
-        mySubscription = supabase
-            .channel(`profile_guard_${session.user.id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'profiles',
-                    filter: `id=eq.${session.user.id}`
-                },
-                (payload) => {
-                    const newActiveDevice = payload.new.active_device_id;
-                    // DB에 기록된 활성 기기 ID가 내 기기 ID와 다르다면, 누군가 다른 곳에서 로그인 한 것임
-                    if (newActiveDevice && newActiveDevice !== deviceId) {
-                        handleLogout(true); // 강제 로그아웃
-                    }
-                }
-            )
-            .subscribe();
     };
+    beat();
 
-    enforceSingleSession();
+    // 2. 주기적으로(30초) 생존 신고 (Heartbeat)
+    // 이것이 멈추면(탭 종료 등) last_seen_at이 갱신되지 않아 나중에 다른 기기에서 접속 가능해짐
+    const interval = setInterval(beat, 30000);
+
+    // 3. 탭 종료 시 정리 시도 (Best Effort)
+    const handleUnload = () => {
+        // 비콘 API 등을 사용할 수도 있지만, Supabase는 동기적 요청이 어려우므로 
+        // 30초 타임아웃 로직(AuthView에서 처리)에 의존하는 것이 안전함.
+        // 여기서는 가능한 경우 null로 업데이트 시도
+        navigator.sendBeacon && navigator.sendBeacon(
+            // 참고: 실제로는 sendBeacon으로 Supabase REST API를 직접 호출해야 하지만, 
+            // 복잡성을 피하기 위해 Heartbeat 타임아웃 방식에 주력합니다.
+            '' 
+        );
+    };
+    window.addEventListener('beforeunload', handleUnload);
 
     return () => {
-        if (mySubscription) supabase.removeChannel(mySubscription);
+        clearInterval(interval);
+        window.removeEventListener('beforeunload', handleUnload);
     };
   }, [session, deviceId]);
 
@@ -466,15 +456,14 @@ const App: React.FC = () => {
     setToastMessage("데이터가 초기화되었습니다. DB의 최신 정보를 불러왔습니다.");
   };
 
-  const handleLogout = async (isForced: boolean = false) => {
+  const handleLogout = async () => {
+    // 로그아웃 시 DB의 세션 정보 클리어 (주도권 포기)
+    if (session?.user) {
+        await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id);
+    }
     await supabase.auth.signOut();
     setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); 
     setIsDataLoaded(false); setView('TeamSelect');
-    
-    if (isForced) {
-        // 약간의 지연 후 메시지를 표시하여 화면 전환 후 보이게 함
-        setTimeout(() => setToastMessage("다른 기기에서 로그인하여 접속이 종료되었습니다."), 500);
-    }
   };
 
   // Fixed Export function to resolve reference error
@@ -757,7 +746,7 @@ const App: React.FC = () => {
             </nav>
             <div className="p-6 border-t border-slate-800 space-y-2">
             <button onClick={() => setShowResetConfirm(true)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center gap-2"><RefreshCw size={14} /> 데이터 초기화</button>
-            <button onClick={() => handleLogout(false)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center gap-2"><LogOut size={14} /> 로그아웃</button>
+            <button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all flex items-center justify-center gap-2"><LogOut size={14} /> 로그아웃</button>
             </div>
         </aside>
         
