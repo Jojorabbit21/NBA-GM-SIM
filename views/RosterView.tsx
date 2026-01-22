@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
   Users, Activity, ChevronDown, Search, CheckCircle2, CalendarClock, ArrowUp, ArrowDown 
@@ -362,7 +361,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       {viewPlayer && selectedTeam && <PlayerDetailModal player={viewPlayer} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} />}
       
       {/* Header with Team Selector */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0 relative z-30">
         <div>
            <div className="flex items-center gap-3">
              <h2 className="text-5xl font-black ko-tight text-slate-100 uppercase">팀 로스터</h2>
@@ -505,10 +504,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                           {tab === 'roster' && (
                             <>
                               <td className="px-2 py-3 text-center">
-                                  <span className="text-[10px] font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase tracking-tight">{p.position}</span>
+                                  <span className="text-sm font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase tracking-tight">{p.position}</span>
                               </td>
-                              <td className="px-2 py-3 text-center text-xs font-medium text-slate-500">{p.age}</td>
-                              <td className="px-2 py-3 text-center text-xs font-medium text-slate-500">${p.salary.toFixed(1)}M</td>
+                              <td className="px-2 py-3 text-center text-sm font-bold text-white">{p.age}</td>
+                              <td className="px-2 py-3 text-center text-sm font-bold text-white">${p.salary.toFixed(1)}M</td>
                               <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2">
                                 <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto cursor-help"} title="Overall Rating">{p.ovr}</div>
                               </td>
@@ -563,8 +562,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                            {tab === 'roster' && (
                              <>
                                <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
-                               <td className="px-2 py-4 text-center text-xs font-bold text-slate-300">{teamStats.age}</td>
-                               <td className="px-2 py-4 text-center font-mono font-black text-slate-200 text-xs">${teamStats.salary.toFixed(1)}M</td>
+                               <td className="px-2 py-4 text-center text-sm font-bold text-white">{teamStats.age}</td>
+                               <td className="px-2 py-4 text-center font-mono font-black text-white text-sm">${teamStats.salary.toFixed(1)}M</td>
                                <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2">
                                    <div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div>
                                </td>
