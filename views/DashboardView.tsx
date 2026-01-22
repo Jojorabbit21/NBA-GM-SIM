@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Sparkles, AlertCircle, CalendarClock, Loader2, ArrowRight } from 'lucide-react';
+import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight } from 'lucide-react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
 import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -518,10 +518,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                     </div>
                     <button 
                         onClick={handleAutoSet}
-                        className="px-6 py-4 rounded-xl border-2 border-orange-500/30 text-orange-500 font-black uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 hover:bg-gradient-to-r hover:from-orange-600 hover:to-amber-500 hover:text-white hover:border-transparent hover:shadow-[0_0_30px_rgba(249,115,22,0.4)] group relative overflow-hidden"
+                        className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-900/40 flex items-center gap-2 transition-all active:scale-95"
                     >
-                        <Sparkles size={18} className="relative z-10 group-hover:animate-pulse group-hover:text-yellow-200 transition-colors" />
-                        <span className="text-sm relative z-10">감독에게 위임</span>
+                        <Wand2 size={16} className="text-violet-200" />
+                        <span className="text-[10px] font-black uppercase tracking-wider">감독에게 위임</span>
                     </button>
                 </div>
                 <div className="p-8 space-y-10">
