@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -145,14 +144,14 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
               <table className="w-full text-left border-collapse table-fixed">
                   <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-md z-20 shadow-sm">
                       <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                          <th className="py-4 px-2 w-[6%] text-center">Rank</th>
-                          <th className="py-4 px-6 w-[24%]">Player</th>
-                          <th className="py-4 px-4 w-[20%]">Team</th>
-                          <th className="py-4 px-2 w-[10%] text-center">POS</th>
-                          <th className="py-4 px-6 w-[10%] text-right border-l border-slate-800">G</th>
-                          <th className="py-4 px-6 w-[10%] text-right border-l border-slate-800">GS</th>
-                          <th className="py-4 px-6 w-[10%] text-right border-l border-slate-800">MP</th>
-                          <th className="py-4 px-6 w-[10%] text-right border-l border-slate-800">{activeStat}</th>
+                          <th className="py-4 px-2 w-[5%] text-center">Rank</th>
+                          <th className="py-4 px-6 w-[28%]">Player</th>
+                          <th className="py-4 px-4 w-[22%]">Team</th>
+                          <th className="py-4 px-2 w-[15%] text-center">POS</th>
+                          <th className="py-4 px-4 w-[7.5%] text-right">G</th>
+                          <th className="py-4 px-4 w-[7.5%] text-right">GS</th>
+                          <th className="py-4 px-4 w-[7.5%] text-right">MP</th>
+                          <th className="py-4 px-6 w-[7.5%] text-right">{activeStat}</th>
                       </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/50">
@@ -179,18 +178,18 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                                       </div>
                                   </td>
                                   <td className="py-4 px-2 text-center align-middle">
-                                      <span className="text-[10px] font-black bg-slate-800 text-slate-400 px-2 py-1 rounded border border-slate-700">{p.position}</span>
+                                      <span className="text-xs font-black bg-slate-800 text-slate-400 px-2 py-1 rounded border border-slate-700">{p.position}</span>
                                   </td>
-                                  <td className="py-4 px-6 text-right align-middle border-l border-slate-800/50 bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
+                                  <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
                                       {p.stats.g}
                                   </td>
-                                  <td className="py-4 px-6 text-right align-middle border-l border-slate-800/50 bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
+                                  <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
                                       {p.stats.gs}
                                   </td>
-                                  <td className="py-4 px-6 text-right align-middle border-l border-slate-800/50 bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
+                                  <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
                                       {mpg}
                                   </td>
-                                  <td className="py-4 px-6 text-right align-middle border-l border-slate-800/50 bg-slate-800/20">
+                                  <td className="py-4 px-6 text-right align-middle bg-slate-800/20">
                                       <span className={`font-black pretendard tracking-tight text-base ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{currentStatDef.format(currentStatDef.getValue(p))}</span>
                                   </td>
                               </tr>
