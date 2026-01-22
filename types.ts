@@ -154,35 +154,7 @@ export interface TradeOffer {
   diffValue: number;
 }
 
-export interface NewsItem {
-  type: 'text' | 'game';
-  text?: string;
-  home?: Team;
-  away?: Team;
-  homeScore?: number;
-  awayScore?: number;
-}
-
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
-
-export interface TacticalSliders {
-  pace: number;
-  offReb: number;
-  defIntensity: number;
-  defReb: number;
-  fullCourtPress: number;
-  zoneUsage: number;
-  rotationFlexibility: number;
-}
-
-export interface GameTactics {
-  offenseTactics: OffenseTactic[];
-  defenseTactics: DefenseTactic[];
-  sliders: TacticalSliders;
-  starters: { PG: string; SG: string; SF: string; PF: string; C: string };
-  minutesLimits: Record<string, number>;
-  stopperId?: string;
-}
 
 export type AppView = 'Dashboard' | 'Standings' | 'Leaderboard' | 'Roster' | 'Schedule' | 'Transactions' | 'Draft' | 'TeamSelect' | 'Onboarding' | 'GamePrep' | 'GameSim' | 'GameResult' | 'Playoffs';
