@@ -1,9 +1,8 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap, Calendar } from 'lucide-react';
-import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game } from '../types';
+import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game, GameTactics } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
-import { GameTactics } from '../services/gameEngine';
 
 export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, userTeamId?: string | null }> = ({ homeTeam, awayTeam, userTeamId }) => {
   const [progress, setProgress] = useState(0);

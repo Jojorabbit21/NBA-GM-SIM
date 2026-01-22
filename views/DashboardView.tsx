@@ -1,8 +1,8 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight } from 'lucide-react';
-import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
-import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
+import { Team, Game, Player, OffenseTactic, DefenseTactic, GameTactics, TacticalSliders } from '../types';
+import { generateAutoTactics } from '../services/gameEngine';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
 import { logEvent } from '../services/analytics'; // Analytics Import
 
