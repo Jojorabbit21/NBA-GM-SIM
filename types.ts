@@ -154,6 +154,15 @@ export interface TradeOffer {
   diffValue: number;
 }
 
+export interface NewsItem {
+  type: 'text' | 'game';
+  text?: string;
+  home?: Team;
+  away?: Team;
+  homeScore?: number;
+  awayScore?: number;
+}
+
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
 
