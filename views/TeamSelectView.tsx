@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Loader2, Wifi, WifiOff, RefreshCw, Database, FileSpreadsheet } from 'lucide-react';
 import { Team } from '../types';
 import { isSupabaseConfigured } from '../services/supabaseClient';
@@ -11,6 +11,19 @@ interface TeamSelectViewProps {
   onReload?: () => void;
   dataSource?: 'DB' | 'CSV';
 }
+
+const LOADING_MESSAGES = [
+    "라커룸을 청소하는 중...",
+    "농구공에 바람 넣는 중...",
+    "림에 새 그물을 다는 중...",
+    "전술 보드를 닦는 중...",
+    "선수들 유니폼 다림질 중...",
+    "스카우팅 리포트 인쇄 중...",
+    "경기장 조명 예열 중...",
+    "마스코트 춤 연습 시키는 중...",
+    "치어리더 대형 맞추는 중...",
+    "단장님 명패 닦는 중..."
+];
 
 const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: string) => void }> = ({ team, colorClass, onSelect }) => (
   <button 
@@ -26,6 +39,20 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
   const eastTeams = useMemo(() => teams.filter(t => t.conference === 'East'), [teams]);
   const westTeams = useMemo(() => teams.filter(t => t.conference === 'West'), [teams]);
   const [isReloading, setIsReloading] = useState(false);
+  const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
+
+  useEffect(() => {
+    if (isInitializing) {
+        const interval = setInterval(() => {
+            setLoadingText(prev => {
+                const currentIndex = LOADING_MESSAGES.indexOf(prev);
+                const nextIndex = (currentIndex + 1) % LOADING_MESSAGES.length;
+                return LOADING_MESSAGES[nextIndex];
+            });
+        }, 800);
+        return () => clearInterval(interval);
+    }
+  }, [isInitializing]);
 
   const handleReload = async () => {
       if (onReload) {
@@ -43,9 +70,10 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
         <div className="fixed inset-0 bg-slate-950/90 z-[100] flex flex-col items-center justify-center backdrop-blur-xl animate-in fade-in duration-300">
            <div className="text-center space-y-8">
              <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto opacity-50" />
-             <div className="space-y-2">
-               <h3 className="text-4xl font-semibold pretendard text-white tracking-tight">데이터 로딩 중...</h3>
-               <p className="text-indigo-400 font-bold uppercase tracking-[0.3em] animate-pulse">SUPABASE DB 연결 확인 중</p>
+             <div className="space-y-3">
+               <p className="text-3xl md:text-4xl font-black pretendard text-white tracking-tight animate-pulse leading-relaxed">
+                 {loadingText}
+               </p>
              </div>
            </div>
         </div>
