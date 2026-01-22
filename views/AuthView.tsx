@@ -10,6 +10,10 @@ const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{4,10}$/;
 // 비밀번호: 6~12자, 최소 1개의 대문자, 숫자, 특수문자 포함
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
+// 세션 만료 시간 (Heartbeat 주기 30초 * 2배 여유 = 1분)
+// 1분 이상 활동이 없으면 죽은 세션으로 간주하고 로그인 허용
+const SESSION_TIMEOUT_MS = 60 * 1000;
+
 export const AuthView: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [identifier, setIdentifier] = useState(''); // Email or Nickname for Login
@@ -113,14 +117,37 @@ export const AuthView: React.FC = () => {
         
         if (error) throw error;
 
-        // 4. (중요) 프로필 데이터 자동 복구 (Self-Healing)
-        // 로그인 성공 후 프로필 테이블에 데이터가 없는 경우 (이전 가입 시 오류 등) 자동 생성 시도
+        // 4. (중요) 중복 로그인 방지 체크 (Hard Lock)
+        // 로그인 성공 후 즉시 프로필 상태를 확인하여 다른 기기 접속 여부 판단
         if (authData.user) {
-            const { data: existingProfile } = await supabase.from('profiles').select('id').eq('id', authData.user.id).maybeSingle();
-            
-            if (!existingProfile) {
+            const { data: userProfile, error: fetchError } = await supabase
+                .from('profiles')
+                .select('active_device_id, last_seen_at')
+                .eq('id', authData.user.id)
+                .single();
+
+            if (!fetchError && userProfile) {
+                const now = Date.now();
+                const lastSeenTime = userProfile.last_seen_at ? new Date(userProfile.last_seen_at).getTime() : 0;
+                
+                // 마지막 활동이 1분 이내라면 접속 중인 것으로 간주 (단, active_device_id가 있을 때)
+                if (userProfile.active_device_id && (now - lastSeenTime < SESSION_TIMEOUT_MS)) {
+                    // 로그아웃 처리 후 에러 발생
+                    await supabase.auth.signOut();
+                    throw new Error("다른 기기에서 접속 중입니다. 해당 기기에서 로그아웃하거나 약 1분 후 다시 시도해주세요.");
+                } else {
+                    // 접속 허용: 현재 기기 정보를 업데이트 (세션 점유)
+                    await supabase
+                        .from('profiles')
+                        .update({ 
+                            active_device_id: 'temp_init_id', // App.tsx에서 진짜 ID로 덮어씌움
+                            last_seen_at: new Date().toISOString()
+                        })
+                        .eq('id', authData.user.id);
+                }
+            } else if (!userProfile) {
+                // 프로필 없음 (자동 복구 시도)
                 console.log("프로필 데이터 누락 감지 - 자동 복구 시도");
-                // 닉네임은 메타데이터 혹은 이메일 앞부분 사용
                 const metaName = authData.user.user_metadata?.nickname;
                 const emailName = authData.user.email?.split('@')[0] || 'User';
                 const nickToSave = metaName || emailName;
@@ -128,7 +155,8 @@ export const AuthView: React.FC = () => {
                 await supabase.from('profiles').upsert({
                     id: authData.user.id,
                     email: authData.user.email,
-                    nickname: nickToSave
+                    nickname: nickToSave,
+                    last_seen_at: new Date().toISOString()
                 }, { onConflict: 'id' });
             }
         }
