@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap } from 'lucide-react';
-import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic } from '../types';
+import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap, Calendar } from 'lucide-react';
+import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { GameTactics } from '../services/gameEngine';
 
@@ -249,16 +249,20 @@ export const GameResultView: React.FC<{
     userTactics: GameTactics; 
     myTeamId: string; 
     recap?: string[];
+    otherGames?: Game[];
   }; 
-  myTeamId: string; 
+  myTeamId: string;
+  teams: Team[]; 
   onFinish: () => void; 
-}> = ({ result, myTeamId, onFinish }) => {
+}> = ({ result, myTeamId, teams, onFinish }) => {
   const isHome = result.myTeamId === result.home.id;
   const won = (isHome && result.homeScore > result.awayScore) || (!isHome && result.awayScore > result.homeScore);
 
   const homeWin = result.homeScore > result.awayScore;
   const homeRecord = `${result.home.wins + (homeWin ? 1 : 0)}W - ${result.home.losses + (!homeWin ? 1 : 0)}L`;
   const awayRecord = `${result.away.wins + (!homeWin ? 1 : 0)}W - ${result.away.losses + (homeWin ? 1 : 0)}L`;
+
+  const getTeamInfo = (id: string) => teams.find(t => t.id === id);
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[120] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard">
@@ -316,10 +320,46 @@ export const GameResultView: React.FC<{
              </div>
          </div>
 
-         <div className="bg-slate-900/80 border border-slate-800 rounded-[3rem] p-10 shadow-2xl backdrop-blur-sm relative z-10">
+         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-10 shadow-2xl backdrop-blur-sm relative z-10">
              <ResultBoxScore team={result.away} box={result.awayBox} isFirst />
              <ResultBoxScore team={result.home} box={result.homeBox} />
          </div>
+
+         {/* Around the League Section */}
+         {result.otherGames && result.otherGames.length > 0 && (
+             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl relative z-10">
+                 <div className="flex items-center gap-3 mb-6">
+                     <div className="p-2 bg-emerald-500/10 rounded-lg"><Calendar size={20} className="text-emerald-400" /></div>
+                     <h3 className="text-xl font-black uppercase text-white tracking-tight">타 구단 경기 결과</h3>
+                 </div>
+                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                     {result.otherGames.map(g => {
+                         const home = getTeamInfo(g.homeTeamId);
+                         const away = getTeamInfo(g.awayTeamId);
+                         if (!home || !away) return null;
+                         const homeWin = (g.homeScore || 0) > (g.awayScore || 0);
+                         return (
+                             <div key={g.id} className="bg-slate-950/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
+                                 <div className="flex justify-between items-center">
+                                     <div className="flex items-center gap-3">
+                                         <img src={away.logo} className="w-6 h-6 object-contain" alt={away.name} />
+                                         <span className={`text-sm font-bold uppercase ${!homeWin ? 'text-white' : 'text-slate-500'}`}>{away.name}</span>
+                                     </div>
+                                     <span className={`text-lg font-black oswald ${!homeWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.awayScore}</span>
+                                 </div>
+                                 <div className="flex justify-between items-center">
+                                     <div className="flex items-center gap-3">
+                                         <img src={home.logo} className="w-6 h-6 object-contain" alt={home.name} />
+                                         <span className={`text-sm font-bold uppercase ${homeWin ? 'text-white' : 'text-slate-500'}`}>{home.name}</span>
+                                     </div>
+                                     <span className={`text-lg font-black oswald ${homeWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.homeScore}</span>
+                                 </div>
+                             </div>
+                         );
+                     })}
+                 </div>
+             </div>
+         )}
 
          <div className="flex justify-center pb-16 relative z-10">
              <button onClick={onFinish} className="px-16 py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black text-xl uppercase tracking-widest shadow-[0_15px_50px_rgba(79,70,229,0.5)] transition-all active:scale-95 flex items-center gap-4">

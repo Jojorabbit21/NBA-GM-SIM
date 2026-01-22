@@ -241,7 +241,8 @@ export function generateAutoTactics(team: Team): GameTactics {
       sliders.zoneUsage = 2;
   }
 
-  const bestDefender = healthy.find(p => p.def > 85 && p.lockdown > 85);
+  // AI Logic Updated: Prioritize PerDef and Steal for Ace Stopper
+  const bestDefender = healthy.find(p => p.perDef > 85 && p.steal > 80);
   let stopperId: string | undefined = undefined;
   if (bestDefender) {
       defTactics.push('AceStopper');
@@ -622,10 +623,19 @@ function simulateTeamPerformance(
       const oppHasStopper = oppTactics?.defenseTactics.includes('AceStopper');
       isAceTarget = !!(oppHasStopper && p.id === acePlayer.id);
 
-      if (isAceTarget) {
-          const effect = -15;
-          fgp *= (1.0 + (effect / 100));
-          matchupEffect = effect;
+      if (isAceTarget && oppTactics?.stopperId) {
+          const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
+          if (stopper) {
+              // UPDATED LOGIC: PerDef determines FGP impact (+10% to -27%)
+              // Low PerDef (40) -> +10% bonus to Ace
+              // High PerDef (99) -> -27% penalty to Ace
+              const perDef = stopper.perDef || 50;
+              let fgpImpact = 10 - ((perDef - 40) * 0.63);
+              fgpImpact = Math.max(-27, Math.min(10, fgpImpact)); 
+
+              fgp *= (1.0 + (fgpImpact / 100));
+              matchupEffect = Math.round(fgpImpact);
+          }
       }
 
       const fgm = Math.round(fga * fgp);
@@ -692,7 +702,18 @@ function simulateTeamPerformance(
       const usageProxy = (fga + ast * 2 + 5);
       const tovAttr = (100 - p.handling) * 0.02 + (100 - p.passIq) * 0.02;
       const tovBase = (usageProxy * C.STATS.TOV_USAGE_FACTOR) + (tovAttr * 0.05); 
-      const tov = Math.round(tovBase * (mp / 48) * (Math.random() * 0.5 + 0.7));
+      let tov = Math.round(tovBase * (mp / 48) * (Math.random() * 0.5 + 0.7));
+
+      // UPDATED LOGIC: Steal increases TOV up to 40%
+      if (isAceTarget && oppTactics?.stopperId) {
+          const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
+          if (stopper) {
+              const stealRating = stopper.steal || 50;
+              // Max 40% increase at 100 steal rating
+              const tovIncrease = (stealRating / 100) * 0.40;
+              tov = Math.round(tov * (1.0 + tovIncrease));
+          }
+      }
 
       const pts = (fgm - p3m) * 2 + p3m * 3 + ftm;
 

@@ -5,6 +5,7 @@ import { Team, Player, TradeOffer } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/gameEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
 import { getTeamLogoUrl, TRADE_DEADLINE } from '../utils/constants';
+import { logEvent } from '../services/analytics'; // Analytics Import
 
 const TAX_LEVEL = 170;
 const FIRST_APRON = 178;
@@ -256,6 +257,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
   const executeTrade = () => {
     if (!pendingTrade || !team) return;
     const { userAssets, targetAssets, targetTeam } = pendingTrade;
+    
+    // Log Trade Analytics
+    logEvent('Trade', 'Execute', `${team.name} <-> ${targetTeam.name}`);
+
     setTeams(prevTeams => prevTeams.map(t => {
       if (t.id === team.id) {
         const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
@@ -284,6 +289,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
 
   const handleSearchBlockOffers = () => {
     if (blockSelectedIds.size === 0 || isTradeDeadlinePassed) return;
+    
+    logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}`); // Analytics Event
+
     setBlockIsProcessing(true); setBlockSearchPerformed(true);
     setTimeout(() => {
       const targetPlayers = (team?.roster || []).filter(p => blockSelectedIds.has(p.id));
@@ -302,6 +310,9 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
 
   const handleRequestRequirements = () => {
     if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) return;
+    
+    logEvent('Trade', 'Request Proposal', `Target Team: ${proposalTargetTeamId}`); // Analytics Event
+
     setProposalIsProcessing(true); setProposalSearchPerformed(true);
     setTimeout(() => {
       const targetTeam = teams.find(t => t.id === proposalTargetTeamId);
