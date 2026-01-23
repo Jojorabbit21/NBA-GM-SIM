@@ -80,7 +80,6 @@ export interface Player {
   def: number; // Average of below
   intDef: number;
   perDef: number;
-  lockdown: number;
   steal: number;
   blk: number;
   helpDefIq: number;
