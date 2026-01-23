@@ -5,9 +5,29 @@ import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game } from '../typ
 import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { GameTactics } from '../services/gameEngine';
 
+const SIMULATION_MESSAGES = [
+    "코칭 스태프가 머리를 맞대는 중...",
+    "선수들이 작전 타임에 물 마시는 중...",
+    "심판이 애매한 판정을 비디오 판독 중...",
+    "관중들이 파도를 타는 중...",
+    "마스코트가 하프코트 슛을 시도 중...",
+    "상대 팀 감독이 심판에게 항의하는 중...",
+    "치어리더가 분위기를 띄우는 중...",
+    "에이스가 신발 끈을 고쳐 매는 중...",
+    "골대 그물을 수선하는 중...",
+    "해설진이 흥분하여 소리치는 중...",
+    "코트 바닥의 땀을 닦는 중...",
+    "전력분석관이 태블릿을 두드리는 중...",
+    "벤치 멤버들이 수건을 돌리는 중...",
+    "팬들이 야유를 퍼붓는 중...",
+    "감독이 작전판에 열정적으로 그림 그리는 중...",
+    "치어리더가 관중석으로 티셔츠 쏘는 중..."
+];
+
 export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, userTeamId?: string | null }> = ({ homeTeam, awayTeam, userTeamId }) => {
   const [progress, setProgress] = useState(0);
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
+  const [currentMessage, setCurrentMessage] = useState(SIMULATION_MESSAGES[Math.floor(Math.random() * SIMULATION_MESSAGES.length)]);
   
   useEffect(() => {
     const timer = setInterval(() => setProgress(p => (p >= 100 ? 100 : p + 1)), 30);
@@ -25,7 +45,18 @@ export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, user
             return [...prev.slice(-30), { id: Date.now(), x, y, isMake }];
         });
     }, 150);
-    return () => { clearInterval(timer); clearInterval(shotTimer); };
+
+    const msgTimer = setInterval(() => {
+        setCurrentMessage(prev => {
+            let next;
+            do {
+                next = SIMULATION_MESSAGES[Math.floor(Math.random() * SIMULATION_MESSAGES.length)];
+            } while (next === prev && SIMULATION_MESSAGES.length > 1);
+            return next;
+        });
+    }, 1200);
+
+    return () => { clearInterval(timer); clearInterval(shotTimer); clearInterval(msgTimer); };
   }, []);
 
   if (!homeTeam || !awayTeam) return null;
@@ -73,7 +104,9 @@ export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, user
           <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 shadow-inner">
              <div className="bg-indigo-500 h-full transition-all duration-300 shadow-[0_0_15px_rgba(99,102,241,0.6)]" style={{ width: `${progress}%` }}></div>
           </div>
-          <p className="text-indigo-400 font-black uppercase tracking-[0.3em] text-center animate-pulse oswald text-sm">Engine simulating plays...</p>
+          <p className="text-indigo-400 font-black uppercase tracking-widest text-center animate-pulse oswald text-sm ko-tight">
+            {currentMessage}
+          </p>
         </div>
       </div>
     </div>

@@ -92,6 +92,7 @@ export interface Player {
   defReb: number;
 
   stats: SeasonStats;
+  playoffStats: SeasonStats; // Added for Playoff Tracking
 }
 
 export interface PlayerBoxScore extends SeasonStats {
@@ -146,6 +147,20 @@ export interface PlayoffSeries {
   targetWins?: number; // Default 4 for playoffs, 1 for play-in
 }
 
+export interface Transaction {
+  id: string;
+  date: string;
+  type: 'Trade' | 'Sign' | 'Release' | 'Draft';
+  teamId: string; // My team
+  description: string;
+  details?: {
+     acquired: {id: string, name: string, ovr?: number, position?: string}[];
+     traded: {id: string, name: string, ovr?: number, position?: string}[];
+     partnerTeamId?: string;
+     partnerTeamName?: string;
+  }
+}
+
 export interface TradeOffer {
   teamId: string;
   teamName: string;
@@ -156,4 +171,4 @@ export interface TradeOffer {
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
 
-export type AppView = 'Dashboard' | 'Standings' | 'Leaderboard' | 'Roster' | 'Schedule' | 'Transactions' | 'Draft' | 'TeamSelect' | 'Onboarding' | 'GamePrep' | 'GameSim' | 'GameResult' | 'Playoffs';
+export type AppView = 'Dashboard' | 'Standings' | 'Leaderboard' | 'Roster' | 'Schedule' | 'Transactions' | 'Draft' | 'TeamSelect' | 'Onboarding' | 'GamePrep' | 'GameSim' | 'GameResult' | 'Playoffs' | 'SeasonReview' | 'PlayoffReview';

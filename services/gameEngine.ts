@@ -58,10 +58,13 @@ export const TRADE_CONFIG = {
 
 export const SIM_CONFIG = {
     GAME_ENV: {
-        BASE_POSSESSIONS: 84,
+        // [Balance Patch v2] Increased base possessions from 75 to 80.
+        // Prevents extremely low FGA (e.g., < 60) when using low pace settings.
+        BASE_POSSESSIONS: 80, 
         HOME_ADVANTAGE: 0.02,
-        PACE_SLIDER_IMPACT: 0.035,
-        SCORING_MODIFIER: 0.95,
+        // [Balance Patch v2] Adjusted slider impact to 0.02 (Range: -8% to +10%)
+        PACE_SLIDER_IMPACT: 0.02, 
+        SCORING_MODIFIER: 0.96,
     },
     FATIGUE: {
         DRAIN_BASE: 1.8,
@@ -90,7 +93,7 @@ export const SIM_CONFIG = {
         CONTESTED_PENALTY: 0.15,
     },
     STATS: {
-        REB_BASE_FACTOR: 0.21,
+        REB_BASE_FACTOR: 0.23,
         AST_BASE_FACTOR: 0.14,
         STL_BASE_FACTOR: 0.036,
         BLK_GUARD_FACTOR: 0.035,
@@ -241,7 +244,6 @@ export function generateAutoTactics(team: Team): GameTactics {
       sliders.zoneUsage = 2;
   }
 
-  // AI Logic Updated: Prioritize PerDef and Steal for Ace Stopper
   const bestDefender = healthy.find(p => p.perDef > 85 && p.steal > 80);
   let stopperId: string | undefined = undefined;
   if (bestDefender) {
@@ -457,11 +459,12 @@ function simulateTeamPerformance(
 
     if (teamTactics) {
       teamTactics.offenseTactics.forEach(tactic => {
-        if (tactic === 'PaceAndSpace') { tacticPerimeterBonus += 0.08; tacticPaceBonus += 0.05; tacticDrainMult += 0.1; } 
+        // [Balance Patch v2] Reduced negative impact of Grind/PostFocus to keep floor reasonable
+        if (tactic === 'PaceAndSpace') { tacticPerimeterBonus += 0.08; tacticPaceBonus += 0.03; tacticDrainMult += 0.1; } 
         else if (tactic === 'PerimeterFocus') { tacticPerimeterBonus += 0.06; }
-        else if (tactic === 'PostFocus') { tacticInteriorBonus += 0.08; tacticPaceBonus -= 0.05; }
-        else if (tactic === 'SevenSeconds') { tacticPerimeterBonus += 0.10; tacticPaceBonus += 0.14; tacticDrainMult += 0.15; } 
-        else if (tactic === 'Grind') { tacticPaceBonus -= 0.20; }
+        else if (tactic === 'PostFocus') { tacticInteriorBonus += 0.08; tacticPaceBonus -= 0.03; } // Was -0.05
+        else if (tactic === 'SevenSeconds') { tacticPerimeterBonus += 0.10; tacticPaceBonus += 0.08; tacticDrainMult += 0.15; } 
+        else if (tactic === 'Grind') { tacticPaceBonus -= 0.06; } // Was -0.15
       });
       
       teamTactics.defenseTactics.forEach(tactic => {
@@ -482,7 +485,7 @@ function simulateTeamPerformance(
 
     const totalUsageWeight = healthyPlayers.reduce((sum, p) => {
         const mp = minutesMap[p.id] || 0;
-        let w = Math.pow(p.ovr, 3) * (p.offConsist / 50) * mp; 
+        let w = Math.pow(p.ovr, 2.75) * (p.offConsist / 50) * mp; 
         if (teamTactics?.offenseTactics.includes('PostFocus')) {
              if (p.position === 'C' || p.position === 'PF') w *= 1.4;
              if (p.closeShot > 80) w *= 1.1; 
@@ -578,7 +581,7 @@ function simulateTeamPerformance(
       const mentalFortitude = (p.intangibles || 50) / 100; 
       const effectivePerfDrop = (fatiguePerfPenalty + inGameFatiguePenalty) * (1 - (mentalFortitude * 0.5));
 
-      let pUsage = (Math.pow(p.ovr, 3) * (p.offConsist / 50) * mp * (p.shotIq / 75));
+      let pUsage = (Math.pow(p.ovr, 2.75) * (p.offConsist / 50) * mp * (p.shotIq / 75));
       if (teamTactics?.offenseTactics.includes('PostFocus')) {
           if (p.position === 'C' || p.position === 'PF') pUsage *= 1.4;
           if (p.closeShot > 80) pUsage *= 1.1;
@@ -626,9 +629,6 @@ function simulateTeamPerformance(
       if (isAceTarget && oppTactics?.stopperId) {
           const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
           if (stopper) {
-              // UPDATED LOGIC: PerDef determines FGP impact (+10% to -27%)
-              // Low PerDef (40) -> +10% bonus to Ace
-              // High PerDef (99) -> -27% penalty to Ace
               const perDef = stopper.perDef || 50;
               let fgpImpact = 10 - ((perDef - 40) * 0.63);
               fgpImpact = Math.max(-27, Math.min(10, fgpImpact)); 
@@ -640,8 +640,46 @@ function simulateTeamPerformance(
 
       const fgm = Math.round(fga * fgp);
 
-      const p3Tendency = (threeAvg / 100) * (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds') ? 1.4 : 1.0);
-      let p3a = Math.round(fga * p3Tendency * 0.55); 
+      // =====================================================================================
+      // [Balance Patch v3] 3-Point Tendency Overhaul (Tier-based + Attribute Context)
+      // Fixes issue where non-shooters (e.g., Giannis) take too many 3s due to volume/tactics.
+      // =====================================================================================
+      
+      // 1. Base Tier Logic (Exponential Falloff)
+      let base3PTendency = 0;
+      if (threeAvg >= 90) base3PTendency = 0.55;      // Elite (Curry)
+      else if (threeAvg >= 85) base3PTendency = 0.45; // High Volume
+      else if (threeAvg >= 80) base3PTendency = 0.35; // Good
+      else if (threeAvg >= 75) base3PTendency = 0.20; // Average
+      else if (threeAvg >= 70) base3PTendency = 0.10; // Occasional (Giannis Range)
+      else base3PTendency = 0.02;                     // Non-Shooter
+
+      // 2. Attribute Context (Inside vs Outside Dominance)
+      // If Inside Scoring is significantly better than 3PT, reduce 3PT tendency by 50%
+      if (p.ins > threeAvg + 15) {
+          base3PTendency *= 0.5; 
+      }
+
+      // 3. Tactical Multipliers (Scale existing tendency instead of adding flat value)
+      let tacticMult = 1.0;
+      if (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds')) {
+          tacticMult = 1.4; 
+      }
+      if (teamTactics?.offenseTactics.includes('PerimeterFocus')) {
+          if (threeAvg > 80) tacticMult = 1.3; // Shooters shoot more
+          else tacticMult = 0.8;               // Non-shooters clear out
+      }
+
+      // 4. Calculate Attempts
+      let p3a = Math.round(fga * base3PTendency * tacticMult);
+
+      // 5. Hard Caps & Sanity Checks
+      // Force low volume for bad shooters regardless of tactics
+      if (threeAvg < 65) p3a = Math.min(p3a, 1);
+      if (threeAvg < 75) p3a = Math.min(p3a, 6); 
+
+      // =====================================================================================
+
       const p3p = Math.min(0.50, Math.max(0.20, 
          C.SHOOTING.THREE_BASE_PCT 
          + ((threeAvg - oppDefMetrics.perDef) * C.SHOOTING.THREE_DEF_IMPACT) 
@@ -704,12 +742,10 @@ function simulateTeamPerformance(
       const tovBase = (usageProxy * C.STATS.TOV_USAGE_FACTOR) + (tovAttr * 0.05); 
       let tov = Math.round(tovBase * (mp / 48) * (Math.random() * 0.5 + 0.7));
 
-      // UPDATED LOGIC: Steal increases TOV up to 40%
       if (isAceTarget && oppTactics?.stopperId) {
           const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
           if (stopper) {
               const stealRating = stopper.steal || 50;
-              // Max 40% increase at 100 steal rating
               const tovIncrease = (stealRating / 100) * 0.40;
               tov = Math.round(tov * (1.0 + tovIncrease));
           }

@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
   RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Copy, Check, X, BarChart3,
   MonitorX, Lock
 } from 'lucide-react';
-import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries } from './types';
+import { AppView, Team, Game, PlayerBoxScore, PlayoffSeries, Transaction } from './types';
 import { 
   INITIAL_TEAMS_DATA, getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, mapDatabaseScheduleToRuntimeGame,
@@ -14,7 +15,7 @@ import {
 import { simulateGame, GameTactics, RosterUpdate } from './services/gameEngine';
 // Import generateGameRecapNews to fix missing import
 import { generateNewsTicker, generateOwnerWelcome, generateGameRecapNews } from './services/geminiService';
-import { initGA, logPageView } from './services/analytics'; // Analytics Import
+import { initGA, logPageView, logEvent, logError } from './services/analytics'; // Analytics Import
 import { NavItem, Toast } from './components/SharedComponents';
 import { TeamSelectView } from './views/TeamSelectView';
 import { DashboardView } from './views/DashboardView';
@@ -26,6 +27,8 @@ import { PlayoffsView } from './views/PlayoffsView';
 import { GameSimulatingView, GameResultView } from './views/GameViews';
 import { OnboardingView } from './views/OnboardingView';
 import { LeaderboardView } from './views/LeaderboardView';
+import { SeasonReviewView } from './views/SeasonReviewView'; // New Import
+import { PlayoffReviewView } from './views/PlayoffReviewView'; // New Import
 import { supabase } from './services/supabaseClient';
 import { AuthView } from './views/AuthView';
 
@@ -55,6 +58,7 @@ const App: React.FC = () => {
   const [schedule, setSchedule] = useState<Game[]>([]);
   const [playoffSeries, setPlayoffSeries] = useState<PlayoffSeries[]>([]);
   const [userTactics, setUserTactics] = useState<GameTactics>(DEFAULT_TACTICS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]); // Transaction History State
   const [news, setNews] = useState<NewsItem[]>([{ type: 'text', content: "NBA 2025-26 시즌 구단 운영 시스템 활성화 완료." }]);
   const [activeGame, setActiveGame] = useState<Game | null>(null);
   const [lastGameResult, setLastGameResult] = useState<any>(null);
@@ -152,9 +156,6 @@ const App: React.FC = () => {
             if (shouldBlock) {
                 setIsDuplicateSession(true);
                 setIsSessionVerifying(false);
-                // 여기서 return하면 구독 설정이 안 되므로, 차단 상태에서도 구독은 해야 함 (다른 기기가 나가면 알 수 있게?)
-                // 하지만 현재 로직상 차단된 상태에서는 Heartbeat를 안 보내는 게 중요.
-                // "여기서 접속하기"를 누르면 강제로 update를 날려서 뺏어올 것임.
             } else {
                 // 2. 세션 점유 (Claim)
                 await supabase
@@ -206,8 +207,9 @@ const App: React.FC = () => {
                 }
             }, 10000); // 10초마다 갱신
 
-        } catch (err) {
+        } catch (err: any) {
             console.error("Session verification failed:", err);
+            logError('Auth', `Session verification failed: ${err.message}`);
             setIsSessionVerifying(false); 
         }
     };
@@ -254,8 +256,9 @@ const App: React.FC = () => {
           
           setIsDuplicateSession(false);
           setIsSessionVerifying(false);
-      } catch (e) {
+      } catch (e: any) {
           console.error("Force login failed", e);
+          logError('Auth', `Force login failed: ${e.message}`);
           setIsSessionVerifying(false);
       }
   };
@@ -271,6 +274,7 @@ const App: React.FC = () => {
       
       if (error || !dbPlayers || dbPlayers.length === 0) {
           console.warn("Supabase Load Failed, using fallback CSVs.");
+          logError('Data Load', 'Supabase roster load failed, falling back to CSV');
           source = 'CSV';
           const rosterFiles = ['roster_atlantic.csv', 'roster_central.csv', 'roster_southeast.csv', 'roster_northwest.csv', 'roster_pacific.csv', 'roster_southwest.csv'];
           for (const file of rosterFiles) {
@@ -281,7 +285,10 @@ const App: React.FC = () => {
                       const parsed = parseCSVToObjects(txt);
                       combinedPlayers.push(...parsed);
                   }
-              } catch (e) { console.error(`CSV Load Error for ${file}`, e); }
+              } catch (e: any) { 
+                  console.error(`CSV Load Error for ${file}`, e);
+                  logError('Data Load', `CSV fallback failed for ${file}: ${e.message}`);
+              }
           }
       } else {
           combinedPlayers = dbPlayers;
@@ -317,8 +324,9 @@ const App: React.FC = () => {
         logo: getTeamLogoUrl(t.id)
       }));
       setTeams(initializedTeams);
-    } catch (err) { 
+    } catch (err: any) { 
       console.error("Critical Roster Loading Error:", err); 
+      logError('Data Load', `Critical Roster Loading Error: ${err.message}`);
     }
   }, []);
 
@@ -349,13 +357,17 @@ const App: React.FC = () => {
                 setCurrentSimDate(gd.currentSimDate);
                 setUserTactics(gd.tactics || DEFAULT_TACTICS);
                 setPlayoffSeries(gd.playoffSeries || []);
+                setTransactions(gd.transactions || []); // Load transactions
                 setRosterTargetId(saveData.team_id);
                 setIsDataLoaded(true);
                 setView('Dashboard');
                 setToastMessage("저장된 게임을 불러왔습니다.");
                 setHasWritePermission(true);
             }
-        } catch (err) { console.error("Auto-load failed:", err); } 
+        } catch (err: any) { 
+            console.error("Auto-load failed:", err);
+            logError('Data Load', `Auto-load save failed: ${err.message}`);
+        } 
         finally { setIsInitializing(false); }
     };
     checkExistingSave();
@@ -364,6 +376,10 @@ const App: React.FC = () => {
   const handleTeamSelection = useCallback(async (teamId: string) => {
     if (!session?.user) return;
     if (isDataLoaded && myTeamId) { setRosterTargetId(teamId); return; }
+
+    // [Analytics] Log Team Selection
+    const selectedTeamData = INITIAL_TEAMS_DATA.find(t => t.id === teamId);
+    logEvent('Game Start', 'Team Selected', selectedTeamData ? `${selectedTeamData.city} ${selectedTeamData.name}` : teamId);
 
     setIsInitializing(true);
     setMyTeamId(teamId);
@@ -383,7 +399,10 @@ const App: React.FC = () => {
                 from += step;
             } else more = false;
         }
-    } catch (e) { console.error("Schedule Fetch Exception:", e); }
+    } catch (e: any) { 
+        console.error("Schedule Fetch Exception:", e); 
+        logError('Data Load', `Schedule Fetch Error: ${e.message}`);
+    }
     
     if (allScheduleRows.length > 0) loadedSchedule = mapDatabaseScheduleToRuntimeGame(allScheduleRows);
     else {
@@ -393,7 +412,10 @@ const App: React.FC = () => {
                 const txt = await res.text();
                 loadedSchedule = mapDatabaseScheduleToRuntimeGame(parseCSVToObjects(txt));
             }
-        } catch (e) { console.error("Schedule CSV Fallback Failed", e); }
+        } catch (e: any) { 
+            console.error("Schedule CSV Fallback Failed", e); 
+            logError('Data Load', `Schedule CSV Fallback Failed: ${e.message}`);
+        }
     }
 
     if (loadedSchedule.length > 0) {
@@ -421,15 +443,23 @@ const App: React.FC = () => {
         const { error } = await supabase.from('saves').upsert({ 
             user_id: session.user.id, 
             team_id: myTeamId, 
-            game_data: { teams, schedule, currentSimDate, tactics: userTactics, playoffSeries },
+            game_data: { 
+                teams, 
+                schedule, 
+                currentSimDate, 
+                tactics: userTactics, 
+                playoffSeries,
+                transactions // Save transactions
+            },
             updated_at: new Date()
         }, { onConflict: 'user_id, team_id' });
         if (error) {
             if (error.code === '42501' || error.code === '42P01') setHasWritePermission(false);
             setToastMessage("클라우드 저장 실패! 네트워크 상태를 확인하세요.");
+            logError('Cloud Save', `Save failed: ${error.message}`);
         }
         setIsSaving(false);
-  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, session, hasWritePermission, isDuplicateSession]);
+  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, transactions, session, hasWritePermission, isDuplicateSession]);
 
   useEffect(() => {
     const timeoutId = setTimeout(saveToCloud, 3000);
@@ -442,10 +472,12 @@ const App: React.FC = () => {
     const { error } = await supabase.from('saves').delete().eq('user_id', session.user.id).eq('team_id', myTeamId);
     if (error) {
         setToastMessage("초기화 실패. 서버 연결을 확인하세요.");
+        logError('Data Reset', `Reset failed: ${error.message}`);
         setAuthLoading(false);
         return;
     }
-    setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setUserTactics(DEFAULT_TACTICS);
+    logEvent('System', 'Hard Reset');
+    setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setUserTactics(DEFAULT_TACTICS); setTransactions([]);
     setNews([{ type: 'text', content: "NBA 2025-26 시즌 구단 운영 시스템 활성화 완료." }]);
     setCurrentSimDate(SEASON_START_DATE);
     setLastGameResult(null); setActiveGame(null); setIsDataLoaded(false); 
@@ -463,7 +495,7 @@ const App: React.FC = () => {
         await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id);
     }
     await supabase.auth.signOut();
-    setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); 
+    setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setTransactions([]);
     setIsDataLoaded(false); setView('TeamSelect');
     setIsDuplicateSession(false);
   };
@@ -478,6 +510,10 @@ const App: React.FC = () => {
     a.setAttribute('download', `nba_schedule_${myTeamId}.csv`);
     a.click();
     setToastMessage("일정이 CSV 파일로 저장되었습니다.");
+  };
+
+  const addTransaction = (t: Transaction) => {
+      setTransactions(prev => [t, ...prev]);
   };
 
   // REVISED: Handle Simulation for ALL games on the CURRENT date + Advance Date
@@ -553,30 +589,38 @@ const App: React.FC = () => {
                   const update = rosterUpdates[p.id];
                   const box = boxScore.find(b => b.playerId === p.id);
                   
-                  const newStats = { ...p.stats };
+                  // Decide which stats to update based on game type
+                  const isPlayoffGame = game.isPlayoff;
+                  
+                  let newRegularStats = { ...p.stats };
+                  let newPlayoffStats = { ...p.playoffStats } || { ...newRegularStats, g:0, gs:0, mp:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0, offReb:0, defReb:0 };
+
+                  const targetStats = isPlayoffGame ? newPlayoffStats : newRegularStats;
+
                   if (box) {
-                      newStats.g += 1;
-                      newStats.gs += box.gs;
-                      newStats.mp += box.mp;
-                      newStats.pts += box.pts;
-                      newStats.reb += box.reb;
-                      newStats.offReb += box.offReb || 0;
-                      newStats.defReb += box.defReb || 0;
-                      newStats.ast += box.ast;
-                      newStats.stl += box.stl;
-                      newStats.blk += box.blk;
-                      newStats.tov += box.tov;
-                      newStats.fgm += box.fgm;
-                      newStats.fga += box.fga;
-                      newStats.p3m += box.p3m;
-                      newStats.p3a += box.p3a;
-                      newStats.ftm += box.ftm;
-                      newStats.fta += box.fta;
+                      targetStats.g += 1;
+                      targetStats.gs += box.gs;
+                      targetStats.mp += box.mp;
+                      targetStats.pts += box.pts;
+                      targetStats.reb += box.reb;
+                      targetStats.offReb += box.offReb || 0;
+                      targetStats.defReb += box.defReb || 0;
+                      targetStats.ast += box.ast;
+                      targetStats.stl += box.stl;
+                      targetStats.blk += box.blk;
+                      targetStats.tov += box.tov;
+                      targetStats.fgm += box.fgm;
+                      targetStats.fga += box.fga;
+                      targetStats.p3m += box.p3m;
+                      targetStats.p3a += box.p3a;
+                      targetStats.ftm += box.ftm;
+                      targetStats.fta += box.fta;
                   }
 
                   return {
                       ...p,
-                      stats: newStats,
+                      stats: newRegularStats,
+                      playoffStats: newPlayoffStats,
                       condition: update?.condition ?? p.condition,
                       health: update?.health ?? p.health,
                       injuryType: update?.injuryType ?? p.injuryType,
@@ -654,6 +698,14 @@ const App: React.FC = () => {
 
       // 7. Generate Recap & Transition View (User Game)
       if (userGameResult) {
+          const homeWin = userGameResult.homeScore > userGameResult.awayScore;
+          const isUserWin = (userGameResult.myTeamId === userGameResult.home.id && homeWin) || (userGameResult.myTeamId === userGameResult.away.id && !homeWin);
+          const opponentName = userGameResult.myTeamId === userGameResult.home.id ? userGameResult.away.name : userGameResult.home.name;
+          
+          // [Analytics] Log Game Result
+          logEvent('Simulation', 'Game Result', isUserWin ? 'Win' : 'Loss');
+          logEvent('Simulation', 'Game Opponent', opponentName);
+
           const recap = await generateGameRecapNews({
               home: userGameResult.home,
               away: userGameResult.away,
@@ -740,6 +792,19 @@ const App: React.FC = () => {
 
   if (view === 'Onboarding') return <OnboardingView team={myTeam!} onComplete={() => setView('Dashboard')} />;
 
+  if (view === 'SeasonReview' && myTeam) {
+      return (
+        <SeasonReviewView 
+            team={myTeam} 
+            teams={teams} 
+            transactions={transactions} // 전달!
+            onBack={() => setView('Dashboard')} 
+        />
+      );
+  }
+
+  if (view === 'PlayoffReview' && myTeam) return <PlayoffReviewView team={myTeam} teams={teams} playoffSeries={playoffSeries} schedule={schedule} onBack={() => setView('Dashboard')} />;
+
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
@@ -807,6 +872,9 @@ const App: React.FC = () => {
                     onUpdateTactics={setUserTactics} 
                     currentSimDate={currentSimDate} 
                     isSimulating={isSimulating}
+                    onShowSeasonReview={() => setView('SeasonReview')}
+                    onShowPlayoffReview={() => setView('PlayoffReview')}
+                    hasPlayoffHistory={true} 
                 />
             )}
             {view === 'Roster' && <RosterView allTeams={teams} myTeamId={myTeamId!} initialTeamId={rosterTargetId} />}
@@ -814,7 +882,16 @@ const App: React.FC = () => {
             {view === 'Leaderboard' && <LeaderboardView teams={teams} />}
             {view === 'Playoffs' && <PlayoffsView teams={teams} schedule={schedule} series={playoffSeries} setSeries={setPlayoffSeries} setSchedule={setSchedule} myTeamId={myTeamId!} />}
             {view === 'Schedule' && <ScheduleView schedule={schedule} teamId={myTeamId!} teams={teams} onExport={handleExport} currentSimDate={currentSimDate} />}
-            {view === 'Transactions' && myTeam && <TransactionsView team={myTeam} teams={teams} setTeams={setTeams} addNews={n => setNews(p => [...n.map(txt => ({ type: 'text', content: txt } as NewsItem)), ...p].slice(0, 15))} onShowToast={setToastMessage} currentSimDate={currentSimDate} />}
+            {view === 'Transactions' && myTeam && <TransactionsView 
+                team={myTeam} 
+                teams={teams} 
+                setTeams={setTeams} 
+                addNews={n => setNews(p => [...n.map(txt => ({ type: 'text', content: txt } as NewsItem)), ...p].slice(0, 15))} 
+                onShowToast={setToastMessage} 
+                currentSimDate={currentSimDate}
+                transactions={transactions} 
+                onAddTransaction={addTransaction}
+            />}
             </div>
         </main>
 

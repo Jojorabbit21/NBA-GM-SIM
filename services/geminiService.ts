@@ -2,6 +2,7 @@
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
 import { PlayerBoxScore } from '../types';
 import { GameTactics } from './gameEngine'; 
+import { logError } from './analytics'; // Analytics Import
 
 async function retryWithBackoff<T>(
   operation: () => Promise<T>,
@@ -162,8 +163,10 @@ export async function generateGameRecapNews(gameResult: {
     const isQuota = error?.status === 429 || error?.status === 'RESOURCE_EXHAUSTED' || error?.message?.includes('quota');
     if (isQuota) {
       console.warn("Gemini API quota exceeded (Game Recap). Using fallback content.");
+      logError('Gemini API', 'Quota Exceeded');
     } else {
       console.error("Gemini Error (Game Recap):", error);
+      logError('Gemini API', `Game Recap Generation Failed: ${error.message}`);
     }
     return fallbackRecap;
   }

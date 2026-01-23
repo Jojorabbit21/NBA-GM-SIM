@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight } from 'lucide-react';
+import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight, Crown, Medal, TrendingUp, Quote, X, Trophy, BarChart3 } from 'lucide-react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
 import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -15,6 +15,9 @@ interface DashboardViewProps {
   onUpdateTactics: (t: GameTactics) => void;
   currentSimDate?: string;
   isSimulating?: boolean;
+  onShowSeasonReview: () => void;
+  onShowPlayoffReview: () => void;
+  hasPlayoffHistory?: boolean; // New Prop
 }
 
 const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
@@ -66,7 +69,7 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
   </div>
 );
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, schedule, onSim, tactics, onUpdateTactics, currentSimDate, isSimulating }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, schedule, onSim, tactics, onUpdateTactics, currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false }) => {
   // Find the next game for the user's team
   const nextGame = useMemo(() => {
     if (!team?.id) return undefined;
@@ -246,6 +249,58 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
   return (
     <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-10">
       {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
+      
+      {/* Review Banners Section */}
+      <div className="w-full max-w-[1900px] flex flex-col md:flex-row gap-6 animate-in slide-in-from-top-4 duration-500">
+          
+          {/* Season Review Banner (Updated to BarChart3 Icon) */}
+          <div className="flex-1 bg-gradient-to-br from-orange-600 to-red-600 rounded-3xl p-1 shadow-[0_10px_40px_rgba(234,88,12,0.3)] border border-orange-400/50 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-white/20 transition-colors"></div>
+              <div className="bg-orange-950/20 backdrop-blur-sm rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
+                  <div className="flex items-center gap-5">
+                      <div className="p-3 bg-white/20 rounded-2xl border border-white/20 shadow-inner">
+                          <BarChart3 size={28} className="text-white" />
+                      </div>
+                      <div>
+                          <h3 className="text-xl font-black text-white uppercase tracking-wider oswald">Regular Season</h3>
+                          <p className="text-xs font-bold text-orange-100 mt-1">2025-26 정규리그 기록 및 분석</p>
+                      </div>
+                  </div>
+                  <button 
+                      onClick={onShowSeasonReview}
+                      className="px-8 py-3 bg-white text-orange-600 hover:bg-orange-50 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-3 border border-white/50 group/btn w-full md:w-auto justify-center"
+                  >
+                      시즌 리뷰 <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
+                  </button>
+              </div>
+          </div>
+
+          {/* Playoff Review Banner - Conditionally Rendered (Updated to Trophy Icon) */}
+          {hasPlayoffHistory && (
+            <div className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-1 shadow-lg border border-indigo-400/50 relative overflow-hidden group animate-in slide-in-from-right-4 duration-500">
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-white/20 transition-colors"></div>
+                <div className="bg-indigo-950/40 backdrop-blur-sm rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
+                    <div className="flex items-center gap-5">
+                        <div className="p-3 bg-white/20 rounded-2xl border border-white/20 shadow-inner animate-pulse-subtle">
+                            <Trophy size={28} className="text-white fill-white" />
+                        </div>
+                        <div>
+                            <h3 className="text-xl font-black text-white uppercase tracking-wider oswald">Playoff Results</h3>
+                            <p className="text-xs font-bold text-indigo-100/80 mt-1">2026 포스트시즌 최종 결산</p>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={onShowPlayoffReview}
+                        className="px-8 py-3 bg-white text-indigo-700 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-50 transition-all shadow-xl active:scale-95 flex items-center gap-3 w-full md:w-auto justify-center"
+                    >
+                        플레이오프 리뷰 <Crown size={14} className="fill-indigo-700" />
+                    </button>
+                </div>
+            </div>
+          )}
+
+      </div>
+
       <div className="w-full max-w-[1900px] bg-slate-900/60 border border-white/10 rounded-3xl shadow-[0_50px_120px_rgba(0,0,0,0.8)] backdrop-blur-3xl overflow-hidden flex flex-col">
         {/* Header Section */}
         <div className="px-8 py-8 border-b border-white/5 bg-white/5 flex flex-col lg:flex-row items-center justify-between gap-8">
