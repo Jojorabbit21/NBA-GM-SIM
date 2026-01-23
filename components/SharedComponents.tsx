@@ -172,7 +172,6 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
         { label: "DEFENSE", val: player.def },
         { label: "INTERIOR", val: player.intDef },
         { label: "PERIMETER", val: player.perDef },
-        { label: "LOCKDOWN", val: player.lockdown },
         { label: "STEAL", val: player.steal },
         { label: "BLOCK", val: player.blk },
         { label: "DEF IQ", val: player.helpDefIq },

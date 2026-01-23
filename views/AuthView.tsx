@@ -117,35 +117,15 @@ export const AuthView: React.FC = () => {
         
         if (error) throw error;
 
-        // 4. (중요) 중복 로그인 방지 체크 (Hard Lock)
-        // 로그인 성공 후 즉시 프로필 상태를 확인하여 다른 기기 접속 여부 판단
+        // 4. 프로필 데이터 확인 및 복구 (중복 로그인 차단 로직은 제거됨 -> App.tsx에서 처리)
         if (authData.user) {
             const { data: userProfile, error: fetchError } = await supabase
                 .from('profiles')
-                .select('active_device_id, last_seen_at')
+                .select('id')
                 .eq('id', authData.user.id)
                 .single();
 
-            if (!fetchError && userProfile) {
-                const now = Date.now();
-                const lastSeenTime = userProfile.last_seen_at ? new Date(userProfile.last_seen_at).getTime() : 0;
-                
-                // 마지막 활동이 1분 이내라면 접속 중인 것으로 간주 (단, active_device_id가 있을 때)
-                if (userProfile.active_device_id && (now - lastSeenTime < SESSION_TIMEOUT_MS)) {
-                    // 로그아웃 처리 후 에러 발생
-                    await supabase.auth.signOut();
-                    throw new Error("다른 기기에서 접속 중입니다. 해당 기기에서 로그아웃하거나 약 1분 후 다시 시도해주세요.");
-                } else {
-                    // 접속 허용: 현재 기기 정보를 업데이트 (세션 점유)
-                    await supabase
-                        .from('profiles')
-                        .update({ 
-                            active_device_id: 'temp_init_id', // App.tsx에서 진짜 ID로 덮어씌움
-                            last_seen_at: new Date().toISOString()
-                        })
-                        .eq('id', authData.user.id);
-                }
-            } else if (!userProfile) {
+            if (!userProfile && (fetchError?.code === 'PGRST116' || !userProfile)) {
                 // 프로필 없음 (자동 복구 시도)
                 console.log("프로필 데이터 누락 감지 - 자동 복구 시도");
                 const metaName = authData.user.user_metadata?.nickname;
