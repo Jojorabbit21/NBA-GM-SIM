@@ -352,7 +352,8 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         returnDate,
         condition: health === 'Healthy' ? 100 : 40,
         revealedPotential: attrs.potential,
-        stats: INITIAL_STATS()
+        stats: INITIAL_STATS(),
+        playoffStats: INITIAL_STATS() // Initialize Playoff Stats
     };
 };
 

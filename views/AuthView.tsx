@@ -2,6 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle } from 'lucide-react';
+import { logError } from '../services/analytics'; // Analytics Import
 
 // Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -47,6 +48,7 @@ export const AuthView: React.FC = () => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
         setMessage({ type: 'error', text: 'Supabase 연결 설정이 되어있지 않습니다. .env 파일을 확인하고 개발 서버를 재시작하세요.' });
+        logError('Auth', 'Supabase configuration missing');
         return;
     }
 
@@ -144,6 +146,7 @@ export const AuthView: React.FC = () => {
     } catch (error: any) {
       console.error(error);
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
+      logError('Auth', `${mode} failed: ${errorMsg}`);
       
       // Error Message Translation
       if (errorMsg.includes("User already registered")) {

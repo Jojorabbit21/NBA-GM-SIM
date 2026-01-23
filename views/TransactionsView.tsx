@@ -1,11 +1,11 @@
 
 import React, { useState, useMemo } from 'react';
-import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock } from 'lucide-react';
-import { Team, Player, TradeOffer } from '../types';
+import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock, History } from 'lucide-react';
+import { Team, Player, TradeOffer, Transaction } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/gameEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
 import { getTeamLogoUrl, TRADE_DEADLINE } from '../utils/constants';
-import { logEvent } from '../services/analytics'; // Analytics Import
+import { logEvent } from '../services/analytics'; 
 
 const TAX_LEVEL = 170;
 const FIRST_APRON = 178;
@@ -32,6 +32,8 @@ interface TransactionsViewProps {
   addNews: (news: string[]) => void;
   onShowToast: (message: string) => void;
   currentSimDate: string;
+  transactions?: Transaction[];
+  onAddTransaction?: (t: Transaction) => void;
 }
 
 const TradeConfirmModal: React.FC<{ 
@@ -53,7 +55,7 @@ const TradeConfirmModal: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-slate-950/95 z-[200] flex items-center justify-center p-4 animate-in fade-in zoom-in duration-300 backdrop-blur-md">
-      <div className="bg-slate-900 border border-slate-700 rounded-[2.5rem] w-full max-w-5xl shadow-2xl flex flex-col overflow-hidden max-h-[95vh] ko-normal">
+      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col overflow-hidden max-h-[95vh] ko-normal">
         <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/40 flex justify-between items-center">
           <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3 oswald tracking-tight">
             <Briefcase className="text-indigo-400" size={28} /> 최종 결정 전 확인
@@ -230,8 +232,8 @@ const RequirementCard: React.FC<{ requirement: TradeOffer, targetPlayers: Player
   );
 };
 
-export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate }) => {
-  const [activeTab, setActiveTab] = useState<'Block' | 'Proposal'>('Block');
+export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction }) => {
+  const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [blockSelectedIds, setBlockSelectedIds] = useState<Set<string>>(new Set());
   const [blockOffers, setBlockOffers] = useState<TradeOffer[]>([]);
   const [blockIsProcessing, setBlockIsProcessing] = useState(false);
@@ -258,8 +260,26 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     if (!pendingTrade || !team) return;
     const { userAssets, targetAssets, targetTeam } = pendingTrade;
     
-    // Log Trade Analytics
-    logEvent('Trade', 'Execute', `${team.name} <-> ${targetTeam.name}`);
+    // [Analytics] Log Trade Execution
+    logEvent('Trade', 'Executed', `${team.name} <-> ${targetTeam.name} (${userAssets.length} for ${targetAssets.length})`);
+
+    // Add Transaction History
+    if (onAddTransaction) {
+        const newTransaction: Transaction = {
+            id: `tr_${Date.now()}`,
+            date: currentSimDate,
+            type: 'Trade',
+            teamId: team.id,
+            description: `${targetTeam.name}와의 트레이드: ${userAssets.length}명 <-> ${targetAssets.length}명 교환`,
+            details: {
+                acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                partnerTeamId: targetTeam.id,
+                partnerTeamName: targetTeam.name
+            }
+        };
+        onAddTransaction(newTransaction);
+    }
 
     setTeams(prevTeams => prevTeams.map(t => {
       if (t.id === team.id) {
@@ -290,7 +310,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
   const handleSearchBlockOffers = () => {
     if (blockSelectedIds.size === 0 || isTradeDeadlinePassed) return;
     
-    logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}`); // Analytics Event
+    // [Analytics] Log Search Action
+    logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}`); 
 
     setBlockIsProcessing(true); setBlockSearchPerformed(true);
     setTimeout(() => {
@@ -311,7 +332,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
   const handleRequestRequirements = () => {
     if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) return;
     
-    logEvent('Trade', 'Request Proposal', `Target Team: ${proposalTargetTeamId}`); // Analytics Event
+    // [Analytics] Log Proposal Request
+    logEvent('Trade', 'Request Proposal', `Target: ${proposalTargetTeamId}, Assets: ${proposalSelectedIds.size}`);
 
     setProposalIsProcessing(true); setProposalSearchPerformed(true);
     setTimeout(() => {
@@ -324,6 +346,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
       const generatedRequirements = generateCounterOffers(requestedPlayers, targetTeam, team);
       setProposalRequirements(generatedRequirements); setProposalIsProcessing(false);
     }, 1200);
+  };
+
+  // Helper: Get Player Snapshot (Fallback to current if missing in history)
+  const getSnapshot = (id: string, savedOvr?: number, savedPos?: string) => {
+      if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
+      for (const t of teams) {
+          const p = t.roster.find(rp => rp.id === id);
+          if (p) return { ovr: p.ovr, pos: p.position };
+      }
+      return { ovr: 0, pos: '-' };
   };
 
   const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => b.ovr - a.ovr), [team?.roster]);
@@ -353,17 +385,19 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
            <div className="flex gap-3">
               <button onClick={() => setActiveTab('Block')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><ListFilter size={16} /> 트레이드 블록</button>
               <button onClick={() => setActiveTab('Proposal')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><Send size={16} /> 직접 트레이드 제안</button>
+              <button onClick={() => setActiveTab('History')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><History size={16} /> 이력</button>
            </div>
       </div>
       <div className="flex-1 bg-slate-900/60 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden shadow-2xl min-h-0">
          <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/20 flex flex-col gap-6">
             <div className="flex justify-between items-center w-full">
               <div className="flex items-center gap-3">
-                {activeTab === 'Block' ? <Users size={20} className="text-indigo-400" /> : <Send size={20} className="text-indigo-400" />}
-                <h3 className="text-lg font-black uppercase text-white oswald tracking-tight">{activeTab === 'Block' ? `트레이드 블록에 올릴 선수를 선택하세요 (${blockSelectedIds.size}/5)` : '협상 대상 팀 선택'}</h3>
+                {activeTab === 'Block' && <><Users size={20} className="text-indigo-400" /><h3 className="text-lg font-black uppercase text-white oswald tracking-tight">트레이드 블록 ({blockSelectedIds.size}/5)</h3></>}
+                {activeTab === 'Proposal' && <><Send size={20} className="text-indigo-400" /><h3 className="text-lg font-black uppercase text-white oswald tracking-tight">협상 대상 팀 선택</h3></>}
+                {activeTab === 'History' && <><History size={20} className="text-indigo-400" /><h3 className="text-lg font-black uppercase text-white oswald tracking-tight">트레이드 로그</h3></>}
               </div>
               <div className="flex items-center gap-4">
-                 {isTradeDeadlinePassed ? (
+                 {isTradeDeadlinePassed && activeTab !== 'History' ? (
                     <div className="px-8 py-4 bg-red-950/50 border border-red-500/50 text-red-400 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-3 min-w-[200px] justify-center shadow-[0_0_20px_rgba(220,38,38,0.2)]">
                         <Lock size={18} /> TRADE DEADLINE PASSED
                     </div>
@@ -373,12 +407,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                         <button onClick={() => { setBlockSelectedIds(new Set()); setBlockSearchPerformed(false); setBlockOffers([]); }} className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center" disabled={blockSelectedIds.size === 0}><Trash2 size={18} /> 전체 해제</button>
                         <button onClick={handleSearchBlockOffers} disabled={blockSelectedIds.size === 0 || blockIsProcessing} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!blockSearchPerformed && blockSelectedIds.size > 0 && !blockIsProcessing ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={blockIsProcessing ? 'animate-spin' : ''} />{blockIsProcessing ? '협상 중...' : `오퍼 탐색`}</button>
                     </>
-                    ) : (
+                    ) : activeTab === 'Proposal' ? (
                     <>
                         <button onClick={() => { setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false); }} className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center" disabled={proposalSelectedIds.size === 0}><Trash2 size={18} /> 전체 해제</button>
                         <button onClick={handleRequestRequirements} disabled={proposalSelectedIds.size === 0 || proposalIsProcessing || !proposalTargetTeamId} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!proposalSearchPerformed && proposalSelectedIds.size > 0 && !proposalIsProcessing && proposalTargetTeamId ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={proposalIsProcessing ? 'animate-spin' : ''} />{proposalIsProcessing ? '조건 분석 중...' : `제안 요청`}</button>
                     </>
-                    )
+                    ) : null
                  )}
               </div>
             </div>
@@ -396,88 +430,166 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
             )}
          </div>
          <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-0">
-            <div className="lg:col-span-5 border-r border-slate-800 flex flex-col overflow-hidden">
-               <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-2 bg-slate-950/20">
-                  {activeTab === 'Block' ? (
-                     sortedUserRoster.map(p => {
-                       const isSelected = blockSelectedIds.has(p.id);
-                       return (
-                         <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
-                            <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleBlockPlayer(p.id)}>
-                               <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={16} className="text-white" />}</div>
-                               <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
-                               <div className="text-left flex-1 min-w-0">
-                                 <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
-                                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
-                               </div>
-                            </div>
-                            {isSelected && <MinusCircle size={18} className="text-red-500 animate-in zoom-in duration-300 cursor-pointer" onClick={() => toggleBlockPlayer(p.id)} />}
-                         </div>
-                       );
-                     })
-                  ) : (
-                     !proposalTargetTeamId ? (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center px-12 space-y-4"><div className="p-8 bg-slate-800/20 rounded-full"><Users size={48} className="opacity-20" /></div><p className="text-sm font-bold uppercase tracking-widest oswald italic">Please select a team from the header to view roster</p></div>
-                     ) : (
-                        targetTeamRoster.map(p => {
-                          const isSelected = proposalSelectedIds.has(p.id);
-                          return (
-                            <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
-                               <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleProposalPlayer(p.id)}>
-                                  <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={16} className="text-white" />}</div>
-                                  <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
-                                  <div className="text-left flex-1 min-w-0">
-                                    <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
-                                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
-                                  </div>
-                               </div>
-                               {isSelected && <CheckCircle2 size={18} className="text-emerald-500 animate-in zoom-in duration-300 cursor-pointer" onClick={() => toggleProposalPlayer(p.id)} />}
-                            </div>
-                          );
-                        })
-                     )
-                  )}
-               </div>
-            </div>
-            <div className="lg:col-span-7 flex flex-col overflow-hidden bg-slate-950/40 relative">
-               <div className="flex-1 overflow-y-auto custom-scrollbar p-8 z-10 relative">
-                  {isTradeDeadlinePassed ? (
-                     <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-6">
-                        <div className="p-8 bg-red-950/20 rounded-full border border-red-900/50 shadow-inner">
-                            <Lock size={64} strokeWidth={1} className="text-red-800" />
+            {activeTab !== 'History' ? (
+                <>
+                    <div className="lg:col-span-5 border-r border-slate-800 flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-2 bg-slate-950/20">
+                            {activeTab === 'Block' ? (
+                                sortedUserRoster.map(p => {
+                                const isSelected = blockSelectedIds.has(p.id);
+                                return (
+                                    <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
+                                        <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleBlockPlayer(p.id)}>
+                                        <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={16} className="text-white" />}</div>
+                                        <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
+                                        <div className="text-left flex-1 min-w-0">
+                                            <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
+                                            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
+                                        </div>
+                                        </div>
+                                        {isSelected && <MinusCircle size={18} className="text-red-500 animate-in zoom-in duration-300 cursor-pointer" onClick={() => toggleBlockPlayer(p.id)} />}
+                                    </div>
+                                );
+                                })
+                            ) : (
+                                !proposalTargetTeamId ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center px-12 space-y-4"><div className="p-8 bg-slate-800/20 rounded-full"><Users size={48} className="opacity-20" /></div><p className="text-sm font-bold uppercase tracking-widest oswald italic">Please select a team from the header to view roster</p></div>
+                                ) : (
+                                    targetTeamRoster.map(p => {
+                                    const isSelected = proposalSelectedIds.has(p.id);
+                                    return (
+                                        <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
+                                        <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleProposalPlayer(p.id)}>
+                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={16} className="text-white" />}</div>
+                                            <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
+                                            <div className="text-left flex-1 min-w-0">
+                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
+                                                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
+                                            </div>
+                                        </div>
+                                        {isSelected && <CheckCircle2 size={18} className="text-emerald-500 animate-in zoom-in duration-300 cursor-pointer" onClick={() => toggleProposalPlayer(p.id)} />}
+                                        </div>
+                                    );
+                                    })
+                                )
+                            )}
                         </div>
-                        <div className="text-center space-y-2">
-                            <p className="font-black text-xl text-red-500 uppercase oswald tracking-widest">Trade Market Closed</p>
-                            <p className="font-bold text-sm text-slate-600">2026년 2월 6일 트레이드 데드라인이 지났습니다.<br/>더 이상 트레이드를 진행할 수 없습니다.</p>
+                    </div>
+                    <div className="lg:col-span-7 flex flex-col overflow-hidden bg-slate-950/40 relative">
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 z-10 relative">
+                            {isTradeDeadlinePassed ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-6">
+                                    <div className="p-8 bg-red-950/20 rounded-full border border-red-900/50 shadow-inner">
+                                        <Lock size={64} strokeWidth={1} className="text-red-800" />
+                                    </div>
+                                    <div className="text-center space-y-2">
+                                        <p className="font-black text-xl text-red-500 uppercase oswald tracking-widest">Trade Market Closed</p>
+                                        <p className="font-bold text-sm text-slate-600">2026년 2월 6일 트레이드 데드라인이 지났습니다.<br/>더 이상 트레이드를 진행할 수 없습니다.</p>
+                                    </div>
+                                </div>
+                            ) : activeTab === 'Block' ? (
+                                blockSelectedIds.size === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6"><div className="p-8 bg-slate-800/20 rounded-full border border-slate-800 shadow-inner"><ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /></div><div className="text-center space-y-2"><p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Market is Idle</p><p className="font-bold text-sm text-slate-600">좌측 로스터에서 협상 테이블에 올릴 선수를 선택하세요.</p></div></div>
+                                ) : blockIsProcessing ? (
+                                <div className="h-full flex flex-col items-center justify-center space-y-6"><Loader2 size={48} className="text-indigo-500 animate-spin" /><div className="text-center space-y-1"><p className="font-black text-indigo-400 animate-pulse text-sm uppercase tracking-[0.3em] oswald">Negotiating Packages</p><p className="text-xs text-slate-500 font-bold">리그 전체 구단과 트레이드 가능성을 타진 중입니다...</p></div></div>
+                                ) : !blockSearchPerformed ? (
+                                <div className="h-full flex flex-col items-center justify-center text-indigo-500 space-y-6 animate-in fade-in duration-500"><div className="p-10 bg-indigo-600/10 rounded-full border border-indigo-500/30 relative"><div className="absolute inset-0 bg-indigo-600/5 rounded-full animate-ping opacity-20" /><Search size={64} strokeWidth={1.5} className="relative z-10" /></div><div className="text-center space-y-2"><p className="font-black text-xl text-indigo-400 uppercase oswald tracking-widest">Negotiation Ready</p><p className="font-bold text-sm text-slate-400">협상 준비 완료! 상단의 <span className="text-indigo-400">'오퍼 탐색'</span> 버튼을 클릭하여<br/>리그 전체 구단의 제안을 확인하세요.</p></div></div>
+                                ) : blockOffers.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Valid Offers</p><p className="text-xs font-bold text-slate-600">제시한 선수들의 가치나 샐러리가 맞는 오퍼가 없습니다.</p></div>
+                                ) : (
+                                <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2"><Handshake size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">Best Offers from the League</h4></div>{blockOffers.map((offer, idx) => (<OfferCard key={idx} offer={offer} teams={teams} onAccept={() => setPendingTrade({ userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)), targetAssets: offer.players, targetTeam: teams.find(t => t.id === offer.teamId)! })} onPlayerClick={setViewPlayer} />))}</div>
+                                )
+                            ) : (
+                                proposalSelectedIds.size === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6"><div className="p-8 bg-slate-800/20 rounded-full border border-slate-800 shadow-inner"><ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /></div><div className="text-center space-y-2"><p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Awaiting Direct Proposal</p><p className="font-bold text-sm text-slate-600">좌측 상대 팀 로스터에서 영입하고 싶은 선수를 선택하세요.</p></div></div>
+                                ) : proposalIsProcessing ? (
+                                <div className="h-full flex flex-col items-center justify-center space-y-6"><Loader2 size={48} className="text-indigo-500 animate-spin" /><div className="text-center space-y-1"><p className="font-black text-indigo-400 animate-pulse text-sm uppercase tracking-[0.3em] oswald">Analyzing Proposal</p><p className="text-xs text-slate-500 font-bold">상대 구단이 수락할 만한 우리 팀의 대가 패키지를 구성 중입니다...</p></div></div>
+                                ) : !proposalSearchPerformed ? (
+                                <div className="h-full flex flex-col items-center justify-center text-indigo-500 space-y-6 animate-in fade-in duration-500"><div className="p-10 bg-indigo-600/10 rounded-full border border-indigo-500/30 relative"><div className="absolute inset-0 bg-indigo-600/5 rounded-full animate-ping opacity-20" /><Send size={64} strokeWidth={1.5} className="relative z-10" /></div><div className="text-center space-y-2"><p className="font-black text-xl text-indigo-400 uppercase oswald tracking-widest">Proposal Ready</p><p className="font-bold text-sm text-slate-400">조건 타진 준비 완료! 상단의 <span className="text-indigo-400">'제안 요청'</span> 버튼을 클릭하여<br/>상대 팀이 원하는 반대급부를 확인하세요.</p></div></div>
+                                ) : proposalRequirements.length === 0 ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Matching Trade</p><p className="text-xs font-bold text-slate-600">상대 팀이 만족할 만한 가치나 샐러리 구조를 맞출 수 없습니다.</p></div>
+                                ) : (
+                                <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2"><Target size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">AI Counter Proposals</h4></div>{proposalRequirements.map((offer, idx) => (<RequirementCard key={idx} requirement={offer} targetPlayers={teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || []} onAccept={() => setPendingTrade({ userAssets: offer.players, targetAssets: teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || [], targetTeam: teams.find(t => t.id === proposalTargetTeamId)! })} onPlayerClick={setViewPlayer} />))}</div>
+                                )
+                            )}
                         </div>
-                     </div>
-                  ) : activeTab === 'Block' ? (
-                     blockSelectedIds.size === 0 ? (
-                       <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6"><div className="p-8 bg-slate-800/20 rounded-full border border-slate-800 shadow-inner"><ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /></div><div className="text-center space-y-2"><p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Market is Idle</p><p className="font-bold text-sm text-slate-600">좌측 로스터에서 협상 테이블에 올릴 선수를 선택하세요.</p></div></div>
-                     ) : blockIsProcessing ? (
-                       <div className="h-full flex flex-col items-center justify-center space-y-6"><Loader2 size={48} className="text-indigo-500 animate-spin" /><div className="text-center space-y-1"><p className="font-black text-indigo-400 animate-pulse text-sm uppercase tracking-[0.3em] oswald">Negotiating Packages</p><p className="text-xs text-slate-500 font-bold">리그 전체 구단과 트레이드 가능성을 타진 중입니다...</p></div></div>
-                     ) : !blockSearchPerformed ? (
-                       <div className="h-full flex flex-col items-center justify-center text-indigo-500 space-y-6 animate-in fade-in duration-500"><div className="p-10 bg-indigo-600/10 rounded-full border border-indigo-500/30 relative"><div className="absolute inset-0 bg-indigo-600/5 rounded-full animate-ping opacity-20" /><Search size={64} strokeWidth={1.5} className="relative z-10" /></div><div className="text-center space-y-2"><p className="font-black text-xl text-indigo-400 uppercase oswald tracking-widest">Negotiation Ready</p><p className="font-bold text-sm text-slate-400">협상 준비 완료! 상단의 <span className="text-indigo-400">'오퍼 탐색'</span> 버튼을 클릭하여<br/>리그 전체 구단의 제안을 확인하세요.</p></div></div>
-                     ) : blockOffers.length === 0 ? (
-                       <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Valid Offers</p><p className="text-xs font-bold text-slate-600">제시한 선수들의 가치나 샐러리가 맞는 오퍼가 없습니다.</p></div>
-                     ) : (
-                       <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2"><Handshake size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">Best Offers from the League</h4></div>{blockOffers.map((offer, idx) => (<OfferCard key={idx} offer={offer} teams={teams} onAccept={() => setPendingTrade({ userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)), targetAssets: offer.players, targetTeam: teams.find(t => t.id === offer.teamId)! })} onPlayerClick={setViewPlayer} />))}</div>
-                     )
-                  ) : (
-                     proposalSelectedIds.size === 0 ? (
-                       <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6"><div className="p-8 bg-slate-800/20 rounded-full border border-slate-800 shadow-inner"><ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /></div><div className="text-center space-y-2"><p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Awaiting Direct Proposal</p><p className="font-bold text-sm text-slate-600">좌측 상대 팀 로스터에서 영입하고 싶은 선수를 선택하세요.</p></div></div>
-                     ) : proposalIsProcessing ? (
-                       <div className="h-full flex flex-col items-center justify-center space-y-6"><Loader2 size={48} className="text-indigo-500 animate-spin" /><div className="text-center space-y-1"><p className="font-black text-indigo-400 animate-pulse text-sm uppercase tracking-[0.3em] oswald">Analyzing Proposal</p><p className="text-xs text-slate-500 font-bold">상대 구단이 수락할 만한 우리 팀의 대가 패키지를 구성 중입니다...</p></div></div>
-                     ) : !proposalSearchPerformed ? (
-                       <div className="h-full flex flex-col items-center justify-center text-indigo-500 space-y-6 animate-in fade-in duration-500"><div className="p-10 bg-indigo-600/10 rounded-full border border-indigo-500/30 relative"><div className="absolute inset-0 bg-indigo-600/5 rounded-full animate-ping opacity-20" /><Send size={64} strokeWidth={1.5} className="relative z-10" /></div><div className="text-center space-y-2"><p className="font-black text-xl text-indigo-400 uppercase oswald tracking-widest">Proposal Ready</p><p className="font-bold text-sm text-slate-400">조건 타진 준비 완료! 상단의 <span className="text-indigo-400">'제안 요청'</span> 버튼을 클릭하여<br/>상대 팀이 원하는 반대급부를 확인하세요.</p></div></div>
-                     ) : proposalRequirements.length === 0 ? (
-                       <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Matching Trade</p><p className="text-xs font-bold text-slate-600">상대 팀이 만족할 만한 가치나 샐러리 구조를 맞출 수 없습니다.</p></div>
-                     ) : (
-                       <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2"><Target size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">AI Counter Proposals</h4></div>{proposalRequirements.map((offer, idx) => (<RequirementCard key={idx} requirement={offer} targetPlayers={teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || []} onAccept={() => setPendingTrade({ userAssets: offer.players, targetAssets: teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || [], targetTeam: teams.find(t => t.id === proposalTargetTeamId)! })} onPlayerClick={setViewPlayer} />))}</div>
-                     )
-                  )}
-               </div>
-            </div>
+                    </div>
+                </>
+            ) : (
+                <div className="col-span-12 flex flex-col h-full overflow-hidden p-8">
+                    {/* Transaction History View */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/40 rounded-3xl border border-slate-800 p-6">
+                        {!transactions || transactions.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
+                                <div className="p-6 bg-slate-900 rounded-full border border-slate-800"><History size={48} className="opacity-30" /></div>
+                                <div className="text-center">
+                                    <p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">No Transactions</p>
+                                    <p className="text-xs font-bold text-slate-600">아직 진행된 트레이드가 없습니다.</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                        <th className="py-4 px-4 w-32">일자</th>
+                                        <th className="py-4 px-4 w-48">구단</th>
+                                        <th className="py-4 px-4">IN</th>
+                                        <th className="py-4 px-4">OUT</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/50">
+                                    {transactions.map(t => (
+                                        <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                                            <td className="py-4 px-4 align-middle">
+                                                <div className="text-xs font-bold text-slate-400">{t.date}</div>
+                                                <div className="text-[10px] text-slate-600 font-mono mt-1">{t.id.slice(-6)}</div>
+                                            </td>
+                                            <td className="py-4 px-4 align-middle">
+                                                {t.details?.partnerTeamName ? (
+                                                    <div className="flex items-center gap-3">
+                                                        <img src={getTeamLogoUrl(t.details.partnerTeamId || '')} className="w-8 h-8 object-contain opacity-80" alt="" />
+                                                        <span className="text-sm font-black text-white uppercase">{t.details.partnerTeamName}</span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-sm font-bold text-slate-500">-</span>
+                                                )}
+                                            </td>
+                                            <td className="py-4 px-4 align-middle">
+                                                <div className="flex flex-col gap-2">
+                                                    {t.details?.acquired.map((p, i) => {
+                                                        const snap = getSnapshot(p.id, p.ovr, p.position);
+                                                        return (
+                                                            <div key={i} className="flex items-center gap-3">
+                                                                <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
+                                                                <span className="text-sm font-bold text-emerald-300">{p.name}</span>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </td>
+                                            <td className="py-4 px-4 align-middle">
+                                                <div className="flex flex-col gap-2">
+                                                    {t.details?.traded.map((p, i) => {
+                                                        const snap = getSnapshot(p.id, p.ovr, p.position);
+                                                        return (
+                                                            <div key={i} className="flex items-center gap-3">
+                                                                <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
+                                                                <span className="text-sm font-bold text-red-300/80">{p.name}</span>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
+                </div>
+            )}
          </div>
       </div>
     </div>

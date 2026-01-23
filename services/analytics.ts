@@ -49,3 +49,20 @@ export const logEvent = (category: string, action: string, label?: string) => {
     label
   });
 };
+
+/**
+ * 에러 이벤트 전송 (시스템 모니터링용)
+ * @param category 에러 발생 위치 (예: 'Auth', 'Data Load', 'API')
+ * @param errorMessage 에러 메시지
+ */
+export const logError = (category: string, errorMessage: string) => {
+  if (!GA_MEASUREMENT_ID) return;
+
+  console.error(`[Analytics Error] ${category}: ${errorMessage}`);
+  
+  ReactGA.event({
+    category: "Error",
+    action: category,
+    label: errorMessage
+  });
+};
