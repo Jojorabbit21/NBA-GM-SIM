@@ -30,6 +30,7 @@ import { LeaderboardView } from './views/LeaderboardView';
 import { SeasonReviewView } from './views/SeasonReviewView'; 
 import { PlayoffReviewView } from './views/PlayoffReviewView'; 
 import { OvrCalculatorView } from './views/OvrCalculatorView';
+import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { supabase } from './services/supabaseClient';
 import { AuthView } from './views/AuthView';
 
@@ -78,8 +79,8 @@ const App: React.FC = () => {
   const [isDuplicateSession, setIsDuplicateSession] = useState(false);
   const [isSessionVerifying, setIsSessionVerifying] = useState(false); 
 
-  const tickerContainerRef = useRef<HTMLDivElement>(null);
-  const tickerContentRef = useRef<HTMLDivElement>(null);
+  // [Ref] Stores the function to finalize simulation after visual effect
+  const finalizeSimRef = useRef<((userResult?: any) => void) | null>(null);
 
   useEffect(() => { initGA(); }, []);
   useEffect(() => { logPageView(view); }, [view]);
@@ -96,18 +97,31 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // [Fix] Session Verification with Fail-Open Logic
   useEffect(() => {
     if (!session?.user) return;
     let heartbeatInterval: any;
     let subscription: any;
+    
     const setupSession = async () => {
         setIsSessionVerifying(true);
         try {
-            const { data: profile } = await supabase.from('profiles').select('active_device_id, last_seen_at').eq('id', session.user.id).single();
+            // profiles 테이블이 존재하는지 확인 (없으면 에러 발생 -> catch로 이동하여 로직 패스)
+            const { data: profile, error } = await supabase.from('profiles').select('active_device_id, last_seen_at').eq('id', session.user.id).maybeSingle();
+            
+            if (error) {
+                // 테이블이 없거나 권한 문제 시 중복 체크 기능을 비활성화하고 통과
+                console.warn("Session check skipped (DB table missing or error):", error.message);
+                setIsDuplicateSession(false);
+                setIsSessionVerifying(false);
+                return;
+            }
+
             const now = Date.now();
             let shouldBlock = false;
             if (profile && profile.active_device_id && profile.last_seen_at) {
                 const lastSeenTime = new Date(profile.last_seen_at).getTime();
+                // 1분 이상 활동 없으면 세션 탈취 가능
                 if ((now - lastSeenTime) < 60000 && profile.active_device_id !== deviceId) {
                     shouldBlock = true;
                 }
@@ -117,15 +131,20 @@ const App: React.FC = () => {
                 await supabase.from('profiles').upsert({ id: session.user.id, email: session.user.email, active_device_id: deviceId, last_seen_at: new Date().toISOString() }, { onConflict: 'id' });
                 setIsDuplicateSession(false); setIsSessionVerifying(false);
             }
+            
             subscription = supabase.channel(`profile:${session.user.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
                 if (payload.new.active_device_id && payload.new.active_device_id !== deviceId) { setIsDuplicateSession(true); }
             }).subscribe();
+            
             heartbeatInterval = setInterval(async () => {
                 if (!isDuplicateSession) {
                     await supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', session.user.id).eq('active_device_id', deviceId);
                 }
             }, 10000);
-        } catch (err: any) { setIsSessionVerifying(false); }
+        } catch (err: any) { 
+            console.warn("Session setup failed gracefully:", err);
+            setIsSessionVerifying(false); 
+        }
     };
     setupSession();
     return () => {
@@ -143,9 +162,6 @@ const App: React.FC = () => {
       } catch (e: any) { setIsSessionVerifying(false); }
   };
 
-  /**
-   * 모든 로드된 데이터에 대해 최신 오버롤 공식을 강제 적용합니다.
-   */
   const syncOvrWithLatestWeights = useCallback((teamsToSync: Team[]): Team[] => {
       return teamsToSync.map(t => ({
           ...t,
@@ -181,10 +197,7 @@ const App: React.FC = () => {
             stats: INITIAL_STATS(), playoffStats: INITIAL_STATS()
         };
 
-        // 가중치에 따른 정확한 OVR 산출
         mockPlayer.ovr = calculatePlayerOvr(mockPlayer);
-        
-        // 시각적 편의를 위한 덩어리 능력치 갱신
         mockPlayer.ath = baseOvr; mockPlayer.out = baseOvr; mockPlayer.ins = baseOvr; mockPlayer.plm = baseOvr; mockPlayer.def = baseOvr; mockPlayer.reb = baseOvr;
         
         return mockPlayer as Player;
@@ -195,8 +208,12 @@ const App: React.FC = () => {
     try {
       let combinedPlayers: any[] = [];
       let source: 'DB' | 'CSV' = 'DB';
+      
+      // DB 연결 실패 또는 테이블 없음 시 CSV로 자동 전환
       const { data: dbPlayers, error } = await supabase.from('players').select('*');
+      
       if (error || !dbPlayers || dbPlayers.length === 0) {
+          if (error) console.warn("DB Load Error (switching to CSV):", error.message);
           source = 'CSV';
           const rosterFiles = ['roster_atlantic.csv', 'roster_central.csv', 'roster_southeast.csv', 'roster_northwest.csv', 'roster_pacific.csv', 'roster_southwest.csv'];
           for (const file of rosterFiles) {
@@ -206,6 +223,7 @@ const App: React.FC = () => {
               } catch (e: any) { logError('Data Load', `CSV fallback failed for ${file}`); }
           }
       } else { combinedPlayers = dbPlayers; }
+      
       setDataSource(source);
       const fullRosterMap: Record<string, any[]> = {};
       if (combinedPlayers.length > 0) {
@@ -224,7 +242,6 @@ const App: React.FC = () => {
         ...t, roster: fullRosterMap[t.id] || [], wins: 0, losses: 0, budget: 200, salaryCap: 140, luxuryTaxLine: 170, logo: getTeamLogoUrl(t.id)
       }));
 
-      // 가중치 동기화 강제 실행
       setTeams(syncOvrWithLatestWeights(initializedTeams));
       setProspects(generateInitialProspects());
     } catch (err: any) { logError('Data Load', 'Critical Roster Loading Error'); }
@@ -238,22 +255,24 @@ const App: React.FC = () => {
         setIsInitializing(true);
         try {
             const { data: saveData, error } = await supabase.from('saves').select('team_id, game_data').eq('user_id', session.user.id).maybeSingle();
-            if (!error && saveData && saveData.game_data) {
+            
+            if (error) {
+                console.warn("Save load error (proceeding as new game):", error.message);
+            } else if (saveData && saveData.game_data) {
                 const gd = saveData.game_data;
                 setMyTeamId(saveData.team_id);
                 
-                // [핵심 해결책] 세이브 파일 로드 시 모든 팀과 유망주의 OVR을 최신 코드로 강제 재계산
                 const syncedTeams = gd.teams.map((t: Team) => ({
                     ...t,
                     roster: t.roster.map(p => ({
                         ...p,
-                        ovr: calculatePlayerOvr(p) // 최신 가중치 적용
+                        ovr: calculatePlayerOvr(p)
                     }))
                 }));
                 
                 const syncedProspects = (gd.prospects || []).map((p: Player) => ({
                     ...p,
-                    ovr: calculatePlayerOvr(p) // 최신 가중치 적용
+                    ovr: calculatePlayerOvr(p)
                 }));
 
                 setTeams(syncedTeams); 
@@ -266,7 +285,7 @@ const App: React.FC = () => {
                 setRosterTargetId(saveData.team_id);
                 setIsDataLoaded(true);
                 setView('Dashboard');
-                setToastMessage("세이브 데이터에 최신 오버롤 가중치를 강제 적용했습니다.");
+                setToastMessage("세이브 데이터 로드 완료.");
             }
         } catch (err: any) { logError('Data Load', 'Auto-load save failed'); } 
         finally { setIsInitializing(false); }
@@ -281,20 +300,24 @@ const App: React.FC = () => {
     setMyTeamId(teamId);
     setRosterTargetId(teamId);
     
-    let loadedSchedule: Game[] = [];
     let allScheduleRows: any[] = [];
     try {
         let from = 0; const step = 1000; let more = true;
         while (more) {
+            // Schedule 테이블이 없으면 에러 발생 -> catch -> CSV 로드
             const { data, error } = await supabase.from('schedule').select('*').range(from, from + step - 1);
-            if (error) break;
+            if (error) throw error;
             if (data && data.length > 0) {
                 allScheduleRows = [...allScheduleRows, ...data];
                 if (data.length < step) more = false;
                 from += step;
             } else more = false;
         }
-    } catch (e: any) {}
+    } catch (e: any) {
+        console.warn("DB Schedule Load Failed (Using CSV):", e.message);
+    }
+
+    let loadedSchedule: Game[] = [];
     if (allScheduleRows.length > 0) loadedSchedule = mapDatabaseScheduleToRuntimeGame(allScheduleRows);
     else {
         try {
@@ -317,11 +340,16 @@ const App: React.FC = () => {
   const saveToCloud = useCallback(async () => {
         if (!isDataLoaded || !myTeamId || !session?.user || !hasWritePermission || isDuplicateSession) return;
         setIsSaving(true);
-        await supabase.from('saves').upsert({ 
-            user_id: session.user.id, team_id: myTeamId, 
-            game_data: { teams, schedule, currentSimDate, tactics: userTactics, playoffSeries, transactions, prospects },
-            updated_at: new Date()
-        }, { onConflict: 'user_id, team_id' });
+        try {
+            await supabase.from('saves').upsert({ 
+                user_id: session.user.id, team_id: myTeamId, 
+                game_data: { teams, schedule, currentSimDate, tactics: userTactics, playoffSeries, transactions, prospects },
+                updated_at: new Date()
+            }, { onConflict: 'user_id, team_id' });
+        } catch(e) {
+            // 테이블 없음 등의 에러 시 조용히 무시 (로컬 플레이는 계속 가능)
+            console.warn("Cloud save failed:", e);
+        }
         setIsSaving(false);
   }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, transactions, prospects, session, hasWritePermission, isDuplicateSession]);
 
@@ -333,7 +361,10 @@ const App: React.FC = () => {
   const handleHardReset = async () => {
     if (!session?.user || !myTeamId) return;
     setAuthLoading(true);
-    await supabase.from('saves').delete().eq('user_id', session.user.id).eq('team_id', myTeamId);
+    try {
+        await supabase.from('saves').delete().eq('user_id', session.user.id).eq('team_id', myTeamId);
+    } catch(e) { console.warn("Reset failed on DB:", e); }
+    
     setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setTransactions([]);
     setProspects(generateInitialProspects());
     setNews([{ type: 'text', content: "NBA 2025-26 시즌 구단 운영 시스템 활성화 완료." }]);
@@ -344,11 +375,26 @@ const App: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    if (session?.user) { await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); }
+    if (session?.user) { 
+        try { await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); } catch(e){}
+    }
     await supabase.auth.signOut();
     setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setTransactions([]); setProspects([]);
     setIsDataLoaded(false); setView('TeamSelect'); setIsDuplicateSession(false);
   };
+
+  const handleDraftPlayer = useCallback((player: Player) => {
+    if (!myTeamId) return;
+    logEvent('Draft', 'Player Drafted', player.name);
+    setTeams(prev => prev.map(t => t.id === myTeamId ? { ...t, roster: [...t.roster, player] } : t));
+    setProspects(prev => prev.filter(p => p.id !== player.id));
+    const draftTransaction: Transaction = {
+      id: `tr_draft_${Date.now()}`, date: currentSimDate, type: 'Draft', teamId: myTeamId, description: `${player.name} (${player.position}) 드래프트 지명`, details: { acquired: [{ id: player.id, name: player.name, ovr: player.ovr, position: player.position }], traded: [] }
+    };
+    setTransactions(prev => [draftTransaction, ...prev]);
+    setToastMessage(`${player.name} 선수를 성공적으로 지명했습니다.`);
+    setView('Dashboard');
+  }, [myTeamId, currentSimDate]);
 
   const handleExecuteSim = async (tactics: GameTactics) => {
     const myTeam = teams.find(t => t.id === myTeamId);
@@ -356,79 +402,86 @@ const App: React.FC = () => {
     const targetSimDate = currentSimDate;
     const gamesToday = schedule.filter(g => g.date === targetSimDate && !g.played);
     const userGameToday = gamesToday.find(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId);
-    if (userGameToday) { setActiveGame(userGameToday); setView('GameSim'); } 
-    else { setIsSimulating(true); }
-
-    const delayTime = userGameToday ? 3000 : 800;
-    setTimeout(async () => {
-      let updatedTeams = [...teams];
-      let updatedSchedule = [...schedule];
-      let userGameResult = null;
-      const getTeam = (id: string) => updatedTeams.find(t => t.id === id)!;
-
-      for (const game of gamesToday) {
-          const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
-          const home = getTeam(game.homeTeamId);
-          const away = getTeam(game.awayTeamId);
-          const result = simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined);
-          const homeIdx = updatedTeams.findIndex(t => t.id === home.id);
-          const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
-          updatedTeams[homeIdx] = { ...home, wins: home.wins + (result.homeScore > result.awayScore ? 1 : 0), losses: home.losses + (result.homeScore < result.awayScore ? 1 : 0) };
-          updatedTeams[awayIdx] = { ...away, wins: away.wins + (result.awayScore > result.homeScore ? 1 : 0), losses: away.losses + (result.awayScore < result.homeScore ? 1 : 0) };
-
-          const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: RosterUpdate) => {
-              const t = updatedTeams[teamIdx];
-              t.roster = t.roster.map(p => {
-                  const update = rosterUpdates[p.id];
-                  const box = boxScore.find(b => b.playerId === p.id);
-                  const isPlayoffGame = game.isPlayoff;
-                  let newRegularStats = { ...p.stats };
-                  let newPlayoffStats = p.playoffStats ? { ...p.playoffStats } : { ...newRegularStats, g:0, gs:0, mp:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0, offReb:0, defReb:0 };
-                  const targetStats = isPlayoffGame ? newPlayoffStats : newRegularStats;
-                  if (box) {
-                      targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb;
-                      targetStats.offReb += box.offReb || 0; targetStats.defReb += box.defReb || 0; targetStats.ast += box.ast; targetStats.stl += box.stl;
-                      targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga;
-                      targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta;
-                  }
-                  return { ...p, stats: newRegularStats, playoffStats: newPlayoffStats, condition: update?.condition ?? p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
-              });
-          };
-          updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates);
-          updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
-          const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
-          if (schIdx !== -1) { updatedSchedule[schIdx] = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: { home: result.homeBox, away: result.awayBox } }; }
-          if (isUserGame) { userGameResult = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; }
-      }
-
-      const currentDateObj = new Date(targetSimDate);
-      currentDateObj.setDate(currentDateObj.getDate() + 1);
-      const nextDayStr = currentDateObj.toISOString().split('T')[0];
-      setTeams(updatedTeams); setSchedule(updatedSchedule); setCurrentSimDate(nextDayStr);
-
-      if (userGameResult) {
-          const recap = await generateGameRecapNews(userGameResult);
-          setLastGameResult({ ...userGameResult, recap: recap || [] });
-          setView('GameResult');
-      } else { setIsSimulating(false); }
-    }, delayTime);
-  };
-
-  const handleDraftPlayer = (player: Player) => {
-    if (!myTeamId) return;
-    setTeams(prev => prev.map(t => {
-        if (t.id === myTeamId) {
-            return { ...t, roster: [...t.roster, player] };
+    
+    // Core simulation processing logic
+    const processSimulation = async (precalcUserResult?: any) => {
+        let updatedTeams = [...teams];
+        let updatedSchedule = [...schedule];
+        let userGameResultOutput = null;
+        let allPlayedToday: Game[] = [];
+        const getTeam = (id: string) => updatedTeams.find(t => t.id === id)!;
+        
+        for (const game of gamesToday) {
+            const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
+            const home = getTeam(game.homeTeamId);
+            const away = getTeam(game.awayTeamId);
+            const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined);
+            const homeIdx = updatedTeams.findIndex(t => t.id === home.id);
+            const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
+            updatedTeams[homeIdx] = { ...home, wins: home.wins + (result.homeScore > result.awayScore ? 1 : 0), losses: home.losses + (result.homeScore < result.awayScore ? 1 : 0) };
+            updatedTeams[awayIdx] = { ...away, wins: away.wins + (result.awayScore > result.homeScore ? 1 : 0), losses: away.losses + (result.awayScore < result.homeScore ? 1 : 0) };
+            const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: RosterUpdate) => {
+                const t = updatedTeams[teamIdx];
+                t.roster = t.roster.map(p => {
+                    const update = rosterUpdates[p.id];
+                    const box = boxScore.find(b => b.playerId === p.id);
+                    const isPlayoffGame = game.isPlayoff;
+                    let newRegularStats = { ...p.stats };
+                    let newPlayoffStats = p.playoffStats ? { ...p.playoffStats } : { ...newRegularStats, g:0, gs:0, mp:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0, offReb:0, defReb:0 };
+                    const targetStats = isPlayoffGame ? newPlayoffStats : newRegularStats;
+                    if (box) {
+                        targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb;
+                        targetStats.offReb += box.offReb || 0; targetStats.defReb += box.defReb || 0; targetStats.ast += box.ast; targetStats.stl += box.stl;
+                        targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga;
+                        targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta;
+                    }
+                    return { ...p, stats: newRegularStats, playoffStats: newPlayoffStats, condition: update?.condition ?? p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
+                });
+            };
+            updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates);
+            updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
+            const updatedGame = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: { home: result.homeBox, away: result.awayBox } };
+            const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
+            if (schIdx !== -1) { updatedSchedule[schIdx] = updatedGame; }
+            allPlayedToday.push(updatedGame);
+            if (isUserGame) { userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; }
         }
-        return t;
-    }));
-    setProspects(prev => prev.filter(p => p.id !== player.id));
-    setTransactions(prev => [{
-        id: `dr_${Date.now()}`, date: currentSimDate, type: 'Draft', teamId: myTeamId, description: `신인 드래프트 지명: ${player.name} (${player.position})`
-    }, ...prev]);
-    setToastMessage(`${player.name} 선수를 지명했습니다!`);
-    setView('Dashboard');
+        const currentDateObj = new Date(targetSimDate);
+        currentDateObj.setDate(currentDateObj.getDate() + 1);
+        const nextDayStr = currentDateObj.toISOString().split('T')[0];
+        setTeams(updatedTeams); setSchedule(updatedSchedule); setCurrentSimDate(nextDayStr);
+        if (userGameResultOutput) {
+            const recap = await generateGameRecapNews(userGameResultOutput);
+            setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
+            setView('GameResult');
+        } else { setIsSimulating(false); }
+    };
+
+    if (userGameToday) {
+        // 유저 경기가 있으면, 시뮬레이션 결과를 미리 계산하고 뷰를 전환한다.
+        const home = teams.find(t => t.id === userGameToday.homeTeamId)!;
+        const away = teams.find(t => t.id === userGameToday.awayTeamId)!;
+        const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics);
+        
+        setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); 
+        setView('GameSim');
+        
+        // 뷰 컴포넌트가 애니메이션 종료 후 호출할 콜백 설정
+        finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
+    } else { 
+        // 유저 경기가 없으면 즉시 시뮬레이션 진행 (딜레이만 살짝 줌)
+        setIsSimulating(true); 
+        setTimeout(() => processSimulation(), 800);
+    }
   };
+
+  const tickerGames = useMemo(() => {
+    const played = schedule.filter(g => g.played);
+    if (played.length === 0) return [];
+    const sorted = [...played].sort((a,b) => b.date.localeCompare(a.date));
+    const lastDate = sorted[0].date;
+    return played.filter(g => g.date === lastDate);
+  }, [schedule]);
 
   if (authLoading) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" /><p className="text-sm font-bold uppercase tracking-widest text-slate-500">Connecting...</p></div>;
   if (!session) return <AuthView />;
@@ -486,9 +539,21 @@ const App: React.FC = () => {
             </div>
         </main>
 
-        {view === 'GameSim' && activeGame && <GameSimulatingView homeTeam={teams.find(t => t.id === activeGame.homeTeamId)!} awayTeam={teams.find(t => t.id === activeGame.awayTeamId)!} userTeamId={myTeamId} />}
+        {view === 'GameSim' && activeGame && <GameSimulatingView homeTeam={teams.find(t => t.id === activeGame.homeTeamId)!} awayTeam={teams.find(t => t.id === activeGame.awayTeamId)!} userTeamId={myTeamId} finalHomeScore={activeGame.homeScore} finalAwayScore={activeGame.awayScore} onSimulationComplete={() => finalizeSimRef.current?.()} />}
         {view === 'GameResult' && lastGameResult && <GameResultView result={lastGameResult} myTeamId={myTeamId!} teams={teams} onFinish={() => setView('Dashboard')} />}
       </div>
+
+      {tickerGames.length > 0 && (
+        <footer className="h-14 bg-slate-900 border-t border-slate-800 flex items-center overflow-hidden relative z-30">
+            <div className="flex-shrink-0 bg-indigo-600 px-6 h-full flex items-center gap-4 shadow-[10px_0_30px_rgba(0,0,0,0.5)] z-10 relative">
+                <div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" />
+                <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg" className="h-3 md:h-3.5 object-contain brightness-0 invert drop-shadow-sm" alt="ESPN" />
+            </div>
+            <div className="flex-1 overflow-hidden h-full flex items-center">
+                <LiveScoreTicker games={tickerGames} />
+            </div>
+        </footer>
+      )}
     </div>
   );
 };

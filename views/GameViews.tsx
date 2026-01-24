@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap, Calendar } from 'lucide-react';
 import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
@@ -24,29 +24,116 @@ const SIMULATION_MESSAGES = [
     "치어리더가 관중석으로 티셔츠 쏘는 중..."
 ];
 
-export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, userTeamId?: string | null }> = ({ homeTeam, awayTeam, userTeamId }) => {
+export const GameSimulatingView: React.FC<{ 
+  homeTeam: Team, 
+  awayTeam: Team, 
+  userTeamId?: string | null,
+  finalHomeScore?: number,
+  finalAwayScore?: number,
+  onSimulationComplete?: () => void
+}> = ({ homeTeam, awayTeam, userTeamId, finalHomeScore = 110, finalAwayScore = 105, onSimulationComplete }) => {
   const [progress, setProgress] = useState(0);
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
   const [currentMessage, setCurrentMessage] = useState(SIMULATION_MESSAGES[Math.floor(Math.random() * SIMULATION_MESSAGES.length)]);
   
+  // 종료 상태를 ref로 관리하여 리렌더링에 의한 타이머 취소 방지
+  const isFinishedRef = useRef(false);
+  
+  // 턴제 스코어링 상태
+  const [currentHomeScore, setCurrentHomeScore] = useState(0);
+  const [currentAwayScore, setCurrentAwayScore] = useState(0);
+
+  // 1. 시뮬레이션 진행 루프 (0% -> 100%)
   useEffect(() => {
-    const timer = setInterval(() => setProgress(p => (p >= 100 ? 100 : p + 1)), 30);
-    
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const runSimulationStep = () => {
+        setProgress(prev => {
+            if (prev >= 100) return 100;
+
+            // 클러치 타임 로직: 진행률에 따라 속도 조절
+            const isClutch = prev > 85; 
+            const isSuperClutch = prev > 94;
+
+            // 진행 증가량 (뒤로 갈수록 조금씩만 증가)
+            const increment = isSuperClutch ? 0.4 : (isClutch ? 0.6 : 1.5);
+            const next = Math.min(100, prev + increment);
+
+            // 딜레이 (뒤로 갈수록 느려짐 -> 긴장감 조성)
+            const delay = isSuperClutch ? 300 : (isClutch ? 100 : 30);
+
+            timeoutId = setTimeout(runSimulationStep, delay);
+            return next;
+        });
+    };
+
+    runSimulationStep();
+    return () => clearTimeout(timeoutId);
+  }, []); // 의존성 배열 비움 (한 번만 실행)
+
+  // 2. 점수 동기화 (progress 변화에 반응)
+  useEffect(() => {
+      const ratio = progress / 100;
+      
+      // 진행률에 비례한 목표 점수 계산
+      const targetHome = Math.floor(finalHomeScore * ratio);
+      const targetAway = Math.floor(finalAwayScore * ratio);
+
+      // 점수가 목표치보다 낮으면 증가 (랜덤하게 2점 또는 3점씩)
+      setCurrentHomeScore(prev => {
+          if (prev >= finalHomeScore) return finalHomeScore;
+          if (prev < targetHome) return Math.min(finalHomeScore, prev + (Math.random() > 0.6 ? 3 : 2));
+          return prev;
+      });
+
+      setCurrentAwayScore(prev => {
+          if (prev >= finalAwayScore) return finalAwayScore;
+          if (prev < targetAway) return Math.min(finalAwayScore, prev + (Math.random() > 0.6 ? 3 : 2));
+          return prev;
+      });
+  }, [progress, finalHomeScore, finalAwayScore]);
+
+  // 3. 종료 처리 (100% 도달 시)
+  useEffect(() => {
+      if (progress >= 100 && !isFinishedRef.current) {
+          isFinishedRef.current = true;
+          
+          // 최종 점수 확정
+          setCurrentHomeScore(finalHomeScore);
+          setCurrentAwayScore(finalAwayScore);
+          
+          // 2초 딜레이 후 콜백 실행
+          if (onSimulationComplete) {
+              const timer = setTimeout(() => {
+                  onSimulationComplete();
+              }, 2000);
+              return () => clearTimeout(timer);
+          }
+      }
+  }, [progress, finalHomeScore, finalAwayScore, onSimulationComplete]);
+
+  // 4. 배경 효과 (슛 차트 & 메시지)
+  useEffect(() => {
     const shotTimer = setInterval(() => {
         setShots(prev => {
+            if (isFinishedRef.current) return prev; // 종료되면 슛 중단
             const isHome = Math.random() > 0.5;
-            const isMake = Math.random() > 0.5;
+            const isMake = Math.random() > 0.45;
             const hoopX = isHome ? 88.75 : 5.25;
             const direction = isHome ? -1 : 1;
             const dist = Math.random() * 28;
             const angle = (Math.random() * Math.PI) - (Math.PI / 2);
             const x = Math.max(2, Math.min(92, hoopX + Math.cos(angle) * dist * direction));
             const y = Math.max(2, Math.min(48, 25 + Math.sin(angle) * dist));
-            return [...prev.slice(-30), { id: Date.now(), x, y, isMake }];
+            return [...prev.slice(-40), { id: Date.now(), x, y, isMake }];
         });
-    }, 150);
+    }, 120);
 
     const msgTimer = setInterval(() => {
+        if (isFinishedRef.current) {
+            setCurrentMessage("경기 종료 - 결과 집계 중...");
+            return;
+        }
         setCurrentMessage(prev => {
             let next;
             do {
@@ -54,36 +141,67 @@ export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, user
             } while (next === prev && SIMULATION_MESSAGES.length > 1);
             return next;
         });
-    }, 1200);
+    }, 1000);
 
-    return () => { clearInterval(timer); clearInterval(shotTimer); clearInterval(msgTimer); };
+    return () => {
+        clearInterval(shotTimer);
+        clearInterval(msgTimer);
+    };
   }, []);
 
   if (!homeTeam || !awayTeam) return null;
-  const isUserAway = userTeamId === awayTeam.id;
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-8">
-      <div className="w-full max-w-4xl space-y-8 flex flex-col items-center">
-        <div className="flex justify-between w-full px-8 items-center">
-           <div className="flex items-center gap-6">
-             <img src={awayTeam.logo} className="w-24 h-24 object-contain" alt="" />
-             <span className="text-4xl font-black oswald text-white">{awayTeam.name}</span>
-           </div>
-           <span className="text-4xl font-black text-slate-700 oswald">{isUserAway ? '@' : 'VS'}</span>
-           <div className="flex items-center gap-6">
-             <span className="text-4xl font-black oswald text-white">{homeTeam.name}</span>
-             <img src={homeTeam.logo} className="w-24 h-24 object-contain" alt="" />
-           </div>
+    <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-4 overflow-hidden">
+      {/* Background Effect */}
+      <div className="absolute inset-0 opacity-10 pointer-events-none">
+          <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-[150px]"></div>
+          <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[150px]"></div>
+      </div>
+
+      {/* Unified Container */}
+      <div className="relative z-10 w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
+        
+        {/* Header Section (Scoreboard) */}
+        <div className="flex items-center justify-between px-6 py-8 md:px-12 bg-slate-950/30">
+            {/* Away Team */}
+            <div className="flex flex-col items-center gap-3 w-32 md:w-40">
+                <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
+                <div className="text-center w-full">
+                    <div className="text-lg md:text-xl font-black text-white oswald uppercase tracking-tight text-shadow-lg truncate w-full">{awayTeam.name}</div>
+                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{currentAwayScore}</div>
+                </div>
+            </div>
+
+            {/* Center Info */}
+            <div className="flex-1 px-4 flex flex-col items-center justify-center gap-4">
+                 <div className="text-sm md:text-lg font-black text-indigo-300 text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse">
+                    {currentMessage}
+                 </div>
+                 <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
+                    <div className="h-full bg-gradient-to-r from-indigo-600 to-blue-500 transition-all duration-300 ease-linear shadow-[0_0_15px_rgba(79,70,229,0.5)]" style={{ width: `${progress}%` }}></div>
+                 </div>
+            </div>
+
+            {/* Home Team */}
+            <div className="flex flex-col items-center gap-3 w-32 md:w-40">
+                <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
+                <div className="text-center w-full">
+                    <div className="text-lg md:text-xl font-black text-white oswald uppercase tracking-tight text-shadow-lg truncate w-full">{homeTeam.name}</div>
+                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{currentHomeScore}</div>
+                </div>
+            </div>
         </div>
-        <div className="relative w-full aspect-[94/50] rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 shadow-2xl">
-            <svg viewBox="0 0 94 50" className="absolute inset-0 w-full h-full">
+
+        {/* Court Section (Bottom) */}
+        <div className="relative w-full aspect-[94/50] bg-slate-950 border-t border-slate-800">
+            <svg viewBox="0 0 94 50" className="absolute inset-0 w-full h-full opacity-80">
                 <rect width="94" height="50" fill="#0f172a" />
-                <g fill="none" stroke="#334155" strokeWidth="0.3">
+                <g fill="none" stroke="#1e293b" strokeWidth="0.4">
                     <rect x="0" y="0" width="94" height="50" />
                     <line x1="47" y1="0" x2="47" y2="50" />
                     <circle cx="47" cy="25" r="6" />
-                    <circle cx="47" cy="25" r="2" fill="#334155" />
+                    <circle cx="47" cy="25" r="2" fill="#1e293b" />
                     <rect x="0" y="17" width="19" height="16" />
                     <circle cx="19" cy="25" r="6" strokeDasharray="1,1" />
                     <path d="M 0 3 L 14 3 A 23.75 23.75 0 0 1 14 47 L 0 47" />
@@ -96,17 +214,9 @@ export const GameSimulatingView: React.FC<{ homeTeam: Team, awayTeam: Team, user
             </svg>
             {shots.map(s => (
                 <div key={s.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-opacity duration-1000" style={{ left: `${(s.x / 94) * 100}%`, top: `${(s.y / 50) * 100}%` }}>
-                    {s.isMake ? <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.8)] border border-emerald-300"></div> : <X size={12} className="text-red-500/60 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" strokeWidth={3} />}
+                    {s.isMake ? <div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,1)] border border-emerald-300"></div> : <X size={12} className="text-red-500/60 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" strokeWidth={3} />}
                 </div>
             ))}
-        </div>
-        <div className="w-full max-w-md space-y-4">
-          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800 shadow-inner">
-             <div className="bg-indigo-500 h-full transition-all duration-300 shadow-[0_0_15px_rgba(99,102,241,0.6)]" style={{ width: `${progress}%` }}></div>
-          </div>
-          <p className="text-indigo-400 font-black uppercase tracking-widest text-center animate-pulse oswald text-sm ko-tight">
-            {currentMessage}
-          </p>
         </div>
       </div>
     </div>
@@ -292,8 +402,8 @@ export const GameResultView: React.FC<{
   const won = (isHome && result.homeScore > result.awayScore) || (!isHome && result.awayScore > result.homeScore);
 
   const homeWin = result.homeScore > result.awayScore;
-  const homeRecord = `${result.home.wins + (homeWin ? 1 : 0)}W - ${result.home.losses + (!homeWin ? 1 : 0)}L`;
-  const awayRecord = `${result.away.wins + (!homeWin ? 1 : 0)}W - ${result.away.losses + (homeWin ? 1 : 0)}L`;
+  const homeRecord = `${result.home.wins}W - ${result.home.losses}L`;
+  const awayRecord = `${result.away.wins}W - ${result.away.losses}L`;
 
   const getTeamInfo = (id: string) => teams.find(t => t.id === id);
 

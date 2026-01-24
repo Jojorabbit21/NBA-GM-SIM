@@ -6,14 +6,10 @@ import { logError } from '../services/analytics'; // Analytics Import
 
 // Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-// 닉네임: 4~10자, 영문/한글/숫자 허용 (특수문자 제외)
-const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{4,10}$/;
+// 닉네임: 2~12자, 영문/한글/숫자 허용 (특수문자 제외) - 규칙 완화
+const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{2,12}$/;
 // 비밀번호: 6~12자, 최소 1개의 대문자, 숫자, 특수문자 포함
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
-
-// 세션 만료 시간 (Heartbeat 주기 30초 * 2배 여유 = 1분)
-// 1분 이상 활동이 없으면 죽은 세션으로 간주하고 로그인 허용
-const SESSION_TIMEOUT_MS = 60 * 1000;
 
 export const AuthView: React.FC = () => {
   const [loading, setLoading] = useState(false);
@@ -57,7 +53,7 @@ export const AuthView: React.FC = () => {
 
     try {
       if (mode === 'signup') {
-        // 1. 회원가입 로직 (클라이언트 사이드 검증 재확인)
+        // 1. 회원가입 로직
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
         const { data, error } = await supabase.auth.signUp({
@@ -65,31 +61,29 @@ export const AuthView: React.FC = () => {
           password,
           options: {
             data: { 
-                nickname: nickname // 메타데이터에 저장 (트리거 사용 시 중요)
+                nickname: nickname 
             }
           }
         });
 
         if (error) throw error;
 
-        // 2. 닉네임 로그인 지원을 위해 public.profiles 테이블에 매핑 정보 저장 시도
-        // 트리거가 없다면 이 부분이 실행되어야 하며, 트리거가 있다면 upsert로 안전하게 처리
+        // 2. 프로필 저장 시도 (실패해도 회원가입은 성공한 것으로 처리)
         if (data.user) {
-            const { error: profileError } = await supabase
-                .from('profiles')
-                .upsert({
+            try {
+                await supabase.from('profiles').upsert({
                     id: data.user.id,
                     email: email,
-                    nickname: nickname
+                    nickname: nickname,
+                    updated_at: new Date().toISOString()
                 }, { onConflict: 'id' });
-            
-            if (profileError) {
-                // 트리거가 이미 처리했을 수 있으므로 경고만 로그
-                console.warn("프로필 저장 중 경고 (트리거가 이미 처리했을 수 있음):", profileError);
+            } catch (profileErr) {
+                console.warn("프로필 저장 실패 (테이블 없음 등):", profileErr);
+                // 프로필 저장이 실패해도 가입 자체는 막지 않음
             }
         }
 
-        setMessage({ type: 'success', text: '회원가입 성공! 이메일을 확인하여 인증해주세요.' });
+        setMessage({ type: 'success', text: '회원가입 성공! 이메일 인증 후 로그인해주세요.' });
         setMode('login');
         setIdentifier(email); 
         setPassword('');
@@ -98,18 +92,29 @@ export const AuthView: React.FC = () => {
         // 3. 로그인 로직
         let loginEmail = identifier.trim();
 
-        // 입력값이 이메일 형식이 아니라면 닉네임으로 간주하고 이메일 조회
+        // 입력값이 이메일 형식이 아니라면 닉네임으로 간주하고 조회 시도
         if (!loginEmail.includes('@')) {
-            const { data: profile, error: profileError } = await supabase
-                .from('profiles')
-                .select('email')
-                .eq('nickname', loginEmail)
-                .single();
+            try {
+                const { data: profile, error: profileError } = await supabase
+                    .from('profiles')
+                    .select('email')
+                    .eq('nickname', loginEmail)
+                    .maybeSingle(); // single() 대신 maybeSingle() 사용하여 에러 방지
 
-            if (profileError || !profile) {
-                throw new Error("해당 닉네임을 가진 사용자를 찾을 수 없거나, 프로필 데이터베이스가 설정되지 않았습니다.");
+                if (profileError) {
+                    throw new Error("닉네임 조회 중 오류가 발생했습니다. 이메일로 로그인해주세요.");
+                }
+                
+                if (!profile) {
+                    throw new Error("해당 닉네임의 사용자를 찾을 수 없습니다. 이메일로 로그인해주세요.");
+                }
+                loginEmail = profile.email;
+            } catch (lookupErr: any) {
+                // profiles 테이블이 없거나 조회 실패 시
+                console.error("닉네임 조회 실패:", lookupErr);
+                // 명시적으로 에러를 던져서 사용자에게 이메일 사용 유도
+                throw new Error("닉네임 로그인을 사용할 수 없습니다 (DB 미설정). 이메일로 로그인해주세요.");
             }
-            loginEmail = profile.email;
         }
 
         const { data: authData, error } = await supabase.auth.signInWithPassword({
@@ -119,50 +124,36 @@ export const AuthView: React.FC = () => {
         
         if (error) throw error;
 
-        // 4. 프로필 데이터 확인 및 복구 (중복 로그인 차단 로직은 제거됨 -> App.tsx에서 처리)
+        // 4. 로그인 성공 후 프로필 복구 시도 (Non-blocking)
         if (authData.user) {
-            const { data: userProfile, error: fetchError } = await supabase
-                .from('profiles')
-                .select('id')
-                .eq('id', authData.user.id)
-                .single();
-
-            if (!userProfile && (fetchError?.code === 'PGRST116' || !userProfile)) {
-                // 프로필 없음 (자동 복구 시도)
-                console.log("프로필 데이터 누락 감지 - 자동 복구 시도");
-                const metaName = authData.user.user_metadata?.nickname;
-                const emailName = authData.user.email?.split('@')[0] || 'User';
-                const nickToSave = metaName || emailName;
-
-                await supabase.from('profiles').upsert({
-                    id: authData.user.id,
-                    email: authData.user.email,
-                    nickname: nickToSave,
-                    last_seen_at: new Date().toISOString()
-                }, { onConflict: 'id' });
-            }
+            // 비동기로 실행하여 로그인 흐름을 막지 않음
+            supabase.from('profiles').select('id').eq('id', authData.user.id).maybeSingle()
+            .then(({ data }) => {
+                if (!data) {
+                    const metaName = authData.user.user_metadata?.nickname;
+                    const emailName = authData.user.email?.split('@')[0] || 'User';
+                    supabase.from('profiles').upsert({
+                        id: authData.user.id,
+                        email: authData.user.email,
+                        nickname: metaName || emailName,
+                        last_seen_at: new Date().toISOString()
+                    }).then(() => console.log("프로필 자동 복구 완료"));
+                }
+            });
         }
       }
     } catch (error: any) {
       console.error(error);
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
-      logError('Auth', `${mode} failed: ${errorMsg}`);
       
-      // Error Message Translation
       if (errorMsg.includes("User already registered")) {
           errorMsg = "이미 가입된 이메일입니다. 로그인 모드로 전환합니다.";
-          // Auto switch to login
           setMode('login');
           setIdentifier(email);
-          setPassword(''); 
       } else if (errorMsg.includes("Invalid login credentials")) {
           errorMsg = "이메일 또는 비밀번호가 올바르지 않습니다.";
-      } else if (errorMsg.includes("Password should be at least")) {
-          errorMsg = "비밀번호는 최소 6자 이상이어야 합니다.";
-      } else if (errorMsg.includes("Database error saving new user")) {
-          errorMsg = "사용자 저장 중 데이터베이스 오류가 발생했습니다. 잠시 후 다시 시도해주세요.";
-      } else if (errorMsg.includes("weak_password")) {
-          errorMsg = "비밀번호가 너무 취약합니다.";
+      } else if (errorMsg.includes("relation \"public.profiles\" does not exist")) {
+          errorMsg = "데이터베이스 설정 오류: profiles 테이블이 없습니다. 이메일로 로그인하거나 관리자에게 문의하세요.";
       }
 
       setMessage({ type: 'error', text: errorMsg });
@@ -190,7 +181,7 @@ export const AuthView: React.FC = () => {
                 <Settings className="flex-shrink-0 mt-0.5" size={18} />
                 <div className="text-xs font-bold leading-relaxed">
                     서버 설정이 필요합니다.<br/>
-                    Supabase Project URL과 Key를 .env에 설정하고 서버를 재시작하세요.
+                    Supabase 연결 정보를 확인해주세요.
                 </div>
             </div>
         )}
@@ -198,7 +189,7 @@ export const AuthView: React.FC = () => {
         <form onSubmit={handleAuth} className="space-y-5">
           <div className="space-y-4">
             {mode === 'login' ? (
-                // 로그인 모드: 이메일 또는 닉네임
+                // 로그인 모드
                 <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                         <User className="h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
@@ -206,16 +197,15 @@ export const AuthView: React.FC = () => {
                     <input
                         type="text"
                         required
-                        placeholder="이메일 또는 닉네임 입력"
+                        placeholder="이메일 (닉네임 불가 시 사용)"
                         className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
                         value={identifier}
                         onChange={(e) => setIdentifier(e.target.value)}
                     />
                 </div>
             ) : (
-                // 회원가입 모드: 이메일 + 닉네임 분리
+                // 회원가입 모드
                 <>
-                    {/* 이메일 입력 */}
                     <div className="space-y-1">
                         <div className="relative group">
                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -235,13 +225,12 @@ export const AuthView: React.FC = () => {
                             />
                         </div>
                         {!isEmailValid && email && (
-                            <p className="text-red-500 text-[11px] font-bold pl-2 animate-in slide-in-from-top-1 flex items-center gap-1">
+                            <p className="text-red-500 text-[11px] font-bold pl-2 flex items-center gap-1">
                                 <XCircle size={10} /> 올바른 이메일 형식이 아닙니다.
                             </p>
                         )}
                     </div>
 
-                    {/* 닉네임 입력 */}
                     <div className="space-y-1">
                         <div className="relative group">
                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -250,8 +239,8 @@ export const AuthView: React.FC = () => {
                             <input
                                 type="text"
                                 required
-                                placeholder="닉네임 입력"
-                                maxLength={10}
+                                placeholder="닉네임 (2~12자)"
+                                maxLength={12}
                                 className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
                                     !isNicknameValid && nickname
                                     ? 'border-red-500 focus:border-red-500 focus:ring-red-500' 
@@ -262,15 +251,14 @@ export const AuthView: React.FC = () => {
                             />
                         </div>
                         {(!isNicknameValid && nickname) && (
-                            <p className="text-red-500 text-[11px] font-bold pl-2 animate-in slide-in-from-top-1 flex items-center gap-1">
-                                <XCircle size={10} /> 4~10자, 특수문자 사용 불가
+                            <p className="text-red-500 text-[11px] font-bold pl-2 flex items-center gap-1">
+                                <XCircle size={10} /> 한글/영문/숫자 2~12자
                             </p>
                         )}
                     </div>
                 </>
             )}
 
-            {/* 비밀번호 입력 */}
             <div className="space-y-1">
                 <div className="relative group">
                   <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -291,13 +279,12 @@ export const AuthView: React.FC = () => {
                   />
                 </div>
                 {mode === 'signup' && !isPasswordValid && password && (
-                    <p className="text-red-500 text-[11px] font-bold pl-2 animate-in slide-in-from-top-1 flex items-center gap-1">
+                    <p className="text-red-500 text-[11px] font-bold pl-2 flex items-center gap-1">
                         <XCircle size={10} /> 6~12자, 대문자/숫자/특수문자 포함
                     </p>
                 )}
             </div>
 
-            {/* 비밀번호 확인 (회원가입만) */}
             {mode === 'signup' && (
                 <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
                     <div className="relative group">
@@ -326,7 +313,7 @@ export const AuthView: React.FC = () => {
                         />
                     </div>
                     {!isConfirmValid && confirmPassword && (
-                        <p className="text-red-500 text-[11px] font-bold pl-2 animate-in slide-in-from-top-1 flex items-center gap-1">
+                        <p className="text-red-500 text-[11px] font-bold pl-2 flex items-center gap-1">
                             <XCircle size={10} /> 비밀번호가 일치하지 않습니다.
                         </p>
                     )}
@@ -364,7 +351,6 @@ export const AuthView: React.FC = () => {
                 setMessage(null); 
                 setPassword('');
                 setConfirmPassword('');
-                // Reset fields
                 if (mode === 'login') {
                     setNickname('');
                     setEmail('');
