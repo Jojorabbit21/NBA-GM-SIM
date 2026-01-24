@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Settings2, User, ChevronRight, RefreshCw, FlaskConical, Info, ArrowUp, ArrowDown, Target, Zap, Shield, Activity, Share2, Brain } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { calculatePlayerOvr } from '../utils/constants';
 
 interface OvrCalculatorViewProps {
   teams: Team[];
@@ -28,7 +29,6 @@ const WEIGHT_LABELS: Record<string, string> = {
     intangibles: '무형자산', potential: '잠재력', height: '신장(cm)'
 };
 
-// 가중치 그룹 정의
 const WEIGHT_GROUPS = [
     { label: '슈팅 & 득점 효율', icon: <Target size={14} />, keys: ['closeShot', 'midRange', 'threeAvg', 'ft', 'shotIq', 'offConsist'], color: 'text-orange-400' },
     { label: '인사이드 툴', icon: <Zap size={14} />, keys: ['layup', 'dunk', 'postPlay', 'drawFoul', 'hands'], color: 'text-yellow-400' },
@@ -47,8 +47,13 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
     return teams.flatMap(t => t.roster.filter(p => p.position.includes(selectedPos)));
   }, [teams, selectedPos]);
 
+  // 로컬 계산 함수를 constants.tsx의 핵심 로직과 완전히 일치하도록 수정
   const calculateNewOvr = (p: Player, currentWeights: Record<string, number>) => {
-    const pThreeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
+    // 0값을 허용하는 threeAvg 계산
+    const tC = p.threeCorner ?? 0;
+    const t45 = p.three45 ?? 0;
+    const tTop = p.threeTop ?? 0;
+    const pThreeAvg = (tC + t45 + tTop) / 3;
     
     const attrs: Record<string, number> = {
         closeShot: p.closeShot, midRange: p.midRange, threeAvg: pThreeAvg, ft: p.ft, shotIq: p.shotIq, offConsist: p.offConsist,
@@ -65,7 +70,7 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
 
     Object.keys(currentWeights).forEach(key => {
         const w = currentWeights[key];
-        const val = attrs[key];
+        const val = attrs[key] ?? 0;
         totalVal += val * w;
         totalWeight += w;
     });
@@ -144,7 +149,6 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        {/* Left: Grouped Weight Controls */}
         <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-indigo-400">
@@ -190,7 +194,6 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
             </div>
         </div>
 
-        {/* Right: Player List */}
         <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
                 <div className="flex items-center gap-3">
