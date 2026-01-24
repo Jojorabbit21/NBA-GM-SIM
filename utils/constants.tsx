@@ -124,7 +124,7 @@ export const calculatePlayerOvr = (p: any): number => {
             { val: p.offReb, w: 2 }, { val: p.defReb, w: 0 },
             { val: p.speed, w: 10 }, { val: p.agility, w: 10 }, { val: p.strength, w: 0 }, { val: p.vertical, w: 0 }, { val: p.stamina, w: 15 }, { val: p.hustle, w: 0 }, { val: p.durability, w: 0 },
             { val: p.passAcc, w: 25 }, { val: p.handling, w: 15 }, { val: p.spdBall, w: 10 }, { val: p.passVision, w: 25 }, { val: p.passIq, w: 50 },
-            { val: p.intangibles, w: 5 }, { val: p.potential, w: 120 }
+            { val: p.intangibles, w: 5 }, { val: p.potential, w: 500 }
         ]);
     } else if (position.includes('SG')) {
         return calc([
