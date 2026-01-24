@@ -142,13 +142,13 @@ export const calculatePlayerOvr = (p: any): number => {
         ]);
     } else if (position.includes('SF')) {
         return calc([
-            { val: p.closeShot, w: 35 }, { val: p.midRange, w: 45 }, { val: threeAvg, w: 45 }, { val: p.ft, w: 20 }, { val: p.shotIq, w: 60 }, { val: p.offConsist, w: 50 },
-            { val: p.layup, w: 40 }, { val: p.dunk, w: 25 }, { val: p.postPlay, w: 5 }, { val: p.drawFoul, w: 10 }, { val: p.hands, w: 40},
-            { val: p.intDef, w: 20 }, { val: p.perDef, w: 70 }, { val: p.steal, w: 25 }, { val: p.blk, w: 20 }, { val: p.helpDefIq, w: 30 }, { val: p.passPerc, w: 20 }, { val: p.defConsist, w: 40 },
-            { val: p.offReb, w: 10 }, { val: p.defReb, w: 20 },
-            { val: p.speed, w: 50 }, { val: p.agility, w: 50 }, { val: p.strength, w: 20 }, { val: p.vertical, w: 30 }, { val: p.stamina, w: 40 }, { val: p.hustle, w: 30 }, { val: p.durability, w: 30 },
-            { val: p.passAcc, w: 15 }, { val: p.handling, w: 15 }, { val: p.spdBall, w: 15 }, { val: p.passVision, w: 15 }, { val: p.passIq, w: 30 },
-            { val: p.intangibles, w: 15 }, { val: p.potential, w: 500 }, { val: heightCm, w: 6 }
+            { val: p.closeShot, w: 200 }, { val: p.midRange, w: 200 }, { val: threeAvg, w: 200 }, { val: p.ft, w: 20 }, { val: p.shotIq, w: 100 }, { val: p.offConsist, w: 30 },
+            { val: p.layup, w: 200 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 0 }, { val: p.hands, w: 100 },
+            { val: p.intDef, w: 100 }, { val: p.perDef, w: 100 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 50 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 0 },
+            { val: p.offReb, w: 0 }, { val: p.defReb, w: 0 },
+            { val: p.speed, w: 50 }, { val: p.agility, w: 50 }, { val: p.strength, w: 50 }, { val: p.vertical, w: 50 }, { val: p.stamina, w: 100 }, { val: p.hustle, w: 50 }, { val: p.durability, w: 60 },
+            { val: p.passAcc, w: 40 }, { val: p.handling, w: 0 }, { val: p.spdBall, w: 0 }, { val: p.passVision, w: 0 }, { val: p.passIq, w: 30 },
+            { val: p.intangibles, w: 10 }, { val: p.potential, w: 500 }, { val: heightCm, w: 30 }
         ]);
     } else if (position.includes('PF')) {
         return calc([
@@ -183,7 +183,7 @@ const calculateAttributes = (p: any) => {
             if (p[k.toLowerCase()] !== undefined && p[k.toLowerCase()] !== null) return parseInt(p[k.toLowerCase()], 10);
             if (p[k.toUpperCase()] !== undefined && p[k.toUpperCase()] !== null) return parseInt(p[k.toUpperCase()], 10);
         }
-        return 0; // fallback to 0 instead of 50
+        return 0; 
     };
 
     const speed = getVal('speed', 'SPD');
