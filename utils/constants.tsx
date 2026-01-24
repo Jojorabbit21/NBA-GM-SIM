@@ -128,13 +128,13 @@ export const calculatePlayerOvr = (p: any): number => {
         ]);
     } else if (position.includes('SG')) {
         return calc([
-            { val: p.closeShot, w: 5 }, { val: p.midRange, w: 8 }, { val: threeAvg, w: 10 }, { val: p.ft, w: 5 }, { val: p.shotIq, w: 6 }, { val: p.offConsist, w: 7 },
-            { val: p.layup, w: 2 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 6 }, { val: p.hands, w: 1 },
-            { val: p.intDef, w: 0 }, { val: p.perDef, w: 5 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 5 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 0 },
-            { val: p.offReb, w: 3 }, { val: p.defReb, w: 1 },
-            { val: p.speed, w: 8 }, { val: p.agility, w: 2 }, { val: p.strength, w: 1 }, { val: p.vertical, w: 1 }, { val: p.stamina, w: 2 }, { val: p.hustle, w: 2 }, { val: p.durability, w: 1 },
-            { val: p.passAcc, w: 7 }, { val: p.handling, w: 2 }, { val: p.spdBall, w: 1 }, { val: p.passVision, w: 2 }, { val: p.passIq, w: 2 },
-            { val: p.intangibles, w: 14 }, { val: p.potential, w: 14 }, { val: heightCm, w: 4 }
+            { val: p.closeShot, w: 45 }, { val: p.midRange, w: 45 }, { val: threeAvg, w: 45 }, { val: p.ft, w: 20 }, { val: p.shotIq, w: 80 }, { val: p.offConsist, w: 60 },
+            { val: p.layup, w: 30 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 0 }, { val: p.hands, w: 49 },
+            { val: p.intDef, w: 0 }, { val: p.perDef, w: 15 }, { val: p.steal, w: 10 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 10 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 5 },
+            { val: p.offReb, w: 1 }, { val: p.defReb, w: 1 },
+            { val: p.speed, w: 40 }, { val: p.agility, w: 60 }, { val: p.strength, w: 0 }, { val: p.vertical, w: 0 }, { val: p.stamina, w: 30 }, { val: p.hustle, w: 0 }, { val: p.durability, w: 0 },
+            { val: p.passAcc, w: 20 }, { val: p.handling, w: 25 }, { val: p.spdBall, w: 20 }, { val: p.passVision, w: 15 }, { val: p.passIq, w: 40 },
+            { val: p.intangibles, w: 5 }, { val: p.potential, w: 500 }, { val: heightCm, w: 2 }
         ]);
     } else if (position.includes('SF')) {
         return calc([
