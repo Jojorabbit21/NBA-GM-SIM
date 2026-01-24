@@ -241,24 +241,38 @@ const App: React.FC = () => {
             if (!error && saveData && saveData.game_data) {
                 const gd = saveData.game_data;
                 setMyTeamId(saveData.team_id);
-                // 세이브 파일 로드 시에도 최신 가중치 강제 반영
-                setTeams(syncOvrWithLatestWeights(gd.teams)); 
+                
+                // [핵심 해결책] 세이브 파일 로드 시 모든 팀과 유망주의 OVR을 최신 코드로 강제 재계산
+                const syncedTeams = gd.teams.map((t: Team) => ({
+                    ...t,
+                    roster: t.roster.map(p => ({
+                        ...p,
+                        ovr: calculatePlayerOvr(p) // 최신 가중치 적용
+                    }))
+                }));
+                
+                const syncedProspects = (gd.prospects || []).map((p: Player) => ({
+                    ...p,
+                    ovr: calculatePlayerOvr(p) // 최신 가중치 적용
+                }));
+
+                setTeams(syncedTeams); 
                 setSchedule(gd.schedule);
                 setCurrentSimDate(gd.currentSimDate);
                 setUserTactics(gd.tactics || DEFAULT_TACTICS);
                 setPlayoffSeries(gd.playoffSeries || []);
                 setTransactions(gd.transactions || []);
-                setProspects(gd.prospects || generateInitialProspects());
+                setProspects(syncedProspects.length > 0 ? syncedProspects : generateInitialProspects());
                 setRosterTargetId(saveData.team_id);
                 setIsDataLoaded(true);
                 setView('Dashboard');
-                setToastMessage("최신 가중치를 적용하여 게임을 불러왔습니다.");
+                setToastMessage("세이브 데이터에 최신 오버롤 가중치를 강제 적용했습니다.");
             }
         } catch (err: any) { logError('Data Load', 'Auto-load save failed'); } 
         finally { setIsInitializing(false); }
     };
     checkExistingSave();
-  }, [session, isDataLoaded, teams, isDuplicateSession, generateInitialProspects, syncOvrWithLatestWeights]);
+  }, [session, isDataLoaded, teams, isDuplicateSession, generateInitialProspects]);
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
     if (!session?.user) return;
