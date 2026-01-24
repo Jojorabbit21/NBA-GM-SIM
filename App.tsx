@@ -10,7 +10,7 @@ import {
   INITIAL_TEAMS_DATA, getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, mapDatabaseScheduleToRuntimeGame,
   generateSeasonSchedule, exportScheduleToCSV,
-  SEASON_START_DATE, parseCSVToObjects, INITIAL_STATS
+  SEASON_START_DATE, parseCSVToObjects, INITIAL_STATS, calculatePlayerOvr
 } from './utils/constants';
 import { simulateGame, GameTactics, RosterUpdate } from './services/gameEngine';
 import { generateNewsTicker, generateOwnerWelcome, generateGameRecapNews } from './services/geminiService';
@@ -80,18 +80,9 @@ const App: React.FC = () => {
 
   const tickerContainerRef = useRef<HTMLDivElement>(null);
   const tickerContentRef = useRef<HTMLDivElement>(null);
-  const [isTickerScroll, setIsTickerScroll] = useState(false);
 
   useEffect(() => { initGA(); }, []);
   useEffect(() => { logPageView(view); }, [view]);
-
-  useEffect(() => {
-    if (tickerContainerRef.current && tickerContentRef.current) {
-        const containerWidth = tickerContainerRef.current.offsetWidth;
-        const contentWidth = tickerContentRef.current.scrollWidth;
-        setIsTickerScroll(contentWidth > containerWidth);
-    }
-  }, [news]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -216,6 +207,19 @@ const App: React.FC = () => {
 
   useEffect(() => { loadBaseData(); }, [loadBaseData]);
 
+  /**
+   * 모든 로드된 데이터에 대해 최신 오버롤 공식을 적용합니다.
+   */
+  const syncOvrWithLatestWeights = (teamsToSync: Team[]): Team[] => {
+      return teamsToSync.map(t => ({
+          ...t,
+          roster: t.roster.map(p => ({
+              ...p,
+              ovr: calculatePlayerOvr(p)
+          }))
+      }));
+  };
+
   useEffect(() => {
     const checkExistingSave = async () => {
         if (!session?.user || isDataLoaded || teams.length === 0 || isDuplicateSession) return;
@@ -225,7 +229,8 @@ const App: React.FC = () => {
             if (!error && saveData && saveData.game_data) {
                 const gd = saveData.game_data;
                 setMyTeamId(saveData.team_id);
-                setTeams(gd.teams); 
+                // 최신 가중치 반영을 위해 로드 시 재계산
+                setTeams(syncOvrWithLatestWeights(gd.teams)); 
                 setSchedule(gd.schedule);
                 setCurrentSimDate(gd.currentSimDate);
                 setUserTactics(gd.tactics || DEFAULT_TACTICS);
@@ -235,7 +240,7 @@ const App: React.FC = () => {
                 setRosterTargetId(saveData.team_id);
                 setIsDataLoaded(true);
                 setView('Dashboard');
-                setToastMessage("저장된 게임을 불러왔습니다.");
+                setToastMessage("최신 가중치를 적용하여 게임을 불러왔습니다.");
             }
         } catch (err: any) { logError('Data Load', 'Auto-load save failed'); } 
         finally { setIsInitializing(false); }

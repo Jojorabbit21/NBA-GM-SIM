@@ -50,101 +50,124 @@ export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, confe
   { id: 'sas', name: '스퍼스', city: '샌안토니오', conference: 'West', division: 'Southwest' },
 ];
 
-/**
- * 극한의 정규화: 모든 공백, 점, 하이픈 제거 및 소문자화.
- * 영문/한글 이름 불일치 문제를 해결하기 위해 사용됩니다.
- */
 export const normalizeName = (name: string): string => {
     if (!name) return "";
     return name
-        .replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '') // 공백 및 특수기호 제거
-        .replace(/(II|III|IV|Jr|Sr)$/i, '') // 접미사 제거
+        .replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '')
+        .replace(/(II|III|IV|Jr|Sr)$/i, '')
         .toLowerCase()
         .trim();
 };
 
 const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
-  // 제이슨 테이텀
   "jaysontatum": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
-  "제이슨테이텀": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
-  
-  // 타이리스 할리버튼
   "tyresehaliburton": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
-  "타이리스할리버튼": { type: "ACL (시즌 아웃)", returnDate: "2026-07-01" },
-  
-  // 토린 프린스 (Taurean Prince) - 핵심 수정 대상
   "taureanprince": { type: "목 수술 (6월 복귀 예정)", returnDate: "2026-06-15" },
-  "토린프린스": { type: "목 수술 (6월 복귀 예정)", returnDate: "2026-06-15" },
-  
-  // 스쿳 헨더슨
   "scoothenderson": { type: "햄스트링 부상", returnDate: "2025-11-05" },
-  "스쿳헨더슨": { type: "햄스트링 부상", returnDate: "2025-11-05" },
-  
-  // 세스 커리
   "sethcurry": { type: "허리 부상 (요추 통증)", returnDate: "2025-12-01" },
-  "세스커리": { type: "허리 부상 (요추 통증)", returnDate: "2025-12-01" },
-  
-  // 브래들리 빌
   "bradleybeal": { type: "왼쪽 고관절 (시즌 아웃)", returnDate: "2026-06-01" },
-  "브래들리빌": { type: "왼쪽 고관절 (시즌 아웃)", returnDate: "2026-06-01" },
-  
-  // 카이리 어빙
   "kyrieirving": { type: "무릎 부상 수술", returnDate: "2026-07-01" },
-  "카이리어빙": { type: "무릎 부상 수술", returnDate: "2026-07-01" },
-  
-  // 데릭 라이블리
   "derecklively": { type: "오른발 수술 (2월 복귀)", returnDate: "2026-02-15" },
-  "데릭라이블리": { type: "오른발 수술 (2월 복귀)", returnDate: "2026-02-15" },
-  
-  // 자크 이디
   "zachedey": { type: "발목 염좌 (2월 복귀)", returnDate: "2026-02-01" },
-  "잭이디": { type: "발목 염좌 (2월 복귀)", returnDate: "2026-02-01" },
-  
-  // 스카티 피펜 주니어
   "scottypippen": { type: "왼쪽 발가락 골절", returnDate: "2026-04-01" },
-  "스카티피펜주니어": { type: "왼쪽 발가락 골절", returnDate: "2026-04-01" },
-  
-  // 브랜던 클락
   "brandonclarke": { type: "발목 부상", returnDate: "2026-03-01" },
-  "브랜던클락": { type: "발목 부상", returnDate: "2026-03-01" },
-  
-  // 타이 제롬
   "tyjerome": { type: "종아리 부상", returnDate: "2026-03-15" },
-  "타이제롬": { type: "종아리 부상", returnDate: "2026-03-15" },
-  
-  // 디존테 머레이
-  "dejountemurray": { type: "아킬레스건 통증", returnDate: "2026-01-15" },
-  "디존테머레이": { type: "아킬레스건 통증", returnDate: "2026-01-15" }
+  "dejountemurray": { type: "아킬레스건 통증", returnDate: "2026-01-15" }
 };
 
 export const parseCSVToObjects = (csv: string): any[] => {
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lines.length < 2) return [];
-    
     let headersLine = lines[0];
-    if (headersLine.charCodeAt(0) === 0xFEFF) {
-        headersLine = headersLine.slice(1);
-    }
-
+    if (headersLine.charCodeAt(0) === 0xFEFF) headersLine = headersLine.slice(1);
     const headers = headersLine.split(',').map(h => h.trim());
     const result = [];
-    
     for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',').map(v => v.trim());
         if (values.length < headers.length - 2) continue;
-        
         const obj: any = {};
         headers.forEach((h, index) => {
             const val = values[index];
-            if (val !== '' && !isNaN(Number(val))) {
-                obj[h] = Number(val);
-            } else {
-                obj[h] = val;
-            }
+            if (val !== '' && !isNaN(Number(val))) obj[h] = Number(val);
+            else obj[h] = val;
         });
         result.push(obj);
     }
     return result;
+};
+
+/**
+ * 선수의 현재 능력치를 기반으로 오버롤을 계산합니다. (Exported for Sync)
+ */
+export const calculatePlayerOvr = (p: any): number => {
+    const position = p.position || 'PG';
+    const threeAvg = p.threeAvg || ((p.threeCorner + p.three45 + p.threeTop) / 3) || 50;
+    const heightCm = p.height || 200;
+
+    const calc = (weights: {val: number, w: number}[]) => {
+        let totalVal = 0;
+        let totalWeight = 0;
+        weights.forEach(item => {
+            const value = item.val ?? 50;
+            totalVal += value * item.w;
+            totalWeight += item.w;
+        });
+        const rawAvg = totalWeight > 0 ? totalVal / totalWeight : 50;
+        return Math.min(99, Math.max(40, Math.round(rawAvg)));
+    };
+
+    if (position.includes('PG')) {
+        return calc([
+            { val: p.closeShot, w: 10 }, { val: p.midRange, w: 20 }, { val: threeAvg, w: 25 }, { val: p.ft, w: 10 }, { val: p.shotIq, w: 45 }, { val: p.offConsist, w: 25 },
+            { val: p.layup, w: 25 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 0 }, { val: p.hands, w: 40 },
+            { val: p.intDef, w: 0 }, { val: p.perDef, w: 0 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 0 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 0 },
+            { val: p.offReb, w: 2 }, { val: p.defReb, w: 0 },
+            { val: p.speed, w: 10 }, { val: p.agility, w: 10 }, { val: p.strength, w: 0 }, { val: p.vertical, w: 0 }, { val: p.stamina, w: 15 }, { val: p.hustle, w: 0 }, { val: p.durability, w: 0 },
+            { val: p.passAcc, w: 25 }, { val: p.handling, w: 15 }, { val: p.spdBall, w: 10 }, { val: p.passVision, w: 25 }, { val: p.passIq, w: 50 },
+            { val: p.intangibles, w: 5 }, { val: p.potential, w: 120 }
+        ]);
+    } else if (position.includes('SG')) {
+        return calc([
+            { val: p.closeShot, w: 5 }, { val: p.midRange, w: 8 }, { val: threeAvg, w: 10 }, { val: p.ft, w: 5 }, { val: p.shotIq, w: 6 }, { val: p.offConsist, w: 7 },
+            { val: p.layup, w: 2 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 6 }, { val: p.hands, w: 1 },
+            { val: p.intDef, w: 0 }, { val: p.perDef, w: 5 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 5 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 0 },
+            { val: p.offReb, w: 3 }, { val: p.defReb, w: 1 },
+            { val: p.speed, w: 8 }, { val: p.agility, w: 2 }, { val: p.strength, w: 1 }, { val: p.vertical, w: 1 }, { val: p.stamina, w: 2 }, { val: p.hustle, w: 2 }, { val: p.durability, w: 1 },
+            { val: p.passAcc, w: 7 }, { val: p.handling, w: 2 }, { val: p.spdBall, w: 1 }, { val: p.passVision, w: 2 }, { val: p.passIq, w: 2 },
+            { val: p.intangibles, w: 14 }, { val: p.potential, w: 14 }, { val: heightCm, w: 4 }
+        ]);
+    } else if (position.includes('SF')) {
+        return calc([
+            { val: p.closeShot, w: 4 }, { val: p.midRange, w: 2 }, { val: threeAvg, w: 2 }, { val: p.ft, w: 2 }, { val: p.shotIq, w: 2 }, { val: p.offConsist, w: 5 },
+            { val: p.layup, w: 4 }, { val: p.dunk, w: 1 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 3 }, { val: p.hands, w: 3},
+            { val: p.intDef, w: 4 }, { val: p.perDef, w: 4 }, { val: p.steal, w: 2 }, { val: p.blk, w: 2 }, { val: p.helpDefIq, w: 4 }, { val: p.passPerc, w: 3 }, { val: p.defConsist, w: 3 },
+            { val: p.offReb, w: 3 }, { val: p.defReb, w: 3 },
+            { val: p.speed, w: 3 }, { val: p.agility, w: 3 }, { val: p.strength, w: 1 }, { val: p.vertical, w: 2 }, { val: p.stamina, w: 3 }, { val: p.hustle, w: 3 }, { val: p.durability, w: 3 },
+            { val: p.passAcc, w: 1 }, { val: p.handling, w: 1 }, { val: p.spdBall, w: 1 }, { val: p.passVision, w: 1 }, { val: p.passIq, w: 3 },
+            { val: p.intangibles, w: 10 }, { val: p.potential, w: 15 }, { val: heightCm, w: 6 }
+        ]);
+    } else if (position.includes('PF')) {
+        return calc([
+            { val: p.closeShot, w: 5 }, { val: p.midRange, w: 1 }, { val: threeAvg, w: 1 }, { val: p.ft, w: 4 }, { val: p.shotIq, w: 1 }, { val: p.offConsist, w: 5 },
+            { val: p.layup, w: 3 }, { val: p.dunk, w: 4 }, { val: p.postPlay, w: 4 }, { val: p.drawFoul, w: 4 }, { val: p.hands, w: 5},
+            { val: p.intDef, w: 6 }, { val: p.perDef, w: 1 }, { val: p.steal, w: 1 }, { val: p.blk, w: 4 }, { val: p.helpDefIq, w: 2 }, { val: p.passPerc, w: 1 }, { val: p.defConsist, w: 5 },
+            { val: p.offReb, w: 4 }, { val: p.defReb, w: 6 },
+            { val: p.speed, w: 2 }, { val: p.agility, w: 2 }, { val: p.strength, w: 5 }, { val: p.vertical, w: 5 }, { val: p.stamina, w: 4 }, { val: p.hustle, w: 4 }, { val: p.durability, w: 5 },
+            { val: p.passAcc, w: 1}, { val: p.handling, w: 1 }, { val: p.spdBall, w: 1 }, { val: p.passVision, w: 1 }, { val: p.passIq, w: 1 },
+            { val: p.intangibles, w: 15 }, { val: p.potential, w: 12 }, { val: heightCm, w: 7 }
+        ]);
+    } else if (position.includes('C')) {
+        return calc([
+            { val: p.closeShot, w: 10 }, { val: p.midRange, w: 2 }, { val: threeAvg, w: 2 }, { val: p.ft, w: 2 }, { val: p.shotIq, w: 3 }, { val: p.offConsist, w: 5 },
+            { val: p.layup, w: 8 }, { val: p.dunk, w: 10 }, { val: p.postPlay, w: 10 }, { val: p.drawFoul, w: 5 }, { val: p.hands, w: 5},
+            { val: p.intDef, w: 12 }, { val: p.perDef, w: 1 }, { val: p.steal, w: 1 }, { val: p.blk, w: 8 }, { val: p.helpDefIq, w: 1 }, { val: p.passPerc, w: 1 }, { val: p.defConsist, w: 6 },
+            { val: p.offReb, w: 8 }, { val: p.defReb, w: 8 },
+            { val: p.speed, w: 2 }, { val: p.agility, w: 2 }, { val: p.strength, w: 6 }, { val: p.vertical, w: 8 }, { val: p.stamina, w: 2 }, { val: p.hustle, w: 1 }, { val: p.durability, w: 6 },
+            { val: p.passAcc, w: 1}, { val: p.handling, w: 1 }, { val: p.spdBall, w: 1 }, { val: p.passVision, w: 1 }, { val: p.passIq, w: 1 },
+            { val: p.intangibles, w: 15 }, { val: p.potential, w: 10 }, { val: heightCm, w: 8 }
+        ]);
+    }
+    return 70;
 };
 
 const calculateAttributes = (p: any) => {
@@ -207,88 +230,27 @@ const calculateAttributes = (p: any) => {
     const def = avg([intDef, perDef, lockdown, steal, blk, helpDefIq, passPerc, defConsist]);
     const reb = avg([offReb, defReb]);
 
-    const position = p.position || p.Position || p.POSITION || 'PG';
-    const heightCm = p.height || p.Height || 200;
-    const name = (p.name || p.Name || p.NAME || 'Unknown').trim();
-    const age = p.age || p.Age || 20;
-    const height = p.height || p.Height || 200;
-    const weight = p.weight || p.Weight || 95;
-    const salary = p.salary || p.Salary || 1;
-    const contractYears = p.contract_years || p.contractYears || p.ContractYears || 1;
-
-    let ovrRaw = 0;
-    const threeAvg = (threeCorner + three45 + threeTop) / 3;
+    const position = p.position || 'PG';
+    const name = (p.name || 'Unknown').trim();
+    const age = p.age || 20;
+    const height = p.height || 200;
+    const weight = p.weight || 95;
+    const salary = p.salary || 1;
+    const contractYears = p.contract_years || 1;
     const intangibles = getVal('intangibles', 'INTANGIBLES', 'INT'); 
     const potential = getVal('potential', 'POT');
 
-    const calcNewOvr = (weights: {val: number, w: number}[]) => {
-        let totalVal = 0;
-        let totalWeight = 0;
-        weights.forEach(item => {
-            totalVal += item.val * item.w;
-            totalWeight += item.w;
-        });
-        const rawAvg = totalWeight > 0 ? totalVal / totalWeight : 50;
-        return Math.min(99, Math.max(40, Math.round(rawAvg)));
+    const attrObj = { 
+        position, closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist, 
+        layup, dunk, postPlay, drawFoul, hands, intDef, perDef, steal, blk, helpDefIq, passPerc, 
+        defConsist, offReb, defReb, speed, agility, strength, vertical, stamina, hustle, 
+        durability, passAcc, handling, spdBall, passVision, passIq, intangibles, potential, height 
     };
 
-    if (position.includes('PG')) {
-        ovrRaw = calcNewOvr([
-            { val: closeShot, w: 10 }, { val: midRange, w: 20 }, { val: threeAvg, w: 25 }, { val: ft, w: 10 }, { val: shotIq, w: 45 }, { val: offConsist, w: 25 },
-            { val: layup, w: 25 }, { val: dunk, w: 0 }, { val: postPlay, w: 0 }, { val: drawFoul, w: 0 }, { val: hands, w: 40 },
-            { val: intDef, w: 0 }, { val: perDef, w: 0 }, { val: steal, w: 0 }, { val: blk, w: 0 }, { val: helpDefIq, w: 0 }, { val: passPerc, w: 0 }, { val: defConsist, w: 0 },
-            { val: offReb, w: 2 }, { val: defReb, w: 0 },
-            { val: speed, w: 10 }, { val: agility, w: 10 }, { val: strength, w: 0 }, { val: vertical, w: 0 }, { val: stamina, w: 15 }, { val: hustle, w: 0 }, { val: durability, w: 0 },
-            { val: passAcc, w: 25 }, { val: handling, w: 15 }, { val: spdBall, w: 10 }, { val: passVision, w: 25 }, { val: passIq, w: 50 },
-            { val: intangibles, w: 5 }, { val: potential, w: 120 }
-        ]);
-    } else if (position.includes('SG')) {
-        ovrRaw = calcNewOvr([
-            { val: closeShot, w: 5 }, { val: midRange, w: 8 }, { val: threeAvg, w: 10 }, { val: ft, w: 5 }, { val: shotIq, w: 6 }, { val: offConsist, w: 7 },
-            { val: layup, w: 2 }, { val: dunk, w: 0 }, { val: postPlay, w: 0 }, { val: drawFoul, w: 6 }, { val: hands, w: 1 },
-            { val: intDef, w: 0 }, { val: perDef, w: 5 }, { val: steal, w: 0 }, { val: blk, w: 0 }, { val: helpDefIq, w: 5 }, { val: passPerc, w: 0 }, { val: defConsist, w: 0 },
-            { val: offReb, w: 3 }, { val: defReb, w: 1 },
-            { val: speed, w: 8 }, { val: agility, w: 2 }, { val: strength, w: 1 }, { val: vertical, w: 1 }, { val: stamina, w: 2 }, { val: hustle, w: 2 }, { val: durability, w: 1 },
-            { val: passAcc, w: 7 }, { val: handling, w: 2 }, { val: spdBall, w: 1 }, { val: passVision, w: 2 }, { val: passIq, w: 2 },
-            { val: intangibles, w: 14 }, { val: potential, w: 14 }, { val: heightCm, w: 4 }
-        ]);
-    } else if (position.includes('SF')) {
-        ovrRaw = calcNewOvr([
-            { val: closeShot, w: 4 }, { val: midRange, w: 2 }, { val: threeAvg, w: 2 }, { val: ft, w: 2 }, { val: shotIq, w: 2 }, { val: offConsist, w: 5 },
-            { val: layup, w: 4 }, { val: dunk, w: 1 }, { val: postPlay, w: 0 }, { val: drawFoul, w: 3 }, { val: hands, w: 3},
-            { val: intDef, w: 4 }, { val: perDef, w: 4 }, { val: steal, w: 2 }, { val: blk, w: 2 }, { val: helpDefIq, w: 4 }, { val: passPerc, w: 3 }, { val: defConsist, w: 3 },
-            { val: offReb, w: 3 }, { val: defReb, w: 3 },
-            { val: speed, w: 3 }, { val: agility, w: 3 }, { val: strength, w: 1 }, { val: vertical, w: 2 }, { val: stamina, w: 3 }, { val: hustle, w: 3 }, { val: durability, w: 3 },
-            { val: passAcc, w: 1 }, { val: handling, w: 1 }, { val: spdBall, w: 1 }, { val: passVision, w: 1 }, { val: passIq, w: 3 },
-            { val: intangibles, w: 10 }, { val: potential, w: 15 }, { val: heightCm, w: 6 }
-        ]);
-    } else if (position.includes('PF')) {
-        ovrRaw = calcNewOvr([
-            { val: closeShot, w: 5 }, { val: midRange, w: 1 }, { val: threeAvg, w: 1 }, { val: ft, w: 4 }, { val: shotIq, w: 1 }, { val: offConsist, w: 5 },
-            { val: layup, w: 3 }, { val: dunk, w: 4 }, { val: postPlay, w: 4 }, { val: drawFoul, w: 4 }, { val: hands, w: 5},
-            { val: intDef, w: 6 }, { val: perDef, w: 1 }, { val: steal, w: 1 }, { val: blk, w: 4 }, { val: helpDefIq, w: 2 }, { val: passPerc, w: 1 }, { val: defConsist, w: 5 },
-            { val: offReb, w: 4 }, { val: defReb, w: 6 },
-            { val: speed, w: 2 }, { val: agility, w: 2 }, { val: strength, w: 5 }, { val: vertical, w: 5 }, { val: stamina, w: 4 }, { val: hustle, w: 4 }, { val: durability, w: 5 },
-            { val: passAcc, w: 1}, { val: handling, w: 1 }, { val: spdBall, w: 1 }, { val: passVision, w: 1 }, { val: passIq, w: 1 },
-            { val: intangibles, w: 15 }, { val: potential, w: 12 }, { val: heightCm, w: 7 }
-        ]);
-    } else if (position.includes('C')) {
-        ovrRaw = calcNewOvr([
-            { val: closeShot, w: 10 }, { val: midRange, w: 2 }, { val: threeAvg, w: 2 }, { val: ft, w: 2 }, { val: shotIq, w: 3 }, { val: offConsist, w: 5 },
-            { val: layup, w: 8 }, { val: dunk, w: 10 }, { val: postPlay, w: 10 }, { val: drawFoul, w: 5 }, { val: hands, w: 5},
-            { val: intDef, w: 12 }, { val: perDef, w: 1 }, { val: steal, w: 1 }, { val: blk, w: 8 }, { val: helpDefIq, w: 1 }, { val: passPerc, w: 1 }, { val: defConsist, w: 6 },
-            { val: offReb, w: 8 }, { val: defReb, w: 8 },
-            { val: speed, w: 2 }, { val: agility, w: 2 }, { val: strength, w: 6 }, { val: vertical, w: 8 }, { val: stamina, w: 2 }, { val: hustle, w: 1 }, { val: durability, w: 6 },
-            { val: passAcc, w: 1}, { val: handling, w: 1 }, { val: spdBall, w: 1 }, { val: passVision, w: 1 }, { val: passIq, w: 1 },
-            { val: intangibles, w: 15 }, { val: potential, w: 10 }, { val: heightCm, w: 8 }
-        ]);
-    } else {
-        ovrRaw = 70;
-    }
+    const ovr = calculatePlayerOvr(attrObj);
 
     return {
-        ovr: Math.max(40, Math.round(ovrRaw)),
-        ath, out, ins, plm, def, reb,
+        ovr, ath, out, ins, plm, def, reb,
         speed, agility, strength, vertical, stamina, hustle, durability,
         closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist,
         layup, dunk, postPlay, drawFoul, hands,
@@ -302,49 +264,20 @@ const calculateAttributes = (p: any) => {
 
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
     const attrs = calculateAttributes(p);
-    
-    // Robust Lookup: Search normalized name in the normalized keys of KNOWN_INJURIES
     const searchName = normalizeName(attrs.name);
-    // 딕셔너리의 키를 하나씩 정규화하여 현재 선수 이름과 비교 (한글/영문 모두 지원)
     const knownKey = Object.keys(KNOWN_INJURIES).find(k => normalizeName(k) === searchName);
     const known = knownKey ? KNOWN_INJURIES[knownKey] : undefined;
-    
     let health: 'Healthy' | 'Injured' | 'Day-to-Day' = 'Healthy';
-    
-    // 1. KNOWN_INJURIES 리스트가 있으면 무조건 'Injured'로 강제 설정
-    if (known) {
-        health = 'Injured';
-    } else {
-        // 2. 리스트에 없으면 데이터베이스(CSV)의 상태를 확인
-        const dbStatus = (p.health || p.Health || p.status || "").toLowerCase();
-        if (dbStatus.includes('injured') || dbStatus.includes('out') || dbStatus.includes('dtd') || dbStatus.includes('day')) {
-            health = dbStatus.includes('injured') || dbStatus.includes('out') ? 'Injured' : 'Day-to-Day';
-        }
+    if (known) health = 'Injured';
+    else {
+        const dbStatus = (p.health || "").toLowerCase();
+        if (dbStatus.includes('injured') || dbStatus.includes('out') || dbStatus.includes('dtd')) health = dbStatus.includes('dtd') ? 'Day-to-Day' : 'Injured';
     }
-
-    // 부상 정보 텍스트 결정 (Known 리스트 우선)
-    let injuryType = "";
-    if (known) {
-        injuryType = known.type;
-    } else if (p.injuryType || p.injury_type || p.Injury) {
-        injuryType = p.injuryType || p.injury_type || p.Injury;
-    } else if (health !== 'Healthy') {
-        injuryType = "재활 중 (상태 점검 필요)";
-    }
-
-    // 복귀 예정일 결정 (Known 리스트 우선)
-    const returnDate = known ? known.returnDate : (p.returnDate || p.return_date || (health !== 'Healthy' ? '미정' : undefined));
-
-    let id = p.id;
-    if (!id) {
-        // ID 생성 시에도 정규화된 이름을 사용하여 안정적인 ID 생성
-        const idName = searchName || attrs.name.replace(/[^a-zA-Z0-9가-힣]/g, '');
-        id = `${teamId}_${idName}`;
-    }
-    id = String(id);
-
+    let injuryType = known ? known.type : (p.injuryType || (health !== 'Healthy' ? "재활 중" : ""));
+    const returnDate = known ? known.returnDate : (p.returnDate || (health !== 'Healthy' ? '미정' : undefined));
+    let id = p.id || `${teamId}_${searchName}`;
     return {
-        id,
+        id: String(id),
         ...attrs,
         position: attrs.position as any,
         health,
@@ -353,7 +286,7 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         condition: health === 'Healthy' ? 100 : 40,
         revealedPotential: attrs.potential,
         stats: INITIAL_STATS(),
-        playoffStats: INITIAL_STATS() // Initialize Playoff Stats
+        playoffStats: INITIAL_STATS()
     };
 };
 
@@ -365,14 +298,11 @@ const MONTH_MAP: Record<string, string> = {
 export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
     const games: Game[] = [];
     const createdGameKeys = new Set<string>();
-
     dbGames.forEach((row, i) => {
-        const teamFull = (row.team_name || row.team || row.Team || '').trim();
-        const oppFull = (row.opponent_name || row.opponent || row.Opponent || '').trim();
+        const teamFull = (row.team_name || row.team || '').trim();
+        const oppFull = (row.opponent_name || row.opponent || '').trim();
         const dateStrRaw = row.date || row.Date;
-        
         if (!teamFull || !oppFull || !dateStrRaw) return;
-
         const findTeamId = (name: string) => {
             if (name === '팀버울브즈' || name === '팀버울브스') return 'min'; 
             if (name === '너겟츠' || name === '너게츠') return 'den';
@@ -381,41 +311,23 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
             const t = INITIAL_TEAMS_DATA.find(t => t.name === name || t.city === name || `${t.city} ${t.name}` === name);
             return t ? t.id : null;
         };
-
         const teamId = findTeamId(teamFull);
         const oppId = findTeamId(oppFull);
-
         if (!teamId || !oppId) return;
-
         let homeId, awayId;
-        const site = row.site || row.Site || '';
-        if (site === '홈' || site === 'Home' || site === 'home') {
-            homeId = teamId; awayId = oppId;
-        } else {
-            homeId = oppId; awayId = teamId;
-        }
-
+        const site = row.site || '';
+        if (site === '홈' || site === 'Home') { homeId = teamId; awayId = oppId; } 
+        else { homeId = oppId; awayId = teamId; }
         let dateStr = dateStrRaw;
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStrRaw)) {
-            dateStr = dateStrRaw;
-        } else {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStrRaw)) {
             const parts = dateStrRaw.split(' ').filter((p: string) => p.trim() !== '');
             if (parts.length === 4) {
                const month = MONTH_MAP[parts[1]];
                const day = parts[2].padStart(2, '0');
                const year = parts[3];
-               if (month && day && year) { dateStr = `${year}-${month}-${day}`; }
-            } else {
-                const d = new Date(dateStrRaw);
-                if (!isNaN(d.getTime())) {
-                    const year = d.getFullYear();
-                    const month = String(d.getMonth() + 1).padStart(2, '0');
-                    const day = String(d.getDate()).padStart(2, '0');
-                    dateStr = `${year}-${month}-${day}`;
-                }
+               if (month && day && year) dateStr = `${year}-${month}-${day}`;
             }
         }
-
         const gameKey = `${dateStr}_${homeId}_${awayId}`;
         if (!createdGameKeys.has(gameKey)) {
             createdGameKeys.add(gameKey);
@@ -424,76 +336,35 @@ export const mapDatabaseScheduleToRuntimeGame = (dbGames: any[]): Game[] => {
                 homeTeamId: homeId,
                 awayTeamId: awayId,
                 date: dateStr,
-                played: false, 
-                homeScore: row.tm_score || row.TmScore || undefined,
-                awayScore: row.opp_score || row.OppScore || undefined
+                played: false
             });
         }
     });
-
     return games.sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 };
 
 export function parseRostersCSV(csv: string): Record<string, Player[]> {
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     const rosterMap: Record<string, Player[]> = {};
-
     for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',').map(v => v.trim());
         if (values.length < 45) continue; 
-
         const teamFull = values[0];
         const teamData = INITIAL_TEAMS_DATA.find(t => `${t.city} ${t.name}` === teamFull || t.name === teamFull);
         const teamKey = teamData?.id || 'unknown';
-        
         const mockRow = {
-            name: values[1],
-            position: values[2],
-            age: parseInt(values[3]),
-            height: parseInt(values[4]),
-            weight: parseInt(values[5]),
-            salary: parseFloat(values[6]),
-            contract_years: parseInt(values[7]),
-            health: values[8],
-            potential: parseInt(values[9]),
-            intangibles: parseInt(values[10]),
-            speed: parseInt(values[11]),
-            agility: parseInt(values[12]),
-            strength: parseInt(values[13]),
-            vertical: parseInt(values[14]),
-            stamina: parseInt(values[15]),
-            hustle: parseInt(values[16]),
-            durability: parseInt(values[17]),
-            close_shot: parseInt(values[18]),
-            mid_range: parseInt(values[19]),
-            three_corner: parseInt(values[20]),
-            three_45: parseInt(values[21]),
-            three_top: parseInt(values[22]),
-            ft: parseInt(values[23]),
-            shot_iq: parseInt(values[24]),
-            off_consist: parseInt(values[25]),
-            layup: parseInt(values[26]),
-            dunk: parseInt(values[27]),
-            post_play: parseInt(values[28]),
-            draw_foul: parseInt(values[29]),
-            hands: parseInt(values[30]),
-            pass_acc: parseInt(values[31]),
-            handling: parseInt(values[32]),
-            spd_ball: parseInt(values[33]),
-            pass_iq: parseInt(values[34]),
-            pass_vision: parseInt(values[35]),
-            int_def: parseInt(values[36]),
-            per_def: parseInt(values[37]),
-            lockdown: parseInt(values[38]),
-            steal: parseInt(values[39]),
-            block: parseInt(values[40]),
-            help_def_iq: parseInt(values[41]),
-            pass_perc: parseInt(values[42]),
-            def_consist: parseInt(values[43]),
-            off_reb: parseInt(values[44]),
-            def_reb: (values[45] && values[45] !== '') ? parseInt(values[45]) : undefined
+            name: values[1], position: values[2], age: parseInt(values[3]), height: parseInt(values[4]), weight: parseInt(values[5]),
+            salary: parseFloat(values[6]), contract_years: parseInt(values[7]), health: values[8], potential: parseInt(values[9]),
+            intangibles: parseInt(values[10]), speed: parseInt(values[11]), agility: parseInt(values[12]), strength: parseInt(values[13]),
+            vertical: parseInt(values[14]), stamina: parseInt(values[15]), hustle: parseInt(values[16]), durability: parseInt(values[17]),
+            close_shot: parseInt(values[18]), mid_range: parseInt(values[19]), three_corner: parseInt(values[20]), three_45: parseInt(values[21]),
+            three_top: parseInt(values[22]), ft: parseInt(values[23]), shot_iq: parseInt(values[24]), off_consist: parseInt(values[25]),
+            layup: parseInt(values[26]), dunk: parseInt(values[27]), post_play: parseInt(values[28]), draw_foul: parseInt(values[29]),
+            hands: parseInt(values[30]), pass_acc: parseInt(values[31]), handling: parseInt(values[32]), spd_ball: parseInt(values[33]),
+            pass_iq: parseInt(values[34]), pass_vision: parseInt(values[35]), int_def: parseInt(values[36]), per_def: parseInt(values[37]),
+            lockdown: parseInt(values[38]), steal: parseInt(values[39]), block: parseInt(values[40]), help_def_iq: parseInt(values[41]),
+            pass_perc: parseInt(values[42]), def_consist: parseInt(values[43]), off_reb: parseInt(values[44]), def_reb: (values[45] && values[45] !== '') ? parseInt(values[45]) : undefined
         };
-
         if (teamKey !== 'unknown') {
             if (!rosterMap[teamKey]) rosterMap[teamKey] = [];
             rosterMap[teamKey].push(mapDatabasePlayerToRuntimePlayer(mockRow, teamKey));
@@ -505,18 +376,11 @@ export function parseRostersCSV(csv: string): Record<string, Player[]> {
 export function parseScheduleCSV(csv: string, teams: Team[]): Game[] {
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     const dbRows = [];
-    const startIndex = (lines[0] && lines[0].toLowerCase().includes('date')) ? 1 : 0;
-
-    for(let i=startIndex; i<lines.length; i++) {
+    for(let i=1; i<lines.length; i++) {
         const cols = lines[i].split(',').map(c => c.trim());
         if (cols.length < 4) continue;
         dbRows.push({
-            date: new Date(cols[0]).toISOString().split('T')[0], 
-            team_name: cols[1],
-            site: cols[2],
-            opponent_name: cols[3],
-            tm_score: null,
-            opp_score: null
+            date: new Date(cols[0]).toISOString().split('T')[0], team_name: cols[1], site: cols[2], opponent_name: cols[3]
         });
     }
     return mapDatabaseScheduleToRuntimeGame(dbRows);
@@ -526,48 +390,29 @@ export function generateSeasonSchedule(myTeamId: string): Game[] {
   const games: Game[] = [];
   const teams = INITIAL_TEAMS_DATA.map(t => t.id);
   const startDate = new Date(SEASON_START_DATE);
-  
   let currentDate = new Date(startDate);
   const endDate = new Date('2026-04-15');
   let gameIdCounter = 1;
-
   while (currentDate <= endDate) {
       const gamesToday = Math.floor(Math.random() * 6) + 5;
       const teamsPlaying = new Set<string>();
-
       for(let i=0; i<gamesToday; i++) {
           if (teamsPlaying.size >= teams.length - 1) break;
-
           let home = teams[Math.floor(Math.random() * teams.length)];
-          while (teamsPlaying.has(home)) {
-             home = teams[Math.floor(Math.random() * teams.length)];
-          }
+          while (teamsPlaying.has(home)) home = teams[Math.floor(Math.random() * teams.length)];
           teamsPlaying.add(home);
-
           let away = teams[Math.floor(Math.random() * teams.length)];
-          while (teamsPlaying.has(away)) {
-             away = teams[Math.floor(Math.random() * teams.length)];
-          }
+          while (teamsPlaying.has(away)) away = teams[Math.floor(Math.random() * teams.length)];
           teamsPlaying.add(away);
-
-          games.push({
-              id: `g_${gameIdCounter++}`,
-              homeTeamId: home,
-              awayTeamId: away,
-              date: currentDate.toISOString().split('T')[0],
-              played: false
-          });
+          games.push({ id: `g_${gameIdCounter++}`, homeTeamId: home, awayTeamId: away, date: currentDate.toISOString().split('T')[0], played: false });
       }
       currentDate.setDate(currentDate.getDate() + 1);
   }
-  
   return games;
 }
 
 export function exportScheduleToCSV(schedule: Game[], teams: Team[]): string {
     let csv = "Date,HomeTeam,AwayTeam,HomeScore,AwayScore,Played\n";
-    schedule.forEach(g => {
-        csv += `${g.date},${g.homeTeamId},${g.awayTeamId},${g.homeScore || 0},${g.awayScore || 0},${g.played ? 'Y' : 'N'}\n`;
-    });
+    schedule.forEach(g => { csv += `${g.date},${g.homeTeamId},${g.awayTeamId},${g.homeScore || 0},${g.awayScore || 0},${g.played ? 'Y' : 'N'}\n`; });
     return csv;
 }
