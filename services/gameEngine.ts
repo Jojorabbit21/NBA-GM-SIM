@@ -58,13 +58,11 @@ export const TRADE_CONFIG = {
 
 export const SIM_CONFIG = {
     GAME_ENV: {
-        // [Balance Patch v2] Increased base possessions from 75 to 80.
-        // Prevents extremely low FGA (e.g., < 60) when using low pace settings.
-        BASE_POSSESSIONS: 80, 
+        // [Balance Patch v4] Increased base possessions from 80 to 85 to ensure 95-125 PPG range.
+        BASE_POSSESSIONS: 85, 
         HOME_ADVANTAGE: 0.02,
-        // [Balance Patch v2] Adjusted slider impact to 0.02 (Range: -8% to +10%)
         PACE_SLIDER_IMPACT: 0.02, 
-        SCORING_MODIFIER: 0.96,
+        SCORING_MODIFIER: 1.05, // 점수 보강을 위해 모디파이어 상향
     },
     FATIGUE: {
         DRAIN_BASE: 1.8,
@@ -459,12 +457,11 @@ function simulateTeamPerformance(
 
     if (teamTactics) {
       teamTactics.offenseTactics.forEach(tactic => {
-        // [Balance Patch v2] Reduced negative impact of Grind/PostFocus to keep floor reasonable
         if (tactic === 'PaceAndSpace') { tacticPerimeterBonus += 0.08; tacticPaceBonus += 0.03; tacticDrainMult += 0.1; } 
         else if (tactic === 'PerimeterFocus') { tacticPerimeterBonus += 0.06; }
-        else if (tactic === 'PostFocus') { tacticInteriorBonus += 0.08; tacticPaceBonus -= 0.03; } // Was -0.05
+        else if (tactic === 'PostFocus') { tacticInteriorBonus += 0.08; tacticPaceBonus -= 0.03; } 
         else if (tactic === 'SevenSeconds') { tacticPerimeterBonus += 0.10; tacticPaceBonus += 0.08; tacticDrainMult += 0.15; } 
-        else if (tactic === 'Grind') { tacticPaceBonus -= 0.06; } // Was -0.15
+        else if (tactic === 'Grind') { tacticPaceBonus -= 0.06; } 
       });
       
       teamTactics.defenseTactics.forEach(tactic => {
@@ -474,7 +471,7 @@ function simulateTeamPerformance(
     }
     paceMultiplier += tacticPaceBonus;
 
-    const teamFgaTarget = (C.GAME_ENV.BASE_POSSESSIONS + (Math.random() * 8) + (isHome ? 2 : 0)) * C.GAME_ENV.SCORING_MODIFIER * paceMultiplier;
+    const teamFgaTarget = (C.GAME_ENV.BASE_POSSESSIONS + (Math.random() * 10) + (isHome ? 2 : 0)) * C.GAME_ENV.SCORING_MODIFIER * paceMultiplier;
     const hastePenalty = paceMultiplier > 1.15 ? (paceMultiplier - 1.15) * 0.6 : 0;
 
     const oppZoneEffect = (oppSliders.zoneUsage - 5) * 2.0; 
@@ -640,45 +637,31 @@ function simulateTeamPerformance(
 
       const fgm = Math.round(fga * fgp);
 
-      // =====================================================================================
-      // [Balance Patch v3] 3-Point Tendency Overhaul (Tier-based + Attribute Context)
-      // Fixes issue where non-shooters (e.g., Giannis) take too many 3s due to volume/tactics.
-      // =====================================================================================
-      
-      // 1. Base Tier Logic (Exponential Falloff)
       let base3PTendency = 0;
-      if (threeAvg >= 90) base3PTendency = 0.55;      // Elite (Curry)
-      else if (threeAvg >= 85) base3PTendency = 0.45; // High Volume
-      else if (threeAvg >= 80) base3PTendency = 0.35; // Good
-      else if (threeAvg >= 75) base3PTendency = 0.20; // Average
-      else if (threeAvg >= 70) base3PTendency = 0.10; // Occasional (Giannis Range)
-      else base3PTendency = 0.02;                     // Non-Shooter
+      if (threeAvg >= 90) base3PTendency = 0.55;      
+      else if (threeAvg >= 85) base3PTendency = 0.45; 
+      else if (threeAvg >= 80) base3PTendency = 0.35; 
+      else if (threeAvg >= 75) base3PTendency = 0.20; 
+      else if (threeAvg >= 70) base3PTendency = 0.10; 
+      else base3PTendency = 0.02;                     
 
-      // 2. Attribute Context (Inside vs Outside Dominance)
-      // If Inside Scoring is significantly better than 3PT, reduce 3PT tendency by 50%
       if (p.ins > threeAvg + 15) {
           base3PTendency *= 0.5; 
       }
 
-      // 3. Tactical Multipliers (Scale existing tendency instead of adding flat value)
       let tacticMult = 1.0;
       if (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds')) {
           tacticMult = 1.4; 
       }
       if (teamTactics?.offenseTactics.includes('PerimeterFocus')) {
-          if (threeAvg > 80) tacticMult = 1.3; // Shooters shoot more
-          else tacticMult = 0.8;               // Non-shooters clear out
+          if (threeAvg > 80) tacticMult = 1.3; 
+          else tacticMult = 0.8;               
       }
 
-      // 4. Calculate Attempts
       let p3a = Math.round(fga * base3PTendency * tacticMult);
 
-      // 5. Hard Caps & Sanity Checks
-      // Force low volume for bad shooters regardless of tactics
       if (threeAvg < 65) p3a = Math.min(p3a, 1);
       if (threeAvg < 75) p3a = Math.min(p3a, 6); 
-
-      // =====================================================================================
 
       const p3p = Math.min(0.50, Math.max(0.20, 
          C.SHOOTING.THREE_BASE_PCT 
@@ -880,24 +863,18 @@ export function generateTradeOffers(players: Player[], myTeam: Team, allTeams: T
             if (p.ovr > maxUserOvr) maxUserOvr = p.ovr;
         });
 
-        // ==========================================
-        //  [NEW] Quality Over Quantity Penalty Logic
-        // ==========================================
         if (players.length >= D.PACKAGE_SIZE_TRIGGER) {
-            // 1. 앵커(에이스급) 부재 페널티
             if (maxUserOvr < D.ANCHOR_OVR_LOW) {
-                userPackageValueToAI *= D.LOW_ANCHOR_PENALTY; // 가치 50% 삭감 (쓰레기 덤핑 방지)
+                userPackageValueToAI *= D.LOW_ANCHOR_PENALTY; 
             } else if (maxUserOvr < D.ANCHOR_OVR_MID) {
-                userPackageValueToAI *= D.MID_ANCHOR_PENALTY; // 가치 20% 삭감 (롤플레이어 모음 방지)
+                userPackageValueToAI *= D.MID_ANCHOR_PENALTY; 
             }
 
-            // 2. 로스터 클로깅 페널티 (단순 머릿수 채우기 방지)
             const lowTierCount = players.filter(p => p.ovr < 75).length;
             if (lowTierCount >= 2) {
                 userPackageValueToAI *= D.ROSTER_CLOG_PENALTY;
             }
         }
-        // ==========================================
 
         const candidates = [...targetTeam.roster].sort((a,b) => a.ovr - b.ovr);
         
