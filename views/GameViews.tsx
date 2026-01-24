@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap, Calendar } from 'lucide-react';
+import { X, Trophy, List, ArrowRight, Activity, Lock, Target, Shield, ShieldAlert, CheckCircle2, RefreshCw, Zap, Calendar, Newspaper, BarChart3, ChevronRight, Crown } from 'lucide-react';
 import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { GameTactics } from '../services/gameEngine';
@@ -34,14 +34,25 @@ const CLUTCH_MESSAGES = [
 
 const SUPER_CLUTCH_MESSAGES = [
     "운명의 시간이 다가옵니다...",
-    "마지막 10초! 공격권을 쥔 쪽은 누구인가...",
+    "마지막 10초! 원 포제션 게임!",
     "버저비터가 터질 것인가!",
-    "심장이 멎을 듯한 긴장감...",
+    "심장이 멎을 듯한 초접전...",
     "공이 허공을 가릅니다...",
     "승부를 결정짓는 슛이 림을 향합니다!",
     "기적 같은 플레이가 나올 수 있을까요?",
     "모든 관중이 기립했습니다!",
     "역사에 남을 명승부...",
+];
+
+const GARBAGE_MESSAGES = [
+    "점수 차가 많이 벌어졌습니다.",
+    "주전 선수들이 벤치로 물러나 휴식을 취합니다.",
+    "가비지 타임, 유망주들이 코트를 밟습니다.",
+    "승부의 추는 이미 기운 것 같습니다.",
+    "일방적인 경기 흐름이 계속됩니다.",
+    "관중들이 하나둘 경기장을 빠져나갑니다...",
+    "감독이 벤치 멤버들에게 기회를 줍니다.",
+    "사실상 승패가 결정되었습니다.",
 ];
 
 export const GameSimulatingView: React.FC<{ 
@@ -60,9 +71,11 @@ export const GameSimulatingView: React.FC<{
   const isFinishedRef = useRef(false);
   const progressRef = useRef(0);
   
-  // 턴제 스코어링 상태
+  // 턴제 스코어링 상태 및 Ref (Ref는 setInterval 내에서 최신값 참조용)
   const [currentHomeScore, setCurrentHomeScore] = useState(0);
   const [currentAwayScore, setCurrentAwayScore] = useState(0);
+  const homeScoreRef = useRef(0);
+  const awayScoreRef = useRef(0);
 
   // 1. 시뮬레이션 진행 루프 (0% -> 100%)
   useEffect(() => {
@@ -76,18 +89,18 @@ export const GameSimulatingView: React.FC<{
             }
 
             // 클러치 타임 로직: 진행률에 따라 속도 조절
-            const isClutch = prev > 85; 
-            const isSuperClutch = prev > 94;
+            const isLateGame = prev > 85; 
+            const isVeryLateGame = prev > 94;
 
             // 진행 증가량 (뒤로 갈수록 조금씩만 증가)
-            const increment = isSuperClutch ? 0.4 : (isClutch ? 0.6 : 1.5);
+            const increment = isVeryLateGame ? 0.4 : (isLateGame ? 0.6 : 1.5);
             const next = Math.min(100, prev + increment);
             
             // Ref 업데이트 (메시지 타이머가 참조함)
             progressRef.current = next;
 
             // 딜레이 (뒤로 갈수록 느려짐 -> 긴장감 조성)
-            const delay = isSuperClutch ? 300 : (isClutch ? 100 : 30);
+            const delay = isVeryLateGame ? 300 : (isLateGame ? 100 : 30);
 
             timeoutId = setTimeout(runSimulationStep, delay);
             return next;
@@ -108,15 +121,21 @@ export const GameSimulatingView: React.FC<{
 
       // 점수가 목표치보다 낮으면 증가 (랜덤하게 2점 또는 3점씩)
       setCurrentHomeScore(prev => {
-          if (prev >= finalHomeScore) return finalHomeScore;
-          if (prev < targetHome) return Math.min(finalHomeScore, prev + (Math.random() > 0.6 ? 3 : 2));
-          return prev;
+          let next = prev;
+          if (prev >= finalHomeScore) next = finalHomeScore;
+          else if (prev < targetHome) next = Math.min(finalHomeScore, prev + (Math.random() > 0.6 ? 3 : 2));
+          
+          homeScoreRef.current = next; // Ref 동기화
+          return next;
       });
 
       setCurrentAwayScore(prev => {
-          if (prev >= finalAwayScore) return finalAwayScore;
-          if (prev < targetAway) return Math.min(finalAwayScore, prev + (Math.random() > 0.6 ? 3 : 2));
-          return prev;
+          let next = prev;
+          if (prev >= finalAwayScore) next = finalAwayScore;
+          else if (prev < targetAway) next = Math.min(finalAwayScore, prev + (Math.random() > 0.6 ? 3 : 2));
+          
+          awayScoreRef.current = next; // Ref 동기화
+          return next;
       });
   }, [progress, finalHomeScore, finalAwayScore]);
 
@@ -128,6 +147,8 @@ export const GameSimulatingView: React.FC<{
           // 최종 점수 확정
           setCurrentHomeScore(finalHomeScore);
           setCurrentAwayScore(finalAwayScore);
+          homeScoreRef.current = finalHomeScore;
+          awayScoreRef.current = finalAwayScore;
           
           // 2초 딜레이 후 콜백 실행
           if (onSimulationComplete) {
@@ -163,25 +184,27 @@ export const GameSimulatingView: React.FC<{
         }
 
         const currentProgress = progressRef.current;
+        const scoreDiff = Math.abs(homeScoreRef.current - awayScoreRef.current);
+        
         let targetPool = GENERAL_MESSAGES;
         
-        if (currentProgress > 94) {
+        if (currentProgress > 60 && scoreDiff >= 20) {
+            targetPool = GARBAGE_MESSAGES;
+        } else if (currentProgress > 94 && scoreDiff <= 3) {
             targetPool = SUPER_CLUTCH_MESSAGES;
-        } else if (currentProgress > 85) {
+        } else if (currentProgress > 85 && scoreDiff <= 10) {
             targetPool = CLUTCH_MESSAGES;
         }
 
         setCurrentMessage(prev => {
             let next;
-            // 같은 메시지 연속 출력 방지, 풀이 작을 경우 그냥 출력
             if (targetPool.length <= 1) return targetPool[0];
-            
             do {
                 next = targetPool[Math.floor(Math.random() * targetPool.length)];
             } while (next === prev);
             return next;
         });
-    }, 1500); // 메시지 변경 주기를 조금 늦춤 (가독성 확보)
+    }, 1500); 
 
     return () => {
         clearInterval(shotTimer);
@@ -215,11 +238,25 @@ export const GameSimulatingView: React.FC<{
 
             {/* Center Info */}
             <div className="flex-1 px-4 flex flex-col items-center justify-center gap-4">
-                 <div className={`text-sm md:text-lg font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse transition-colors duration-300 ${progress > 94 ? 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]' : progress > 85 ? 'text-yellow-400' : 'text-indigo-300'}`}>
+                 <div className={`text-sm md:text-lg font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse transition-colors duration-300 ${
+                     Math.abs(currentHomeScore - currentAwayScore) >= 20 && progress > 60 
+                        ? 'text-slate-500'
+                        : progress > 94 && Math.abs(currentHomeScore - currentAwayScore) <= 3
+                            ? 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]'
+                            : progress > 85 && Math.abs(currentHomeScore - currentAwayScore) <= 10
+                                ? 'text-yellow-400'
+                                : 'text-indigo-300'
+                 }`}>
                     {currentMessage}
                  </div>
                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
-                    <div className={`h-full transition-all duration-300 ease-linear ${progress > 94 ? 'bg-gradient-to-r from-red-600 to-orange-500 shadow-[0_0_20px_rgba(220,38,38,0.6)]' : progress > 85 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-indigo-600 to-blue-500'}`} style={{ width: `${progress}%` }}></div>
+                    <div className={`h-full transition-all duration-300 ease-linear ${
+                        Math.abs(currentHomeScore - currentAwayScore) >= 20 && progress > 60 
+                            ? 'bg-slate-600'
+                            : progress > 94 && Math.abs(currentHomeScore - currentAwayScore) <= 3
+                                ? 'bg-gradient-to-r from-red-600 to-orange-500 shadow-[0_0_20px_rgba(220,38,38,0.6)]'
+                                : 'bg-gradient-to-r from-indigo-600 to-blue-500'
+                    }`} style={{ width: `${progress}%` }}></div>
                  </div>
             </div>
 
@@ -263,7 +300,22 @@ export const GameSimulatingView: React.FC<{
   );
 };
 
-const ResultBoxScore: React.FC<{ team: Team, box: PlayerBoxScore[], isFirst?: boolean }> = ({ team, box, isFirst }) => {
+interface GameStatLeaders {
+    pts: number;
+    reb: number;
+    ast: number;
+    stl: number;
+    blk: number;
+    tov: number;
+}
+
+const ResultBoxScore: React.FC<{ 
+    team: Team, 
+    box: PlayerBoxScore[], 
+    isFirst?: boolean, 
+    mvpId: string, 
+    leaders: GameStatLeaders
+}> = ({ team, box, isFirst, mvpId, leaders }) => {
   const sortedBox = useMemo(() => [...box].sort((a, b) => b.gs - a.gs || b.mp - a.mp), [box]);
   const teamTotals = useMemo(() => {
     return box.reduce((acc, p) => ({
@@ -274,282 +326,257 @@ const ResultBoxScore: React.FC<{ team: Team, box: PlayerBoxScore[], isFirst?: bo
     }), { mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
   }, [box]);
 
-  const maxStats = useMemo(() => {
-    const stats = {
-        pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
-        fgm: 0, fga: 0, fgp: 0, p3m: 0, p3a: 0, p3p: 0, ftm: 0, fta: 0, ftp: 0
-    };
-    box.forEach(p => {
-        stats.pts = Math.max(stats.pts, p.pts);
-        stats.reb = Math.max(stats.reb, p.reb);
-        stats.offReb = Math.max(stats.offReb, p.offReb || 0);
-        stats.defReb = Math.max(stats.defReb, p.defReb || 0);
-        stats.ast = Math.max(stats.ast, p.ast);
-        stats.stl = Math.max(stats.stl, p.stl);
-        stats.blk = Math.max(stats.blk, p.blk);
-        stats.tov = Math.max(stats.tov, p.tov);
-        stats.fgm = Math.max(stats.fgm, p.fgm);
-        stats.fga = Math.max(stats.fga, p.fga);
-        stats.fgp = Math.max(stats.fgp, p.fga > 0 ? p.fgm / p.fga : 0);
-        stats.p3m = Math.max(stats.p3m, p.p3m);
-        stats.p3a = Math.max(stats.p3a, p.p3a);
-        stats.p3p = Math.max(stats.p3p, p.p3a > 0 ? p.p3m / p.p3a : 0);
-        stats.ftm = Math.max(stats.ftm, p.ftm);
-        stats.fta = Math.max(stats.fta, p.fta);
-        stats.ftp = Math.max(stats.ftp, p.fta > 0 ? p.ftm / p.fta : 0);
-    });
-    return stats;
-  }, [box]);
+  const highlightClass = "text-yellow-400 font-medium pretendard drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]";
+  // 통일된 폰트 및 사이즈 (이름 제외), w-14 적용을 위한 베이스 클래스에선 width 제외하고 사용처에서 직접 w-14 지정하거나 여기서 w-full 등으로 처리
+  // 여기서는 개별 th에 w-14를 주고, td는 text alignment와 font style만 제어하면 됨.
+  const statCellClass = "py-2.5 px-2 text-xs font-medium pretendard";
 
-  const formatPct = (m: number, a: number) => a > 0 ? (m / a * 100).toFixed(1) : '0.0';
-  const getRawPct = (m: number, a: number) => a > 0 ? m / a : 0;
+  const getPct = (m: number, a: number) => a > 0 ? (m / a * 100).toFixed(1) : '0.0';
 
   return (
-    <div className={`flex flex-col ${!isFirst ? 'border-t border-slate-800 pt-10 mt-6' : ''}`}>
-      <div className="flex items-center gap-4 mb-8 pb-2">
-        <img src={team.logo} className="w-10 h-10 object-contain" alt="" />
-        <h3 className="text-xl font-black ko-tight uppercase text-white tracking-wider">{team.name} 박스스코어</h3>
-      </div>
-      <div className="overflow-x-auto custom-scrollbar pb-4">
-        <table className="w-full text-left table-auto min-w-[1400px]">
-          <thead>
-            <tr className="border-b border-slate-800 text-slate-400 text-[11px] font-black uppercase tracking-widest bg-slate-950/40">
-              <th className="py-4 px-4 sticky left-0 bg-slate-900 z-30 min-w-[200px] border-r border-slate-700 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">PLAYER</th>
-              <th className="py-4 px-3 text-center w-16">POS</th>
-              <th className="py-4 px-3 text-center w-16">OVR</th>
-              <th className="py-4 px-3 text-center">MIN</th>
-              <th className="py-4 px-3 text-center">PTS</th>
-              <th className="py-4 px-3 text-center">REB</th>
-              <th className="py-4 px-3 text-center">OREB</th>
-              <th className="py-4 px-3 text-center">DREB</th>
-              <th className="py-4 px-3 text-center">AST</th>
-              <th className="py-4 px-3 text-center">STL</th>
-              <th className="py-4 px-3 text-center">BLK</th>
-              <th className="py-4 px-3 text-center">TOV</th>
-              <th className="py-4 px-3 text-center">FGM</th>
-              <th className="py-4 px-3 text-center">FGA</th>
-              <th className="py-4 px-3 text-center">FG%</th>
-              <th className="py-4 px-3 text-center">3PM</th>
-              <th className="py-4 px-3 text-center">3PA</th>
-              <th className="py-4 px-3 text-center">3P%</th>
-              <th className="py-4 px-3 text-center">FTM</th>
-              <th className="py-4 px-3 text-center">FTA</th>
-              <th className="py-4 px-3 text-center">FT%</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sortedBox.map((p) => {
-              const playerDetail = team.roster.find(r => r.id === p.playerId);
-              const effect = p.matchupEffect;
-              const hasChips = p.isStopper || p.isAceTarget;
-
-              return (
-                <tr key={p.playerId} className="border-b border-slate-800/40 hover:bg-slate-800/40 transition-colors group">
-                  <td className="py-3 px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 z-20 border-r border-slate-700 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)] align-middle">
-                      <div className="flex flex-col justify-center h-full min-w-0">
-                          <div className={`flex items-center gap-2 ${hasChips ? 'mb-1.5' : ''}`}>
-                              <span className="text-sm font-black text-white truncate leading-none">{p.playerName}</span>
-                          </div>
-                          {hasChips && (
-                            <div className="flex flex-wrap items-center gap-1.5">
-                                {p.isStopper && (
-                                    <div className="flex items-center gap-1 bg-fuchsia-600/20 text-fuchsia-400 px-1.5 py-0.5 rounded-[4px] text-[9px] font-black border border-fuchsia-500/20 leading-none">
-                                    <Lock size={8} className="fill-fuchsia-400/20" /> STOPPER
-                                    </div>
-                                )}
-                                {p.isAceTarget && (
-                                    <div className="flex items-center gap-1 bg-red-600/20 text-red-400 px-1.5 py-0.5 rounded-[4px] text-[9px] font-black border border-red-500/20 leading-none whitespace-nowrap">
-                                    <Target size={8} /> ACE TARGET {effect !== undefined && effect !== 0 ? `(${effect}%)` : ''}
-                                    </div>
-                                )}
-                            </div>
-                          )}
-                      </div>
-                  </td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-400">{playerDetail?.position || '-'}</td>
-                  <td className="py-3 px-3 text-center">
-                    <div className={`${getOvrBadgeStyle(playerDetail?.ovr || 0)} !w-7 !h-7 !text-xs !mx-auto`}>{playerDetail?.ovr || '-'}</div>
-                  </td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-300">{Math.round(p.mp)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-black ${p.pts === maxStats.pts ? 'text-emerald-400' : 'text-white'}`}>{Math.round(p.pts)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-bold ${p.reb === maxStats.reb ? 'text-emerald-400' : 'text-slate-200'}`}>{Math.round(p.reb)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-bold ${p.offReb === maxStats.offReb ? 'text-emerald-400' : 'text-slate-400'}`}>{Math.round(p.offReb || 0)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-bold ${p.defReb === maxStats.defReb ? 'text-emerald-400' : 'text-slate-400'}`}>{Math.round(p.defReb || 0)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-bold ${p.ast === maxStats.ast ? 'text-emerald-400' : 'text-slate-200'}`}>{Math.round(p.ast)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-medium ${p.stl === maxStats.stl ? 'text-emerald-400' : 'text-slate-400'}`}>{Math.round(p.stl)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-medium ${p.blk === maxStats.blk ? 'text-emerald-400' : 'text-slate-400'}`}>{Math.round(p.blk)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-medium ${p.tov === maxStats.tov ? 'text-emerald-400' : 'text-slate-500'}`}>{Math.round(p.tov)}</td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-400">{Math.round(p.fgm)}</td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-500">{Math.round(p.fga)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-black ${getRawPct(p.fgm, p.fga) === maxStats.fgp && maxStats.fgp > 0 ? 'text-emerald-400' : 'text-white'}`}>{formatPct(p.fgm, p.fga)}</td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-400">{Math.round(p.p3m)}</td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-500">{Math.round(p.p3a)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-bold ${getRawPct(p.p3m, p.p3a) === maxStats.p3p && maxStats.p3p > 0 ? 'text-emerald-400' : 'text-white'}`}>{formatPct(p.p3m, p.p3a)}</td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-400">{Math.round(p.ftm)}</td>
-                  <td className="py-3 px-3 text-center text-base font-medium text-slate-500">{Math.round(p.fta)}</td>
-                  <td className={`py-3 px-3 text-center text-base font-bold ${getRawPct(p.ftm, p.fta) === maxStats.ftp && maxStats.ftp > 0 ? 'text-emerald-400' : 'text-white'}`}>{formatPct(p.ftm, p.fta)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot className="bg-slate-800/20">
-            <tr className="text-white font-black text-sm uppercase border-t-2 border-slate-700">
-              <td className="py-3 px-4 sticky left-0 bg-slate-800/60 backdrop-blur-md z-20" colSpan={3}>TEAM TOTAL</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.mp)}</td>
-              <td className="py-3 px-3 text-center text-indigo-400">{Math.round(teamTotals.pts)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.reb)}</td>
-              <td className="py-3 px-3 text-center text-slate-400">{Math.round(teamTotals.offReb)}</td>
-              <td className="py-3 px-3 text-center text-slate-400">{Math.round(teamTotals.defReb)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.ast)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.stl)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.blk)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.tov)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.fgm)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.fga)}</td>
-              <td className="py-3 px-3 text-center">{formatPct(teamTotals.fgm, teamTotals.fga)}%</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.p3m)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.p3a)}</td>
-              <td className="py-3 px-3 text-center">{formatPct(teamTotals.p3m, teamTotals.p3a)}%</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.ftm)}</td>
-              <td className="py-3 px-3 text-center">{Math.round(teamTotals.fta)}</td>
-              <td className="py-3 px-3 text-center">{formatPct(teamTotals.ftm, teamTotals.fta)}%</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+    <div className={`flex flex-col ${!isFirst ? 'mt-10' : ''}`}>
+       <div className="flex items-center gap-3 mb-4 px-2">
+           <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
+           <h3 className="text-lg font-black uppercase text-white tracking-widest">{team.city} {team.name}</h3>
+       </div>
+       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
+          <div className="overflow-x-auto custom-scrollbar">
+             <table className="w-full text-left whitespace-nowrap">
+                <thead>
+                   <tr className="bg-slate-950/50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
+                      <th className="py-3 px-4 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[140px]">Player</th>
+                      <th className="py-3 px-2 text-center w-14">POS</th>
+                      <th className="py-3 px-2 text-center w-14">OVR</th>
+                      <th className="py-3 px-2 text-center w-14">MIN</th>
+                      <th className="py-3 px-2 text-right w-14">PTS</th>
+                      <th className="py-3 px-2 text-right w-14">REB</th>
+                      <th className="py-3 px-2 text-right w-14">AST</th>
+                      <th className="py-3 px-2 text-right w-14">STL</th>
+                      <th className="py-3 px-2 text-right w-14">BLK</th>
+                      <th className="py-3 px-2 text-right w-14">TOV</th>
+                      <th className="py-3 px-2 text-right w-14">FG</th>
+                      <th className="py-3 px-2 text-right w-14">FG%</th>
+                      <th className="py-3 px-2 text-right w-14">3P</th>
+                      <th className="py-3 px-2 text-right w-14">3P%</th>
+                      <th className="py-3 px-2 text-right w-14">FT</th>
+                      <th className="py-3 px-2 text-right w-14">FT%</th>
+                   </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                   {sortedBox.map(p => {
+                       const playerInfo = team.roster.find(r => r.id === p.playerId);
+                       const isMvp = p.playerId === mvpId;
+                       const ovr = playerInfo?.ovr || 0;
+                       
+                       return (
+                           <tr key={p.playerId} className={`hover:bg-white/5 transition-colors group ${isMvp ? 'bg-amber-900/10' : ''}`}>
+                               <td className="py-2.5 px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                                   <div className="flex items-center gap-2">
+                                       <span className={`text-sm font-bold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-slate-200'}`}>{p.playerName}</span>
+                                       <div className="flex items-center gap-1 flex-shrink-0">
+                                            {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
+                                            {/* Ace Stopper Visuals */}
+                                            {p.isStopper && (
+                                                <div className="group/tooltip relative">
+                                                    <Shield size={12} className="text-blue-400 fill-blue-900/50" />
+                                                </div>
+                                            )}
+                                            {p.isAceTarget && (p.matchupEffect || 0) < 0 && (
+                                                <div className="flex items-center gap-1 bg-red-950/50 border border-red-500/30 px-1.5 py-0.5 rounded">
+                                                    <Lock size={10} className="text-red-400" />
+                                                    <span className="text-[9px] font-black text-red-400 leading-none">
+                                                        {p.matchupEffect}%
+                                                    </span>
+                                                </div>
+                                            )}
+                                       </div>
+                                   </div>
+                               </td>
+                               <td className={`${statCellClass} text-center text-slate-500`}>{playerInfo?.position}</td>
+                               <td className={`${statCellClass} text-center`}>
+                                   <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div>
+                               </td>
+                               <td className={`${statCellClass} text-center text-slate-400`}>{Math.round(p.mp)}</td>
+                               
+                               {/* Highlighted Stats (All text-xs, font-medium, pretendard) */}
+                               <td className={`${statCellClass} text-right ${p.pts === leaders.pts && p.pts > 0 ? highlightClass : 'text-white'}`}>{p.pts}</td>
+                               <td className={`${statCellClass} text-right ${p.reb === leaders.reb && p.reb > 0 ? highlightClass : 'text-slate-300'}`}>{p.reb}</td>
+                               <td className={`${statCellClass} text-right ${p.ast === leaders.ast && p.ast > 0 ? highlightClass : 'text-slate-300'}`}>{p.ast}</td>
+                               <td className={`${statCellClass} text-right ${p.stl === leaders.stl && p.stl > 0 ? highlightClass : 'text-slate-400'}`}>{p.stl}</td>
+                               <td className={`${statCellClass} text-right ${p.blk === leaders.blk && p.blk > 0 ? highlightClass : 'text-slate-400'}`}>{p.blk}</td>
+                               <td className={`${statCellClass} text-right text-slate-400`}>{p.tov}</td>
+                               
+                               <td className={`${statCellClass} text-right text-slate-400`}>{p.fgm}/{p.fga}</td>
+                               <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.fgm, p.fga)}</td>
+                               
+                               <td className={`${statCellClass} text-right text-slate-400`}>{p.p3m}/{p.p3a}</td>
+                               <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.p3m, p.p3a)}</td>
+                               
+                               <td className={`${statCellClass} text-right text-slate-400`}>{p.ftm}/{p.fta}</td>
+                               <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.ftm, p.fta)}</td>
+                           </tr>
+                       );
+                   })}
+                </tbody>
+                <tfoot className="bg-slate-950/30 font-black text-xs border-t border-slate-800">
+                    <tr>
+                        <td className="py-3 px-4 sticky left-0 bg-slate-950 z-10 text-indigo-400 uppercase tracking-widest shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Total</td>
+                        <td colSpan={3}></td>
+                        <td className={`${statCellClass} text-right text-white`}>{teamTotals.pts}</td>
+                        <td className={`${statCellClass} text-right text-slate-300`}>{teamTotals.reb}</td>
+                        <td className={`${statCellClass} text-right text-slate-300`}>{teamTotals.ast}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.stl}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.blk}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.tov}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.fgm}/{teamTotals.fga}</td>
+                        <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.fgm, teamTotals.fga)}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.p3m}/{teamTotals.p3a}</td>
+                        <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.p3m, teamTotals.p3a)}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.ftm}/{teamTotals.fta}</td>
+                        <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.ftm, teamTotals.fta)}</td>
+                    </tr>
+                </tfoot>
+             </table>
+          </div>
+       </div>
     </div>
   );
 };
 
-export const GameResultView: React.FC<{ 
-  result: { 
-    home: Team; 
-    away: Team; 
-    homeScore: number; 
-    awayScore: number; 
-    homeBox: PlayerBoxScore[]; 
-    awayBox: PlayerBoxScore[]; 
-    userTactics: GameTactics; 
-    myTeamId: string; 
-    recap?: string[];
-    otherGames?: Game[];
-  }; 
+export const GameResultView: React.FC<{
+  result: {
+    home: Team;
+    away: Team;
+    homeScore: number;
+    awayScore: number;
+    homeBox: PlayerBoxScore[];
+    awayBox: PlayerBoxScore[];
+    recap: string[];
+    otherGames: Game[];
+  };
   myTeamId: string;
-  teams: Team[]; 
-  onFinish: () => void; 
+  teams: Team[];
+  onFinish: () => void;
 }> = ({ result, myTeamId, teams, onFinish }) => {
-  const isHome = result.myTeamId === result.home.id;
-  const won = (isHome && result.homeScore > result.awayScore) || (!isHome && result.awayScore > result.homeScore);
-
-  const homeWin = result.homeScore > result.awayScore;
-  const homeRecord = `${result.home.wins}W - ${result.home.losses}L`;
-  const awayRecord = `${result.away.wins}W - ${result.away.losses}L`;
+  const { home, away, homeScore, awayScore, homeBox, awayBox, recap, otherGames } = result;
+  
+  const isHome = myTeamId === home.id;
+  const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
+  
+  const headline = recap && recap.length > 0 ? recap[0] : "경기 종료";
 
   const getTeamInfo = (id: string) => teams.find(t => t.id === id);
 
+  // MVP Calculation
+  const allPlayers = [...homeBox, ...awayBox];
+  const mvp = allPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), allPlayers[0]);
+
+  // Leaders Calculation
+  const leaders: GameStatLeaders = {
+      pts: Math.max(...allPlayers.map(p => p.pts)),
+      reb: Math.max(...allPlayers.map(p => p.reb)),
+      ast: Math.max(...allPlayers.map(p => p.ast)),
+      stl: Math.max(...allPlayers.map(p => p.stl)),
+      blk: Math.max(...allPlayers.map(p => p.blk)),
+      tov: Math.max(...allPlayers.map(p => p.tov)),
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[120] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard">
-      <div className="max-w-[1600px] mx-auto p-8 lg:p-12 space-y-12 relative">
-         <div className={`absolute top-0 left-0 right-0 h-[500px] z-0 pointer-events-none opacity-40 transition-colors duration-1000 ${won 
-            ? 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-900 via-slate-950 to-slate-950' 
-            : 'bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-red-900 via-slate-950 to-slate-950'
-         }`} />
+    <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24">
+       <div className="min-h-screen flex flex-col">
+          {/* Header */}
+          <div className="bg-slate-900 border-b border-slate-800 pt-10 pb-8 px-8 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl z-20">
+              <div className={`absolute inset-0 opacity-20 pointer-events-none bg-gradient-to-b ${isWin ? 'from-emerald-900 to-slate-900' : 'from-red-900 to-slate-900'}`}></div>
+              
+              <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-5xl">
+                  {/* Scoreboard Row */}
+                  <div className="flex items-center justify-between w-full">
+                      <div className="flex flex-col items-center gap-4 flex-1">
+                          <img src={away.logo} className="w-20 h-20 md:w-28 md:h-28 object-contain drop-shadow-2xl" alt={away.name} />
+                          <div className="text-center">
+                              <div className="text-2xl md:text-4xl font-black text-white oswald uppercase tracking-tight">{away.name}</div>
+                              <div className={`text-5xl md:text-7xl font-black oswald mt-2 ${awayScore > homeScore ? 'text-white' : 'text-slate-600'}`}>{Math.round(awayScore)}</div>
+                          </div>
+                      </div>
 
-         <div className="flex flex-col items-center gap-8 relative z-10">
-             <div className="text-center space-y-2">
-                <h2 className="text-4xl font-black oswald uppercase text-white tracking-widest drop-shadow-lg">Game Final</h2>
-                <div className={`text-lg font-black uppercase tracking-widest ${won ? 'text-emerald-400' : 'text-red-500'}`}>
-                    {won ? 'VICTORY' : 'DEFEAT'}
-                </div>
-             </div>
+                      <div className="flex flex-col items-center justify-center px-4 md:px-12">
+                          <div className="text-xl md:text-2xl font-black text-slate-700 oswald tracking-widest mb-4">FINAL</div>
+                          {isWin ? (
+                              <div className="px-4 py-1.5 md:px-6 md:py-2 bg-emerald-600 text-white rounded-xl font-black uppercase text-xs md:text-sm tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.4)]">Victory</div>
+                          ) : (
+                              <div className="px-4 py-1.5 md:px-6 md:py-2 bg-red-600 text-white rounded-xl font-black uppercase text-xs md:text-sm tracking-widest shadow-[0_0_20px_rgba(239,68,68,0.4)]">Defeat</div>
+                          )}
+                      </div>
 
-             <div className="flex items-center justify-center gap-16 w-full max-w-4xl">
-                 <div className="flex flex-col items-center gap-4">
-                     <img src={result.away.logo} className="w-24 h-24 object-contain drop-shadow-2xl" alt="" />
-                     <div className="flex flex-col items-center">
-                        <span className="text-2xl font-black oswald uppercase text-white">{result.away.name}</span>
-                        <span className="text-sm font-bold text-slate-400 tracking-widest mt-1">{awayRecord}</span>
-                     </div>
-                 </div>
-                 <div className="flex items-center gap-8">
-                     <span className={`text-7xl font-black oswald drop-shadow-2xl ${result.awayScore > result.homeScore ? 'text-white' : 'text-slate-500'}`}>{Math.round(result.awayScore)}</span>
-                     <span className="text-3xl font-black text-slate-700">-</span>
-                     <span className={`text-7xl font-black oswald drop-shadow-2xl ${result.homeScore > result.awayScore ? 'text-white' : 'text-slate-500'}`}>{Math.round(result.homeScore)}</span>
-                 </div>
-                 <div className="flex flex-col items-center gap-4">
-                     <img src={result.home.logo} className="w-24 h-24 object-contain drop-shadow-2xl" alt="" />
-                     <div className="flex flex-col items-center">
-                        <span className="text-2xl font-black oswald uppercase text-white">{result.home.name}</span>
-                        <span className="text-sm font-bold text-slate-400 tracking-widest mt-1">{homeRecord}</span>
-                     </div>
-                 </div>
-             </div>
-         </div>
+                      <div className="flex flex-col items-center gap-4 flex-1">
+                          <img src={home.logo} className="w-20 h-20 md:w-28 md:h-28 object-contain drop-shadow-2xl" alt={home.name} />
+                          <div className="text-center">
+                              <div className="text-2xl md:text-4xl font-black text-white oswald uppercase tracking-tight">{home.name}</div>
+                              <div className={`text-5xl md:text-7xl font-black oswald mt-2 ${homeScore > awayScore ? 'text-white' : 'text-slate-600'}`}>{Math.round(homeScore)}</div>
+                          </div>
+                      </div>
+                  </div>
 
-         <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl relative z-10">
-             <div className="flex items-center gap-3 mb-6">
-                 <div className="p-2 bg-indigo-500/10 rounded-lg"><Zap size={20} className="text-indigo-400" /></div>
-                 <h3 className="text-xl font-black uppercase text-white tracking-tight">AI Game Analysis</h3>
-             </div>
-             <div className="space-y-4">
-                 {result.recap && result.recap.length > 0 ? result.recap.map((line: string, i: number) => (
-                     <div key={i} className="flex gap-4 p-4 bg-slate-950/40 rounded-xl border border-slate-800/50">
-                         <span className="text-indigo-500 font-black text-lg oswald">{i+1}</span>
-                         <p className="text-slate-300 font-medium leading-relaxed">{line}</p>
-                     </div>
-                 )) : (
-                     <div className="text-slate-500">No analysis available.</div>
-                 )}
-             </div>
-         </div>
+                  {/* Headline in Header */}
+                  <div className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-center backdrop-blur-md">
+                      <p className="text-sm md:text-base font-bold text-slate-200 leading-relaxed break-keep">
+                          <Newspaper className="inline-block mr-2 text-indigo-400 mb-0.5" size={16} />
+                          {headline}
+                      </p>
+                  </div>
+              </div>
+          </div>
 
-         <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-10 shadow-2xl backdrop-blur-sm relative z-10">
-             <ResultBoxScore team={result.away} box={result.awayBox} isFirst />
-             <ResultBoxScore team={result.home} box={result.homeBox} />
-         </div>
-
-         {/* Around the League Section */}
-         {result.otherGames && result.otherGames.length > 0 && (
-             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl relative z-10">
-                 <div className="flex items-center gap-3 mb-6">
-                     <div className="p-2 bg-emerald-500/10 rounded-lg"><Calendar size={20} className="text-emerald-400" /></div>
-                     <h3 className="text-xl font-black uppercase text-white tracking-tight">타 구단 경기 결과</h3>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                     {result.otherGames.map(g => {
-                         const home = getTeamInfo(g.homeTeamId);
-                         const away = getTeamInfo(g.awayTeamId);
-                         if (!home || !away) return null;
-                         const homeWin = (g.homeScore || 0) > (g.awayScore || 0);
-                         return (
-                             <div key={g.id} className="bg-slate-950/40 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
-                                 <div className="flex justify-between items-center">
-                                     <div className="flex items-center gap-3">
-                                         <img src={away.logo} className="w-6 h-6 object-contain" alt={away.name} />
-                                         <span className={`text-sm font-bold uppercase ${!homeWin ? 'text-white' : 'text-slate-500'}`}>{away.name}</span>
+          <div className="flex-1 max-w-6xl mx-auto w-full p-6 space-y-8">
+              <ResultBoxScore team={away} box={awayBox} isFirst mvpId={mvp.playerId} leaders={leaders} />
+              <ResultBoxScore team={home} box={homeBox} mvpId={mvp.playerId} leaders={leaders} />
+              
+              {/* Around the League */}
+              {otherGames && otherGames.length > 0 && (
+                 <div className="mt-12 pt-8 border-t border-slate-800">
+                     <h3 className="text-lg font-black uppercase text-slate-500 tracking-widest mb-6 flex items-center gap-2">
+                        <Activity size={20} /> Around the League
+                     </h3>
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                         {otherGames.map(g => {
+                             const h = getTeamInfo(g.homeTeamId);
+                             const a = getTeamInfo(g.awayTeamId);
+                             if (!h || !a) return null;
+                             const hWin = (g.homeScore || 0) > (g.awayScore || 0);
+                             return (
+                                 <div key={g.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
+                                     <div className="flex justify-between items-center">
+                                         <div className="flex items-center gap-3">
+                                             <img src={a.logo} className="w-6 h-6 object-contain opacity-80" alt="" />
+                                             <span className={`text-sm font-bold uppercase ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
+                                         </div>
+                                         <span className={`text-lg font-black oswald ${!hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.awayScore}</span>
                                      </div>
-                                     <span className={`text-lg font-black oswald ${!homeWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.awayScore}</span>
-                                 </div>
-                                 <div className="flex justify-between items-center">
-                                     <div className="flex items-center gap-3">
-                                         <img src={home.logo} className="w-6 h-6 object-contain" alt={home.name} />
-                                         <span className={`text-sm font-bold uppercase ${homeWin ? 'text-white' : 'text-slate-500'}`}>{home.name}</span>
+                                     <div className="flex justify-between items-center">
+                                         <div className="flex items-center gap-3">
+                                             <img src={h.logo} className="w-6 h-6 object-contain opacity-80" alt="" />
+                                             <span className={`text-sm font-bold uppercase ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
+                                         </div>
+                                         <span className={`text-lg font-black oswald ${hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.homeScore}</span>
                                      </div>
-                                     <span className={`text-lg font-black oswald ${homeWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.homeScore}</span>
                                  </div>
-                             </div>
-                         );
-                     })}
+                             );
+                         })}
+                     </div>
                  </div>
-             </div>
-         )}
+              )}
+          </div>
 
-         <div className="flex justify-center pb-16 relative z-10">
-             <button onClick={onFinish} className="px-16 py-6 bg-indigo-600 hover:bg-indigo-500 text-white rounded-[2rem] font-black text-xl uppercase tracking-widest shadow-[0_15px_50px_rgba(79,70,229,0.5)] transition-all active:scale-95 flex items-center gap-4">
-                 <RefreshCw size={28} /> 라커룸으로 복귀
-             </button>
-         </div>
-      </div>
+          {/* Bottom Button Fixed */}
+          <div className="fixed bottom-0 left-0 right-0 p-6 bg-slate-950/80 backdrop-blur-md border-t border-slate-800 flex justify-center z-50">
+              <button 
+                  onClick={onFinish}
+                  className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase text-lg tracking-widest shadow-[0_10px_30px_rgba(79,70,229,0.4)] transition-all active:scale-95 flex items-center gap-4"
+              >
+                  Continue to Dashboard <ChevronRight />
+              </button>
+          </div>
+       </div>
     </div>
   );
 };
