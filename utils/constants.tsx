@@ -234,13 +234,13 @@ const calculateAttributes = (p: any) => {
 
     if (position.includes('PG')) {
         ovrRaw = calcNewOvr([
-            { val: closeShot, w: 8 }, { val: midRange, w: 3 }, { val: threeAvg, w: 7 }, { val: ft, w: 5 }, { val: shotIq, w: 5 }, { val: offConsist, w: 5 },
-            { val: layup, w: 2 }, { val: dunk, w: 0 }, { val: postPlay, w: 1 }, { val: drawFoul, w: 5 }, { val: hands, w: 2 },
-            { val: intDef, w: 0 }, { val: perDef, w: 5 }, { val: steal, w: 0 }, { val: blk, w: 0 }, { val: helpDefIq, w: 3 }, { val: passPerc, w: 0 }, { val: defConsist, w: 1 },
+            { val: closeShot, w: 10 }, { val: midRange, w: 20 }, { val: threeAvg, w: 25 }, { val: ft, w: 10 }, { val: shotIq, w: 45 }, { val: offConsist, w: 25 },
+            { val: layup, w: 25 }, { val: dunk, w: 0 }, { val: postPlay, w: 0 }, { val: drawFoul, w: 0 }, { val: hands, w: 40 },
+            { val: intDef, w: 0 }, { val: perDef, w: 0 }, { val: steal, w: 0 }, { val: blk, w: 0 }, { val: helpDefIq, w: 0 }, { val: passPerc, w: 0 }, { val: defConsist, w: 0 },
             { val: offReb, w: 2 }, { val: defReb, w: 0 },
-            { val: speed, w: 0 }, { val: agility, w: 3 }, { val: strength, w: 0 }, { val: vertical, w: 0 }, { val: stamina, w: 5 }, { val: hustle, w: 0 }, { val: durability, w: 3 },
-            { val: passAcc, w: 10 }, { val: handling, w: 7 }, { val: spdBall, w: 7 }, { val: passVision, w: 7 }, { val: passIq, w: 10 },
-            { val: intangibles, w: 10 }, { val: potential, w: 18 }
+            { val: speed, w: 10 }, { val: agility, w: 10 }, { val: strength, w: 0 }, { val: vertical, w: 0 }, { val: stamina, w: 15 }, { val: hustle, w: 0 }, { val: durability, w: 0 },
+            { val: passAcc, w: 25 }, { val: handling, w: 15 }, { val: spdBall, w: 10 }, { val: passVision, w: 25 }, { val: passIq, w: 50 },
+            { val: intangibles, w: 5 }, { val: potential, w: 120 }
         ]);
     } else if (position.includes('SG')) {
         ovrRaw = calcNewOvr([
