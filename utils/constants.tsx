@@ -97,18 +97,22 @@ export const parseCSVToObjects = (csv: string): any[] => {
 };
 
 /**
- * 선수의 현재 능력치를 기반으로 오버롤을 계산합니다. (Exported for Sync)
+ * 선수의 현재 능력치를 기반으로 오버롤을 계산합니다.
  */
 export const calculatePlayerOvr = (p: any): number => {
     const position = p.position || 'PG';
-    const threeAvg = p.threeAvg || ((p.threeCorner + p.three45 + p.threeTop) / 3) || 50;
+    // 0값을 허용하는 threeAvg 계산 (NaN 방지)
+    const tC = p.threeCorner ?? 0;
+    const t45 = p.three45 ?? 0;
+    const tTop = p.threeTop ?? 0;
+    const threeAvg = p.threeAvg ?? ((tC + t45 + tTop) / 3);
     const heightCm = p.height || 200;
 
     const calc = (weights: {val: number, w: number}[]) => {
         let totalVal = 0;
         let totalWeight = 0;
         weights.forEach(item => {
-            const value = item.val ?? 50;
+            const value = item.val ?? 0; // undefined일 경우만 0으로 처리, 0은 그대로 유지
             totalVal += value * item.w;
             totalWeight += item.w;
         });
@@ -179,7 +183,7 @@ const calculateAttributes = (p: any) => {
             if (p[k.toLowerCase()] !== undefined && p[k.toLowerCase()] !== null) return parseInt(p[k.toLowerCase()], 10);
             if (p[k.toUpperCase()] !== undefined && p[k.toUpperCase()] !== null) return parseInt(p[k.toUpperCase()], 10);
         }
-        return 50; 
+        return 0; // fallback to 0 instead of 50
     };
 
     const speed = getVal('speed', 'SPD');

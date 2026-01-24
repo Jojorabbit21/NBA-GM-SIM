@@ -143,6 +143,19 @@ const App: React.FC = () => {
       } catch (e: any) { setIsSessionVerifying(false); }
   };
 
+  /**
+   * 모든 로드된 데이터에 대해 최신 오버롤 공식을 강제 적용합니다.
+   */
+  const syncOvrWithLatestWeights = useCallback((teamsToSync: Team[]): Team[] => {
+      return teamsToSync.map(t => ({
+          ...t,
+          roster: t.roster.map(p => ({
+              ...p,
+              ovr: calculatePlayerOvr(p)
+          }))
+      }));
+  }, []);
+
   const generateInitialProspects = useCallback(() => {
     const firstNames = ["James", "Marcus", "Dylan", "Xavier", "Andre", "Caleb", "Elias", "Jaxon", "Kobe", "Zaire", "이", "김", "박", "최", "정"];
     const lastNames = ["Williams", "Jackson", "Smith", "Johnson", "Davis", "Brown", "준", "현", "호", "민", "태"];
@@ -150,22 +163,31 @@ const App: React.FC = () => {
     
     return Array.from({ length: 30 }, (_, i) => {
         const pos = positions[Math.floor(Math.random() * positions.length)];
-        const ovr = 68 + Math.floor(Math.random() * 8);
+        const baseOvr = 68 + Math.floor(Math.random() * 8);
         const pot = 82 + Math.floor(Math.random() * 15);
-        return {
+        
+        const mockPlayer: any = {
             id: `prospect_${i}_${Date.now()}`,
             name: `${firstNames[Math.floor(Math.random() * firstNames.length)]} ${lastNames[Math.floor(Math.random() * lastNames.length)]}`,
             position: pos, age: 19, height: 190 + Math.floor(Math.random() * 30), weight: 85 + Math.floor(Math.random() * 30),
-            salary: 4.5, contractYears: 4, health: 'Healthy' as const, ovr, potential: pot, revealedPotential: pot,
+            salary: 4.5, contractYears: 4, health: 'Healthy' as const, potential: pot, revealedPotential: pot,
             intangibles: 70, condition: 100,
-            ath: ovr, speed: ovr, agility: ovr, strength: ovr, vertical: ovr, stamina: ovr, hustle: ovr, durability: ovr,
-            out: ovr, closeShot: ovr, midRange: ovr, threeCorner: ovr, three45: ovr, threeTop: ovr, ft: ovr, shotIq: ovr, offConsist: ovr,
-            ins: ovr, layup: ovr, dunk: ovr, postPlay: ovr, drawFoul: ovr, hands: ovr,
-            plm: ovr, passAcc: ovr, handling: ovr, spdBall: ovr, passIq: ovr, passVision: ovr,
-            def: ovr, intDef: ovr, perDef: ovr, steal: ovr, blk: ovr, helpDefIq: ovr, passPerc: ovr, defConsist: ovr,
-            reb: ovr, offReb: ovr, defReb: ovr,
+            speed: baseOvr, agility: baseOvr, strength: baseOvr, vertical: baseOvr, stamina: baseOvr, hustle: baseOvr, durability: baseOvr,
+            closeShot: baseOvr, midRange: baseOvr, threeCorner: baseOvr, three45: baseOvr, threeTop: baseOvr, ft: baseOvr, shotIq: baseOvr, offConsist: baseOvr,
+            layup: baseOvr, dunk: baseOvr, postPlay: baseOvr, drawFoul: baseOvr, hands: baseOvr,
+            passAcc: baseOvr, handling: baseOvr, spdBall: baseOvr, passIq: baseOvr, passVision: baseOvr,
+            intDef: baseOvr, perDef: baseOvr, steal: baseOvr, blk: baseOvr, helpDefIq: baseOvr, passPerc: baseOvr, defConsist: baseOvr,
+            offReb: baseOvr, defReb: baseOvr,
             stats: INITIAL_STATS(), playoffStats: INITIAL_STATS()
         };
+
+        // 가중치에 따른 정확한 OVR 산출
+        mockPlayer.ovr = calculatePlayerOvr(mockPlayer);
+        
+        // 시각적 편의를 위한 덩어리 능력치 갱신
+        mockPlayer.ath = baseOvr; mockPlayer.out = baseOvr; mockPlayer.ins = baseOvr; mockPlayer.plm = baseOvr; mockPlayer.def = baseOvr; mockPlayer.reb = baseOvr;
+        
+        return mockPlayer as Player;
     });
   }, []);
 
@@ -197,28 +219,18 @@ const App: React.FC = () => {
               }
           });
       }
+      
       const initializedTeams: Team[] = INITIAL_TEAMS_DATA.map(t => ({
         ...t, roster: fullRosterMap[t.id] || [], wins: 0, losses: 0, budget: 200, salaryCap: 140, luxuryTaxLine: 170, logo: getTeamLogoUrl(t.id)
       }));
-      setTeams(initializedTeams);
+
+      // 가중치 동기화 강제 실행
+      setTeams(syncOvrWithLatestWeights(initializedTeams));
       setProspects(generateInitialProspects());
     } catch (err: any) { logError('Data Load', 'Critical Roster Loading Error'); }
-  }, [generateInitialProspects]);
+  }, [generateInitialProspects, syncOvrWithLatestWeights]);
 
   useEffect(() => { loadBaseData(); }, [loadBaseData]);
-
-  /**
-   * 모든 로드된 데이터에 대해 최신 오버롤 공식을 적용합니다.
-   */
-  const syncOvrWithLatestWeights = (teamsToSync: Team[]): Team[] => {
-      return teamsToSync.map(t => ({
-          ...t,
-          roster: t.roster.map(p => ({
-              ...p,
-              ovr: calculatePlayerOvr(p)
-          }))
-      }));
-  };
 
   useEffect(() => {
     const checkExistingSave = async () => {
@@ -229,7 +241,7 @@ const App: React.FC = () => {
             if (!error && saveData && saveData.game_data) {
                 const gd = saveData.game_data;
                 setMyTeamId(saveData.team_id);
-                // 최신 가중치 반영을 위해 로드 시 재계산
+                // 세이브 파일 로드 시에도 최신 가중치 강제 반영
                 setTeams(syncOvrWithLatestWeights(gd.teams)); 
                 setSchedule(gd.schedule);
                 setCurrentSimDate(gd.currentSimDate);
@@ -246,7 +258,7 @@ const App: React.FC = () => {
         finally { setIsInitializing(false); }
     };
     checkExistingSave();
-  }, [session, isDataLoaded, teams, isDuplicateSession, generateInitialProspects]);
+  }, [session, isDataLoaded, teams, isDuplicateSession, generateInitialProspects, syncOvrWithLatestWeights]);
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
     if (!session?.user) return;
