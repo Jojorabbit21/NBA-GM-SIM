@@ -5,23 +5,43 @@ import { Team, PlayerBoxScore, OffenseTactic, DefenseTactic, Game } from '../typ
 import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { GameTactics } from '../services/gameEngine';
 
-const SIMULATION_MESSAGES = [
+// 상황별 메시지 분리
+const GENERAL_MESSAGES = [
     "코칭 스태프가 머리를 맞대는 중...",
     "선수들이 작전 타임에 물 마시는 중...",
     "심판이 애매한 판정을 비디오 판독 중...",
     "관중들이 파도를 타는 중...",
     "마스코트가 하프코트 슛을 시도 중...",
-    "상대 팀 감독이 심판에게 항의하는 중...",
     "치어리더가 분위기를 띄우는 중...",
-    "에이스가 신발 끈을 고쳐 매는 중...",
-    "골대 그물을 수선하는 중...",
-    "해설진이 흥분하여 소리치는 중...",
-    "코트 바닥의 땀을 닦는 중...",
-    "전력분석관이 태블릿을 두드리는 중...",
     "벤치 멤버들이 수건을 돌리는 중...",
-    "팬들이 야유를 퍼붓는 중...",
     "감독이 작전판에 열정적으로 그림 그리는 중...",
-    "치어리더가 관중석으로 티셔츠 쏘는 중..."
+    "전력분석관이 태블릿을 두드리는 중...",
+    "양 팀 선수들이 거친 몸싸움을 벌입니다...",
+    "빠른 템포로 공수 전환이 이루어집니다...",
+];
+
+const CLUTCH_MESSAGES = [
+    "4쿼터 막판, 수비 집중력이 높아집니다!",
+    "승부처! 감독이 에이스를 호출합니다.",
+    "관중석이 숨을 죽이고 지켜봅니다...",
+    "한 골 싸움! 치열한 공방전!",
+    "타임아웃! 마지막 작전을 지시합니다.",
+    "상대 팀 감독이 심판에게 거칠게 항의합니다!",
+    "선수들의 눈빛이 달라졌습니다.",
+    "에이스가 공을 잡았습니다. 아이솔레이션 시도...",
+    "경기장 분위기가 최고조에 달합니다!",
+];
+
+const SUPER_CLUTCH_MESSAGES = [
+    "운명의 시간이 다가옵니다...",
+    "마지막 10초! 공격권을 쥔 쪽은 누구인가...",
+    "버저비터가 터질 것인가!",
+    "심장이 멎을 듯한 긴장감...",
+    "공이 허공을 가릅니다...",
+    "승부를 결정짓는 슛이 림을 향합니다!",
+    "기적 같은 플레이가 나올 수 있을까요?",
+    "모든 관중이 기립했습니다!",
+    "역사에 남을 명승부...",
 ];
 
 export const GameSimulatingView: React.FC<{ 
@@ -34,10 +54,11 @@ export const GameSimulatingView: React.FC<{
 }> = ({ homeTeam, awayTeam, userTeamId, finalHomeScore = 110, finalAwayScore = 105, onSimulationComplete }) => {
   const [progress, setProgress] = useState(0);
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
-  const [currentMessage, setCurrentMessage] = useState(SIMULATION_MESSAGES[Math.floor(Math.random() * SIMULATION_MESSAGES.length)]);
+  const [currentMessage, setCurrentMessage] = useState(GENERAL_MESSAGES[0]);
   
-  // 종료 상태를 ref로 관리하여 리렌더링에 의한 타이머 취소 방지
+  // 종료 상태 및 진행률을 ref로 관리 (타이머 클로저 문제 해결)
   const isFinishedRef = useRef(false);
+  const progressRef = useRef(0);
   
   // 턴제 스코어링 상태
   const [currentHomeScore, setCurrentHomeScore] = useState(0);
@@ -49,7 +70,10 @@ export const GameSimulatingView: React.FC<{
 
     const runSimulationStep = () => {
         setProgress(prev => {
-            if (prev >= 100) return 100;
+            if (prev >= 100) {
+                progressRef.current = 100;
+                return 100;
+            }
 
             // 클러치 타임 로직: 진행률에 따라 속도 조절
             const isClutch = prev > 85; 
@@ -58,6 +82,9 @@ export const GameSimulatingView: React.FC<{
             // 진행 증가량 (뒤로 갈수록 조금씩만 증가)
             const increment = isSuperClutch ? 0.4 : (isClutch ? 0.6 : 1.5);
             const next = Math.min(100, prev + increment);
+            
+            // Ref 업데이트 (메시지 타이머가 참조함)
+            progressRef.current = next;
 
             // 딜레이 (뒤로 갈수록 느려짐 -> 긴장감 조성)
             const delay = isSuperClutch ? 300 : (isClutch ? 100 : 30);
@@ -134,14 +161,27 @@ export const GameSimulatingView: React.FC<{
             setCurrentMessage("경기 종료 - 결과 집계 중...");
             return;
         }
+
+        const currentProgress = progressRef.current;
+        let targetPool = GENERAL_MESSAGES;
+        
+        if (currentProgress > 94) {
+            targetPool = SUPER_CLUTCH_MESSAGES;
+        } else if (currentProgress > 85) {
+            targetPool = CLUTCH_MESSAGES;
+        }
+
         setCurrentMessage(prev => {
             let next;
+            // 같은 메시지 연속 출력 방지, 풀이 작을 경우 그냥 출력
+            if (targetPool.length <= 1) return targetPool[0];
+            
             do {
-                next = SIMULATION_MESSAGES[Math.floor(Math.random() * SIMULATION_MESSAGES.length)];
-            } while (next === prev && SIMULATION_MESSAGES.length > 1);
+                next = targetPool[Math.floor(Math.random() * targetPool.length)];
+            } while (next === prev);
             return next;
         });
-    }, 1000);
+    }, 1500); // 메시지 변경 주기를 조금 늦춤 (가독성 확보)
 
     return () => {
         clearInterval(shotTimer);
@@ -175,11 +215,11 @@ export const GameSimulatingView: React.FC<{
 
             {/* Center Info */}
             <div className="flex-1 px-4 flex flex-col items-center justify-center gap-4">
-                 <div className="text-sm md:text-lg font-black text-indigo-300 text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse">
+                 <div className={`text-sm md:text-lg font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse transition-colors duration-300 ${progress > 94 ? 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]' : progress > 85 ? 'text-yellow-400' : 'text-indigo-300'}`}>
                     {currentMessage}
                  </div>
                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
-                    <div className="h-full bg-gradient-to-r from-indigo-600 to-blue-500 transition-all duration-300 ease-linear shadow-[0_0_15px_rgba(79,70,229,0.5)]" style={{ width: `${progress}%` }}></div>
+                    <div className={`h-full transition-all duration-300 ease-linear ${progress > 94 ? 'bg-gradient-to-r from-red-600 to-orange-500 shadow-[0_0_20px_rgba(220,38,38,0.6)]' : progress > 85 ? 'bg-gradient-to-r from-yellow-500 to-orange-500' : 'bg-gradient-to-r from-indigo-600 to-blue-500'}`} style={{ width: `${progress}%` }}></div>
                  </div>
             </div>
 
