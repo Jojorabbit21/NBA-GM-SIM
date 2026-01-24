@@ -1,6 +1,7 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  Users, Activity, ChevronDown, Search, CheckCircle2, CalendarClock, ArrowUp, ArrowDown 
+  Users, Activity, ChevronDown, Search, CheckCircle2, CalendarClock, ArrowUp, ArrowDown, Wallet, AlertCircle, Info
 } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -10,6 +11,27 @@ interface RosterViewProps {
   myTeamId: string;
   initialTeamId?: string | null;
 }
+
+const TAX_LEVEL = 170;
+const FIRST_APRON = 178;
+const SECOND_APRON = 189;
+const SALARY_CAP = 140;
+
+const getCapStatus = (cap: number) => {
+  if (cap >= SECOND_APRON) return { label: '2차 에이프런 초과', msg: '강력한 영입 제한 및 지명권 패널티가 적용되는 단계입니다.', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/50' };
+  if (cap >= FIRST_APRON) return { label: '1차 에이프런 초과', msg: '미드레벨 예외 조항 사용 제한 등 팀 운영 유동성이 제약됩니다.', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/50' };
+  if (cap >= TAX_LEVEL) return { label: '사치세 납부 구간', msg: '샐러리 캡을 초과하여 구단 운영비 외 추가 세금이 부과됩니다.', color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/50' };
+  if (cap >= SALARY_CAP) return { label: '샐러리 캡 초과', msg: '사치세 라인 미만이지만, FA 영입 시 예외 조항 위주로 운영해야 합니다.', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/50' };
+  return { label: '캡 스페이스 여유', msg: '공격적인 FA 영입 및 트레이드 흡수가 가능한 건강한 상태입니다.', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/50' };
+};
+
+const getVisualPercentage = (cap: number) => {
+  if (cap < SALARY_CAP) return (cap / SALARY_CAP) * 20;
+  if (cap < TAX_LEVEL) return 20 + ((cap - SALARY_CAP) / (TAX_LEVEL - SALARY_CAP)) * 30;
+  if (cap < FIRST_APRON) return 50 + ((cap - TAX_LEVEL) / (FIRST_APRON - TAX_LEVEL)) * 20;
+  if (cap < SECOND_APRON) return 70 + ((cap - FIRST_APRON) / (SECOND_APRON - FIRST_APRON)) * 20;
+  return 90 + Math.min(10, ((cap - SECOND_APRON) / 30) * 10);
+};
 
 const ROSTER_CATEGORIES = {
   'Shooting': '슈팅/득점',
@@ -88,6 +110,14 @@ const STATS_COLUMNS = [
   { key: 'ts%', label: 'TS%' },
 ];
 
+const SALARY_COLUMNS = [
+  { key: 'ovr', label: 'OVR' },
+  { key: 'age', label: 'AGE' },
+  { key: 'salary', label: '연봉 ($M)' },
+  { key: 'contractYears', label: '잔여계약' },
+  { key: 'totalValue', label: '총 계약규모' },
+];
+
 const ATTRIBUTE_TOOLTIPS: Record<string, string> = {
   'INS': '인사이드 스코어링 (골밑/포스트)',
   'CLS': '근거리 슛 (Close Shot)',
@@ -133,7 +163,7 @@ type SortConfig = {
 
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
-  const [tab, setTab] = useState<'roster' | 'stats'>('roster');
+  const [tab, setTab] = useState<'roster' | 'stats' | 'salary'>('roster');
   const [rosterCategory, setRosterCategory] = useState<string>('Shooting');
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -175,6 +205,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const getSortValue = (p: Player, key: string): number | string => {
     if (key === 'name') return p.name;
     if (key === 'salary') return p.salary;
+    if (key === 'contractYears') return p.contractYears;
+    if (key === 'totalValue') return p.salary * p.contractYears;
     if (key === 'ovr') return p.ovr;
     if (key === 'potential') return p.potential;
     if (key === 'age') return p.age;
@@ -189,6 +221,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         return (p[key as keyof Player] as number) || 0;
     } 
     
+    if (tab === 'salary') {
+        if (key === 'salary') return p.salary;
+        if (key === 'contractYears') return p.contractYears;
+        if (key === 'totalValue') return p.salary * p.contractYears;
+        return (p[key as keyof Player] as number) || 0;
+    }
+
     // Stats Tab sorting logic
     const s = p.stats;
     const g = s.g || 1;
@@ -356,6 +395,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   if (!selectedTeam) return null;
 
+  const currentTotalSalary = teamStats?.salary || 0;
+  const capStatus = getCapStatus(currentTotalSalary);
+  const visualPercentage = getVisualPercentage(currentTotalSalary);
+
   return (
     <div className="space-y-6 flex flex-col animate-in fade-in duration-500">
       {viewPlayer && selectedTeam && <PlayerDetailModal player={viewPlayer} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} />}
@@ -427,6 +470,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                  <button onClick={() => setTab('stats')} className={`px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${tab === 'stats' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Activity size={16} /> 시즌 스탯
                  </button>
+                 <button onClick={() => setTab('salary')} className={`px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${tab === 'salary' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                    <Wallet size={16} /> 샐러리
+                 </button>
              </div>
 
              {tab === 'roster' && (
@@ -443,6 +489,83 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                  </div>
              )}
          </div>
+
+         {/* Salary Level Scale (Visible only in Salary tab) */}
+         {tab === 'salary' && teamStats && (
+            <div className="px-4 py-8 space-y-8 bg-slate-950/40 rounded-3xl border border-slate-800 animate-in fade-in slide-in-from-top-2 duration-500">
+                <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+                    <div className="flex items-center gap-6 flex-1">
+                        <div className={`p-4 rounded-2xl border ${capStatus.bg} ${capStatus.border} shadow-lg`}>
+                            <AlertCircle className={capStatus.color} size={32} />
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex items-baseline gap-3">
+                                <span className={`text-2xl font-black uppercase tracking-tight ${capStatus.color}`}>{capStatus.label}</span>
+                                <span className="text-sm font-bold text-slate-500">총 연봉: ${currentTotalSalary.toFixed(1)}M</span>
+                            </div>
+                            <p className="text-sm font-medium text-slate-400 max-w-2xl">{capStatus.msg}</p>
+                        </div>
+                    </div>
+                    <div className="flex gap-4">
+                        <div className="px-6 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-center min-w-[120px]">
+                            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">CAP SPACE</div>
+                            <div className={`text-xl font-black oswald ${currentTotalSalary < SALARY_CAP ? 'text-emerald-400' : 'text-slate-600'}`}>
+                                {currentTotalSalary < SALARY_CAP ? `$${(SALARY_CAP - currentTotalSalary).toFixed(1)}M` : '-'}
+                            </div>
+                        </div>
+                        <div className="px-6 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-center min-w-[120px]">
+                            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">TAX GAP</div>
+                            <div className={`text-xl font-black oswald ${currentTotalSalary < TAX_LEVEL ? 'text-blue-400' : 'text-red-500'}`}>
+                                {currentTotalSalary < TAX_LEVEL ? `$${(TAX_LEVEL - currentTotalSalary).toFixed(1)}M` : `+$${(currentTotalSalary - TAX_LEVEL).toFixed(1)}M`}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="space-y-3 px-2">
+                    <div className="relative h-5 w-full bg-slate-900 rounded-full border border-slate-800 overflow-hidden shadow-inner">
+                        {/* Scale Background */}
+                        <div className="absolute inset-0 flex h-full">
+                            <div className="flex-[20] bg-emerald-500/5 border-r border-slate-800/50"></div>
+                            <div className="flex-[30] bg-blue-500/5 border-r border-slate-800/50"></div>
+                            <div className="flex-[20] bg-amber-500/5 border-r border-slate-800/50"></div>
+                            <div className="flex-[20] bg-orange-500/5 border-r border-slate-800/50"></div>
+                            <div className="flex-[10] bg-red-500/5"></div>
+                        </div>
+                        
+                        {/* Progress Bar */}
+                        <div 
+                            className={`h-full transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(0,0,0,0.5)] relative z-10 ${capStatus.color.replace('text', 'bg')}`} 
+                            style={{ width: `${visualPercentage}%` }} 
+                        />
+
+                        {/* Current Marker */}
+                        <div 
+                            className="absolute top-0 bottom-0 w-1 bg-white shadow-[0_0_10px_white] z-20"
+                            style={{ left: `${visualPercentage}%`, transform: 'translateX(-50%)' }}
+                        >
+                            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-white rotate-45"></div>
+                        </div>
+                    </div>
+
+                    <div className="flex text-[10px] font-black text-slate-500 uppercase tracking-widest relative h-8">
+                        <div className="absolute" style={{ left: '0%' }}>$0</div>
+                        <div className="absolute text-center group" style={{ left: '20%', transform: 'translateX(-50%)' }}>
+                            <div className="text-slate-400 border-x border-slate-800 px-2">CAP: $140M</div>
+                        </div>
+                        <div className="absolute text-center" style={{ left: '50%', transform: 'translateX(-50%)' }}>
+                            <div className="text-amber-500 border-x border-slate-800 px-2">TAX: $170M</div>
+                        </div>
+                        <div className="absolute text-center" style={{ left: '70%', transform: 'translateX(-50%)' }}>
+                            <div className="text-orange-500 border-x border-slate-800 px-2">APR1: $178M</div>
+                        </div>
+                        <div className="absolute text-center" style={{ left: '90%', transform: 'translateX(-50%)' }}>
+                            <div className="text-red-500 border-x border-slate-800 px-2">APR2: $189M</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+         )}
 
          <div className="w-full overflow-x-auto">
             <table className="w-full text-left border-collapse table-auto">
@@ -468,9 +591,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                 className={col.label === 'OUT' || col.label === 'REB' ? "border-l-2 border-slate-700/60 pl-2" : ""}
                             />
                         ))
-                     ) : (
+                     ) : tab === 'stats' ? (
                         STATS_COLUMNS.map(col => (
                             <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />
+                        ))
+                     ) : (
+                        SALARY_COLUMNS.map(col => (
+                            <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />
                         ))
                      )}
                   </tr>
@@ -522,7 +649,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       </td>
                                   );
                               })
-                          ) : (
+                          ) : tab === 'stats' ? (
                               STATS_COLUMNS.map(col => {
                                   const k = col.key;
                                   const stats = p.stats;
@@ -546,6 +673,31 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                   return (
                                       <td key={k} className="px-1 py-2 align-middle text-right pr-3">
                                           <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm tabular-nums">
+                                              {valStr}
+                                          </div>
+                                      </td>
+                                  );
+                              })
+                          ) : (
+                              SALARY_COLUMNS.map(col => {
+                                  let valStr = '';
+                                  if (col.key === 'ovr') {
+                                      return (
+                                          <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                              <div className="flex items-center justify-end h-9">
+                                                  <div className={getOvrBadgeStyle(p.ovr) + " !w-8 !h-8 !text-sm !mx-0"}>{p.ovr}</div>
+                                              </div>
+                                          </td>
+                                      );
+                                  }
+                                  if (col.key === 'age') valStr = String(p.age);
+                                  else if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
+                                  else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
+                                  else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
+
+                                  return (
+                                      <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                          <div className="h-9 flex items-center justify-end font-bold text-slate-300 text-sm tabular-nums">
                                               {valStr}
                                           </div>
                                       </td>
@@ -578,7 +730,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                        </td>
                                    )
                                })
-                           ) : (
+                           ) : tab === 'stats' ? (
                                STATS_COLUMNS.map(col => {
                                    let val = '-';
                                    if (col.key === 'pts') val = teamStats.stats.pts;
@@ -607,6 +759,18 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                        </td>
                                    );
                                })
+                           ) : (
+                                SALARY_COLUMNS.map(col => {
+                                    let val = '-';
+                                    if (col.key === 'salary') val = `$${teamStats.salary.toFixed(1)}M`;
+                                    return (
+                                        <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                            <div className="h-9 flex items-center justify-end font-black text-indigo-400 text-sm">
+                                                {val}
+                                            </div>
+                                        </td>
+                                    );
+                                })
                            )}
                        </tr>
                    </tfoot>
