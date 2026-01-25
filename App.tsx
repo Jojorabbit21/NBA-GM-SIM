@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
   RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Copy, Check, X, BarChart3,
-  MonitorX, Lock, GraduationCap, FlaskConical
+  MonitorX, Lock, GraduationCap, FlaskConical, WifiOff
 } from 'lucide-react';
 import { AppView, Team, Game, Player, PlayerBoxScore, PlayoffSeries, Transaction, TacticalSnapshot, TeamTacticHistory, TacticStatRecord } from './types';
 import { 
@@ -51,6 +51,7 @@ type NewsItem =
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [isGuestMode, setIsGuestMode] = useState(false); // Guest Mode State
   
   const [view, setView] = useState<AppView>('TeamSelect');
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
@@ -100,7 +101,7 @@ const App: React.FC = () => {
 
   // [Fix] Session Verification with Fail-Open Logic
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user || isGuestMode) return; // Skip in Guest Mode
     let heartbeatInterval: any;
     let subscription: any;
     
@@ -112,7 +113,7 @@ const App: React.FC = () => {
             
             if (error) {
                 // 테이블이 없거나 권한 문제 시 중복 체크 기능을 비활성화하고 통과
-                console.warn("Session check skipped (DB table missing or error):", error.message);
+                // console.warn("Session check skipped (DB table missing or error):", error.message);
                 setIsDuplicateSession(false);
                 setIsSessionVerifying(false);
                 return;
@@ -143,7 +144,7 @@ const App: React.FC = () => {
                 }
             }, 10000);
         } catch (err: any) { 
-            console.warn("Session setup failed gracefully:", err);
+            // console.warn("Session setup failed gracefully:", err);
             setIsSessionVerifying(false); 
         }
     };
@@ -152,10 +153,10 @@ const App: React.FC = () => {
         if (heartbeatInterval) clearInterval(heartbeatInterval);
         if (subscription) supabase.removeChannel(subscription);
     };
-  }, [session, deviceId, isDuplicateSession]);
+  }, [session, deviceId, isDuplicateSession, isGuestMode]);
 
   const handleForceLogin = async () => {
-      if (!session?.user) return;
+      if (!session?.user || isGuestMode) return;
       setIsSessionVerifying(true);
       try {
           await supabase.from('profiles').update({ active_device_id: deviceId, last_seen_at: new Date().toISOString() }).eq('id', session.user.id);
@@ -211,6 +212,9 @@ const App: React.FC = () => {
       let source: 'DB' | 'CSV' = 'DB';
       
       // DB 연결 실패 또는 테이블 없음 시 CSV로 자동 전환
+      // Guest Mode일 경우에도 바로 CSV 로드로 전환할 수 있지만, DB가 살아있다면 Guest라도 데이터는 DB에서 가져오는게 좋음.
+      // 하지만 Failed to fetch 에러가 뜨는 상황이므로 DB 호출 자체가 에러를 유발함.
+      // 따라서 에러가 발생하면 자연스럽게 catch/error 블록에서 CSV로 넘어감.
       const { data: dbPlayers, error } = await supabase.from('players').select('*');
       
       if (error || !dbPlayers || dbPlayers.length === 0) {
@@ -260,7 +264,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkExistingSave = async () => {
-        if (!session?.user || isDataLoaded || teams.length === 0 || isDuplicateSession) return;
+        if (!session?.user || isDataLoaded || teams.length === 0 || isDuplicateSession || isGuestMode) return;
         setIsInitializing(true);
         try {
             const { data: saveData, error } = await supabase.from('saves').select('team_id, game_data').eq('user_id', session.user.id).maybeSingle();
@@ -301,10 +305,10 @@ const App: React.FC = () => {
         finally { setIsInitializing(false); }
     };
     checkExistingSave();
-  }, [session, isDataLoaded, teams, isDuplicateSession, generateInitialProspects]);
+  }, [session, isDataLoaded, teams, isDuplicateSession, generateInitialProspects, isGuestMode]);
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
-    if (!session?.user) return;
+    if (!session?.user && !isGuestMode) return;
     if (isDataLoaded && myTeamId) { setRosterTargetId(teamId); return; }
     setIsInitializing(true);
     setMyTeamId(teamId);
@@ -312,16 +316,20 @@ const App: React.FC = () => {
     
     let allScheduleRows: any[] = [];
     try {
-        let from = 0; const step = 1000; let more = true;
-        while (more) {
-            // Schedule 테이블이 없으면 에러 발생 -> catch -> CSV 로드
-            const { data, error } = await supabase.from('schedule').select('*').range(from, from + step - 1);
-            if (error) throw error;
-            if (data && data.length > 0) {
-                allScheduleRows = [...allScheduleRows, ...data];
-                if (data.length < step) more = false;
-                from += step;
-            } else more = false;
+        if (!isGuestMode) {
+            let from = 0; const step = 1000; let more = true;
+            while (more) {
+                // Schedule 테이블이 없으면 에러 발생 -> catch -> CSV 로드
+                const { data, error } = await supabase.from('schedule').select('*').range(from, from + step - 1);
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    allScheduleRows = [...allScheduleRows, ...data];
+                    if (data.length < step) more = false;
+                    from += step;
+                } else more = false;
+            }
+        } else {
+            throw new Error("Guest Mode: Skipping DB Load");
         }
     } catch (e: any) {
         console.warn("DB Schedule Load Failed (Using CSV):", e.message);
@@ -345,10 +353,10 @@ const App: React.FC = () => {
       setNews([{ type: 'text', content: welcome }, { type: 'text', content: "NBA 2025-26 시즌 구단 운영 시스템 활성화 완료." }]);
     }
     setIsDataLoaded(true); setIsInitializing(false); setView('Onboarding'); 
-  }, [teams, session, isDataLoaded, myTeamId]);
+  }, [teams, session, isDataLoaded, myTeamId, isGuestMode]);
 
   const saveToCloud = useCallback(async () => {
-        if (!isDataLoaded || !myTeamId || !session?.user || !hasWritePermission || isDuplicateSession) return;
+        if (!isDataLoaded || !myTeamId || !session?.user || !hasWritePermission || isDuplicateSession || isGuestMode) return;
         setIsSaving(true);
         try {
             await supabase.from('saves').upsert({ 
@@ -361,7 +369,7 @@ const App: React.FC = () => {
             console.warn("Cloud save failed:", e);
         }
         setIsSaving(false);
-  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, transactions, prospects, session, hasWritePermission, isDuplicateSession]);
+  }, [teams, schedule, myTeamId, isDataLoaded, currentSimDate, userTactics, playoffSeries, transactions, prospects, session, hasWritePermission, isDuplicateSession, isGuestMode]);
 
   useEffect(() => {
     const timeoutId = setTimeout(saveToCloud, 3000);
@@ -369,11 +377,12 @@ const App: React.FC = () => {
   }, [saveToCloud]);
 
   const handleHardReset = async () => {
-    if (!session?.user || !myTeamId) return;
-    setAuthLoading(true);
-    try {
-        await supabase.from('saves').delete().eq('user_id', session.user.id).eq('team_id', myTeamId);
-    } catch(e) { console.warn("Reset failed on DB:", e); }
+    if (session?.user && !isGuestMode) {
+        setAuthLoading(true);
+        try {
+            await supabase.from('saves').delete().eq('user_id', session.user.id).eq('team_id', myTeamId);
+        } catch(e) { console.warn("Reset failed on DB:", e); }
+    }
     
     setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setTransactions([]);
     setProspects(generateInitialProspects());
@@ -381,16 +390,18 @@ const App: React.FC = () => {
     setCurrentSimDate(SEASON_START_DATE);
     setLastGameResult(null); setActiveGame(null); setIsDataLoaded(false); 
     await loadBaseData();
-    setShowResetConfirm(false); setAuthLoading(false); setView('TeamSelect');
+    setShowResetConfirm(false); 
+    if (session?.user && !isGuestMode) setAuthLoading(false);
+    setView('TeamSelect');
   };
 
   const handleLogout = async () => {
     if (session?.user) { 
         try { await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); } catch(e){}
+        await supabase.auth.signOut();
     }
-    await supabase.auth.signOut();
     setSession(null); setMyTeamId(null); setSchedule([]); setPlayoffSeries([]); setTransactions([]); setProspects([]);
-    setIsDataLoaded(false); setView('TeamSelect'); setIsDuplicateSession(false);
+    setIsDataLoaded(false); setView('TeamSelect'); setIsDuplicateSession(false); setIsGuestMode(false);
   };
 
   const handleDraftPlayer = useCallback((player: Player) => {
@@ -605,8 +616,9 @@ const App: React.FC = () => {
   }, [schedule]);
 
   if (authLoading) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" /><p className="text-sm font-bold uppercase tracking-widest text-slate-500">Connecting...</p></div>;
-  if (!session) return <AuthView />;
-  if (isDuplicateSession) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center"><MonitorX size={64} className="text-red-500 mb-6" /><h2 className="text-3xl font-black text-white mb-4">중복 로그인 감지</h2><button onClick={handleForceLogin} className="px-8 py-4 bg-indigo-600 text-white font-black rounded-xl">여기서 다시 접속</button></div>;
+  if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
+  
+  if (isDuplicateSession && !isGuestMode) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center"><MonitorX size={64} className="text-red-500 mb-6" /><h2 className="text-3xl font-black text-white mb-4">중복 로그인 감지</h2><button onClick={handleForceLogin} className="px-8 py-4 bg-indigo-600 text-white font-black rounded-xl">여기서 다시 접속</button></div>;
   if (isSessionVerifying) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" /></div>;
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isInitializing} onSelectTeam={handleTeamSelection} onReload={loadBaseData} dataSource={dataSource} />;
   
@@ -616,6 +628,14 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+      
+      {/* Guest Mode Banner */}
+      {isGuestMode && (
+          <div className="bg-amber-600/90 text-white text-[10px] font-bold text-center py-1 uppercase tracking-widest relative z-50">
+              Offline Guest Mode Active - Cloud Saving Disabled
+          </div>
+      )}
+
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-red-500/50 rounded-3xl max-w-md w-full p-8 shadow-2xl flex flex-col items-center text-center space-y-6">
@@ -640,7 +660,7 @@ const App: React.FC = () => {
             </nav>
             <div className="p-6 border-t border-slate-800 space-y-2">
             <button onClick={() => setShowResetConfirm(true)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-white rounded-xl flex items-center justify-center gap-2"><RefreshCw size={14} /> 데이터 초기화</button>
-            <button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 rounded-xl flex items-center justify-center gap-2"><LogOut size={14} /> 로그아웃</button>
+            <button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 rounded-xl flex items-center justify-center gap-2"><LogOut size={14} /> {isGuestMode ? '메인 화면' : '로그아웃'}</button>
             </div>
         </aside>
         

@@ -1,33 +1,33 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle } from 'lucide-react';
-import { logError } from '../services/analytics'; // Analytics Import
+import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, WifiOff } from 'lucide-react';
+import { logError } from '../services/analytics'; 
 
 // Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-// 닉네임: 2~12자, 영문/한글/숫자 허용 (특수문자 제외) - 규칙 완화
 const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{2,12}$/;
-// 비밀번호: 6~12자, 최소 1개의 대문자, 숫자, 특수문자 포함
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
-export const AuthView: React.FC = () => {
+interface AuthViewProps {
+    onGuestLogin: () => void;
+}
+
+export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [loading, setLoading] = useState(false);
-  const [identifier, setIdentifier] = useState(''); // Email or Nickname for Login
-  const [email, setEmail] = useState(''); // Explicit Email for Signup
-  const [nickname, setNickname] = useState(''); // Explicit Nickname for Signup
+  const [identifier, setIdentifier] = useState(''); 
+  const [email, setEmail] = useState(''); 
+  const [nickname, setNickname] = useState(''); 
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); // Confirm Password for Signup
+  const [confirmPassword, setConfirmPassword] = useState(''); 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
 
-  // Validation Logic
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
   const isNicknameValid = useMemo(() => nickname === '' || NICKNAME_REGEX.test(nickname), [nickname]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
   const isConfirmValid = useMemo(() => confirmPassword === '' || password === confirmPassword, [password, confirmPassword]);
 
-  // Overall Form Validity for Signup
   const isSignupFormValid = useMemo(() => {
     return (
       email !== '' && EMAIL_REGEX.test(email) &&
@@ -37,7 +37,6 @@ export const AuthView: React.FC = () => {
     );
   }, [email, nickname, password, confirmPassword]);
 
-  // Login form validity
   const isLoginFormValid = identifier.trim() !== '' && password !== '';
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -53,7 +52,6 @@ export const AuthView: React.FC = () => {
 
     try {
       if (mode === 'signup') {
-        // 1. 회원가입 로직
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
         const { data, error } = await supabase.auth.signUp({
@@ -68,7 +66,6 @@ export const AuthView: React.FC = () => {
 
         if (error) throw error;
 
-        // 2. 프로필 저장 시도 (실패해도 회원가입은 성공한 것으로 처리)
         if (data.user) {
             try {
                 await supabase.from('profiles').upsert({
@@ -79,7 +76,6 @@ export const AuthView: React.FC = () => {
                 }, { onConflict: 'id' });
             } catch (profileErr) {
                 console.warn("프로필 저장 실패 (테이블 없음 등):", profileErr);
-                // 프로필 저장이 실패해도 가입 자체는 막지 않음
             }
         }
 
@@ -89,17 +85,15 @@ export const AuthView: React.FC = () => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        // 3. 로그인 로직
         let loginEmail = identifier.trim();
 
-        // 입력값이 이메일 형식이 아니라면 닉네임으로 간주하고 조회 시도
         if (!loginEmail.includes('@')) {
             try {
                 const { data: profile, error: profileError } = await supabase
                     .from('profiles')
                     .select('email')
                     .eq('nickname', loginEmail)
-                    .maybeSingle(); // single() 대신 maybeSingle() 사용하여 에러 방지
+                    .maybeSingle();
 
                 if (profileError) {
                     throw new Error("닉네임 조회 중 오류가 발생했습니다. 이메일로 로그인해주세요.");
@@ -110,10 +104,8 @@ export const AuthView: React.FC = () => {
                 }
                 loginEmail = profile.email;
             } catch (lookupErr: any) {
-                // profiles 테이블이 없거나 조회 실패 시
                 console.error("닉네임 조회 실패:", lookupErr);
-                // 명시적으로 에러를 던져서 사용자에게 이메일 사용 유도
-                throw new Error("닉네임 로그인을 사용할 수 없습니다 (DB 미설정). 이메일로 로그인해주세요.");
+                throw new Error("닉네임 로그인을 사용할 수 없습니다. 이메일로 로그인해주세요.");
             }
         }
 
@@ -124,9 +116,7 @@ export const AuthView: React.FC = () => {
         
         if (error) throw error;
 
-        // 4. 로그인 성공 후 프로필 복구 시도 (Non-blocking)
         if (authData.user) {
-            // 비동기로 실행하여 로그인 흐름을 막지 않음
             supabase.from('profiles').select('id').eq('id', authData.user.id).maybeSingle()
             .then(({ data }) => {
                 if (!data) {
@@ -152,8 +142,8 @@ export const AuthView: React.FC = () => {
           setIdentifier(email);
       } else if (errorMsg.includes("Invalid login credentials")) {
           errorMsg = "이메일 또는 비밀번호가 올바르지 않습니다.";
-      } else if (errorMsg.includes("relation \"public.profiles\" does not exist")) {
-          errorMsg = "데이터베이스 설정 오류: profiles 테이블이 없습니다. 이메일로 로그인하거나 관리자에게 문의하세요.";
+      } else if (errorMsg.includes("Failed to fetch")) {
+          errorMsg = "서버에 연결할 수 없습니다. 오프라인 모드를 이용해주세요.";
       }
 
       setMessage({ type: 'error', text: errorMsg });
@@ -164,7 +154,6 @@ export const AuthView: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
-      {/* Background Ambience */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-[120px]"></div>
         <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px]"></div>
@@ -189,7 +178,6 @@ export const AuthView: React.FC = () => {
         <form onSubmit={handleAuth} className="space-y-5">
           <div className="space-y-4">
             {mode === 'login' ? (
-                // 로그인 모드
                 <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                         <User className="h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
@@ -204,7 +192,6 @@ export const AuthView: React.FC = () => {
                     />
                 </div>
             ) : (
-                // 회원가입 모드
                 <>
                     <div className="space-y-1">
                         <div className="relative group">
@@ -340,6 +327,19 @@ export const AuthView: React.FC = () => {
             {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> 로그인</> : <><UserPlus size={20} /> 회원가입</>)}
           </button>
         </form>
+
+        <div className="my-6 border-t border-slate-800 relative">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 px-3 text-xs font-bold text-slate-500">
+                OR
+            </div>
+        </div>
+
+        <button 
+            onClick={onGuestLogin}
+            className="w-full py-3 bg-amber-600/10 hover:bg-amber-600/20 text-amber-500 rounded-xl border border-amber-600/30 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:border-amber-600/50"
+        >
+            <WifiOff size={16} /> 게스트 로그인 (오프라인 모드)
+        </button>
 
         <div className="mt-8 text-center">
           <p className="text-slate-500 text-xs font-bold uppercase tracking-wide mb-3">
