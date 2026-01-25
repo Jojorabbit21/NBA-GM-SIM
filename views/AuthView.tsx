@@ -96,6 +96,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
                     .maybeSingle();
 
                 if (profileError) {
+                    // 구체적인 에러 내용을 위해 에러 객체 자체를 던지지 않고 메시지를 커스텀
+                    console.error("Profile Lookup Error:", profileError);
                     throw new Error("닉네임 조회 중 오류가 발생했습니다. 이메일로 로그인해주세요.");
                 }
                 
@@ -105,7 +107,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
                 loginEmail = profile.email;
             } catch (lookupErr: any) {
                 console.error("닉네임 조회 실패:", lookupErr);
-                throw new Error("닉네임 로그인을 사용할 수 없습니다. 이메일로 로그인해주세요.");
+                // 이미 위에서 구체적인 메시지로 Error를 던졌다면 그 메시지를 유지
+                throw new Error(lookupErr.message || "닉네임 로그인을 사용할 수 없습니다. 이메일로 로그인해주세요.");
             }
         }
 

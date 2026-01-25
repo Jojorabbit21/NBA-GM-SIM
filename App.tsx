@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
@@ -113,7 +112,6 @@ const App: React.FC = () => {
             
             if (error) {
                 // 테이블이 없거나 권한 문제 시 중복 체크 기능을 비활성화하고 통과
-                // console.warn("Session check skipped (DB table missing or error):", error.message);
                 setIsDuplicateSession(false);
                 setIsSessionVerifying(false);
                 return;
@@ -144,7 +142,6 @@ const App: React.FC = () => {
                 }
             }, 10000);
         } catch (err: any) { 
-            // console.warn("Session setup failed gracefully:", err);
             setIsSessionVerifying(false); 
         }
     };
@@ -163,6 +160,153 @@ const App: React.FC = () => {
           setIsDuplicateSession(false); setIsSessionVerifying(false);
       } catch (e: any) { setIsSessionVerifying(false); }
   };
+
+  // --- Auto-Generate Playoffs Logic ---
+  useEffect(() => {
+    if (!isDataLoaded || teams.length === 0 || schedule.length === 0) return;
+
+    const regularGames = schedule.filter(g => !g.isPlayoff);
+    const playedRegular = regularGames.filter(g => g.played).length;
+    
+    // Check if Regular Season is complete (1230 games usually, or check if all are played)
+    if (playedRegular < regularGames.length) return;
+
+    // --- 1. Play-In Generation ---
+    const currentPlayInSeries = playoffSeries.filter(s => s.round === 0);
+    if (currentPlayInSeries.length === 0) {
+        // Generate Initial Play-In (7v8, 9v10)
+        const newSeries: PlayoffSeries[] = [];
+        const newGames: Game[] = [];
+        
+        ['East', 'West'].forEach(conf => {
+            const confTeams = [...teams].filter(t => t.conference === conf).sort((a, b) => {
+                const aPct = a.wins / (a.wins + a.losses || 1);
+                const bPct = b.wins / (b.wins + b.losses || 1);
+                return bPct - aPct || b.wins - a.wins;
+            });
+            
+            // 7v8
+            const s7 = confTeams[6], s8 = confTeams[7];
+            const id7v8 = `pi_${conf}_7v8`;
+            if (s7 && s8) {
+                newSeries.push({ id: id7v8, round: 0, conference: conf as any, higherSeedId: s7.id, lowerSeedId: s8.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                newGames.push({ id: `${id7v8}_g1`, homeTeamId: s7.id, awayTeamId: s8.id, date: `2026-04-14`, played: false, isPlayoff: true, seriesId: id7v8 });
+            }
+
+            // 9v10
+            const s9 = confTeams[8], s10 = confTeams[9];
+            const id9v10 = `pi_${conf}_9v10`;
+            if (s9 && s10) {
+                newSeries.push({ id: id9v10, round: 0, conference: conf as any, higherSeedId: s9.id, lowerSeedId: s10.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                newGames.push({ id: `${id9v10}_g1`, homeTeamId: s9.id, awayTeamId: s10.id, date: `2026-04-15`, played: false, isPlayoff: true, seriesId: id9v10 });
+            }
+        });
+
+        if (newSeries.length > 0) {
+            setPlayoffSeries(prev => [...prev, ...newSeries]);
+            setSchedule(prev => [...prev, ...newGames]);
+            setNews(prev => [{ type: 'text', content: "정규 시즌 종료! 플레이-인 토너먼트 일정이 생성되었습니다." }, ...prev]);
+            if (new Date(currentSimDate) < new Date('2026-04-14')) setCurrentSimDate('2026-04-14');
+        }
+        return;
+    }
+
+    // --- 2. Play-In Advancement (8th Seed Game) ---
+    // Check if 7v8 and 9v10 are done but 8th seed game missing
+    let newPIGames: Game[] = [];
+    let newPISeries: PlayoffSeries[] = [];
+    let hasNew8th = false;
+    
+    ['East', 'West'].forEach(conf => {
+        const confPI = currentPlayInSeries.filter(s => s.conference === conf);
+        const g7v8 = confPI.find(s => s.id.includes('7v8'));
+        const g9v10 = confPI.find(s => s.id.includes('9v10'));
+        const g8th = confPI.find(s => s.id.includes('8th'));
+
+        if (g7v8?.finished && g9v10?.finished && !g8th) {
+            const loser7v8Id = g7v8.winnerId === g7v8.higherSeedId ? g7v8.lowerSeedId : g7v8.higherSeedId;
+            const winner9v10Id = g9v10.winnerId;
+            
+            if (loser7v8Id && winner9v10Id) {
+                const id8th = `pi_${conf}_8th`;
+                newPISeries.push({ id: id8th, round: 0, conference: conf as any, higherSeedId: loser7v8Id, lowerSeedId: winner9v10Id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                newPIGames.push({ id: `${id8th}_g1`, homeTeamId: loser7v8Id, awayTeamId: winner9v10Id, date: `2026-04-17`, played: false, isPlayoff: true, seriesId: id8th });
+                hasNew8th = true;
+            }
+        }
+    });
+
+    if (hasNew8th) {
+        setPlayoffSeries(prev => [...prev, ...newPISeries]);
+        setSchedule(prev => [...prev, ...newPIGames]);
+        if (new Date(currentSimDate) < new Date('2026-04-17')) setCurrentSimDate('2026-04-17');
+        return;
+    }
+
+    // --- 3. Round 1 Generation ---
+    const allPIFinished = currentPlayInSeries.length >= 6 && currentPlayInSeries.every(s => s.finished); // At least 3 per conf
+    const hasRound1 = playoffSeries.some(s => s.round === 1);
+
+    if (allPIFinished && !hasRound1) {
+        const newR1Series: PlayoffSeries[] = [];
+        const newR1Games: Game[] = [];
+
+        ['East', 'West'].forEach(conf => {
+            // Get Seeds 1-6
+            const confTeams = [...teams].filter(t => t.conference === conf).sort((a, b) => {
+                const aPct = a.wins / (a.wins + a.losses || 1);
+                const bPct = b.wins / (b.wins + b.losses || 1);
+                return bPct - aPct || b.wins - a.wins;
+            });
+            const top6 = confTeams.slice(0, 6);
+
+            // Get 7th and 8th from PI
+            const pi = currentPlayInSeries.filter(s => s.conference === conf);
+            const g7v8 = pi.find(s => s.id.includes('7v8'));
+            const g8th = pi.find(s => s.id.includes('8th'));
+            
+            const seed7Id = g7v8?.winnerId;
+            const seed8Id = g8th?.winnerId;
+            
+            if (seed7Id && seed8Id) {
+                const seed7 = teams.find(t => t.id === seed7Id)!;
+                const seed8 = teams.find(t => t.id === seed8Id)!;
+                const finalSeeds = [...top6, seed7, seed8];
+
+                // Create Series: 1v8, 2v7, 3v6, 4v5
+                const matchups = [
+                    { h: finalSeeds[0], l: finalSeeds[7] }, // 1v8
+                    { h: finalSeeds[3], l: finalSeeds[4] }, // 4v5
+                    { h: finalSeeds[2], l: finalSeeds[5] }, // 3v6
+                    { h: finalSeeds[1], l: finalSeeds[6] }, // 2v7
+                ];
+
+                matchups.forEach(m => {
+                    const sId = `s_${conf}_r1_${m.h.id}_${m.l.id}`;
+                    newR1Series.push({ id: sId, round: 1, conference: conf as any, higherSeedId: m.h.id, lowerSeedId: m.l.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
+                    // Generate first 4 games
+                    for(let i=1; i<=4; i++) {
+                        newR1Games.push({ 
+                            id: `${sId}_g${i}`, 
+                            homeTeamId: i % 2 !== 0 ? m.h.id : m.l.id, 
+                            awayTeamId: i % 2 !== 0 ? m.l.id : m.h.id, 
+                            date: `2026-04-${20 + i}`, // Simple date logic
+                            played: false, isPlayoff: true, seriesId: sId 
+                        });
+                    }
+                });
+            }
+        });
+
+        if (newR1Series.length > 0) {
+            setPlayoffSeries(prev => [...prev, ...newR1Series]);
+            setSchedule(prev => [...prev, ...newR1Games]);
+            setNews(prev => [{ type: 'text', content: "2026 NBA 플레이오프 1라운드가 시작됩니다!" }, ...prev]);
+            if (new Date(currentSimDate) < new Date('2026-04-20')) setCurrentSimDate('2026-04-20');
+        }
+    }
+
+  }, [isDataLoaded, teams, schedule, playoffSeries]); // Fixed dependency: schedule (not length) and playoffSeries
 
   const syncOvrWithLatestWeights = useCallback((teamsToSync: Team[]): Team[] => {
       return teamsToSync.map(t => ({
@@ -211,10 +355,6 @@ const App: React.FC = () => {
       let combinedPlayers: any[] = [];
       let source: 'DB' | 'CSV' = 'DB';
       
-      // DB 연결 실패 또는 테이블 없음 시 CSV로 자동 전환
-      // Guest Mode일 경우에도 바로 CSV 로드로 전환할 수 있지만, DB가 살아있다면 Guest라도 데이터는 DB에서 가져오는게 좋음.
-      // 하지만 Failed to fetch 에러가 뜨는 상황이므로 DB 호출 자체가 에러를 유발함.
-      // 따라서 에러가 발생하면 자연스럽게 catch/error 블록에서 CSV로 넘어감.
       const { data: dbPlayers, error } = await supabase.from('players').select('*');
       
       if (error || !dbPlayers || dbPlayers.length === 0) {
@@ -252,7 +392,7 @@ const App: React.FC = () => {
         salaryCap: 140, 
         luxuryTaxLine: 170, 
         logo: getTeamLogoUrl(t.id),
-        tacticHistory: { offense: {}, defense: {} } // Initialize tactic history
+        tacticHistory: { offense: {}, defense: {} } 
       }));
 
       setTeams(syncOvrWithLatestWeights(initializedTeams));
@@ -281,7 +421,7 @@ const App: React.FC = () => {
                         ...p,
                         ovr: calculatePlayerOvr(p)
                     })),
-                    tacticHistory: t.tacticHistory || { offense: {}, defense: {} } // Ensure history exists
+                    tacticHistory: t.tacticHistory || { offense: {}, defense: {} }
                 }));
                 
                 const syncedProspects = (gd.prospects || []).map((p: Player) => ({
@@ -319,7 +459,6 @@ const App: React.FC = () => {
         if (!isGuestMode) {
             let from = 0; const step = 1000; let more = true;
             while (more) {
-                // Schedule 테이블이 없으면 에러 발생 -> catch -> CSV 로드
                 const { data, error } = await supabase.from('schedule').select('*').range(from, from + step - 1);
                 if (error) throw error;
                 if (data && data.length > 0) {
@@ -365,7 +504,6 @@ const App: React.FC = () => {
                 updated_at: new Date()
             }, { onConflict: 'user_id, team_id' });
         } catch(e) {
-            // 테이블 없음 등의 에러 시 조용히 무시 (로컬 플레이는 계속 가능)
             console.warn("Cloud save failed:", e);
         }
         setIsSaving(false);
@@ -428,6 +566,8 @@ const App: React.FC = () => {
     const processSimulation = async (precalcUserResult?: SimulationResult) => {
         let updatedTeams = [...teams];
         let updatedSchedule = [...schedule];
+        let updatedSeries = [...playoffSeries];
+        let updatedNews = [...news];
         let userGameResultOutput = null;
         let allPlayedToday: Game[] = [];
         const getTeam = (id: string) => updatedTeams.find(t => t.id === id)!;
@@ -445,13 +585,77 @@ const App: React.FC = () => {
             updatedTeams[homeIdx] = { ...home, wins: home.wins + (result.homeScore > result.awayScore ? 1 : 0), losses: home.losses + (result.homeScore < result.awayScore ? 1 : 0) };
             updatedTeams[awayIdx] = { ...away, wins: away.wins + (result.awayScore > result.homeScore ? 1 : 0), losses: away.losses + (result.awayScore < result.homeScore ? 1 : 0) };
             
+            // --- Playoff Series Update Logic ---
+            if (game.isPlayoff && game.seriesId) {
+                const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
+                if (sIdx !== -1) {
+                    const s = { ...updatedSeries[sIdx] };
+                    const isHigherWinner = result.homeScore > result.awayScore 
+                        ? (s.higherSeedId === home.id) 
+                        : (s.higherSeedId === away.id);
+                    
+                    if (isHigherWinner) s.higherSeedWins++;
+                    else s.lowerSeedWins++;
+
+                    const targetWins = s.targetWins || 4; // Default to 4 if undefined
+                    
+                    // Check if series is finished
+                    if (s.higherSeedWins >= targetWins || s.lowerSeedWins >= targetWins) {
+                        s.finished = true;
+                        s.winnerId = s.higherSeedWins > s.lowerSeedWins ? s.higherSeedId : s.lowerSeedId;
+                        
+                        const winnerTeam = teams.find(t => t.id === s.winnerId);
+                        const loserTeam = teams.find(t => t.id === (s.winnerId === s.higherSeedId ? s.lowerSeedId : s.higherSeedId));
+                        if (winnerTeam && loserTeam) {
+                            updatedNews.unshift({ 
+                                type: 'text', 
+                                content: `[PO] ${winnerTeam.name}, ${loserTeam.name} 꺾고 시리즈 승리! (${s.higherSeedWins}-${s.lowerSeedWins})` 
+                            });
+                        }
+                    } else {
+                        // Check if next game exists, if not, schedule it
+                        const gamesInSeries = updatedSchedule.filter(g => g.seriesId === s.id);
+                        const playedCount = gamesInSeries.filter(g => g.played).length + 1; // +1 including current game being processed
+                        const nextGameId = `${s.id}_g${playedCount + 1}`;
+                        const exists = updatedSchedule.some(g => g.id === nextGameId);
+                        
+                        if (!exists && !s.finished) {
+                            const nextDateObj = new Date(targetSimDate);
+                            nextDateObj.setDate(nextDateObj.getDate() + 2); // 2 days gap
+                            const nextDateStr = nextDateObj.toISOString().split('T')[0];
+                            
+                            // Determine home court for next game (Standard NBA: 2-2-1-1-1)
+                            // Game 1,2: Higher
+                            // Game 3,4: Lower
+                            // Game 5: Higher
+                            // Game 6: Lower
+                            // Game 7: Higher
+                            const gameNum = playedCount + 1;
+                            const isHigherHome = [1, 2, 5, 7].includes(gameNum);
+                            
+                            const newGame: Game = {
+                                id: nextGameId,
+                                homeTeamId: isHigherHome ? s.higherSeedId : s.lowerSeedId,
+                                awayTeamId: isHigherHome ? s.lowerSeedId : s.higherSeedId,
+                                date: nextDateStr,
+                                played: false,
+                                isPlayoff: true,
+                                seriesId: s.id
+                            };
+                            updatedSchedule.push(newGame);
+                        }
+                    }
+                    updatedSeries[sIdx] = s;
+                }
+            }
+            // -----------------------------------
+
             // --- Tactic Stats Tracking ---
             if (isUserGame) {
                 const myTeamIdx = updatedTeams.findIndex(t => t.id === myTeamId);
                 const isHome = myTeamId === home.id;
                 const myResult = isHome ? { wins: result.homeScore > result.awayScore ? 1 : 0, ptsFor: result.homeScore, ptsAgainst: result.awayScore } : { wins: result.awayScore > result.homeScore ? 1 : 0, ptsFor: result.awayScore, ptsAgainst: result.homeScore };
                 
-                // Aggregate Team Shooting Stats from Box Score (Our Offense)
                 const myBox = isHome ? result.homeBox : result.awayBox;
                 const teamStats = myBox.reduce((acc, p) => ({
                     fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
@@ -461,7 +665,6 @@ const App: React.FC = () => {
                     tov: acc.tov + p.tov,
                 }), { fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 });
 
-                // Aggregate Opponent Shooting Stats (Our Defense)
                 const oppBox = isHome ? result.awayBox : result.homeBox;
                 const oppStats = oppBox.reduce((acc, p) => ({
                     fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
@@ -499,13 +702,10 @@ const App: React.FC = () => {
                     defense: { ...updatedTeams[myTeamIdx].tacticHistory?.defense } 
                 };
 
-                // Track Offense (Use My Stats)
                 updateHistory(currentHistory, 'offense', tactics.offenseTactics[0], teamStats);
 
-                // Track Defense (Use Opponent Stats)
                 tactics.defenseTactics.forEach(dt => {
                     if (dt === 'AceStopper') {
-                        // Extract specific stats for the Ace (highest usage/points or explicitly marked target)
                         const ace = oppBox.find(p => p.isAceTarget) || oppBox.reduce((max, p) => p.pts > max.pts ? p : max, oppBox[0]);
                         const aceStats = {
                             fgm: ace.fgm, fga: ace.fga,
@@ -514,7 +714,6 @@ const App: React.FC = () => {
                             midM: ace.midM || 0, midA: ace.midA || 0,
                             tov: ace.tov
                         };
-                        // For Ace Stopper, ptsAgainst counts ONLY the Ace's points
                         updateHistory(currentHistory, 'defense', dt, aceStats, ace.pts);
                     } else {
                         updateHistory(currentHistory, 'defense', dt, oppStats);
@@ -584,7 +783,7 @@ const App: React.FC = () => {
         const currentDateObj = new Date(targetSimDate);
         currentDateObj.setDate(currentDateObj.getDate() + 1);
         const nextDayStr = currentDateObj.toISOString().split('T')[0];
-        setTeams(updatedTeams); setSchedule(updatedSchedule); setCurrentSimDate(nextDayStr);
+        setTeams(updatedTeams); setSchedule(updatedSchedule); setPlayoffSeries(updatedSeries); setCurrentSimDate(nextDayStr); setNews(updatedNews);
         if (userGameResultOutput) {
             const recap = await generateGameRecapNews(userGameResultOutput);
             setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });

@@ -26,6 +26,20 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // [Fix] Automatically update calendar view when simulation date advances to a new month
+  useEffect(() => {
+    if (currentSimDate) {
+        const simDate = new Date(currentSimDate);
+        setCurrentDate(prev => {
+            // Only update if the month is different to avoid resetting user navigation unnecessarily
+            if (prev.getMonth() !== simDate.getMonth() || prev.getFullYear() !== simDate.getFullYear()) {
+                return new Date(simDate.getFullYear(), simDate.getMonth(), 1);
+            }
+            return prev;
+        });
+    }
+  }, [currentSimDate]);
+
   const filteredGames = schedule.filter(g => (g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId));
 
   const changeMonth = (offset: number) => {
