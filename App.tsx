@@ -5,14 +5,14 @@ import {
   RefreshCw, Clock, Swords, AlertTriangle, LogOut, Cloud, Loader2, Copy, Check, X, BarChart3,
   MonitorX, Lock, GraduationCap, FlaskConical
 } from 'lucide-react';
-import { AppView, Team, Game, Player, PlayerBoxScore, PlayoffSeries, Transaction } from './types';
+import { AppView, Team, Game, Player, PlayerBoxScore, PlayoffSeries, Transaction, TacticalSnapshot, TeamTacticHistory, TacticStatRecord } from './types';
 import { 
   INITIAL_TEAMS_DATA, getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, mapDatabaseScheduleToRuntimeGame,
   generateSeasonSchedule, exportScheduleToCSV,
   SEASON_START_DATE, parseCSVToObjects, INITIAL_STATS, calculatePlayerOvr
 } from './utils/constants';
-import { simulateGame, GameTactics, RosterUpdate } from './services/gameEngine';
+import { simulateGame, GameTactics, RosterUpdate, SimulationResult } from './services/gameEngine';
 import { generateNewsTicker, generateOwnerWelcome, generateGameRecapNews } from './services/geminiService';
 import { initGA, logPageView, logEvent, logError } from './services/analytics'; 
 import { NavItem, Toast } from './components/SharedComponents';
@@ -24,7 +24,8 @@ import { ScheduleView } from './views/ScheduleView';
 import { TransactionsView } from './views/TransactionsView';
 import { DraftView } from './views/DraftView';
 import { PlayoffsView } from './views/PlayoffsView';
-import { GameSimulatingView, GameResultView } from './views/GameViews';
+import { GameSimulatingView } from './views/GameSimulationView';
+import { GameResultView } from './views/GameResultView';
 import { OnboardingView } from './views/OnboardingView';
 import { LeaderboardView } from './views/LeaderboardView';
 import { SeasonReviewView } from './views/SeasonReviewView'; 
@@ -239,7 +240,15 @@ const App: React.FC = () => {
       }
       
       const initializedTeams: Team[] = INITIAL_TEAMS_DATA.map(t => ({
-        ...t, roster: fullRosterMap[t.id] || [], wins: 0, losses: 0, budget: 200, salaryCap: 140, luxuryTaxLine: 170, logo: getTeamLogoUrl(t.id)
+        ...t, 
+        roster: fullRosterMap[t.id] || [], 
+        wins: 0, 
+        losses: 0, 
+        budget: 200, 
+        salaryCap: 140, 
+        luxuryTaxLine: 170, 
+        logo: getTeamLogoUrl(t.id),
+        tacticHistory: { offense: {}, defense: {} } // Initialize tactic history
       }));
 
       setTeams(syncOvrWithLatestWeights(initializedTeams));
@@ -267,7 +276,8 @@ const App: React.FC = () => {
                     roster: t.roster.map(p => ({
                         ...p,
                         ovr: calculatePlayerOvr(p)
-                    }))
+                    })),
+                    tacticHistory: t.tacticHistory || { offense: {}, defense: {} } // Ensure history exists
                 }));
                 
                 const syncedProspects = (gd.prospects || []).map((p: Player) => ({
@@ -404,7 +414,7 @@ const App: React.FC = () => {
     const userGameToday = gamesToday.find(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId);
     
     // Core simulation processing logic
-    const processSimulation = async (precalcUserResult?: any) => {
+    const processSimulation = async (precalcUserResult?: SimulationResult) => {
         let updatedTeams = [...teams];
         let updatedSchedule = [...schedule];
         let userGameResultOutput = null;
@@ -415,11 +425,95 @@ const App: React.FC = () => {
             const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
             const home = getTeam(game.homeTeamId);
             const away = getTeam(game.awayTeamId);
+            
+            // Use precalculated result for user game to ensure consistency with visualization
             const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined);
+            
             const homeIdx = updatedTeams.findIndex(t => t.id === home.id);
             const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
             updatedTeams[homeIdx] = { ...home, wins: home.wins + (result.homeScore > result.awayScore ? 1 : 0), losses: home.losses + (result.homeScore < result.awayScore ? 1 : 0) };
             updatedTeams[awayIdx] = { ...away, wins: away.wins + (result.awayScore > result.homeScore ? 1 : 0), losses: away.losses + (result.awayScore < result.homeScore ? 1 : 0) };
+            
+            // --- Tactic Stats Tracking ---
+            if (isUserGame) {
+                const myTeamIdx = updatedTeams.findIndex(t => t.id === myTeamId);
+                const isHome = myTeamId === home.id;
+                const myResult = isHome ? { wins: result.homeScore > result.awayScore ? 1 : 0, ptsFor: result.homeScore, ptsAgainst: result.awayScore } : { wins: result.awayScore > result.homeScore ? 1 : 0, ptsFor: result.awayScore, ptsAgainst: result.homeScore };
+                
+                // Aggregate Team Shooting Stats from Box Score (Our Offense)
+                const myBox = isHome ? result.homeBox : result.awayBox;
+                const teamStats = myBox.reduce((acc, p) => ({
+                    fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
+                    p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a,
+                    rimM: acc.rimM + (p.rimM || 0), rimA: acc.rimA + (p.rimA || 0),
+                    midM: acc.midM + (p.midM || 0), midA: acc.midA + (p.midA || 0),
+                    tov: acc.tov + p.tov,
+                }), { fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 });
+
+                // Aggregate Opponent Shooting Stats (Our Defense)
+                const oppBox = isHome ? result.awayBox : result.homeBox;
+                const oppStats = oppBox.reduce((acc, p) => ({
+                    fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
+                    p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a,
+                    rimM: acc.rimM + (p.rimM || 0), rimA: acc.rimA + (p.rimA || 0),
+                    midM: acc.midM + (p.midM || 0), midA: acc.midA + (p.midA || 0),
+                    tov: acc.tov + p.tov,
+                }), { fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 });
+
+                const updateHistory = (history: TeamTacticHistory, type: 'offense' | 'defense', key: string, stats: typeof teamStats, specificPtsAgainst?: number) => {
+                    const record = history[type][key] || { 
+                        games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0,
+                        fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 
+                    };
+                    
+                    history[type][key] = {
+                        games: record.games + 1,
+                        wins: record.wins + myResult.wins,
+                        ptsFor: record.ptsFor + myResult.ptsFor,
+                        ptsAgainst: record.ptsAgainst + (specificPtsAgainst !== undefined ? specificPtsAgainst : myResult.ptsAgainst),
+                        fgm: (record.fgm || 0) + stats.fgm,
+                        fga: (record.fga || 0) + stats.fga,
+                        p3m: (record.p3m || 0) + stats.p3m,
+                        p3a: (record.p3a || 0) + stats.p3a,
+                        rimM: (record.rimM || 0) + stats.rimM,
+                        rimA: (record.rimA || 0) + stats.rimA,
+                        midM: (record.midM || 0) + stats.midM,
+                        midA: (record.midA || 0) + stats.midA,
+                        tov: (record.tov || 0) + stats.tov,
+                    };
+                };
+
+                const currentHistory = { 
+                    offense: { ...updatedTeams[myTeamIdx].tacticHistory?.offense }, 
+                    defense: { ...updatedTeams[myTeamIdx].tacticHistory?.defense } 
+                };
+
+                // Track Offense (Use My Stats)
+                updateHistory(currentHistory, 'offense', tactics.offenseTactics[0], teamStats);
+
+                // Track Defense (Use Opponent Stats)
+                tactics.defenseTactics.forEach(dt => {
+                    if (dt === 'AceStopper') {
+                        // Extract specific stats for the Ace (highest usage/points or explicitly marked target)
+                        const ace = oppBox.find(p => p.isAceTarget) || oppBox.reduce((max, p) => p.pts > max.pts ? p : max, oppBox[0]);
+                        const aceStats = {
+                            fgm: ace.fgm, fga: ace.fga,
+                            p3m: ace.p3m, p3a: ace.p3a,
+                            rimM: ace.rimM || 0, rimA: ace.rimA || 0,
+                            midM: ace.midM || 0, midA: ace.midA || 0,
+                            tov: ace.tov
+                        };
+                        // For Ace Stopper, ptsAgainst counts ONLY the Ace's points
+                        updateHistory(currentHistory, 'defense', dt, aceStats, ace.pts);
+                    } else {
+                        updateHistory(currentHistory, 'defense', dt, oppStats);
+                    }
+                });
+
+                updatedTeams[myTeamIdx] = { ...updatedTeams[myTeamIdx], tacticHistory: currentHistory };
+            }
+            // -----------------------------
+
             const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: RosterUpdate) => {
                 const t = updatedTeams[teamIdx];
                 t.roster = t.roster.map(p => {
@@ -427,24 +521,54 @@ const App: React.FC = () => {
                     const box = boxScore.find(b => b.playerId === p.id);
                     const isPlayoffGame = game.isPlayoff;
                     let newRegularStats = { ...p.stats };
-                    let newPlayoffStats = p.playoffStats ? { ...p.playoffStats } : { ...newRegularStats, g:0, gs:0, mp:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0, offReb:0, defReb:0 };
+                    
+                    if (newRegularStats.rimM === undefined) newRegularStats.rimM = 0;
+                    if (newRegularStats.rimA === undefined) newRegularStats.rimA = 0;
+                    if (newRegularStats.midM === undefined) newRegularStats.midM = 0;
+                    if (newRegularStats.midA === undefined) newRegularStats.midA = 0;
+
+                    let newPlayoffStats = p.playoffStats ? { ...p.playoffStats } : { ...newRegularStats, g:0, gs:0, mp:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0, offReb:0, defReb:0, rimM: 0, rimA: 0, midM: 0, midA: 0 };
+                    
+                    if (p.playoffStats) {
+                         if (newPlayoffStats.rimM === undefined) newPlayoffStats.rimM = 0;
+                         if (newPlayoffStats.rimA === undefined) newPlayoffStats.rimA = 0;
+                         if (newPlayoffStats.midM === undefined) newPlayoffStats.midM = 0;
+                         if (newPlayoffStats.midA === undefined) newPlayoffStats.midA = 0;
+                    }
+
                     const targetStats = isPlayoffGame ? newPlayoffStats : newRegularStats;
                     if (box) {
                         targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb;
                         targetStats.offReb += box.offReb || 0; targetStats.defReb += box.defReb || 0; targetStats.ast += box.ast; targetStats.stl += box.stl;
                         targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga;
                         targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta;
+                        targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); 
+                        targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0);
+                        targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); 
+                        targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
                     }
                     return { ...p, stats: newRegularStats, playoffStats: newPlayoffStats, condition: update?.condition ?? p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
                 });
             };
             updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates);
             updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
-            const updatedGame = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: { home: result.homeBox, away: result.awayBox } };
+            
+            const updatedGame: Game = { 
+                ...game, 
+                played: true, 
+                homeScore: result.homeScore, 
+                awayScore: result.awayScore, 
+                boxScore: { home: result.homeBox, away: result.awayBox },
+                tactics: { home: result.homeTactics, away: result.awayTactics } 
+            };
+            
             const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
             if (schIdx !== -1) { updatedSchedule[schIdx] = updatedGame; }
             allPlayedToday.push(updatedGame);
-            if (isUserGame) { userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; }
+            
+            if (isUserGame) { 
+                userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
+            }
         }
         const currentDateObj = new Date(targetSimDate);
         currentDateObj.setDate(currentDateObj.getDate() + 1);
@@ -458,7 +582,6 @@ const App: React.FC = () => {
     };
 
     if (userGameToday) {
-        // 유저 경기가 있으면, 시뮬레이션 결과를 미리 계산하고 뷰를 전환한다.
         const home = teams.find(t => t.id === userGameToday.homeTeamId)!;
         const away = teams.find(t => t.id === userGameToday.awayTeamId)!;
         const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics);
@@ -466,10 +589,8 @@ const App: React.FC = () => {
         setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); 
         setView('GameSim');
         
-        // 뷰 컴포넌트가 애니메이션 종료 후 호출할 콜백 설정
         finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
     } else { 
-        // 유저 경기가 없으면 즉시 시뮬레이션 진행 (딜레이만 살짝 줌)
         setIsSimulating(true); 
         setTimeout(() => processSimulation(), 800);
     }

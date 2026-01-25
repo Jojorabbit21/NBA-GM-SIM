@@ -17,6 +17,12 @@ export interface SeasonStats {
   p3a: number;  // 3pt Attempted
   ftm: number;  // Free Throws Made
   fta: number;  // Free Throws Attempted
+  
+  // New Zone Stats
+  rimM: number; // Rim Makes
+  rimA: number; // Rim Attempts
+  midM: number; // Mid-Range Makes
+  midA: number; // Mid-Range Attempts
 }
 
 export interface Player {
@@ -103,6 +109,24 @@ export interface PlayerBoxScore extends SeasonStats {
   matchupEffect?: number;
 }
 
+export interface TacticStatRecord {
+  games: number;
+  wins: number;
+  ptsFor: number;
+  ptsAgainst: number;
+  // Detailed Shooting Stats
+  fgm: number; fga: number;
+  p3m: number; p3a: number;
+  rimM: number; rimA: number;
+  midM: number; midA: number;
+  tov?: number; // Added for Ace Stopper tracking
+}
+
+export interface TeamTacticHistory {
+  offense: Record<string, TacticStatRecord>;
+  defense: Record<string, TacticStatRecord>;
+}
+
 export interface Team {
   id: string;
   name: string;
@@ -116,6 +140,15 @@ export interface Team {
   luxuryTaxLine: number;
   conference: 'East' | 'West';
   division: 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest';
+  tacticHistory?: TeamTacticHistory;
+}
+
+export interface TacticalSnapshot {
+  offense: string;
+  defense: string;
+  pace: number;
+  stopperId?: string;
+  focusPlayer?: string;
 }
 
 export interface Game {
@@ -131,6 +164,10 @@ export interface Game {
   boxScore?: {
     home: PlayerBoxScore[];
     away: PlayerBoxScore[];
+  };
+  tactics?: {
+    home: TacticalSnapshot;
+    away: TacticalSnapshot;
   };
 }
 

@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock, History } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
-import { generateTradeOffers, generateCounterOffers } from '../services/gameEngine';
+import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
 import { getTeamLogoUrl, TRADE_DEADLINE } from '../utils/constants';
 import { logEvent } from '../services/analytics'; 
