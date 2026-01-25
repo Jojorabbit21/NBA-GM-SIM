@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
@@ -51,7 +50,7 @@ type NewsItem =
 const App: React.FC = () => {
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [isGuestMode, setIsGuestMode] = useState(false);
+  const [isGuestMode, setIsGuestMode] = useState(false); // Guest Mode State
   
   const [view, setView] = useState<AppView>('TeamSelect');
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
@@ -81,6 +80,7 @@ const App: React.FC = () => {
   const [isDuplicateSession, setIsDuplicateSession] = useState(false);
   const [isSessionVerifying, setIsSessionVerifying] = useState(false); 
 
+  // [Ref] Stores the function to finalize simulation after visual effect
   const finalizeSimRef = useRef<((userResult?: any) => void) | null>(null);
 
   useEffect(() => { initGA(); }, []);
@@ -98,17 +98,20 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // [Fix] Session Verification with Fail-Open Logic
   useEffect(() => {
-    if (!session?.user || isGuestMode) return;
+    if (!session?.user || isGuestMode) return; // Skip in Guest Mode
     let heartbeatInterval: any;
     let subscription: any;
     
     const setupSession = async () => {
         setIsSessionVerifying(true);
         try {
+            // profiles 테이블이 존재하는지 확인 (없으면 에러 발생 -> catch로 이동하여 로직 패스)
             const { data: profile, error } = await supabase.from('profiles').select('active_device_id, last_seen_at').eq('id', session.user.id).maybeSingle();
             
             if (error) {
+                // 테이블이 없거나 권한 문제 시 중복 체크 기능을 비활성화하고 통과
                 setIsDuplicateSession(false);
                 setIsSessionVerifying(false);
                 return;
@@ -118,6 +121,7 @@ const App: React.FC = () => {
             let shouldBlock = false;
             if (profile && profile.active_device_id && profile.last_seen_at) {
                 const lastSeenTime = new Date(profile.last_seen_at).getTime();
+                // 1분 이상 활동 없으면 세션 탈취 가능
                 if ((now - lastSeenTime) < 60000 && profile.active_device_id !== deviceId) {
                     shouldBlock = true;
                 }
@@ -161,176 +165,148 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!isDataLoaded || teams.length === 0 || schedule.length === 0) return;
 
-    try {
-        const regularGames = schedule.filter(g => !g.isPlayoff);
-        const playedRegular = regularGames.filter(g => g.played).length;
+    const regularGames = schedule.filter(g => !g.isPlayoff);
+    const playedRegular = regularGames.filter(g => g.played).length;
+    
+    // Check if Regular Season is complete (1230 games usually, or check if all are played)
+    if (playedRegular < regularGames.length) return;
+
+    // --- 1. Play-In Generation ---
+    const currentPlayInSeries = playoffSeries.filter(s => s.round === 0);
+    if (currentPlayInSeries.length === 0) {
+        // Generate Initial Play-In (7v8, 9v10)
+        const newSeries: PlayoffSeries[] = [];
+        const newGames: Game[] = [];
         
-        if (regularGames.length > 0 && playedRegular < regularGames.length) return;
-
-        // --- 1. Play-In Generation ---
-        const currentPlayInSeries = playoffSeries.filter(s => s.round === 0);
-        if (currentPlayInSeries.length === 0 && regularGames.length > 0) {
-            const newSeries: PlayoffSeries[] = [];
-            const newGames: Game[] = [];
-            ['East', 'West'].forEach(conf => {
-                const confTeams = [...teams].filter(t => t.conference === conf).sort((a, b) => {
-                    const aPct = a.wins / (a.wins + a.losses || 1);
-                    const bPct = b.wins / (b.wins + b.losses || 1);
-                    return bPct - aPct || b.wins - a.wins;
-                });
-                const s7 = confTeams[6], s8 = confTeams[7], s9 = confTeams[8], s10 = confTeams[9];
-                if (s7 && s8) {
-                    const id = `pi_${conf}_7v8`;
-                    newSeries.push({ id, round: 0, conference: conf as any, higherSeedId: s7.id, lowerSeedId: s8.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
-                    newGames.push({ id: `${id}_g1`, homeTeamId: s7.id, awayTeamId: s8.id, date: `2026-04-14`, played: false, isPlayoff: true, seriesId: id });
-                }
-                if (s9 && s10) {
-                    const id = `pi_${conf}_9v10`;
-                    newSeries.push({ id, round: 0, conference: conf as any, higherSeedId: s9.id, lowerSeedId: s10.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
-                    newGames.push({ id: `${id}_g1`, homeTeamId: s9.id, awayTeamId: s10.id, date: `2026-04-15`, played: false, isPlayoff: true, seriesId: id });
-                }
+        ['East', 'West'].forEach(conf => {
+            const confTeams = [...teams].filter(t => t.conference === conf).sort((a, b) => {
+                const aPct = a.wins / (a.wins + a.losses || 1);
+                const bPct = b.wins / (b.wins + b.losses || 1);
+                return bPct - aPct || b.wins - a.wins;
             });
-            if (newSeries.length > 0) {
-                setPlayoffSeries(prev => [...prev, ...newSeries]);
-                setSchedule(prev => [...prev, ...newGames]);
-                setNews(prev => [{ type: 'text', content: "정규 시즌 종료! 플레이-인 토너먼트 일정이 생성되었습니다." }, ...prev]);
-                if (new Date(currentSimDate) < new Date('2026-04-14')) setCurrentSimDate('2026-04-14');
+            
+            // 7v8
+            const s7 = confTeams[6], s8 = confTeams[7];
+            const id7v8 = `pi_${conf}_7v8`;
+            if (s7 && s8) {
+                newSeries.push({ id: id7v8, round: 0, conference: conf as any, higherSeedId: s7.id, lowerSeedId: s8.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                newGames.push({ id: `${id7v8}_g1`, homeTeamId: s7.id, awayTeamId: s8.id, date: `2026-04-14`, played: false, isPlayoff: true, seriesId: id7v8 });
             }
-            return;
-        }
 
-        // --- 2. Play-In 8th Seed Game Generation ---
-        const g8thExisting = playoffSeries.some(s => s.id.includes('8th'));
-        if (currentPlayInSeries.length >= 4 && !g8thExisting) {
-            let newPIGames: Game[] = [];
-            let newPISeries: PlayoffSeries[] = [];
-            ['East', 'West'].forEach(conf => {
-                const confPI = currentPlayInSeries.filter(s => s.conference === conf);
-                const g7v8 = confPI.find(s => s.id.includes('7v8'));
-                const g9v10 = confPI.find(s => s.id.includes('9v10'));
-                if (g7v8?.finished && g9v10?.finished) {
-                    const loser7v8 = g7v8.winnerId === g7v8.higherSeedId ? g7v8.lowerSeedId : g7v8.higherSeedId;
-                    const winner9v10 = g9v10.winnerId;
-                    if (loser7v8 && winner9v10) {
-                        const id = `pi_${conf}_8th`;
-                        newPISeries.push({ id, round: 0, conference: conf as any, higherSeedId: loser7v8, lowerSeedId: winner9v10, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
-                        newPIGames.push({ id: `${id}_g1`, homeTeamId: loser7v8, awayTeamId: winner9v10, date: `2026-04-17`, played: false, isPlayoff: true, seriesId: id });
-                    }
-                }
-            });
-            if (newPISeries.length > 0) {
-                setPlayoffSeries(prev => [...prev, ...newPISeries]);
-                setSchedule(prev => [...prev, ...newPIGames]);
-                if (new Date(currentSimDate) < new Date('2026-04-17')) setCurrentSimDate('2026-04-17');
-                return;
+            // 9v10
+            const s9 = confTeams[8], s10 = confTeams[9];
+            const id9v10 = `pi_${conf}_9v10`;
+            if (s9 && s10) {
+                newSeries.push({ id: id9v10, round: 0, conference: conf as any, higherSeedId: s9.id, lowerSeedId: s10.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                newGames.push({ id: `${id9v10}_g1`, homeTeamId: s9.id, awayTeamId: s10.id, date: `2026-04-15`, played: false, isPlayoff: true, seriesId: id9v10 });
             }
-        }
+        });
 
-        // --- 3. Round 1 Generation ---
-        const hasR1 = playoffSeries.some(s => s.round === 1);
-        const allPIFinished = currentPlayInSeries.length >= 6 && currentPlayInSeries.every(s => s.finished);
-        if (allPIFinished && !hasR1) {
-            const newR1Series: PlayoffSeries[] = [];
-            const newR1Games: Game[] = [];
-            ['East', 'West'].forEach(conf => {
-                const confTeams = [...teams].filter(t => t.conference === conf).sort((a, b) => (b.wins/(b.wins+b.losses||1)) - (a.wins/(a.wins+a.losses||1)));
-                const top6 = confTeams.slice(0, 6);
-                const pi = currentPlayInSeries.filter(s => s.conference === conf);
-                const winner7v8 = pi.find(s => s.id.includes('7v8'))?.winnerId;
-                const winner8th = pi.find(s => s.id.includes('8th'))?.winnerId;
-                if (winner7v8 && winner8th) {
-                    const s7 = teams.find(t => t.id === winner7v8)!, s8 = teams.find(t => t.id === winner8th)!;
-                    const seeds = [...top6, s7, s8];
-                    const matchups = [{h: seeds[0], l: seeds[7]}, {h: seeds[3], l: seeds[4]}, {h: seeds[2], l: seeds[5]}, {h: seeds[1], l: seeds[6]}];
-                    matchups.forEach((m, idx) => {
-                        const id = `s_${conf}_r1_m${idx}`;
-                        newR1Series.push({ id, round: 1, conference: conf as any, higherSeedId: m.h.id, lowerSeedId: m.l.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
-                        for(let i=1; i<=4; i++) newR1Games.push({ id: `${id}_g${i}`, homeTeamId: i%2!==0?m.h.id:m.l.id, awayTeamId: i%2!==0?m.l.id:m.h.id, date: `2026-04-${20+i}`, played: false, isPlayoff: true, seriesId: id });
-                    });
-                }
-            });
-            if (newR1Series.length > 0) {
-                setPlayoffSeries(prev => [...prev, ...newR1Series]);
-                setSchedule(prev => [...prev, ...newR1Games]);
-                setNews(prev => [{ type: 'text', content: "2026 NBA 플레이오프 1라운드 대진 확정!" }, ...prev]);
-                if (new Date(currentSimDate) < new Date('2026-04-21')) setCurrentSimDate('2026-04-21');
-            }
-            return;
+        if (newSeries.length > 0) {
+            setPlayoffSeries(prev => [...prev, ...newSeries]);
+            setSchedule(prev => [...prev, ...newGames]);
+            setNews(prev => [{ type: 'text', content: "정규 시즌 종료! 플레이-인 토너먼트 일정이 생성되었습니다." }, ...prev]);
+            if (new Date(currentSimDate) < new Date('2026-04-14')) setCurrentSimDate('2026-04-14');
         }
-
-        // --- 4. Round 2 (Conference Semis) Generation ---
-        const r1Series = playoffSeries.filter(s => s.round === 1);
-        const hasR2 = playoffSeries.some(s => s.round === 2);
-        if (r1Series.length === 8 && r1Series.every(s => s.finished) && !hasR2) {
-            const newR2Series: PlayoffSeries[] = [];
-            const newR2Games: Game[] = [];
-            ['East', 'West'].forEach(conf => {
-                const confR1 = r1Series.filter(s => s.conference === conf);
-                // Fix: Changed typo 'conf1R1' to 'confR1'
-                const pairs = [[confR1[0], confR1[1]], [confR1[2], confR1[3]]]; // 1v8 winner vs 4v5 winner, etc.
-                pairs.forEach((p, idx) => {
-                    const t1 = teams.find(t => t.id === p[0].winnerId)!, t2 = teams.find(t => t.id === p[1].winnerId)!;
-                    const higher = t1.wins >= t2.wins ? t1 : t2, lower = t1.wins >= t2.wins ? t2 : t1;
-                    const id = `s_${conf}_r2_m${idx}`;
-                    newR2Series.push({ id, round: 2, conference: conf as any, higherSeedId: higher.id, lowerSeedId: lower.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
-                    for(let i=1; i<=4; i++) newR2Games.push({ id: `${id}_g${i}`, homeTeamId: i%2!==0?higher.id:lower.id, awayTeamId: i%2!==0?lower.id:higher.id, date: `2026-05-${(5+i*2).toString().padStart(2,'0')}`, played: false, isPlayoff: true, seriesId: id });
-                });
-            });
-            if (newR2Series.length > 0) {
-                setPlayoffSeries(prev => [...prev, ...newR2Series]);
-                setSchedule(prev => [...prev, ...newR2Games]);
-                setNews(prev => [{ type: 'text', content: "플레이오프 2라운드 시작!" }, ...prev]);
-                if (new Date(currentSimDate) < new Date('2026-05-06')) setCurrentSimDate('2026-05-06');
-            }
-            return;
-        }
-
-        // --- 5. Round 3 (Conference Finals) Generation ---
-        const r2Series = playoffSeries.filter(s => s.round === 2);
-        const hasR3 = playoffSeries.some(s => s.round === 3);
-        if (r2Series.length === 4 && r2Series.every(s => s.finished) && !hasR3) {
-            const newR3Series: PlayoffSeries[] = [];
-            const newR3Games: Game[] = [];
-            ['East', 'West'].forEach(conf => {
-                const confR2 = r2Series.filter(s => s.conference === conf);
-                const t1 = teams.find(t => t.id === confR2[0].winnerId)!, t2 = teams.find(t => t.id === confR2[1].winnerId)!;
-                const higher = t1.wins >= t2.wins ? t1 : t2, lower = t1.wins >= t2.wins ? t2 : t1;
-                const id = `s_${conf}_r3`;
-                newR3Series.push({ id, round: 3, conference: conf as any, higherSeedId: higher.id, lowerSeedId: lower.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
-                for(let i=1; i<=4; i++) newR3Games.push({ id: `${id}_g${i}`, homeTeamId: i%2!==0?higher.id:lower.id, awayTeamId: i%2!==0?lower.id:higher.id, date: `2026-05-${(20+i*2).toString().padStart(2,'0')}`, played: false, isPlayoff: true, seriesId: id });
-            });
-            if (newR3Series.length > 0) {
-                setPlayoffSeries(prev => [...prev, ...newR3Series]);
-                setSchedule(prev => [...prev, ...newR3Games]);
-                setNews(prev => [{ type: 'text', content: "컨퍼런스 파이널 돌입!" }, ...prev]);
-                if (new Date(currentSimDate) < new Date('2026-05-21')) setCurrentSimDate('2026-05-21');
-            }
-            return;
-        }
-
-        // --- 6. Round 4 (NBA Finals) Generation ---
-        const r3Series = playoffSeries.filter(s => s.round === 3);
-        const hasR4 = playoffSeries.some(s => s.round === 4);
-        if (r3Series.length === 2 && r3Series.every(s => s.finished) && !hasR4) {
-            const wEast = r3Series.find(s => s.conference === 'East')?.winnerId;
-            const wWest = r3Series.find(s => s.conference === 'West')?.winnerId;
-            if (wEast && wWest) {
-                const tE = teams.find(t => t.id === wEast)!, tW = teams.find(t => t.id === wWest)!;
-                const higher = tE.wins >= tW.wins ? tE : tW, lower = tE.wins >= tW.wins ? tW : tE;
-                const id = `s_nba_finals`;
-                const finalsSeries = { id, round: 4 as 4, conference: 'NBA' as any, higherSeedId: higher.id, lowerSeedId: lower.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 };
-                const finalsGames = [];
-                for(let i=1; i<=4; i++) finalsGames.push({ id: `${id}_g${i}`, homeTeamId: i%2!==0?higher.id:lower.id, awayTeamId: i%2!==0?lower.id:higher.id, date: `2026-06-${(5+i*2).toString().padStart(2,'0')}`, played: false, isPlayoff: true, seriesId: id });
-                setPlayoffSeries(prev => [...prev, finalsSeries]);
-                setSchedule(prev => [...prev, ...finalsGames]);
-                setNews(prev => [{ type: 'text', content: "운명의 NBA 파이널 매치업 성사!" }, ...prev]);
-                if (new Date(currentSimDate) < new Date('2026-06-06')) setCurrentSimDate('2026-06-06');
-            }
-        }
-    } catch (err) {
-        console.error("Playoff Generation Error:", err);
+        return;
     }
-  }, [isDataLoaded, teams, schedule.length, playoffSeries.length]);
+
+    // --- 2. Play-In Advancement (8th Seed Game) ---
+    // Check if 7v8 and 9v10 are done but 8th seed game missing
+    let newPIGames: Game[] = [];
+    let newPISeries: PlayoffSeries[] = [];
+    let hasNew8th = false;
+    
+    ['East', 'West'].forEach(conf => {
+        const confPI = currentPlayInSeries.filter(s => s.conference === conf);
+        const g7v8 = confPI.find(s => s.id.includes('7v8'));
+        const g9v10 = confPI.find(s => s.id.includes('9v10'));
+        const g8th = confPI.find(s => s.id.includes('8th'));
+
+        if (g7v8?.finished && g9v10?.finished && !g8th) {
+            const loser7v8Id = g7v8.winnerId === g7v8.higherSeedId ? g7v8.lowerSeedId : g7v8.higherSeedId;
+            const winner9v10Id = g9v10.winnerId;
+            
+            if (loser7v8Id && winner9v10Id) {
+                const id8th = `pi_${conf}_8th`;
+                newPISeries.push({ id: id8th, round: 0, conference: conf as any, higherSeedId: loser7v8Id, lowerSeedId: winner9v10Id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                newPIGames.push({ id: `${id8th}_g1`, homeTeamId: loser7v8Id, awayTeamId: winner9v10Id, date: `2026-04-17`, played: false, isPlayoff: true, seriesId: id8th });
+                hasNew8th = true;
+            }
+        }
+    });
+
+    if (hasNew8th) {
+        setPlayoffSeries(prev => [...prev, ...newPISeries]);
+        setSchedule(prev => [...prev, ...newPIGames]);
+        if (new Date(currentSimDate) < new Date('2026-04-17')) setCurrentSimDate('2026-04-17');
+        return;
+    }
+
+    // --- 3. Round 1 Generation ---
+    const allPIFinished = currentPlayInSeries.length >= 6 && currentPlayInSeries.every(s => s.finished); // At least 3 per conf
+    const hasRound1 = playoffSeries.some(s => s.round === 1);
+
+    if (allPIFinished && !hasRound1) {
+        const newR1Series: PlayoffSeries[] = [];
+        const newR1Games: Game[] = [];
+
+        ['East', 'West'].forEach(conf => {
+            // Get Seeds 1-6
+            const confTeams = [...teams].filter(t => t.conference === conf).sort((a, b) => {
+                const aPct = a.wins / (a.wins + a.losses || 1);
+                const bPct = b.wins / (b.wins + b.losses || 1);
+                return bPct - aPct || b.wins - a.wins;
+            });
+            const top6 = confTeams.slice(0, 6);
+
+            // Get 7th and 8th from PI
+            const pi = currentPlayInSeries.filter(s => s.conference === conf);
+            const g7v8 = pi.find(s => s.id.includes('7v8'));
+            const g8th = pi.find(s => s.id.includes('8th'));
+            
+            const seed7Id = g7v8?.winnerId;
+            const seed8Id = g8th?.winnerId;
+            
+            if (seed7Id && seed8Id) {
+                const seed7 = teams.find(t => t.id === seed7Id)!;
+                const seed8 = teams.find(t => t.id === seed8Id)!;
+                const finalSeeds = [...top6, seed7, seed8];
+
+                // Create Series: 1v8, 2v7, 3v6, 4v5
+                const matchups = [
+                    { h: finalSeeds[0], l: finalSeeds[7] }, // 1v8
+                    { h: finalSeeds[3], l: finalSeeds[4] }, // 4v5
+                    { h: finalSeeds[2], l: finalSeeds[5] }, // 3v6
+                    { h: finalSeeds[1], l: finalSeeds[6] }, // 2v7
+                ];
+
+                matchups.forEach(m => {
+                    const sId = `s_${conf}_r1_${m.h.id}_${m.l.id}`;
+                    newR1Series.push({ id: sId, round: 1, conference: conf as any, higherSeedId: m.h.id, lowerSeedId: m.l.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
+                    // Generate first 4 games
+                    for(let i=1; i<=4; i++) {
+                        newR1Games.push({ 
+                            id: `${sId}_g${i}`, 
+                            homeTeamId: i % 2 !== 0 ? m.h.id : m.l.id, 
+                            awayTeamId: i % 2 !== 0 ? m.l.id : m.h.id, 
+                            date: `2026-04-${20 + i}`, // Simple date logic
+                            played: false, isPlayoff: true, seriesId: sId 
+                        });
+                    }
+                });
+            }
+        });
+
+        if (newR1Series.length > 0) {
+            setPlayoffSeries(prev => [...prev, ...newR1Series]);
+            setSchedule(prev => [...prev, ...newR1Games]);
+            setNews(prev => [{ type: 'text', content: "2026 NBA 플레이오프 1라운드가 시작됩니다!" }, ...prev]);
+            if (new Date(currentSimDate) < new Date('2026-04-20')) setCurrentSimDate('2026-04-20');
+        }
+    }
+
+  }, [isDataLoaded, teams, schedule, playoffSeries]); // Fixed dependency: schedule (not length) and playoffSeries
 
   const syncOvrWithLatestWeights = useCallback((teamsToSync: Team[]): Team[] => {
       return teamsToSync.map(t => ({
@@ -454,8 +430,8 @@ const App: React.FC = () => {
                 }));
 
                 setTeams(syncedTeams); 
-                setSchedule(gd.schedule || []);
-                setCurrentSimDate(gd.currentSimDate || SEASON_START_DATE);
+                setSchedule(gd.schedule);
+                setCurrentSimDate(gd.currentSimDate);
                 setUserTactics(gd.tactics || DEFAULT_TACTICS);
                 setPlayoffSeries(gd.playoffSeries || []);
                 setTransactions(gd.transactions || []);
@@ -586,6 +562,7 @@ const App: React.FC = () => {
     const gamesToday = schedule.filter(g => g.date === targetSimDate && !g.played);
     const userGameToday = gamesToday.find(g => g.homeTeamId === myTeamId || g.awayTeamId === myTeamId);
     
+    // Core simulation processing logic
     const processSimulation = async (precalcUserResult?: SimulationResult) => {
         let updatedTeams = [...teams];
         let updatedSchedule = [...schedule];
@@ -600,6 +577,7 @@ const App: React.FC = () => {
             const home = getTeam(game.homeTeamId);
             const away = getTeam(game.awayTeamId);
             
+            // Use precalculated result for user game to ensure consistency with visualization
             const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined);
             
             const homeIdx = updatedTeams.findIndex(t => t.id === home.id);
@@ -607,33 +585,144 @@ const App: React.FC = () => {
             updatedTeams[homeIdx] = { ...home, wins: home.wins + (result.homeScore > result.awayScore ? 1 : 0), losses: home.losses + (result.homeScore < result.awayScore ? 1 : 0) };
             updatedTeams[awayIdx] = { ...away, wins: away.wins + (result.awayScore > result.homeScore ? 1 : 0), losses: away.losses + (result.awayScore < result.homeScore ? 1 : 0) };
             
+            // --- Playoff Series Update Logic ---
             if (game.isPlayoff && game.seriesId) {
                 const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
                 if (sIdx !== -1) {
                     const s = { ...updatedSeries[sIdx] };
-                    const isHigherWinner = result.homeScore > result.awayScore ? (s.higherSeedId === home.id) : (s.higherSeedId === away.id);
+                    const isHigherWinner = result.homeScore > result.awayScore 
+                        ? (s.higherSeedId === home.id) 
+                        : (s.higherSeedId === away.id);
+                    
                     if (isHigherWinner) s.higherSeedWins++;
                     else s.lowerSeedWins++;
-                    const targetWins = s.targetWins || 4;
+
+                    const targetWins = s.targetWins || 4; // Default to 4 if undefined
+                    
+                    // Check if series is finished
                     if (s.higherSeedWins >= targetWins || s.lowerSeedWins >= targetWins) {
                         s.finished = true;
                         s.winnerId = s.higherSeedWins > s.lowerSeedWins ? s.higherSeedId : s.lowerSeedId;
-                        const winTeam = teams.find(t => t.id === s.winnerId);
-                        if (winTeam) updatedNews.unshift({ type: 'text', content: `[PO] ${winTeam.name} 시리즈 승리! 다음 라운드 진출 확정.` });
+                        
+                        const winnerTeam = teams.find(t => t.id === s.winnerId);
+                        const loserTeam = teams.find(t => t.id === (s.winnerId === s.higherSeedId ? s.lowerSeedId : s.higherSeedId));
+                        if (winnerTeam && loserTeam) {
+                            updatedNews.unshift({ 
+                                type: 'text', 
+                                content: `[PO] ${winnerTeam.name}, ${loserTeam.name} 꺾고 시리즈 승리! (${s.higherSeedWins}-${s.lowerSeedWins})` 
+                            });
+                        }
                     } else {
+                        // Check if next game exists, if not, schedule it
                         const gamesInSeries = updatedSchedule.filter(g => g.seriesId === s.id);
-                        const playedCount = gamesInSeries.filter(g => g.played).length + 1;
-                        const nextDay = new Date(targetSimDate);
-                        nextDay.setDate(nextDay.getDate() + 2);
-                        const nextId = `${s.id}_g${playedCount + 1}`;
-                        if (!updatedSchedule.some(g => g.id === nextId)) {
-                            const isHigherHome = [1, 2, 5, 7].includes(playedCount + 1);
-                            updatedSchedule.push({ id: nextId, homeTeamId: isHigherHome?s.higherSeedId:s.lowerSeedId, awayTeamId: isHigherHome?s.lowerSeedId:s.higherSeedId, date: nextDay.toISOString().split('T')[0], played: false, isPlayoff: true, seriesId: s.id });
+                        const playedCount = gamesInSeries.filter(g => g.played).length + 1; // +1 including current game being processed
+                        const nextGameId = `${s.id}_g${playedCount + 1}`;
+                        const exists = updatedSchedule.some(g => g.id === nextGameId);
+                        
+                        if (!exists && !s.finished) {
+                            const nextDateObj = new Date(targetSimDate);
+                            nextDateObj.setDate(nextDateObj.getDate() + 2); // 2 days gap
+                            const nextDateStr = nextDateObj.toISOString().split('T')[0];
+                            
+                            // Determine home court for next game (Standard NBA: 2-2-1-1-1)
+                            // Game 1,2: Higher
+                            // Game 3,4: Lower
+                            // Game 5: Higher
+                            // Game 6: Lower
+                            // Game 7: Higher
+                            const gameNum = playedCount + 1;
+                            const isHigherHome = [1, 2, 5, 7].includes(gameNum);
+                            
+                            const newGame: Game = {
+                                id: nextGameId,
+                                homeTeamId: isHigherHome ? s.higherSeedId : s.lowerSeedId,
+                                awayTeamId: isHigherHome ? s.lowerSeedId : s.higherSeedId,
+                                date: nextDateStr,
+                                played: false,
+                                isPlayoff: true,
+                                seriesId: s.id
+                            };
+                            updatedSchedule.push(newGame);
                         }
                     }
                     updatedSeries[sIdx] = s;
                 }
             }
+            // -----------------------------------
+
+            // --- Tactic Stats Tracking ---
+            if (isUserGame) {
+                const myTeamIdx = updatedTeams.findIndex(t => t.id === myTeamId);
+                const isHome = myTeamId === home.id;
+                const myResult = isHome ? { wins: result.homeScore > result.awayScore ? 1 : 0, ptsFor: result.homeScore, ptsAgainst: result.awayScore } : { wins: result.awayScore > result.homeScore ? 1 : 0, ptsFor: result.awayScore, ptsAgainst: result.homeScore };
+                
+                const myBox = isHome ? result.homeBox : result.awayBox;
+                const teamStats = myBox.reduce((acc, p) => ({
+                    fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
+                    p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a,
+                    rimM: acc.rimM + (p.rimM || 0), rimA: acc.rimA + (p.rimA || 0),
+                    midM: acc.midM + (p.midM || 0), midA: acc.midA + (p.midA || 0),
+                    tov: acc.tov + p.tov,
+                }), { fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 });
+
+                const oppBox = isHome ? result.awayBox : result.homeBox;
+                const oppStats = oppBox.reduce((acc, p) => ({
+                    fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
+                    p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a,
+                    rimM: acc.rimM + (p.rimM || 0), rimA: acc.rimA + (p.rimA || 0),
+                    midM: acc.midM + (p.midM || 0), midA: acc.midA + (p.midA || 0),
+                    tov: acc.tov + p.tov,
+                }), { fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 });
+
+                const updateHistory = (history: TeamTacticHistory, type: 'offense' | 'defense', key: string, stats: typeof teamStats, specificPtsAgainst?: number) => {
+                    const record = history[type][key] || { 
+                        games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0,
+                        fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 
+                    };
+                    
+                    history[type][key] = {
+                        games: record.games + 1,
+                        wins: record.wins + myResult.wins,
+                        ptsFor: record.ptsFor + myResult.ptsFor,
+                        ptsAgainst: record.ptsAgainst + (specificPtsAgainst !== undefined ? specificPtsAgainst : myResult.ptsAgainst),
+                        fgm: (record.fgm || 0) + stats.fgm,
+                        fga: (record.fga || 0) + stats.fga,
+                        p3m: (record.p3m || 0) + stats.p3m,
+                        p3a: (record.p3a || 0) + stats.p3a,
+                        rimM: (record.rimM || 0) + stats.rimM,
+                        rimA: (record.rimA || 0) + stats.rimA,
+                        midM: (record.midM || 0) + stats.midM,
+                        midA: (record.midA || 0) + stats.midA,
+                        tov: (record.tov || 0) + stats.tov,
+                    };
+                };
+
+                const currentHistory = { 
+                    offense: { ...updatedTeams[myTeamIdx].tacticHistory?.offense }, 
+                    defense: { ...updatedTeams[myTeamIdx].tacticHistory?.defense } 
+                };
+
+                updateHistory(currentHistory, 'offense', tactics.offenseTactics[0], teamStats);
+
+                tactics.defenseTactics.forEach(dt => {
+                    if (dt === 'AceStopper') {
+                        const ace = oppBox.find(p => p.isAceTarget) || oppBox.reduce((max, p) => p.pts > max.pts ? p : max, oppBox[0]);
+                        const aceStats = {
+                            fgm: ace.fgm, fga: ace.fga,
+                            p3m: ace.p3m, p3a: ace.p3a,
+                            rimM: ace.rimM || 0, rimA: ace.rimA || 0,
+                            midM: ace.midM || 0, midA: ace.midA || 0,
+                            tov: ace.tov
+                        };
+                        updateHistory(currentHistory, 'defense', dt, aceStats, ace.pts);
+                    } else {
+                        updateHistory(currentHistory, 'defense', dt, oppStats);
+                    }
+                });
+
+                updatedTeams[myTeamIdx] = { ...updatedTeams[myTeamIdx], tacticHistory: currentHistory };
+            }
+            // -----------------------------
 
             const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: RosterUpdate) => {
                 const t = updatedTeams[teamIdx];
@@ -641,33 +730,60 @@ const App: React.FC = () => {
                     const update = rosterUpdates[p.id];
                     const box = boxScore.find(b => b.playerId === p.id);
                     const isPlayoffGame = game.isPlayoff;
-                    let targetStats = isPlayoffGame ? (p.playoffStats || INITIAL_STATS()) : p.stats;
+                    let newRegularStats = { ...p.stats };
+                    
+                    if (newRegularStats.rimM === undefined) newRegularStats.rimM = 0;
+                    if (newRegularStats.rimA === undefined) newRegularStats.rimA = 0;
+                    if (newRegularStats.midM === undefined) newRegularStats.midM = 0;
+                    if (newRegularStats.midA === undefined) newRegularStats.midA = 0;
+
+                    let newPlayoffStats = p.playoffStats ? { ...p.playoffStats } : { ...newRegularStats, g:0, gs:0, mp:0, pts:0, reb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0, offReb:0, defReb:0, rimM: 0, rimA: 0, midM: 0, midA: 0 };
+                    
+                    if (p.playoffStats) {
+                         if (newPlayoffStats.rimM === undefined) newPlayoffStats.rimM = 0;
+                         if (newPlayoffStats.rimA === undefined) newPlayoffStats.rimA = 0;
+                         if (newPlayoffStats.midM === undefined) newPlayoffStats.midM = 0;
+                         if (newPlayoffStats.midA === undefined) newPlayoffStats.midA = 0;
+                    }
+
+                    const targetStats = isPlayoffGame ? newPlayoffStats : newRegularStats;
                     if (box) {
                         targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb;
-                        targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov;
-                        targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a;
-                        targetStats.ftm += box.ftm; targetStats.fta += box.fta;
-                        targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0);
-                        targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
+                        targetStats.offReb += box.offReb || 0; targetStats.defReb += box.defReb || 0; targetStats.ast += box.ast; targetStats.stl += box.stl;
+                        targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga;
+                        targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta;
+                        targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); 
+                        targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0);
+                        targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); 
+                        targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
                     }
-                    const returnObj = { ...p, condition: update?.condition ?? p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
-                    if (isPlayoffGame) returnObj.playoffStats = targetStats; else returnObj.stats = targetStats;
-                    return returnObj;
+                    return { ...p, stats: newRegularStats, playoffStats: newPlayoffStats, condition: update?.condition ?? p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
                 });
             };
             updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates);
             updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
             
-            const updatedGame: Game = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, boxScore: { home: result.homeBox, away: result.awayBox }, tactics: { home: result.homeTactics, away: result.awayTactics } };
+            const updatedGame: Game = { 
+                ...game, 
+                played: true, 
+                homeScore: result.homeScore, 
+                awayScore: result.awayScore, 
+                boxScore: { home: result.homeBox, away: result.awayBox },
+                tactics: { home: result.homeTactics, away: result.awayTactics } 
+            };
+            
             const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
-            if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
+            if (schIdx !== -1) { updatedSchedule[schIdx] = updatedGame; }
             allPlayedToday.push(updatedGame);
             
-            if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
+            if (isUserGame) { 
+                userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
+            }
         }
         const currentDateObj = new Date(targetSimDate);
         currentDateObj.setDate(currentDateObj.getDate() + 1);
-        setTeams(updatedTeams); setSchedule(updatedSchedule); setPlayoffSeries(updatedSeries); setCurrentSimDate(currentDateObj.toISOString().split('T')[0]); setNews(updatedNews);
+        const nextDayStr = currentDateObj.toISOString().split('T')[0];
+        setTeams(updatedTeams); setSchedule(updatedSchedule); setPlayoffSeries(updatedSeries); setCurrentSimDate(nextDayStr); setNews(updatedNews);
         if (userGameResultOutput) {
             const recap = await generateGameRecapNews(userGameResultOutput);
             setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
@@ -679,8 +795,10 @@ const App: React.FC = () => {
         const home = teams.find(t => t.id === userGameToday.homeTeamId)!;
         const away = teams.find(t => t.id === userGameToday.awayTeamId)!;
         const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics);
+        
         setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); 
         setView('GameSim');
+        
         finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
     } else { 
         setIsSimulating(true); 
@@ -709,7 +827,14 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-      {isGuestMode && <div className="bg-amber-600/90 text-white text-[10px] font-bold text-center py-1 uppercase tracking-widest relative z-50">Offline Guest Mode Active - Cloud Saving Disabled</div>}
+      
+      {/* Guest Mode Banner */}
+      {isGuestMode && (
+          <div className="bg-amber-600/90 text-white text-[10px] font-bold text-center py-1 uppercase tracking-widest relative z-50">
+              Offline Guest Mode Active - Cloud Saving Disabled
+          </div>
+      )}
+
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
             <div className="bg-slate-900 border border-red-500/50 rounded-3xl max-w-md w-full p-8 shadow-2xl flex flex-col items-center text-center space-y-6">
@@ -717,6 +842,7 @@ const App: React.FC = () => {
             </div>
         </div>
       )}
+
       <div className="flex-1 flex overflow-hidden relative">
         <aside className="w-72 border-r border-slate-800 bg-slate-900/60 flex flex-col shadow-2xl z-20">
             <div className="p-8 border-b border-slate-800"><div className="flex items-center gap-4"><img src={myTeam?.logo} className="w-12 h-12 object-contain" alt="" /><div><h2 className="font-black text-lg leading-tight uppercase oswald">{myTeam?.name}</h2><span className="text-[10px] font-bold text-slate-500 uppercase">{myTeam?.wins}W - {myTeam?.losses}L</span></div></div></div>
@@ -731,8 +857,12 @@ const App: React.FC = () => {
                 <NavItem active={view === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => setView('Transactions')} />
                 <NavItem active={view === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => setView('OvrCalculator')} />
             </nav>
-            <div className="p-6 border-t border-slate-800 space-y-2"><button onClick={() => setShowResetConfirm(true)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-white rounded-xl flex items-center justify-center gap-2"><RefreshCw size={14} /> 데이터 초기화</button><button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 rounded-xl flex items-center justify-center gap-2"><LogOut size={14} /> {isGuestMode ? '메인 화면' : '로그아웃'}</button></div>
+            <div className="p-6 border-t border-slate-800 space-y-2">
+            <button onClick={() => setShowResetConfirm(true)} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-white rounded-xl flex items-center justify-center gap-2"><RefreshCw size={14} /> 데이터 초기화</button>
+            <button onClick={handleLogout} className="w-full py-2.5 text-xs font-bold text-slate-400 hover:text-red-400 rounded-xl flex items-center justify-center gap-2"><LogOut size={14} /> {isGuestMode ? '메인 화면' : '로그아웃'}</button>
+            </div>
         </aside>
+        
         <main className="flex-1 overflow-y-auto bg-slate-950/50 relative">
             <div className="p-8 lg:p-12">
             {view === 'Dashboard' && myTeam && <DashboardView team={myTeam} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics} onUpdateTactics={setUserTactics} currentSimDate={currentSimDate} isSimulating={isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={playoffSeries.length > 0} />}
@@ -748,11 +878,21 @@ const App: React.FC = () => {
             {view === 'OvrCalculator' && <OvrCalculatorView teams={teams} />}
             </div>
         </main>
+
         {view === 'GameSim' && activeGame && <GameSimulatingView homeTeam={teams.find(t => t.id === activeGame.homeTeamId)!} awayTeam={teams.find(t => t.id === activeGame.awayTeamId)!} userTeamId={myTeamId} finalHomeScore={activeGame.homeScore} finalAwayScore={activeGame.awayScore} onSimulationComplete={() => finalizeSimRef.current?.()} />}
         {view === 'GameResult' && lastGameResult && <GameResultView result={lastGameResult} myTeamId={myTeamId!} teams={teams} onFinish={() => setView('Dashboard')} />}
       </div>
+
       {tickerGames.length > 0 && (
-        <footer className="h-14 bg-slate-900 border-t border-slate-800 flex items-center overflow-hidden relative z-30"><div className="flex-shrink-0 bg-indigo-600 px-6 h-full flex items-center gap-4 shadow-[10px_0_30px_rgba(0,0,0,0.5)] z-10 relative"><div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" /><img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg" className="h-3 md:h-3.5 object-contain brightness-0 invert drop-shadow-sm" alt="ESPN" /></div><div className="flex-1 overflow-hidden h-full flex items-center"><LiveScoreTicker games={tickerGames} /></div></footer>
+        <footer className="h-14 bg-slate-900 border-t border-slate-800 flex items-center overflow-hidden relative z-30">
+            <div className="flex-shrink-0 bg-indigo-600 px-6 h-full flex items-center gap-4 shadow-[10px_0_30px_rgba(0,0,0,0.5)] z-10 relative">
+                <div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" />
+                <img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg" className="h-3 md:h-3.5 object-contain brightness-0 invert drop-shadow-sm" alt="ESPN" />
+            </div>
+            <div className="flex-1 overflow-hidden h-full flex items-center">
+                <LiveScoreTicker games={tickerGames} />
+            </div>
+        </footer>
       )}
     </div>
   );
