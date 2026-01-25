@@ -1,60 +1,10 @@
 
-import { Team, Player, PlayerBoxScore, OffenseTactic, DefenseTactic, TradeOffer } from '../types';
+import { Team, Player, PlayerBoxScore, OffenseTactic, DefenseTactic, TacticalSnapshot } from '../types';
 
 // ==========================================================================================
-//  🏀 NBA GM SIMULATOR - GAME ENGINE CONFIGURATION
+//  🏀 NBA GM SIMULATOR - GAME ENGINE
+//  Focus: Game Physics, Stats Generation, Tactics
 // ==========================================================================================
-
-export const TRADE_CONFIG = {
-    BASE: {
-        REPLACEMENT_LEVEL_OVR: 38,
-        VALUE_EXPONENT: 2.7,
-    },
-    AGE: {
-        YOUNG_LIMIT: 23,
-        HIGH_POT_THRESHOLD: 80,
-        YOUNG_POT_BONUS: 0.015,
-        PRIME_START: 24,
-        PRIME_END: 29,
-        PRIME_BONUS: 1.05,
-        OLD_START: 33,
-        OLD_PENALTY_PER_YEAR: 0.07,
-        MIN_OLD_VALUE: 0.2,
-    },
-    NEEDS: {
-        WEAKNESS_THRESHOLD: 70,
-        STRENGTH_THRESHOLD: 80,
-        OUTSIDE_OFFSET: 2,
-        REBOUND_OFFSET: -5,
-    },
-    CONTEXT: {
-        FIT_BONUS: 0.15,
-        REDUNDANCY_PENALTY: 0.10,
-        NEW_ALPHA_BONUS: 0.8,
-        NEW_SECOND_BONUS: 0.5,
-        NEW_CORE_BONUS: 0.3,
-        PROTECT_ALPHA_MULT: 2.0,
-        PROTECT_SECOND_MULT: 1.7,
-        PROTECT_STARTER_MULT: 1.4,
-    },
-    ACCEPTANCE: {
-        DEFAULT_RATIO: 0.95,
-        STAR_SWAP_RATIO: 0.90,
-        STAR_SWAP_STEAL_RATIO: 0.85,
-        CONSOLIDATION_TAX: 0.05,
-        STAR_OVR_THRESHOLD: 85,
-        HIGH_VALUE_THRESHOLD: 5000,
-    },
-    DILUTION: {
-        // 쓰레기 선수 덤핑 방지 설정
-        PACKAGE_SIZE_TRIGGER: 3, // 3명 이상일 때 검사
-        ANCHOR_OVR_LOW: 76, // 패키지 내 최고 선수가 이 수치 미만이면 가치 폭락
-        ANCHOR_OVR_MID: 81, // 패키지 내 최고 선수가 이 수치 미만이면 가치 하락
-        LOW_ANCHOR_PENALTY: 0.50, // 50% 가치만 인정
-        MID_ANCHOR_PENALTY: 0.80, // 80% 가치만 인정
-        ROSTER_CLOG_PENALTY: 0.90, // 로스터 공간 차지 페널티
-    }
-};
 
 export const SIM_CONFIG = {
     GAME_ENV: {
@@ -83,8 +33,8 @@ export const SIM_CONFIG = {
     SHOOTING: {
         INSIDE_BASE_PCT: 0.58,
         INSIDE_DEF_IMPACT: 0.004,
-        OUTSIDE_BASE_PCT: 0.38,
-        OUTSIDE_DEF_IMPACT: 0.003,
+        MID_BASE_PCT: 0.40,
+        MID_DEF_IMPACT: 0.003,
         THREE_BASE_PCT: 0.35,
         THREE_DEF_IMPACT: 0.003,
         OPEN_SHOT_BONUS: 0.05,
@@ -134,7 +84,13 @@ export interface SimulationResult {
     homeBox: PlayerBoxScore[];
     awayBox: PlayerBoxScore[];
     rosterUpdates: RosterUpdate;
+    homeTactics: TacticalSnapshot;
+    awayTactics: TacticalSnapshot;
 }
+
+// ------------------------------------------------------------------------------------------
+//  SIMULATION & TACTICS LOGIC
+// ------------------------------------------------------------------------------------------
 
 export function generateAutoTactics(team: Team): GameTactics {
   const healthy = team.roster.filter(p => p.health !== 'Injured').sort((a,b) => b.ovr - a.ovr);
@@ -407,12 +363,29 @@ export function simulateGame(
         }
     }
 
+    // Extract tactics snapshots
+    const homeSnapshot: TacticalSnapshot = {
+        offense: homeTactics.offenseTactics[0],
+        defense: homeTactics.defenseTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter',
+        pace: homeTactics.sliders.pace,
+        stopperId: homeTactics.stopperId
+    };
+
+    const awaySnapshot: TacticalSnapshot = {
+        offense: awayTactics.offenseTactics[0],
+        defense: awayTactics.defenseTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter',
+        pace: awayTactics.sliders.pace,
+        stopperId: awayTactics.stopperId
+    };
+
     return {
         homeScore,
         awayScore,
         homeBox: homeBox.stats,
         awayBox: awayBox.stats,
-        rosterUpdates: { ...homeBox.updates, ...awayBox.updates }
+        rosterUpdates: { ...homeBox.updates, ...awayBox.updates },
+        homeTactics: homeSnapshot,
+        awayTactics: awaySnapshot
     };
 }
 
@@ -587,56 +560,11 @@ function simulateTeamPerformance(
       
       let fga = Math.round(teamFgaTarget * (pUsage / totalUsageWeight));
 
-      const insideAbility = (p.layup * 0.25 + p.dunk * 0.15 + p.postPlay * 0.15 + p.closeShot * 0.25 + p.strength * 0.10 + p.vertical * 0.10) * tacticInteriorBonus * (1 - effectivePerfDrop);
+      // --- New Zone-Based Shooting Logic ---
       const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
-      const outsideAbility = (p.midRange * 0.3 + threeAvg * 0.5 + p.shotIq * 0.2) * tacticPerimeterBonus * (1 - effectivePerfDrop);
-
-      let insideBias = 0.5;
-      if (['C', 'PF'].includes(p.position)) insideBias = 0.75;
-      if (threeAvg > 85) insideBias -= 0.25; 
-      if (p.dunk > 90) insideBias += 0.1;    
-
       const mentalClutchBonus = Math.max(0, (p.intangibles - 75) * 0.001); 
 
-      const insideSuccessRate = Math.min(0.85, Math.max(0.35, 
-        C.SHOOTING.INSIDE_BASE_PCT 
-        + (insideAbility - oppDefMetrics.intDef) * C.SHOOTING.INSIDE_DEF_IMPACT 
-        - (oppDefMetrics.block * 0.001) 
-        - (hastePenalty * 0.5) 
-        + mentalClutchBonus 
-        + homeAdvantageModifier
-      ));
-
-      const outsideSuccessRate = Math.min(0.60, Math.max(0.25, 
-        C.SHOOTING.OUTSIDE_BASE_PCT 
-        + (outsideAbility - oppDefMetrics.perDef) * C.SHOOTING.OUTSIDE_DEF_IMPACT 
-        - (oppDefMetrics.pressure * 0.001) 
-        - (oppDefMetrics.helpDef * 0.001) 
-        - hastePenalty 
-        + mentalClutchBonus 
-        + homeAdvantageModifier
-      ));
-
-      let fgp = (insideSuccessRate * insideBias) + (outsideSuccessRate * (1 - insideBias));
-      fgp *= (1.0 - effectivePerfDrop); 
-      
-      const oppHasStopper = oppTactics?.defenseTactics.includes('AceStopper');
-      isAceTarget = !!(oppHasStopper && p.id === acePlayer.id);
-
-      if (isAceTarget && oppTactics?.stopperId) {
-          const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
-          if (stopper) {
-              const perDef = stopper.perDef || 50;
-              let fgpImpact = 10 - ((perDef - 40) * 0.63);
-              fgpImpact = Math.max(-27, Math.min(10, fgpImpact)); 
-
-              fgp *= (1.0 + (fgpImpact / 100));
-              matchupEffect = Math.round(fgpImpact);
-          }
-      }
-
-      const fgm = Math.round(fga * fgp);
-
+      // 1. Calculate 3PT Attempts & Makes
       let base3PTendency = 0;
       if (threeAvg >= 90) base3PTendency = 0.55;      
       else if (threeAvg >= 85) base3PTendency = 0.45; 
@@ -645,23 +573,16 @@ function simulateTeamPerformance(
       else if (threeAvg >= 70) base3PTendency = 0.10; 
       else base3PTendency = 0.02;                     
 
-      if (p.ins > threeAvg + 15) {
-          base3PTendency *= 0.5; 
-      }
+      if (p.ins > threeAvg + 15) base3PTendency *= 0.5; 
 
       let tacticMult = 1.0;
-      if (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds')) {
-          tacticMult = 1.4; 
-      }
-      if (teamTactics?.offenseTactics.includes('PerimeterFocus')) {
-          if (threeAvg > 80) tacticMult = 1.3; 
-          else tacticMult = 0.8;               
-      }
+      if (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds')) tacticMult = 1.4; 
+      if (teamTactics?.offenseTactics.includes('PerimeterFocus')) tacticMult = (threeAvg > 80) ? 1.3 : 0.8;
 
       let p3a = Math.round(fga * base3PTendency * tacticMult);
-
       if (threeAvg < 65) p3a = Math.min(p3a, 1);
       if (threeAvg < 75) p3a = Math.min(p3a, 6); 
+      if (p3a > fga) p3a = fga;
 
       const p3p = Math.min(0.50, Math.max(0.20, 
          C.SHOOTING.THREE_BASE_PCT 
@@ -671,13 +592,77 @@ function simulateTeamPerformance(
          + (mentalClutchBonus * 0.5) 
          + (homeAdvantageModifier * 0.8)
       )); 
-      
       let p3m = Math.round(p3a * p3p);
-      if (p3a > fga) p3a = fga; 
-      if (p3m > p3a) p3m = p3a;
-      if (p3m > fgm) p3m = fgm; 
 
-      const drawFoulRate = (p.drawFoul * 0.6 + p.agility * 0.2 + insideBias * 20) / 400;
+      // 2. Calculate 2PT Split (Rim vs Mid)
+      const twoPa = fga - p3a;
+      
+      const rimAttr = (p.layup + p.dunk + p.postPlay + p.closeShot) / 4;
+      const midAttr = p.midRange;
+      
+      // Determine Rim Tendency based on skills and position
+      let rimBias = 0.5; // Base split
+      if (['C', 'PF'].includes(p.position)) rimBias = 0.75;
+      if (rimAttr > midAttr + 10) rimBias += 0.15;
+      else if (midAttr > rimAttr + 10) rimBias -= 0.15;
+      
+      if (teamTactics?.offenseTactics.includes('PostFocus')) rimBias += 0.1;
+      
+      let rimA = Math.round(twoPa * Math.min(0.95, Math.max(0.05, rimBias)));
+      let midA = twoPa - rimA;
+
+      // 3. Calculate Rim Makes
+      const rimAbility = (rimAttr * 0.7 + p.strength * 0.2 + p.vertical * 0.1) * tacticInteriorBonus * (1 - effectivePerfDrop);
+      const rimSuccessRate = Math.min(0.85, Math.max(0.30, 
+        C.SHOOTING.INSIDE_BASE_PCT 
+        + (rimAbility - oppDefMetrics.intDef) * C.SHOOTING.INSIDE_DEF_IMPACT 
+        - (oppDefMetrics.block * 0.001) 
+        - (hastePenalty * 0.5) 
+        + mentalClutchBonus 
+        + homeAdvantageModifier
+      ));
+      let rimM = Math.round(rimA * rimSuccessRate);
+
+      // 4. Calculate Mid-Range Makes
+      const midAbility = (midAttr * 0.8 + p.shotIq * 0.2) * tacticPerimeterBonus * (1 - effectivePerfDrop);
+      const midSuccessRate = Math.min(0.60, Math.max(0.20, 
+        C.SHOOTING.MID_BASE_PCT 
+        + (midAbility - oppDefMetrics.perDef) * C.SHOOTING.MID_DEF_IMPACT 
+        - (oppDefMetrics.pressure * 0.001) 
+        - hastePenalty 
+        + mentalClutchBonus 
+        + homeAdvantageModifier
+      ));
+      let midM = Math.round(midA * midSuccessRate);
+
+      // 5. Stopper Effect
+      const oppHasStopper = oppTactics?.defenseTactics.includes('AceStopper');
+      isAceTarget = !!(oppHasStopper && p.id === acePlayer.id);
+
+      if (isAceTarget && oppTactics?.stopperId) {
+          const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
+          if (stopper) {
+              const perDef = stopper.perDef || 50;
+              let fgpImpact = 10 - ((perDef - 40) * 0.63);
+              fgpImpact = Math.max(-27, Math.min(10, fgpImpact)); 
+              matchupEffect = Math.round(fgpImpact);
+              
+              // Apply reduction to makes
+              const factor = (1.0 + (fgpImpact / 100));
+              rimM = Math.round(rimM * factor);
+              midM = Math.round(midM * factor);
+              p3m = Math.round(p3m * factor);
+          }
+      }
+
+      // 6. Final Tally
+      const fgm = rimM + midM + p3m;
+      // Ensure consistency
+      if (rimM > rimA) rimM = rimA;
+      if (midM > midA) midM = midA;
+      if (p3m > p3a) p3m = p3a;
+
+      const drawFoulRate = (p.drawFoul * 0.6 + p.agility * 0.2 + rimBias * 20) / 400;
       const fta = Math.round(fga * drawFoulRate * (1 + (sliders.defIntensity - 5) * 0.05));
       
       const ftHca = isHome ? 0.02 : -0.01; 
@@ -741,6 +726,7 @@ function simulateTeamPerformance(
           playerName: p.name,
           pts, reb: totalReb, offReb, defReb, ast, stl, blk, tov,
           fgm, fga, p3m, p3a, ftm, fta,
+          rimM, rimA, midM, midA, // New Zone Stats
           mp, g: 1, gs: starterIds.includes(p.id) ? 1 : 0,
           isStopper,
           isAceTarget,
@@ -749,270 +735,4 @@ function simulateTeamPerformance(
     });
 
     return { stats: boxScores, updates: rosterUpdates };
-}
-
-export function getPlayerTradeValue(p: Player): number {
-    const C = TRADE_CONFIG;
-
-    const effectiveOvr = Math.max(C.BASE.REPLACEMENT_LEVEL_OVR, p.ovr);
-    let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
-
-    if (p.age <= C.AGE.YOUNG_LIMIT && p.potential >= C.AGE.HIGH_POT_THRESHOLD) {
-        const potBonus = 1.0 + ((p.potential - C.AGE.HIGH_POT_THRESHOLD) * C.AGE.YOUNG_POT_BONUS); 
-        baseValue *= potBonus;
-    }
-    else if (p.age >= C.AGE.PRIME_START && p.age <= C.AGE.PRIME_END) {
-        baseValue *= C.AGE.PRIME_BONUS;
-    }
-    else if (p.age >= C.AGE.OLD_START) {
-        const agePenalty = 1.0 - ((p.age - (C.AGE.OLD_START - 1)) * C.AGE.OLD_PENALTY_PER_YEAR); 
-        baseValue *= Math.max(C.AGE.MIN_OLD_VALUE, agePenalty);
-    }
-    
-    return Math.floor(baseValue);
-}
-
-function getTeamNeeds(team: Team): { needs: string[], strengths: string[] } {
-    const C = TRADE_CONFIG.NEEDS;
-    const top8 = [...team.roster].sort((a,b) => b.ovr - a.ovr).slice(0, 8);
-    
-    if (top8.length === 0) return { needs: [], strengths: [] };
-
-    const avg = (attr: keyof Player) => top8.reduce((sum, p) => sum + (p[attr] as number), 0) / top8.length;
-
-    const stats = {
-        ins: avg('ins'),
-        out: avg('out'),
-        plm: avg('plm'),
-        def: avg('def'),
-        reb: avg('reb')
-    };
-
-    const needs: string[] = [];
-    const strengths: string[] = [];
-
-    if (stats.ins < C.WEAKNESS_THRESHOLD) needs.push('ins');
-    if (stats.out < C.WEAKNESS_THRESHOLD + C.OUTSIDE_OFFSET) needs.push('out');
-    if (stats.plm < C.WEAKNESS_THRESHOLD) needs.push('plm');
-    if (stats.def < C.WEAKNESS_THRESHOLD) needs.push('def');
-    if (stats.reb < C.WEAKNESS_THRESHOLD + C.REBOUND_OFFSET) needs.push('reb');
-
-    if (stats.ins > C.STRENGTH_THRESHOLD) strengths.push('ins');
-    if (stats.out > C.STRENGTH_THRESHOLD + C.OUTSIDE_OFFSET) strengths.push('out');
-    if (stats.plm > C.STRENGTH_THRESHOLD) strengths.push('plm');
-    if (stats.def > C.STRENGTH_THRESHOLD) strengths.push('def');
-    if (stats.reb > C.STRENGTH_THRESHOLD + C.REBOUND_OFFSET) strengths.push('reb');
-
-    return { needs, strengths };
-}
-
-function getContextualTradeValue(player: Player, teamContext: Team, isAcquiring: boolean): number {
-    const C = TRADE_CONFIG.CONTEXT;
-    let value = getPlayerTradeValue(player);
-    const { needs } = getTeamNeeds(teamContext);
-    
-    const sortedRoster = [...teamContext.roster].sort((a,b) => b.ovr - a.ovr);
-    const rank = sortedRoster.findIndex(p => p.id === player.id);
-
-    if (isAcquiring) {
-        let fitBonus = 1.0;
-        if (needs.includes('ins') && player.ins > 78) fitBonus += C.FIT_BONUS;
-        if (needs.includes('out') && player.out > 78) fitBonus += C.FIT_BONUS;
-        if (needs.includes('plm') && player.plm > 78) fitBonus += C.FIT_BONUS;
-        if (needs.includes('def') && player.def > 78) fitBonus += C.FIT_BONUS;
-        if (needs.includes('reb') && player.reb > 75) fitBonus += C.FIT_BONUS;
-        
-        const playersAtPos = sortedRoster.filter(p => p.position === player.position).length;
-        if (playersAtPos >= 3) fitBonus -= C.REDUNDANCY_PENALTY;
-
-        const wouldBeRank = sortedRoster.filter(p => p.ovr > player.ovr).length;
-        
-        if (wouldBeRank === 0) fitBonus += C.NEW_ALPHA_BONUS;      
-        else if (wouldBeRank === 1) fitBonus += C.NEW_SECOND_BONUS;
-        else if (wouldBeRank === 2) fitBonus += C.NEW_CORE_BONUS; 
-
-        value *= fitBonus;
-    } else {
-        let retentionPremium = 1.0;
-        if (rank === 0) retentionPremium = C.PROTECT_ALPHA_MULT;      
-        else if (rank === 1) retentionPremium = C.PROTECT_SECOND_MULT;
-        else if (rank >= 2 && rank <= 4) retentionPremium = C.PROTECT_STARTER_MULT; 
-        
-        value *= retentionPremium;
-    }
-
-    return value;
-}
-
-export function generateTradeOffers(players: Player[], myTeam: Team, allTeams: Team[]): TradeOffer[] {
-    const C = TRADE_CONFIG.ACCEPTANCE;
-    const D = TRADE_CONFIG.DILUTION; // 가치 희석 관련 설정
-    const offers: TradeOffer[] = [];
-    if (players.length === 0) return offers;
-
-    const mySalary = players.reduce((sum, p) => sum + p.salary, 0);
-
-    allTeams.forEach(targetTeam => {
-        if (targetTeam.id === myTeam.id) return;
-
-        let userPackageValueToAI = 0;
-        let maxUserOvr = 0; // 패키지 내 최고 OVR 추적
-
-        players.forEach(p => {
-            userPackageValueToAI += getContextualTradeValue(p, targetTeam, true);
-            if (p.ovr > maxUserOvr) maxUserOvr = p.ovr;
-        });
-
-        if (players.length >= D.PACKAGE_SIZE_TRIGGER) {
-            if (maxUserOvr < D.ANCHOR_OVR_LOW) {
-                userPackageValueToAI *= D.LOW_ANCHOR_PENALTY; 
-            } else if (maxUserOvr < D.ANCHOR_OVR_MID) {
-                userPackageValueToAI *= D.MID_ANCHOR_PENALTY; 
-            }
-
-            const lowTierCount = players.filter(p => p.ovr < 75).length;
-            if (lowTierCount >= 2) {
-                userPackageValueToAI *= D.ROSTER_CLOG_PENALTY;
-            }
-        }
-
-        const candidates = [...targetTeam.roster].sort((a,b) => a.ovr - b.ovr);
-        
-        for (let i = 0; i < 25; i++) {
-            const count = Math.floor(Math.random() * 3) + 1;
-            const tradePack: Player[] = [];
-            const visited = new Set<number>();
-            
-            for (let k = 0; k < count; k++) {
-                const idx = Math.floor(Math.random() * candidates.length);
-                if (!visited.has(idx)) {
-                    visited.add(idx);
-                    tradePack.push(candidates[idx]);
-                }
-            }
-            
-            let aiPackageCost = 0;
-            let targetSalary = 0;
-            tradePack.forEach(p => {
-                aiPackageCost += getContextualTradeValue(p, targetTeam, false);
-                targetSalary += p.salary;
-            });
-
-            const isSalaryMatch = Math.abs(mySalary - targetSalary) < 5 || (targetSalary >= mySalary * 0.8 && targetSalary <= mySalary * 1.25);
-            if (!isSalaryMatch) continue;
-
-            let requiredRatio = C.DEFAULT_RATIO;
-
-            if (tradePack.length === players.length && userPackageValueToAI > C.HIGH_VALUE_THRESHOLD) { 
-                 requiredRatio = C.STAR_SWAP_RATIO;
-            }
-
-            if (userPackageValueToAI >= aiPackageCost * requiredRatio) {
-                const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.length === tradePack.length && o.players.every(p => tradePack.some(tp => tp.id === p.id)));
-                if (!isDup) {
-                    const rawUserVal = players.reduce((s,p) => s + getPlayerTradeValue(p), 0);
-                    const rawTargetVal = tradePack.reduce((s,p) => s + getPlayerTradeValue(p), 0);
-                    
-                    offers.push({
-                        teamId: targetTeam.id,
-                        teamName: targetTeam.name,
-                        players: tradePack,
-                        diffValue: rawTargetVal - rawUserVal 
-                    });
-                }
-            }
-        }
-    });
-
-    return offers.sort((a,b) => b.diffValue - a.diffValue).slice(0, 5);
-}
-
-export function generateCounterOffers(wantedPlayers: Player[], targetTeam: Team, myTeam: Team): TradeOffer[] {
-    const C = TRADE_CONFIG.ACCEPTANCE;
-    const requirements: TradeOffer[] = [];
-    
-    let wantedValueToAI = 0;
-    let wantedSalary = 0;
-    wantedPlayers.forEach(p => {
-        wantedValueToAI += getContextualTradeValue(p, targetTeam, false);
-        wantedSalary += p.salary;
-    });
-
-    const myCandidates = [...myTeam.roster].sort((a,b) => b.ovr - a.ovr);
-
-    for (let i = 0; i < 35; i++) { 
-        let count = Math.floor(Math.random() * 3) + 1;
-        
-        if (wantedPlayers.length === 1 && Math.random() < 0.6) {
-            count = 1; 
-        }
-
-        const tradePack: Player[] = [];
-        const visited = new Set<number>();
-        
-        const isHighValueTrade = wantedValueToAI > C.HIGH_VALUE_THRESHOLD; 
-        
-        for (let k = 0; k < count; k++) {
-             let idx;
-             if (isHighValueTrade && k === 0 && Math.random() < 0.7) {
-                 idx = Math.floor(Math.random() * 5); 
-             } else {
-                 idx = Math.floor(Math.random() * myCandidates.length);
-             }
-             
-             if (!visited.has(idx) && myCandidates[idx]) {
-                 visited.add(idx);
-                 tradePack.push(myCandidates[idx]);
-             }
-        }
-        
-        if (tradePack.length === 0) continue;
-
-        let myPackValueToAI = 0;
-        let myPackSalary = 0;
-        tradePack.forEach(p => {
-            myPackValueToAI += getContextualTradeValue(p, targetTeam, true);
-            myPackSalary += p.salary;
-        });
-
-        const isSalaryMatch = Math.abs(wantedSalary - myPackSalary) < 5 || (myPackSalary >= wantedSalary * 0.8 && myPackSalary <= wantedSalary * 1.25);
-        if (!isSalaryMatch) continue;
-
-        let requiredRatio = 1.0;
-        
-        if (tradePack.length === 1 && wantedPlayers.length === 1) {
-            const myP = tradePack[0];
-            const targetP = wantedPlayers[0];
-            if (myP.ovr >= C.STAR_OVR_THRESHOLD && targetP.ovr >= C.STAR_OVR_THRESHOLD) {
-                requiredRatio = C.STAR_SWAP_RATIO; 
-                
-                if (myP.ovr >= targetP.ovr + 3) {
-                    requiredRatio = C.STAR_SWAP_STEAL_RATIO; 
-                }
-            }
-        }
-
-        if (tradePack.length > wantedPlayers.length) {
-            requiredRatio += (tradePack.length - wantedPlayers.length) * C.CONSOLIDATION_TAX; 
-        }
-
-        if (myPackValueToAI >= wantedValueToAI * requiredRatio) {
-             const isDup = requirements.some(r => r.players.length === tradePack.length && r.players.every(p => tradePack.some(tp => tp.id === p.id)));
-             if (!isDup) {
-                 const rawUserVal = tradePack.reduce((s,p) => s + getPlayerTradeValue(p), 0);
-                 const rawTargetVal = wantedPlayers.reduce((s,p) => s + getPlayerTradeValue(p), 0);
-
-                 if (rawUserVal > rawTargetVal * 1.5) continue; 
-
-                 requirements.push({
-                     teamId: myTeam.id,
-                     teamName: myTeam.name,
-                     players: tradePack,
-                     diffValue: rawUserVal - rawTargetVal 
-                 });
-             }
-        }
-    }
-
-    return requirements.sort((a,b) => a.diffValue - b.diffValue).slice(0, 5); 
 }

@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { 
-  Users, Activity, ChevronDown, Search, CheckCircle2, CalendarClock, ArrowUp, ArrowDown, Wallet, AlertCircle, Info
+  Users, Activity, ChevronDown, Search, CheckCircle2, CalendarClock, ArrowUp, ArrowDown, Wallet, AlertCircle, Info, ClipboardList, Target, Shield, Lock
 } from 'lucide-react';
-import { Team, Player } from '../types';
+import { Team, Player, TacticStatRecord, OffenseTactic, DefenseTactic } from '../types';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
 
 interface RosterViewProps {
@@ -118,6 +118,21 @@ const SALARY_COLUMNS = [
   { key: 'totalValue', label: '총 계약규모' },
 ];
 
+const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
+  'Balance': { label: '밸런스 오펜스', desc: '모든 공격 루트의 조화' },
+  'PaceAndSpace': { label: '페이스 & 스페이스', desc: '공간 창출 및 캐치앤슛' },
+  'PerimeterFocus': { label: '퍼리미터 포커스', desc: '픽앤롤 및 외곽 아이솔레이션' },
+  'PostFocus': { label: '포스트 포커스', desc: '빅맨의 골밑 장악' },
+  'Grind': { label: '그라인드', desc: '저득점 강제 및 에이스 집중' },
+  'SevenSeconds': { label: '세븐 세컨즈', desc: '7초 이내 빠른 공격' }
+};
+
+const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: string }> = {
+  'ManToManPerimeter': { label: '맨투맨', desc: '대인 방어 및 외곽 억제' },
+  'ZoneDefense': { label: '지역 방어', desc: '지역 방어 및 골밑 보호' },
+  'AceStopper': { label: '에이스 스토퍼', desc: '상대 주득점원 집중 견제' }
+};
+
 const ATTRIBUTE_TOOLTIPS: Record<string, string> = {
   'INS': '인사이드 스코어링 (골밑/포스트)',
   'CLS': '근거리 슛 (Close Shot)',
@@ -163,7 +178,7 @@ type SortConfig = {
 
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
-  const [tab, setTab] = useState<'roster' | 'stats' | 'salary'>('roster');
+  const [tab, setTab] = useState<'roster' | 'stats' | 'salary' | 'tactics'>('roster');
   const [rosterCategory, setRosterCategory] = useState<string>('Shooting');
   
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -393,11 +408,139 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     </th>
   );
 
+  const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: any, baseline?: TacticStatRecord }> = ({ data, labels, baseline }) => {
+      const sorted = Object.entries(data).sort((a, b) => b[1].games - a[1].games);
+      
+      if (sorted.length === 0) return <div className="text-center text-slate-500 py-8 font-bold text-sm">아직 기록된 데이터가 없습니다.</div>;
+
+      return (
+          <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                  <thead>
+                      <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/30">
+                          <th className="py-3 px-4 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
+                          <th className="py-3 px-2 text-right w-12">GP</th>
+                          <th className="py-3 px-2 text-center w-16">W-L</th>
+                          <th className="py-3 px-2 text-right w-16">Win%</th>
+                          <th className="py-3 px-2 text-right w-16">PTS</th>
+                          <th className="py-3 px-2 text-right w-16">PA</th>
+                          <th className="py-3 px-2 text-right w-20">FGM/A</th>
+                          <th className="py-3 px-2 text-right w-16">FG%</th>
+                          <th className="py-3 px-2 text-right w-20">3PM/A</th>
+                          <th className="py-3 px-2 text-right w-16">3P%</th>
+                          <th className="py-3 px-2 text-right w-20">RIM M/A</th>
+                          <th className="py-3 px-2 text-right w-16">RIM%</th>
+                          <th className="py-3 px-2 text-right w-20">MID M/A</th>
+                          <th className="py-3 px-2 text-right w-16">MID%</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                      {sorted.map(([key, stats]) => {
+                          const winPct = (stats.wins / stats.games * 100).toFixed(1);
+                          const avgPts = (stats.ptsFor / stats.games).toFixed(1);
+                          const avgPa = (stats.ptsAgainst / stats.games).toFixed(1);
+                          const label = labels[key]?.label || key;
+                          
+                          // Fix for NaN: Default undefined values to 0
+                          const fgm = stats.fgm || 0;
+                          const fga = stats.fga || 0;
+                          const p3m = stats.p3m || 0;
+                          const p3a = stats.p3a || 0;
+                          const rimM = stats.rimM || 0;
+                          const rimA = stats.rimA || 0;
+                          const midM = stats.midM || 0;
+                          const midA = stats.midA || 0;
+
+                          const fgPct = fga > 0 ? ((fgm / fga) * 100).toFixed(1) + '%' : '0.0%';
+                          const p3Pct = p3a > 0 ? ((p3m / p3a) * 100).toFixed(1) + '%' : '0.0%';
+                          const rimPct = rimA > 0 ? ((rimM / rimA) * 100).toFixed(1) + '%' : '0.0%';
+                          const midPct = midA > 0 ? ((midM / midA) * 100).toFixed(1) + '%' : '0.0%';
+
+                          return (
+                              <tr key={key} className="hover:bg-white/5 transition-colors">
+                                  <td className="py-3 px-4 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">{label}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{stats.games}</td>
+                                  <td className="py-3 px-2 text-center font-mono text-sm text-slate-300">{stats.wins}-{stats.games - stats.wins}</td>
+                                  <td className={`py-3 px-2 text-right font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-white">{avgPts}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{avgPa}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(fgm/stats.games).toFixed(1)}/{(fga/stats.games).toFixed(1)}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{fgPct}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(p3m/stats.games).toFixed(1)}/{(p3a/stats.games).toFixed(1)}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{p3Pct}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(rimM/stats.games).toFixed(1)}/{(rimA/stats.games).toFixed(1)}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{rimPct}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(midM/stats.games).toFixed(1)}/{(midA/stats.games).toFixed(1)}</td>
+                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{midPct}</td>
+                              </tr>
+                          );
+                      })}
+                  </tbody>
+              </table>
+          </div>
+      );
+  };
+
+  const AceStopperTable: React.FC<{ stats: TacticStatRecord, baseline?: TacticStatRecord }> = ({ stats, baseline }) => {
+      // Basic Calculations
+      const gp = stats.games;
+      const acePts = (stats.ptsAgainst / gp).toFixed(1); // ptsAgainst holds Ace Points for this tactic
+      const aceTov = stats.tov ? (stats.tov / gp).toFixed(1) : '0.0';
+      const fgPctVal = stats.fga > 0 ? (stats.fgm / stats.fga) : 0;
+      const p3PctVal = stats.p3a > 0 ? (stats.p3m / stats.p3a) : 0;
+      
+      // Efficiency (FG% Reduction) Calculation
+      // Baseline is usually ManToManPerimeter (Opponent Team Stats)
+      // Comparing Ace FG% vs Opponent Team Avg FG%
+      const baselineFgPct = baseline && baseline.fga > 0 ? (baseline.fgm / baseline.fga) : 0.475; 
+      const diff = fgPctVal - baselineFgPct;
+      const diffStr = (Math.abs(diff) * 100).toFixed(1) + '%';
+      const isGood = diff < 0;
+
+      return (
+          <div className="overflow-x-auto mt-2">
+              <table className="w-full text-left border-collapse whitespace-nowrap">
+                  <thead>
+                      <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/30">
+                          <th className="py-3 px-4 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
+                          <th className="py-3 px-2 text-right w-12">GP</th>
+                          <th className="py-3 px-2 text-right w-24">Ace PTS</th>
+                          <th className="py-3 px-2 text-right w-24">Ace TOV</th>
+                          <th className="py-3 px-2 text-right w-24">Ace FG%</th>
+                          <th className="py-3 px-2 text-right w-24">Ace 3P%</th>
+                          <th className="py-3 px-4 text-right w-24">Efficiency</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800/50">
+                      <tr className="hover:bg-white/5 transition-colors">
+                          <td className="py-3 px-4 font-bold text-fuchsia-400 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Ace Stopper</td>
+                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{gp}</td>
+                          <td className="py-3 px-2 text-right font-mono text-sm text-white">{acePts}</td>
+                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{aceTov}</td>
+                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{(fgPctVal * 100).toFixed(1)}%</td>
+                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{(p3PctVal * 100).toFixed(1)}%</td>
+                          <td className={`py-3 px-4 text-right font-mono text-sm font-bold ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>
+                              {isGood ? '-' : '+'}{diffStr}
+                          </td>
+                      </tr>
+                  </tbody>
+              </table>
+          </div>
+      );
+  };
+
   if (!selectedTeam) return null;
 
   const currentTotalSalary = teamStats?.salary || 0;
   const capStatus = getCapStatus(currentTotalSalary);
   const visualPercentage = getVisualPercentage(currentTotalSalary);
+
+  // Prepare defense stats by separating AceStopper
+  const defenseStats = selectedTeam.tacticHistory?.defense || {};
+  const generalDefenseStats = Object.fromEntries(
+      Object.entries(defenseStats).filter(([key]) => key !== 'AceStopper')
+  );
+  const aceStopperStats = defenseStats['AceStopper'];
 
   return (
     <div className="space-y-6 flex flex-col animate-in fade-in duration-500">
@@ -463,15 +606,18 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       {/* Tabs */}
       <div className="flex flex-col gap-6 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-sm">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0">
-             <div className="flex bg-slate-950 rounded-xl p-1.5 border border-slate-800">
-                 <button onClick={() => setTab('roster')} className={`px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+             <div className="flex bg-slate-950 rounded-xl p-1.5 border border-slate-800 overflow-x-auto max-w-full">
+                 <button onClick={() => setTab('roster')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Users size={16} /> 능력치
                  </button>
-                 <button onClick={() => setTab('stats')} className={`px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${tab === 'stats' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                 <button onClick={() => setTab('stats')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'stats' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Activity size={16} /> 시즌 스탯
                  </button>
-                 <button onClick={() => setTab('salary')} className={`px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 ${tab === 'salary' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                 <button onClick={() => setTab('salary')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'salary' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Wallet size={16} /> 샐러리
+                 </button>
+                 <button onClick={() => setTab('tactics')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'tactics' ? 'bg-fuchsia-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                    <ClipboardList size={16} /> 전술 기록
                  </button>
              </div>
 
@@ -567,216 +713,254 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
             </div>
          )}
 
-         <div className="w-full overflow-x-auto">
-            <table className="w-full text-left border-collapse table-auto">
-               <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-20">
-                  <tr className="border-b border-slate-800 text-slate-500">
-                     <SortHeader label="Player Info" sortKey="name" align="left" width="200px" className="pl-8 px-6" />
-                     {tab === 'roster' && (
-                       <>
-                         <SortHeader label="POS" sortKey="position" width="60px" />
-                         <SortHeader label="AGE" sortKey="age" width="50px" />
-                         <SortHeader label="Salary" sortKey="salary" width="80px" />
-                         <SortHeader label="OVR" sortKey="ovr" width="60px" className="border-r-2 border-slate-700/60 pl-2" />
-                       </>
-                     )}
-                     {tab === 'roster' ? (
-                        ROSTER_COLUMNS[rosterCategory].map(col => (
-                            <SortHeader 
-                                key={col.key} 
-                                label={col.label} 
-                                sortKey={col.key as string} 
-                                width="50px" 
-                                tooltip={ATTRIBUTE_TOOLTIPS[col.label]} 
-                                className={col.label === 'OUT' || col.label === 'REB' ? "border-l-2 border-slate-700/60 pl-2" : ""}
-                            />
-                        ))
-                     ) : tab === 'stats' ? (
-                        STATS_COLUMNS.map(col => (
-                            <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />
-                        ))
-                     ) : (
-                        SALARY_COLUMNS.map(col => (
-                            <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />
-                        ))
-                     )}
-                  </tr>
-               </thead>
-               <tbody className="divide-y divide-slate-800/40">
-                  {sortedRoster.map(p => (
-                      <tr key={p.id} className="hover:bg-slate-800/30 transition-all group">
-                          <td className="pl-8 px-6 py-3 cursor-pointer" onClick={() => setViewPlayer(p)}>
-                              <div className="flex items-center gap-3">
-                                  <div className="flex flex-col min-w-0">
-                                      <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                                          <span className="text-base font-black text-white truncate max-w-[160px] group-hover:text-indigo-400 decoration-indigo-500/50 underline-offset-4 group-hover:underline">{p.name}</span>
-                                          {p.health === 'Injured' && (
-                                              <div className="group/tooltip relative">
-                                                  <span className="px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase cursor-help shadow-sm">OUT</span>
-                                                  {p.returnDate && (
-                                                      <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max bg-slate-900 border border-slate-700 p-2 rounded-lg shadow-xl text-[10px] text-slate-300 z-50 hidden group-hover/tooltip:flex items-center gap-2 pointer-events-none">
-                                                          <CalendarClock size={12} className="text-red-400" />
-                                                          <span>Return: <span className="text-white font-bold">{p.returnDate}</span></span>
-                                                      </div>
-                                                  )}
-                                              </div>
-                                          )}
-                                          {p.health === 'Day-to-Day' && (
-                                              <span className="px-1.5 py-0.5 bg-amber-600 text-[9px] font-black text-white rounded uppercase shadow-sm">DTD</span>
-                                          )}
+         {/* Tactics Tab */}
+         {tab === 'tactics' ? (
+             <div className="flex flex-col gap-10 min-h-[400px]">
+                 {selectedTeam.tacticHistory ? (
+                     <>
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 border-b border-slate-800 pb-2 px-2">
+                                <Target size={20} className="text-orange-400" />
+                                <h4 className="text-sm font-black uppercase text-slate-300 tracking-widest">Offensive Tactics Efficiency</h4>
+                            </div>
+                            <TacticTable data={selectedTeam.tacticHistory.offense} labels={OFFENSE_TACTIC_INFO} />
+                        </div>
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 border-b border-slate-800 pb-2 px-2">
+                                <Shield size={20} className="text-blue-400" />
+                                <h4 className="text-sm font-black uppercase text-slate-300 tracking-widest">Defensive Tactics Efficiency</h4>
+                            </div>
+                            <TacticTable data={generalDefenseStats} labels={DEFENSE_TACTIC_INFO} />
+                            
+                            {/* Ace Stopper Table attached below */}
+                            {aceStopperStats && (
+                                <AceStopperTable 
+                                    stats={aceStopperStats} 
+                                    baseline={generalDefenseStats['ManToManPerimeter']} 
+                                />
+                            )}
+                        </div>
+                     </>
+                 ) : (
+                     <div className="flex flex-col items-center justify-center h-full py-20 text-slate-500">
+                         <ClipboardList size={48} className="mb-4 opacity-20" />
+                         <p className="text-lg font-black uppercase tracking-widest">No Tactical Data</p>
+                         <p className="text-xs font-bold mt-2">아직 기록된 전술 데이터가 없습니다.</p>
+                     </div>
+                 )}
+             </div>
+         ) : (
+             <div className="w-full overflow-x-auto">
+                <table className="w-full text-left border-collapse table-auto">
+                   <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-20">
+                      <tr className="border-b border-slate-800 text-slate-500">
+                         <SortHeader label="Player Info" sortKey="name" align="left" width="200px" className="pl-8 px-6" />
+                         {tab === 'roster' && (
+                           <>
+                             <SortHeader label="POS" sortKey="position" width="60px" />
+                             <SortHeader label="AGE" sortKey="age" width="50px" />
+                             <SortHeader label="Salary" sortKey="salary" width="80px" />
+                             <SortHeader label="OVR" sortKey="ovr" width="60px" className="border-r-2 border-slate-700/60 pl-2" />
+                           </>
+                         )}
+                         {tab === 'roster' ? (
+                            ROSTER_COLUMNS[rosterCategory].map(col => (
+                                <SortHeader 
+                                    key={col.key} 
+                                    label={col.label} 
+                                    sortKey={col.key as string} 
+                                    width="50px" 
+                                    tooltip={ATTRIBUTE_TOOLTIPS[col.label]} 
+                                    className={col.label === 'OUT' || col.label === 'REB' ? "border-l-2 border-slate-700/60 pl-2" : ""}
+                                />
+                            ))
+                         ) : tab === 'stats' ? (
+                            STATS_COLUMNS.map(col => (
+                                <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />
+                            ))
+                         ) : (
+                            SALARY_COLUMNS.map(col => (
+                                <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />
+                            ))
+                         )}
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-800/40">
+                      {sortedRoster.map(p => (
+                          <tr key={p.id} className="hover:bg-slate-800/30 transition-all group">
+                              <td className="pl-8 px-6 py-3 cursor-pointer" onClick={() => setViewPlayer(p)}>
+                                  <div className="flex items-center gap-3">
+                                      <div className="flex flex-col min-w-0">
+                                          <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
+                                              <span className="text-base font-black text-white truncate max-w-[160px] group-hover:text-indigo-400 decoration-indigo-500/50 underline-offset-4 group-hover:underline">{p.name}</span>
+                                              {p.health === 'Injured' && (
+                                                  <div className="group/tooltip relative">
+                                                      <span className="px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase cursor-help shadow-sm">OUT</span>
+                                                      {p.returnDate && (
+                                                          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 w-max bg-slate-900 border border-slate-700 p-2 rounded-lg shadow-xl text-[10px] text-slate-300 z-50 hidden group-hover/tooltip:flex items-center gap-2 pointer-events-none">
+                                                              <CalendarClock size={12} className="text-red-400" />
+                                                              <span>Return: <span className="text-white font-bold">{p.returnDate}</span></span>
+                                                          </div>
+                                                      )}
+                                                  </div>
+                                              )}
+                                              {p.health === 'Day-to-Day' && (
+                                                  <span className="px-1.5 py-0.5 bg-amber-600 text-[9px] font-black text-white rounded uppercase shadow-sm">DTD</span>
+                                              )}
+                                          </div>
                                       </div>
                                   </div>
-                              </div>
-                          </td>
-                          {tab === 'roster' && (
-                            <>
-                              <td className="px-2 py-3 text-center">
-                                  <span className="text-sm font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase tracking-tight">{p.position}</span>
                               </td>
-                              <td className="px-2 py-3 text-center text-sm font-bold text-white">{p.age}</td>
-                              <td className="px-2 py-3 text-center text-sm font-bold text-white">${p.salary.toFixed(1)}M</td>
-                              <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2">
-                                <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto cursor-help"} title="Overall Rating">{p.ovr}</div>
-                              </td>
-                            </>
-                          )}
-                          {tab === 'roster' ? (
-                              ROSTER_COLUMNS[rosterCategory].map(col => {
-                                  const val = p[col.key as keyof Player] as number;
-                                  return (
-                                      <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60' : ''}`}>
-                                          <div className={getRankStyle(val) + " !mx-auto"}>{val}</div>
-                                      </td>
-                                  );
-                              })
-                          ) : tab === 'stats' ? (
-                              STATS_COLUMNS.map(col => {
-                                  const k = col.key;
-                                  const stats = p.stats;
-                                  let valStr = '0.0';
-                                  if (k === 'g' || k === 'gs') valStr = String(stats[k as keyof typeof stats]);
-                                  else if (k === 'fg%' || k === '3p%' || k === 'ft%') {
-                                      let n = 0, d = 0;
-                                      if (k === 'fg%') { n = stats.fgm; d = stats.fga; }
-                                      else if (k === '3p%') { n = stats.p3m; d = stats.p3a; }
-                                      else if (k === 'ft%') { n = stats.ftm; d = stats.fta; }
-                                      valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
-                                  } else if (k === 'ts%') {
-                                      const tsa = stats.fga + 0.44 * stats.fta;
-                                      valStr = tsa > 0 ? ((stats.pts / (2 * tsa)) * 100).toFixed(1) + '%' : '0.0%';
-                                  } else {
-                                      // Per Game stats
-                                      const games = stats.g || 1;
-                                      const total = stats[k as keyof typeof stats] as number;
-                                      valStr = (total / games).toFixed(1);
-                                  }
-                                  return (
-                                      <td key={k} className="px-1 py-2 align-middle text-right pr-3">
-                                          <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm tabular-nums">
-                                              {valStr}
-                                          </div>
-                                      </td>
-                                  );
-                              })
-                          ) : (
-                              SALARY_COLUMNS.map(col => {
-                                  let valStr = '';
-                                  if (col.key === 'ovr') {
+                              {tab === 'roster' && (
+                                <>
+                                  <td className="px-2 py-3 text-center">
+                                      <span className="text-sm font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase tracking-tight">{p.position}</span>
+                                  </td>
+                                  <td className="px-2 py-3 text-center text-sm font-bold text-white">{p.age}</td>
+                                  <td className="px-2 py-3 text-center text-sm font-bold text-white">${p.salary.toFixed(1)}M</td>
+                                  <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2">
+                                    <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto cursor-help"} title="Overall Rating">{p.ovr}</div>
+                                  </td>
+                                </>
+                              )}
+                              {tab === 'roster' ? (
+                                  ROSTER_COLUMNS[rosterCategory].map(col => {
+                                      const val = p[col.key as keyof Player] as number;
                                       return (
-                                          <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
-                                              <div className="flex items-center justify-end h-9">
-                                                  <div className={getOvrBadgeStyle(p.ovr) + " !w-8 !h-8 !text-sm !mx-0"}>{p.ovr}</div>
+                                          <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60' : ''}`}>
+                                              <div className={getRankStyle(val) + " !mx-auto"}>{val}</div>
+                                          </td>
+                                      );
+                                  })
+                              ) : tab === 'stats' ? (
+                                  STATS_COLUMNS.map(col => {
+                                      const k = col.key;
+                                      const stats = p.stats;
+                                      let valStr = '0.0';
+                                      if (k === 'g' || k === 'gs') valStr = String(stats[k as keyof typeof stats]);
+                                      else if (k === 'fg%' || k === '3p%' || k === 'ft%') {
+                                          let n = 0, d = 0;
+                                          if (k === 'fg%') { n = stats.fgm; d = stats.fga; }
+                                          else if (k === '3p%') { n = stats.p3m; d = stats.p3a; }
+                                          else if (k === 'ft%') { n = stats.ftm; d = stats.fta; }
+                                          valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                      } else if (k === 'ts%') {
+                                          const tsa = stats.fga + 0.44 * stats.fta;
+                                          valStr = tsa > 0 ? ((stats.pts / (2 * tsa)) * 100).toFixed(1) + '%' : '0.0%';
+                                      } else {
+                                          // Per Game stats
+                                          const games = stats.g || 1;
+                                          const total = stats[k as keyof typeof stats] as number;
+                                          valStr = (total / games).toFixed(1);
+                                      }
+                                      return (
+                                          <td key={k} className="px-1 py-2 align-middle text-right pr-3">
+                                              <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm tabular-nums">
+                                                  {valStr}
                                               </div>
                                           </td>
                                       );
-                                  }
-                                  if (col.key === 'age') valStr = String(p.age);
-                                  else if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
-                                  else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
-                                  else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
+                                  })
+                              ) : (
+                                  SALARY_COLUMNS.map(col => {
+                                      let valStr = '';
+                                      if (col.key === 'ovr') {
+                                          return (
+                                              <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                                  <div className="flex items-center justify-end h-9">
+                                                      <div className={getOvrBadgeStyle(p.ovr) + " !w-8 !h-8 !text-sm !mx-0"}>{p.ovr}</div>
+                                                  </div>
+                                              </td>
+                                          );
+                                      }
+                                      if (col.key === 'age') valStr = String(p.age);
+                                      else if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
+                                      else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
+                                      else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
 
-                                  return (
-                                      <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
-                                          <div className="h-9 flex items-center justify-end font-bold text-slate-300 text-sm tabular-nums">
-                                              {valStr}
-                                          </div>
-                                      </td>
-                                  );
-                              })
-                          )}
-                      </tr>
-                  ))}
-               </tbody>
-               {teamStats && (
-                   <tfoot className="bg-slate-800/40 border-t-2 border-slate-700/50">
-                       <tr>
-                           <td className="pl-8 px-6 py-4 text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM TOTAL</td>
-                           {tab === 'roster' && (
-                             <>
-                               <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
-                               <td className="px-2 py-4 text-center text-sm font-bold text-white">{teamStats.age}</td>
-                               <td className="px-2 py-4 text-center font-mono font-black text-white text-sm">${teamStats.salary.toFixed(1)}M</td>
-                               <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2">
-                                   <div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div>
-                               </td>
-                             </>
-                           )}
-                           {tab === 'roster' ? (
-                               ROSTER_COLUMNS[rosterCategory].map(col => {
-                                   const avgVal = teamStats.getAvg(col.key as keyof Player);
-                                   return (
-                                       <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}>
-                                           <div className={getRankStyle(avgVal) + " !mx-auto"}>{avgVal}</div>
-                                       </td>
-                                   )
-                               })
-                           ) : tab === 'stats' ? (
-                               STATS_COLUMNS.map(col => {
-                                   let val = '-';
-                                   if (col.key === 'pts') val = teamStats.stats.pts;
-                                   else if (col.key === 'reb') val = teamStats.stats.reb;
-                                   else if (col.key === 'offReb') val = teamStats.stats.offReb;
-                                   else if (col.key === 'defReb') val = teamStats.stats.defReb;
-                                   else if (col.key === 'ast') val = teamStats.stats.ast;
-                                   else if (col.key === 'stl') val = teamStats.stats.stl;
-                                   else if (col.key === 'blk') val = teamStats.stats.blk;
-                                   else if (col.key === 'tov') val = teamStats.stats.tov;
-                                   else if (col.key === 'fgm') val = teamStats.stats.fgm;
-                                   else if (col.key === 'fga') val = teamStats.stats.fga;
-                                   else if (col.key === 'fg%') val = teamStats.stats.fgPct;
-                                   else if (col.key === 'p3m') val = teamStats.stats.p3m;
-                                   else if (col.key === 'p3a') val = teamStats.stats.p3a;
-                                   else if (col.key === '3p%') val = teamStats.stats.p3Pct;
-                                   else if (col.key === 'ftm') val = teamStats.stats.ftm;
-                                   else if (col.key === 'fta') val = teamStats.stats.fta;
-                                   else if (col.key === 'ft%') val = teamStats.stats.ftPct;
-                                   else if (col.key === 'ts%') val = teamStats.stats.tsPct;
-                                   return (
-                                       <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
-                                           <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm">
-                                               {val}
-                                           </div>
-                                       </td>
-                                   );
-                               })
-                           ) : (
-                                SALARY_COLUMNS.map(col => {
-                                    let val = '-';
-                                    if (col.key === 'salary') val = `$${teamStats.salary.toFixed(1)}M`;
-                                    return (
-                                        <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
-                                            <div className="h-9 flex items-center justify-end font-black text-indigo-400 text-sm">
-                                                {val}
-                                            </div>
-                                        </td>
-                                    );
-                                })
-                           )}
-                       </tr>
-                   </tfoot>
-               )}
-            </table>
-         </div>
+                                      return (
+                                          <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                              <div className="h-9 flex items-center justify-end font-bold text-slate-300 text-sm tabular-nums">
+                                                  {valStr}
+                                              </div>
+                                          </td>
+                                      );
+                                  })
+                              )}
+                          </tr>
+                      ))}
+                   </tbody>
+                   {teamStats && (
+                       <tfoot className="bg-slate-800/40 border-t-2 border-slate-700/50">
+                           <tr>
+                               <td className="pl-8 px-6 py-4 text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM TOTAL</td>
+                               {tab === 'roster' && (
+                                 <>
+                                   <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
+                                   <td className="px-2 py-4 text-center text-sm font-bold text-white">{teamStats.age}</td>
+                                   <td className="px-2 py-4 text-center font-mono font-black text-white text-sm">${teamStats.salary.toFixed(1)}M</td>
+                                   <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2">
+                                       <div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div>
+                                   </td>
+                                 </>
+                               )}
+                               {tab === 'roster' ? (
+                                   ROSTER_COLUMNS[rosterCategory].map(col => {
+                                       const avgVal = teamStats.getAvg(col.key as keyof Player);
+                                       return (
+                                           <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}>
+                                               <div className={getRankStyle(avgVal) + " !mx-auto"}>{avgVal}</div>
+                                           </td>
+                                       )
+                                   })
+                               ) : tab === 'stats' ? (
+                                   STATS_COLUMNS.map(col => {
+                                       let val = '-';
+                                       if (col.key === 'pts') val = teamStats.stats.pts;
+                                       else if (col.key === 'reb') val = teamStats.stats.reb;
+                                       else if (col.key === 'offReb') val = teamStats.stats.offReb;
+                                       else if (col.key === 'defReb') val = teamStats.stats.defReb;
+                                       else if (col.key === 'ast') val = teamStats.stats.ast;
+                                       else if (col.key === 'stl') val = teamStats.stats.stl;
+                                       else if (col.key === 'blk') val = teamStats.stats.blk;
+                                       else if (col.key === 'tov') val = teamStats.stats.tov;
+                                       else if (col.key === 'fgm') val = teamStats.stats.fgm;
+                                       else if (col.key === 'fga') val = teamStats.stats.fga;
+                                       else if (col.key === 'fg%') val = teamStats.stats.fgPct;
+                                       else if (col.key === 'p3m') val = teamStats.stats.p3m;
+                                       else if (col.key === 'p3a') val = teamStats.stats.p3a;
+                                       else if (col.key === '3p%') val = teamStats.stats.p3Pct;
+                                       else if (col.key === 'ftm') val = teamStats.stats.ftm;
+                                       else if (col.key === 'fta') val = teamStats.stats.fta;
+                                       else if (col.key === 'ft%') val = teamStats.stats.ftPct;
+                                       else if (col.key === 'ts%') val = teamStats.stats.tsPct;
+                                       return (
+                                           <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                               <div className="h-9 flex items-center justify-end font-medium text-slate-300 text-sm">
+                                                   {val}
+                                               </div>
+                                           </td>
+                                       );
+                                   })
+                               ) : (
+                                    SALARY_COLUMNS.map(col => {
+                                        let val = '-';
+                                        if (col.key === 'salary') val = `$${teamStats.salary.toFixed(1)}M`;
+                                        return (
+                                            <td key={col.key} className="px-1 py-2 align-middle text-right pr-3">
+                                                <div className="h-9 flex items-center justify-end font-black text-indigo-400 text-sm">
+                                                    {val}
+                                                </div>
+                                            </td>
+                                        );
+                                    })
+                               )}
+                           </tr>
+                       </tfoot>
+                   )}
+                </table>
+             </div>
+         )}
       </div>
     </div>
   );
