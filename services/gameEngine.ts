@@ -21,8 +21,7 @@ export const SIM_CONFIG = {
         FATIGUE_PENALTY_LOW: 0.02,
         FATIGUE_PENALTY_MED: 0.10,
         FATIGUE_PENALTY_HIGH: 0.25,
-        REST_RECOVERY_OFF: 65,
-        REST_RECOVERY_B2B: 35,
+        // Daily recovery is now handled in App.tsx to ensure off-days work correctly
     },
     INJURY: {
         BASE_RISK: 0.0005,
@@ -48,6 +47,15 @@ export const SIM_CONFIG = {
         BLK_BIG_FACTOR: 0.055,
         TOV_USAGE_FACTOR: 0.08,
     }
+};
+
+// 포지션 불일치 페널티 매핑 (단위: 1.0 = 100%)
+const POSITION_PENALTY_MAP: Record<string, Record<string, number>> = {
+  'PG': { 'SG': 0.03, 'SF': 0.10, 'PF': 0.50, 'C': 1.00 },
+  'SG': { 'PG': 0.03, 'SF': 0.05, 'PF': 0.50, 'C': 1.00 },
+  'SF': { 'PG': 0.25, 'SG': 0.05, 'PF': 0.25, 'C': 0.40 },
+  'PF': { 'PG': 0.40, 'SG': 0.30, 'SF': 0.05, 'C': 0.10 },
+  'C':  { 'PG': 0.50, 'SG': 0.50, 'SF': 0.35, 'PF': 0.10 }
 };
 
 export interface TacticalSliders {
@@ -308,45 +316,23 @@ function getOpponentDefensiveMetrics(roster: Player[], minutes: number[]) {
     return metrics;
 }
 
-function applyRestToRoster(roster: Player[], daysRest: number): Player[] {
-    const C = SIM_CONFIG.FATIGUE;
-    return roster.map(p => {
-        const currentCond = p.condition !== undefined ? p.condition : 100;
-        let recoveryAmount = 0;
-
-        if (daysRest <= 0) {
-            recoveryAmount = C.REST_RECOVERY_B2B + (p.stamina * 0.4); 
-        } else {
-            recoveryAmount = C.REST_RECOVERY_OFF + (p.stamina * 0.5);
-        }
-
-        const newCond = Math.min(100, Math.floor(currentCond + recoveryAmount));
-        return { ...p, condition: newCond };
-    });
-}
-
 export function simulateGame(
     homeTeam: Team, 
     awayTeam: Team, 
     userTeamId: string | null, 
-    userTactics?: GameTactics,
-    homeRestDays: number = 3,
-    awayRestDays: number = 3
+    userTactics?: GameTactics
 ): SimulationResult {
     const isUserHome = userTeamId === homeTeam.id;
     const isUserAway = userTeamId === awayTeam.id;
     
-    const homeRosterRecovered = applyRestToRoster(homeTeam.roster, homeRestDays);
-    const awayRosterRecovered = applyRestToRoster(awayTeam.roster, awayRestDays);
+    // Note: Recovery/Rest logic is now handled in App.tsx's daily simulation loop 
+    // to ensure teams recover correctly on off-days.
 
-    const homeTeamReady = { ...homeTeam, roster: homeRosterRecovered };
-    const awayTeamReady = { ...awayTeam, roster: awayRosterRecovered };
+    const homeTactics = isUserHome && userTactics ? userTactics : generateAutoTactics(homeTeam);
+    const awayTactics = isUserAway && userTactics ? userTactics : generateAutoTactics(awayTeam);
     
-    const homeTactics = isUserHome && userTactics ? userTactics : generateAutoTactics(homeTeamReady);
-    const awayTactics = isUserAway && userTactics ? userTactics : generateAutoTactics(awayTeamReady);
-    
-    const homeBox = simulateTeamPerformance(homeTeamReady, homeTactics, awayTeamReady, awayTactics, true);
-    const awayBox = simulateTeamPerformance(awayTeamReady, awayTactics, homeTeamReady, homeTactics, false);
+    const homeBox = simulateTeamPerformance(homeTeam, homeTactics, awayTeam, awayTactics, true);
+    const awayBox = simulateTeamPerformance(awayTeam, awayTactics, homeTeam, homeTactics, false);
     
     let homeScore = homeBox.stats.reduce((sum, p) => sum + p.pts, 0);
     let awayScore = awayBox.stats.reduce((sum, p) => sum + p.pts, 0);
@@ -402,7 +388,8 @@ function simulateTeamPerformance(
     
     const healthyPlayers = team.roster.filter(p => p.health !== 'Injured').sort((a,b) => b.ovr - a.ovr);
     
-    const starterIds = Object.values(teamTactics.starters);
+    const starterIdsMap = teamTactics.starters; // { PG: 'id', SG: 'id'... }
+    const starterIds = Object.values(starterIdsMap);
     const isStarter = healthyPlayers.map(p => starterIds.includes(p.id));
 
     const finalMinutesList = distributeMinutes(healthyPlayers, isStarter, teamTactics.minutesLimits, sliders);
@@ -480,6 +467,22 @@ function simulateTeamPerformance(
       let isAceTarget = false;
       let matchupEffect = 0;
 
+      // --- Position Mismatch Penalty Logic ---
+      let positionPenalty = 0;
+      // Find which slot this player is filling in the starting lineup
+      const assignedSlot = Object.entries(starterIdsMap).find(([slot, id]) => id === p.id)?.[0];
+      if (assignedSlot) {
+          const playerPos = p.position; // PG, SG, SF, PF, C or G, F
+          // 'G' or 'F' broad categories handle matching slots without penalty
+          const isMatch = (playerPos === assignedSlot) ||
+                          (playerPos === 'G' && (assignedSlot === 'PG' || assignedSlot === 'SG')) ||
+                          (playerPos === 'F' && (assignedSlot === 'SF' || assignedSlot === 'PF'));
+          
+          if (!isMatch) {
+              positionPenalty = POSITION_PENALTY_MAP[playerPos]?.[assignedSlot] || 0;
+          }
+      }
+
       if (mp > 0) {
           const staminaFactor = Math.max(0.25, C.FATIGUE.DRAIN_BASE - (p.stamina * C.FATIGUE.STAMINA_SAVE_FACTOR)); 
           const durabilityFactor = 1 + (80 - p.durability) * C.FATIGUE.DURABILITY_FACTOR;
@@ -497,6 +500,7 @@ function simulateTeamPerformance(
           isStopper = teamTactics?.defenseTactics.includes('AceStopper') && teamTactics.stopperId === p.id;
           if (isStopper) drain *= 1.25;
 
+          // Game fatigue subtracts from preGameCondition
           newCondition = Math.max(0, Math.floor(preGameCondition - drain));
           
           let injuryRisk = C.INJURY.BASE_RISK;
@@ -549,7 +553,8 @@ function simulateTeamPerformance(
       else if (preGameCondition < 80) fatiguePerfPenalty = C.FATIGUE.FATIGUE_PENALTY_LOW;
 
       const mentalFortitude = (p.intangibles || 50) / 100; 
-      const effectivePerfDrop = (fatiguePerfPenalty + inGameFatiguePenalty) * (1 - (mentalFortitude * 0.5));
+      // Apply position penalty to the performance drop
+      const effectivePerfDrop = Math.min(1.0, (fatiguePerfPenalty + inGameFatiguePenalty + positionPenalty) * (1 - (mentalFortitude * 0.5)));
 
       let pUsage = (Math.pow(p.ovr, 2.75) * (p.offConsist / 50) * mp * (p.shotIq / 75));
       if (teamTactics?.offenseTactics.includes('PostFocus')) {
@@ -560,26 +565,39 @@ function simulateTeamPerformance(
       
       let fga = Math.round(teamFgaTarget * (pUsage / totalUsageWeight));
 
-      // --- New Zone-Based Shooting Logic ---
+      // --- 3PT Attempt Logic Optimization (Realistic Scaling) ---
       const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
       const mentalClutchBonus = Math.max(0, (p.intangibles - 75) * 0.001); 
 
-      // 1. Calculate 3PT Attempts & Makes
+      // 1. Calculate 3PT Attempts & Makes (Reduced Tendency Coefficients)
       let base3PTendency = 0;
-      if (threeAvg >= 90) base3PTendency = 0.55;      
-      else if (threeAvg >= 85) base3PTendency = 0.45; 
-      else if (threeAvg >= 80) base3PTendency = 0.35; 
-      else if (threeAvg >= 75) base3PTendency = 0.20; 
+      if (threeAvg >= 90) base3PTendency = 0.38;      // [Patch] 0.55 -> 0.38
+      else if (threeAvg >= 85) base3PTendency = 0.32; // [Patch] 0.45 -> 0.32
+      else if (threeAvg >= 80) base3PTendency = 0.25; // [Patch] 0.35 -> 0.25
+      else if (threeAvg >= 75) base3PTendency = 0.18; // [Patch] 0.20 -> 0.18
       else if (threeAvg >= 70) base3PTendency = 0.10; 
-      else base3PTendency = 0.02;                     
+      else base3PTendency = 0.04;                     
+
+      // Big man penalty for 3PA
+      if (['C', 'PF'].includes(p.position)) {
+          base3PTendency *= 0.65;
+      }
 
       if (p.ins > threeAvg + 15) base3PTendency *= 0.5; 
 
       let tacticMult = 1.0;
-      if (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds')) tacticMult = 1.4; 
-      if (teamTactics?.offenseTactics.includes('PerimeterFocus')) tacticMult = (threeAvg > 80) ? 1.3 : 0.8;
+      if (teamTactics?.offenseTactics.includes('PaceAndSpace') || teamTactics?.offenseTactics.includes('SevenSeconds')) tacticMult = 1.15; // [Patch] 1.4 -> 1.15
+      if (teamTactics?.offenseTactics.includes('PerimeterFocus')) tacticMult = (threeAvg > 80) ? 1.12 : 0.8;
 
-      let p3a = Math.round(fga * base3PTendency * tacticMult);
+      let p3a = fga * base3PTendency * tacticMult;
+      
+      // [Patch] Hard Volume Cap: Applying diminishing returns to 3PA
+      // If calculated 3PA is > 10, scale the remainder by 0.3
+      if (p3a > 10) {
+          p3a = 10 + (p3a - 10) * 0.3;
+      }
+      p3a = Math.round(p3a);
+
       if (threeAvg < 65) p3a = Math.min(p3a, 1);
       if (threeAvg < 75) p3a = Math.min(p3a, 6); 
       if (p3a > fga) p3a = fga;
@@ -682,7 +700,7 @@ function simulateTeamPerformance(
       const offReb = Math.round(totalReb * offRebRatio * offRebSlider);
       const defReb = Math.max(0, totalReb - offReb);
 
-      const astAttr = (p.passAcc * 0.3 + p.passVision * 0.4 + p.passIq * 0.2 + p.handling * 0.1);
+      const astAttr = (p.passAcc * 0.3 + p.passVision * 0.4 + p.passIq * 0.2 + p.handling * 0.1) * (1 - effectivePerfDrop);
       let astBase = astAttr * (mp / 48) * C.STATS.AST_BASE_FACTOR;
       
       if (p.position === 'PG') astBase *= 1.4;
@@ -693,13 +711,13 @@ function simulateTeamPerformance(
       }
       const ast = Math.round(astBase * (Math.random() * 0.5 + 0.75));
 
-      const stlAttr = (p.steal * 0.5 + p.perDef * 0.3 + p.hustle * 0.2);
+      const stlAttr = (p.steal * 0.5 + p.perDef * 0.3 + p.hustle * 0.2) * (1 - effectivePerfDrop);
       const stlIntensity = 1 + (sliders.defIntensity - 5) * 0.06;
       let stlBase = stlAttr * (mp / 48) * C.STATS.STL_BASE_FACTOR * stlIntensity;
       if (p.position === 'PG' || p.position === 'SG') stlBase *= 1.1; 
       const stl = Math.round(stlBase * (Math.random() * 0.5 + 0.75));
 
-      const blkAttr = (p.blk * 0.6 + p.vertical * 0.2 + p.height * 0.2);
+      const blkAttr = (p.blk * 0.6 + p.vertical * 0.2 + p.height * 0.2) * (1 - effectivePerfDrop);
       let blkFactor = 0.035; 
       if (p.position === 'C') blkFactor = C.STATS.BLK_BIG_FACTOR;
       else if (p.position === 'PF') blkFactor = 0.045;

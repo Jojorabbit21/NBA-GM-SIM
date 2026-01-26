@@ -189,13 +189,12 @@ export const parseCSVToObjects = (csv: string): any[] => {
     return result;
 };
 
-export const calculatePlayerOvr = (p: any): number => {
-    const position = p.position || 'PG';
+export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
+    const position = overridePosition || p.position || 'PG';
     const v = (key: string, def = 70) => {
         return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
     };
     
-    // ... (rest of calculation logic remains same) ...
     const threeAvg = (v('threec', v('3c')) + v('three45', v('3_45')) + v('threet', v('3t'))) / 3;
 
     const attr = {

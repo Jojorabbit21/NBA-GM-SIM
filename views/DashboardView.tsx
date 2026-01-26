@@ -1,9 +1,10 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight, Crown, Medal, TrendingUp, Quote, X, Trophy, BarChart3, FileText, ClipboardList } from 'lucide-react';
+import { Zap, Target, Users, Shield, ShieldAlert, Activity, Lock, Search, Eye, Sliders, HelpCircle, Wand2, AlertCircle, CalendarClock, Loader2, ArrowRight, Crown, Medal, TrendingUp, Quote, X, Trophy, BarChart3, FileText, ClipboardList, ArrowDown, ArrowUp } from 'lucide-react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic, TeamTacticHistory, TacticStatRecord } from '../types';
 import { GameTactics, TacticalSliders, generateAutoTactics } from '../services/gameEngine';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { calculatePlayerOvr } from '../utils/constants';
 import { logEvent } from '../services/analytics'; 
 
 interface DashboardViewProps {
@@ -389,16 +390,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
                                     {healthySorted.map(p => {
-                                        const isStarter = Object.values(starters).includes(p.id);
+                                        const assignedSlot = Object.entries(starters).find(([slot, id]) => id === p.id)?.[0];
+                                        const isStarter = !!assignedSlot;
                                         const isSelectedStopper = stopperId === p.id;
                                         const cond = p.condition || 100;
                                         
+                                        // assignedSlot이 있으면 해당 포지션의 가중치로 OVR 재계산
+                                        const displayOvr = assignedSlot ? calculatePlayerOvr(p, assignedSlot) : p.ovr;
+
                                         let condColor = 'bg-emerald-500';
                                         if (cond < 60) condColor = 'bg-red-500';
                                         else if (cond < 80) condColor = 'bg-amber-500';
 
                                         return (
-                                            <tr key={p.id} className={`transition-all ${isStarter ? 'bg-emerald-500/10' : 'hover:bg-white/5'}`}>
+                                            <tr key={p.id} className={`transition-all ${isStarter ? 'bg-indigo-500/5' : 'hover:bg-white/5'}`}>
                                                 <td className="py-3 px-8 min-w-[150px] cursor-pointer" onClick={() => setViewPlayer(p)}>
                                                     <div className="flex flex-col justify-center h-10">
                                                         <div className="flex items-center gap-2">
@@ -419,7 +424,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                                         <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.ovr}</div></div></td>
+                                                <td className="py-3 px-4 text-center">
+                                                  <div className="flex items-center justify-center h-10 gap-1.5">
+                                                    <div className={getOvrBadgeStyle(displayOvr) + " !w-10 !h-10 !text-xl !mx-0"}>{displayOvr}</div>
+                                                  </div>
+                                                </td>
                                                 <td className="py-3 px-1">
                                                     <div className="flex justify-center h-10 items-center">
                                                         <div className="flex bg-slate-950/80 p-1 rounded-xl border border-white/5 shadow-inner">
@@ -453,8 +462,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ team, teams, sched
                                     })}
                                 </tbody>
                             </table>
-
-                            {/* Injured Players Section */}
+                            {/* ... Injured Players Section ... */}
                             {injuredSorted.length > 0 && (
                                 <div className="flex flex-col mt-10 border-t border-white/10 bg-red-950/5">
                                     <div className="px-8 py-4 bg-red-950/20 flex items-center gap-3 border-b border-white/5">
