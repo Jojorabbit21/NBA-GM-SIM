@@ -162,7 +162,6 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-800 pb-8">
         <div>
           <h2 className="text-5xl font-black ko-tight uppercase tracking-tight text-slate-100">리그 순위표</h2>
-          <p className="text-slate-500 text-sm font-bold mt-2 uppercase">2025-26 정규리그 실시간 데이터</p>
         </div>
         <div className="flex p-1 bg-slate-900 rounded-2xl border border-slate-800">
           {(['Conference', 'Division'] as const).map(m => (

@@ -555,7 +555,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
            <div className="flex items-center gap-3">
              <h2 className="text-5xl font-black ko-tight text-slate-100 uppercase">팀 로스터</h2>
            </div>
-           <p className="text-slate-500 font-bold mt-1 uppercase text-sm">선수단 구성 및 기록 분석</p>
         </div>
         
         <div className="flex items-center gap-3 relative" ref={dropdownRef}>

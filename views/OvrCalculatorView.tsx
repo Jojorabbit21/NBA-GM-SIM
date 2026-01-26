@@ -128,7 +128,6 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
           <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight flex items-center gap-4">
             <FlaskConical className="text-indigo-500" size={40} /> OVR 실험실
           </h2>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-sm">가중치 조절을 통한 포지션별 밸런스 테스트</p>
         </div>
         <div className="flex gap-4">
             <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 shadow-lg">
