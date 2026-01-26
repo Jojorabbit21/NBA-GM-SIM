@@ -132,7 +132,10 @@ export const calculatePlayerOvr = (p: any): number => {
         stamina: v('stamina', v('sta')),
         intDef: v('intDef', v('idef')),
         perDef: v('perDef', v('pdef')),
+        steal: v('steal', v('stl')),
         blk: v('blk'),
+        helpDefIq: v('helpDefIq', v('hdef')),
+        passPerc: v('passPerc', v('pper')),
         defConsist: v('defConsist', v('dcon')),
         offReb: v('offReb', v('oreb')),
         defReb: v('defReb', v('dreb')),
@@ -143,6 +146,8 @@ export const calculatePlayerOvr = (p: any): number => {
         vertical: v('vertical', v('vert')),
         durability: v('durability', v('dur')),
         agility: v('agility', v('agi')),
+        hustle: v('hustle', v('hus')),
+        speed: v('speed', v('spd')),
     };
 
     const calc = (weights: {val: number, w: number}[]) => {
@@ -158,9 +163,81 @@ export const calculatePlayerOvr = (p: any): number => {
     if (position.includes('PG')) {
         return calc([{ val: attr.close, w: 10 }, { val: attr.mid, w: 20 }, { val: attr.threeAvg, w: 25 }, { val: attr.ft, w: 10 }, { val: attr.shotIq, w: 45 }, { val: attr.offConsist, w: 25 }, { val: attr.layup, w: 25 }, { val: attr.hands, w: 40 }, { val: attr.stamina, w: 15 }, { val: attr.passAcc, w: 25 }, { val: attr.handling, w: 15 }, { val: attr.spdBall, w: 10 }, { val: attr.passVision, w: 25 }, { val: attr.passIq, w: 50 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }]);
     } else if (position.includes('SG')) {
-        return calc([{ val: attr.close, w: 45 }, { val: attr.mid, w: 45 }, { val: attr.threeAvg, w: 45 }, { val: attr.ft, w: 20 }, { val: attr.shotIq, w: 80 }, { val: attr.offConsist, w: 60 }, { val: attr.layup, w: 30 }, { val: attr.hands, w: 49 }, { val: attr.perDef, w: 15 }, { val: attr.agility, w: 60 }, { val: attr.stamina, w: 30 }, { val: attr.passAcc, w: 20 }, { val: attr.handling, w: 25 }, { val: attr.spdBall, w: 20 }, { val: attr.passVision, w: 15 }, { val: attr.passIq, w: 40 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }]);
+        return calc([
+            { val: attr.close, w: 300 }, 
+            { val: attr.mid, w: 100 }, 
+            { val: attr.threeAvg, w: 150 }, 
+            { val: attr.ft, w: 100 }, 
+            { val: attr.shotIq, w: 500 }, 
+            { val: attr.offConsist, w: 500 }, 
+            { val: attr.layup, w: 200 }, 
+            { val: attr.dunk, w: 150 }, 
+            { val: attr.post, w: 0 }, 
+            { val: attr.drawFoul, w: 50 }, 
+            { val: attr.hands, w: 250 }, 
+            { val: attr.intDef, w: 0 }, 
+            { val: attr.perDef, w: 0 }, 
+            { val: attr.steal, w: 0 },
+            { val: attr.blk, w: 0 },
+            { val: attr.helpDefIq, w: 0 },
+            { val: attr.passPerc, w: 0 },
+            { val: attr.defConsist, w: 5 },
+            { val: attr.offReb, w: 0 }, 
+            { val: attr.defReb, w: 0 }, 
+            { val: attr.speed, w: 0 }, 
+            { val: attr.agility, w: 0 }, 
+            { val: attr.strength, w: 0 }, 
+            { val: attr.vertical, w: 0 }, 
+            { val: attr.stamina, w: 0 }, 
+            { val: attr.hustle, w: 0 }, 
+            { val: attr.durability, w: 0 }, 
+            { val: attr.passAcc, w: 0 }, 
+            { val: attr.handling, w: 0 }, 
+            { val: attr.spdBall, w: 0 }, 
+            { val: attr.passVision, w: 0 }, 
+            { val: attr.passIq, w: 0 }, 
+            { val: attr.intangibles, w: 50 }, 
+            { val: attr.potential, w: 500 },
+            { val: attr.height, w: 30 }
+        ]);
     } else if (position.includes('SF')) {
-        return calc([{ val: attr.close, w: 200 }, { val: attr.mid, w: 200 }, { val: attr.threeAvg, w: 200 }, { val: attr.ft, w: 20 }, { val: attr.shotIq, w: 100 }, { val: attr.offConsist, w: 30 }, { val: attr.layup, w: 200 }, { val: attr.hands, w: 100 }, { val: attr.intDef, w: 100 }, { val: attr.perDef, w: 100 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 60 }, { val: attr.intangibles, w: 10 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 30 }]);
+        return calc([
+            { val: attr.close, w: 300 }, 
+            { val: attr.mid, w: 150 }, 
+            { val: attr.threeAvg, w: 50 }, 
+            { val: attr.ft, w: 150 }, 
+            { val: attr.shotIq, w: 300 }, 
+            { val: attr.offConsist, w: 500 }, 
+            { val: attr.layup, w: 500 }, 
+            { val: attr.dunk, w: 100 }, 
+            { val: attr.post, w: 0 }, 
+            { val: attr.drawFoul, w: 150 }, 
+            { val: attr.hands, w: 250 }, 
+            { val: attr.intDef, w: 200 }, 
+            { val: attr.perDef, w: 200 }, 
+            { val: attr.steal, w: 10 }, 
+            { val: attr.blk, w: 0 }, 
+            { val: attr.helpDefIq, w: 10 }, 
+            { val: attr.passPerc, w: 10 }, 
+            { val: attr.defConsist, w: 0 }, 
+            { val: attr.speed, w: 0 }, 
+            { val: attr.agility, w: 100 }, 
+            { val: attr.strength, w: 0 }, 
+            { val: attr.vertical, w: 100 }, 
+            { val: attr.stamina, w: 200 }, 
+            { val: attr.hustle, w: 200 }, 
+            { val: attr.durability, w: 0 }, 
+            { val: attr.passAcc, w: 0 }, 
+            { val: attr.handling, w: 0 }, 
+            { val: attr.spdBall, w: 0 }, 
+            { val: attr.passVision, w: 0 }, 
+            { val: attr.passIq, w: 0 }, 
+            { val: attr.offReb, w: 0 }, 
+            { val: attr.defReb, w: 0 }, 
+            { val: attr.intangibles, w: 5 }, 
+            { val: attr.potential, w: 500 }, 
+            { val: attr.height, w: 100 }
+        ]);
     } else if (position.includes('PF')) {
         return calc([{ val: attr.close, w: 250 }, { val: attr.mid, w: 60 }, { val: attr.threeAvg, w: 40 }, { val: attr.ft, w: 30 }, { val: attr.shotIq, w: 100 }, { val: attr.layup, w: 240 }, { val: attr.dunk, w: 120 }, { val: attr.post, w: 120 }, { val: attr.hands, w: 100 }, { val: attr.intDef, w: 140 }, { val: attr.defConsist, w: 100 }, { val: attr.offReb, w: 150 }, { val: attr.defReb, w: 150 }, { val: attr.strength, w: 120 }, { val: attr.vertical, w: 120 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 100 }, { val: attr.intangibles, w: 7 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 150 }]);
     } else if (position.includes('C')) {
