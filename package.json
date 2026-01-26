@@ -20,7 +20,7 @@
   },
   "scripts": {
     "start": "vite",
-    "build": "vite build",
+    "build": "echo \"{\\\"version\\\": \\\"$(date +%s)\\\"}\" > public/version.json && vite build",
     "preview": "vite preview"
   },
   "browserslist": {
