@@ -241,7 +241,43 @@ export const calculatePlayerOvr = (p: any): number => {
     } else if (position.includes('PF')) {
         return calc([{ val: attr.close, w: 250 }, { val: attr.mid, w: 60 }, { val: attr.threeAvg, w: 40 }, { val: attr.ft, w: 30 }, { val: attr.shotIq, w: 100 }, { val: attr.layup, w: 240 }, { val: attr.dunk, w: 120 }, { val: attr.post, w: 120 }, { val: attr.hands, w: 100 }, { val: attr.intDef, w: 140 }, { val: attr.defConsist, w: 100 }, { val: attr.offReb, w: 150 }, { val: attr.defReb, w: 150 }, { val: attr.strength, w: 120 }, { val: attr.vertical, w: 120 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 100 }, { val: attr.intangibles, w: 7 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 150 }]);
     } else if (position.includes('C')) {
-        return calc([{ val: attr.close, w: 250 }, { val: attr.mid, w: 140 }, { val: attr.threeAvg, w: 100 }, { val: attr.ft, w: 100 }, { val: attr.shotIq, w: 100 }, { val: attr.offConsist, w: 200 }, { val: attr.layup, w: 200 }, { val: attr.dunk, w: 250 }, { val: attr.post, w: 250 }, { val: attr.hands, w: 200 }, { val: attr.intDef, w: 200 }, { val: attr.blk, w: 200 }, { val: attr.defConsist, w: 100 }, { val: attr.offReb, w: 140 }, { val: attr.defReb, w: 200 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 100 }, { val: attr.intangibles, w: 6 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 180 }]);
+        return calc([
+            { val: attr.close, w: 300 }, 
+            { val: attr.mid, w: 0 }, 
+            { val: attr.threeAvg, w: 0 }, 
+            { val: attr.ft, w: 0 }, 
+            { val: attr.shotIq, w: 200 }, 
+            { val: attr.offConsist, w: 0 }, 
+            { val: attr.layup, w: 0 }, 
+            { val: attr.dunk, w: 0 }, 
+            { val: attr.post, w: 200 }, 
+            { val: attr.drawFoul, w: 250 }, 
+            { val: attr.hands, w: 200 }, 
+            { val: attr.intDef, w: 250 }, 
+            { val: attr.perDef, w: 0 }, 
+            { val: attr.steal, w: 0 }, 
+            { val: attr.blk, w: 100 }, 
+            { val: attr.helpDefIq, w: 0 }, 
+            { val: attr.passPerc, w: 0 }, 
+            { val: attr.defConsist, w: 200 }, 
+            { val: attr.offReb, w: 100 }, 
+            { val: attr.defReb, w: 100 }, 
+            { val: attr.speed, w: 0 }, 
+            { val: attr.agility, w: 0 }, 
+            { val: attr.strength, w: 150 }, 
+            { val: attr.vertical, w: 0 }, 
+            { val: attr.stamina, w: 150 }, 
+            { val: attr.hustle, w: 0 }, 
+            { val: attr.durability, w: 150 }, 
+            { val: attr.passAcc, w: 100 }, 
+            { val: attr.handling, w: 200 }, 
+            { val: attr.spdBall, w: 0 }, 
+            { val: attr.passVision, w: 0 }, 
+            { val: attr.passIq, w: 100 }, 
+            { val: attr.intangibles, w: 15 }, 
+            { val: attr.potential, w: 500 }, 
+            { val: attr.height, w: 180 }
+        ]);
     }
     return 70;
 };
