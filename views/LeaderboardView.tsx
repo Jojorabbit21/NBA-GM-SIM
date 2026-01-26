@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, BarChart3 } from 'lucide-react';
 
 interface LeaderboardViewProps {
   teams: Team[];
@@ -140,64 +140,72 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
 
       {/* Main Table Container */}
       <div className="flex-1 bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col min-h-0">
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
-              <table className="w-full text-left border-collapse table-fixed">
-                  <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-md z-20 shadow-sm">
-                      <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                          <th className="py-4 px-2 w-[5%] text-center">Rank</th>
-                          <th className="py-4 px-6 w-[28%]">Player</th>
-                          <th className="py-4 px-4 w-[22%]">Team</th>
-                          <th className="py-4 px-2 w-[15%] text-center">POS</th>
-                          <th className="py-4 px-4 w-[7.5%] text-right">G</th>
-                          <th className="py-4 px-4 w-[7.5%] text-right">GS</th>
-                          <th className="py-4 px-4 w-[7.5%] text-right">MP</th>
-                          <th className="py-4 px-6 w-[7.5%] text-right">{activeStat}</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                      {sortedPlayers.map((p, i) => {
-                          const rank = i + 1;
-                          const isTop3 = rank <= 3;
-                          const mpg = p.stats.g > 0 ? (p.stats.mp / p.stats.g).toFixed(1) : '0.0';
+          {sortedPlayers.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full py-20 text-slate-500">
+                  <BarChart3 size={48} className="mb-4 opacity-20" />
+                  <p className="text-lg font-black uppercase tracking-widest">No Stats Data</p>
+                  <p className="text-xs font-bold mt-2">아직 기록된 시즌 데이터가 없습니다.</p>
+              </div>
+          ) : (
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
+                  <table className="w-full text-left border-collapse table-fixed">
+                      <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-md z-20 shadow-sm">
+                          <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                              <th className="py-4 px-2 w-[5%] text-center">Rank</th>
+                              <th className="py-4 px-6 w-[28%]">Player</th>
+                              <th className="py-4 px-4 w-[22%]">Team</th>
+                              <th className="py-4 px-2 w-[15%] text-center">POS</th>
+                              <th className="py-4 px-4 w-[7.5%] text-right">G</th>
+                              <th className="py-4 px-4 w-[7.5%] text-right">GS</th>
+                              <th className="py-4 px-4 w-[7.5%] text-right">MP</th>
+                              <th className="py-4 px-6 w-[7.5%] text-right">{activeStat}</th>
+                          </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-800/50">
+                          {sortedPlayers.map((p, i) => {
+                              const rank = i + 1;
+                              const isTop3 = rank <= 3;
+                              const mpg = p.stats.g > 0 ? (p.stats.mp / p.stats.g).toFixed(1) : '0.0';
 
-                          return (
-                              <tr key={p.id} className={`hover:bg-slate-800/40 transition-colors group ${isTop3 ? 'bg-indigo-900/5' : ''}`}>
-                                  <td className="py-4 px-2 text-center align-middle">
-                                      <span className={`font-black pretendard tracking-tight text-lg ${getRankNumberStyle(rank)}`}>{rank}</span>
-                                  </td>
-                                  <td className="py-4 px-6 cursor-pointer align-middle" onClick={() => setViewPlayer(p)}>
-                                      <div className="flex items-center gap-4">
-                                          <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-0"}>{p.ovr}</div>
-                                          <span className={`font-black text-base truncate max-w-[240px] group-hover:underline underline-offset-4 ${isTop3 ? 'text-white' : 'text-slate-200 group-hover:text-indigo-400'}`}>{p.name}</span>
-                                      </div>
-                                  </td>
-                                  <td className="py-4 px-4 align-middle">
-                                      <div className="flex items-center gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
-                                          <img src={p.teamLogo} className="w-6 h-6 object-contain" alt="" />
-                                          <span className="text-base font-bold text-slate-400 uppercase tracking-tight">{p.teamCity} {p.teamName}</span>
-                                      </div>
-                                  </td>
-                                  <td className="py-4 px-2 text-center align-middle">
-                                      <span className="text-xs font-black bg-slate-800 text-slate-400 px-2 py-1 rounded border border-slate-700">{p.position}</span>
-                                  </td>
-                                  <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
-                                      {p.stats.g}
-                                  </td>
-                                  <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
-                                      {p.stats.gs}
-                                  </td>
-                                  <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
-                                      {mpg}
-                                  </td>
-                                  <td className="py-4 px-6 text-right align-middle bg-slate-800/20">
-                                      <span className={`font-black pretendard tracking-tight text-base ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{currentStatDef.format(currentStatDef.getValue(p))}</span>
-                                  </td>
-                              </tr>
-                          );
-                      })}
-                  </tbody>
-              </table>
-          </div>
+                              return (
+                                  <tr key={p.id} className={`hover:bg-slate-800/40 transition-colors group ${isTop3 ? 'bg-indigo-900/5' : ''}`}>
+                                      <td className="py-4 px-2 text-center align-middle">
+                                          <span className={`font-black pretendard tracking-tight text-lg ${getRankNumberStyle(rank)}`}>{rank}</span>
+                                      </td>
+                                      <td className="py-4 px-6 cursor-pointer align-middle" onClick={() => setViewPlayer(p)}>
+                                          <div className="flex items-center gap-4">
+                                              <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-0"}>{p.ovr}</div>
+                                              <span className={`font-black text-base truncate max-w-[240px] group-hover:underline underline-offset-4 ${isTop3 ? 'text-white' : 'text-slate-200 group-hover:text-indigo-400'}`}>{p.name}</span>
+                                          </div>
+                                      </td>
+                                      <td className="py-4 px-4 align-middle">
+                                          <div className="flex items-center gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
+                                              <img src={p.teamLogo} className="w-6 h-6 object-contain" alt="" />
+                                              <span className="text-base font-bold text-slate-400 uppercase tracking-tight">{p.teamCity} {p.teamName}</span>
+                                          </div>
+                                      </td>
+                                      <td className="py-4 px-2 text-center align-middle">
+                                          <span className="text-xs font-black bg-slate-800 text-slate-400 px-2 py-1 rounded border border-slate-700">{p.position}</span>
+                                      </td>
+                                      <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
+                                          {p.stats.g}
+                                      </td>
+                                      <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
+                                          {p.stats.gs}
+                                      </td>
+                                      <td className="py-4 px-4 text-right align-middle bg-slate-800/20 text-slate-300 font-medium text-base tabular-nums">
+                                          {mpg}
+                                      </td>
+                                      <td className="py-4 px-6 text-right align-middle bg-slate-800/20">
+                                          <span className={`font-black pretendard tracking-tight text-base ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{currentStatDef.format(currentStatDef.getValue(p))}</span>
+                                      </td>
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
+              </div>
+          )}
       </div>
     </div>
   );
