@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Trophy, Users, Calendar as CalendarIcon, ArrowLeftRight, LayoutDashboard, 
@@ -446,6 +447,208 @@ const App: React.FC = () => {
       triggerSave(); // Trigger Debounced Save
   }, [triggerSave]);
 
+  // -------------------------------------------------------------------------
+  // Automatic Playoff Generation Logic
+  // -------------------------------------------------------------------------
+  const autoManagePlayoffs = useCallback((
+      currentTeams: Team[],
+      currentSchedule: Game[],
+      currentSeries: PlayoffSeries[],
+      currentDate: string
+  ): { newSeries: PlayoffSeries[], newGames: Game[] } | null => {
+      
+      // 1. Check if Regular Season is Finished
+      const regularSeasonGames = currentSchedule.filter(g => !g.isPlayoff);
+      const isRegularSeasonFinished = regularSeasonGames.length > 0 && regularSeasonGames.every(g => g.played);
+      
+      if (!isRegularSeasonFinished) return null;
+
+      const playInSeries = currentSeries.filter(s => s.round === 0);
+      const round1Series = currentSeries.filter(s => s.round === 1);
+      const round2Series = currentSeries.filter(s => s.round === 2);
+      const round3Series = currentSeries.filter(s => s.round === 3);
+      const round4Series = currentSeries.filter(s => s.round === 4);
+
+      // Helper: Seeds Calculation
+      const getSeeds = (conf: 'East' | 'West') => {
+          return [...currentTeams]
+              .filter(t => t.conference === conf)
+              .sort((a, b) => {
+                  const aPct = (a.wins / (a.wins + a.losses || 1));
+                  const bPct = (b.wins / (b.wins + b.losses || 1));
+                  return bPct - aPct || b.wins - a.wins;
+              });
+      };
+      
+      const eastSeeds = getSeeds('East');
+      const westSeeds = getSeeds('West');
+
+      let newSeries: PlayoffSeries[] = [];
+      let newGames: Game[] = [];
+
+      // --------------------------------------------------------
+      // A. Play-In Generation (Initial 7v8, 9v10)
+      // --------------------------------------------------------
+      if (playInSeries.length === 0) {
+          ['East', 'West'].forEach(conf => {
+              const seeds = conf === 'East' ? eastSeeds : westSeeds;
+              const s7 = seeds[6], s8 = seeds[7], s9 = seeds[8], s10 = seeds[9];
+              
+              const id7v8 = `pi_${conf}_7v8`;
+              newSeries.push({ id: id7v8, round: 0, conference: conf as any, higherSeedId: s7.id, lowerSeedId: s8.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+              newGames.push({ id: `${id7v8}_g1`, homeTeamId: s7.id, awayTeamId: s8.id, date: `2026-04-14`, played: false, isPlayoff: true, seriesId: id7v8 });
+
+              const id9v10 = `pi_${conf}_9v10`;
+              newSeries.push({ id: id9v10, round: 0, conference: conf as any, higherSeedId: s9.id, lowerSeedId: s10.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+              newGames.push({ id: `${id9v10}_g1`, homeTeamId: s9.id, awayTeamId: s10.id, date: `2026-04-15`, played: false, isPlayoff: true, seriesId: id9v10 });
+          });
+          return { newSeries, newGames };
+      }
+
+      // --------------------------------------------------------
+      // B. Play-In Advancement (8th Seed Decider)
+      // --------------------------------------------------------
+      const isPlayInStage1Finished = playInSeries.filter(s => !s.id.includes('8th')).every(s => s.finished);
+      const isPlayInStage2Generated = playInSeries.some(s => s.id.includes('8th'));
+
+      if (isPlayInStage1Finished && !isPlayInStage2Generated) {
+          ['East', 'West'].forEach(conf => {
+              const piGames = playInSeries.filter(s => s.conference === conf);
+              const g7v8 = piGames.find(s => s.id.includes('7v8'));
+              const g9v10 = piGames.find(s => s.id.includes('9v10'));
+              
+              if (g7v8 && g9v10 && g7v8.finished && g9v10.finished) {
+                  const loser7v8 = g7v8.winnerId === g7v8.higherSeedId ? g7v8.lowerSeedId : g7v8.higherSeedId;
+                  const winner9v10 = g9v10.winnerId;
+                  
+                  const id8th = `pi_${conf}_8th`;
+                  newSeries.push({ id: id8th, round: 0, conference: conf as any, higherSeedId: loser7v8, lowerSeedId: winner9v10!, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
+                  newGames.push({ id: `${id8th}_g1`, homeTeamId: loser7v8, awayTeamId: winner9v10!, date: `2026-04-17`, played: false, isPlayoff: true, seriesId: id8th });
+              }
+          });
+          return { newSeries, newGames };
+      }
+
+      // --------------------------------------------------------
+      // C. Round 1 Generation
+      // --------------------------------------------------------
+      const isPlayInFinished = playInSeries.every(s => s.finished);
+      
+      if (isPlayInFinished && round1Series.length === 0) {
+          const getFinalSeeds = (conf: 'East' | 'West') => {
+              const baseSeeds = (conf === 'East' ? eastSeeds : westSeeds).slice(0, 6);
+              const piGames = playInSeries.filter(s => s.conference === conf);
+              const g7v8 = piGames.find(s => s.id.includes('7v8'));
+              const g8th = piGames.find(s => s.id.includes('8th'));
+              const seed7 = currentTeams.find(t => t.id === g7v8?.winnerId)!;
+              const seed8 = currentTeams.find(t => t.id === g8th?.winnerId)!;
+              return [...baseSeeds, seed7, seed8];
+          };
+
+          const finalEast = getFinalSeeds('East');
+          const finalWest = getFinalSeeds('West');
+
+          const createMatchups = (seeds: Team[], conf: 'East' | 'West') => {
+              const pairs = [[0,7], [3,4], [2,5], [1,6]]; // 1v8, 4v5, 3v6, 2v7
+              pairs.forEach(([hIdx, lIdx]) => {
+                  const h = seeds[hIdx], l = seeds[lIdx];
+                  const sId = `s_${conf}_r1_${h.id}_${l.id}`;
+                  newSeries.push({ id: sId, round: 1, conference: conf, higherSeedId: h.id, lowerSeedId: l.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
+                  for(let i=1; i<=4; i++) newGames.push({ id: `${sId}_g${i}`, homeTeamId: i % 2 !== 0 ? h.id : l.id, awayTeamId: i % 2 !== 0 ? l.id : h.id, date: `2026-04-${20 + i}`, played: false, isPlayoff: true, seriesId: sId });
+              });
+          };
+
+          createMatchups(finalEast, 'East');
+          createMatchups(finalWest, 'West');
+          return { newSeries, newGames };
+      }
+
+      // --------------------------------------------------------
+      // D. Next Round Generation (R1 -> R2, R2 -> R3, R3 -> R4)
+      // --------------------------------------------------------
+      const checkAndGenNextRound = (currentRoundSeries: PlayoffSeries[], nextRoundSeries: PlayoffSeries[], roundNum: number) => {
+          if (currentRoundSeries.length > 0 && currentRoundSeries.every(s => s.finished) && nextRoundSeries.length === 0) {
+              const nextRound = roundNum + 1;
+              const month = nextRound === 4 ? '06' : '05';
+              let startDay = 1;
+              if (nextRound === 2) startDay = 5;
+              if (nextRound === 3) startDay = 20;
+              if (nextRound === 4) startDay = 6;
+
+              const createNextSeries = (s1: PlayoffSeries, s2: PlayoffSeries, conf: 'East' | 'West' | 'NBA') => {
+                  const w1 = s1.winnerId!;
+                  const w2 = s2.winnerId!;
+                  
+                  // Rank determination (Simple Logic: seed map based on original standings + playin)
+                  // For simplicity, we compare wins from regular season to determine HCA if seeds are muddy, 
+                  // but ideally we track seeds. Here we just use the 'higherSeedId' logic from previous series or wins.
+                  const t1 = currentTeams.find(t => t.id === w1)!;
+                  const t2 = currentTeams.find(t => t.id === w2)!;
+                  const hca = t1.wins > t2.wins ? t1 : t2; // Simple HCA by record
+                  const lower = hca.id === t1.id ? t2 : t1;
+
+                  const sId = `s_${conf}_r${nextRound}_${hca.id}_${lower.id}`;
+                  newSeries.push({ id: sId, round: nextRound as any, conference: conf, higherSeedId: hca.id, lowerSeedId: lower.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
+                  
+                  for(let i=1; i<=4; i++) {
+                      newGames.push({ 
+                          id: `${sId}_g${i}`, 
+                          homeTeamId: i % 2 !== 0 ? hca.id : lower.id, 
+                          awayTeamId: i % 2 !== 0 ? lower.id : hca.id, 
+                          date: `2026-${month}-${(startDay + i * 2).toString().padStart(2, '0')}`, 
+                          played: false, 
+                          isPlayoff: true, 
+                          seriesId: sId 
+                      });
+                  }
+              };
+
+              if (roundNum === 1) { // R1 -> Semis
+                  ['East', 'West'].forEach(conf => {
+                      const r1 = currentRoundSeries.filter(s => s.conference === conf);
+                      // Sort or Find based on brackets. 
+                      // 1v8(A) vs 4v5(B), 3v6(C) vs 2v7(D). 
+                      // We can identify brackets by seeds.
+                      // Simplified: We assume series order or track bracket ID. 
+                      // Let's use Seed Mapping logic:
+                      const findSeriesWithSeed = (seedRank: number) => {
+                          const seeds = conf === 'East' ? eastSeeds : westSeeds;
+                          // If PlayIn, seeds 7/8 might be different, but for 1-6 it's stable.
+                          // This logic is complex to reconstruct perfectly without explicit seed tracking.
+                          // Fallback: Use the logic from PlayoffsView that matches 1v8 and 4v5.
+                          return r1.find(s => s.higherSeedId === seeds[seedRank-1]?.id || s.lowerSeedId === seeds[seedRank-1]?.id);
+                      };
+                      
+                      const s1v8 = findSeriesWithSeed(1);
+                      const s4v5 = findSeriesWithSeed(4);
+                      const s3v6 = findSeriesWithSeed(3);
+                      const s2v7 = findSeriesWithSeed(2);
+
+                      if (s1v8 && s4v5) createNextSeries(s1v8, s4v5, conf as any);
+                      if (s3v6 && s2v7) createNextSeries(s3v6, s2v7, conf as any);
+                  });
+              } else if (roundNum === 2) { // Semis -> Conf Finals
+                  ['East', 'West'].forEach(conf => {
+                      const r2 = currentRoundSeries.filter(s => s.conference === conf);
+                      if (r2.length === 2) createNextSeries(r2[0], r2[1], conf as any);
+                  });
+              } else if (roundNum === 3) { // Conf Finals -> Finals
+                  const eastF = currentRoundSeries.find(s => s.conference === 'East');
+                  const westF = currentRoundSeries.find(s => s.conference === 'West');
+                  if (eastF && westF) createNextSeries(eastF, westF, 'NBA');
+              }
+              return true;
+          }
+          return false;
+      };
+
+      if (checkAndGenNextRound(round1Series, round2Series, 1)) return { newSeries, newGames };
+      if (checkAndGenNextRound(round2Series, round3Series, 2)) return { newSeries, newGames };
+      if (checkAndGenNextRound(round3Series, round4Series, 3)) return { newSeries, newGames };
+
+      return null;
+  }, []);
+
   const handleExecuteSim = async (tactics: GameTactics) => {
     const myTeam = teams.find(t => t.id === myTeamId);
     if (!myTeamId || !myTeam) return;
@@ -511,11 +714,63 @@ const App: React.FC = () => {
             const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
             if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
             
+            // Playoff Series Update Logic
+            if (game.isPlayoff && game.seriesId) {
+                const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
+                if (sIdx !== -1) {
+                    const series = updatedSeries[sIdx];
+                    const winnerId = result.homeScore > result.awayScore ? home.id : away.id;
+                    const isHigherWinner = winnerId === series.higherSeedId;
+                    
+                    const newH = series.higherSeedWins + (isHigherWinner ? 1 : 0);
+                    const newL = series.lowerSeedWins + (!isHigherWinner ? 1 : 0);
+                    const target = series.targetWins || 4;
+                    const finished = newH >= target || newL >= target;
+                    
+                    updatedSeries[sIdx] = { 
+                        ...series, 
+                        higherSeedWins: newH, 
+                        lowerSeedWins: newL, 
+                        finished, 
+                        winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined 
+                    };
+
+                    // Auto-schedule next game in series if not finished
+                    if (!finished) {
+                        const nextGameNum = newH + newL + 1;
+                        const nextGameDate = new Date(targetSimDate);
+                        nextGameDate.setDate(nextGameDate.getDate() + 2); // 2 days rest
+                        const nextId = `${series.id}_g${nextGameNum}`;
+                        
+                        // Check if already exists (sometimes pre-gen)
+                        if (!updatedSchedule.some(g => g.id === nextId)) {
+                             updatedSchedule.push({
+                                 id: nextId,
+                                 seriesId: series.id,
+                                 isPlayoff: true,
+                                 homeTeamId: nextGameNum % 2 !== 0 ? series.higherSeedId : series.lowerSeedId, // Simple Home/Away Toggle
+                                 awayTeamId: nextGameNum % 2 !== 0 ? series.lowerSeedId : series.higherSeedId,
+                                 date: nextGameDate.toISOString().split('T')[0],
+                                 played: false
+                             });
+                        }
+                    }
+                }
+            }
+
             // Store Box Score Separately
             updatedBoxScores[game.id] = { home: result.homeBox, away: result.awayBox };
 
             allPlayedToday.push(updatedGame);
             if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
+        }
+
+        // Automatic Playoff Generation Trigger
+        const autoPlayoffUpdates = autoManagePlayoffs(updatedTeams, updatedSchedule, updatedSeries, targetSimDate);
+        if (autoPlayoffUpdates) {
+            updatedSeries = [...updatedSeries, ...autoPlayoffUpdates.newSeries];
+            updatedSchedule = [...updatedSchedule, ...autoPlayoffUpdates.newGames];
+            setToastMessage("새로운 플레이오프 일정이 생성되었습니다.");
         }
         
         const currentDateObj = new Date(targetSimDate);
@@ -550,6 +805,19 @@ const App: React.FC = () => {
         setTimeout(() => processSimulation(), 800);
     }
   };
+
+  // Trigger Playoff Check when entering Dashboard
+  useEffect(() => {
+      if (view === 'Dashboard' && isDataLoaded) {
+          const updates = autoManagePlayoffs(teams, schedule, playoffSeries, currentSimDate);
+          if (updates) {
+              setPlayoffSeries(prev => [...prev, ...updates.newSeries]);
+              setSchedule(prev => [...prev, ...updates.newGames]);
+              setToastMessage("플레이오프 일정이 업데이트되었습니다.");
+              triggerSave();
+          }
+      }
+  }, [view, isDataLoaded, teams, schedule, playoffSeries, currentSimDate, autoManagePlayoffs, triggerSave]);
 
   const tickerGames = useMemo(() => {
     const played = schedule.filter(g => g.played);

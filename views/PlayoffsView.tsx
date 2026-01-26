@@ -135,17 +135,6 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       return eastPI.length === 3 && westPI.length === 3 && eastPI.every(s => s.finished) && westPI.every(s => s.finished);
   }, [series, playInSeries]);
 
-  const getCurrentRound = () => {
-      if (series.length === 0) return 0;
-      return Math.max(...series.map(s => s.round));
-  };
-  const currentRound = getCurrentRound();
-
-  const isCurrentRoundFinished = useMemo(() => {
-      const currentRoundSeries = series.filter(s => s.round === currentRound);
-      return currentRoundSeries.length > 0 && currentRoundSeries.every(s => s.finished);
-  }, [series, currentRound]);
-
   const regularStandingsSeeds = useMemo(() => {
       const getSeeds = (conf: 'East' | 'West') => {
         return [...teams]
@@ -219,178 +208,6 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       return candidates[index] || null;
   };
 
-  const generatePlayIn = () => {
-      if (hasPlayInStarted) return;
-      const newSeries: PlayoffSeries[] = [];
-      const newGames: Game[] = [];
-      ['East', 'West'].forEach(conf => {
-          const seeds = regularStandingsSeeds[conf as 'East'|'West'];
-          const s7 = seeds[6], s8 = seeds[7], s9 = seeds[8], s10 = seeds[9];
-          
-          const id7v8 = `pi_${conf}_7v8`;
-          newSeries.push({ id: id7v8, round: 0, conference: conf as any, higherSeedId: s7.id, lowerSeedId: s8.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
-          newGames.push({ id: `${id7v8}_g1`, homeTeamId: s7.id, awayTeamId: s8.id, date: `2026-04-14`, played: false, isPlayoff: true, seriesId: id7v8 });
-
-          const id9v10 = `pi_${conf}_9v10`;
-          newSeries.push({ id: id9v10, round: 0, conference: conf as any, higherSeedId: s9.id, lowerSeedId: s10.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
-          newGames.push({ id: `${id9v10}_g1`, homeTeamId: s9.id, awayTeamId: s10.id, date: `2026-04-15`, played: false, isPlayoff: true, seriesId: id9v10 });
-      });
-      setSeries([...series, ...newSeries]);
-      setSchedule([...schedule, ...newGames]);
-  };
-
-  const advancePlayIn = () => {
-      if (!hasPlayInStarted || isPlayInFinished) return;
-      const newSeries: PlayoffSeries[] = [];
-      const newGames: Game[] = [];
-      let updated = false;
-      ['East', 'West'].forEach(conf => {
-          const piGames = playInSeries.filter(s => s.conference === conf);
-          if (piGames.length === 2 && piGames.every(s => s.finished)) {
-              const g7v8 = piGames.find(s => s.id.includes('7v8'));
-              const g9v10 = piGames.find(s => s.id.includes('9v10'));
-              if (g7v8 && g9v10) {
-                  const loser7v8 = g7v8.winnerId === g7v8.higherSeedId ? g7v8.lowerSeedId : g7v8.higherSeedId;
-                  const winner9v10 = g9v10.winnerId;
-                  const id8th = `pi_${conf}_8th`;
-                  newSeries.push({ id: id8th, round: 0, conference: conf as any, higherSeedId: loser7v8, lowerSeedId: winner9v10!, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 });
-                  newGames.push({ id: `${id8th}_g1`, homeTeamId: loser7v8, awayTeamId: winner9v10!, date: `2026-04-17`, played: false, isPlayoff: true, seriesId: id8th });
-                  updated = true;
-              }
-          }
-      });
-      if (updated) {
-          setSeries([...series, ...newSeries]);
-          setSchedule([...schedule, ...newGames]);
-      }
-  };
-
-  if (hasPlayInStarted && !isPlayInFinished && !series.some(s => s.id.includes('8th'))) {
-      const eastReady = series.filter(s => s.conference === 'East' && s.round === 0 && s.finished).length === 2;
-      const westReady = series.filter(s => s.conference === 'West' && s.round === 0 && s.finished).length === 2;
-      if (eastReady || westReady) setTimeout(advancePlayIn, 100);
-  }
-
-  const generateMainPlayoffs = () => {
-    if (series.some(s => s.round === 1)) return; 
-    const getFinalSeeds = (conf: 'East' | 'West') => {
-        const baseSeeds = regularStandingsSeeds[conf].slice(0, 6);
-        const piGames = playInSeries.filter(s => s.conference === conf);
-        const g7v8 = piGames.find(s => s.id.includes('7v8'));
-        const g8th = piGames.find(s => s.id.includes('8th'));
-        const seed7 = teams.find(t => t.id === g7v8?.winnerId)!;
-        const seed8 = teams.find(t => t.id === g8th?.winnerId)!;
-        return [...baseSeeds, seed7, seed8];
-    };
-    const eastSeeds = getFinalSeeds('East');
-    const westSeeds = getFinalSeeds('West');
-    const newSeries: PlayoffSeries[] = [];
-    const newGames: Game[] = [];
-    const createSeriesMatchup = (h: Team, l: Team, conf: 'East' | 'West', round: number) => {
-      const sId = `s_${conf}_r${round}_${h.id}_${l.id}`;
-      newSeries.push({ id: sId, round: round as any, conference: conf, higherSeedId: h.id, lowerSeedId: l.id, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
-      for(let i=1; i<=4; i++) newGames.push({ id: `${sId}_g${i}`, homeTeamId: i % 2 !== 0 ? h.id : l.id, awayTeamId: i % 2 !== 0 ? l.id : h.id, date: `2026-04-${20 + i}`, played: false, isPlayoff: true, seriesId: sId });
-    };
-    [eastSeeds, westSeeds].forEach((seeds, idx) => {
-        const conf = idx === 0 ? 'East' : 'West';
-        createSeriesMatchup(seeds[0], seeds[7], conf, 1); // 1v8
-        createSeriesMatchup(seeds[3], seeds[4], conf, 1); // 4v5
-        createSeriesMatchup(seeds[2], seeds[5], conf, 1); // 3v6
-        createSeriesMatchup(seeds[1], seeds[6], conf, 1); // 2v7
-    });
-    setSeries([...series, ...newSeries]);
-    setSchedule([...schedule, ...newGames]);
-  };
-
-  const generateNextRound = () => {
-      if (!isCurrentRoundFinished || currentRound >= 4) return;
-
-      const nextRound = currentRound + 1;
-      const newSeries: PlayoffSeries[] = [];
-      const newGames: Game[] = [];
-
-      const createNextSeries = (s1: PlayoffSeries, s2: PlayoffSeries, conf: 'East' | 'West' | 'NBA') => {
-          const winner1Id = s1.winnerId!;
-          const winner2Id = s2.winnerId!;
-          
-          // Determine home advantage (higher seed = better rank)
-          // In seedMap, lower number is better.
-          const rank1 = seedMap[winner1Id] || 99;
-          const rank2 = seedMap[winner2Id] || 99;
-          
-          const higherId = rank1 < rank2 ? winner1Id : winner2Id;
-          const lowerId = rank1 < rank2 ? winner2Id : winner1Id;
-
-          const sId = `s_${conf}_r${nextRound}_${higherId}_${lowerId}`;
-          newSeries.push({ id: sId, round: nextRound as any, conference: conf, higherSeedId: higherId, lowerSeedId: lowerId, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4 });
-          
-          // Generate 4 initial games (up to 7 generated by simulation logic)
-          // Start date depends on round
-          let startDay = 20;
-          if (nextRound === 2) startDay = 5; // May 5
-          if (nextRound === 3) startDay = 20; // May 20
-          if (nextRound === 4) startDay = 6; // June 6
-          
-          const month = nextRound === 4 ? '06' : '05';
-
-          for(let i=1; i<=4; i++) {
-              newGames.push({ 
-                  id: `${sId}_g${i}`, 
-                  homeTeamId: i % 2 !== 0 ? higherId : lowerId, 
-                  awayTeamId: i % 2 !== 0 ? lowerId : higherId, 
-                  date: `2026-${month}-${(startDay + i * 2).toString().padStart(2, '0')}`, 
-                  played: false, 
-                  isPlayoff: true, 
-                  seriesId: sId 
-              });
-          }
-      };
-
-      if (currentRound === 1) {
-          // Round 2 (Semis) Generation
-          ['East', 'West'].forEach(conf => {
-              const r1 = series.filter(s => s.conference === conf && s.round === 1);
-              // Bracket Logic:
-              // Winner of 1v8 (Index 0) plays Winner of 4v5 (Index 1)
-              // Winner of 3v6 (Index 2) plays Winner of 2v7 (Index 3)
-              // NOTE: The array `series` might not be sorted by creation order perfectly if state updates were async.
-              // However, in `generateMainPlayoffs`, we pushed them in order: 1v8, 4v5, 3v6, 2v7.
-              // Let's rely on Seed logic to be safe.
-              
-              const findSeriesByTopSeed = (seed: number) => r1.find(s => {
-                  const hSeed = seedMap[s.higherSeedId];
-                  return hSeed === seed;
-              });
-
-              const s1v8 = findSeriesByTopSeed(1);
-              const s4v5 = findSeriesByTopSeed(4);
-              const s3v6 = findSeriesByTopSeed(3);
-              const s2v7 = findSeriesByTopSeed(2);
-
-              if (s1v8 && s4v5) createNextSeries(s1v8, s4v5, conf as any);
-              if (s3v6 && s2v7) createNextSeries(s3v6, s2v7, conf as any);
-          });
-      } else if (currentRound === 2) {
-          // Round 3 (Conf Finals) Generation
-          ['East', 'West'].forEach(conf => {
-              const r2 = series.filter(s => s.conference === conf && s.round === 2);
-              if (r2.length === 2) {
-                  createNextSeries(r2[0], r2[1], conf as any);
-              }
-          });
-      } else if (currentRound === 3) {
-          // Round 4 (NBA Finals) Generation
-          const eastFinals = series.find(s => s.conference === 'East' && s.round === 3);
-          const westFinals = series.find(s => s.conference === 'West' && s.round === 3);
-          if (eastFinals && westFinals) {
-              createNextSeries(eastFinals, westFinals, 'NBA');
-          }
-      }
-
-      setSeries([...series, ...newSeries]);
-      setSchedule([...schedule, ...newGames]);
-  };
-
   const pi_east = [getPISeries('East', '7v8'), getPISeries('East', '9v10'), getPISeries('East', '8th')];
   const pi_west = [getPISeries('West', '7v8'), getPISeries('West', '9v10'), getPISeries('West', '8th')];
   
@@ -429,26 +246,11 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
         
         {regularSeasonFinished && (
             <div className="flex gap-2">
-                {!hasPlayInStarted && (
-                    <button onClick={generatePlayIn} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-black uppercase text-xs tracking-widest transition-all flex items-center gap-2 border border-indigo-500 shadow-lg">
-                        <Swords size={14} /> Start Play-In
-                    </button>
-                )}
                 {hasPlayInStarted && !isPlayInFinished && (
                     <div className="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
                         <Zap size={14} className="text-yellow-400 animate-pulse" />
                         <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Play-In Active</span>
                     </div>
-                )}
-                {isPlayInFinished && !series.some(s => s.round === 1) && (
-                    <button onClick={generateMainPlayoffs} className="px-5 py-2.5 bg-yellow-600 hover:bg-yellow-500 text-white rounded-lg font-black uppercase text-xs tracking-widest transition-all flex items-center gap-2 border border-yellow-500 shadow-lg animate-pulse">
-                        <Trophy size={14} /> Start Playoffs
-                    </button>
-                )}
-                {isCurrentRoundFinished && currentRound >= 1 && currentRound < 4 && (
-                    <button onClick={generateNextRound} className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black uppercase text-xs tracking-widest transition-all flex items-center gap-2 border border-emerald-500 shadow-lg animate-pulse">
-                        <ArrowRight size={14} /> Next Round
-                    </button>
                 )}
             </div>
         )}
