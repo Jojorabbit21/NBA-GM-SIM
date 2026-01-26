@@ -51,11 +51,11 @@ export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, confe
   { id: 'sas', name: '스퍼스', city: '샌안토니오', conference: 'West', division: 'Southwest' },
 ];
 
-// Robust Team Name Mapping (Handles English, Korean, City, Team Name)
+// Robust Team Name Mapping (Handles English, Korean, City, Team Name, and Common Abbreviations)
 const TEAM_NAME_MAP: Record<string, string> = {
   // Atlantic
   'boston': 'bos', 'celtics': 'bos', '보스턴': 'bos', '셀틱스': 'bos', 'bos': 'bos',
-  'brooklyn': 'bkn', 'nets': 'bkn', '브루클린': 'bkn', '네츠': 'bkn', 'bkn': 'bkn',
+  'brooklyn': 'bkn', 'nets': 'bkn', '브루클린': 'bkn', '네츠': 'bkn', 'bkn': 'bkn', 'brk': 'bkn',
   'new york': 'nyk', 'knicks': 'nyk', 'ny': 'nyk', '뉴욕': 'nyk', '닉스': 'nyk', 'nyk': 'nyk',
   'philadelphia': 'phi', '76ers': 'phi', 'sixers': 'phi', '필라델피아': 'phi', '세븐티식서스': 'phi', 'phi': 'phi',
   'toronto': 'tor', 'raptors': 'tor', '토론토': 'tor', '랩터스': 'tor', 'tor': 'tor',
@@ -67,7 +67,7 @@ const TEAM_NAME_MAP: Record<string, string> = {
   'milwaukee': 'mil', 'bucks': 'mil', '밀워키': 'mil', '벅스': 'mil', 'mil': 'mil',
   // Southeast
   'atlanta': 'atl', 'hawks': 'atl', '애틀랜타': 'atl', '호크스': 'atl', 'atl': 'atl',
-  'charlotte': 'cha', 'hornets': 'cha', '샬럿': 'cha', '호네츠': 'cha', 'cha': 'cha',
+  'charlotte': 'cha', 'hornets': 'cha', '샬럿': 'cha', '호네츠': 'cha', 'cha': 'cha', 'cho': 'cha', 'charlote': 'cha',
   'miami': 'mia', 'heat': 'mia', '마이애미': 'mia', '히트': 'mia', 'mia': 'mia',
   'orlando': 'orl', 'magic': 'orl', '올랜도': 'orl', '매직': 'orl', 'orl': 'orl',
   'washington': 'was', 'wizards': 'was', '워싱턴': 'was', '위저즈': 'was', 'was': 'was',
@@ -81,13 +81,13 @@ const TEAM_NAME_MAP: Record<string, string> = {
   'golden state': 'gsw', 'warriors': 'gsw', 'gs': 'gsw', '골든스테이트': 'gsw', '워리어스': 'gsw', 'gsw': 'gsw',
   'la clippers': 'lac', 'clippers': 'lac', '클리퍼스': 'lac', 'lac': 'lac',
   'la lakers': 'lal', 'lakers': 'lal', '레이커스': 'lal', 'lal': 'lal',
-  'phoenix': 'phx', 'suns': 'phx', '피닉스': 'phx', '선즈': 'phx', 'phx': 'phx',
+  'phoenix': 'phx', 'suns': 'phx', '피닉스': 'phx', '선즈': 'phx', 'phx': 'phx', 'pho': 'phx', 'pheonix': 'phx', 'phonix': 'phx',
   'sacramento': 'sac', 'kings': 'sac', '새크라멘토': 'sac', '킹스': 'sac', 'sac': 'sac',
   // Southwest
   'dallas': 'dal', 'mavericks': 'dal', 'mavs': 'dal', '댈러스': 'dal', '매버릭스': 'dal', 'dal': 'dal',
   'houston': 'hou', 'rockets': 'hou', '휴스턴': 'hou', '로케츠': 'hou', 'hou': 'hou',
   'memphis': 'mem', 'grizzlies': 'mem', '멤피스': 'mem', '그리즐리스': 'mem', 'mem': 'mem',
-  'new orleans': 'nop', 'pelicans': 'nop', 'pels': 'nop', '뉴올리언스': 'nop', '펠리컨스': 'nop', 'nop': 'nop',
+  'new orleans': 'nop', 'pelicans': 'nop', 'pels': 'nop', '뉴올리언스': 'nop', '펠리컨스': 'nop', 'nop': 'nop', 'no': 'nop',
   'san antonio': 'sas', 'spurs': 'sas', '샌안토니오': 'sas', '스퍼스': 'sas', 'sas': 'sas'
 };
 
@@ -100,16 +100,20 @@ export const normalizeName = (name: string): string => {
         .trim();
 };
 
+const SORTED_KEYS = Object.keys(TEAM_NAME_MAP).sort((a, b) => b.length - a.length);
+
 export const resolveTeamId = (input: string): string => {
     if (!input) return 'unknown';
     const normalized = input.toLowerCase().trim();
     
-    // Check direct map
+    // 1. Direct Match (O(1))
     if (TEAM_NAME_MAP[normalized]) return TEAM_NAME_MAP[normalized];
 
-    // Check partial matches (e.g., "Charlotte Hornets" -> contains "charlotte")
-    for (const key in TEAM_NAME_MAP) {
-        if (normalized.includes(key)) return TEAM_NAME_MAP[key];
+    // 2. Partial Match (Longest keys first)
+    for (const key of SORTED_KEYS) {
+        if (normalized.includes(key)) {
+            return TEAM_NAME_MAP[key];
+        }
     }
     
     return 'unknown';
@@ -139,7 +143,6 @@ export const parseCSVToObjects = (csv: string): any[] => {
     const headers = headersLine.split(',').map(h => h.trim().toLowerCase());
     const result = [];
     for (let i = 1; i < lines.length; i++) {
-        // Handle comma inside quotes (simple version) or split by comma
         const values = lines[i].split(',').map(v => v.trim());
         if (values.length < headers.length - 1) continue;
         const obj: any = {};
@@ -159,7 +162,6 @@ export const calculatePlayerOvr = (p: any): number => {
         return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
     };
     
-    // ... (rest of calculation logic remains same) ...
     const threeAvg = (v('threec', v('3c')) + v('three45', v('3_45')) + v('threet', v('3t'))) / 3;
 
     const attr = {
@@ -231,7 +233,6 @@ export const calculatePlayerOvr = (p: any): number => {
 };
 
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
-    // Helper to get value case-insensitively
     const v = (key: string, def: any = 70) => {
         return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
     };
@@ -303,66 +304,91 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
     };
 };
 
-export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
-    return rows.map(r => {
-        let dateStr = r.date;
-        if (dateStr && dateStr.includes(' ')) {
-            try {
-                const d = new Date(dateStr);
-                if (!isNaN(d.getTime())) {
-                    dateStr = d.toISOString().split('T')[0];
-                }
-            } catch(e) {}
+export const generateSeasonSchedule = (userTeamId: string): Game[] => {
+    const teams = INITIAL_TEAMS_DATA.map(t => t.id);
+    const schedule: Game[] = [];
+    let date = new Date(SEASON_START_DATE);
+    
+    // Generate roughly 82 games per team.
+    // 30 teams, 15 games per match day.
+    // Total games = 1230.
+    
+    // Simplified Round Robin x 3
+    for (let round = 0; round < 3; round++) {
+        // Shuffle teams
+        const shuffled = [...teams].sort(() => Math.random() - 0.5);
+        
+        // Create matchdays
+        for (let i = 0; i < teams.length - 1; i++) {
+            const matchDayGames: Game[] = [];
+            
+            // Polygon method for round robin
+            for (let j = 0; j < teams.length / 2; j++) {
+                const t1 = shuffled[j];
+                const t2 = shuffled[teams.length - 1 - j];
+                
+                matchDayGames.push({
+                    id: `g_gen_${round}_${i}_${j}`,
+                    homeTeamId: round % 2 === 0 ? t1 : t2,
+                    awayTeamId: round % 2 === 0 ? t2 : t1,
+                    date: date.toISOString().split('T')[0],
+                    played: false,
+                    isPlayoff: false
+                });
+            }
+            
+            schedule.push(...matchDayGames);
+            date.setDate(date.getDate() + 2); // Play every 2 days
+            
+            // Rotate array for next round of round-robin (keep first element fixed)
+            const first = shuffled[0];
+            const rest = shuffled.slice(1);
+            const last = rest.pop();
+            if (last) rest.unshift(last);
+            shuffled.splice(0, shuffled.length, first, ...rest);
         }
-
-        const site = r.site;
-        const homeName = site === '홈' ? r.team : r.opponent;
-        const awayName = site === '홈' ? r.opponent : r.team;
-
-        // Use robust resolver for Schedule too
-        const homeTeamId = resolveTeamId(homeName);
-        const awayTeamId = resolveTeamId(awayName);
-
-        return {
-            id: r.id || `g_${homeTeamId}_${awayTeamId}_${dateStr}`,
-            homeTeamId,
-            awayTeamId,
-            date: dateStr,
-            homeScore: r.tmscore || undefined,
-            awayScore: r.oppscore || undefined,
-            played: !!(r.tmscore),
-            isPlayoff: r.isplayoff || false,
-            seriesId: r.seriesid || undefined
-        };
-    });
-};
-
-export const generateSeasonSchedule = (myTeamId: string): Game[] => {
-  const games: Game[] = [];
-  const teamIds = INITIAL_TEAMS_DATA.map(t => t.id);
-  const startDate = new Date(SEASON_START_DATE);
-  for (let i = 0; i < 82; i++) {
-    const oppIdx = (teamIds.indexOf(myTeamId) + i + 1) % teamIds.length;
-    const opponentId = teamIds[oppIdx];
-    const gameDate = new Date(startDate);
-    gameDate.setDate(startDate.getDate() + i * 2);
-    const isHome = i % 2 === 0;
-    games.push({ id: `game_${i}_${myTeamId}`, homeTeamId: isHome ? myTeamId : opponentId, awayTeamId: isHome ? opponentId : myTeamId, date: gameDate.toISOString().split('T')[0], played: false });
-  }
-  return games;
+    }
+    
+    return schedule;
 };
 
 export const exportScheduleToCSV = (schedule: Game[]) => {
-  const headers = ['id', 'date', 'homeTeamId', 'awayTeamId', 'homeScore', 'awayScore', 'played', 'isPlayoff'];
-  const rows = schedule.map(g => [g.id, g.date, g.homeTeamId, g.awayTeamId, g.homeScore ?? '', g.awayScore ?? '', g.played, g.isPlayoff ?? false]);
-  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', 'nba_schedule.csv');
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+    const headers = ['id', 'date', 'home', 'away', 'home_score', 'away_score', 'played'];
+    const rows = schedule.map(g => [
+        g.id,
+        g.date,
+        g.homeTeamId,
+        g.awayTeamId,
+        g.homeScore || 0,
+        g.awayScore || 0,
+        g.played ? 'true' : 'false'
+    ].join(','));
+    
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', 'season_schedule.csv');
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+};
+
+export const mapDatabaseScheduleToRuntimeGame = (rawGames: any[]): Game[] => {
+    return rawGames.map((g, index) => {
+        const homeId = resolveTeamId(g.home || g.Home || g.HOME);
+        const awayId = resolveTeamId(g.away || g.Away || g.AWAY);
+        const date = g.date || g.Date || g.DATE;
+        
+        return {
+            id: `g_${date}_${homeId}_${awayId}_${index}`,
+            homeTeamId: homeId,
+            awayTeamId: awayId,
+            date: date,
+            played: false,
+            isPlayoff: false
+        };
+    }).filter(g => g.homeTeamId !== 'unknown' && g.awayTeamId !== 'unknown' && g.date);
 };
