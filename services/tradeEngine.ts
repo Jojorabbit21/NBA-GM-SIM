@@ -201,16 +201,16 @@ export function generateTradeOffers(
             userPackageValueToAI += getContextualTradeValue(p, targetTeam, true);
         });
 
-        // 가치가 너무 낮으면 스킵
-        if (userPackageValueToAI < 500) continue;
+        // 가치가 너무 낮으면 스킵 (최소한의 가치 필터링 완화: 100)
+        if (userPackageValueToAI < 100) continue;
 
         // 2. 상대 팀에서 줄 수 있는 카드 탐색
         // 상대 팀 로스터를 가치 역순(낮은 것부터) + 샐러리 필러 고려하여 정렬
         const candidates = [...targetTeam.roster].sort((a,b) => getPlayerTradeValue(a) - getPlayerTradeValue(b));
         
-        // 1~3명 조합 시도 (단순화된 조합 로직)
-        // 랜덤성을 부여하여 매번 다른 오퍼가 나오도록 함
-        for (let i = 0; i < 20; i++) { 
+        // 1~3명 조합 시도 (조합 탐색 횟수 대폭 증가: 20 -> 300)
+        // 샐러리 매칭 확률을 높이기 위해 반복 횟수를 늘림
+        for (let i = 0; i < 300; i++) { 
             const packSize = Math.floor(Math.random() * 3) + 1; // 1~3명
             const tradePack: Player[] = [];
             const visitedIndices = new Set<number>();
