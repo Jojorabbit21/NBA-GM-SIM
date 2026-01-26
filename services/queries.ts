@@ -8,7 +8,8 @@ import {
   parseCSVToObjects, 
   mapDatabasePlayerToRuntimePlayer, 
   mapDatabaseScheduleToRuntimeGame,
-  calculatePlayerOvr
+  calculatePlayerOvr,
+  resolveTeamId
 } from '../utils/constants';
 import { Team, Player, Game } from '../types';
 
@@ -30,7 +31,7 @@ export const useBaseData = () => {
   return useQuery({
     queryKey: ['baseData'],
     queryFn: async () => {
-      // Parallel fetch
+      // Revert to fetching players.csv as requested, but with robust mapping
       const [playersRes, scheduleRes] = await Promise.all([
         fetch('/players.csv'),
         fetch('/schedule.csv')
@@ -39,33 +40,45 @@ export const useBaseData = () => {
       let combinedPlayers: any[] = [];
       let loadedSchedule: Game[] = [];
 
-      // Parse Players
+      // Process Players
       if (playersRes.ok) {
-        const text = await playersRes.text();
-        combinedPlayers = parseCSVToObjects(text);
+          const text = await playersRes.text();
+          combinedPlayers = parseCSVToObjects(text);
       }
 
-      // Parse Schedule
+      // Process Schedule
       if (scheduleRes.ok) {
         const text = await scheduleRes.text();
         const rawSchedule = parseCSVToObjects(text);
-        loadedSchedule = mapDatabaseScheduleToRuntimeGame(rawSchedule);
+        const parsedGames = mapDatabaseScheduleToRuntimeGame(rawSchedule);
+        
+        // [CRITICAL FIX] Deduplicate and Sort Schedule by Date
+        // CSV is grouped by team, so we must sort chronologically to find the true "Next Game"
+        const gameMap = new Map<string, Game>();
+        parsedGames.forEach(g => {
+            if (!gameMap.has(g.id)) {
+                gameMap.set(g.id, g);
+            }
+        });
+        
+        // STRICT Sort by Date Ascending
+        loadedSchedule = Array.from(gameMap.values()).sort((a, b) => 
+            new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
       }
 
-      // Map Players to Teams
+      // Map Players to Teams using ROBUST ID RESOLVER
       const fullRosterMap: Record<string, any[]> = {};
       combinedPlayers.forEach((p: any) => {
         const teamName = p.team || p.team_name || p.Team;
         if (!teamName) return;
-        const t = INITIAL_TEAMS_DATA.find(it =>
-          it.name === teamName ||
-          `${it.city} ${it.name}` === teamName ||
-          it.name.toLowerCase() === teamName.toLowerCase() ||
-          (teamName.includes(it.name))
-        );
-        if (t) {
-          if (!fullRosterMap[t.id]) fullRosterMap[t.id] = [];
-          fullRosterMap[t.id].push(mapDatabasePlayerToRuntimePlayer(p, t.id));
+        
+        // [FIX] Use the comprehensive ID map that handles "Phoenix", "Suns", "Charlotte", "Hornets" etc.
+        const teamId = resolveTeamId(teamName);
+
+        if (teamId !== 'unknown') {
+          if (!fullRosterMap[teamId]) fullRosterMap[teamId] = [];
+          fullRosterMap[teamId].push(mapDatabasePlayerToRuntimePlayer(p, teamId));
         }
       });
 
