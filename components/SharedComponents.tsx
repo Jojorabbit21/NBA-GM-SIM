@@ -1,7 +1,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database, Lock, ShieldAlert, BarChart3, PieChart, Info } from 'lucide-react';
+import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database, Lock, ShieldAlert, BarChart3, PieChart, Info, RefreshCw } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getTeamLogoUrl } from '../utils/constants';
 
@@ -90,6 +90,33 @@ export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ mess
   );
 };
 
+export const ActionToast: React.FC<{ message: string; actionLabel: string; onAction: () => void; onClose: () => void }> = ({ message, actionLabel, onAction, onClose }) => {
+  return (
+    <div className="fixed top-6 right-6 z-[300] animate-in slide-in-from-right-5 duration-500">
+      <div className="relative bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-5 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw]">
+        
+        <div className="bg-indigo-500/20 p-2 rounded-full flex-shrink-0">
+          <RefreshCw size={18} className="text-indigo-400" />
+        </div>
+        
+        <p className="text-sm font-bold text-slate-100 flex-grow ko-normal leading-tight">{message}</p>
+        
+        <div className="flex items-center gap-3 border-l border-slate-700 pl-3 ml-1">
+            <button 
+                onClick={onAction}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-all active:scale-95 whitespace-nowrap shadow-lg shadow-indigo-900/20"
+            >
+                {actionLabel}
+            </button>
+            <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-white transition-colors flex-shrink-0">
+                <X size={18} />
+            </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void }> = ({ active, icon, label, onClick }) => (
   <button onClick={onClick} className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all ${active ? 'bg-blue-600 text-white shadow-blue-900/30 ring-1 ring-blue-400/30' : 'text-slate-400 hover:bg-slate-800/60'}`}>
     {icon} <span className="text-sm font-bold ko-tight">{label}</span>
@@ -110,7 +137,7 @@ export const TeamCard: React.FC<{ team: Team, onSelect: () => void }> = ({ team,
 );
 
 // --- Shot Chart Component ---
-
+// (Rest of the file remains unchanged)
 // Moved StatItem to top level for better TS compatibility with JSX keys
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
     <div className="flex flex-col items-center justify-center">
