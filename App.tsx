@@ -151,7 +151,7 @@ const App: React.FC = () => {
           
           setRosterTargetId(saveData.team_id);
           setView('Dashboard');
-          setToastMessage("클라우드 세이브 데이터 로드 완료 (최신 OVR 적용됨).");
+          setToastMessage("사용자 정보 불러오기 성공");
       }
   }, [saveData]);
 
