@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -105,7 +106,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
            <div className="flex items-center gap-3">
              <h2 className="text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">리그 리더보드</h2>
            </div>
-           <p className="text-slate-500 font-bold mt-1 uppercase text-sm">2025-26 정규시즌 스탯 순위</p>
         </div>
         
         <div className="relative z-50" ref={dropdownRef}>

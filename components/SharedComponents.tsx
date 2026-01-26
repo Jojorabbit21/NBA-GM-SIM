@@ -53,19 +53,36 @@ export const getRankStyle = (val: number) => {
 };
 
 export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ message, onClose }) => {
+  const [isClosing, setIsClosing] = useState(false);
+
   useEffect(() => {
+    // 1. 애니메이션 트리거 (마운트 직후 상태 변경으로 트랜지션 시작)
+    const animFrame = requestAnimationFrame(() => setIsClosing(true));
+
+    // 2. 실제 닫힘 (3초 후)
     const timer = setTimeout(onClose, 3000);
-    return () => clearTimeout(timer);
+
+    return () => {
+      cancelAnimationFrame(animFrame);
+      clearTimeout(timer);
+    };
   }, [onClose]);
 
   return (
     <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-5 duration-300">
-      <div className="bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-6 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw]">
-        <div className="bg-indigo-500/20 p-2 rounded-full">
+      <div className="relative bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-6 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw] overflow-hidden">
+        
+        {/* Progress Bar */}
+        <div 
+            className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all ease-linear duration-[3000ms] shadow-[0_0_10px_rgba(99,102,241,0.5)]"
+            style={{ width: isClosing ? '0%' : '100%' }}
+        />
+        
+        <div className="bg-indigo-500/20 p-2 rounded-full flex-shrink-0">
           <CheckCircle2 size={20} className="text-indigo-400" />
         </div>
         <p className="text-sm font-bold text-slate-100 flex-grow ko-normal">{message}</p>
-        <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded-lg text-slate-500 transition-colors">
+        <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded-lg text-slate-500 transition-colors flex-shrink-0 z-10">
           <X size={18} />
         </button>
       </div>

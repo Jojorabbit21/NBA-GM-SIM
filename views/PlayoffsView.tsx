@@ -425,9 +425,6 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
                 플레이오프
              </h2>
            </div>
-           <p className="text-slate-500 font-bold mt-1 uppercase text-sm tracking-widest pl-1">
-                {regularSeasonFinished ? "2025-26 플레이오프 브라켓" : "순위 예측에 따른 시드"}
-           </p>
         </div>
         
         {regularSeasonFinished && (

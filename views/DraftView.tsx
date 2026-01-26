@@ -45,7 +45,6 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
         <div>
           <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">드래프트 보드</h2>
-          <p className="text-slate-500 font-bold mt-1 uppercase text-sm">2026 클래스 최고의 유망주들을 발굴하세요</p>
         </div>
         <div className="relative w-full md:w-80">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />

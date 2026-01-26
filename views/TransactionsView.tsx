@@ -391,9 +391,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                        </span>
                    </div>
                </div>
-               <p className="text-slate-500 font-bold mt-2 uppercase text-sm">
-                   팀의 미래를 위한 과감한 결단
-               </p>
            </div>
            <div className="flex gap-3">
               <button onClick={() => setActiveTab('Block')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><ListFilter size={16} /> 트레이드 블록</button>
@@ -575,7 +572,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                                             <div key={i} className="flex items-center gap-3">
                                                                 <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
                                                                 <span className="text-sm font-bold text-emerald-300">{p.name}</span>
-                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                             </div>
                                                         );
                                                     })}
@@ -589,7 +586,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                                             <div key={i} className="flex items-center gap-3">
                                                                 <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
                                                                 <span className="text-sm font-bold text-red-300/80">{p.name}</span>
-                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
+                                                                <span className="text-[10px] font-black text-slate-500 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                             </div>
                                                         );
                                                     })}
