@@ -56,12 +56,8 @@ export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ mess
   const [isClosing, setIsClosing] = useState(false);
 
   useEffect(() => {
-    // 1. 애니메이션 트리거 (마운트 직후 상태 변경으로 트랜지션 시작)
     const animFrame = requestAnimationFrame(() => setIsClosing(true));
-
-    // 2. 실제 닫힘 (3초 후)
     const timer = setTimeout(onClose, 3000);
-
     return () => {
       cancelAnimationFrame(animFrame);
       clearTimeout(timer);
@@ -71,13 +67,10 @@ export const Toast: React.FC<{ message: string; onClose: () => void }> = ({ mess
   return (
     <div className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-5 duration-300">
       <div className="relative bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-6 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw] overflow-hidden">
-        
-        {/* Progress Bar */}
         <div 
             className="absolute top-0 left-0 h-1 bg-indigo-500 transition-all ease-linear duration-[3000ms] shadow-[0_0_10px_rgba(99,102,241,0.5)]"
             style={{ width: isClosing ? '0%' : '100%' }}
         />
-        
         <div className="bg-indigo-500/20 p-2 rounded-full flex-shrink-0">
           <CheckCircle2 size={20} className="text-indigo-400" />
         </div>
@@ -94,13 +87,10 @@ export const ActionToast: React.FC<{ message: string; actionLabel: string; onAct
   return (
     <div className="fixed top-6 right-6 z-[300] animate-in slide-in-from-right-5 duration-500">
       <div className="relative bg-slate-900 border border-indigo-500/50 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.5)] px-5 py-4 flex items-center gap-4 min-w-[320px] max-w-[90vw]">
-        
         <div className="bg-indigo-500/20 p-2 rounded-full flex-shrink-0">
           <RefreshCw size={18} className="text-indigo-400" />
         </div>
-        
         <p className="text-sm font-bold text-slate-100 flex-grow ko-normal leading-tight">{message}</p>
-        
         <div className="flex items-center gap-3 border-l border-slate-700 pl-3 ml-1">
             <button 
                 onClick={onAction}
@@ -136,9 +126,6 @@ export const TeamCard: React.FC<{ team: Team, onSelect: () => void }> = ({ team,
   </button>
 );
 
-// --- Shot Chart Component ---
-// (Rest of the file remains unchanged)
-// Moved StatItem to top level for better TS compatibility with JSX keys
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
     <div className="flex flex-col items-center justify-center">
         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{label}</span>
@@ -147,21 +134,21 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
 );
 
 const ShotZonePath: React.FC<{ path: string, pct: number, leagueAvg: number, hasData: boolean }> = ({ path, pct, leagueAvg, hasData }) => {
-    let fillColor = 'rgba(30, 41, 59, 0.1)'; // slate-800/10 (Background) - reduced from 0.2
-    let strokeColor = '#334155'; // slate-700
-    let strokeOpacity = 0.2; // Reduced default stroke opacity
+    let fillColor = 'rgba(30, 41, 59, 0.1)'; 
+    let strokeColor = '#334155';
+    let strokeOpacity = 0.2; 
     
     if (hasData) {
         if (pct >= leagueAvg + 0.05) {
-            fillColor = 'rgba(16, 185, 129, 0.5)'; // Emerald (Hot) - Opacity restored to 0.5 for emphasis
+            fillColor = 'rgba(16, 185, 129, 0.5)'; 
             strokeColor = '#34d399';
             strokeOpacity = 0.5;
         } else if (pct <= leagueAvg - 0.05) {
-            fillColor = 'rgba(239, 68, 68, 0.2)'; // Red (Cold) - reduced opacity
+            fillColor = 'rgba(239, 68, 68, 0.2)'; 
             strokeColor = '#f87171';
             strokeOpacity = 0.5;
         } else {
-            fillColor = 'rgba(234, 179, 8, 0.2)'; // Yellow (Avg) - reduced opacity
+            fillColor = 'rgba(234, 179, 8, 0.2)'; 
             strokeColor = '#facc15';
             strokeOpacity = 0.5;
         }
@@ -174,20 +161,19 @@ const ShotZonePath: React.FC<{ path: string, pct: number, leagueAvg: number, has
 
 const ShotLabel: React.FC<{ makes: number, attempts: number, pct: number, leagueAvg: number, x: number, y: number }> = ({ makes, attempts, pct, leagueAvg, x, y }) => {
     const hasData = attempts > 0;
-    
     let statusColor = '#334155';
-    let textColor = '#94a3b8'; // Default text color
+    let textColor = '#94a3b8'; 
 
     if (hasData) {
         if (pct >= leagueAvg + 0.05) {
             statusColor = '#34d399';
-            textColor = '#4ade80'; // Green text
+            textColor = '#4ade80'; 
         } else if (pct <= leagueAvg - 0.05) {
             statusColor = '#f87171';
-            textColor = '#f87171'; // Red text
+            textColor = '#f87171'; 
         } else {
             statusColor = '#facc15';
-            textColor = '#facc15'; // Yellow text
+            textColor = '#facc15'; 
         }
     }
 
@@ -223,7 +209,6 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     const pathPaint = `M 170 0 L 170 190 L 330 190 L 330 0 Z`;
     const path3PT = "M 0 0 h 500 v 470 h -500 Z";
 
-    // Calculations
     const p3Pct = s.p3a > 0 ? s.p3m / s.p3a : 0;
     const midPct = s.midA > 0 ? s.midM / s.midA : 0;
     const rimPct = s.rimA > 0 ? s.rimM / s.rimA : 0;
@@ -256,26 +241,19 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
 
     return (
         <div className="flex flex-col lg:flex-row items-center gap-8 w-full animate-in fade-in slide-in-from-bottom-2 duration-500 h-full">
-            {/* 70% Width: Stats Table (Split into 3 Rows) */}
             <div className="w-full lg:w-[70%] flex flex-col gap-4 h-full justify-center">
-                
-                {/* Row 1: Traditional */}
                 <div className="flex flex-col gap-1">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Traditional</h5>
                     <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-10 gap-2">
                         {row1.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
                     </div>
                 </div>
-
-                {/* Row 2: Shooting */}
                 <div className="flex flex-col gap-1">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Shooting</h5>
                     <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-9 gap-2">
                         {row2.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
                     </div>
                 </div>
-
-                {/* Row 3: Efficiency by Zone */}
                 <div className="flex flex-col gap-1">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Efficiency by Zone</h5>
                     <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-9 gap-2">
@@ -283,30 +261,21 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                     </div>
                 </div>
             </div>
-
-            {/* 30% Width: Shot Chart */}
             <div className="w-full lg:w-[30%] flex flex-col items-center justify-center">
                 <div className="flex flex-col gap-1 w-full max-w-[350px]">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">SHOT ZONE</h5>
                     <div className="relative w-full aspect-[500/470] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
                         <svg viewBox="0 0 500 470" className="w-full h-full">
-                            {/* 1. Background (Floor) */}
                             <rect x="0" y="0" width="500" height="470" fill="#0f172a" />
-
-                            {/* 2. Zone Paths (Layers: 3PT -> Mid -> Paint) */}
                             <ShotZonePath path={path3PT} pct={p3Pct} leagueAvg={0.36} hasData={s.p3a > 0} />
                             <ShotZonePath path={pathMidRange} pct={midPct} leagueAvg={0.42} hasData={s.midA > 0} />
                             <ShotZonePath path={pathPaint} pct={rimPct} leagueAvg={0.62} hasData={s.rimA > 0} />
-
-                            {/* 3. Court Markings Overlay */}
                             <g fill="none" stroke="#334155" strokeWidth="2" className="pointer-events-none">
                                 <rect x="170" y="0" width="160" height="190" />
                                 <circle cx="250" cy="190" r="60" />
                                 <path d="M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0" />
                                 <path d="M 190 470 A 60 60 0 0 1 310 470" strokeOpacity="0.5" />
                             </g>
-
-                            {/* 4. Labels (On top of everything) */}
                             <ShotLabel makes={s.p3m} attempts={s.p3a} pct={p3Pct} leagueAvg={0.36} x={250} y={380} />
                             <ShotLabel makes={s.midM} attempts={s.midA} pct={midPct} leagueAvg={0.42} x={250} y={240} />
                             <ShotLabel makes={s.rimM} attempts={s.rimA} pct={rimPct} leagueAvg={0.62} x={250} y={85} />
@@ -325,15 +294,12 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
   useEffect(() => {
     const originalStyle = window.getComputedStyle(document.body).overflow;
     document.body.style.overflow = 'hidden';
-    
     const handleClickOutside = (event: MouseEvent) => {
       if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
         onClose();
       }
     };
-    
     document.addEventListener('mousedown', handleClickOutside);
-    
     return () => {
       document.body.style.overflow = originalStyle;
       document.removeEventListener('mousedown', handleClickOutside);
@@ -345,9 +311,7 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
   const attrGroups = [
     {
       label: "내곽 득점 (INS)",
-      score: player.ins,
       attrs: [
-        { label: "INSIDE", val: player.ins },
         { label: "LAYUP", val: player.layup },
         { label: "DUNK", val: player.dunk },
         { label: "POST PLAY", val: player.postPlay },
@@ -357,21 +321,18 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
     },
     {
       label: "외곽 득점 (OUT)",
-      score: player.out,
       attrs: [
-        { label: "OUTSIDE", val: player.out },
         { label: "CLOSE", val: player.closeShot },
         { label: "MIDRANGE", val: player.midRange },
         { label: "3PT", val: Math.round((player.threeCorner + player.three45 + player.threeTop)/3) },
         { label: "FT", val: player.ft },
         { label: "SHOT IQ", val: player.shotIq },
+        { label: "OFF CONSISTENCY", val: player.offConsist },
       ]
     },
     {
       label: "운동능력 (ATH)",
-      score: player.ath,
       attrs: [
-        { label: "ATH", val: player.ath },
         { label: "SPEED", val: player.speed },
         { label: "AGILITY", val: player.agility },
         { label: "STRENGTH", val: player.strength },
@@ -383,9 +344,7 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
     },
     {
       label: "플레이메이킹 (PLM)",
-      score: player.plm,
       attrs: [
-        { label: "PLAYMAKING", val: player.plm },
         { label: "ACCURACY", val: player.passAcc },
         { label: "PASS VISION", val: player.passVision },
         { label: "PASS IQ", val: player.passIq },
@@ -395,21 +354,19 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
     },
     {
       label: "수비 (DEF)",
-      score: player.def,
       attrs: [
-        { label: "DEFENSE", val: player.def },
-        { label: "INTERIOR", val: player.intDef },
         { label: "PERIMETER", val: player.perDef },
+        { label: "INTERIOR", val: player.intDef },
         { label: "STEAL", val: player.steal },
         { label: "BLOCK", val: player.blk },
-        { label: "DEF IQ", val: player.helpDefIq },
+        { label: "HELP DEFENSE IQ", val: player.helpDefIq },
+        { label: "PASS PERCEPTION", val: player.passPerc },
+        { label: "DEF CONSISTENCY", val: player.defConsist },
       ]
     },
     {
       label: "리바운드 (REB)",
-      score: player.reb,
       attrs: [
-        { label: "REBOUND", val: player.reb },
         { label: "OFF REB", val: player.offReb },
         { label: "DEF REB", val: player.defReb },
       ]
@@ -452,13 +409,13 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
                         onClick={() => setActiveTab('attributes')}
                         className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center gap-2 ${activeTab === 'attributes' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
                     >
-                        <Activity size={14} /> Attributes
+                        <Activity size={14} /> 능력치
                     </button>
                     <button 
                         onClick={() => setActiveTab('zones')}
                         className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center gap-2 ${activeTab === 'zones' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
                     >
-                        <Target size={14} /> Stats
+                        <Target size={14} /> 기록
                     </button>
                 </div>
                 <button onClick={onClose} className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-2xl transition-colors shadow-lg border border-slate-700">
@@ -470,22 +427,29 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
         <div className="flex-1 overflow-y-auto p-8 bg-slate-900/50 custom-scrollbar">
            {activeTab === 'attributes' ? (
                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {attrGroups.map((group, idx) => (
-                     <div key={idx} className="bg-slate-950/60 rounded-2xl border border-slate-800 p-5 flex flex-col gap-4 shadow-sm">
-                        <div className="flex items-center justify-between pb-2 border-b border-slate-800/50 h-10 px-2">
-                           <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{group.label}</h4>
-                           <div className={`!w-8 !h-8 !text-xs !rounded-md ${getRankStyle(group.score)}`}>{group.score}</div>
+                  {attrGroups.map((group, idx) => {
+                     // Calculate Group Average
+                     const avg = Math.round(group.attrs.reduce((sum, a) => sum + a.val, 0) / group.attrs.length);
+                     
+                     return (
+                        <div key={idx} className="bg-slate-950/60 rounded-2xl border border-slate-800 p-5 flex flex-col gap-4 shadow-sm">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-800/50 h-10 px-2">
+                                <div className="flex items-center gap-3">
+                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{group.label}</h4>
+                                    <div className={`!w-7 !h-6 !text-[10px] !rounded-md ${getRankStyle(avg)}`}>{avg}</div>
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                {group.attrs.map((attr, aIdx) => (
+                                    <div key={aIdx} className="flex justify-between items-center h-8 px-2 rounded-lg hover:bg-slate-800/50 transition-colors">
+                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{attr.label}</span>
+                                        <div className={`!w-8 !h-7 !text-xs !rounded-md ${getRankStyle(Math.round(attr.val))}`}>{Math.round(attr.val)}</div>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
-                        <div className="space-y-1.5">
-                           {group.attrs.map((attr, aIdx) => (
-                              <div key={aIdx} className="flex justify-between items-center h-8 px-2 rounded-lg hover:bg-slate-800/50 transition-colors">
-                                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{attr.label}</span>
-                                  <div className={`!w-8 !h-7 !text-xs !rounded-md ${getRankStyle(Math.round(attr.val))}`}>{Math.round(attr.val)}</div>
-                              </div>
-                           ))}
-                        </div>
-                     </div>
-                  ))}
+                     );
+                  })}
                </div>
            ) : (
                <div className="flex flex-col items-center h-full justify-center">

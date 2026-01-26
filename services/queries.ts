@@ -31,7 +31,6 @@ export const useBaseData = () => {
   return useQuery({
     queryKey: ['baseData'],
     queryFn: async () => {
-      // Revert to fetching players.csv as requested, but with robust mapping
       const [playersRes, scheduleRes] = await Promise.all([
         fetch('/players.csv'),
         fetch('/schedule.csv')
@@ -40,20 +39,16 @@ export const useBaseData = () => {
       let combinedPlayers: any[] = [];
       let loadedSchedule: Game[] = [];
 
-      // Process Players
       if (playersRes.ok) {
           const text = await playersRes.text();
           combinedPlayers = parseCSVToObjects(text);
       }
 
-      // Process Schedule
       if (scheduleRes.ok) {
         const text = await scheduleRes.text();
         const rawSchedule = parseCSVToObjects(text);
         const parsedGames = mapDatabaseScheduleToRuntimeGame(rawSchedule);
         
-        // [CRITICAL FIX] Deduplicate and Sort Schedule by Date
-        // CSV is grouped by team, so we must sort chronologically to find the true "Next Game"
         const gameMap = new Map<string, Game>();
         parsedGames.forEach(g => {
             if (!gameMap.has(g.id)) {
@@ -61,19 +56,15 @@ export const useBaseData = () => {
             }
         });
         
-        // STRICT Sort by Date Ascending
         loadedSchedule = Array.from(gameMap.values()).sort((a, b) => 
             new Date(a.date).getTime() - new Date(b.date).getTime()
         );
       }
 
-      // Map Players to Teams using ROBUST ID RESOLVER
       const fullRosterMap: Record<string, any[]> = {};
       combinedPlayers.forEach((p: any) => {
         const teamName = p.team || p.team_name || p.Team;
         if (!teamName) return;
-        
-        // [FIX] Use the comprehensive ID map that handles "Phoenix", "Suns", "Charlotte", "Hornets" etc.
         const teamId = resolveTeamId(teamName);
 
         if (teamId !== 'unknown') {
@@ -82,7 +73,6 @@ export const useBaseData = () => {
         }
       });
 
-      // Construct Teams
       const initializedTeams: Team[] = INITIAL_TEAMS_DATA.map(t => ({
         ...t,
         roster: fullRosterMap[t.id] || [],
@@ -91,12 +81,11 @@ export const useBaseData = () => {
         tacticHistory: { offense: {}, defense: {} }
       }));
 
-      // Calculate OVRs immediately
       const teams = syncOvrWithLatestWeights(initializedTeams);
 
       return { teams, schedule: loadedSchedule };
     },
-    staleTime: Infinity, // Base CSV data never changes during a session
+    staleTime: Infinity,
     gcTime: Infinity,
   });
 };
@@ -116,8 +105,6 @@ export const useLoadSave = (userId: string | undefined) => {
       if (error) throw error;
       if (!data) return null;
 
-      // Apply latest OVR weights to the loaded roster
-      // This ensures balancing patches apply to old saves
       if (data.game_data && data.game_data.teams) {
           data.game_data.teams = syncOvrWithLatestWeights(data.game_data.teams);
           
@@ -150,10 +137,6 @@ export const useSaveGame = () => {
       
       if (error) throw error;
       return true;
-    },
-    onSuccess: () => {
-       // Optional: Invalidate queries if we needed to refetch, but here we just want to know it succeeded.
-       // queryClient.invalidateQueries({ queryKey: ['saveData'] });
     }
   });
 };
@@ -165,13 +148,11 @@ export const useSessionHeartbeat = (userId: string | undefined, deviceId: string
         queryFn: async () => {
             if (!userId) return null;
             
-            // 1. Update Last Seen
             await supabase.from('profiles')
                 .update({ last_seen_at: new Date().toISOString() })
                 .eq('id', userId)
                 .eq('active_device_id', deviceId);
 
-            // 2. Check for Duplicate Login
             const { data } = await supabase
                 .from('profiles')
                 .select('active_device_id')
@@ -181,7 +162,7 @@ export const useSessionHeartbeat = (userId: string | undefined, deviceId: string
             return data?.active_device_id === deviceId;
         },
         enabled: !!userId,
-        refetchInterval: 60000, // 60초마다 실행
+        refetchInterval: 300000, // [OPTIMIZATION] 1분에서 5분으로 완화 (300,000ms)
         refetchOnWindowFocus: true,
         retry: false
     });
@@ -196,7 +177,7 @@ export const useScoutingReport = (player: Player | null) => {
             return await generateScoutingReport(player);
         },
         enabled: !!player,
-        staleTime: Infinity, // Once scouted, keep it cached forever in this session
-        gcTime: 1000 * 60 * 30, // Keep in memory for 30 mins
+        staleTime: Infinity,
+        gcTime: 1000 * 60 * 30,
     });
 };
