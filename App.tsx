@@ -131,7 +131,7 @@ const App: React.FC = () => {
     let subscription: any;
     
     const setupSession = async () => {
-        setIsSessionVerifying(true);
+        // [FIX] Do not block UI with isSessionVerifying(true) here to prevent component unmount on focus
         try {
             const { data: profile, error } = await supabase.from('profiles').select('active_device_id, last_seen_at').eq('id', session.user.id).maybeSingle();
             // 프로필이 없는 경우(신규)는 통과
@@ -150,12 +150,10 @@ const App: React.FC = () => {
             }
             if (shouldBlock) { 
                 setIsDuplicateSession(true); 
-                setIsSessionVerifying(false); 
             } else {
                 // 프로필은 handleOnboardingComplete에서 생성하므로 여기서는 업데이트만 시도
                 await supabase.from('profiles').update({ active_device_id: deviceId, last_seen_at: new Date().toISOString() }).eq('id', session.user.id);
                 setIsDuplicateSession(false); 
-                setIsSessionVerifying(false);
             }
             subscription = supabase.channel(`profile:${session.user.id}`).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${session.user.id}` }, (payload) => {
                 if (payload.new.active_device_id && payload.new.active_device_id !== deviceId) { setIsDuplicateSession(true); }
@@ -168,7 +166,7 @@ const App: React.FC = () => {
                 }
             }, 60000);
         } catch (err: any) { 
-            setIsSessionVerifying(false); 
+             // Ignore background errors
         }
     };
     setupSession();
