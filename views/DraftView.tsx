@@ -1,9 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Info, UserPlus, FileText, Zap, HelpCircle, ArrowRight, Loader2, Sparkles, Trophy } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle, getRankStyle } from '../components/SharedComponents';
-import { generateScoutingReport } from '../services/geminiService';
+import { useScoutingReport } from '../services/queries';
 
 interface DraftViewProps {
   prospects: Player[];
@@ -13,12 +13,14 @@ interface DraftViewProps {
 
 export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }) => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isScouting, setIsScouting] = useState(false);
-  const [scoutingReport, setScoutingReport] = useState<string[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // State to track if user requested analysis for CURRENT selected player
+  // This avoids auto-fetching as soon as you click a player. User must click "Analyze"
+  const [analyzeRequested, setAnalyzeRequested] = useState(false);
 
   const selectedProspect = useMemo(() => 
-    prospects.find(p => p.id === selectedId), [prospects, selectedId]
+    prospects.find(p => p.id === selectedId) || null, [prospects, selectedId]
   );
 
   const filteredProspects = useMemo(() => 
@@ -26,18 +28,17 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
     [prospects, searchTerm]
   );
 
-  const handleScout = async () => {
+  // TanStack Query Hook
+  const { data: scoutingReport, isLoading: isScouting, isError } = useScoutingReport(analyzeRequested ? selectedProspect : null);
+
+  useEffect(() => {
+    // Reset analysis request when selection changes
+    setAnalyzeRequested(false);
+  }, [selectedId]);
+
+  const handleScout = () => {
     if (!selectedProspect) return;
-    setIsScouting(true);
-    setScoutingReport(null);
-    try {
-      const report = await generateScoutingReport(selectedProspect);
-      setScoutingReport(report);
-    } catch (e) {
-      setScoutingReport(["분석 서버 연결에 실패했습니다.", "기본 능력치를 바탕으로 판단해 주십시오."]);
-    } finally {
-      setIsScouting(false);
-    }
+    setAnalyzeRequested(true);
   };
 
   return (
@@ -73,7 +74,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
             ) : filteredProspects.map(p => (
               <button 
                 key={p.id}
-                onClick={() => { setSelectedId(p.id); setScoutingReport(null); }}
+                onClick={() => setSelectedId(p.id)}
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all ${selectedId === p.id ? 'bg-indigo-600 border-indigo-400 shadow-lg' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}
               >
                 <div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div>
@@ -140,13 +141,12 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                       <Sparkles size={18} className="text-indigo-400" />
                       <span className="text-sm font-black text-indigo-100 uppercase tracking-widest">Gemini AI Scouting Report</span>
                     </div>
-                    {!scoutingReport && (
+                    {(!scoutingReport && !isScouting) && (
                       <button 
                         onClick={handleScout}
-                        disabled={isScouting}
-                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase transition-all disabled:opacity-50"
+                        className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-[10px] font-black uppercase transition-all"
                       >
-                        {isScouting ? '분석 중...' : '심층 분석 실행'}
+                        심층 분석 실행
                       </button>
                     )}
                   </div>
@@ -166,6 +166,10 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                           </div>
                         ))}
                       </div>
+                    ) : isError ? (
+                        <div className="text-center text-red-400 font-bold text-sm">
+                            분석 데이터를 불러오는 데 실패했습니다.
+                        </div>
                     ) : (
                       <div className="flex flex-col items-center gap-6 text-slate-600 text-center py-10">
                         <div className="p-4 bg-slate-900 rounded-full border border-slate-800"><Zap size={32} className="opacity-20" /></div>
