@@ -76,6 +76,7 @@ const App: React.FC = () => {
   const [isInitializing, setIsInitializing] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSaveLoaded, setIsSaveLoaded] = useState(false); // [Fix] Prevent repeated save loading
   const [hasWritePermission, setHasWritePermission] = useState(true);
   const [dataSource, setDataSource] = useState<'DB' | 'CSV'>('CSV');
   const [isSimulating, setIsSimulating] = useState(false); 
@@ -278,7 +279,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const checkExistingSave = async () => {
-        if (!session?.user || !isDataLoaded || isDuplicateSession || isGuestMode) return;
+        // [Fix] Add isSaveLoaded to preventing fetching on every window focus
+        if (!session?.user || !isDataLoaded || isDuplicateSession || isGuestMode || isSaveLoaded) return;
         try {
             const { data: saveData, error } = await supabase.from('saves').select('team_id, game_data').eq('user_id', session.user.id).maybeSingle();
             if (!error && saveData && saveData.game_data) {
@@ -301,10 +303,12 @@ const App: React.FC = () => {
                 setView('Dashboard');
                 setToastMessage("클라우드 세이브 데이터 로드 완료.");
             }
+            // Mark as loaded even if no data found to prevent infinite checks on focus
+            setIsSaveLoaded(true);
         } catch (err: any) {} 
     };
     checkExistingSave();
-  }, [session, isDataLoaded, isDuplicateSession, isGuestMode]);
+  }, [session, isDataLoaded, isDuplicateSession, isGuestMode, isSaveLoaded]);
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
     if (isDataLoaded && myTeamId) { setRosterTargetId(teamId); return; }
@@ -413,7 +417,8 @@ const App: React.FC = () => {
     setProspects(generateInitialProspects());
     setNews([{ type: 'text', content: "NBA 2025-26 시즌 구단 운영 시스템 활성화 완료." }]);
     setCurrentSimDate(SEASON_START_DATE);
-    setLastGameResult(null); setActiveGame(null); 
+    setLastGameResult(null); setActiveGame(null);
+    setIsSaveLoaded(false); // [Fix] Reset save loaded flag
     loadBaseData();
     setShowResetConfirm(false); 
     if (session?.user && !isGuestMode) setAuthLoading(false);
@@ -426,6 +431,7 @@ const App: React.FC = () => {
         await supabase.auth.signOut();
     }
     setSession(null); setMyTeamId(null); setSchedule([]); setBoxScores({}); setPlayoffSeries([]); setTransactions([]); setProspects([]);
+    setIsSaveLoaded(false); // [Fix] Reset save loaded flag
     setIsDataLoaded(false); setView('TeamSelect'); setIsDuplicateSession(false); setIsGuestMode(false);
   };
 
