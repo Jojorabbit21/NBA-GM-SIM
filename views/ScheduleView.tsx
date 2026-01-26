@@ -108,7 +108,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
   }, [teams, searchTerm]);
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
+    <div className="space-y-6 w-full flex flex-col pb-24">
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0 relative z-30">
         <div>
            <div className="flex items-center gap-3">
@@ -176,7 +176,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
         </div>
       </div>
 
-      <div className="bg-slate-900/80 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden backdrop-blur-sm flex-1 min-h-[600px] flex flex-col relative z-10">
+      <div className="bg-slate-900/80 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden backdrop-blur-sm flex flex-col relative z-10">
         <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
            <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>
            <div className="flex items-center gap-3">
@@ -192,9 +192,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
            ))}
         </div>
 
-        <div className="grid grid-cols-7 grid-rows-6 flex-1 min-h-0">
+        <div className="grid grid-cols-7">
            {days.map((day, idx) => {
-             if (day === null) return <div key={idx} className="border-b border-r border-slate-800/50 bg-slate-950/20"></div>;
+             if (day === null) return <div key={idx} className="border-b border-r border-slate-800/50 bg-slate-950/20 aspect-square"></div>;
              
              const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
              const game = getGameOnDate(day);
@@ -226,7 +226,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
              }
 
              return (
-               <div key={idx} className={`border-b border-r border-slate-800/60 relative p-2 transition-all flex flex-col ${bgStyle}`}>
+               <div key={idx} className={`border-b border-r border-slate-800/60 relative p-2 transition-all flex flex-col aspect-square ${bgStyle}`}>
                  <div className="flex justify-between items-start mb-1">
                     <span className={`text-xs font-black oswald ${isToday ? 'text-indigo-400' : 'text-slate-500'}`}>{day}</span>
                     {isToday && <span className="px-1 py-0.5 bg-indigo-600 text-[6px] font-black text-white rounded">TODAY</span>}
@@ -234,24 +234,29 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
                  </div>
                  
                  {game && opp ? (
-                   <div className="flex-1 flex flex-col items-center justify-center gap-1 group cursor-default w-full">
+                   <div className="flex-1 flex flex-col items-center justify-center gap-2 group cursor-default w-full p-1">
                       {!game.played ? (
                         <>
-                            <div className="relative flex-1 flex items-center justify-center w-full">
-                                <img src={opp.logo} className="w-10 h-10 object-contain drop-shadow-lg group-hover:scale-110 transition-transform duration-300" alt="" />
-                            </div>
-                            <div className="text-center w-full relative z-10">
-                                <div className="text-[10px] font-black text-slate-200 truncate w-full px-1 uppercase tracking-tight">
-                                    <span className={`${isHome ? 'text-indigo-400' : 'text-slate-500'} mr-0.5`}>{isHome ? 'vs' : '@'}</span>{opp.name}
+                            {/* Logo: Increased size */}
+                            <img 
+                                src={opp.logo} 
+                                className="w-14 h-14 lg:w-20 lg:h-20 object-contain drop-shadow-lg group-hover:scale-110 transition-transform duration-300" 
+                                alt="" 
+                            />
+                            
+                            {/* Text: Centered below logo, larger font */}
+                            <div className="text-center w-full z-10">
+                                <div className="text-xs lg:text-sm font-black text-slate-200 truncate w-full px-1 uppercase tracking-tight leading-none">
+                                    <span className={`${isHome ? 'text-indigo-400' : 'text-slate-500'} mr-1`}>{isHome ? 'vs' : '@'}</span>{opp.name}
                                 </div>
                             </div>
                         </>
                       ) : (
                         <div className="flex flex-col items-center justify-center w-full h-full gap-1">
-                            <div className="text-sm font-black text-white w-full text-center uppercase tracking-tight leading-tight break-keep">
+                            <div className="text-xs lg:text-sm font-black text-white w-full text-center uppercase tracking-tight leading-tight break-keep">
                                 <span className="text-[10px] text-slate-400 mr-1 align-middle">{isHome ? 'vs' : '@'}</span>{opp.name}
                             </div>
-                            <div className={`text-lg font-black oswald leading-none ${isWon ? 'text-emerald-300' : 'text-red-300'}`}>
+                            <div className={`text-xl lg:text-3xl font-black oswald leading-none ${isWon ? 'text-emerald-300' : 'text-red-300'}`}>
                                 {isHome ? `${game.homeScore}:${game.awayScore}` : `${game.awayScore}:${game.homeScore}`}
                             </div>
                         </div>

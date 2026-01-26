@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock, History, Clock } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock, History, Clock, Filter } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -232,12 +232,60 @@ const RequirementCard: React.FC<{ requirement: TradeOffer, targetPlayers: Player
   );
 };
 
+const PositionFilter: React.FC<{ selected: string[], onToggle: (pos: string) => void }> = ({ selected, onToggle }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const wrapperRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
+
+    return (
+        <div className="relative" ref={wrapperRef}>
+            <button 
+                onClick={() => setIsOpen(!isOpen)}
+                className={`px-6 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${selected.length > 0 ? 'bg-slate-800 text-indigo-400 border border-indigo-500/30' : 'bg-slate-800 hover:bg-slate-700 text-slate-400'}`}
+            >
+                <Filter size={18} />
+                <span>{selected.length === 0 ? 'Target: ANY' : `Target: ${selected.join(', ')}`}</span>
+            </button>
+            
+            {isOpen && (
+                <div className="absolute top-full left-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-2 w-full min-w-[160px] z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="space-y-1">
+                        {positions.map(pos => (
+                            <button
+                                key={pos}
+                                onClick={() => onToggle(pos)}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-all ${selected.includes(pos) ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
+                            >
+                                <span>{pos}</span>
+                                {selected.includes(pos) && <Check size={14} />}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [blockSelectedIds, setBlockSelectedIds] = useState<Set<string>>(new Set());
   const [blockOffers, setBlockOffers] = useState<TradeOffer[]>([]);
   const [blockIsProcessing, setBlockIsProcessing] = useState(false);
   const [blockSearchPerformed, setBlockSearchPerformed] = useState(false);
+  const [targetPositions, setTargetPositions] = useState<string[]>([]); // New State for Target Positions
+
   const [proposalTargetTeamId, setProposalTargetTeamId] = useState<string>('');
   const [proposalSelectedIds, setProposalSelectedIds] = useState<Set<string>>(new Set());
   const [proposalRequirements, setProposalRequirements] = useState<TradeOffer[]>([]);
@@ -307,16 +355,25 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     setBlockSelectedIds(next); setBlockOffers([]); setBlockSearchPerformed(false);
   };
 
+  const toggleTargetPosition = (pos: string) => {
+      setTargetPositions(prev => {
+          if (prev.includes(pos)) return prev.filter(p => p !== pos);
+          return [...prev, pos];
+      });
+      setBlockOffers([]);
+      setBlockSearchPerformed(false);
+  };
+
   const handleSearchBlockOffers = () => {
     if (blockSelectedIds.size === 0 || isTradeDeadlinePassed) return;
     
     // [Analytics] Log Search Action
-    logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}`); 
+    logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}, Targets: ${targetPositions.join(',')}`); 
 
     setBlockIsProcessing(true); setBlockSearchPerformed(true);
     setTimeout(() => {
       const targetPlayers = (team?.roster || []).filter(p => blockSelectedIds.has(p.id));
-      const generatedOffers = generateTradeOffers(targetPlayers, team, teams);
+      const generatedOffers = generateTradeOffers(targetPlayers, team, teams, targetPositions);
       setBlockOffers(generatedOffers); setBlockIsProcessing(false);
     }, 1200);
   };
@@ -414,7 +471,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                  ) : (
                     activeTab === 'Block' ? (
                     <>
-                        <button onClick={() => { setBlockSelectedIds(new Set()); setBlockSearchPerformed(false); setBlockOffers([]); }} className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center" disabled={blockSelectedIds.size === 0}><Trash2 size={18} /> 전체 해제</button>
+                        <PositionFilter selected={targetPositions} onToggle={toggleTargetPosition} />
                         <button onClick={handleSearchBlockOffers} disabled={blockSelectedIds.size === 0 || blockIsProcessing} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!blockSearchPerformed && blockSelectedIds.size > 0 && !blockIsProcessing ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={blockIsProcessing ? 'animate-spin' : ''} />{blockIsProcessing ? '협상 중...' : `오퍼 탐색`}</button>
                     </>
                     ) : activeTab === 'Proposal' ? (

@@ -30,6 +30,7 @@ import { LeaderboardView } from './views/LeaderboardView';
 import { SeasonReviewView } from './views/SeasonReviewView'; 
 import { PlayoffReviewView } from './views/PlayoffReviewView'; 
 import { OvrCalculatorView } from './views/OvrCalculatorView';
+import { HelpView } from './views/HelpView';
 import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { Footer } from './components/Footer';
 import { supabase } from './services/supabaseClient';
@@ -589,6 +590,7 @@ const App: React.FC = () => {
               {view === 'SeasonReview' && myTeam && <SeasonReviewView team={myTeam} teams={teams} transactions={transactions} onBack={() => setView('Dashboard')} />}
               {view === 'PlayoffReview' && myTeam && <PlayoffReviewView team={myTeam} teams={teams} playoffSeries={playoffSeries} schedule={schedule} onBack={() => setView('Dashboard')} />}
               {view === 'OvrCalculator' && <OvrCalculatorView teams={teams} />}
+              {view === 'Help' && <HelpView onBack={() => setView('Dashboard')} />}
               {view === 'Draft' && myTeam && <DraftView prospects={prospects} onDraft={handleDraftPlayer} team={myTeam} />}
               </div>
             </div>
@@ -596,11 +598,17 @@ const App: React.FC = () => {
             <Footer onNavigate={setView} />
         </main>
         {view === 'GameSim' && activeGame && <GameSimulatingView homeTeam={teams.find(t => t.id === activeGame.homeTeamId)!} awayTeam={teams.find(t => t.id === activeGame.awayTeamId)!} userTeamId={myTeamId} finalHomeScore={activeGame.homeScore} finalAwayScore={activeGame.awayScore} onSimulationComplete={() => finalizeSimRef.current?.()} />}
-        {view === 'GameResult' && lastGameResult && <GameResultView result={lastGameResult} myTeamId={myTeamId!} teams={teams} onFinish={() => setView('Dashboard')} />}
+        {view === 'GameResult' && lastGameResult && <GameResultView 
+            result={lastGameResult}
+            myTeamId={myTeamId!}
+            teams={teams}
+            onFinish={() => {
+                setLastGameResult(null);
+                setIsSimulating(false);
+                setView('Dashboard');
+            }}
+        />}
       </div>
-      {tickerGames.length > 0 && (
-        <footer className="h-14 bg-slate-900 border-t border-slate-800 flex items-center overflow-hidden relative z-30"><div className="flex-shrink-0 bg-indigo-600 px-6 h-full flex items-center gap-4 shadow-[10px_0_30px_rgba(0,0,0,0.5)] z-10 relative"><div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] animate-pulse" /><img src="https://upload.wikimedia.org/wikipedia/commons/2/2f/ESPN_wordmark.svg" className="h-3 md:h-3.5 object-contain brightness-0 invert drop-shadow-sm" alt="ESPN" /></div><div className="flex-1 overflow-hidden h-full flex items-center"><LiveScoreTicker games={tickerGames} /></div></footer>
-      )}
     </div>
   );
 };

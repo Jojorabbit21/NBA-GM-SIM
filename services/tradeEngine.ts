@@ -179,11 +179,13 @@ function getContextualTradeValue(player: Player, teamContext: Team, isAcquiring:
 /**
  * [Public] 트레이드 블록 오퍼 생성 함수
  * - 유저의 제안(tradingPlayers)에 대해 다른 29개 팀이 오퍼를 던집니다.
+ * - desiredPositions: 유저가 원하는 포지션 (선택적)
  */
 export function generateTradeOffers(
     tradingPlayers: Player[], 
     myTeam: Team, 
-    allTeams: Team[]
+    allTeams: Team[],
+    desiredPositions: string[] = [] // New parameter
 ): TradeOffer[] {
     const C = TRADE_CONFIG.ACCEPTANCE;
     const mySalary = tradingPlayers.reduce((sum, p) => sum + p.salary, 0);
@@ -216,7 +218,25 @@ export function generateTradeOffers(
             const visitedIndices = new Set<number>();
 
             // 패키지 구성 시도
-            for (let k = 0; k < packSize; k++) {
+            // [Feature] 만약 desiredPositions가 있다면, 패키지에 반드시 해당 포지션이 포함되도록 우선 시도
+            if (desiredPositions.length > 0) {
+                 // 첫 번째 플레이어는 무조건 desiredPositions 중 하나에서 뽑도록 시도
+                 const desiredCandidates = candidates.filter(p => desiredPositions.includes(p.position));
+                 if (desiredCandidates.length > 0) {
+                     const primeIdx = Math.floor(Math.random() * desiredCandidates.length);
+                     const primePlayer = desiredCandidates[primeIdx];
+                     // candidates 배열 내에서의 실제 인덱스를 찾아서 visited 처리
+                     const realIdx = candidates.findIndex(c => c.id === primePlayer.id);
+                     if (realIdx !== -1) {
+                         visitedIndices.add(realIdx);
+                         tradePack.push(primePlayer);
+                     }
+                 }
+            }
+
+            // 나머지 패키지 채우기 (이미 뽑았다면 packSize - 1 만큼 더 뽑음)
+            const remainingSlots = packSize - tradePack.length;
+            for (let k = 0; k < remainingSlots; k++) {
                 const idx = Math.floor(Math.random() * candidates.length);
                 if (!visitedIndices.has(idx)) {
                     visitedIndices.add(idx);
@@ -225,6 +245,12 @@ export function generateTradeOffers(
             }
 
             if (tradePack.length === 0) continue;
+
+            // [Constraint Check] 사용자가 특정 포지션을 원했다면, 패키지에 최소 1명은 있어야 함
+            if (desiredPositions.length > 0) {
+                const hasDesiredPos = tradePack.some(p => desiredPositions.includes(p.position));
+                if (!hasDesiredPos) continue; 
+            }
 
             // 3. AI 패키지 가치 및 샐러리 계산
             let aiPackageValue = 0;
