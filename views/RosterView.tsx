@@ -539,10 +539,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const visualPercentage = getVisualPercentage(currentTotalSalary);
 
   // Prepare defense stats by separating AceStopper
-  const defenseStats = selectedTeam.tacticHistory?.defense || {};
-  const generalDefenseStats = Object.fromEntries(
+  // [Fix] Explicitly type defenseStats and generalDefenseStats to prevent type inference falling back to empty object literal types which cause errors when passed to components expecting TacticStatRecord.
+  const defenseStats: Record<string, TacticStatRecord> = selectedTeam.tacticHistory?.defense || {};
+  const generalDefenseStats: Record<string, TacticStatRecord> = Object.fromEntries(
       Object.entries(defenseStats).filter(([key]) => key !== 'AceStopper')
-  );
+  ) as Record<string, TacticStatRecord>;
   const aceStopperStats = defenseStats['AceStopper'];
 
   return (
