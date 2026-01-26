@@ -81,15 +81,15 @@ export const parseCSVToObjects = (csv: string): any[] => {
     if (lines.length < 2) return [];
     let headersLine = lines[0];
     if (headersLine.charCodeAt(0) === 0xFEFF) headersLine = headersLine.slice(1);
-    const headers = headersLine.split(',').map(h => h.trim());
+    const headers = headersLine.split(',').map(h => h.trim().toLowerCase());
     const result = [];
     for (let i = 1; i < lines.length; i++) {
         const values = lines[i].split(',').map(v => v.trim());
-        if (values.length < headers.length - 2) continue;
+        if (values.length < headers.length - 1) continue;
         const obj: any = {};
         headers.forEach((h, index) => {
             const val = values[index];
-            if (val !== '' && !isNaN(Number(val))) obj[h] = Number(val);
+            if (val !== undefined && val !== '' && !isNaN(Number(val))) obj[h] = Number(val);
             else obj[h] = val;
         });
         result.push(obj);
@@ -98,198 +98,226 @@ export const parseCSVToObjects = (csv: string): any[] => {
 };
 
 /**
- * 선수의 현재 능력치를 기반으로 오버롤을 계산합니다.
+ * 선수의 전체 능력치(OVR)를 계산합니다.
+ * DB 및 CSV의 다양한 필드명을 수용합니다.
  */
 export const calculatePlayerOvr = (p: any): number => {
     const position = p.position || 'PG';
     
-    // 3점슛 평균 계산 보강 (DB 필드 또는 세부 필드 참조)
-    let threeAvg = 70;
-    if (p.threeAvg !== undefined) {
-        threeAvg = p.threeAvg;
-    } else {
-        const tC = p.threeCorner ?? p.p3m ?? 70;
-        const t45 = p.three45 ?? p.p3a ?? 70;
-        const tTop = p.threeTop ?? 70;
-        threeAvg = (tC + t45 + tTop) / 3;
-    }
-    
-    const heightCm = p.height || 200;
+    // CSV 파서는 키를 소문자로 변환함. 
+    // Snake case (DB), Short names (CSV), Camel case (Internal) 모두 체크
+    const v = (key: string, def = 70) => {
+        return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
+    };
+
+    const threeAvg = (v('threec', v('3c')) + v('three45', v('3_45')) + v('threet', v('3t'))) / 3;
+
+    const attr = {
+        close: v('closeShot', v('close')),
+        mid: v('midRange', v('mid')),
+        threeAvg: threeAvg || v('threeAvg'),
+        ft: v('ft'),
+        shotIq: v('shotIq', v('siq')),
+        offConsist: v('offConsist', v('ocon')),
+        layup: v('layup', v('lay')),
+        dunk: v('dunk', v('dnk')),
+        post: v('postPlay', v('post')),
+        drawFoul: v('drawFoul', v('draw')),
+        hands: v('hands'),
+        passAcc: v('passAcc', v('pacc')),
+        handling: v('handling', v('handl')),
+        spdBall: v('spdBall', v('spwb')),
+        passVision: v('passVision', v('pvis')),
+        passIq: v('passIq', v('piq')),
+        stamina: v('stamina', v('sta')),
+        intDef: v('intDef', v('idef')),
+        perDef: v('perDef', v('pdef')),
+        blk: v('blk'),
+        defConsist: v('defConsist', v('dcon')),
+        offReb: v('offReb', v('oreb')),
+        defReb: v('defReb', v('dreb')),
+        potential: v('potential', v('pot')),
+        intangibles: v('intangibles', 70),
+        height: v('height', 200),
+        strength: v('strength', v('str')),
+        vertical: v('vertical', v('vert')),
+        durability: v('durability', v('dur')),
+        agility: v('agility', v('agi')),
+    };
 
     const calc = (weights: {val: number, w: number}[]) => {
         let totalVal = 0;
         let totalWeight = 0;
         weights.forEach(item => {
-            const value = item.val ?? 0;
-            totalVal += value * item.w;
+            totalVal += (item.val ?? 0) * item.w;
             totalWeight += item.w;
         });
-        const rawAvg = totalWeight > 0 ? totalVal / totalWeight : 50;
-        return Math.min(99, Math.max(40, Math.round(rawAvg)));
+        return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
     };
 
     if (position.includes('PG')) {
-        return calc([
-            { val: p.closeShot, w: 10 }, { val: p.midRange, w: 20 }, { val: threeAvg, w: 25 }, { val: p.ft, w: 10 }, { val: p.shotIq, w: 45 }, { val: p.offConsist, w: 25 },
-            { val: p.layup, w: 25 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 0 }, { val: p.hands, w: 40 },
-            { val: p.intDef, w: 0 }, { val: p.perDef, w: 0 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 0 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 0 },
-            { val: p.offReb, w: 2 }, { val: p.defReb, w: 0 },
-            { val: p.speed, w: 10 }, { val: p.agility, w: 10 }, { val: p.strength, w: 0 }, { val: p.vertical, w: 0 }, { val: p.stamina, w: 15 }, { val: p.hustle, w: 0 }, { val: p.durability, w: 0 },
-            { val: p.passAcc, w: 25 }, { val: p.handling, w: 15 }, { val: p.spdBall, w: 10 }, { val: p.passVision, w: 25 }, { val: p.passIq, w: 50 },
-            { val: p.intangibles, w: 5 }, { val: p.potential, w: 500 }
-        ]);
+        return calc([{ val: attr.close, w: 10 }, { val: attr.mid, w: 20 }, { val: attr.threeAvg, w: 25 }, { val: attr.ft, w: 10 }, { val: attr.shotIq, w: 45 }, { val: attr.offConsist, w: 25 }, { val: attr.layup, w: 25 }, { val: attr.hands, w: 40 }, { val: attr.stamina, w: 15 }, { val: attr.passAcc, w: 25 }, { val: attr.handling, w: 15 }, { val: attr.spdBall, w: 10 }, { val: attr.passVision, w: 25 }, { val: attr.passIq, w: 50 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }]);
     } else if (position.includes('SG')) {
-        return calc([
-            { val: p.closeShot, w: 45 }, { val: p.midRange, w: 45 }, { val: threeAvg, w: 45 }, { val: p.ft, w: 20 }, { val: p.shotIq, w: 80 }, { val: p.offConsist, w: 60 },
-            { val: p.layup, w: 30 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 0 }, { val: p.hands, w: 49 },
-            { val: p.intDef, w: 0 }, { val: p.perDef, w: 15 }, { val: p.steal, w: 10 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 10 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 5 },
-            { val: p.offReb, w: 1 }, { val: p.defReb, w: 1 },
-            { val: p.speed, w: 40 }, { val: p.agility, w: 60 }, { val: p.strength, w: 0 }, { val: p.vertical, w: 0 }, { val: p.stamina, w: 30 }, { val: p.hustle, w: 0 }, { val: p.durability, w: 0 },
-            { val: p.passAcc, w: 20 }, { val: p.handling, w: 25 }, { val: p.spdBall, w: 20 }, { val: p.passVision, w: 15 }, { val: p.passIq, w: 40 },
-            { val: p.intangibles, w: 5 }, { val: p.potential, w: 500 }, { val: heightCm, w: 2 }
-        ]);
+        return calc([{ val: attr.close, w: 45 }, { val: attr.mid, w: 45 }, { val: attr.threeAvg, w: 45 }, { val: attr.ft, w: 20 }, { val: attr.shotIq, w: 80 }, { val: attr.offConsist, w: 60 }, { val: attr.layup, w: 30 }, { val: attr.hands, w: 49 }, { val: attr.perDef, w: 15 }, { val: attr.agility, w: 60 }, { val: attr.stamina, w: 30 }, { val: attr.passAcc, w: 20 }, { val: attr.handling, w: 25 }, { val: attr.spdBall, w: 20 }, { val: attr.passVision, w: 15 }, { val: attr.passIq, w: 40 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }]);
     } else if (position.includes('SF')) {
-        return calc([
-            { val: p.closeShot, w: 200 }, { val: p.midRange, w: 200 }, { val: threeAvg, w: 200 }, { val: p.ft, w: 20 }, { val: p.shotIq, w: 100 }, { val: p.offConsist, w: 30 },
-            { val: p.layup, w: 200 }, { val: p.dunk, w: 0 }, { val: p.postPlay, w: 0 }, { val: p.drawFoul, w: 0 }, { val: p.hands, w: 100 },
-            { val: p.intDef, w: 100 }, { val: p.perDef, w: 100 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 50 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 0 },
-            { val: p.offReb, w: 0 }, { val: p.defReb, w: 0 },
-            { val: p.speed, w: 50 }, { val: p.agility, w: 50 }, { val: p.strength, w: 50 }, { val: p.vertical, w: 50 }, { val: p.stamina, w: 100 }, { val: p.hustle, w: 50 }, { val: p.durability, w: 60 },
-            { val: p.passAcc, w: 40 }, { val: p.handling, w: 0 }, { val: p.spdBall, w: 0 }, { val: p.passVision, w: 0 }, { val: p.passIq, w: 30 },
-            { val: p.intangibles, w: 10 }, { val: p.potential, w: 500 }, { val: heightCm, w: 30 }
-        ]);
+        return calc([{ val: attr.close, w: 200 }, { val: attr.mid, w: 200 }, { val: attr.threeAvg, w: 200 }, { val: attr.ft, w: 20 }, { val: attr.shotIq, w: 100 }, { val: attr.offConsist, w: 30 }, { val: attr.layup, w: 200 }, { val: attr.hands, w: 100 }, { val: attr.intDef, w: 100 }, { val: attr.perDef, w: 100 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 60 }, { val: attr.intangibles, w: 10 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 30 }]);
     } else if (position.includes('PF')) {
-        return calc([
-            { val: p.closeShot, w: 250 }, { val: p.midRange, w: 60 }, { val: threeAvg, w: 40 }, { val: p.ft, w: 30 }, { val: p.shotIq, w: 100 }, { val: p.offConsist, w: 0 },
-            { val: p.layup, w: 240 }, { val: p.dunk, w: 120 }, { val: p.postPlay, w: 120 }, { val: p.drawFoul, w: 50 }, { val: p.hands, w: 100 },
-            { val: p.intDef, w: 140 }, { val: p.perDef, w: 50 }, { val: p.steal, w: 0 }, { val: p.blk, w: 0 }, { val: p.helpDefIq, w: 0 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 100 },
-            { val: p.offReb, w: 150 }, { val: p.defReb, w: 150 },
-            { val: p.speed, w: 60 }, { val: p.agility, w: 60 }, { val: p.strength, w: 120 }, { val: p.vertical, w: 120 }, { val: p.stamina, w: 100 }, { val: p.hustle, w: 40 }, { val: p.durability, w: 100 },
-            { val: p.passAcc, w: 30 }, { val: p.handling, w: 20 }, { val: p.spdBall, w: 0 }, { val: p.passVision, w: 40 }, { val: p.passIq, w: 40 },
-            { val: p.intangibles, w: 7 }, { val: p.potential, w: 500 }, { val: heightCm, w: 150 }
-        ]);
+        return calc([{ val: attr.close, w: 250 }, { val: attr.mid, w: 60 }, { val: attr.threeAvg, w: 40 }, { val: attr.ft, w: 30 }, { val: attr.shotIq, w: 100 }, { val: attr.layup, w: 240 }, { val: attr.dunk, w: 120 }, { val: attr.post, w: 120 }, { val: attr.hands, w: 100 }, { val: attr.intDef, w: 140 }, { val: attr.defConsist, w: 100 }, { val: attr.offReb, w: 150 }, { val: attr.defReb, w: 150 }, { val: attr.strength, w: 120 }, { val: attr.vertical, w: 120 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 100 }, { val: attr.intangibles, w: 7 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 150 }]);
     } else if (position.includes('C')) {
-        return calc([
-            { val: p.closeShot, w: 250 }, { val: p.midRange, w: 140 }, { val: threeAvg, w: 100 }, { val: p.ft, w: 100 }, { val: p.shotIq, w: 100 }, { val: p.offConsist, w: 200 },
-            { val: p.layup, w: 200 }, { val: p.dunk, w: 250 }, { val: p.postPlay, w: 250 }, { val: p.drawFoul, w: 80 }, { val: p.hands, w: 200 },
-            { val: p.intDef, w: 200 }, { val: p.perDef, w: 0 }, { val: p.steal, w: 0 }, { val: p.blk, w: 200 }, { val: p.helpDefIq, w: 0 }, { val: p.passPerc, w: 0 }, { val: p.defConsist, w: 100 },
-            { val: p.offReb, w: 140 }, { val: p.defReb, w: 200 },
-            { val: p.speed, w: 0 }, { val: p.agility, w: 0 }, { val: p.strength, w: 50 }, { val: p.vertical, w: 120 }, { val: p.stamina, w: 100 }, { val: p.hustle, w: 0 }, { val: p.durability, w: 100 },
-            { val: p.passAcc, w: 60 }, { val: p.handling, w: 0 }, { val: p.spdBall, w: 0 }, { val: p.passVision, w: 30 }, { val: p.passIq, w: 80 },
-            { val: p.intangibles, w: 6 }, { val: p.potential, w: 500 }, { val: heightCm, w: 180 }
-        ]);
+        return calc([{ val: attr.close, w: 250 }, { val: attr.mid, w: 140 }, { val: attr.threeAvg, w: 100 }, { val: attr.ft, w: 100 }, { val: attr.shotIq, w: 100 }, { val: attr.offConsist, w: 200 }, { val: attr.layup, w: 200 }, { val: attr.dunk, w: 250 }, { val: attr.post, w: 250 }, { val: attr.hands, w: 200 }, { val: attr.intDef, w: 200 }, { val: attr.blk, w: 200 }, { val: attr.defConsist, w: 100 }, { val: attr.offReb, w: 140 }, { val: attr.defReb, w: 200 }, { val: attr.stamina, w: 100 }, { val: attr.durability, w: 100 }, { val: attr.intangibles, w: 6 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 180 }]);
     }
     return 70;
 };
 
 /**
- * DB에서 불러온 선수 데이터를 런타임용 Player 객체로 변환하며 OVR을 재계산합니다.
+ * DB/CSV 원본 데이터를 시스템 내부 Player 객체로 변환합니다.
  */
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
-    const stats = INITIAL_STATS();
-    const ovr = calculatePlayerOvr(p); // 런타임 최신 공식 적용
-    const norm = normalizeName(p.name || "");
+    // 헬퍼: 키를 찾아 값을 반환 (대소문자 무시, 약어 처리)
+    const v = (key: string, def: any = 70) => {
+        return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
+    };
+
+    const name = v('name', v('full_name', v('Name', "Unknown Player")));
+    const norm = normalizeName(name);
     const injury = KNOWN_INJURIES[norm];
+    const ovr = calculatePlayerOvr(p);
     
     return {
         id: p.id || `p_${norm}_${teamId}_${Date.now()}`,
-        name: p.name || "Unknown Player",
-        position: p.position || 'G',
-        age: p.age || 25,
-        height: p.height || 200,
-        weight: p.weight || 100,
-        salary: p.salary || 1.0,
-        contractYears: p.contractYears || 1,
+        name,
+        position: v('position', 'G'),
+        age: v('age', 25),
+        height: v('height', 200),
+        weight: v('weight', 100),
+        salary: v('salary', 1.0),
+        contractYears: v('contract_years', v('contractyears', v('contractYears', 1))),
         health: injury ? 'Injured' : 'Healthy',
         injuryType: injury?.type,
         returnDate: injury?.returnDate,
         condition: 100,
         ovr,
-        potential: p.potential || ovr + 5,
-        revealedPotential: p.potential || ovr + 5,
-        intangibles: p.intangibles || 75,
-        
-        speed: p.speed || 70, agility: p.agility || 70, strength: p.strength || 70, vertical: p.vertical || 70,
-        stamina: p.stamina || 70, hustle: p.hustle || 70, durability: p.durability || 70, ath: p.ath || 70,
-        
-        closeShot: p.closeShot || 70, midRange: p.midRange || 70, threeCorner: p.threeCorner || 70,
-        three45: p.three45 || 70, threeTop: p.threeTop || 70, ft: p.ft || 70, shotIq: p.shotIq || 70,
-        offConsist: p.offConsist || 70, out: p.out || 70,
-        
-        layup: p.layup || 70, dunk: p.dunk || 70, postPlay: p.postPlay || 70, drawFoul: p.drawFoul || 70,
-        hands: p.hands || 70, ins: p.ins || 70,
-        
-        passAcc: p.passAcc || 70, handling: p.handling || 70, spdBall: p.spdBall || 70,
-        passIq: p.passIq || 70, passVision: p.passVision || 70, plm: p.plm || 70,
-        
-        intDef: p.intDef || 70, perDef: p.perDef || 70, steal: p.steal || 70, blk: p.blk || 70,
-        helpDefIq: p.helpDefIq || 70, passPerc: p.passPerc || 70, defConsist: p.defConsist || 70, def: p.def || 70,
-        
-        offReb: p.offReb || 70, defReb: p.defReb || 70, reb: p.reb || 70,
-        
-        stats,
+        potential: v('potential', v('pot', ovr + 5)),
+        revealedPotential: v('potential', v('pot', ovr + 5)),
+        intangibles: v('intangibles', 75),
+        speed: v('speed', v('spd')),
+        agility: v('agility', v('agi')),
+        strength: v('strength', v('str')),
+        vertical: v('vertical', v('vert')),
+        stamina: v('stamina', v('sta')),
+        hustle: v('hustle', v('hus')),
+        durability: v('durability', v('dur')),
+        ath: Math.round(((v('spd') + v('agi') + v('str') + v('vert')) || 280) / 4),
+        closeShot: v('closeShot', v('close')),
+        midRange: v('midRange', v('mid')),
+        threeCorner: v('threeCorner', v('threec', v('3c'))),
+        three45: v('three45', v('3_45')),
+        threeTop: v('threeTop', v('threet', v('3t'))),
+        ft: v('ft'),
+        shotIq: v('shotIq', v('siq')),
+        offConsist: v('offConsist', v('ocon')),
+        out: Math.round((v('close', 70) + v('mid', 70) + v('threec', 70)) / 3),
+        layup: v('layup', v('lay')),
+        dunk: v('dunk', v('dnk')),
+        postPlay: v('postPlay', v('post')),
+        drawFoul: v('drawFoul', v('draw')),
+        hands: v('hands'),
+        ins: Math.round((v('lay', 70) + v('dnk', 70) + v('post', 70)) / 3),
+        passAcc: v('passAcc', v('pacc')),
+        handling: v('handling', v('handl')),
+        spdBall: v('spdBall', v('spwb')),
+        passIq: v('passIq', v('piq')),
+        passVision: v('passVision', v('pvis')),
+        plm: Math.round((v('pacc', 70) + v('handl', 70) + v('pvis', 70)) / 3),
+        intDef: v('intDef', v('idef')),
+        perDef: v('perDef', v('pdef')),
+        steal: v('steal', v('stl')),
+        blk: v('blk'),
+        helpDefIq: v('helpDefIq', v('hdef')),
+        passPerc: v('passPerc', v('pper')),
+        defConsist: v('defConsist', v('dcon')),
+        def: Math.round((v('idef', 70) + v('pdef', 70) + v('stl', 70) + v('blk', 70)) / 4),
+        offReb: v('offReb', v('oreb')),
+        defReb: v('defReb', v('dreb')),
+        reb: Math.round((v('oreb', 70) + v('dreb', 70)) / 2),
+        stats: INITIAL_STATS(),
         playoffStats: INITIAL_STATS()
     };
 };
 
-/**
- * DB에서 불러온 일정 데이터를 런타임용 Game 객체로 변환합니다.
- */
 export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
-    return rows.map(r => ({
-        id: r.id || `g_${r.home_team_id || r.homeTeamId}_${r.away_team_id || r.awayTeamId}_${r.date}`,
-        homeTeamId: r.home_team_id || r.homeTeamId,
-        awayTeamId: r.away_team_id || r.awayTeamId,
-        date: r.date,
-        homeScore: r.home_score || r.homeScore,
-        awayScore: r.away_score || r.awayScore,
-        played: r.played === true || r.played === 'true' || !!(r.home_score || r.homeScore),
-        isPlayoff: r.is_playoff || r.isPlayoff || false,
-        seriesId: r.series_id || r.seriesId,
-        boxScore: r.box_score || r.boxScore
-    }));
+    return rows.map(r => {
+        let dateStr = r.date;
+        if (dateStr && dateStr.includes(' ')) {
+            try {
+                const d = new Date(dateStr);
+                if (!isNaN(d.getTime())) {
+                    dateStr = d.toISOString().split('T')[0];
+                }
+            } catch(e) {}
+        }
+
+        const findTeamIdByName = (name: string) => {
+            if (!name) return 'unknown';
+            
+            // [FIXED] Common CSV Team Name Mismatches
+            if (name === '너겟츠') return 'den';
+            if (name === '팀버울브즈') return 'min';
+            if (name === '페이서스 ') return 'ind'; // Trailing space check
+            
+            const t = INITIAL_TEAMS_DATA.find(it => 
+                it.name === name || 
+                name.includes(it.name) ||
+                it.name.includes(name)
+            );
+            return t ? t.id : name.toLowerCase();
+        };
+
+        const site = r.site;
+        const homeName = site === '홈' ? r.team : r.opponent;
+        const awayName = site === '홈' ? r.opponent : r.team;
+
+        const homeTeamId = findTeamIdByName(homeName);
+        const awayTeamId = findTeamIdByName(awayName);
+
+        return {
+            id: r.id || `g_${homeTeamId}_${awayTeamId}_${dateStr}`,
+            homeTeamId,
+            awayTeamId,
+            date: dateStr,
+            homeScore: r.tmscore || undefined,
+            awayScore: r.oppscore || undefined,
+            played: !!(r.tmscore),
+            isPlayoff: r.isplayoff || false,
+            seriesId: r.seriesid || undefined
+        };
+    });
 };
 
-/**
- * 기본 시즌 일정을 생성합니다. (DB에 없을 경우)
- */
 export const generateSeasonSchedule = (myTeamId: string): Game[] => {
   const games: Game[] = [];
   const teamIds = INITIAL_TEAMS_DATA.map(t => t.id);
   const startDate = new Date(SEASON_START_DATE);
-  
   for (let i = 0; i < 82; i++) {
     const oppIdx = (teamIds.indexOf(myTeamId) + i + 1) % teamIds.length;
     const opponentId = teamIds[oppIdx];
     const gameDate = new Date(startDate);
     gameDate.setDate(startDate.getDate() + i * 2);
-    
     const isHome = i % 2 === 0;
-    games.push({
-      id: `game_${i}_${myTeamId}`,
-      homeTeamId: isHome ? myTeamId : opponentId,
-      awayTeamId: isHome ? opponentId : myTeamId,
-      date: gameDate.toISOString().split('T')[0],
-      played: false
-    });
+    games.push({ id: `game_${i}_${myTeamId}`, homeTeamId: isHome ? myTeamId : opponentId, awayTeamId: isHome ? opponentId : myTeamId, date: gameDate.toISOString().split('T')[0], played: false });
   }
   return games;
 };
 
-/**
- * 시즌 일정을 CSV로 내보냅니다.
- */
-export const exportScheduleToCSV = (games: Game[]) => {
-  const headers = "id,homeTeamId,awayTeamId,date,homeScore,awayScore,played,isPlayoff,seriesId\n";
-  const rows = games.map(g => 
-    `${g.id},${g.homeTeamId},${g.awayTeamId},${g.date},${g.homeScore || ''},${g.awayScore || ''},${g.played},${g.isPlayoff || false},${g.seriesId || ''}`
-  ).join('\n');
-  
-  const blob = new Blob([headers + rows], { type: 'text/csv;charset=utf-8;' });
+export const exportScheduleToCSV = (schedule: Game[]) => {
+  const headers = ['id', 'date', 'homeTeamId', 'awayTeamId', 'homeScore', 'awayScore', 'played', 'isPlayoff'];
+  const rows = schedule.map(g => [g.id, g.date, g.homeTeamId, g.awayTeamId, g.homeScore ?? '', g.awayScore ?? '', g.played, g.isPlayoff ?? false]);
+  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.setAttribute("href", url);
-  link.setAttribute("download", "nba_schedule_2026.csv");
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', 'nba_schedule.csv');
   link.style.visibility = 'hidden';
   document.body.appendChild(link);
   link.click();

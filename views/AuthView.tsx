@@ -9,11 +9,9 @@ const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{2,12}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
-interface AuthViewProps {
-    onGuestLogin: () => void;
-}
+interface AuthViewProps {}
 
-export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
+export const AuthView: React.FC<AuthViewProps> = () => {
   const [loading, setLoading] = useState(false);
   const [identifier, setIdentifier] = useState(''); 
   const [email, setEmail] = useState(''); 
@@ -54,6 +52,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
+        // 회원가입 시에는 Auth Users에만 등록하고, 프로필/세이브는 팀 선택 후 생성합니다.
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -65,19 +64,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         });
 
         if (error) throw error;
-
-        if (data.user) {
-            try {
-                await supabase.from('profiles').upsert({
-                    id: data.user.id,
-                    email: email,
-                    nickname: nickname,
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'id' });
-            } catch (profileErr) {
-                console.warn("프로필 저장 실패 (테이블 없음 등):", profileErr);
-            }
-        }
 
         setMessage({ type: 'success', text: '회원가입 성공! 이메일 인증 후 로그인해주세요.' });
         setMode('login');
@@ -96,7 +82,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
                     .maybeSingle();
 
                 if (profileError) {
-                    // 구체적인 에러 내용을 위해 에러 객체 자체를 던지지 않고 메시지를 커스텀
                     console.error("Profile Lookup Error:", profileError);
                     throw new Error("닉네임 조회 중 오류가 발생했습니다. 이메일로 로그인해주세요.");
                 }
@@ -107,7 +92,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
                 loginEmail = profile.email;
             } catch (lookupErr: any) {
                 console.error("닉네임 조회 실패:", lookupErr);
-                // 이미 위에서 구체적인 메시지로 Error를 던졌다면 그 메시지를 유지
                 throw new Error(lookupErr.message || "닉네임 로그인을 사용할 수 없습니다. 이메일로 로그인해주세요.");
             }
         }
@@ -118,22 +102,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         });
         
         if (error) throw error;
-
-        if (authData.user) {
-            supabase.from('profiles').select('id').eq('id', authData.user.id).maybeSingle()
-            .then(({ data }) => {
-                if (!data) {
-                    const metaName = authData.user.user_metadata?.nickname;
-                    const emailName = authData.user.email?.split('@')[0] || 'User';
-                    supabase.from('profiles').upsert({
-                        id: authData.user.id,
-                        email: authData.user.email,
-                        nickname: metaName || emailName,
-                        last_seen_at: new Date().toISOString()
-                    }).then(() => console.log("프로필 자동 복구 완료"));
-                }
-            });
-        }
       }
     } catch (error: any) {
       console.error(error);
@@ -330,19 +298,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> 로그인</> : <><UserPlus size={20} /> 회원가입</>)}
           </button>
         </form>
-
-        <div className="my-6 border-t border-slate-800 relative">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 px-3 text-xs font-bold text-slate-500">
-                OR
-            </div>
-        </div>
-
-        <button 
-            onClick={onGuestLogin}
-            className="w-full py-3 bg-amber-600/10 hover:bg-amber-600/20 text-amber-500 rounded-xl border border-amber-600/30 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all hover:border-amber-600/50"
-        >
-            <WifiOff size={16} /> 게스트 로그인 (오프라인 모드)
-        </button>
 
         <div className="mt-8 text-center">
           <p className="text-slate-500 text-xs font-bold uppercase tracking-wide mb-3">
