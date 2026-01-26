@@ -94,6 +94,14 @@ export const TeamCard: React.FC<{ team: Team, onSelect: () => void }> = ({ team,
 
 // --- Shot Chart Component ---
 
+// Moved StatItem to top level for better TS compatibility with JSX keys
+const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
+    <div className="flex flex-col items-center justify-center">
+        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{label}</span>
+        <span className="text-sm font-bold text-white tabular-nums">{value}</span>
+    </div>
+);
+
 const ShotZonePath: React.FC<{ path: string, pct: number, leagueAvg: number, hasData: boolean }> = ({ path, pct, leagueAvg, hasData }) => {
     let fillColor = 'rgba(30, 41, 59, 0.1)'; // slate-800/10 (Background) - reduced from 0.2
     let strokeColor = '#334155'; // slate-700
@@ -201,13 +209,6 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
         { l: '3PM', v: s.p3m }, { l: '3PA', v: s.p3a },
         { l: '3P%', v: s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '-' },
     ];
-
-    const StatItem = ({ label, value }: { label: string, value: string | number }) => (
-        <div className="flex flex-col items-center justify-center">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{label}</span>
-            <span className="text-sm font-bold text-white tabular-nums">{value}</span>
-        </div>
-    );
 
     return (
         <div className="flex flex-col lg:flex-row items-center gap-8 w-full animate-in fade-in slide-in-from-bottom-2 duration-500 h-full">

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock, History } from 'lucide-react';
+import { Users, Handshake, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, Activity, MinusCircle, Trash2, Check, AlertCircle, Info, Search, Send, ListFilter, ChevronRight, Target, Lock, History, Clock } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -381,7 +381,20 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
          <TradeConfirmModal userAssets={pendingTrade.userAssets} targetAssets={pendingTrade.targetAssets} userTeam={team} targetTeam={pendingTrade.targetTeam} onConfirm={executeTrade} onCancel={() => setPendingTrade(null)} />
        )}
        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
-           <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">트레이드 센터</h2>
+           <div>
+               <div className="flex items-center gap-4">
+                   <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">트레이드 센터</h2>
+                   <div className="hidden md:flex px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 items-center gap-2 shadow-inner">
+                       <Clock size={12} className="text-red-500" />
+                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">
+                           Deadline: {TRADE_DEADLINE}
+                       </span>
+                   </div>
+               </div>
+               <p className="text-slate-500 font-bold mt-2 uppercase text-sm">
+                   팀의 미래를 위한 과감한 결단
+               </p>
+           </div>
            <div className="flex gap-3">
               <button onClick={() => setActiveTab('Block')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><ListFilter size={16} /> 트레이드 블록</button>
               <button onClick={() => setActiveTab('Proposal')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><Send size={16} /> 직접 트레이드 제안</button>

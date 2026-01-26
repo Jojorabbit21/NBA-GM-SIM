@@ -22,7 +22,7 @@ const getCapStatus = (cap: number) => {
   if (cap >= FIRST_APRON) return { label: '1차 에이프런 초과', msg: '미드레벨 예외 조항 사용 제한 등 팀 운영 유동성이 제약됩니다.', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/50' };
   if (cap >= TAX_LEVEL) return { label: '사치세 납부 구간', msg: '샐러리 캡을 초과하여 구단 운영비 외 추가 세금이 부과됩니다.', color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/50' };
   if (cap >= SALARY_CAP) return { label: '샐러리 캡 초과', msg: '사치세 라인 미만이지만, FA 영입 시 예외 조항 위주로 운영해야 합니다.', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/50' };
-  return { label: '캡 스페이스 여유', msg: '공격적인 FA 영입 및 트레이드 흡수가 가능한 건강한 상태입니다.', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/50' };
+  return { label: '캡 스페이스 여유', msg: '공격적인 FA 영입 및 트레이드 흡수가 가능한 건강한 상태입니다.', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-400/50' };
 };
 
 const getVisualPercentage = (cap: number) => {
@@ -174,6 +174,130 @@ const ATTRIBUTE_TOOLTIPS: Record<string, string> = {
 type SortConfig = {
   key: string;
   direction: 'asc' | 'desc';
+};
+
+// Fixed TacticTable type errors by explicitly casting entries and stats
+const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: any, baseline?: TacticStatRecord }> = ({ data, labels, baseline }) => {
+    const sorted = (Object.entries(data) as [string, TacticStatRecord][]).sort((a, b) => b[1].games - a[1].games);
+    
+    if (sorted.length === 0) return <div className="text-center text-slate-500 py-8 font-bold text-sm">아직 기록된 데이터가 없습니다.</div>;
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead>
+                    <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/30">
+                        <th className="py-3 px-4 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
+                        <th className="py-3 px-2 text-right w-12">GP</th>
+                        <th className="py-3 px-2 text-center w-16">W-L</th>
+                        <th className="py-3 px-2 text-right w-16">Win%</th>
+                        <th className="py-3 px-2 text-right w-16">PTS</th>
+                        <th className="py-3 px-2 text-right w-16">PA</th>
+                        <th className="py-3 px-2 text-right w-20">FGM/A</th>
+                        <th className="py-3 px-2 text-right w-16">FG%</th>
+                        <th className="py-3 px-2 text-right w-20">3PM/A</th>
+                        <th className="py-3 px-2 text-right w-16">3P%</th>
+                        <th className="py-3 px-2 text-right w-20">RIM M/A</th>
+                        <th className="py-3 px-2 text-right w-16">RIM%</th>
+                        <th className="py-3 px-2 text-right w-20">MID M/A</th>
+                        <th className="py-3 px-2 text-right w-16">MID%</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                    {sorted.map(([key, stats]) => {
+                        const s = stats as TacticStatRecord;
+                        const winPct = (s.wins / s.games * 100).toFixed(1);
+                        const avgPts = (s.ptsFor / s.games).toFixed(1);
+                        const avgPa = (s.ptsAgainst / s.games).toFixed(1);
+                        const label = labels[key]?.label || key;
+                        
+                        // Fix for NaN: Default undefined values to 0
+                        const fgm = s.fgm || 0;
+                        const fga = s.fga || 0;
+                        const p3m = s.p3m || 0;
+                        const p3a = s.p3a || 0;
+                        const rimM = s.rimM || 0;
+                        const rimA = s.rimA || 0;
+                        const midM = s.midM || 0;
+                        const midA = s.midA || 0;
+
+                        const fgPct = fga > 0 ? ((fgm / fga) * 100).toFixed(1) + '%' : '0.0%';
+                        const p3Pct = p3a > 0 ? ((p3m / p3a) * 100).toFixed(1) + '%' : '0.0%';
+                        const rimPct = rimA > 0 ? ((rimM / rimA) * 100).toFixed(1) + '%' : '0.0%';
+                        const midPct = midA > 0 ? ((midM / midA) * 100).toFixed(1) + '%' : '0.0%';
+
+                        return (
+                            <tr key={key} className="hover:bg-white/5 transition-colors">
+                                <td className="py-3 px-4 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">{label}</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{s.games}</td>
+                                <td className="py-3 px-2 text-center font-mono text-sm text-slate-300">{s.wins}-{s.games - s.wins}</td>
+                                <td className={`py-3 px-2 text-right font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-white">{avgPts}</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{avgPa}</td>
+                                <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(fgm/s.games).toFixed(1)}/{(fga/s.games).toFixed(1)}</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{fgPct}</td>
+                                <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(p3m/s.games).toFixed(1)}/{(p3a/s.games).toFixed(1)}</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{p3Pct}</td>
+                                <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(rimM/s.games).toFixed(1)}/{(rimA/s.games).toFixed(1)}</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{rimPct}</td>
+                                <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(midM/s.games).toFixed(1)}/{(midA/s.games).toFixed(1)}</td>
+                                <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{midPct}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// Fixed AceStopperTable type errors by explicitly typing the stats and baseline parameters
+const AceStopperTable = ({ stats, baseline }: { stats: TacticStatRecord, baseline?: TacticStatRecord }) => {
+    // Basic Calculations
+    const gp = stats.games;
+    const acePts = (stats.ptsAgainst / gp).toFixed(1); // ptsAgainst holds Ace Points for this tactic
+    const aceTov = stats.tov ? (stats.tov / gp).toFixed(1) : '0.0';
+    const fgPctVal = stats.fga > 0 ? (stats.fgm / stats.fga) : 0;
+    const p3PctVal = stats.p3a > 0 ? (stats.p3m / stats.p3a) : 0;
+    
+    // Efficiency (FG% Reduction) Calculation
+    // Baseline is usually ManToManPerimeter (Opponent Team Stats)
+    // Comparing Ace FG% vs Opponent Team Avg FG%
+    const baselineFgPct = baseline && baseline.fga > 0 ? (baseline.fgm / baseline.fga) : 0.475; 
+    const diff = fgPctVal - baselineFgPct;
+    const diffStr = (Math.abs(diff) * 100).toFixed(1) + '%';
+    const isGood = diff < 0;
+
+    return (
+        <div className="overflow-x-auto mt-2">
+            <table className="w-full text-left border-collapse whitespace-nowrap">
+                <thead>
+                    <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/30">
+                        <th className="py-3 px-4 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
+                        <th className="py-3 px-2 text-right w-12">GP</th>
+                        <th className="py-3 px-2 text-right w-24">Ace PTS</th>
+                        <th className="py-3 px-2 text-right w-24">Ace TOV</th>
+                        <th className="py-3 px-2 text-right w-24">Ace FG%</th>
+                        <th className="py-3 px-2 text-right w-24">Ace 3P%</th>
+                        <th className="py-3 px-4 text-right w-24">Efficiency</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/50">
+                    <tr className="hover:bg-white/5 transition-colors">
+                        <td className="py-3 px-4 font-bold text-fuchsia-400 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Ace Stopper</td>
+                        <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{gp}</td>
+                        <td className="py-3 px-2 text-right font-mono text-sm text-white">{acePts}</td>
+                        <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{aceTov}</td>
+                        <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{(fgPctVal * 100).toFixed(1)}%</td>
+                        <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{(p3PctVal * 100).toFixed(1)}%</td>
+                        <td className={`py-3 px-4 text-right font-mono text-sm font-bold ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {isGood ? '-' : '+'}{diffStr}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
 };
 
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
@@ -407,127 +531,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         </div>
     </th>
   );
-
-  const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: any, baseline?: TacticStatRecord }> = ({ data, labels, baseline }) => {
-      const sorted = Object.entries(data).sort((a, b) => b[1].games - a[1].games);
-      
-      if (sorted.length === 0) return <div className="text-center text-slate-500 py-8 font-bold text-sm">아직 기록된 데이터가 없습니다.</div>;
-
-      return (
-          <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse whitespace-nowrap">
-                  <thead>
-                      <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/30">
-                          <th className="py-3 px-4 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
-                          <th className="py-3 px-2 text-right w-12">GP</th>
-                          <th className="py-3 px-2 text-center w-16">W-L</th>
-                          <th className="py-3 px-2 text-right w-16">Win%</th>
-                          <th className="py-3 px-2 text-right w-16">PTS</th>
-                          <th className="py-3 px-2 text-right w-16">PA</th>
-                          <th className="py-3 px-2 text-right w-20">FGM/A</th>
-                          <th className="py-3 px-2 text-right w-16">FG%</th>
-                          <th className="py-3 px-2 text-right w-20">3PM/A</th>
-                          <th className="py-3 px-2 text-right w-16">3P%</th>
-                          <th className="py-3 px-2 text-right w-20">RIM M/A</th>
-                          <th className="py-3 px-2 text-right w-16">RIM%</th>
-                          <th className="py-3 px-2 text-right w-20">MID M/A</th>
-                          <th className="py-3 px-2 text-right w-16">MID%</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                      {sorted.map(([key, stats]) => {
-                          const winPct = (stats.wins / stats.games * 100).toFixed(1);
-                          const avgPts = (stats.ptsFor / stats.games).toFixed(1);
-                          const avgPa = (stats.ptsAgainst / stats.games).toFixed(1);
-                          const label = labels[key]?.label || key;
-                          
-                          // Fix for NaN: Default undefined values to 0
-                          const fgm = stats.fgm || 0;
-                          const fga = stats.fga || 0;
-                          const p3m = stats.p3m || 0;
-                          const p3a = stats.p3a || 0;
-                          const rimM = stats.rimM || 0;
-                          const rimA = stats.rimA || 0;
-                          const midM = stats.midM || 0;
-                          const midA = stats.midA || 0;
-
-                          const fgPct = fga > 0 ? ((fgm / fga) * 100).toFixed(1) + '%' : '0.0%';
-                          const p3Pct = p3a > 0 ? ((p3m / p3a) * 100).toFixed(1) + '%' : '0.0%';
-                          const rimPct = rimA > 0 ? ((rimM / rimA) * 100).toFixed(1) + '%' : '0.0%';
-                          const midPct = midA > 0 ? ((midM / midA) * 100).toFixed(1) + '%' : '0.0%';
-
-                          return (
-                              <tr key={key} className="hover:bg-white/5 transition-colors">
-                                  <td className="py-3 px-4 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">{label}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{stats.games}</td>
-                                  <td className="py-3 px-2 text-center font-mono text-sm text-slate-300">{stats.wins}-{stats.games - stats.wins}</td>
-                                  <td className={`py-3 px-2 text-right font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-white">{avgPts}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{avgPa}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(fgm/stats.games).toFixed(1)}/{(fga/stats.games).toFixed(1)}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{fgPct}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(p3m/stats.games).toFixed(1)}/{(p3a/stats.games).toFixed(1)}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{p3Pct}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(rimM/stats.games).toFixed(1)}/{(rimA/stats.games).toFixed(1)}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{rimPct}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-xs text-slate-500">{(midM/stats.games).toFixed(1)}/{(midA/stats.games).toFixed(1)}</td>
-                                  <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{midPct}</td>
-                              </tr>
-                          );
-                      })}
-                  </tbody>
-              </table>
-          </div>
-      );
-  };
-
-  const AceStopperTable: React.FC<{ stats: TacticStatRecord, baseline?: TacticStatRecord }> = ({ stats, baseline }) => {
-      // Basic Calculations
-      const gp = stats.games;
-      const acePts = (stats.ptsAgainst / gp).toFixed(1); // ptsAgainst holds Ace Points for this tactic
-      const aceTov = stats.tov ? (stats.tov / gp).toFixed(1) : '0.0';
-      const fgPctVal = stats.fga > 0 ? (stats.fgm / stats.fga) : 0;
-      const p3PctVal = stats.p3a > 0 ? (stats.p3m / stats.p3a) : 0;
-      
-      // Efficiency (FG% Reduction) Calculation
-      // Baseline is usually ManToManPerimeter (Opponent Team Stats)
-      // Comparing Ace FG% vs Opponent Team Avg FG%
-      const baselineFgPct = baseline && baseline.fga > 0 ? (baseline.fgm / baseline.fga) : 0.475; 
-      const diff = fgPctVal - baselineFgPct;
-      const diffStr = (Math.abs(diff) * 100).toFixed(1) + '%';
-      const isGood = diff < 0;
-
-      return (
-          <div className="overflow-x-auto mt-2">
-              <table className="w-full text-left border-collapse whitespace-nowrap">
-                  <thead>
-                      <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/30">
-                          <th className="py-3 px-4 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
-                          <th className="py-3 px-2 text-right w-12">GP</th>
-                          <th className="py-3 px-2 text-right w-24">Ace PTS</th>
-                          <th className="py-3 px-2 text-right w-24">Ace TOV</th>
-                          <th className="py-3 px-2 text-right w-24">Ace FG%</th>
-                          <th className="py-3 px-2 text-right w-24">Ace 3P%</th>
-                          <th className="py-3 px-4 text-right w-24">Efficiency</th>
-                      </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/50">
-                      <tr className="hover:bg-white/5 transition-colors">
-                          <td className="py-3 px-4 font-bold text-fuchsia-400 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Ace Stopper</td>
-                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-400">{gp}</td>
-                          <td className="py-3 px-2 text-right font-mono text-sm text-white">{acePts}</td>
-                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{aceTov}</td>
-                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{(fgPctVal * 100).toFixed(1)}%</td>
-                          <td className="py-3 px-2 text-right font-mono text-sm text-slate-300">{(p3PctVal * 100).toFixed(1)}%</td>
-                          <td className={`py-3 px-4 text-right font-mono text-sm font-bold ${isGood ? 'text-emerald-400' : 'text-red-400'}`}>
-                              {isGood ? '-' : '+'}{diffStr}
-                          </td>
-                      </tr>
-                  </tbody>
-              </table>
-          </div>
-      );
-  };
 
   if (!selectedTeam) return null;
 
