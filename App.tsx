@@ -14,7 +14,7 @@ import {
 import { simulateGame, GameTactics, RosterUpdate, SimulationResult } from './services/gameEngine';
 import { generateNewsTicker, generateOwnerWelcome, generateGameRecapNews } from './services/geminiService';
 import { initGA, logPageView, logEvent, logError } from './services/analytics'; 
-import { NavItem, Toast } from './components/SharedComponents';
+import { NavItem, Toast, ActionToast } from './components/SharedComponents';
 import { TeamSelectView } from './views/TeamSelectView';
 import { DashboardView } from './views/DashboardView';
 import { RosterView } from './views/RosterView';
@@ -73,6 +73,7 @@ const App: React.FC = () => {
   const [activeGame, setActiveGame] = useState<Game | null>(null);
   const [lastGameResult, setLastGameResult] = useState<any>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [updateAvailable, setUpdateAvailable] = useState(false); // Version Check State
   const [rosterTargetId, setRosterTargetId] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -80,6 +81,30 @@ const App: React.FC = () => {
   // Session & Device
   const [deviceId] = useState(() => self.crypto.randomUUID());
   const [isDuplicateSession, setIsDuplicateSession] = useState(false);
+
+  // Version Check Logic
+  const currentVersion = useRef<string | null>(null);
+  useEffect(() => {
+    const checkVersion = async () => {
+        if (document.hidden) return;
+        try {
+            const res = await fetch(`/version.json?t=${Date.now()}`);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (!currentVersion.current) {
+                currentVersion.current = data.version;
+            } else if (currentVersion.current !== data.version) {
+                setUpdateAvailable(true);
+            }
+        } catch (e) {
+            // Ignore fetch errors
+        }
+    };
+    // Check every 10 minutes
+    const interval = setInterval(checkVersion, 1000 * 60 * 10);
+    checkVersion(); // Initial check
+    return () => clearInterval(interval);
+  }, []);
 
   const finalizeSimRef = useRef<((userResult?: any) => void) | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -483,6 +508,15 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+      
+      {updateAvailable && (
+          <ActionToast 
+              message="새로운 버전이 출시되었습니다."
+              actionLabel="업데이트"
+              onAction={() => window.location.reload()}
+              onClose={() => setUpdateAvailable(false)}
+          />
+      )}
       
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
