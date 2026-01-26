@@ -284,11 +284,15 @@ const App: React.FC = () => {
             if (!error && saveData && saveData.game_data) {
                 const gd = saveData.game_data;
                 setMyTeamId(saveData.team_id);
-                setTeams(gd.teams.map((t: Team) => ({
+                
+                // [CHANGED] Use syncOvrWithLatestWeights to enforce latest OVR formulas on saved data
+                // This ensures OVRs are recalculated with new weights even if the save file has old OVR values
+                const loadedTeams = gd.teams.map((t: Team) => ({
                     ...t,
-                    roster: t.roster.map(p => ({ ...p, ovr: calculatePlayerOvr(p) })),
                     tacticHistory: t.tacticHistory || { offense: {}, defense: {} }
-                }))); 
+                }));
+                setTeams(syncOvrWithLatestWeights(loadedTeams));
+
                 setSchedule(gd.schedule || []);
                 // Load separate box scores if they exist
                 setBoxScores(gd.boxScores || {});
@@ -296,17 +300,23 @@ const App: React.FC = () => {
                 setUserTactics(gd.tactics || DEFAULT_TACTICS);
                 setPlayoffSeries(gd.playoffSeries || []);
                 setTransactions(gd.transactions || []);
-                setProspects((gd.prospects || []).map((p: Player) => ({ ...p, ovr: calculatePlayerOvr(p) })));
+
+                // [CHANGED] Recalculate prospects OVR as well
+                setProspects((gd.prospects || []).map((p: Player) => ({ 
+                    ...p, 
+                    ovr: calculatePlayerOvr(p) 
+                })));
+
                 setRosterTargetId(saveData.team_id);
                 setView('Dashboard');
-                setToastMessage("클라우드 세이브 데이터 로드 완료.");
+                setToastMessage("클라우드 세이브 데이터 로드 완료 (최신 OVR 적용됨).");
             }
             // Mark as loaded even if no data found to prevent infinite checks on focus
             setIsSaveLoaded(true);
         } catch (err: any) {} 
     };
     checkExistingSave();
-  }, [session, isDataLoaded, isDuplicateSession, isGuestMode, isSaveLoaded]);
+  }, [session, isDataLoaded, isDuplicateSession, isGuestMode, isSaveLoaded, syncOvrWithLatestWeights]);
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
     if (isDataLoaded && myTeamId) { setRosterTargetId(teamId); return; }
