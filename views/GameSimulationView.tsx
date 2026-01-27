@@ -62,10 +62,24 @@ const GARBAGE_MESSAGES = [
     "사실상 승패가 결정되었습니다.",
 ];
 
+// WP Calculation Logic: Score diff + Time remaining
+const calculateWinProbability = (homeScore: number, awayScore: number, timePassed: number) => {
+    const totalTime = 48;
+    const timeRemaining = Math.max(0, totalTime - timePassed);
+    const diff = homeScore - awayScore;
+    
+    // As time decreases, points lead becomes more valuable
+    const volatility = Math.sqrt(timeRemaining + 1) * 3.0;
+    
+    // Normalize to 0-100 (Home 100%, Away 0%)
+    let wp = 50 + (diff / volatility) * 50;
+    return Math.max(0.1, Math.min(99.9, wp));
+};
+
 const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
     let currentHome = 0;
     let currentAway = 0;
-    const history: { h: number, a: number }[] = [{ h: 0, a: 0 }];
+    const history: { h: number, a: number, wp: number }[] = [{ h: 0, a: 0, wp: 50 }];
     const scoreDiff = Math.abs(finalHome - finalAway);
     const isClutchGame = scoreDiff <= 5;
     let momentum = 0;
@@ -73,7 +87,12 @@ const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
     const clutchTriggerAway = isClutchGame ? finalAway - (Math.floor(Math.random() * 3) + 3) : 9999;
     let clutchModeActivated = false;
 
+    // Total events roughly mapped to 48 minutes
+    const totalSteps = 100; 
+
     while (currentHome < finalHome || currentAway < finalAway) {
+        const timePassed = (history.length / totalSteps) * 48;
+
         if (isClutchGame && !clutchModeActivated && currentHome >= clutchTriggerHome && currentAway >= clutchTriggerAway) {
             clutchModeActivated = true;
         }
@@ -112,96 +131,110 @@ const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
             momentum = Math.max(momentum - 1, -3);
         }
         if ((scorer === 'home' && momentum < 0) || (scorer === 'away' && momentum > 0)) momentum = 0;
-        history.push({ h: currentHome, a: currentAway });
+        
+        const currentWP = calculateWinProbability(currentHome, currentAway, timePassed);
+        history.push({ h: currentHome, a: currentAway, wp: currentWP });
     }
     return history;
 };
 
-// --- FIX: Responsive ScoreGraph with viewBox ---
 const ScoreGraph: React.FC<{ 
-    history: { h: number, a: number }[], 
+    history: { h: number, a: number, wp: number }[], 
     progress: number, 
     homeColor: string, 
-    awayColor: string 
-}> = ({ history, progress, homeColor, awayColor }) => {
-    const VIEW_WIDTH = 400;
-    const VIEW_HEIGHT = 80;
-    const MID_Y = VIEW_HEIGHT / 2;
+    awayColor: string,
+    homeLogo: string,
+    awayLogo: string
+}> = ({ history, progress, homeColor, awayColor, homeLogo, awayLogo }) => {
+    const VIEW_WIDTH = 48; // X axis (Minutes)
+    const VIEW_HEIGHT = 200; // Y axis total
+    const MID_Y = 100;
+    const MARGIN_Y = 20; // Increased margin to prevent any clipping at 99.9%
 
     const dataIndex = Math.floor((progress / 100) * (history.length - 1));
     const dataSlice = history.slice(0, dataIndex + 1);
 
-    // Calculate dynamic Y scale (to handle blowouts)
-    const currentMaxDiff = Math.max(15, ...dataSlice.map(d => Math.abs(d.h - d.a)));
-    const yScale = (VIEW_HEIGHT / 2 - 10) / currentMaxDiff;
-
+    // Scaling Logic:
+    // Home 100% -> y = MARGIN_Y
+    // Away 100% -> y = 200 - MARGIN_Y
     let pathD = `M 0 ${MID_Y}`;
     const stepX = VIEW_WIDTH / (history.length - 1);
 
-    dataSlice.forEach((score, i) => {
-        const diff = score.h - score.a;
+    dataSlice.forEach((data, i) => {
         const x = i * stepX;
-        const y = MID_Y - (diff * yScale);
+        const wpIndex = (data.wp - 50) / 50; // -1.0 to 1.0
+        const y = MID_Y - (wpIndex * (100 - MARGIN_Y));
         pathD += ` L ${x} ${y}`;
     });
 
-    const lastDiff = dataSlice[dataSlice.length - 1]?.h - dataSlice[dataSlice.length - 1]?.a || 0;
-    const dotY = MID_Y - (lastDiff * yScale);
+    const currentData = dataSlice[dataSlice.length - 1] || { wp: 50 };
+    const currentWPIndex = (currentData.wp - 50) / 50;
+    const dotY = MID_Y - (currentWPIndex * (100 - MARGIN_Y));
     const dotX = dataIndex * stepX;
-    const currentLeadColor = lastDiff > 0 ? homeColor : (lastDiff < 0 ? awayColor : '#94a3b8');
+    
+    // Status color for dot
+    const dotColor = currentData.wp > 50 ? homeColor : (currentData.wp < 50 ? awayColor : '#fff');
 
     return (
-        <div className="w-full h-20 relative my-2 overflow-visible bg-slate-950/20 rounded-xl border border-white/5">
-             {/* Center Line */}
-             <div className="absolute top-1/2 left-0 w-full h-[1px] bg-slate-800 border-t border-dashed border-slate-700/50 z-0"></div>
+        <div className="w-full h-24 relative my-4 overflow-visible bg-slate-950/80 rounded-2xl border border-white/5 shadow-inner">
+             {/* Center Baseline */}
+             <div className="absolute top-1/2 left-0 w-full h-[1px] bg-slate-800 border-t border-dashed border-slate-700/20 z-0"></div>
              
              <svg 
                 viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
                 className="w-full h-full overflow-visible relative z-10"
                 preserveAspectRatio="none"
              >
-                 <defs>
-                    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                        <feGaussianBlur stdDeviation="2" result="blur" />
-                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                    </filter>
-                    <linearGradient id="scoreGradient" x1="0" x2="0" y1="0" y2="1">
-                        <stop offset="0%" stopColor={homeColor} />
-                        <stop offset="50%" stopColor="#94a3b8" />
-                        <stop offset="100%" stopColor={awayColor} />
-                    </linearGradient>
-                 </defs>
-                 
-                 {/* Main Line Path */}
+                 {/* Team Logos as Background Watermarks (Centered and highly visible but faint) */}
+                 <image 
+                    href={homeLogo} 
+                    x="14" 
+                    y="25" 
+                    width="20" 
+                    height="50" 
+                    preserveAspectRatio="xMidYMid meet" 
+                    className="opacity-15 pointer-events-none" 
+                 />
+                 <image 
+                    href={awayLogo} 
+                    x="14" 
+                    y="125" 
+                    width="20" 
+                    height="50" 
+                    preserveAspectRatio="xMidYMid meet" 
+                    className="opacity-15 pointer-events-none" 
+                 />
+
+                 {/* Win Probability Path: Actual 0.1px Sharp White Line */}
                  <path 
                     d={pathD} 
                     fill="none" 
-                    stroke="url(#scoreGradient)" 
-                    strokeWidth="3" 
+                    stroke="#ffffff" 
+                    strokeWidth="1" 
+                    vectorEffect="non-scaling-stroke"
                     strokeLinecap="round" 
                     strokeLinejoin="round"
-                    filter="url(#glow)"
                     className="transition-all duration-300 ease-linear"
                  />
                  
-                 {/* Current Progress Dot */}
+                 {/* Progress Indicator Pulse */}
                  {dataSlice.length > 0 && (
                      <circle 
                         cx={dotX} 
                         cy={dotY} 
-                        r="4" 
-                        fill={currentLeadColor} 
+                        r="1.5" 
+                        fill={dotColor} 
                         stroke="#fff"
-                        strokeWidth="1.5"
-                        className="animate-pulse shadow-lg"
+                        strokeWidth="0.5"
+                        className="animate-pulse shadow-lg shadow-white/50"
                      />
                  )}
              </svg>
              
-             {/* Axis Labels */}
-             <div className="absolute top-1 left-2 text-[8px] font-black text-slate-600 uppercase tracking-widest">Home Lead</div>
-             <div className="absolute bottom-1 left-2 text-[8px] font-black text-slate-600 uppercase tracking-widest">Away Lead</div>
-             <div className="absolute top-1 right-2 text-[9px] font-black text-indigo-500/50 uppercase italic tracking-tighter">Win Probability Graph</div>
+             {/* Value Label (Current Win Prob) */}
+             <div className={`absolute top-2 right-3 text-[9px] font-black uppercase tracking-[0.2em] oswald italic ${currentData.wp > 50 ? 'text-indigo-400' : 'text-slate-400'}`}>
+                WP: {currentData.wp.toFixed(1)}%
+             </div>
         </div>
     );
 };
@@ -351,8 +384,15 @@ export const GameSimulatingView: React.FC<{
                     {currentMessage}
                  </div>
 
-                 {/* Win Probability Graph */}
-                 <ScoreGraph history={scoreTimeline} progress={progress} homeColor={homeColor} awayColor={awayColor} />
+                 {/* Sharp Win Probability Graph with Watermark Logos */}
+                 <ScoreGraph 
+                    history={scoreTimeline} 
+                    progress={progress} 
+                    homeColor={homeColor} 
+                    awayColor={awayColor} 
+                    homeLogo={homeTeam.logo}
+                    awayLogo={awayTeam.logo}
+                 />
 
                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700 mt-2">
                     <div className={`h-full transition-all duration-300 ease-linear ${
