@@ -5,7 +5,7 @@ import { Session } from '@supabase/supabase-js';
 import { supabase } from './services/supabaseClient';
 import { useBaseData, useLoadSave, useSaveGame } from './services/queries';
 import { initGA, logPageView } from './services/analytics';
-import { Team, Game, AppView, PlayoffSeries, Transaction, Player, PlayerBoxScore } from './types';
+import { Team, Game, AppView, PlayoffSeries, Transaction, Player, PlayerBoxScore, TeamTacticHistory, TacticStatRecord } from './types';
 import { generateSeasonSchedule } from './utils/constants';
 import { generateAutoTactics, GameTactics, SimulationResult, simulateGame } from './services/gameEngine';
 import { generateGameRecapNews, generateOwnerWelcome } from './services/geminiService';
@@ -351,6 +351,58 @@ const App: React.FC = () => {
         let allPlayedToday: Game[] = [];
         
         const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
+
+        // Helper to update tactic stats history
+        const updateTacticHistory = (
+            team: Team, 
+            tacticName: string, 
+            type: 'offense' | 'defense', 
+            isWin: boolean, 
+            teamPts: number, 
+            oppPts: number, 
+            statsSource: PlayerBoxScore[]
+        ) => {
+            if (!team.tacticHistory) {
+                team.tacticHistory = { offense: {}, defense: {} };
+            }
+            
+            const targetMap = type === 'offense' ? team.tacticHistory.offense : team.tacticHistory.defense;
+            const current = targetMap[tacticName] || {
+                games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0,
+                fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0
+            };
+            
+            // For defensive tactics, we care about OPPONENT stats (what we allowed)
+            // But we still track our win/loss and pts
+            const totals = statsSource.reduce((acc, p) => ({
+                fgm: acc.fgm + p.fgm,
+                fga: acc.fga + p.fga,
+                p3m: acc.p3m + p.p3m,
+                p3a: acc.p3a + p.p3a,
+                rimM: acc.rimM + (p.rimM || 0),
+                rimA: acc.rimA + (p.rimA || 0),
+                midM: acc.midM + (p.midM || 0),
+                midA: acc.midA + (p.midA || 0),
+                tov: acc.tov + p.tov
+            }), { fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, tov: 0 });
+
+            targetMap[tacticName] = {
+                games: current.games + 1,
+                wins: current.wins + (isWin ? 1 : 0),
+                ptsFor: current.ptsFor + teamPts,
+                ptsAgainst: current.ptsAgainst + oppPts,
+                fgm: current.fgm + totals.fgm,
+                fga: current.fga + totals.fga,
+                p3m: current.p3m + totals.p3m,
+                p3a: current.p3a + totals.p3a,
+                rimM: current.rimM + totals.rimM,
+                rimA: current.rimA + totals.rimA,
+                midM: current.midM + totals.midM,
+                midA: current.midA + totals.midA,
+                tov: current.tov + totals.tov
+            };
+        };
+
         for (const game of gamesToday) {
             const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
             const home = getTeam(game.homeTeamId);
@@ -363,8 +415,33 @@ const App: React.FC = () => {
             const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
             
             // Update Records
-            updatedTeams[homeIdx] = { ...home, wins: home.wins + (result.homeScore > result.awayScore ? 1 : 0), losses: home.losses + (result.homeScore < result.awayScore ? 1 : 0) };
-            updatedTeams[awayIdx] = { ...away, wins: away.wins + (result.awayScore > result.homeScore ? 1 : 0), losses: away.losses + (result.awayScore < result.homeScore ? 1 : 0) };
+            const homeWin = result.homeScore > result.awayScore;
+            updatedTeams[homeIdx] = { ...home, wins: home.wins + (homeWin ? 1 : 0), losses: home.losses + (homeWin ? 0 : 1) };
+            updatedTeams[awayIdx] = { ...away, wins: away.wins + (homeWin ? 0 : 1), losses: away.losses + (homeWin ? 1 : 0) };
+
+            // Update Tactic History
+            // Home
+            updateTacticHistory(updatedTeams[homeIdx], result.homeTactics.offense, 'offense', homeWin, result.homeScore, result.awayScore, result.homeBox);
+            updateTacticHistory(updatedTeams[homeIdx], result.homeTactics.defense, 'defense', homeWin, result.homeScore, result.awayScore, result.awayBox); // Use Opponent Box for Defense Stats
+            if (result.homeTactics.stopperId) {
+                // Find Opponent Ace (Highest OVR for approximation)
+                const oppAce = [...updatedTeams[awayIdx].roster].sort((a,b) => b.ovr - a.ovr)[0];
+                const aceBox = result.awayBox.find(p => p.playerId === oppAce?.id);
+                if (aceBox) {
+                     updateTacticHistory(updatedTeams[homeIdx], 'AceStopper', 'defense', homeWin, result.homeScore, result.awayScore, [aceBox]);
+                }
+            }
+
+            // Away
+            updateTacticHistory(updatedTeams[awayIdx], result.awayTactics.offense, 'offense', !homeWin, result.awayScore, result.homeScore, result.awayBox);
+            updateTacticHistory(updatedTeams[awayIdx], result.awayTactics.defense, 'defense', !homeWin, result.awayScore, result.homeScore, result.homeBox); // Use Opponent Box
+            if (result.awayTactics.stopperId) {
+                const oppAce = [...updatedTeams[homeIdx].roster].sort((a,b) => b.ovr - a.ovr)[0];
+                const aceBox = result.homeBox.find(p => p.playerId === oppAce?.id);
+                if (aceBox) {
+                     updateTacticHistory(updatedTeams[awayIdx], 'AceStopper', 'defense', !homeWin, result.awayScore, result.homeScore, [aceBox]);
+                }
+            }
 
             // Update Stats & Condition
             const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: any) => {
