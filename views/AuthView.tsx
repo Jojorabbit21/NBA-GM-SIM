@@ -40,7 +40,9 @@ export const AuthView: React.FC<AuthViewProps> = () => {
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
-        setMessage({ type: 'error', text: 'Supabase 연결 설정이 되어있지 않습니다. .env 파일을 확인하고 개발 서버를 재시작하세요.' });
+        const configError = 'Supabase 연결 설정이 되어있지 않습니다. .env 파일을 확인하고 개발 서버를 재시작하세요.';
+        console.error("[Auth Error] Supabase is not configured. Check your REACT_APP_SUPABASE_URL and KEY.");
+        setMessage({ type: 'error', text: configError });
         logError('Auth', 'Supabase configuration missing');
         return;
     }
@@ -52,7 +54,6 @@ export const AuthView: React.FC<AuthViewProps> = () => {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
-        // 회원가입 시에는 Auth Users에만 등록하고, 프로필/세이브는 팀 선택 후 생성합니다.
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -63,7 +64,15 @@ export const AuthView: React.FC<AuthViewProps> = () => {
           }
         });
 
-        if (error) throw error;
+        if (error) {
+            console.error("[Signup Failed] Supabase returned an error:", {
+                message: error.message,
+                status: error.status,
+                code: error.code,
+                raw: error
+            });
+            throw error;
+        }
 
         setMessage({ type: 'success', text: '회원가입 성공! 이메일 인증 후 로그인해주세요.' });
         setMode('login');
@@ -82,7 +91,7 @@ export const AuthView: React.FC<AuthViewProps> = () => {
                     .maybeSingle();
 
                 if (profileError) {
-                    console.error("Profile Lookup Error:", profileError);
+                    console.error("[Nickname Lookup Failed] Could not find email for nickname:", loginEmail, profileError);
                     throw new Error("닉네임 조회 중 오류가 발생했습니다. 이메일로 로그인해주세요.");
                 }
                 
@@ -91,7 +100,6 @@ export const AuthView: React.FC<AuthViewProps> = () => {
                 }
                 loginEmail = profile.email;
             } catch (lookupErr: any) {
-                console.error("닉네임 조회 실패:", lookupErr);
                 throw new Error(lookupErr.message || "닉네임 로그인을 사용할 수 없습니다. 이메일로 로그인해주세요.");
             }
         }
@@ -101,12 +109,30 @@ export const AuthView: React.FC<AuthViewProps> = () => {
           password,
         });
         
-        if (error) throw error;
+        if (error) {
+            console.error("[Login Failed] Supabase authentication error:", {
+                targetEmail: loginEmail,
+                message: error.message,
+                status: error.status,
+                code: error.code,
+                raw: error
+            });
+            throw error;
+        }
+        
+        console.log("[Auth Success] User logged in successfully:", authData.user?.email);
       }
     } catch (error: any) {
-      console.error(error);
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
       
+      // 콘솔에 기술적 디테일 출력
+      console.group("🛑 Auth Error Log");
+      console.error("Message:", error.message);
+      console.error("Stack:", error.stack);
+      if (error.status) console.error("HTTP Status:", error.status);
+      if (error.code) console.error("Internal Code:", error.code);
+      console.groupEnd();
+
       if (errorMsg.includes("User already registered")) {
           errorMsg = "이미 가입된 이메일입니다. 로그인 모드로 전환합니다.";
           setMode('login');
@@ -114,7 +140,7 @@ export const AuthView: React.FC<AuthViewProps> = () => {
       } else if (errorMsg.includes("Invalid login credentials")) {
           errorMsg = "이메일 또는 비밀번호가 올바르지 않습니다.";
       } else if (errorMsg.includes("Failed to fetch")) {
-          errorMsg = "서버에 연결할 수 없습니다. 오프라인 모드를 이용해주세요.";
+          errorMsg = "서버에 연결할 수 없습니다. 인터넷 상태 또는 Supabase 설정을 확인해주세요.";
       }
 
       setMessage({ type: 'error', text: errorMsg });
