@@ -239,9 +239,23 @@ export function generateAutoTactics(team: Team): GameTactics {
       sliders.zoneUsage = 2;
   }
 
-  const bestDefender = healthy.find(p => p.perDef > 85 && p.steal > 80);
+  // New Ace Stopper Logic:
+  // (PDEF * 0.3) + (STL * 0.2) + (PASS PERC * 0.15) + (DEF CONS * 0.1) + (STA * 0.1) + (SPD * 0.1) + (AGI * 0.05)
+  const getStopperScore = (p: Player) => (
+      (p.perDef * 0.30) +
+      (p.steal * 0.20) +
+      (p.passPerc * 0.15) +
+      (p.defConsist * 0.10) +
+      (p.stamina * 0.10) +
+      (p.speed * 0.10) +
+      (p.agility * 0.05)
+  );
+
+  const bestDefender = [...healthy].sort((a, b) => getStopperScore(b) - getStopperScore(a))[0];
   let stopperId: string | undefined = undefined;
-  if (bestDefender) {
+  
+  // Use AceStopper if the best defender has a decent score (e.g. > 78) to justify special assignment
+  if (bestDefender && getStopperScore(bestDefender) >= 78) {
       defTactics.push('AceStopper');
       stopperId = bestDefender.id;
       sliders.defIntensity = Math.min(10, sliders.defIntensity + 2);

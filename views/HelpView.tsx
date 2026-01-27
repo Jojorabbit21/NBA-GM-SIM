@@ -111,11 +111,11 @@ const SECTION_DATA = [
                         <h5 className="text-fuchsia-400 font-black mb-3 text-lg uppercase tracking-tight flex items-center gap-2">
                             <ShieldAlert size={20} /> 에이스 스토퍼 (Ace Stopper)
                         </h5>
-                        <p className="mb-4 text-slate-300">팀 내 최고 수비수에게 상대방 선수 중 오버롤이 가장 높은 에이스를 전담 마크하게 지시하는 수비 특화 전술입니다.</p>
+                        <p className="mb-4 text-slate-300">팀 내 최고의 수비수에게 상대방의 핵심 득점원(Ace)을 경기 내내 전담 마크하게 지시하는 고난도 수비 전술입니다.</p>
                         <ul className="list-disc pl-6 space-y-2 text-sm text-slate-400">
-                            <li>선수의 퍼리미터 디펜스, 스틸, 패스 퍼셉션, 수비 일관성이 영향을 미칩니다.</li>
-                            <li>에이스 스토퍼의 수비 능력이 더 높다면 상대방 에이스의 야투 효율이 큰 폭으로 감소하고 턴오버가 늘어납니다.</li>
-                            <li>능력이 부족하다면 오히려 수비 구멍이 생겨 상대 에이스의 득점과 어시스트가 폭발할 위험이 존재합니다.</li>
+                            <li><strong>선정 기준:</strong> 단순히 수비 스탯만 높은 선수가 아니라, 에이스를 끈질기게 추격할 수 있는 <span className="text-white font-bold">신체 능력(스피드/지구력)</span>과 흐름을 끊는 <span className="text-white font-bold">수비 센스</span>를 복합적으로 평가하여 자동 선정합니다.</li>
+                            <li><strong>효과:</strong> 스토퍼가 매치업 우위를 점할 경우 상대 에이스의 야투율을 급격히 떨어뜨리고 실책을 유발합니다.</li>
+                            <li><strong>리스크:</strong> 상대 에이스를 쫓아다니기 위해 스토퍼는 <span className="text-amber-400">평소보다 훨씬 많은 체력을 소모</span>합니다. 만약 역량이 부족한 선수가 배치될 경우 수비 구멍이 되어 대량 실점의 빌미가 될 수 있습니다.</li>
                         </ul>
                     </div>
                 </div>

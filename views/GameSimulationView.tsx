@@ -1,7 +1,16 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Team } from '../types';
+
+// Team Colors Mapping
+const TEAM_COLORS: Record<string, string> = {
+  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
+  'dal': '#00538C', 'den': '#0E2240', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#002D62',
+  'lac': '#1D428A', 'lal': '#552583', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
+  'nop': '#0C2340', 'nyk': '#006BB6', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
+  'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
+};
 
 // 상황별 메시지 분리
 const GENERAL_MESSAGES = [
@@ -39,6 +48,7 @@ const SUPER_CLUTCH_MESSAGES = [
     "승부를 결정짓는 슛이 림을 향합니다!",
     "기적 같은 플레이가 나올 수 있을까요?",
     "모든 관중이 기립했습니다!",
+    "파울 작전! 자유투가 중요합니다.",
     "역사에 남을 명승부...",
 ];
 
@@ -49,9 +59,179 @@ const GARBAGE_MESSAGES = [
     "승부의 추는 이미 기운 것 같습니다.",
     "일방적인 경기 흐름이 계속됩니다.",
     "관중들이 하나둘 경기장을 빠져나갑니다...",
-    "감독이 벤치 멤버들에게 기회를 줍니다.",
+    "감독이 벤치 멤버들이게 기회를 줍니다.",
     "사실상 승패가 결정되었습니다.",
 ];
+
+/**
+ * 현실적인 경기 흐름(Game Flow) 생성 알고리즘
+ * - 선형적인 증가가 아닌, 'Momentum(분위기)'과 'Run(연속 득점)'을 반영
+ * - 클러치 상황일 경우 경기 막판 동점/접전 상황을 강제로 연출
+ * - 최종 스코어에 정확히 도달하도록 보장
+ */
+const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
+    let currentHome = 0;
+    let currentAway = 0;
+    const history: { h: number, a: number }[] = [{ h: 0, a: 0 }];
+    
+    // 클러치 여부 판단 (5점차 이내)
+    const scoreDiff = Math.abs(finalHome - finalAway);
+    const isClutchGame = scoreDiff <= 5;
+
+    // 모멘텀 변수: 양수면 홈팀 분위기, 음수면 원정팀 분위기
+    let momentum = 0;
+    
+    // 클러치 타임 트리거 점수 (최종 점수에서 4~6점 모자란 시점)
+    const clutchTriggerHome = isClutchGame ? finalHome - (Math.floor(Math.random() * 3) + 3) : 9999;
+    const clutchTriggerAway = isClutchGame ? finalAway - (Math.floor(Math.random() * 3) + 3) : 9999;
+    let clutchModeActivated = false;
+
+    // 점수가 다 찰 때까지 반복
+    while (currentHome < finalHome || currentAway < finalAway) {
+        // 클러치 모드 진입 체크: 양팀 모두 목표치 근처에 도달했을 때
+        if (isClutchGame && !clutchModeActivated && currentHome >= clutchTriggerHome && currentAway >= clutchTriggerAway) {
+            // 강제로 점수를 비슷하게 맞춤 (현재 뒤처진 팀에게 부스트)
+            // 단, 최종 점수를 넘지 않는 선에서
+            const minScore = Math.min(currentHome, currentAway);
+            if (Math.abs(currentHome - currentAway) > 1) {
+               // 인위적으로 점수 차이를 좁히는 로직은 아래 확률 조정으로 처리
+            }
+            clutchModeActivated = true;
+        }
+
+        const remainingHome = finalHome - currentHome;
+        const remainingAway = finalAway - currentAway;
+        
+        // 1. 기본 확률: 남은 점수가 많은 팀이 득점할 확률이 높음 (최종 점수 수렴 보장)
+        let homeProb = remainingHome / (remainingHome + remainingAway);
+
+        // 2. 모멘텀 반영 (Streak): 분위기가 좋은 팀이 득점 확률 증가 (최대 15% 보정)
+        homeProb += (momentum * 0.05);
+
+        // 3. 클러치 보정 (막판 접전 유도)
+        if (isClutchGame && !clutchModeActivated) {
+            // 아직 클러치 타임 전이면, 점수 차이가 너무 벌어지지 않게 보정
+            if (currentHome > currentAway + 10) homeProb -= 0.2;
+            if (currentAway > currentHome + 10) homeProb += 0.2;
+        } else if (clutchModeActivated) {
+             // 클러치 타임: 뒤지고 있는 팀이 따라잡을 확률 대폭 증가 (동점 유도)
+             if (currentHome < currentAway && remainingHome > 0) homeProb += 0.35;
+             else if (currentAway < currentHome && remainingAway > 0) homeProb -= 0.35;
+        }
+
+        // 4. 확률 클램핑 (0.05 ~ 0.95)
+        homeProb = Math.max(0.05, Math.min(0.95, homeProb));
+
+        // 5. 득점 팀 결정
+        let scorer: 'home' | 'away';
+        if (currentHome >= finalHome) scorer = 'away';
+        else if (currentAway >= finalAway) scorer = 'home';
+        else scorer = Math.random() < homeProb ? 'home' : 'away';
+
+        // 6. 득점량 결정 (1, 2, 3점)
+        let points = 2;
+        const rand = Math.random();
+        
+        if (clutchModeActivated) {
+            // 파울 작전/자유투 상황 반영: 1점, 2점 빈도 증가
+            points = rand > 0.7 ? 1 : 2; 
+        } else {
+            points = rand > 0.35 ? 2 : 3; 
+        }
+
+        if (scorer === 'home') {
+            points = Math.min(points, remainingHome); 
+            currentHome += points;
+            // 모멘텀 업데이트
+            momentum = Math.min(momentum + 1, 3);
+        } else {
+            points = Math.min(points, remainingAway);
+            currentAway += points;
+            // 모멘텀 업데이트
+            momentum = Math.max(momentum - 1, -3);
+        }
+
+        // 연속 득점이 아닌 경우 모멘텀 초기화 확률
+        if ((scorer === 'home' && momentum < 0) || (scorer === 'away' && momentum > 0)) {
+            momentum = 0;
+        }
+
+        history.push({ h: currentHome, a: currentAway });
+    }
+
+    return history;
+};
+
+// Graph Component
+const ScoreGraph: React.FC<{ history: { h: number, a: number }[], progress: number, homeColor: string, awayColor: string }> = ({ history, progress, homeColor, awayColor }) => {
+    const svgRef = useRef<SVGSVGElement>(null);
+    const [width, setWidth] = useState(0);
+    const height = 60; // Fixed height
+
+    useEffect(() => {
+        if (svgRef.current) {
+            setWidth(svgRef.current.clientWidth);
+        }
+    }, [svgRef.current]);
+
+    // Current data based on progress
+    const currentIndex = Math.floor((progress / 100) * (history.length - 1));
+    const dataSlice = history.slice(0, currentIndex + 1);
+
+    if (dataSlice.length < 2 || width === 0) return <div className="h-[60px] w-full bg-slate-950/20 rounded-lg"></div>;
+
+    // Calculate Scales
+    const maxDiff = 20; // Y-axis range (+/- 20)
+    const midY = height / 2;
+    const stepX = width / (history.length - 1);
+
+    // Build Path
+    let pathD = `M 0 ${midY}`;
+    
+    dataSlice.forEach((score, i) => {
+        const diff = score.h - score.a;
+        const x = i * stepX;
+        // Clamp Y to prevent overflow
+        const y = midY - (diff / maxDiff) * (height / 2); 
+        const clampedY = Math.max(2, Math.min(height - 2, y));
+        pathD += ` L ${x} ${clampedY}`;
+    });
+
+    const currentDiff = dataSlice[dataSlice.length - 1].h - dataSlice[dataSlice.length - 1].a;
+    const leadColor = currentDiff > 0 ? homeColor : (currentDiff < 0 ? awayColor : '#94a3b8');
+
+    return (
+        <div className="w-full h-[60px] relative mt-2 mb-1">
+             <div className="absolute inset-0 flex items-center">
+                 <div className="w-full h-[1px] bg-slate-700/50"></div>
+             </div>
+             <svg ref={svgRef} width="100%" height={height} className="overflow-visible">
+                 {/* Lead Area Gradient (Optional - kept simple line for clarity as requested) */}
+                 <defs>
+                    <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
+                        <stop offset="0%" stopColor={homeColor} />
+                        <stop offset="50%" stopColor="#94a3b8" />
+                        <stop offset="100%" stopColor={awayColor} />
+                    </linearGradient>
+                 </defs>
+                 
+                 <path d={pathD} fill="none" stroke="url(#lineGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                 
+                 {/* Current Head Dot */}
+                 {dataSlice.length > 0 && (
+                     <circle 
+                        cx={(dataSlice.length - 1) * stepX} 
+                        cy={Math.max(2, Math.min(height - 2, midY - (currentDiff / maxDiff) * (height / 2)))} 
+                        r="3" 
+                        fill={leadColor} 
+                        className="animate-pulse"
+                     />
+                 )}
+             </svg>
+             <div className="absolute top-0 right-0 text-[9px] font-black text-slate-500 bg-slate-900/80 px-1 rounded">Lead Tracker</div>
+        </div>
+    );
+};
 
 export const GameSimulatingView: React.FC<{ 
   homeTeam: Team, 
@@ -75,11 +255,13 @@ export const GameSimulatingView: React.FC<{
       onCompleteRef.current = onSimulationComplete;
   }, [onSimulationComplete]);
   
-  // 턴제 스코어링 상태 및 Ref (Ref는 setInterval 내에서 최신값 참조용)
-  const [currentHomeScore, setCurrentHomeScore] = useState(0);
-  const [currentAwayScore, setCurrentAwayScore] = useState(0);
-  const homeScoreRef = useRef(0);
-  const awayScoreRef = useRef(0);
+  // 미리 계산된 스코어 타임라인
+  const scoreTimeline = useMemo(() => 
+      generateRealisticGameFlow(finalHomeScore, finalAwayScore), 
+  [finalHomeScore, finalAwayScore]);
+
+  // 현재 표시할 점수
+  const [displayScore, setDisplayScore] = useState({ h: 0, a: 0 });
 
   // 1. 시뮬레이션 진행 루프 (0% -> 100%)
   useEffect(() => {
@@ -97,14 +279,14 @@ export const GameSimulatingView: React.FC<{
             const isVeryLateGame = prev > 94;
 
             // 진행 증가량 (뒤로 갈수록 조금씩만 증가)
-            const increment = isVeryLateGame ? 0.4 : (isLateGame ? 0.6 : 1.5);
+            const increment = isVeryLateGame ? 0.3 : (isLateGame ? 0.5 : 1.2);
             const next = Math.min(100, prev + increment);
             
-            // Ref 업데이트 (메시지 타이머가 참조함)
+            // Ref 업데이트
             progressRef.current = next;
 
             // 딜레이 (뒤로 갈수록 느려짐 -> 긴장감 조성)
-            const delay = isVeryLateGame ? 300 : (isLateGame ? 100 : 30);
+            const delay = isVeryLateGame ? 250 : (isLateGame ? 100 : 30);
 
             timeoutId = setTimeout(runSimulationStep, delay);
             return next;
@@ -113,46 +295,27 @@ export const GameSimulatingView: React.FC<{
 
     runSimulationStep();
     return () => clearTimeout(timeoutId);
-  }, []); // 의존성 배열 비움 (한 번만 실행)
+  }, []); 
 
-  // 2. 점수 동기화 (progress 변화에 반응)
+  // 2. 점수 동기화: 진행률(%)을 스코어 타임라인 인덱스에 매핑
   useEffect(() => {
-      const ratio = progress / 100;
+      if (scoreTimeline.length === 0) return;
       
-      // 진행률에 비례한 목표 점수 계산
-      const targetHome = Math.floor(finalHomeScore * ratio);
-      const targetAway = Math.floor(finalAwayScore * ratio);
+      const percent = progress / 100;
+      // 전체 타임라인 길이 중 현재 퍼센트에 해당하는 인덱스 계산
+      const index = Math.floor(percent * (scoreTimeline.length - 1));
+      
+      setDisplayScore(scoreTimeline[index]);
 
-      // 점수가 목표치보다 낮으면 증가 (랜덤하게 2점 또는 3점씩)
-      setCurrentHomeScore(prev => {
-          let next = prev;
-          if (prev >= finalHomeScore) next = finalHomeScore;
-          else if (prev < targetHome) next = Math.min(finalHomeScore, prev + (Math.random() > 0.6 ? 3 : 2));
-          
-          homeScoreRef.current = next; // Ref 동기화
-          return next;
-      });
-
-      setCurrentAwayScore(prev => {
-          let next = prev;
-          if (prev >= finalAwayScore) next = finalAwayScore;
-          else if (prev < targetAway) next = Math.min(finalAwayScore, prev + (Math.random() > 0.6 ? 3 : 2));
-          
-          awayScoreRef.current = next; // Ref 동기화
-          return next;
-      });
-  }, [progress, finalHomeScore, finalAwayScore]);
+  }, [progress, scoreTimeline]);
 
   // 3. 종료 처리 (100% 도달 시)
   useEffect(() => {
       if (progress >= 100 && !isFinishedRef.current) {
           isFinishedRef.current = true;
           
-          // 최종 점수 확정
-          setCurrentHomeScore(finalHomeScore);
-          setCurrentAwayScore(finalAwayScore);
-          homeScoreRef.current = finalHomeScore;
-          awayScoreRef.current = finalAwayScore;
+          // 최종 점수 확정 (타임라인 마지막 값)
+          setDisplayScore({ h: finalHomeScore, a: finalAwayScore });
           
           // 2초 딜레이 후 콜백 실행 (타이머 정리하지 않음 - 종료 보장)
           setTimeout(() => {
@@ -187,7 +350,11 @@ export const GameSimulatingView: React.FC<{
         }
 
         const currentProgress = progressRef.current;
-        const scoreDiff = Math.abs(homeScoreRef.current - awayScoreRef.current);
+        
+        // 근사값 계산
+        const approxIdx = Math.floor((currentProgress / 100) * (scoreTimeline.length - 1));
+        const currentScore = scoreTimeline[approxIdx] || { h: 0, a: 0 };
+        const scoreDiff = Math.abs(currentScore.h - currentScore.a);
         
         let targetPool = GENERAL_MESSAGES;
         
@@ -213,9 +380,12 @@ export const GameSimulatingView: React.FC<{
         clearInterval(shotTimer);
         clearInterval(msgTimer);
     };
-  }, []);
+  }, [scoreTimeline]); 
 
   if (!homeTeam || !awayTeam) return null;
+
+  const homeColor = TEAM_COLORS[homeTeam.id] || '#ffffff';
+  const awayColor = TEAM_COLORS[awayTeam.id] || '#94a3b8';
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-4 overflow-hidden">
@@ -235,28 +405,33 @@ export const GameSimulatingView: React.FC<{
                 <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
                     <div className="text-lg md:text-xl font-black text-white oswald uppercase tracking-tight text-shadow-lg truncate w-full">{awayTeam.name}</div>
-                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{currentAwayScore}</div>
+                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{displayScore.a}</div>
                 </div>
             </div>
 
             {/* Center Info */}
-            <div className="flex-1 px-4 flex flex-col items-center justify-center gap-4">
+            <div className="flex-1 px-4 flex flex-col items-center justify-center gap-2">
                  <div className={`text-sm md:text-lg font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse transition-colors duration-300 ${
-                     Math.abs(currentHomeScore - currentAwayScore) >= 20 && progress > 60 
+                     Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
                         ? 'text-slate-500'
-                        : progress > 94 && Math.abs(currentHomeScore - currentAwayScore) <= 3
+                        : progress > 94 && Math.abs(displayScore.h - displayScore.a) <= 3
                             ? 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]'
-                            : progress > 85 && Math.abs(currentHomeScore - currentAwayScore) <= 10
+                            : progress > 85 && Math.abs(displayScore.h - displayScore.a) <= 10
                                 ? 'text-yellow-400'
                                 : 'text-indigo-300'
                  }`}>
                     {currentMessage}
                  </div>
+
+                 {/* Score Graph */}
+                 <ScoreGraph history={scoreTimeline} progress={progress} homeColor={homeColor} awayColor={awayColor} />
+
+                 {/* Progress Bar */}
                  <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
                     <div className={`h-full transition-all duration-300 ease-linear ${
-                        Math.abs(currentHomeScore - currentAwayScore) >= 20 && progress > 60 
+                        Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
                             ? 'bg-slate-600'
-                            : progress > 94 && Math.abs(currentHomeScore - currentAwayScore) <= 3
+                            : progress > 94 && Math.abs(displayScore.h - displayScore.a) <= 3
                                 ? 'bg-gradient-to-r from-red-600 to-orange-500 shadow-[0_0_20px_rgba(220,38,38,0.6)]'
                                 : 'bg-gradient-to-r from-indigo-600 to-blue-500'
                     }`} style={{ width: `${progress}%` }}></div>
@@ -268,7 +443,7 @@ export const GameSimulatingView: React.FC<{
                 <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
                     <div className="text-lg md:text-xl font-black text-white oswald uppercase tracking-tight text-shadow-lg truncate w-full">{homeTeam.name}</div>
-                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{currentHomeScore}</div>
+                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{displayScore.h}</div>
                 </div>
             </div>
         </div>
