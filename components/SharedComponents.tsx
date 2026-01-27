@@ -434,10 +434,8 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
                      return (
                         <div key={idx} className="bg-slate-950/60 rounded-2xl border border-slate-800 p-5 flex flex-col gap-4 shadow-sm">
                             <div className="flex items-center justify-between pb-2 border-b border-slate-800/50 h-10 px-2">
-                                <div className="flex items-center gap-3">
-                                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{group.label}</h4>
-                                    <div className={`!w-7 !h-6 !text-[10px] !rounded-md ${getRankStyle(avg)}`}>{avg}</div>
-                                </div>
+                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{group.label}</h4>
+                                <div className={`!w-8 !h-7 !text-xs !rounded-md ${getRankStyle(avg)}`}>{avg}</div>
                             </div>
                             <div className="space-y-1.5">
                                 {group.attrs.map((attr, aIdx) => (
