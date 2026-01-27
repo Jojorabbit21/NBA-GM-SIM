@@ -119,7 +119,9 @@ export interface TacticStatRecord {
   p3m: number; p3a: number;
   rimM: number; rimA: number;
   midM: number; midA: number;
-  tov?: number; // Added for Ace Stopper tracking
+  tov?: number;
+  // Ace Stopper specific (Against opponent's star)
+  aceImpact?: number; // Accumulated matchupEffect
 }
 
 export interface TeamTacticHistory {

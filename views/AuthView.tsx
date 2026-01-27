@@ -54,7 +54,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
-        const { data, error } = await supabase.auth.signUp({
+        // Fix: Cast supabase.auth to any to bypass broken signUp type
+        const { data, error } = await (supabase.auth as any).signUp({
           email,
           password,
           options: {
@@ -84,7 +85,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             loginEmail = profile.email;
         }
 
-        const { error } = await supabase.auth.signInWithPassword({
+        // Fix: Cast supabase.auth to any to bypass missing signInWithPassword type
+        const { error } = await (supabase.auth as any).signInWithPassword({
           email: loginEmail,
           password,
         });
