@@ -87,6 +87,7 @@ export const useBaseData = () => {
     },
     staleTime: Infinity,
     gcTime: Infinity,
+    refetchOnWindowFocus: false, // 기본 데이터도 탭 전환 시 재요청 방지
   });
 };
 
@@ -119,7 +120,10 @@ export const useLoadSave = (userId: string | undefined) => {
       return data;
     },
     enabled: !!userId,
-    retry: false
+    retry: false,
+    refetchOnWindowFocus: false, // [FIX] 탭 전환 시 데이터 재로드 및 토스트 발생 방지
+    staleTime: Infinity, // [FIX] 한 번 로드된 데이터는 명시적 무효화 전까지 신선한 것으로 간주
+    gcTime: 1000 * 60 * 60, // 캐시 유지 시간 1시간
   });
 };
 
@@ -177,5 +181,6 @@ export const useScoutingReport = (player: Player | null) => {
         enabled: !!player,
         staleTime: Infinity,
         gcTime: 1000 * 60 * 30,
+        refetchOnWindowFocus: false,
     });
 };
