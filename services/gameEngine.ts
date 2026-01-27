@@ -143,33 +143,66 @@ export function generateAutoTactics(team: Team): GameTactics {
   };
   const sAvg = (attr: keyof Player) => getAvg(rotation, attr);
 
+  // [Tactics Balancing Update]
+  // Previous logic favored SevenSeconds too much due to high speed/out stats.
+  // New logic considers roster composition balance and weaknesses.
   const calculateScore = (tactic: OffenseTactic): number => {
       let score = 0;
       switch(tactic) {
         case 'Balance': 
-            score = (sAvg('ovr') * 0.4 + sAvg('plm') * 0.2 + sAvg('def') * 0.2 + sAvg('out') * 0.2);
+            // Baseline score. High IQ and depth boost this.
+            score = 75 + (sAvg('ovr') - 80) * 0.5 + (sAvg('shotIq') - 75) * 0.3;
             break;
+
         case 'PaceAndSpace':
+            // Needs: Ball Handling, 3PT, Speed. 
+            // Penalty: Low Rebounding (can't run if you don't rebound).
             const handlers = rotation.filter(p => p.position.includes('G'));
             const handlerPLM = handlers.length > 0 ? getAvg(handlers, 'plm') : 60;
-            score = (handlerPLM * 0.45) + (sAvg('out') * 0.45) + (sAvg('speed') * 0.1);
+            score = (handlerPLM * 0.35) + (sAvg('out') * 0.4) + (sAvg('speed') * 0.15) + (sAvg('stamina') * 0.1);
+            if (sAvg('reb') < 70) score -= 10; // Penalty for bad rebounding
             break;
+
         case 'PerimeterFocus':
+            // Needs: Elite Shooters (Wings).
             const shooters = [...rotation].sort((a,b) => b.out - a.out);
-            score = ((shooters[0]?.out || 70) * 0.35) + ((shooters[1]?.out || 65) * 0.25) + (sAvg('plm') * 0.4);
+            const aceOut = shooters[0]?.out || 70;
+            const subOut = shooters[1]?.out || 65;
+            score = (aceOut * 0.4) + (subOut * 0.3) + (sAvg('plm') * 0.3);
             break;
+
         case 'PostFocus':
+            // Needs: DOMINANT Bigs.
+            // Heavily weighted by the best Inside scorer to ensure Embiid/Jokic teams use this.
             const bigs = rotation.filter(p => p.position === 'C' || p.position === 'PF');
-            const bigPower = bigs.length > 0 ? (getAvg(bigs, 'postPlay') * 0.5 + getAvg(bigs, 'strength') * 0.3 + (getAvg(bigs, 'height') - 190)) : 50;
-            score = (bigPower * 0.7) + (sAvg('ins') * 0.3);
+            if (bigs.length > 0) {
+                const bestBig = bigs.reduce((prev, curr) => prev.postPlay > curr.postPlay ? prev : curr);
+                score = (bestBig.postPlay * 0.6) + (bestBig.strength * 0.2) + (sAvg('ins') * 0.2);
+                // Bonus if the big is an elite passer (Jokic style)
+                if (bestBig.passVision > 80) score += 10; 
+            } else {
+                score = 40; // No bigs, don't use this.
+            }
             break;
+
         case 'Grind':
-            score = (sAvg('def') * 0.8) + (sAvg('plm') * 0.2);
+            // Needs: Elite Defense, Strength. Low Speed is actually fine here.
+            score = (sAvg('def') * 0.5) + (sAvg('strength') * 0.3) + (sAvg('ins') * 0.2);
+            // Bonus if offense is weak (forced to play defense)
+            if (sAvg('out') < 75) score += 5;
             break;
+
         case 'SevenSeconds':
+            // Needs: PG PLM, Team Speed, Team 3PT.
+            // CRITICAL CHANGE: Added Stamina weight and reduced base multipliers.
             const pg = rotation.find(p => p.position === 'PG');
-            const pgFactor = pg ? (pg.plm * 0.6 + pg.speed * 0.4) : 60;
-            score = (pgFactor * 0.4) + (sAvg('speed') * 0.3) + (sAvg('out') * 0.3);
+            const pgFactor = pg ? (pg.plm * 0.5 + pg.speed * 0.5) : 60;
+            
+            // Requires high stamina to sustain.
+            score = (pgFactor * 0.3) + (sAvg('speed') * 0.25) + (sAvg('out') * 0.25) + (sAvg('stamina') * 0.2);
+            
+            // Penalty if defense is terrible (can't run if you take ball out of net)
+            if (sAvg('def') < 70) score -= 8;
             break;
       }
       return score;
