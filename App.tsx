@@ -80,7 +80,9 @@ const App: React.FC = () => {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameDataRef = useRef<any>({});
   const isResettingRef = useRef(false);
-  const isLoggingOutRef = useRef(false); // 로그아웃 진행 중 플래그
+  
+  // [Fix] 로그아웃 상태를 추적하는 Ref. 로그아웃이 완료되고 다음 로그인이 발생하기 전까지 true 유지
+  const isLoggingOutRef = useRef(false); 
 
   // Mutations & Queries
   const saveGameMutation = useSaveGame();
@@ -102,8 +104,12 @@ const App: React.FC = () => {
   // Auth Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (!isLoggingOutRef.current) {
+      // 세션이 유효하고 로그아웃 진행 중이 아닐 때만 상태 업데이트
+      if (session && !isLoggingOutRef.current) {
         setSession(session);
+        isLoggingOutRef.current = false; // 로그인 성공 시 플래그 해제
+      } else if (!session) {
+        setSession(null);
       }
       setAuthLoading(false);
     });
@@ -111,8 +117,14 @@ const App: React.FC = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!isLoggingOutRef.current) {
-        setSession(session);
+      if (session) {
+          // 세션이 생겼을 때 (로그인)
+          isLoggingOutRef.current = false; // 플래그 해제
+          setSession(session);
+      } else {
+          // 세션이 사라졌을 때 (로그아웃)
+          // handleLogout에서 이미 처리를 하므로 여기서는 session null만 맞춤
+          setSession(null);
       }
       setAuthLoading(false);
     });
@@ -130,8 +142,8 @@ const App: React.FC = () => {
 
   // Load Save Data
   useEffect(() => {
-      // 로그아웃 중이거나 리셋 중일 때는 데이터 로드 방지
-      if (isLoggingOutRef.current || isResettingRef.current) return;
+      // [Fix] 로그아웃 중이거나, 리셋 중이거나, 세션이 없는 경우 데이터 로드 차단
+      if (isLoggingOutRef.current || isResettingRef.current || !session?.user) return;
 
       if (saveData && saveData.game_data) {
           const gd = saveData.game_data;
@@ -148,7 +160,7 @@ const App: React.FC = () => {
           if (saveData.team_id) setView('Dashboard');
           setToastMessage('저장된 게임을 불러왔습니다.');
       }
-  }, [saveData]);
+  }, [saveData, session]); // session 의존성 추가
 
   // View Logger
   useEffect(() => {
@@ -184,16 +196,16 @@ const App: React.FC = () => {
   }, [teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const handleLogout = async () => {
-    // 1. 즉시 로그아웃 플래그 설정 (데이터 로드/저장/토스트 방지)
+    // 1. 로그아웃 시작 시점부터 모든 데이터 로드/저장/UI업데이트 차단
     isLoggingOutRef.current = true;
 
     if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
     }
 
-    // 2. 마지막 저장 시도
+    // 2. 마지막 데이터 저장 (Silent)
     if (session?.user && !isGuestMode && myTeamId) {
-        setToastMessage("데이터 안전 저장 중... 잠시만 기다려주세요.");
+        setToastMessage("데이터 안전 저장 중...");
         const currentData = gameDataRef.current;
         if (currentData.myTeamId) {
             try {
@@ -203,14 +215,14 @@ const App: React.FC = () => {
                     gameData: currentData
                 });
             } catch (e) {
-                console.error("Logout save failed", e);
-                // 실패해도 로그아웃은 진행
+                console.error("Logout save error (non-blocking)", e);
             }
         }
     }
 
-    // 3. 캐시 삭제
+    // 3. React Query 캐시 초기화 (중요: session null 전에 수행)
     await queryClient.cancelQueries();
+    queryClient.removeQueries(); // removeQueries가 clear보다 확실하게 컴포넌트 구독을 끊음
     queryClient.clear();
 
     // 4. Supabase 로그아웃
@@ -221,7 +233,7 @@ const App: React.FC = () => {
         await supabase.auth.signOut();
     }
 
-    // 5. 상태 초기화
+    // 5. 로컬 상태 초기화
     setSession(null); 
     setMyTeamId(null); 
     setSchedule([]); 
@@ -229,13 +241,13 @@ const App: React.FC = () => {
     setPlayoffSeries([]); 
     setTransactions([]); 
     setProspects([]);
+    setToastMessage(null); // 혹시 남아있을 토스트 제거
     setView('TeamSelect'); 
     setIsGuestMode(false);
     
-    // 플래그 해제 (다음 로그인을 위해)
-    setTimeout(() => {
-        isLoggingOutRef.current = false;
-    }, 500);
+    // [Fix] isLoggingOutRef를 false로 되돌리지 않음. 
+    // 다음 로그인(session 획득) 시점에 Auth Listener나 초기화 로직에서 false로 변경됨.
+    // 이렇게 해야 로그아웃 직후 리렌더링 시 발생하는 useEffect들을 확실히 막을 수 있음.
   };
 
   const handleHardReset = async () => {
