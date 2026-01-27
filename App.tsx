@@ -80,6 +80,7 @@ const App: React.FC = () => {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gameDataRef = useRef<any>({});
   const isResettingRef = useRef(false);
+  const isLoggingOutRef = useRef(false); // 로그아웃 진행 중 플래그
 
   // Mutations & Queries
   const saveGameMutation = useSaveGame();
@@ -101,14 +102,18 @@ const App: React.FC = () => {
   // Auth Listener
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
+      if (!isLoggingOutRef.current) {
+        setSession(session);
+      }
       setAuthLoading(false);
     });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+      if (!isLoggingOutRef.current) {
+        setSession(session);
+      }
       setAuthLoading(false);
     });
 
@@ -125,6 +130,9 @@ const App: React.FC = () => {
 
   // Load Save Data
   useEffect(() => {
+      // 로그아웃 중이거나 리셋 중일 때는 데이터 로드 방지
+      if (isLoggingOutRef.current || isResettingRef.current) return;
+
       if (saveData && saveData.game_data) {
           const gd = saveData.game_data;
           setMyTeamId(saveData.team_id);
@@ -149,7 +157,7 @@ const App: React.FC = () => {
 
   // Auto Save Logic
   const triggerSave = useCallback(() => {
-      if (isResettingRef.current) return;
+      if (isResettingRef.current || isLoggingOutRef.current) return;
       if (!session?.user || isGuestMode) return;
       
       if (saveTimeoutRef.current) {
@@ -157,7 +165,7 @@ const App: React.FC = () => {
       }
 
       saveTimeoutRef.current = setTimeout(() => {
-          if (isResettingRef.current) return;
+          if (isResettingRef.current || isLoggingOutRef.current) return;
           const currentData = gameDataRef.current;
           if (!currentData.myTeamId) return;
           
@@ -176,10 +184,14 @@ const App: React.FC = () => {
   }, [teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const handleLogout = async () => {
+    // 1. 즉시 로그아웃 플래그 설정 (데이터 로드/저장/토스트 방지)
+    isLoggingOutRef.current = true;
+
     if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
     }
 
+    // 2. 마지막 저장 시도
     if (session?.user && !isGuestMode && myTeamId) {
         setToastMessage("데이터 안전 저장 중... 잠시만 기다려주세요.");
         const currentData = gameDataRef.current;
@@ -191,22 +203,39 @@ const App: React.FC = () => {
                     gameData: currentData
                 });
             } catch (e) {
-                alert("데이터 저장에 실패했습니다.");
-                setToastMessage(null); 
-                return; 
+                console.error("Logout save failed", e);
+                // 실패해도 로그아웃은 진행
             }
         }
     }
 
+    // 3. 캐시 삭제
     await queryClient.cancelQueries();
     queryClient.clear();
 
+    // 4. Supabase 로그아웃
     if (session?.user) { 
-        try { await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); } catch(e){}
+        try { 
+            await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); 
+        } catch(e){}
         await supabase.auth.signOut();
     }
-    setSession(null); setMyTeamId(null); setSchedule([]); setBoxScores({}); setPlayoffSeries([]); setTransactions([]); setProspects([]);
-    setView('TeamSelect'); setIsGuestMode(false);
+
+    // 5. 상태 초기화
+    setSession(null); 
+    setMyTeamId(null); 
+    setSchedule([]); 
+    setBoxScores({}); 
+    setPlayoffSeries([]); 
+    setTransactions([]); 
+    setProspects([]);
+    setView('TeamSelect'); 
+    setIsGuestMode(false);
+    
+    // 플래그 해제 (다음 로그인을 위해)
+    setTimeout(() => {
+        isLoggingOutRef.current = false;
+    }, 500);
   };
 
   const handleHardReset = async () => {
