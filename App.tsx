@@ -206,45 +206,41 @@ const App: React.FC = () => {
   }, [teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const handleLogout = async () => {
-    // 1. 로그아웃 시작 시점부터 모든 데이터 로드/저장/UI업데이트 차단
+    // 1. 즉시 UI 차단 및 상태 플래그 설정
     isLoggingOutRef.current = true;
-    hasInitialLoadRef.current = false; // [Fix] 로드 플래그 초기화
+    hasInitialLoadRef.current = false;
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
+    // 2. Fire-and-Forget Save (비동기 처리 대기 X -> 즉시 로그아웃 효과)
+    // LocalStorage 저장은 동기적으로 실행되므로 안전합니다.
+    if (session?.user && !isGuestMode && myTeamId && gameDataRef.current?.myTeamId) {
+        // [Manual Safety Net] LocalStorage에 강제 저장 (Supabase 토큰 만료 대비)
+        try {
+            const localPayload = {
+                team_id: gameDataRef.current.myTeamId,
+                game_data: gameDataRef.current,
+                updated_at: new Date().toISOString()
+            };
+            localStorage.setItem(`nba_gm_save_${session.user.id}`, JSON.stringify(localPayload));
+        } catch(e) { console.error("Manual Local Save Fail", e); }
+
+        // 서버 저장 시도 (백그라운드)
+        saveGameMutation.mutate({
+            userId: session.user.id,
+            teamId: gameDataRef.current.myTeamId,
+            gameData: gameDataRef.current
+        });
     }
 
-    // 2. 마지막 데이터 저장 (Silent)
-    if (session?.user && !isGuestMode && myTeamId) {
-        setToastMessage("데이터 안전 저장 중...");
-        const currentData = gameDataRef.current;
-        if (currentData.myTeamId) {
-            try {
-                await saveGameMutation.mutateAsync({
-                    userId: session.user.id,
-                    teamId: currentData.myTeamId,
-                    gameData: currentData
-                });
-            } catch (e) {
-                console.error("Logout save error (non-blocking)", e);
-            }
-        }
-    }
+    // 3. 서버 로그아웃 (Fire-and-Forget)
+    // await를 제거하여 즉시 화면 전환
+    supabase.auth.signOut().then(() => {}).catch(() => {});
 
-    // 3. 캐시 삭제
+    // 4. 로컬 상태 즉시 초기화 (Instant UI Feedback)
     await queryClient.cancelQueries();
     queryClient.removeQueries(); 
     queryClient.clear();
-
-    // 4. Supabase 로그아웃
-    if (session?.user) { 
-        try { 
-            await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); 
-        } catch(e){}
-        await supabase.auth.signOut();
-    }
-
-    // 5. 로컬 상태 초기화
+    
     setSession(null); 
     setMyTeamId(null); 
     setSchedule([]); 
@@ -252,20 +248,20 @@ const App: React.FC = () => {
     setPlayoffSeries([]); 
     setTransactions([]); 
     setProspects([]);
-    setToastMessage(null); 
+    setToastMessage(null); // 토스트 제거
     setView('TeamSelect'); 
     setIsGuestMode(false);
     
-    // 로그아웃 완료 후 잠시 대기했다가 플래그 해제 (auth listener 간섭 방지)
+    // Auth Listener 재활성화 (짧은 딜레이)
     setTimeout(() => {
         isLoggingOutRef.current = false;
-    }, 1000);
+    }, 500);
   };
 
   const handleHardReset = async () => {
     if (session?.user && !isGuestMode) {
         isResettingRef.current = true;
-        hasInitialLoadRef.current = false; // 리셋 시에도 로드 플래그 초기화
+        hasInitialLoadRef.current = false; 
 
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
