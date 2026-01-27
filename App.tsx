@@ -223,15 +223,28 @@ const App: React.FC = () => {
 
   const advanceDate = useCallback(() => {
       setCurrentSimDate(prevDate => {
+          // Find teams that played on the date we are advancing from
+          const teamsPlayedToday = schedule
+              .filter(g => g.date === prevDate && g.played)
+              .reduce((acc, g) => {
+                  acc.add(g.homeTeamId);
+                  acc.add(g.awayTeamId);
+                  return acc;
+              }, new Set<string>());
+
           const currentDateObj = new Date(prevDate);
           currentDateObj.setDate(currentDateObj.getDate() + 1);
           const nextDate = currentDateObj.toISOString().split('T')[0];
           
-          // [Fix] STA & DUR Based Recovery with Rounding
           setTeams(prevTeams => prevTeams.map(t => ({
               ...t,
               roster: t.roster.map(p => {
-                  const baseRec = 15;
+                  // [System Update] Teams that played today do NOT recover stamina tonight.
+                  if (teamsPlayedToday.has(t.id)) {
+                      return p;
+                  }
+
+                  const baseRec = 10; // [System Update] Reduced base recovery from 15 to 10
                   const staBonus = (p.stamina || 75) * 0.1;
                   const durBonus = (p.durability || 75) * 0.05;
                   const totalRec = baseRec + staBonus + durBonus;
@@ -246,7 +259,7 @@ const App: React.FC = () => {
           return nextDate;
       });
       setLastGameResult(null);
-  }, [setTeams]);
+  }, [setTeams, schedule]); // Added schedule to deps
 
   const handleSelectTeam = useCallback(async (teamId: string) => {
     if (myTeamId) return;
@@ -270,8 +283,20 @@ const App: React.FC = () => {
     const targetSimDate = currentSimDate;
     const unplayedGamesToday = schedule.filter(g => g.date === targetSimDate && !g.played);
     
+    // Helper to check if a team played yesterday (for Back-to-Back penalty)
+    const playedYesterday = (teamId: string) => {
+        const yesterday = new Date(currentSimDate);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        return schedule.some(g => g.date === yesterdayStr && (g.homeTeamId === teamId || g.awayTeamId === teamId));
+    };
+
     if (unplayedGamesToday.length === 0) {
-        advanceDate();
+        setIsSimulating(true);
+        setTimeout(() => {
+            advanceDate();
+            setIsSimulating(false);
+        }, 2000);
         return;
     }
 
@@ -290,7 +315,12 @@ const App: React.FC = () => {
             const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
             const home = getTeam(game.homeTeamId); const away = getTeam(game.awayTeamId);
             if (!home || !away) continue;
-            const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined);
+
+            // [System Update] Determine Back-to-Back status
+            const homeB2B = playedYesterday(home.id);
+            const awayB2B = playedYesterday(away.id);
+
+            const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined, homeB2B, awayB2B);
             const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
             const homeWin = result.homeScore > result.awayScore;
 
@@ -325,7 +355,14 @@ const App: React.FC = () => {
                 t.roster = t.roster.map(p => {
                     const update = rosterUpdates[p.id]; const box = boxScore.find(b => b.playerId === p.id);
                     let targetStats = game.isPlayoff ? (p.playoffStats || INITIAL_STATS()) : p.stats;
-                    if (box) { targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; }
+                    if (box) { 
+                        targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
+                        // [Bug Fix] Accumulate Zone Shooting Stats
+                        targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0);
+                        targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0);
+                        targetStats.midM = (targetStats.midM || 0) + (box.midM || 0);
+                        targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
+                    }
                     const returnObj = { ...p, condition: update?.condition !== undefined ? Math.round(update.condition) : p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
                     if (game.isPlayoff) returnObj.playoffStats = targetStats; else returnObj.stats = targetStats;
                     return returnObj;
@@ -367,12 +404,14 @@ const App: React.FC = () => {
     
     if (userGameToday) {
         const home = updatedTeamsRef.current.find(t => t.id === userGameToday.homeTeamId)!; const away = updatedTeamsRef.current.find(t => t.id === userGameToday.awayTeamId)!;
-        const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics);
+        const homeB2B = playedYesterday(home.id);
+        const awayB2B = playedYesterday(away.id);
+        const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics, homeB2B, awayB2B);
         setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); setView('GameSim');
         finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
     } else { 
         setIsSimulating(true); 
-        setTimeout(() => processSimulation(), 800); 
+        setTimeout(() => processSimulation(), 2000); 
     }
   };
 

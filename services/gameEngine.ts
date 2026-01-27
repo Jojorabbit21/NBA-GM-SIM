@@ -367,19 +367,18 @@ export function simulateGame(
     homeTeam: Team, 
     awayTeam: Team, 
     userTeamId: string | null, 
-    userTactics?: GameTactics
+    userTactics?: GameTactics,
+    isHomeB2B: boolean = false,
+    isAwayB2B: boolean = false
 ): SimulationResult {
     const isUserHome = userTeamId === homeTeam.id;
     const isUserAway = userTeamId === awayTeam.id;
     
-    // Note: Recovery/Rest logic is now handled in App.tsx's daily simulation loop 
-    // to ensure teams recover correctly on off-days.
-
     const homeTactics = isUserHome && userTactics ? userTactics : generateAutoTactics(homeTeam);
     const awayTactics = isUserAway && userTactics ? userTactics : generateAutoTactics(awayTeam);
     
-    const homeBox = simulateTeamPerformance(homeTeam, homeTactics, awayTeam, awayTactics, true);
-    const awayBox = simulateTeamPerformance(awayTeam, awayTactics, homeTeam, homeTactics, false);
+    const homeBox = simulateTeamPerformance(homeTeam, homeTactics, awayTeam, awayTactics, true, isHomeB2B);
+    const awayBox = simulateTeamPerformance(awayTeam, awayTactics, homeTeam, homeTactics, false, isAwayB2B);
     
     let homeScore = homeBox.stats.reduce((sum, p) => sum + p.pts, 0);
     let awayScore = awayBox.stats.reduce((sum, p) => sum + p.pts, 0);
@@ -427,7 +426,8 @@ function simulateTeamPerformance(
     teamTactics: GameTactics, 
     oppTeam: Team, 
     oppTactics: GameTactics, 
-    isHome: boolean
+    isHome: boolean,
+    isB2B: boolean = false
 ): { stats: PlayerBoxScore[], updates: RosterUpdate } {
     const C = SIM_CONFIG;
     const rosterUpdates: RosterUpdate = {};
@@ -538,6 +538,11 @@ function simulateTeamPerformance(
           const sliderIntensity = (sliders.pace + sliders.defIntensity + sliders.fullCourtPress) / 15; 
           let drain = baseDrain * sliderIntensity * tacticDrainMult;
           
+          // [System Update] Apply Back-to-Back Penalty (1.5x drain)
+          if (isB2B) {
+              drain *= 1.5;
+          }
+
           const threshold = p.stamina * 0.4;
           if (mp > threshold) {
               const overMinutes = mp - threshold;

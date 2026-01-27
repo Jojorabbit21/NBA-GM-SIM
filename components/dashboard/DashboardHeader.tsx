@@ -24,6 +24,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 }) => {
   return (
     <div className="w-full max-w-[1900px] bg-slate-900/60 border border-white/10 rounded-3xl shadow-[0_50px_120px_rgba(0,0,0,0.8)] backdrop-blur-3xl overflow-hidden flex flex-col mb-6">
+        <style>{`
+            @keyframes fillProgress {
+                from { width: 0%; }
+                to { width: 100%; }
+            }
+            .animate-fill-progress {
+                animation: fillProgress 2s linear forwards;
+            }
+        `}</style>
         <div className="px-8 py-8 border-b border-white/5 bg-white/5 flex flex-col lg:flex-row items-center justify-between gap-8">
             <div className="flex items-center gap-10">
                 <div className="flex items-center gap-6">
@@ -55,16 +64,30 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
             <div className="flex items-center pl-10 lg:border-l border-white/10">
                 {isGameToday ? (
-                    <button onClick={onSimClick} disabled={isSimulating} className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_15px_40px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10">
+                    <button 
+                        onClick={onSimClick} 
+                        disabled={isSimulating} 
+                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_15px_40px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10 min-w-[280px]"
+                    >
                         {isSimulating ? <Loader2 size={22} className="animate-spin" /> : <Zap size={22} className="group-hover:animate-pulse text-yellow-400 fill-yellow-400" />}
                         <span className="text-xl oswald uppercase tracking-widest text-white ko-tight">{isSimulating ? '진행 중...' : '경기 시작'}</span>
                     </button>
                 ) : (
-                    <button onClick={onSimClick} disabled={isSimulating} className="bg-slate-700 hover:bg-blue-600 disabled:bg-slate-800 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.05] active:scale-95 border border-white/10 group ring-4 ring-white/5">
-                        {isSimulating ? <Loader2 size={22} className="animate-spin text-blue-300" /> : <CalendarClock size={22} className="text-blue-300" />}
-                        <div className="flex flex-col items-start">
-                            <span className="text-sm oswald uppercase tracking-widest text-white ko-tight leading-none">{isSimulating ? '시뮬레이션 중' : '내일로 이동'}</span>
-                            {!isSimulating && <span className="text-[10px] text-slate-300 font-bold uppercase tracking-wider">Skip to Tomorrow</span>}
+                    <button 
+                        onClick={onSimClick} 
+                        disabled={isSimulating} 
+                        className="relative bg-slate-700 hover:bg-blue-600 disabled:bg-slate-800 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.05] active:scale-95 border border-white/10 group ring-4 ring-white/5 overflow-hidden min-w-[280px]"
+                    >
+                        {/* Smooth Progress Bar Background */}
+                        {isSimulating && (
+                            <div className="absolute inset-y-0 left-0 bg-blue-500/40 animate-fill-progress z-0" />
+                        )}
+                        
+                        <div className="relative z-10 flex items-center gap-4">
+                            {isSimulating ? <Loader2 size={22} className="animate-spin text-blue-200" /> : <CalendarClock size={22} className="text-blue-300" />}
+                            <span className="text-xl oswald uppercase tracking-widest text-white ko-tight leading-none">
+                                {isSimulating ? '이동 중...' : '내일로 이동'}
+                            </span>
                         </div>
                     </button>
                 )}
