@@ -492,7 +492,9 @@ const App: React.FC = () => {
                 console.log("Logout: Final save completed successfully.");
             } catch (e) {
                 console.error("Logout: Final save failed", e);
-                alert("데이터 저장에 실패했습니다. 인터넷 연결을 확인해주세요.");
+                alert("데이터 저장에 실패했습니다. 인터넷 연결을 확인해주세요. (로그아웃이 취소되었습니다)");
+                setToastMessage(null); // Clear toast
+                return; // [CRITICAL FIX] Stop logout on failure to prevent data loss
             }
         }
     }

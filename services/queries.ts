@@ -132,7 +132,7 @@ export const useSaveGame = () => {
         user_id: userId,
         team_id: teamId,
         game_data: gameData,
-        updated_at: new Date()
+        updated_at: new Date().toISOString()
       }, { onConflict: 'user_id, team_id' });
       
       if (error) throw error;
