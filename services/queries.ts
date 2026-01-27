@@ -141,28 +141,26 @@ export const useSaveGame = () => {
   });
 };
 
-// 4. Session Heartbeat (Polling)
-export const useSessionHeartbeat = (userId: string | undefined, deviceId: string) => {
+// 4. Session Heartbeat (Polling) - [FIXED] Read-Only
+// 기존에 있던 DB Update 로직을 제거하여 쿼리의 Side Effect를 없앴습니다.
+export const useSessionHeartbeat = (userId: string | undefined, deviceId: string, enabled: boolean = true) => {
     return useQuery({
         queryKey: ['heartbeat', userId, deviceId],
         queryFn: async () => {
             if (!userId) return null;
             
-            await supabase.from('profiles')
-                .update({ last_seen_at: new Date().toISOString() })
-                .eq('id', userId)
-                .eq('active_device_id', deviceId);
-
+            // 오직 현재 활성 기기 ID를 조회만 합니다.
             const { data } = await supabase
                 .from('profiles')
                 .select('active_device_id')
                 .eq('id', userId)
                 .single();
             
+            // 내 기기 ID와 DB의 활성 ID가 일치하는지 확인
             return data?.active_device_id === deviceId;
         },
-        enabled: !!userId,
-        refetchInterval: 300000, // [OPTIMIZATION] 1분에서 5분으로 완화 (300,000ms)
+        enabled: !!userId && enabled,
+        refetchInterval: 30000, // 30초마다 검사 (서버 부하 감소)
         refetchOnWindowFocus: true,
         retry: false
     });

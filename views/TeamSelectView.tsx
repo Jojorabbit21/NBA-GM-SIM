@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Loader2, Wifi, WifiOff, RefreshCw, Database, FileSpreadsheet } from 'lucide-react';
+import { Loader2, Wifi, WifiOff } from 'lucide-react';
 import { Team } from '../types';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { logEvent } from '../services/analytics'; // Analytics Import
@@ -42,7 +42,6 @@ const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: 
 export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitializing, onSelectTeam, onReload, dataSource = 'DB' }) => {
   const eastTeams = useMemo(() => teams.filter(t => t.conference === 'East'), [teams]);
   const westTeams = useMemo(() => teams.filter(t => t.conference === 'West'), [teams]);
-  const [isReloading, setIsReloading] = useState(false);
   const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
 
   useEffect(() => {
@@ -65,15 +64,6 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
     }
   }, [isInitializing]);
 
-  const handleReload = async () => {
-      if (onReload) {
-          logEvent('System', 'Force Reload DB'); // Analytics Event
-          setIsReloading(true);
-          await onReload();
-          setTimeout(() => setIsReloading(false), 800);
-      }
-  };
-
   return (
     <div className="h-screen w-full bg-slate-950 flex flex-col overflow-hidden relative ko-normal pretendard selection:bg-indigo-500/30">
       
@@ -93,23 +83,6 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
 
       {/* Enhanced Header */}
       <header className="flex-shrink-0 h-32 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-md flex items-center justify-center relative z-20">
-        <div className="absolute right-8 top-8 flex flex-col gap-2 items-end">
-            <div className={`px-3 py-1.5 rounded-lg border text-[10px] font-black uppercase tracking-wider flex items-center gap-2 ${dataSource === 'DB' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-amber-500/10 border-amber-500/30 text-amber-400'}`}>
-                {dataSource === 'DB' ? <Database size={12} /> : <FileSpreadsheet size={12} />}
-                <span>Data Source: {dataSource === 'DB' ? 'LIVE DATABASE (SUPABASE)' : 'LOCAL CSV (FALLBACK)'}</span>
-            </div>
-            {onReload && (
-                <button 
-                    onClick={handleReload}
-                    disabled={isReloading}
-                    className="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold uppercase tracking-wider flex items-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-                >
-                    <RefreshCw size={12} className={isReloading ? 'animate-spin' : ''} />
-                    <span>DB 강제 새로고침 (한글 이름 반영)</span>
-                </button>
-            )}
-        </div>
-
         <div className="flex items-center gap-8">
           <img src="https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg" className="h-16 opacity-90 drop-shadow-2xl" alt="NBA" />
           <div className="h-12 w-[2px] bg-slate-700/50"></div>
