@@ -35,6 +35,7 @@ import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { Footer } from './components/Footer';
 import { supabase } from './services/supabaseClient';
 import { AuthView } from './views/AuthView';
+import { useQueryClient } from '@tanstack/react-query';
 
 // TanStack Query Hooks
 import { useBaseData, useLoadSave, useSaveGame, useSessionHeartbeat } from './services/queries';
@@ -53,6 +54,8 @@ type NewsItem =
   | { type: 'game'; home: Team; away: Team; homeScore: number; awayScore: number };
 
 const App: React.FC = () => {
+  const queryClient = useQueryClient();
+
   // Auth State
   const [session, setSession] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -80,12 +83,22 @@ const App: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [isSimulating, setIsSimulating] = useState(false);
   
-  // Session & Device
-  const [deviceId] = useState(() => self.crypto.randomUUID());
+  // Session & Device - [FIX] Persistent Device ID (LocalStorage 사용)
+  // 새로고침 시마다 ID가 바뀌는 문제를 방지합니다.
+  const [deviceId] = useState(() => {
+      const stored = localStorage.getItem('nba_gm_device_id');
+      if (stored) return stored;
+      const newId = self.crypto.randomUUID();
+      localStorage.setItem('nba_gm_device_id', newId);
+      return newId;
+  });
   const [isDuplicateSession, setIsDuplicateSession] = useState(false);
 
+  // Refs for logic control
   const finalizeSimRef = useRef<((userResult?: any) => void) | null>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isResettingRef = useRef(false); // [CRITICAL] Reset Safety Lock
+  const isRecoveringRef = useRef(false); // [CRITICAL] Reconnect Loop Preventer
 
   // --- TanStack Query Integration ---
 
@@ -99,23 +112,59 @@ const App: React.FC = () => {
   const saveGameMutation = useSaveGame();
 
   // 4. Session Heartbeat (Polling)
-  const { data: isSessionValid } = useSessionHeartbeat(session?.user?.id, deviceId);
+  // [DEBUG] 중복 로그인 감지 기능 비활성화 (enabled: false)
+  const { data: isSessionValid } = useSessionHeartbeat(
+      session?.user?.id, 
+      deviceId, 
+      false // !isDuplicateSession && !isGuestMode -> 강제 비활성화
+  );
+
+  // [DEBUG] Keep-Alive 로직 비활성화
+  useEffect(() => {
+      /*
+      if (!session?.user || isGuestMode) return;
+
+      const claimSession = async () => {
+          try {
+              await supabase.from('profiles').update({ 
+                  active_device_id: deviceId, 
+                  last_seen_at: new Date().toISOString() 
+              }).eq('id', session.user.id);
+          } catch (e) {
+              // Keep-alive 실패는 조용히 넘어감
+          }
+      };
+
+      // 초기 실행
+      claimSession();
+
+      // 주기적 실행
+      const interval = setInterval(claimSession, 2 * 60 * 1000);
+      return () => clearInterval(interval);
+      */
+  }, [session, deviceId, isGuestMode]);
 
   // Game Data Ref for Silent Saves & Version Check Saves
   const gameDataRef = useRef({ teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId });
   
   const triggerSave = useCallback(() => {
+        // [SAFETY LOCK] Reset 진행 중이면 저장 금지 (좀비 데이터 방지)
+        if (isResettingRef.current) return;
+
         if (!session?.user || isDuplicateSession || isGuestMode) return;
         
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
 
-        // [OPTIMIZATION] 디바운스 시간을 5초로 늘려 서버 호출 빈도를 줄임
         saveTimeoutRef.current = setTimeout(() => {
+            // [SAFETY LOCK] 타임아웃 실행 시점에도 Reset 중인지 다시 확인
+            if (isResettingRef.current) return;
+
             const currentData = gameDataRef.current;
             if (!currentData.myTeamId) return;
             
+            console.log("Auto-save triggered...");
             saveGameMutation.mutate({
                 userId: session.user.id,
                 teamId: currentData.myTeamId,
@@ -139,6 +188,22 @@ const App: React.FC = () => {
           triggerSave();
       }
   }, [teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
+
+  // --- Session Validation Effect ---
+  // [DEBUG] 중복 로그인 상태 변경 로직 비활성화
+  useEffect(() => {
+      /*
+      if (isRecoveringRef.current || isGuestMode) return;
+
+      // 명시적으로 false가 반환된 경우에만 중복 로그인 처리
+      if (isSessionValid === false) {
+          setIsDuplicateSession(true);
+      } else if (isSessionValid === true) {
+          // 유효하다면 상태 복구 (네트워크 일시 오류 후 복구 등)
+          setIsDuplicateSession(false);
+      }
+      */
+  }, [isSessionValid, isGuestMode]);
 
   // --- Version Check Logic (Optimized) ---
   const currentVersion = useRef<string | null>(null);
@@ -203,14 +268,6 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-      if (isSessionValid === false) {
-          setIsDuplicateSession(true);
-      } else if (isSessionValid === true) {
-          setIsDuplicateSession(false);
-      }
-  }, [isSessionValid]);
-
-  useEffect(() => {
       if (baseData && teams.length === 0 && !myTeamId) {
           setTeams(baseData.teams);
           setProspects(generateInitialProspects());
@@ -262,10 +319,40 @@ const App: React.FC = () => {
     });
   }, []);
 
+  // [FIX] Force Login Logic Reinvented - Optimistic Update
   const handleForceLogin = async () => {
       if (!session?.user || isGuestMode) return;
-      await supabase.from('profiles').update({ active_device_id: deviceId, last_seen_at: new Date().toISOString() }).eq('id', session.user.id);
-      setIsDuplicateSession(false);
+      
+      // 1. Lock: 복구 중에는 상태 체크를 잠시 멈춥니다.
+      isRecoveringRef.current = true;
+      setAuthLoading(true);
+
+      try {
+          // 2. DB Update: 내가 활성 기기라고 선언
+          await supabase.from('profiles').update({ 
+              active_device_id: deviceId, 
+              last_seen_at: new Date().toISOString() 
+          }).eq('id', session.user.id);
+
+          // 3. Optimistic Cache Update: 쿼리를 다시 부르지 않고 캐시를 강제 주입
+          queryClient.setQueryData(['heartbeat', session.user.id, deviceId], true);
+
+          // 4. UI Update
+          setIsDuplicateSession(false);
+          setToastMessage("성공적으로 재접속되었습니다.");
+
+          // 5. Unlock after delay: DB 전파 시간을 고려해 안전장치 해제
+          setTimeout(() => {
+              isRecoveringRef.current = false;
+          }, 3000);
+
+      } catch (e) {
+          console.error("Force Login Error:", e);
+          alert("재접속 중 오류가 발생했습니다.");
+          isRecoveringRef.current = false; 
+      } finally {
+          setAuthLoading(false);
+      }
   };
 
   const handleTeamSelection = useCallback(async (teamId: string) => {
@@ -291,14 +378,20 @@ const App: React.FC = () => {
           try {
               const metaName = session.user.user_metadata?.nickname;
               const emailName = session.user.email?.split('@')[0] || 'User';
+              
+              // DB 초기화 및 Device ID 점유
               await supabase.from('profiles').upsert({
                   id: session.user.id,
                   email: session.user.email,
                   nickname: metaName || emailName,
-                  active_device_id: deviceId,
+                  active_device_id: deviceId, 
                   last_seen_at: new Date().toISOString(),
                   updated_at: new Date().toISOString()
               }, { onConflict: 'id' });
+              
+              // 캐시 초기화
+              queryClient.setQueryData(['heartbeat', session.user.id, deviceId], true);
+              
               triggerSave();
           } catch(e) {
               console.error("Initialization Save Error:", e);
@@ -307,49 +400,104 @@ const App: React.FC = () => {
       setView('Dashboard');
   };
 
+  // [SAFETY] Safe Hard Reset with Locking
   const handleHardReset = async () => {
     if (session?.user && !isGuestMode) {
+        // 1. LOCK & KILL
+        isResettingRef.current = true; // Lock Save
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+        }
+
         setAuthLoading(true);
-        try { await supabase.from('saves').delete().eq('user_id', session.user.id).eq('team_id', myTeamId); } catch(e) {}
+        try { 
+            // 2. NUKE QUERIES
+            await queryClient.cancelQueries(); // Stop all background fetches
+            
+            // 3. DELETE FROM DB (Await ensures completion)
+            await supabase.from('saves').delete().eq('user_id', session.user.id);
+
+            // 4. CLEAN CACHE
+            queryClient.removeQueries({ queryKey: ['saveData', session.user.id] });
+
+            // 5. SESSION UPDATE (Prevents duplicate login error)
+            await supabase.from('profiles').update({
+                active_device_id: deviceId,
+                last_seen_at: new Date().toISOString()
+            }).eq('id', session.user.id);
+            
+            console.log("Safe Reset: Data wiped successfully.");
+        } catch(e) {
+            console.error("Reset Error:", e);
+            alert("초기화 중 오류가 발생했습니다. 페이지를 새로고침해주세요.");
+        }
     }
+    
+    // 6. RESET LOCAL STATE (Atomic)
     setMyTeamId(null); setSchedule([]); setBoxScores({}); setPlayoffSeries([]); setTransactions([]);
     setProspects(generateInitialProspects());
     setNews([{ type: 'text', content: "NBA 2025-26 시즌 구단 운영 시스템 활성화 완료." }]);
     setCurrentSimDate(SEASON_START_DATE);
     setLastGameResult(null); setActiveGame(null);
+    
+    // 7. RESTORE BASE
     if (baseData) {
         setTeams(baseData.teams);
         if(baseData.schedule) setSchedule(baseData.schedule);
     }
+    
+    setIsDuplicateSession(false);
     setShowResetConfirm(false); 
     if (session?.user && !isGuestMode) setAuthLoading(false);
     setView('TeamSelect');
+
+    // 8. UNLOCK (Delayed to ensure UI settles)
+    setTimeout(() => {
+        isResettingRef.current = false;
+    }, 1000);
   };
 
   const handleLogout = async () => {
+    // 1. Clear any pending auto-saves immediately
+    if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+    }
+
+    // 2. Perform Final Save
     if (session?.user && !isGuestMode && myTeamId) {
-        setToastMessage("데이터 저장 후 로그아웃합니다...");
+        setToastMessage("데이터 안전 저장 중... 잠시만 기다려주세요.");
         const currentData = gameDataRef.current;
-        try {
-            await saveGameMutation.mutateAsync({
-                userId: session.user.id,
-                teamId: currentData.myTeamId!,
-                gameData: { 
-                    teams: currentData.teams, 
-                    schedule: currentData.schedule, 
-                    boxScores: currentData.boxScores, 
-                    currentSimDate: currentData.currentSimDate, 
-                    tactics: currentData.userTactics, 
-                    playoffSeries: currentData.playoffSeries, 
-                    transactions: currentData.transactions, 
-                    prospects: currentData.prospects 
-                }
-            });
-        } catch (e) {
-            console.error("Logout final save failed", e);
+        
+        // Critical: Ensure we have data to save
+        if (!currentData.myTeamId) {
+            console.error("Logout Error: No Team ID found for save.");
+        } else {
+            try {
+                // await here is crucial - we must wait for the network response
+                await saveGameMutation.mutateAsync({
+                    userId: session.user.id,
+                    teamId: currentData.myTeamId,
+                    gameData: { 
+                        teams: currentData.teams, 
+                        schedule: currentData.schedule, 
+                        boxScores: currentData.boxScores, 
+                        currentSimDate: currentData.currentSimDate, 
+                        tactics: currentData.userTactics, 
+                        playoffSeries: currentData.playoffSeries, 
+                        transactions: currentData.transactions, 
+                        prospects: currentData.prospects 
+                    }
+                });
+                console.log("Logout: Final save completed successfully.");
+            } catch (e) {
+                console.error("Logout: Final save failed", e);
+                alert("데이터 저장에 실패했습니다. 인터넷 연결을 확인해주세요.");
+            }
         }
     }
 
+    // 3. Clear Session & State
     if (session?.user) { 
         try { await supabase.from('profiles').update({ active_device_id: null, last_seen_at: null }).eq('id', session.user.id); } catch(e){}
         await supabase.auth.signOut();
@@ -525,7 +673,12 @@ const App: React.FC = () => {
 
   if (authLoading || isBaseDataLoading) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" /><p className="text-sm font-bold uppercase tracking-widest text-slate-500">Initializing League Data...</p></div>;
   if (!session && !isGuestMode) return <AuthView />;
-  if (isDuplicateSession && !isGuestMode) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center"><MonitorX size={64} className="text-red-500 mb-6" /><h2 className="text-3xl font-black text-white mb-4">중복 로그인 감지</h2><button onClick={handleForceLogin} className="px-8 py-4 bg-indigo-600 text-white font-black rounded-xl">여기서 다시 접속</button></div>;
+  
+  // [DEBUG] 중복 로그인 기능 비활성화로 인해 아래 코드 주석 처리
+  /*
+  if (isDuplicateSession && !isGuestMode) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-8 text-center"><MonitorX size={64} className="text-red-500 mb-6" /><h2 className="text-3xl font-black text-white mb-4">중복 로그인 감지</h2><button onClick={handleForceLogin} className="px-8 py-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-500 transition-colors">여기서 다시 접속</button></div>;
+  */
+
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isBaseDataLoading} onSelectTeam={handleTeamSelection} onReload={refetchBaseData} dataSource='DB' />;
   
   const myTeam = teams.find(t => t.id === myTeamId);
