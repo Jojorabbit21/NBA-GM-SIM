@@ -91,64 +91,87 @@ export const useBaseData = () => {
   });
 };
 
-// 2. Save Data Loading (Dual Source: Supabase -> LocalStorage Fallback)
+// 2. Save Data Loading (Smart Sync: Supabase vs LocalStorage)
 export const useLoadSave = (userId: string | undefined) => {
   return useQuery({
     queryKey: ['saveData', userId],
     queryFn: async () => {
       if (!userId) return null;
 
-      let resultData = null;
+      let remoteData = null;
+      let localData = null;
 
-      // 1. Try Loading from Supabase
+      // 1. Fetch from Supabase
       try {
           const { data, error } = await supabase
             .from('saves')
-            .select('team_id, game_data')
+            .select('team_id, game_data, updated_at')
             .eq('user_id', userId)
             .maybeSingle();
           
           if (!error && data) {
-              resultData = data;
+              remoteData = data;
           }
       } catch (e) {
-          console.warn("Supabase load failed, attempting local storage.", e);
+          console.warn("Supabase load failed.", e);
       }
 
-      // 2. Fallback to LocalStorage if Supabase failed or empty
-      if (!resultData) {
-          try {
-              const localString = localStorage.getItem(`nba_gm_save_${userId}`);
-              if (localString) {
-                  resultData = JSON.parse(localString);
-                  console.log("Loaded data from LocalStorage.");
-              }
-          } catch (e) {
-              console.error("LocalStorage load failed.", e);
+      // 2. Fetch from LocalStorage
+      try {
+          const localString = localStorage.getItem(`nba_gm_save_${userId}`);
+          if (localString) {
+              localData = JSON.parse(localString);
           }
+      } catch (e) {
+          console.error("LocalStorage load failed.", e);
       }
 
-      if (!resultData) return null;
+      // 3. Compare Timestamps and Select Best Source
+      let finalData = null;
+      let source = '';
 
-      // 3. Process Data
-      if (resultData.game_data && resultData.game_data.teams) {
-          resultData.game_data.teams = syncOvrWithLatestWeights(resultData.game_data.teams);
+      if (remoteData && localData) {
+          const remoteTime = new Date(remoteData.updated_at || 0).getTime();
+          const localTime = new Date(localData.updated_at || 0).getTime();
           
-          if (resultData.game_data.prospects) {
-              resultData.game_data.prospects = resultData.game_data.prospects.map((p: Player) => ({
+          if (localTime > remoteTime) {
+              finalData = localData;
+              source = 'Local (Newer)';
+          } else {
+              finalData = remoteData;
+              source = 'Remote (Newer)';
+          }
+      } else if (remoteData) {
+          finalData = remoteData;
+          source = 'Remote (Only)';
+      } else if (localData) {
+          finalData = localData;
+          source = 'Local (Only)';
+      }
+
+      console.log(`Loading Save Data from: ${source}`, finalData?.updated_at);
+
+      if (!finalData) return null;
+
+      // 4. Process Data (OVR Sync)
+      if (finalData.game_data && finalData.game_data.teams) {
+          finalData.game_data.teams = syncOvrWithLatestWeights(finalData.game_data.teams);
+          
+          if (finalData.game_data.prospects) {
+              finalData.game_data.prospects = finalData.game_data.prospects.map((p: Player) => ({
                   ...p,
                   ovr: calculatePlayerOvr(p)
               }));
           }
       }
 
-      return resultData;
+      return finalData;
     },
     enabled: !!userId,
-    retry: false,
-    refetchOnWindowFocus: false, // 탭 전환 시 재요청 방지
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60,
+    retry: 1,
+    refetchOnWindowFocus: false,
+    staleTime: 0, // [CRITICAL FIX] Always checking freshness on mount/login
+    gcTime: 1000 * 60 * 5, 
   });
 };
 
@@ -157,35 +180,30 @@ export const useSaveGame = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-      // 1. Save to LocalStorage (Safety Net - Synchronous-like)
+      const timestamp = new Date().toISOString();
+      const payload = {
+        user_id: userId,
+        team_id: teamId,
+        game_data: gameData,
+        updated_at: timestamp
+      };
+
+      // 1. Save to LocalStorage (Synchronous backup)
       try {
-          const localPayload = {
-              team_id: teamId,
-              game_data: gameData,
-              updated_at: new Date().toISOString()
-          };
-          localStorage.setItem(`nba_gm_save_${userId}`, JSON.stringify(localPayload));
+          localStorage.setItem(`nba_gm_save_${userId}`, JSON.stringify(payload));
       } catch (e) {
           console.error("LocalStorage save failed", e);
       }
 
       // 2. Save to Supabase
-      const { error } = await supabase.from('saves').upsert({
-        user_id: userId,
-        team_id: teamId,
-        game_data: gameData,
-        updated_at: new Date().toISOString()
-      }, { onConflict: 'user_id, team_id' });
+      const { error } = await supabase.from('saves').upsert(payload, { onConflict: 'user_id, team_id' });
       
       if (error) throw error;
-      return true;
+      return payload;
     },
-    onSuccess: (data, variables) => {
-        // [Critical] Update Cache Immediately so UI reflects saved state without refetch
-        queryClient.setQueryData(['saveData', variables.userId], {
-            team_id: variables.teamId,
-            game_data: variables.gameData
-        });
+    onSuccess: (savedData, variables) => {
+        // [Critical] Update Cache Immediately with the exact payload we just saved
+        queryClient.setQueryData(['saveData', variables.userId], savedData);
     }
   });
 };
