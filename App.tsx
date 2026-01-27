@@ -99,8 +99,17 @@ const App: React.FC = () => {
 
   // Update GameData Ref for Save/Logout
   useEffect(() => {
+    // [Fix] tactics 키 이름 통일 (userTactics -> tactics)
     gameDataRef.current = {
-        myTeamId, teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects
+        myTeamId, 
+        teams, 
+        schedule, 
+        boxScores, 
+        currentSimDate, 
+        tactics: userTactics, 
+        playoffSeries, 
+        transactions, 
+        prospects
     };
   }, [myTeamId, teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
 
@@ -159,7 +168,11 @@ const App: React.FC = () => {
           if (gd.schedule) setSchedule(gd.schedule);
           if (gd.boxScores) setBoxScores(gd.boxScores);
           if (gd.currentSimDate) setCurrentSimDate(gd.currentSimDate);
+          
+          // [Fix] 전술 데이터 로드 (키 불일치 호환성 처리)
           if (gd.tactics) setUserTactics(gd.tactics);
+          else if (gd.userTactics) setUserTactics(gd.userTactics);
+          
           if (gd.playoffSeries) setPlayoffSeries(gd.playoffSeries);
           if (gd.transactions) setTransactions(gd.transactions);
           if (gd.prospects) setProspects(gd.prospects);
