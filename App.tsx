@@ -90,7 +90,7 @@ const App: React.FC = () => {
   // Mutations & Queries
   const saveGameMutation = useSaveGame();
   const { data: baseData, isLoading: isBaseDataLoading, refetch: refetchBaseData } = useBaseData();
-  const { data: saveData } = useLoadSave(session?.user?.id);
+  const { data: saveData, isLoading: isSaveLoading, isFetching: isSaveFetching } = useLoadSave(session?.user?.id);
 
   // Initialize GA
   useEffect(() => {
@@ -164,8 +164,10 @@ const App: React.FC = () => {
           if (gd.transactions) setTransactions(gd.transactions);
           if (gd.prospects) setProspects(gd.prospects);
           
-          if (saveData.team_id) setView('Dashboard');
-          setToastMessage('저장된 게임을 불러왔습니다.');
+          if (saveData.team_id) {
+              setView('Dashboard');
+              setToastMessage(`${saveData.team_id.toUpperCase()} 구단 데이터를 불러왔습니다.`);
+          }
           
           // [Fix] 로드 완료 플래그 설정
           hasInitialLoadRef.current = true;
@@ -206,15 +208,11 @@ const App: React.FC = () => {
   }, [teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const handleLogout = async () => {
-    // 1. 즉시 UI 차단 및 상태 플래그 설정
     isLoggingOutRef.current = true;
     hasInitialLoadRef.current = false;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    // 2. Fire-and-Forget Save (비동기 처리 대기 X -> 즉시 로그아웃 효과)
-    // LocalStorage 저장은 동기적으로 실행되므로 안전합니다.
     if (session?.user && !isGuestMode && myTeamId && gameDataRef.current?.myTeamId) {
-        // [Manual Safety Net] LocalStorage에 강제 저장 (Supabase 토큰 만료 대비)
         try {
             const localPayload = {
                 team_id: gameDataRef.current.myTeamId,
@@ -224,7 +222,6 @@ const App: React.FC = () => {
             localStorage.setItem(`nba_gm_save_${session.user.id}`, JSON.stringify(localPayload));
         } catch(e) { console.error("Manual Local Save Fail", e); }
 
-        // 서버 저장 시도 (백그라운드)
         saveGameMutation.mutate({
             userId: session.user.id,
             teamId: gameDataRef.current.myTeamId,
@@ -232,11 +229,8 @@ const App: React.FC = () => {
         });
     }
 
-    // 3. 서버 로그아웃 (Fire-and-Forget)
-    // await를 제거하여 즉시 화면 전환
     supabase.auth.signOut().then(() => {}).catch(() => {});
 
-    // 4. 로컬 상태 즉시 초기화 (Instant UI Feedback)
     await queryClient.cancelQueries();
     queryClient.removeQueries(); 
     queryClient.clear();
@@ -248,11 +242,10 @@ const App: React.FC = () => {
     setPlayoffSeries([]); 
     setTransactions([]); 
     setProspects([]);
-    setToastMessage(null); // 토스트 제거
+    setToastMessage(null); 
     setView('TeamSelect'); 
     setIsGuestMode(false);
     
-    // Auth Listener 재활성화 (짧은 딜레이)
     setTimeout(() => {
         isLoggingOutRef.current = false;
     }, 500);
@@ -496,14 +489,39 @@ const App: React.FC = () => {
 
   const myTeam = teams.find(t => t.id === myTeamId);
 
-  // Loading & Auth Guard
-  if (authLoading || isBaseDataLoading) return <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200"><Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" /><p className="text-sm font-bold uppercase tracking-widest text-slate-500">Initializing League Data...</p></div>;
-  if (!session && !isGuestMode) return (
-      <>
-        {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-        <AuthView />
-      </>
-  );
+  // [Loading & Guard Logic]
+  // 1. Initial Resources Loading (Auth & Base Data)
+  if (authLoading || isBaseDataLoading) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
+            <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
+            <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Initializing League Data...</p>
+        </div>
+      );
+  }
+
+  // 2. Auth Check
+  if (!session && !isGuestMode) {
+      return (
+          <>
+            {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+            <AuthView />
+          </>
+      );
+  }
+
+  // 3. Save Data Loading Guard (Prevent Flash of TeamSelect)
+  // 로그인이 되어있고, 저장된 데이터를 확인 중이거나(isSaveLoading), 저장된 데이터가 있어서 뷰 전환이 예정된 경우(saveData && view === 'TeamSelect') 로딩 화면 유지
+  if ((session && (isSaveLoading || isSaveFetching)) || (saveData && view === 'TeamSelect')) {
+      return (
+          <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
+              <Loader2 className="w-12 h-12 text-emerald-500 animate-spin mb-4" />
+              <p className="text-sm font-bold uppercase tracking-widest text-slate-500">
+                  {saveData ? 'Loading Team Data...' : 'Checking Saved Game...'}
+              </p>
+          </div>
+      );
+  }
 
   // Early Views (Before Main Layout)
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isBaseDataLoading} onSelectTeam={handleSelectTeam} onReload={refetchBaseData} dataSource='DB' />;
