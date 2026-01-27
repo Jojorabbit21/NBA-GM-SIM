@@ -78,7 +78,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                     const assignedSlot = Object.entries(starters).find(([slot, id]) => id === p.id)?.[0];
                                     const isStarter = !!assignedSlot;
                                     const isSelectedStopper = stopperId === p.id;
-                                    const cond = p.condition || 100;
+                                    const cond = Math.round(p.condition || 100); // [Fix] Round to integer
                                     const displayOvr = assignedSlot ? calculatePlayerOvr(p, assignedSlot) : p.ovr;
                                     let condColor = 'bg-emerald-500';
                                     if (cond < 60) condColor = 'bg-red-500';

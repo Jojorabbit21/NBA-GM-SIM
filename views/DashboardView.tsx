@@ -30,20 +30,32 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics, 
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false 
 }) => {
-  // Find the next game for the user's team
-  const nextGame = useMemo(() => {
-    if (!team?.id) return undefined;
-    return schedule.find(g => !g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id));
+  // 1. Find the next game for the user's team (regardless of unplayed/played) to show branding
+  const userGamesToday = useMemo(() => {
+    if (!team?.id || !currentSimDate) return [];
+    return schedule.filter(g => g.date === currentSimDate && (g.homeTeamId === team.id || g.awayTeamId === team.id));
+  }, [schedule, team?.id, currentSimDate]);
+
+  // 2. Determine if there's an actual game to simulate TODAY
+  const unplayedGamesToday = useMemo(() => {
+      if (!currentSimDate) return [];
+      return schedule.filter(g => g.date === currentSimDate && !g.played);
+  }, [schedule, currentSimDate]);
+
+  // [Fix] 사용자의 팀이 오늘 경기가 있는지 여부 판단
+  const userHasGameToday = useMemo(() => {
+      return unplayedGamesToday.some(g => g.homeTeamId === team?.id || g.awayTeamId === team?.id);
+  }, [unplayedGamesToday, team?.id]);
+
+  // 3. Current next game to show in header (prioritize unplayed today, then overall next)
+  const nextGameDisplay = useMemo(() => {
+      if (!team?.id) return undefined;
+      return schedule.find(g => !g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id)) 
+             || schedule.filter(g => (g.homeTeamId === team.id || g.awayTeamId === team.id)).reverse().find(g => g.played);
   }, [schedule, team?.id]);
 
-  // Check if the user has a game scheduled for TODAY (currentSimDate)
-  const isGameToday = useMemo(() => {
-      if (!currentSimDate || !nextGame) return false;
-      return nextGame.date === currentSimDate;
-  }, [currentSimDate, nextGame]);
-
-  const isHome = nextGame?.homeTeamId === team?.id;
-  const opponentId = isHome ? nextGame?.awayTeamId : nextGame?.homeTeamId;
+  const isHome = nextGameDisplay?.homeTeamId === team?.id;
+  const opponentId = isHome ? nextGameDisplay?.awayTeamId : nextGameDisplay?.homeTeamId;
   const opponent = useMemo(() => teams.find(t => t.id === opponentId), [teams, opponentId]);
 
   const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
@@ -69,16 +81,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [healthySorted, starters, tactics, onUpdateTactics]);
 
-  // Clean up stopperId if not using AceStopper
-  useEffect(() => {
-    if (!defenseTactics.includes('AceStopper')) {
-      if (stopperId !== undefined) onUpdateTactics({ ...tactics, stopperId: undefined });
-    } else if (!stopperId && healthySorted.length > 0) {
-      const best = [...healthySorted].sort((a,b) => b.def - a.def)[0];
-      if (best) onUpdateTactics({ ...tactics, stopperId: best.id });
-    }
-  }, [defenseTactics, stopperId, healthySorted, tactics, onUpdateTactics]);
-
   const myOvr = useMemo(() => {
     if (!team?.roster?.length) return 0;
     return Math.round(team.roster.reduce((s, p) => s + p.ovr, 0) / team.roster.length);
@@ -89,7 +91,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     return Math.round(opponent.roster.reduce((s, p) => s + p.ovr, 0) / opponent.roster.length);
   }, [opponent?.roster]);
 
-  // Wrapper for calculateTacticScore to inject team/tactics state
   const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
       return calculateTacticScore(type, team, tactics);
   };
@@ -100,7 +101,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   };
 
   const handleSimClick = () => {
-    logEvent('Game', 'Simulate', isGameToday ? 'Play Game' : 'Skip Day');
     onSim(tactics);
   };
 
@@ -119,15 +119,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         hasPlayoffHistory={hasPlayoffHistory} 
       />
 
-      {/* Main Dashboard Container */}
+      {/* Main Dashboard Header Section */}
       <DashboardHeader 
         team={team}
-        nextGame={nextGame}
+        nextGame={nextGameDisplay}
         opponent={opponent}
         isHome={isHome}
         myOvr={myOvr}
         opponentOvrValue={opponentOvrValue}
-        isGameToday={isGameToday}
+        isGameToday={userHasGameToday} 
         isSimulating={isSimulating}
         onSimClick={handleSimClick}
         onShowSeasonReview={onShowSeasonReview}
