@@ -87,51 +87,89 @@ export const useBaseData = () => {
     },
     staleTime: Infinity,
     gcTime: Infinity,
-    refetchOnWindowFocus: false, // 기본 데이터도 탭 전환 시 재요청 방지
+    refetchOnWindowFocus: false,
   });
 };
 
-// 2. Save Data Loading
+// 2. Save Data Loading (Dual Source: Supabase -> LocalStorage Fallback)
 export const useLoadSave = (userId: string | undefined) => {
   return useQuery({
     queryKey: ['saveData', userId],
     queryFn: async () => {
       if (!userId) return null;
-      const { data, error } = await supabase
-        .from('saves')
-        .select('team_id, game_data')
-        .eq('user_id', userId)
-        .maybeSingle();
 
-      if (error) throw error;
-      if (!data) return null;
+      let resultData = null;
 
-      if (data.game_data && data.game_data.teams) {
-          data.game_data.teams = syncOvrWithLatestWeights(data.game_data.teams);
+      // 1. Try Loading from Supabase
+      try {
+          const { data, error } = await supabase
+            .from('saves')
+            .select('team_id, game_data')
+            .eq('user_id', userId)
+            .maybeSingle();
           
-          if (data.game_data.prospects) {
-              data.game_data.prospects = data.game_data.prospects.map((p: Player) => ({
+          if (!error && data) {
+              resultData = data;
+          }
+      } catch (e) {
+          console.warn("Supabase load failed, attempting local storage.", e);
+      }
+
+      // 2. Fallback to LocalStorage if Supabase failed or empty
+      if (!resultData) {
+          try {
+              const localString = localStorage.getItem(`nba_gm_save_${userId}`);
+              if (localString) {
+                  resultData = JSON.parse(localString);
+                  console.log("Loaded data from LocalStorage.");
+              }
+          } catch (e) {
+              console.error("LocalStorage load failed.", e);
+          }
+      }
+
+      if (!resultData) return null;
+
+      // 3. Process Data
+      if (resultData.game_data && resultData.game_data.teams) {
+          resultData.game_data.teams = syncOvrWithLatestWeights(resultData.game_data.teams);
+          
+          if (resultData.game_data.prospects) {
+              resultData.game_data.prospects = resultData.game_data.prospects.map((p: Player) => ({
                   ...p,
                   ovr: calculatePlayerOvr(p)
               }));
           }
       }
 
-      return data;
+      return resultData;
     },
     enabled: !!userId,
     retry: false,
-    refetchOnWindowFocus: false, // [FIX] 탭 전환 시 데이터 재로드 및 토스트 발생 방지
-    staleTime: Infinity, // [FIX] 한 번 로드된 데이터는 명시적 무효화 전까지 신선한 것으로 간주
-    gcTime: 1000 * 60 * 60, // 캐시 유지 시간 1시간
+    refetchOnWindowFocus: false,
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60,
   });
 };
 
-// 3. Save Game Mutation
+// 3. Save Game Mutation (Dual Save: LocalStorage + Supabase)
 export const useSaveGame = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
+      // 1. Save to LocalStorage (Safety Net)
+      try {
+          const localPayload = {
+              team_id: teamId,
+              game_data: gameData,
+              updated_at: new Date().toISOString()
+          };
+          localStorage.setItem(`nba_gm_save_${userId}`, JSON.stringify(localPayload));
+      } catch (e) {
+          console.error("LocalStorage save failed", e);
+      }
+
+      // 2. Save to Supabase
       const { error } = await supabase.from('saves').upsert({
         user_id: userId,
         team_id: teamId,
@@ -141,36 +179,40 @@ export const useSaveGame = () => {
       
       if (error) throw error;
       return true;
+    },
+    onSuccess: (data, variables) => {
+        // [Critical] Update Cache Immediately so UI reflects saved state without refetch
+        queryClient.setQueryData(['saveData', variables.userId], {
+            team_id: variables.teamId,
+            game_data: variables.gameData
+        });
     }
   });
 };
 
-// 4. Session Heartbeat (Polling) - [FIXED] Read-Only
-// 기존에 있던 DB Update 로직을 제거하여 쿼리의 Side Effect를 없앴습니다.
+// 4. Session Heartbeat (Read-Only)
 export const useSessionHeartbeat = (userId: string | undefined, deviceId: string, enabled: boolean = true) => {
     return useQuery({
         queryKey: ['heartbeat', userId, deviceId],
         queryFn: async () => {
             if (!userId) return null;
             
-            // 오직 현재 활성 기기 ID를 조회만 합니다.
             const { data } = await supabase
                 .from('profiles')
                 .select('active_device_id')
                 .eq('id', userId)
                 .single();
             
-            // 내 기기 ID와 DB의 활성 ID가 일치하는지 확인
             return data?.active_device_id === deviceId;
         },
         enabled: !!userId && enabled,
-        refetchInterval: 30000, // 30초마다 검사 (서버 부하 감소)
+        refetchInterval: 30000,
         refetchOnWindowFocus: true,
         retry: false
     });
 };
 
-// 5. Scouting Report (Gemini)
+// 5. Scouting Report
 export const useScoutingReport = (player: Player | null) => {
     return useQuery({
         queryKey: ['scoutingReport', player?.id],

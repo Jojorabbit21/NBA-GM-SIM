@@ -272,6 +272,10 @@ const App: React.FC = () => {
         setAuthLoading(true);
         try { 
             await queryClient.cancelQueries();
+            
+            // [Fix] Local Storage도 함께 클리어
+            localStorage.removeItem(`nba_gm_save_${session.user.id}`);
+            
             await supabase.from('saves').delete().eq('user_id', session.user.id);
             queryClient.removeQueries({ queryKey: ['saveData', session.user.id] });
         } catch(e) {
