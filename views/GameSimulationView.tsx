@@ -12,7 +12,6 @@ const TEAM_COLORS: Record<string, string> = {
   'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
 };
 
-// 상황별 메시지 분리
 const GENERAL_MESSAGES = [
     "코칭 스태프가 머리를 맞대는 중...",
     "선수들이 작전 타임에 물 마시는 중...",
@@ -63,172 +62,146 @@ const GARBAGE_MESSAGES = [
     "사실상 승패가 결정되었습니다.",
 ];
 
-/**
- * 현실적인 경기 흐름(Game Flow) 생성 알고리즘
- * - 선형적인 증가가 아닌, 'Momentum(분위기)'과 'Run(연속 득점)'을 반영
- * - 클러치 상황일 경우 경기 막판 동점/접전 상황을 강제로 연출
- * - 최종 스코어에 정확히 도달하도록 보장
- */
 const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
     let currentHome = 0;
     let currentAway = 0;
     const history: { h: number, a: number }[] = [{ h: 0, a: 0 }];
-    
-    // 클러치 여부 판단 (5점차 이내)
     const scoreDiff = Math.abs(finalHome - finalAway);
     const isClutchGame = scoreDiff <= 5;
-
-    // 모멘텀 변수: 양수면 홈팀 분위기, 음수면 원정팀 분위기
     let momentum = 0;
-    
-    // 클러치 타임 트리거 점수 (최종 점수에서 4~6점 모자란 시점)
     const clutchTriggerHome = isClutchGame ? finalHome - (Math.floor(Math.random() * 3) + 3) : 9999;
     const clutchTriggerAway = isClutchGame ? finalAway - (Math.floor(Math.random() * 3) + 3) : 9999;
     let clutchModeActivated = false;
 
-    // 점수가 다 찰 때까지 반복
     while (currentHome < finalHome || currentAway < finalAway) {
-        // 클러치 모드 진입 체크: 양팀 모두 목표치 근처에 도달했을 때
         if (isClutchGame && !clutchModeActivated && currentHome >= clutchTriggerHome && currentAway >= clutchTriggerAway) {
-            // 강제로 점수를 비슷하게 맞춤 (현재 뒤처진 팀에게 부스트)
-            // 단, 최종 점수를 넘지 않는 선에서
-            const minScore = Math.min(currentHome, currentAway);
-            if (Math.abs(currentHome - currentAway) > 1) {
-               // 인위적으로 점수 차이를 좁히는 로직은 아래 확률 조정으로 처리
-            }
             clutchModeActivated = true;
         }
 
         const remainingHome = finalHome - currentHome;
         const remainingAway = finalAway - currentAway;
-        
-        // 1. 기본 확률: 남은 점수가 많은 팀이 득점할 확률이 높음 (최종 점수 수렴 보장)
-        let homeProb = remainingHome / (remainingHome + remainingAway);
-
-        // 2. 모멘텀 반영 (Streak): 분위기가 좋은 팀이 득점 확률 증가 (최대 15% 보정)
+        let homeProb = remainingHome / (remainingHome + remainingAway || 1);
         homeProb += (momentum * 0.05);
 
-        // 3. 클러치 보정 (막판 접전 유도)
         if (isClutchGame && !clutchModeActivated) {
-            // 아직 클러치 타임 전이면, 점수 차이가 너무 벌어지지 않게 보정
             if (currentHome > currentAway + 10) homeProb -= 0.2;
             if (currentAway > currentHome + 10) homeProb += 0.2;
         } else if (clutchModeActivated) {
-             // 클러치 타임: 뒤지고 있는 팀이 따라잡을 확률 대폭 증가 (동점 유도)
              if (currentHome < currentAway && remainingHome > 0) homeProb += 0.35;
              else if (currentAway < currentHome && remainingAway > 0) homeProb -= 0.35;
         }
 
-        // 4. 확률 클램핑 (0.05 ~ 0.95)
         homeProb = Math.max(0.05, Math.min(0.95, homeProb));
-
-        // 5. 득점 팀 결정
         let scorer: 'home' | 'away';
         if (currentHome >= finalHome) scorer = 'away';
         else if (currentAway >= finalAway) scorer = 'home';
         else scorer = Math.random() < homeProb ? 'home' : 'away';
 
-        // 6. 득점량 결정 (1, 2, 3점)
         let points = 2;
         const rand = Math.random();
-        
-        if (clutchModeActivated) {
-            // 파울 작전/자유투 상황 반영: 1점, 2점 빈도 증가
-            points = rand > 0.7 ? 1 : 2; 
-        } else {
-            points = rand > 0.35 ? 2 : 3; 
-        }
+        if (clutchModeActivated) points = rand > 0.7 ? 1 : 2; 
+        else points = rand > 0.35 ? 2 : 3; 
 
         if (scorer === 'home') {
             points = Math.min(points, remainingHome); 
             currentHome += points;
-            // 모멘텀 업데이트
             momentum = Math.min(momentum + 1, 3);
         } else {
             points = Math.min(points, remainingAway);
             currentAway += points;
-            // 모멘텀 업데이트
             momentum = Math.max(momentum - 1, -3);
         }
-
-        // 연속 득점이 아닌 경우 모멘텀 초기화 확률
-        if ((scorer === 'home' && momentum < 0) || (scorer === 'away' && momentum > 0)) {
-            momentum = 0;
-        }
-
+        if ((scorer === 'home' && momentum < 0) || (scorer === 'away' && momentum > 0)) momentum = 0;
         history.push({ h: currentHome, a: currentAway });
     }
-
     return history;
 };
 
-// Graph Component
-const ScoreGraph: React.FC<{ history: { h: number, a: number }[], progress: number, homeColor: string, awayColor: string }> = ({ history, progress, homeColor, awayColor }) => {
-    const svgRef = useRef<SVGSVGElement>(null);
-    const [width, setWidth] = useState(0);
-    const height = 60; // Fixed height
+// --- FIX: Responsive ScoreGraph with viewBox ---
+const ScoreGraph: React.FC<{ 
+    history: { h: number, a: number }[], 
+    progress: number, 
+    homeColor: string, 
+    awayColor: string 
+}> = ({ history, progress, homeColor, awayColor }) => {
+    const VIEW_WIDTH = 400;
+    const VIEW_HEIGHT = 80;
+    const MID_Y = VIEW_HEIGHT / 2;
 
-    useEffect(() => {
-        if (svgRef.current) {
-            setWidth(svgRef.current.clientWidth);
-        }
-    }, [svgRef.current]);
+    const dataIndex = Math.floor((progress / 100) * (history.length - 1));
+    const dataSlice = history.slice(0, dataIndex + 1);
 
-    // Current data based on progress
-    const currentIndex = Math.floor((progress / 100) * (history.length - 1));
-    const dataSlice = history.slice(0, currentIndex + 1);
+    // Calculate dynamic Y scale (to handle blowouts)
+    const currentMaxDiff = Math.max(15, ...dataSlice.map(d => Math.abs(d.h - d.a)));
+    const yScale = (VIEW_HEIGHT / 2 - 10) / currentMaxDiff;
 
-    if (dataSlice.length < 2 || width === 0) return <div className="h-[60px] w-full bg-slate-950/20 rounded-lg"></div>;
+    let pathD = `M 0 ${MID_Y}`;
+    const stepX = VIEW_WIDTH / (history.length - 1);
 
-    // Calculate Scales
-    const maxDiff = 20; // Y-axis range (+/- 20)
-    const midY = height / 2;
-    const stepX = width / (history.length - 1);
-
-    // Build Path
-    let pathD = `M 0 ${midY}`;
-    
     dataSlice.forEach((score, i) => {
         const diff = score.h - score.a;
         const x = i * stepX;
-        // Clamp Y to prevent overflow
-        const y = midY - (diff / maxDiff) * (height / 2); 
-        const clampedY = Math.max(2, Math.min(height - 2, y));
-        pathD += ` L ${x} ${clampedY}`;
+        const y = MID_Y - (diff * yScale);
+        pathD += ` L ${x} ${y}`;
     });
 
-    const currentDiff = dataSlice[dataSlice.length - 1].h - dataSlice[dataSlice.length - 1].a;
-    const leadColor = currentDiff > 0 ? homeColor : (currentDiff < 0 ? awayColor : '#94a3b8');
+    const lastDiff = dataSlice[dataSlice.length - 1]?.h - dataSlice[dataSlice.length - 1]?.a || 0;
+    const dotY = MID_Y - (lastDiff * yScale);
+    const dotX = dataIndex * stepX;
+    const currentLeadColor = lastDiff > 0 ? homeColor : (lastDiff < 0 ? awayColor : '#94a3b8');
 
     return (
-        <div className="w-full h-[60px] relative mt-2 mb-1">
-             <div className="absolute inset-0 flex items-center">
-                 <div className="w-full h-[1px] bg-slate-700/50"></div>
-             </div>
-             <svg ref={svgRef} width="100%" height={height} className="overflow-visible">
-                 {/* Lead Area Gradient (Optional - kept simple line for clarity as requested) */}
+        <div className="w-full h-20 relative my-2 overflow-visible bg-slate-950/20 rounded-xl border border-white/5">
+             {/* Center Line */}
+             <div className="absolute top-1/2 left-0 w-full h-[1px] bg-slate-800 border-t border-dashed border-slate-700/50 z-0"></div>
+             
+             <svg 
+                viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
+                className="w-full h-full overflow-visible relative z-10"
+                preserveAspectRatio="none"
+             >
                  <defs>
-                    <linearGradient id="lineGradient" x1="0" x2="0" y1="0" y2="1">
+                    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="2" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                    </filter>
+                    <linearGradient id="scoreGradient" x1="0" x2="0" y1="0" y2="1">
                         <stop offset="0%" stopColor={homeColor} />
                         <stop offset="50%" stopColor="#94a3b8" />
                         <stop offset="100%" stopColor={awayColor} />
                     </linearGradient>
                  </defs>
                  
-                 <path d={pathD} fill="none" stroke="url(#lineGradient)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                 {/* Main Line Path */}
+                 <path 
+                    d={pathD} 
+                    fill="none" 
+                    stroke="url(#scoreGradient)" 
+                    strokeWidth="3" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                    filter="url(#glow)"
+                    className="transition-all duration-300 ease-linear"
+                 />
                  
-                 {/* Current Head Dot */}
+                 {/* Current Progress Dot */}
                  {dataSlice.length > 0 && (
                      <circle 
-                        cx={(dataSlice.length - 1) * stepX} 
-                        cy={Math.max(2, Math.min(height - 2, midY - (currentDiff / maxDiff) * (height / 2)))} 
-                        r="3" 
-                        fill={leadColor} 
-                        className="animate-pulse"
+                        cx={dotX} 
+                        cy={dotY} 
+                        r="4" 
+                        fill={currentLeadColor} 
+                        stroke="#fff"
+                        strokeWidth="1.5"
+                        className="animate-pulse shadow-lg"
                      />
                  )}
              </svg>
-             <div className="absolute top-0 right-0 text-[9px] font-black text-slate-500 bg-slate-900/80 px-1 rounded">Lead Tracker</div>
+             
+             {/* Axis Labels */}
+             <div className="absolute top-1 left-2 text-[8px] font-black text-slate-600 uppercase tracking-widest">Home Lead</div>
+             <div className="absolute bottom-1 left-2 text-[8px] font-black text-slate-600 uppercase tracking-widest">Away Lead</div>
+             <div className="absolute top-1 right-2 text-[9px] font-black text-indigo-500/50 uppercase italic tracking-tighter">Win Probability Graph</div>
         </div>
     );
 };
@@ -245,92 +218,63 @@ export const GameSimulatingView: React.FC<{
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
   const [currentMessage, setCurrentMessage] = useState(GENERAL_MESSAGES[0]);
   
-  // 종료 상태 및 진행률을 ref로 관리 (타이머 클로저 문제 해결)
   const isFinishedRef = useRef(false);
   const progressRef = useRef(0);
-  
-  // 콜백 함수를 ref에 저장하여 의존성 문제 해결
   const onCompleteRef = useRef(onSimulationComplete);
+  
   useEffect(() => {
       onCompleteRef.current = onSimulationComplete;
   }, [onSimulationComplete]);
   
-  // 미리 계산된 스코어 타임라인
   const scoreTimeline = useMemo(() => 
       generateRealisticGameFlow(finalHomeScore, finalAwayScore), 
   [finalHomeScore, finalAwayScore]);
 
-  // 현재 표시할 점수
   const [displayScore, setDisplayScore] = useState({ h: 0, a: 0 });
 
-  // 1. 시뮬레이션 진행 루프 (0% -> 100%)
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
-
     const runSimulationStep = () => {
         setProgress(prev => {
             if (prev >= 100) {
                 progressRef.current = 100;
                 return 100;
             }
-
-            // 클러치 타임 로직: 진행률에 따라 속도 조절
             const isLateGame = prev > 85; 
             const isVeryLateGame = prev > 94;
-
-            // 진행 증가량 (뒤로 갈수록 조금씩만 증가)
             const increment = isVeryLateGame ? 0.3 : (isLateGame ? 0.5 : 1.2);
             const next = Math.min(100, prev + increment);
-            
-            // Ref 업데이트
             progressRef.current = next;
-
-            // 딜레이 (뒤로 갈수록 느려짐 -> 긴장감 조성)
             const delay = isVeryLateGame ? 250 : (isLateGame ? 100 : 30);
-
             timeoutId = setTimeout(runSimulationStep, delay);
             return next;
         });
     };
-
     runSimulationStep();
     return () => clearTimeout(timeoutId);
   }, []); 
 
-  // 2. 점수 동기화: 진행률(%)을 스코어 타임라인 인덱스에 매핑
   useEffect(() => {
       if (scoreTimeline.length === 0) return;
-      
       const percent = progress / 100;
-      // 전체 타임라인 길이 중 현재 퍼센트에 해당하는 인덱스 계산
       const index = Math.floor(percent * (scoreTimeline.length - 1));
-      
       setDisplayScore(scoreTimeline[index]);
-
   }, [progress, scoreTimeline]);
 
-  // 3. 종료 처리 (100% 도달 시)
   useEffect(() => {
       if (progress >= 100 && !isFinishedRef.current) {
           isFinishedRef.current = true;
-          
-          // 최종 점수 확정 (타임라인 마지막 값)
           setDisplayScore({ h: finalHomeScore, a: finalAwayScore });
-          
-          // 2초 딜레이 후 콜백 실행 (타이머 정리하지 않음 - 종료 보장)
           setTimeout(() => {
-              if (onCompleteRef.current) {
-                  onCompleteRef.current();
-              }
+              if (onCompleteRef.current) onCompleteRef.current();
           }, 2000);
       }
   }, [progress, finalHomeScore, finalAwayScore]);
 
-  // 4. 배경 효과 (슛 차트 & 메시지)
   useEffect(() => {
     const shotTimer = setInterval(() => {
         setShots(prev => {
-            if (isFinishedRef.current) return prev; // 종료되면 슛 중단
+            if (isFinishedRef.current) return prev;
             const isHome = Math.random() > 0.5;
             const isMake = Math.random() > 0.45;
             const hoopX = isHome ? 88.75 : 5.25;
@@ -348,30 +292,20 @@ export const GameSimulatingView: React.FC<{
             setCurrentMessage("경기 종료 - 결과 집계 중...");
             return;
         }
-
         const currentProgress = progressRef.current;
-        
-        // 근사값 계산
         const approxIdx = Math.floor((currentProgress / 100) * (scoreTimeline.length - 1));
         const currentScore = scoreTimeline[approxIdx] || { h: 0, a: 0 };
         const scoreDiff = Math.abs(currentScore.h - currentScore.a);
         
         let targetPool = GENERAL_MESSAGES;
-        
-        if (currentProgress > 60 && scoreDiff >= 20) {
-            targetPool = GARBAGE_MESSAGES;
-        } else if (currentProgress > 94 && scoreDiff <= 3) {
-            targetPool = SUPER_CLUTCH_MESSAGES;
-        } else if (currentProgress > 85 && scoreDiff <= 10) {
-            targetPool = CLUTCH_MESSAGES;
-        }
+        if (currentProgress > 60 && scoreDiff >= 20) targetPool = GARBAGE_MESSAGES;
+        else if (currentProgress > 94 && scoreDiff <= 3) targetPool = SUPER_CLUTCH_MESSAGES;
+        else if (currentProgress > 85 && scoreDiff <= 10) targetPool = CLUTCH_MESSAGES;
 
         setCurrentMessage(prev => {
-            let next;
             if (targetPool.length <= 1) return targetPool[0];
-            do {
-                next = targetPool[Math.floor(Math.random() * targetPool.length)];
-            } while (next === prev);
+            let next;
+            do { next = targetPool[Math.floor(Math.random() * targetPool.length)]; } while (next === prev);
             return next;
         });
     }, 1500); 
@@ -389,18 +323,13 @@ export const GameSimulatingView: React.FC<{
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-4 overflow-hidden">
-      {/* Background Effect */}
       <div className="absolute inset-0 opacity-10 pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-[150px]"></div>
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[150px]"></div>
       </div>
 
-      {/* Unified Container */}
       <div className="relative z-10 w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
-        
-        {/* Header Section (Scoreboard) */}
         <div className="flex items-center justify-between px-6 py-8 md:px-12 bg-slate-950/30">
-            {/* Away Team */}
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
@@ -409,9 +338,8 @@ export const GameSimulatingView: React.FC<{
                 </div>
             </div>
 
-            {/* Center Info */}
-            <div className="flex-1 px-4 flex flex-col items-center justify-center gap-2">
-                 <div className={`text-sm md:text-lg font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-snug animate-pulse transition-colors duration-300 ${
+            <div className="flex-1 px-4 flex flex-col items-center justify-center">
+                 <div className={`text-sm md:text-base font-black text-center min-h-[2.5rem] flex items-center justify-center break-keep leading-tight animate-pulse transition-colors duration-300 ${
                      Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
                         ? 'text-slate-500'
                         : progress > 94 && Math.abs(displayScore.h - displayScore.a) <= 3
@@ -423,11 +351,10 @@ export const GameSimulatingView: React.FC<{
                     {currentMessage}
                  </div>
 
-                 {/* Score Graph */}
+                 {/* Win Probability Graph */}
                  <ScoreGraph history={scoreTimeline} progress={progress} homeColor={homeColor} awayColor={awayColor} />
 
-                 {/* Progress Bar */}
-                 <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700">
+                 <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700 mt-2">
                     <div className={`h-full transition-all duration-300 ease-linear ${
                         Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
                             ? 'bg-slate-600'
@@ -438,7 +365,6 @@ export const GameSimulatingView: React.FC<{
                  </div>
             </div>
 
-            {/* Home Team */}
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
@@ -448,7 +374,6 @@ export const GameSimulatingView: React.FC<{
             </div>
         </div>
 
-        {/* Court Section (Bottom) */}
         <div className="relative w-full aspect-[94/50] bg-slate-950 border-t border-slate-800">
             <svg viewBox="0 0 94 50" className="absolute inset-0 w-full h-full opacity-80">
                 <rect width="94" height="50" fill="#0f172a" />
