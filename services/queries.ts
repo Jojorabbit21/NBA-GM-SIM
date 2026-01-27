@@ -146,7 +146,7 @@ export const useLoadSave = (userId: string | undefined) => {
     },
     enabled: !!userId,
     retry: false,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: false, // 탭 전환 시 재요청 방지
     staleTime: Infinity,
     gcTime: 1000 * 60 * 60,
   });
@@ -157,7 +157,7 @@ export const useSaveGame = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-      // 1. Save to LocalStorage (Safety Net)
+      // 1. Save to LocalStorage (Safety Net - Synchronous-like)
       try {
           const localPayload = {
               team_id: teamId,
