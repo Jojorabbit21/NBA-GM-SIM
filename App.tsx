@@ -82,7 +82,10 @@ const App: React.FC = () => {
   const isResettingRef = useRef(false);
   
   // [Fix] 로그아웃 상태를 추적하는 Ref. 로그아웃이 완료되고 다음 로그인이 발생하기 전까지 true 유지
-  const isLoggingOutRef = useRef(false); 
+  const isLoggingOutRef = useRef(false);
+  
+  // [Fix] 데이터 로드 중복 방지를 위한 Ref. 세션 당 1회만 로드 허용.
+  const hasInitialLoadRef = useRef(false);
 
   // Mutations & Queries
   const saveGameMutation = useSaveGame();
@@ -107,9 +110,10 @@ const App: React.FC = () => {
       // 세션이 유효하고 로그아웃 진행 중이 아닐 때만 상태 업데이트
       if (session && !isLoggingOutRef.current) {
         setSession(session);
-        isLoggingOutRef.current = false; // 로그인 성공 시 플래그 해제
+        isLoggingOutRef.current = false; 
       } else if (!session) {
         setSession(null);
+        hasInitialLoadRef.current = false; // 세션 만료 시 로드 플래그 초기화
       }
       setAuthLoading(false);
     });
@@ -117,14 +121,14 @@ const App: React.FC = () => {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
+      // 로그아웃 중이라면 세션 업데이트 무시 (handleLogout에서 처리)
+      if (isLoggingOutRef.current) return;
+
       if (session) {
-          // 세션이 생겼을 때 (로그인)
-          isLoggingOutRef.current = false; // 플래그 해제
           setSession(session);
       } else {
-          // 세션이 사라졌을 때 (로그아웃)
-          // handleLogout에서 이미 처리를 하므로 여기서는 session null만 맞춤
           setSession(null);
+          hasInitialLoadRef.current = false; // 로그아웃 시 로드 플래그 초기화
       }
       setAuthLoading(false);
     });
@@ -140,10 +144,13 @@ const App: React.FC = () => {
       }
   }, [baseData, teams.length, myTeamId]);
 
-  // Load Save Data
+  // Load Save Data - [CRITICAL FIX]
   useEffect(() => {
-      // [Fix] 로그아웃 중이거나, 리셋 중이거나, 세션이 없는 경우 데이터 로드 차단
+      // 1. 로그아웃 중, 리셋 중, 세션 없음 -> 중단
       if (isLoggingOutRef.current || isResettingRef.current || !session?.user) return;
+      
+      // 2. 이미 데이터를 로드했다면 -> 중단 (Alt-Tab 재진입 시 토스트 방지)
+      if (hasInitialLoadRef.current) return;
 
       if (saveData && saveData.game_data) {
           const gd = saveData.game_data;
@@ -159,8 +166,11 @@ const App: React.FC = () => {
           
           if (saveData.team_id) setView('Dashboard');
           setToastMessage('저장된 게임을 불러왔습니다.');
+          
+          // [Fix] 로드 완료 플래그 설정
+          hasInitialLoadRef.current = true;
       }
-  }, [saveData, session]); // session 의존성 추가
+  }, [saveData, session]); // session 변경 시에만 체크하도록 함
 
   // View Logger
   useEffect(() => {
@@ -198,6 +208,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
     // 1. 로그아웃 시작 시점부터 모든 데이터 로드/저장/UI업데이트 차단
     isLoggingOutRef.current = true;
+    hasInitialLoadRef.current = false; // [Fix] 로드 플래그 초기화
 
     if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -220,9 +231,9 @@ const App: React.FC = () => {
         }
     }
 
-    // 3. React Query 캐시 초기화 (중요: session null 전에 수행)
+    // 3. 캐시 삭제
     await queryClient.cancelQueries();
-    queryClient.removeQueries(); // removeQueries가 clear보다 확실하게 컴포넌트 구독을 끊음
+    queryClient.removeQueries(); 
     queryClient.clear();
 
     // 4. Supabase 로그아웃
@@ -241,18 +252,21 @@ const App: React.FC = () => {
     setPlayoffSeries([]); 
     setTransactions([]); 
     setProspects([]);
-    setToastMessage(null); // 혹시 남아있을 토스트 제거
+    setToastMessage(null); 
     setView('TeamSelect'); 
     setIsGuestMode(false);
     
-    // [Fix] isLoggingOutRef를 false로 되돌리지 않음. 
-    // 다음 로그인(session 획득) 시점에 Auth Listener나 초기화 로직에서 false로 변경됨.
-    // 이렇게 해야 로그아웃 직후 리렌더링 시 발생하는 useEffect들을 확실히 막을 수 있음.
+    // 로그아웃 완료 후 잠시 대기했다가 플래그 해제 (auth listener 간섭 방지)
+    setTimeout(() => {
+        isLoggingOutRef.current = false;
+    }, 1000);
   };
 
   const handleHardReset = async () => {
     if (session?.user && !isGuestMode) {
         isResettingRef.current = true;
+        hasInitialLoadRef.current = false; // 리셋 시에도 로드 플래그 초기화
+
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
         setAuthLoading(true);
@@ -287,6 +301,9 @@ const App: React.FC = () => {
   const handleSelectTeam = useCallback(async (teamId: string) => {
     if (myTeamId) return;
     setMyTeamId(teamId);
+    
+    // [Fix] 새 게임을 시작하므로, '데이터 로드'가 완료된 것으로 간주하여 useLoadSave가 덮어쓰지 않도록 함
+    hasInitialLoadRef.current = true; 
     
     if (baseData?.schedule && baseData.schedule.length > 0) {
         setSchedule(baseData.schedule);
