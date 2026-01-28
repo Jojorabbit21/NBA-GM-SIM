@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Trophy, Newspaper, ArrowRight, Crown, BarChart3, Zap, CalendarClock, Loader2 } from 'lucide-react';
-import { Team, Game } from '../../types';
+import { Team, Game, PlayoffSeries } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 
 interface DashboardHeaderProps {
@@ -17,11 +17,42 @@ interface DashboardHeaderProps {
   onShowSeasonReview: () => void;
   onShowPlayoffReview: () => void;
   hasPlayoffHistory: boolean;
+  currentSeries?: PlayoffSeries; // Added to support playoff info display
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
-  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick 
+  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, currentSeries
 }) => {
+
+  // 1. Determine Home/Away Teams for Display (Always Away Left, Home Right)
+  const homeTeam = isHome ? team : opponent;
+  const awayTeam = isHome ? opponent : team;
+  
+  const homeOvr = isHome ? myOvr : opponentOvrValue;
+  const awayOvr = isHome ? opponentOvrValue : myOvr;
+
+  // 2. Generate Playoff Series Text
+  const getSeriesInfo = () => {
+    if (!currentSeries || !nextGame?.isPlayoff) return null;
+
+    const { round, conference, id, higherSeedWins, lowerSeedWins } = currentSeries;
+    const confText = conference === 'East' ? '동부' : conference === 'West' ? '서부' : '';
+    const scoreText = `${higherSeedWins}-${lowerSeedWins}`;
+
+    if (round === 0) {
+        if (id.includes('8th')) return `플레이-인 8시드 결정전`;
+        return `플레이-인 1라운드`;
+    }
+    if (round === 1) return `${confText} 1라운드 ${scoreText}`;
+    if (round === 2) return `${confText} 세미파이널 ${scoreText}`;
+    if (round === 3) return `${confText} 파이널 ${scoreText}`;
+    if (round === 4) return `NBA 파이널 ${scoreText}`;
+    
+    return 'Playoffs';
+  };
+
+  const seriesText = getSeriesInfo();
+
   return (
     // [Optimization] Reduced shadow spread (120px -> shadow-2xl) and blur (3xl -> md) to prevent GPU crash
     <div className="w-full max-w-[1900px] bg-slate-900/80 border border-white/10 rounded-3xl shadow-2xl backdrop-blur-md overflow-hidden flex flex-col mb-6">
@@ -37,34 +68,74 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             }
         `}</style>
         <div className="px-8 py-8 border-b border-white/5 bg-white/5 flex flex-col lg:flex-row items-center justify-between gap-8">
-            <div className="flex items-center gap-10">
+            <div className="flex items-center gap-12 flex-1 justify-center lg:justify-start">
+                
+                {/* Left Side: Away Team */}
                 <div className="flex items-center gap-6">
-                    <img src={team?.logo} className="w-16 h-16 object-contain drop-shadow-2xl" alt="" />
-                    <div className="flex flex-col">
-                        <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{team?.name}</span>
-                        <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{team?.wins}W - {team?.losses}L</span>
-                    </div>
-                    <div className={getOvrBadgeStyle(myOvr) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{myOvr}</div>
-                </div>
-                <div className="flex flex-col items-center px-8">
-                    <div className="text-[10px] font-black text-slate-600 uppercase tracking-widest mb-1">{nextGame?.date || 'NEXT EVENT'}</div>
-                    <div className="text-3xl font-black text-slate-400 oswald tracking-[0.1em] leading-none">{nextGame && !isHome ? '@' : 'VS'}</div>
-                </div>
-                {opponent ? (
-                    <div className="flex items-center gap-6">
-                        <div className={getOvrBadgeStyle(opponentOvrValue) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{opponentOvrValue || '??'}</div>
-                        <div className="flex flex-col items-end">
-                            <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{opponent?.name || 'UNKNOWN'}</span>
-                            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{opponent?.wins || 0}W - {opponent?.losses || 0}L</span>
+                    {awayTeam ? (
+                        <>
+                            <img src={awayTeam.logo} className="w-16 h-16 object-contain drop-shadow-2xl" alt="" />
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{awayTeam.name}</span>
+                                </div>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{awayTeam.wins}W - {awayTeam.losses}L</span>
+                            </div>
+                            <div className={getOvrBadgeStyle(awayOvr) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{awayOvr || '??'}</div>
+                        </>
+                    ) : (
+                        <div className="flex items-center gap-4 text-slate-500 opacity-50">
+                            <div className="w-16 h-16 bg-slate-800 rounded-full"></div>
+                            <span className="text-xl font-black oswald">TBD</span>
                         </div>
-                        <img src={opponent?.logo} className="w-16 h-16 object-contain drop-shadow-2xl opacity-90" alt="" />
+                    )}
+                </div>
+
+                {/* Center: Info Stack */}
+                <div className="flex flex-col items-center justify-center px-4 min-w-[120px]">
+                    {/* Date */}
+                    <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        {nextGame?.date || 'NEXT EVENT'}
                     </div>
-                ) : (
-                    <div className="flex items-center gap-4 text-slate-500">
-                        <div className="text-xl font-black uppercase oswald tracking-tight">상대 없음</div>
+                    
+                    {/* VS */}
+                    <div className="text-3xl font-black text-slate-200 oswald tracking-[0.1em] leading-none text-shadow-lg">
+                        VS
                     </div>
-                )}
+
+                    {/* Playoff Series Info (Conditional) */}
+                    {seriesText && (
+                        <div className="mt-2 px-3 py-1 bg-indigo-600/20 border border-indigo-500/30 rounded-full">
+                            <span className="text-[10px] font-black text-indigo-300 uppercase tracking-tight whitespace-nowrap">
+                                {seriesText}
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                {/* Right Side: Home Team */}
+                <div className="flex items-center gap-6">
+                    {homeTeam ? (
+                        <>
+                            <div className={getOvrBadgeStyle(homeOvr) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{homeOvr || '??'}</div>
+                            <div className="flex flex-col items-end">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{homeTeam.name}</span>
+                                </div>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{homeTeam.wins}W - {homeTeam.losses}L</span>
+                            </div>
+                            <img src={homeTeam.logo} className="w-16 h-16 object-contain drop-shadow-2xl" alt="" />
+                        </>
+                    ) : (
+                        <div className="flex items-center gap-4 text-slate-500 opacity-50">
+                            <span className="text-xl font-black oswald">TBD</span>
+                            <div className="w-16 h-16 bg-slate-800 rounded-full"></div>
+                        </div>
+                    )}
+                </div>
             </div>
+
+            {/* Simulation Button */}
             <div className="flex items-center pl-10 lg:border-l border-white/10">
                 {isGameToday ? (
                     <button 

@@ -419,7 +419,21 @@ const App: React.FC = () => {
   useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
 
   const tickerGames = useMemo(() => {
-    return schedule.filter(g => g.date === currentSimDate && g.played);
+    // 1. 오늘 날짜의 종료된 경기 확인
+    const todayGames = schedule.filter(g => g.date === currentSimDate && g.played);
+    if (todayGames.length > 0) return todayGames;
+
+    // 2. 오늘 결과가 없다면, 과거 기록 중 가장 최근 날짜의 경기들을 확인 (어제 등)
+    // schedule은 이미 날짜순으로 정렬되어 있다고 가정
+    // 배열의 뒤에서부터 played === true인 첫 번째 게임을 찾아 해당 날짜의 모든 게임 반환
+    for (let i = schedule.length - 1; i >= 0; i--) {
+        const game = schedule[i];
+        if (game.played && game.date < currentSimDate) {
+            return schedule.filter(g => g.date === game.date && g.played);
+        }
+    }
+
+    return [];
   }, [schedule, currentSimDate]);
 
   const isActuallyLoading = authLoading || isBaseDataLoading || (session && !hasInitialLoadRef.current);
@@ -475,7 +489,7 @@ const App: React.FC = () => {
             </div>
 
             <div className="flex-1 p-8 lg:p-12">
-              {view === 'Dashboard' && myTeamId && <DashboardView team={teams.find(t => t.id === myTeamId)!} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics || generateAutoTactics(teams.find(t => t.id === myTeamId)!)} onUpdateTactics={setUserTactics} currentSimDate={currentSimDate} isSimulating={isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={playoffSeries.length > 0} />}
+              {view === 'Dashboard' && myTeamId && <DashboardView team={teams.find(t => t.id === myTeamId)!} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics || generateAutoTactics(teams.find(t => t.id === myTeamId)!)} onUpdateTactics={setUserTactics} currentSimDate={currentSimDate} isSimulating={isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={playoffSeries.length > 0} playoffSeries={playoffSeries} />}
               {view === 'Roster' && <RosterView allTeams={teams} myTeamId={myTeamId!} />}
               {view === 'Standings' && <StandingsView teams={teams} onTeamClick={id => console.log(id)} />}
               {view === 'Leaderboard' && <LeaderboardView teams={teams} />}
