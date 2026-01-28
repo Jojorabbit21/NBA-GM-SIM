@@ -24,60 +24,140 @@ const syncOvrWithLatestWeights = (teamsToSync: Team[]): Team[] => {
     }));
 };
 
+// Helper: Fetch all rows from a table using pagination (handles >1000 rows)
+async function fetchAllRows(tableName: string) {
+    let allData: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+
+    while (hasMore) {
+        const { data, error } = await supabase
+            .from(tableName)
+            .select('*')
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+            allData = allData.concat(data);
+            if (data.length < pageSize) {
+                hasMore = false;
+            } else {
+                page++;
+            }
+        } else {
+            hasMore = false;
+        }
+    }
+    return allData;
+}
+
 // --- Hooks ---
 
-// 1. Base Data Loading (CSV)
+// 1. Base Data Loading (Priority: Supabase DB > CSV)
 export const useBaseData = () => {
   return useQuery({
     queryKey: ['baseData'],
     queryFn: async () => {
-      const [playersRes, scheduleRes] = await Promise.all([
-        fetch('/players.csv'),
-        fetch('/schedule.csv')
-      ]);
+      // 1. Try to fetch from Supabase first
+      let dbTeams: any[] | null = null;
+      let dbPlayers: any[] | null = null;
+      let dbSchedule: any[] | null = null;
 
-      let combinedPlayers: any[] = [];
+      try {
+        // Parallel fetch for initial check, but schedule might need recursion
+        const [teamsResult, playersResult] = await Promise.all([
+             supabase.from('meta_teams').select('*'),
+             supabase.from('meta_players').select('*')
+        ]);
+        
+        // Fetch schedule with pagination helper
+        const scheduleData = await fetchAllRows('meta_schedule');
+
+        if (!teamsResult.error && !playersResult.error && teamsResult.data && playersResult.data) {
+            dbTeams = teamsResult.data;
+            dbPlayers = playersResult.data;
+            dbSchedule = scheduleData;
+            console.log(`✅ Loaded base data from Supabase (Players: ${dbPlayers.length}, Schedule: ${dbSchedule.length})`);
+        }
+      } catch (e) {
+          console.warn("⚠️ Failed to load from DB, falling back to CSV", e);
+      }
+
       let loadedSchedule: Game[] = [];
+      let combinedPlayers: any[] = dbPlayers || [];
+      let initialTeamsSource = dbTeams || INITIAL_TEAMS_DATA;
 
-      if (playersRes.ok) {
-          const text = await playersRes.text();
-          combinedPlayers = parseCSVToObjects(text);
-      }
-
-      if (scheduleRes.ok) {
-        const text = await scheduleRes.text();
-        const rawSchedule = parseCSVToObjects(text);
-        const parsedGames = mapDatabaseScheduleToRuntimeGame(rawSchedule);
-        
-        const gameMap = new Map<string, Game>();
-        parsedGames.forEach(g => {
-            if (!gameMap.has(g.id)) {
-                gameMap.set(g.id, g);
+      // Fallback: If DB load failed, load players CSV
+      if (!dbPlayers) {
+          try {
+            const playersRes = await fetch('/players.csv');
+            if (playersRes.ok) {
+                const text = await playersRes.text();
+                combinedPlayers = parseCSVToObjects(text);
+                console.log("ℹ️ Loaded players from CSV (Fallback)");
             }
-        });
-        
-        loadedSchedule = Array.from(gameMap.values()).sort((a, b) => 
-            new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
+          } catch(e) { console.error("CSV Load Error", e); }
       }
 
+      // Schedule Loading Logic: DB -> CSV
+      if (dbSchedule && dbSchedule.length > 0) {
+           loadedSchedule = mapDatabaseScheduleToRuntimeGame(dbSchedule);
+      } else {
+           // Fallback CSV
+           try {
+               const scheduleRes = await fetch('/schedule.csv');
+               if (scheduleRes.ok) {
+                   const text = await scheduleRes.text();
+                   const rawSchedule = parseCSVToObjects(text);
+                   const parsedGames = mapDatabaseScheduleToRuntimeGame(rawSchedule);
+                   // Deduplicate CSV schedule (it contains rows for both home/away per game)
+                   const gameMap = new Map<string, Game>();
+                   parsedGames.forEach(g => {
+                        if (!gameMap.has(g.id)) {
+                             gameMap.set(g.id, g);
+                        }
+                   });
+                   loadedSchedule = Array.from(gameMap.values());
+                   console.log("ℹ️ Loaded schedule from CSV (Fallback)");
+               }
+           } catch(e) { console.error("Schedule CSV Load Error", e); }
+      }
+      
+      // Sort schedule by date
+      loadedSchedule.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      // 3. Construct Roster Map
       const fullRosterMap: Record<string, any[]> = {};
       combinedPlayers.forEach((p: any) => {
-        const teamName = p.team || p.team_name || p.Team;
-        if (!teamName) return;
-        const teamId = resolveTeamId(teamName);
+        let teamId = p.base_team_id;
+        
+        if (!teamId) {
+            const teamName = p.Team || p.team || p.team_name;
+            if (teamName) teamId = resolveTeamId(teamName);
+        }
 
-        if (teamId !== 'unknown') {
+        if (teamId && teamId !== 'unknown') {
           if (!fullRosterMap[teamId]) fullRosterMap[teamId] = [];
           fullRosterMap[teamId].push(mapDatabasePlayerToRuntimePlayer(p, teamId));
         }
       });
 
-      const initializedTeams: Team[] = INITIAL_TEAMS_DATA.map(t => ({
-        ...t,
+      // 4. Construct Teams
+      const initializedTeams: Team[] = initialTeamsSource.map((t: any) => ({
+        id: t.id,
+        name: t.name,
+        city: t.city,
+        conference: t.conference,
+        division: t.division,
+        logo: t.logo_url || getTeamLogoUrl(t.id),
         roster: fullRosterMap[t.id] || [],
-        wins: 0, losses: 0, budget: 200, salaryCap: 140, luxuryTaxLine: 170,
-        logo: getTeamLogoUrl(t.id),
+        wins: 0, 
+        losses: 0, 
+        budget: 200, 
+        salaryCap: 140, 
+        luxuryTaxLine: 170,
         tacticHistory: { offense: {}, defense: {} }
       }));
 

@@ -225,10 +225,13 @@ export const parseCSVToObjects = (csv: string): any[] => {
 export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
     const position = overridePosition || p.position || 'PG';
     const v = (key: string, def = 70) => {
+        // [DB Support] Handle flat structure (p[key]) AND nested structure (p.base_attributes[key])
+        if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
+        if (p.base_attributes && p.base_attributes[key.toLowerCase()] !== undefined) return p.base_attributes[key.toLowerCase()];
+        
         return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
     };
     
-    // [Fix] Correctly access 3PT zone stats whether they are from CSV (3c, 3t) or Player Object (threeCorner, threeTop)
     const threeAvg = (
         v('threeCorner', v('threec', v('3c'))) + 
         v('three45', v('3_45')) + 
@@ -312,12 +315,17 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
 };
 
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
-    // Helper to get value case-insensitively
+    // Helper to get value case-insensitively, handling flat and nested attributes
     const v = (key: string, def: any = 70) => {
+        // Check base_attributes first (Supabase structure)
+        if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
+        if (p.base_attributes && p.base_attributes[key.toLowerCase()] !== undefined) return p.base_attributes[key.toLowerCase()];
+        
+        // Then check top-level keys (CSV structure)
         return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
     };
 
-    const name = v('name', v('full_name', v('Name', "Unknown Player")));
+    const name = p.name || p.Name || v('name', "Unknown Player");
     const norm = normalizeName(name);
     const injury = KNOWN_INJURIES[norm];
     const ovr = calculatePlayerOvr(p);
@@ -325,12 +333,12 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
     return {
         id: p.id || `p_${norm}_${teamId}_${Date.now()}`,
         name,
-        position: v('position', 'G'),
-        age: v('age', 25),
-        height: v('height', 200),
-        weight: v('weight', 100),
-        salary: v('salary', 1.0),
-        contractYears: v('contract_years', v('contractyears', v('contractYears', 1))),
+        position: p.position || v('position', 'G'),
+        age: p.age || v('age', 25),
+        height: p.height || v('height', 200),
+        weight: p.weight || v('weight', 100),
+        salary: p.salary || v('salary', 1.0),
+        contractYears: p.contract_years || v('contract_years', v('contractyears', v('contractYears', 1))),
         health: injury ? 'Injured' : 'Healthy',
         injuryType: injury?.type,
         returnDate: injury?.returnDate,
@@ -338,7 +346,7 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         ovr,
         potential: v('potential', v('pot', ovr + 5)),
         revealedPotential: v('potential', v('pot', ovr + 5)),
-        intangibles: v('intangibles', 70), // [Fix] Synced with calculatePlayerOvr default value (70)
+        intangibles: v('intangibles', 70), 
         speed: v('speed', v('spd')),
         agility: v('agility', v('agi')),
         strength: v('strength', v('str')),
@@ -386,7 +394,23 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
 
 export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
     return rows.map(r => {
-        let dateStr = r.date;
+        // Handle explicit DB columns (home_team_id, away_team_id)
+        if (r.home_team_id && r.away_team_id) {
+             return {
+                 id: r.id || `g_${r.home_team_id}_${r.away_team_id}_${r.game_date}`,
+                 homeTeamId: r.home_team_id,
+                 awayTeamId: r.away_team_id,
+                 date: r.game_date,
+                 homeScore: r.home_score ?? undefined,
+                 awayScore: r.away_score ?? undefined,
+                 played: !!r.played,
+                 isPlayoff: r.is_playoff || false,
+                 seriesId: r.series_id || undefined
+             };
+        }
+
+        // Fallback for CSV-like structure
+        let dateStr = r.date || r.Date;
         if (dateStr && dateStr.includes(' ')) {
             try {
                 const d = new Date(dateStr);
@@ -396,11 +420,10 @@ export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
             } catch(e) {}
         }
 
-        const site = r.site;
-        const homeName = site === '홈' ? r.team : r.opponent;
-        const awayName = site === '홈' ? r.opponent : r.team;
+        const site = r.site || r.Site;
+        const homeName = (site === '홈' || site === 'Home') ? (r.team || r.Team) : (r.opponent || r.Opponent);
+        const awayName = (site === '홈' || site === 'Home') ? (r.opponent || r.Opponent) : (r.team || r.Team);
 
-        // Use robust resolver for Schedule too
         const homeTeamId = resolveTeamId(homeName);
         const awayTeamId = resolveTeamId(awayName);
 
@@ -409,9 +432,9 @@ export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
             homeTeamId,
             awayTeamId,
             date: dateStr,
-            homeScore: r.tmscore || undefined,
-            awayScore: r.oppscore || undefined,
-            played: !!(r.tmscore),
+            homeScore: r.tmscore || r.home_score || undefined,
+            awayScore: r.oppscore || r.away_score || undefined,
+            played: !!(r.tmscore || r.home_score),
             isPlayoff: r.isplayoff || false,
             seriesId: r.seriesid || undefined
         };
