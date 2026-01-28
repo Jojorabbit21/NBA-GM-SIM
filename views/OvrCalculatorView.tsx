@@ -41,13 +41,13 @@ const DEFAULT_WEIGHTS: Record<PositionType, Record<string, number>> = {
       intangibles: 5, potential: 500, height: 100 
   },
   PF: { 
-      closeShot: 250, midRange: 60, threeAvg: 40, ft: 30, shotIq: 100, offConsist: 0, 
-      layup: 240, dunk: 120, postPlay: 120, drawFoul: 0, hands: 100, 
-      intDef: 140, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 100, 
-      offReb: 150, defReb: 150, 
-      speed: 0, agility: 0, strength: 120, vertical: 120, stamina: 100, hustle: 0, durability: 100, 
-      passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, 
-      intangibles: 7, potential: 500, height: 150 
+      closeShot: 450, midRange: 50, threeAvg: 50, ft: 150, shotIq: 100, offConsist: 600, 
+      layup: 500, dunk: 350, postPlay: 0, drawFoul: 0, hands: 500, 
+      intDef: 200, perDef: 50, steal: 0, blk: 50, helpDefIq: 0, passPerc: 0, defConsist: 0, 
+      offReb: 100, defReb: 160, 
+      speed: 0, agility: 0, strength: 100, vertical: 100, stamina: 100, hustle: 0, durability: 50, 
+      passAcc: 50, handling: 50, spdBall: 0, passVision: 50, passIq: 50, 
+      intangibles: 10, potential: 500, height: 150 
   },
   C: { 
       closeShot: 300, midRange: 0, threeAvg: 0, ft: 0, shotIq: 200, offConsist: 0, 
