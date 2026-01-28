@@ -1,4 +1,3 @@
-
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { generateScoutingReport } from './geminiService';
@@ -10,7 +9,7 @@ import {
 } from '../utils/constants';
 import { Team, Player } from '../types';
 
-// Helper: Recalculate OVR for all players in teams
+// Helper: Recalculate OVR for all players in teams (e.g. after loading from save)
 const syncOvrWithLatestWeights = (teams: Team[]): Team[] => {
     return teams.map(t => ({
         ...t,
@@ -26,32 +25,24 @@ export const useBaseData = () => {
   return useQuery({
     queryKey: ['baseData'],
     queryFn: async () => {
-      // 1. Fetch Teams & Players from Supabase
-      const { data: teamsData, error: teamsError } = await supabase
-        .from('meta_teams')
-        .select(`
-            *,
-            meta_players (*)
-        `);
+      // Fetch Teams & Schedule in Parallel
+      const [teamsResult, scheduleResult] = await Promise.all([
+          supabase.from('meta_teams').select('*, meta_players (*)'),
+          supabase.from('meta_schedule').select('*')
+      ]);
       
-      if (teamsError) {
-          console.error("❌ Failed to fetch base data (Teams):", teamsError);
+      if (teamsResult.error) {
+          console.error("❌ Failed to fetch base data (Teams):", teamsResult.error);
           throw new Error("데이터베이스 연결 실패: 구단 정보를 불러올 수 없습니다.");
       }
 
-      // 2. Fetch Schedule from Supabase
-      const { data: scheduleData, error: scheduleError } = await supabase
-        .from('meta_schedule')
-        .select('*');
-
-      if (scheduleError) {
-          console.error("❌ Failed to fetch base data (Schedule):", scheduleError);
+      if (scheduleResult.error) {
+          console.error("❌ Failed to fetch base data (Schedule):", scheduleResult.error);
           throw new Error("데이터베이스 연결 실패: 일정 정보를 불러올 수 없습니다.");
       }
 
-      // 3. Map to Runtime Objects
-      const teams: Team[] = (teamsData || []).map((t: any) => {
-          // DB의 meta_players 데이터를 Runtime Player 객체로 변환
+      // Map to Runtime Objects
+      const teams: Team[] = (teamsResult.data || []).map((t: any) => {
           const roster = (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id));
           
           return {
@@ -70,14 +61,14 @@ export const useBaseData = () => {
           };
       });
 
-      const schedule = mapDatabaseScheduleToRuntimeGame(scheduleData || []);
+      const schedule = mapDatabaseScheduleToRuntimeGame(scheduleResult.data || []);
 
       console.log(`✅ Base Data Loaded from DB: ${teams.length} Teams, ${schedule.length} Games`);
 
       return { teams, schedule };
     },
-    staleTime: Infinity, // 데이터는 불변으로 가정 (새로고침 전까지)
-    gcTime: 1000 * 60 * 60 * 24, // 24시간 캐싱
+    staleTime: Infinity,
+    gcTime: 1000 * 60 * 60 * 24, // 24 hours
     refetchOnWindowFocus: false,
     retry: 1
   });
@@ -88,6 +79,7 @@ export const useLoadSave = (userId: string | undefined) => {
   return useQuery({
     queryKey: ['saveData', userId],
     queryFn: async () => {
+      // 400 Error Prevention: Guard clause for invalid userId
       if (!userId) return null;
 
       let remoteData = null;
@@ -99,7 +91,7 @@ export const useLoadSave = (userId: string | undefined) => {
             .from('saves')
             .select('team_id, game_data, updated_at')
             .eq('user_id', userId)
-            .maybeSingle(); // 에러를 던지지 않고 데이터가 없으면 null 반환
+            .maybeSingle();
           
           if (!error && data) {
               remoteData = data;
@@ -108,7 +100,7 @@ export const useLoadSave = (userId: string | undefined) => {
           console.warn("Supabase save load warning:", e);
       }
 
-      // 2. Fetch from LocalStorage (Backup)
+      // 2. Fetch from LocalStorage
       try {
           const localString = localStorage.getItem(`nba_gm_save_${userId}`);
           if (localString) {
@@ -118,7 +110,7 @@ export const useLoadSave = (userId: string | undefined) => {
           console.error("LocalStorage load error:", e);
       }
 
-      // 3. Compare Timestamps
+      // 3. Compare Timestamps and Select Best Source
       let finalData = null;
       let source = '';
 
@@ -141,7 +133,6 @@ export const useLoadSave = (userId: string | undefined) => {
           source = 'Local (Only)';
       }
 
-      // 데이터가 없으면 (신규 유저) 조용히 리턴
       if (!finalData) return null;
 
       console.log(`📂 Game Data Loaded from: ${source}`, finalData.updated_at);
@@ -160,8 +151,9 @@ export const useLoadSave = (userId: string | undefined) => {
 
       return finalData;
     },
+    // 400 Error Prevention: Only enable query if userId exists
     enabled: !!userId,
-    retry: false, // 데이터가 없으면 재시도하지 않음 (신규 유저 무한 루프 방지)
+    retry: false,
     refetchOnWindowFocus: false,
     staleTime: Infinity, 
     gcTime: 1000 * 60 * 60 * 24, 
@@ -173,6 +165,10 @@ export const useSaveGame = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
+      if (!userId || !teamId) {
+        throw new Error("Cannot save: Missing UserID or TeamID");
+      }
+
       const timestamp = new Date().toISOString();
       const payload = {
         user_id: userId,
@@ -181,27 +177,34 @@ export const useSaveGame = () => {
         updated_at: timestamp
       };
 
-      // 1. Save to LocalStorage (Immediate Backup)
+      // 1. Save to LocalStorage (Synchronous backup)
       try {
           localStorage.setItem(`nba_gm_save_${userId}`, JSON.stringify(payload));
       } catch (e) {
-          console.error("LocalStorage save failed", e);
+          console.error("LocalStorage save failed (possibly quota exceeded)", e);
       }
 
       // 2. Save to Supabase
-      const { error } = await supabase.from('saves').upsert(payload, { onConflict: 'user_id, team_id' });
+      // [Fix] Removed space in 'user_id,team_id' to prevent potential 400 errors with strict SQL parsing
+      const { error } = await supabase
+        .from('saves')
+        .upsert(payload, { onConflict: 'user_id,team_id' });
       
-      if (error) throw error;
+      if (error) {
+          console.error("❌ Supabase Save Failed:", error);
+          throw error;
+      }
+
       return payload;
     },
     onSuccess: (savedData, variables) => {
-        // 캐시 즉시 업데이트
         queryClient.setQueryData(['saveData', variables.userId], savedData);
+        // Debug log (can be removed in production)
+        // console.log("✅ Game Saved Successfully"); 
     }
   });
 };
 
-// 4. Save Game Results (Box Scores)
 export const saveGameResults = async (results: any[]) => {
     if (results.length === 0) return;
     try {
@@ -209,14 +212,15 @@ export const saveGameResults = async (results: any[]) => {
             .from('user_game_results')
             .insert(results);
         
-        if (error) throw error;
-        // 성공 시 로그 생략 (너무 빈번할 수 있음)
+        if (error) {
+            console.error("Failed to save game results:", error);
+            // Don't throw here to avoid blocking UI for analytics errors
+        }
     } catch (e) {
         console.error("Failed to save game results:", e);
     }
 };
 
-// 5. Session Heartbeat
 export const useSessionHeartbeat = (userId: string | undefined, deviceId: string, enabled: boolean = true) => {
     return useQuery({
         queryKey: ['heartbeat', userId, deviceId],
@@ -236,7 +240,6 @@ export const useSessionHeartbeat = (userId: string | undefined, deviceId: string
     });
 };
 
-// 6. Scouting Report
 export const useScoutingReport = (player: Player | null) => {
     return useQuery({
         queryKey: ['scoutingReport', player?.id],
@@ -251,15 +254,14 @@ export const useScoutingReport = (player: Player | null) => {
     });
 };
 
-// 7. Monthly Schedule
 export const useMonthlySchedule = (userId: string | undefined, year: number, month: number) => {
     return useQuery({
         queryKey: ['monthlySchedule', userId, year, month],
         queryFn: async () => {
+            if (!userId) return []; // 400 Error Prevention
+
             const startDate = new Date(year, month, 1).toISOString().split('T')[0];
             const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
-
-            if (!userId) return [];
 
             const { data: resultsData, error: resultsError } = await supabase
                 .from('user_game_results')
