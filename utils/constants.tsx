@@ -228,7 +228,12 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
         return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
     };
     
-    const threeAvg = (v('threec', v('3c')) + v('three45', v('3_45')) + v('threet', v('3t'))) / 3;
+    // [Fix] Correctly access 3PT zone stats whether they are from CSV (3c, 3t) or Player Object (threeCorner, threeTop)
+    const threeAvg = (
+        v('threeCorner', v('threec', v('3c'))) + 
+        v('three45', v('3_45')) + 
+        v('threeTop', v('threet', v('3t')))
+    ) / 3;
 
     const attr = {
         close: v('closeShot', v('close')),
@@ -333,7 +338,7 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         ovr,
         potential: v('potential', v('pot', ovr + 5)),
         revealedPotential: v('potential', v('pot', ovr + 5)),
-        intangibles: v('intangibles', 75),
+        intangibles: v('intangibles', 70), // [Fix] Synced with calculatePlayerOvr default value (70)
         speed: v('speed', v('spd')),
         agility: v('agility', v('agi')),
         strength: v('strength', v('str')),
