@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { runFullMigration } from '../services/migration';
-import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert, Database, RefreshCw, Server, Terminal } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert, Database, RefreshCw, Server, Terminal, Copy } from 'lucide-react';
 import { logError } from '../services/analytics'; 
 
 // Validation Regex Patterns
@@ -42,8 +42,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       confirmPassword !== '' && password === confirmPassword
     );
   }, [email, nickname, password, confirmPassword]);
-
-  const isLoginFormValid = identifier.trim() !== '' && password !== '';
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,6 +106,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     }
   };
 
+  const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+      alert("SQL이 클립보드에 복사되었습니다. Supabase SQL Editor에 붙여넣으세요.");
+  };
+
   const handleMigration = async () => {
     if (!confirm("주의: 이 작업은 Supabase의 메타 데이터를 초기화하고 다시 적재합니다. 실행하시겠습니까?")) return;
     
@@ -130,35 +133,69 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     } catch (e: any) {
       let errorText: React.ReactNode = e.message || "마이그레이션 실패";
       
-      // RLS Policy Error Handling
-      if (e.message && e.message.includes("row-level security policy")) {
-          errorText = (
-            <div className="flex flex-col gap-1">
-                <span>⛔ DB 권한 오류 (RLS Policy Violation)</span>
-                <span className="text-[10px] font-mono bg-black/30 p-1 rounded">
-                    SQL Editor에서 다음 명령어를 실행하여 쓰기 권한을 부여해주세요:
-                </span>
-                <code className="text-[9px] font-mono bg-black/50 p-2 rounded block whitespace-pre-wrap select-all cursor-text">
-{`drop policy if exists "Public read meta teams" on public.meta_teams;
-create policy "Enable all access for meta teams" on public.meta_teams for all using (true) with check (true);
-create policy "Enable all access for meta players" on public.meta_players for all using (true) with check (true);`}
-                </code>
-            </div>
-          );
-      } else if (e.message && e.message.includes("there is no unique or exclusion constraint matching the ON CONFLICT specification")) {
-          errorText = (
-            <div className="flex flex-col gap-1">
-                <span>⛔ DB 제약조건 오류 (Constraint Missing)</span>
-                <span className="text-[10px] font-mono bg-black/30 p-1 rounded">
-                    Upsert를 위해 id/name 컬럼에 유니크 제약조건이 필요합니다. SQL Editor에서 실행하세요:
-                </span>
-                <code className="text-[9px] font-mono bg-black/50 p-2 rounded block whitespace-pre-wrap select-all cursor-text">
-{`-- meta_teams의 id(팀약어)를 Unique로 설정
-ALTER TABLE meta_teams ADD CONSTRAINT meta_teams_id_key UNIQUE (id);
+      const fixSql = `-- [1] 기존 테이블 완전 초기화 (데이터 삭제됨)
+DROP TABLE IF EXISTS public.meta_players;
+DROP TABLE IF EXISTS public.meta_teams;
 
--- meta_players의 name을 Unique로 설정 (마이그레이션용)
-ALTER TABLE meta_players ADD CONSTRAINT meta_players_name_key UNIQUE (name);`}
-                </code>
+-- [2] 구단 테이블 생성 (Primary Key 설정)
+CREATE TABLE public.meta_teams (
+    id text NOT NULL PRIMARY KEY,
+    name text NOT NULL,
+    city text NOT NULL,
+    conference text,
+    division text,
+    logo_url text,
+    base_attributes jsonb
+);
+
+-- [3] 선수 테이블 생성 (Name Unique 설정)
+CREATE TABLE public.meta_players (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    name text NOT NULL,
+    position text,
+    height numeric,
+    weight numeric,
+    salary numeric,
+    contract_years numeric,
+    base_team_id text REFERENCES public.meta_teams(id),
+    draft_year numeric,
+    base_attributes jsonb,
+    CONSTRAINT meta_players_name_key UNIQUE (name)
+);
+
+-- [4] RLS(보안) 정책 설정
+ALTER TABLE public.meta_teams ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.meta_players ENABLE ROW LEVEL SECURITY;
+
+-- [5] 누구나 읽기/쓰기 허용 (개발용 정책)
+CREATE POLICY "Enable all access for teams" ON public.meta_teams FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all access for players" ON public.meta_players FOR ALL USING (true) WITH CHECK (true);`;
+
+      // Error Handling Logic
+      if (e.message && (e.message.includes("row-level security") || e.message.includes("ON CONFLICT"))) {
+          errorText = (
+            <div className="flex flex-col gap-2 w-full">
+                <div className="flex items-center gap-2 text-red-400 font-bold">
+                    <ShieldAlert size={18} />
+                    <span>DB 구조 재설정 필요 (테이블 초기화)</span>
+                </div>
+                <div className="text-[11px] text-slate-400 leading-relaxed">
+                    현재 DB 테이블에 <strong>Primary Key</strong> 또는 <strong>Unique 제약조건</strong>이 없습니다.<br/>
+                    아래 SQL을 실행하여 테이블을 올바른 구조로 <strong>재생성</strong>해주세요.
+                </div>
+                <div className="relative group">
+                    <code className="text-[9px] font-mono bg-black/50 p-3 rounded-lg block whitespace-pre-wrap select-all cursor-text text-emerald-400 border border-slate-700 max-h-40 overflow-y-auto custom-scrollbar">
+                        {fixSql}
+                    </code>
+                    <button 
+                        onClick={() => copyToClipboard(fixSql)}
+                        className="absolute top-2 right-2 p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md transition-colors border border-slate-600"
+                        title="SQL 복사"
+                    >
+                        <Copy size={14} />
+                    </button>
+                </div>
+                <span className="text-[10px] text-slate-500 text-center">Supabase Dashboard {'>'} SQL Editor에서 실행하세요.</span>
             </div>
           );
       }
