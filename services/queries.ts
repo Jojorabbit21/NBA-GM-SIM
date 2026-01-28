@@ -1,230 +1,166 @@
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { generateScoutingReport } from './geminiService';
-import { 
-  getTeamLogoUrl, 
-  mapDatabasePlayerToRuntimePlayer, 
-  mapDatabaseScheduleToRuntimeGame,
-  INITIAL_STATS
-} from '../utils/constants';
-import { Team, Player, Game, Transaction } from '../types';
+import { Player, Transaction, Game, Team } from '../types';
+import { mapDatabasePlayerToRuntimePlayer, mapDatabaseScheduleToRuntimeGame, resolveTeamId } from '../utils/constants';
 
-// ============================================================================
-//  DATA RECONSTRUCTION LOGIC
-// ============================================================================
+/**
+ * [Robust Data Loader]
+ * 리그 메타 데이터를 불러오고 선수들을 구단에 강제 배정합니다.
+ */
+export const fetchLeagueData = async (userId?: string) => {
+    console.log("[Fetch] Starting global data fetch...");
+    
+    // 1. 모든 메타 데이터 병렬 로드
+    const [teamsRes, playersRes, scheduleRes] = await Promise.all([
+        supabase.from('meta_teams').select('*'),
+        supabase.from('meta_players').select('*'),
+        supabase.from('meta_schedule').select('*').order('game_date', { ascending: true })
+    ]);
 
-const reconstructSchedule = (metaSchedule: Game[], userResults: any[]): Game[] => {
-    if (!userResults || userResults.length === 0) return metaSchedule;
-    const resultMap = new Map(userResults.map((r: any) => [r.game_id, r]));
-    return metaSchedule.map(game => {
-        const result = resultMap.get(game.id);
-        if (result) {
-            return {
-                ...game,
-                played: true,
-                homeScore: result.home_score,
-                awayScore: result.away_score,
-            };
+    if (teamsRes.error) { console.error("Teams Load Error:", teamsRes.error); throw teamsRes.error; }
+    if (playersRes.error) { console.error("Players Load Error:", playersRes.error); throw playersRes.error; }
+    if (scheduleRes.error) { console.error("Schedule Load Error:", scheduleRes.error); throw scheduleRes.error; }
+
+    const rawTeams = teamsRes.data || [];
+    const rawPlayers = playersRes.data || [];
+    const rawSchedule = scheduleRes.data || [];
+
+    console.log(`[Fetch] Raw Data: ${rawTeams.length} Teams, ${rawPlayers.length} Players found.`);
+    
+    // [Debug] 데이터 샘플 확인
+    if (rawTeams.length > 0) console.log("[Fetch] Team Sample:", rawTeams[0]);
+    if (rawPlayers.length > 0) console.log("[Fetch] Player Sample:", rawPlayers[0]);
+
+    // 2. 전적(Standings) 맵 생성
+    let userStandingsMap = new Map<string, { wins: number, losses: number }>();
+    if (userId && userId !== 'guest') {
+        try {
+            const { data: standings } = await supabase
+                .from('team_standings') 
+                .select('team_id, wins, losses')
+                .eq('user_id', userId);
+            
+            if (standings) {
+                standings.forEach(s => userStandingsMap.set(s.team_id, { wins: s.wins, losses: s.losses }));
+            }
+        } catch (e) {
+            console.warn("[Fetch] No standings table found, skipping stats merge.");
         }
-        return game;
-    });
-};
-
-// ============================================================================
-//  QUERIES
-// ============================================================================
-
-export const useBaseData = () => {
-  return useQuery({
-    queryKey: ['baseData'],
-    queryFn: async () => {
-      console.log("Fetching Meta Data from DB...");
-      const [teamsResult, scheduleResult] = await Promise.all([
-          supabase.from('meta_teams').select('*, meta_players (*)'),
-          supabase.from('meta_schedule').select('*').range(0, 2999)
-      ]);
-      
-      if (teamsResult.error) throw new Error("구단 정보를 불러올 수 없습니다.");
-      if (scheduleResult.error) throw new Error("일정 정보를 불러올 수 없습니다.");
-
-      const teams: Team[] = (teamsResult.data || []).map((t: any) => {
-          const roster = (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id));
-          return {
-              id: t.id,
-              name: t.name,
-              city: t.city,
-              logo: getTeamLogoUrl(t.id),
-              conference: t.conference,
-              division: t.division,
-              salaryCap: 140,
-              luxuryTaxLine: 170,
-              budget: 200, 
-              wins: 0,
-              losses: 0,
-              roster: roster.sort((a: Player, b: Player) => b.ovr - a.ovr)
-          };
-      });
-
-      const schedule = mapDatabaseScheduleToRuntimeGame(scheduleResult.data || []);
-      return { teams, schedule };
-    },
-    staleTime: Infinity,
-    gcTime: 1000 * 60 * 60 * 24, 
-    refetchOnWindowFocus: false,
-  });
-};
-
-export const useLoadSave = (userId: string | undefined) => {
-  const queryClient = useQueryClient();
-
-  return useQuery({
-    queryKey: ['fullGameState', userId],
-    queryFn: async () => {
-      if (!userId) return null;
-      console.log("🔄 Loading Game State (JSONB Reconstruction)...");
-
-      // 1. 유저별 세션 데이터 및 트레이드 이력 로드
-      const [saveRes, historyRes, txRes] = await Promise.all([
-          supabase.from('saves').select('*').eq('user_id', userId).maybeSingle(),
-          supabase.from('user_game_results').select('game_id, home_score, away_score').eq('user_id', userId),
-          supabase.from('user_transactions').select('*').eq('user_id', userId).order('date', { ascending: false })
-      ]);
-
-      if (!saveRes.data) return null;
-
-      const gd = saveRes.data.game_data;
-      const finalTransactions: Transaction[] = (txRes.data || []).map((t: any) => ({
-          id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
-      }));
-
-      // 기본 스케줄 메타데이터 가져오기
-      let baseData = queryClient.getQueryData<{teams: Team[], schedule: Game[]}>(['baseData']);
-      if (!baseData) {
-          // If query cache is empty, we still need to combine with results to show scores correctly
-          const { schedule: rawSchedule } = await (async () => {
-             const { data } = await supabase.from('meta_schedule').select('*').range(0, 2999);
-             return { schedule: mapDatabaseScheduleToRuntimeGame(data || []) };
-          })();
-          baseData = { teams: gd.teams, schedule: rawSchedule };
-      }
-
-      // 2. 경기 결과 매칭하여 스케줄 복구
-      const finalSchedule = reconstructSchedule(baseData.schedule, historyRes.data || []);
-
-      return {
-          team_id: saveRes.data.team_id,
-          game_data: {
-              ...gd,
-              schedule: finalSchedule,
-              transactions: finalTransactions
-          },
-          updated_at: saveRes.data.updated_at
-      };
-    },
-    enabled: !!userId,
-    staleTime: Infinity,
-    refetchOnWindowFocus: false,
-  });
-};
-
-export const useSaveGame = () => {
-  return useMutation({
-    mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-      if (!userId || !teamId) throw new Error("Missing UserID or TeamID");
-
-      console.log("💾 Saving Game Data to Central JSONB...");
-
-      // 모든 선수의 현재 누적 스탯이 포함된 teams 배열을 통째로 저장 (JSONB의 강점 활용)
-      const savePayload = {
-        user_id: userId,
-        team_id: teamId,
-        game_data: {
-            teams: gameData.teams, // 선수들의 누적 스탯(zone stats 포함)이 여기에 모두 들어있습니다.
-            currentSimDate: gameData.currentSimDate,
-            tactics: gameData.tactics,
-            playoffSeries: gameData.playoffSeries,
-            prospects: gameData.prospects
-        },
-        updated_at: new Date().toISOString()
-      };
-
-      const { error } = await supabase.from('saves').upsert(savePayload, { onConflict: 'user_id,team_id' });
-
-      if (error) {
-          console.error("❌ Database Upsert Failed:", error);
-          throw error;
-      }
-
-      console.log("✅ Game Save Successful");
-      return savePayload;
     }
-  });
-};
 
-export const saveGameResults = async (results: any[]) => {
-    if (results.length === 0) return;
-    try {
-        const { error } = await supabase
-            .from('user_game_results')
-            .insert(results);
-        if (error) console.error("Failed to save game results:", error);
-    } catch (e) {
-        console.error("Failed to save game results:", e);
-    }
-};
+    // 3. 데이터 통합 매핑 (Universal Matching Logic)
+    const mappedTeams: Team[] = rawTeams.map(t => {
+        // 팀의 고유 ID 추출 (ID 컬럼 우선, 없으면 이름으로 변환)
+        const teamCanonicalId = resolveTeamId(t.id) !== 'unknown' ? resolveTeamId(t.id) : resolveTeamId(t.name);
 
-export const saveUserTransaction = async (userId: string, transaction: Transaction) => {
-    if (!userId || !transaction) return;
-    try {
-        const payload = {
-            user_id: userId,
-            date: transaction.date,
-            type: transaction.type,
-            team_id: transaction.teamId,
-            description: transaction.description,
-            details: transaction.details
+        const teamPlayers = rawPlayers.filter(p => {
+            // [CRITICAL FIX] 'unknown' vs 'unknown' 매칭 방지
+            if (teamCanonicalId === 'unknown') {
+                console.warn(`[Fetch] Team ID resolution failed for: ${t.name} (ID: ${t.id})`);
+                return false;
+            }
+
+            const rawPlayerTeam = p.team_id || p.team || p.Team || "";
+            const playerCanonicalId = resolveTeamId(rawPlayerTeam);
+            
+            // playerCanonicalId가 'unknown'이면 배정 실패 처리
+            if (playerCanonicalId === 'unknown') {
+                // Debugging (Only log once per team name to reduce noise)
+                // console.debug(`[Fetch] Player ID resolution failed for team: ${rawPlayerTeam}`);
+                return false;
+            }
+            
+            return playerCanonicalId === teamCanonicalId;
+        });
+
+        const userStats = userStandingsMap.get(t.id) || { wins: 0, losses: 0 };
+        
+        return {
+            id: teamCanonicalId !== 'unknown' ? teamCanonicalId : t.id, 
+            name: t.name,
+            city: t.city,
+            logo: t.logo_url || `https://a.espncdn.com/i/teamlogos/nba/500/${teamCanonicalId}.png`,
+            conference: t.conference,
+            division: t.division,
+            wins: userStats.wins,
+            losses: userStats.losses,
+            budget: 150,
+            salaryCap: 140,
+            luxuryTaxLine: 170,
+            roster: teamPlayers.map(p => mapDatabasePlayerToRuntimePlayer(p, teamCanonicalId))
         };
-        const { error } = await supabase.from('user_transactions').insert(payload);
-        if (error) console.error("Failed to save transaction:", error);
-    } catch (e) {
-        console.error("Failed to save transaction:", e);
+    });
+
+    const mappedSchedule = mapDatabaseScheduleToRuntimeGame(rawSchedule);
+
+    // [Debug] Log Mapping Results
+    const emptyTeams = mappedTeams.filter(t => t.roster.length === 0);
+    if (emptyTeams.length > 0) {
+        console.warn(`[CRITICAL] ${emptyTeams.length} teams have EMPTY rosters!`, emptyTeams.map(t => t.name));
+    } else {
+        console.log(`[Fetch] Mapping Complete. All teams have players.`);
     }
+
+    return {
+        teams: mappedTeams,
+        schedule: mappedSchedule
+    };
 };
 
-export const useScoutingReport = (player: Player | null) => {
-    return useQuery({
-        queryKey: ['scoutingReport', player?.id],
-        queryFn: async () => {
-            if (!player) return null;
-            return await generateScoutingReport(player);
-        },
-        enabled: !!player,
-        staleTime: Infinity,
-        gcTime: 1000 * 60 * 30,
-        refetchOnWindowFocus: false,
+export const runServerSideSim = async (params: {
+    userId: string;
+    teamId: string;
+    tactics: any;
+    date: string;
+}) => {
+    const { data, error } = await supabase.functions.invoke('simulate-game', {
+        body: params
     });
+    if (error) throw error;
+    return data;
 };
 
 export const useMonthlySchedule = (userId: string | undefined, year: number, month: number) => {
     return useQuery({
-        queryKey: ['monthlySchedule', userId, year, month],
+        queryKey: ['schedule', userId, year, month],
         queryFn: async () => {
-            if (!userId) return []; 
-            const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-            const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
-            const { data: resultsData, error: resultsError } = await supabase
-                .from('user_game_results')
-                .select('game_id, home_score, away_score')
-                .eq('user_id', userId)
-                .gte('date', startDate)
-                .lte('date', endDate);
-            if (resultsError) throw resultsError;
-            return resultsData || [];
+            if (!userId) return [];
+            try {
+                const { data, error } = await supabase
+                    .from('game_results')
+                    .select('*')
+                    .eq('user_id', userId)
+                    .gte('game_date', `${year}-${String(month + 1).padStart(2, '0')}-01`)
+                    .lte('game_date', `${year}-${String(month + 1).padStart(2, '0')}-31`);
+                if (error) throw error;
+                return data || [];
+            } catch (e) {
+                return [];
+            }
         },
         enabled: !!userId,
-        staleTime: 1000 * 60 * 5,
-        // @ts-ignore
-        keepPreviousData: true
+    });
+};
+
+export const saveUserTransaction = async (userId: string, transaction: Transaction) => {
+    try {
+        const { error } = await supabase
+            .from('user_transactions')
+            .insert({
+                user_id: userId,
+                ...transaction
+            });
+        if (error) console.error("Transaction save failed:", error.message);
+    } catch (e) {}
+};
+
+export const useScoutingReport = (prospect: Player | null) => {
+    return useQuery({
+        queryKey: ['scoutingReport', prospect?.id],
+        queryFn: () => generateScoutingReport(prospect!),
+        enabled: !!prospect,
+        staleTime: Infinity,
     });
 };
