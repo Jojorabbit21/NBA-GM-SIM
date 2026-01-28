@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './services/supabaseClient';
@@ -39,6 +38,21 @@ import { Sidebar } from './components/Sidebar';
 
 const INITIAL_DATE = '2025-10-22';
 
+const LOADING_MESSAGES = [
+    "라커룸을 청소하는 중...",
+    "농구공에 바람 넣는 중...",
+    "림에 새 그물을 다는 중...",
+    "전술 보드를 닦는 중...",
+    "선수들 유니폼 다림질 중...",
+    "스카우팅 리포트 인쇄 중...",
+    "경기장 조명 예열 중...",
+    "마스코트 춤 연습 시키는 중...",
+    "치어리더 대형 맞추는 중...",
+    "단장님 명패 닦는 중...",
+    "FA 시장 동향 파악 중...",
+    "드래프트 픽 순번 확인 중..."
+];
+
 const App: React.FC = () => {
   const queryClient = useQueryClient();
   
@@ -54,7 +68,6 @@ const App: React.FC = () => {
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [schedule, setSchedule] = useState<Game[]>([]);
-  // [Removed] const [boxScores, setBoxScores] = useState<Record<string, { home: PlayerBoxScore[], away: PlayerBoxScore[] }>>({});
   const [playoffSeries, setPlayoffSeries] = useState<PlayoffSeries[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [prospects, setProspects] = useState<Player[]>([]);
@@ -66,6 +79,7 @@ const App: React.FC = () => {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
   
   // Simulation State
   const [activeGame, setActiveGame] = useState<Game | null>(null);
@@ -92,7 +106,7 @@ const App: React.FC = () => {
   // Update GameData Ref for Save/Logout
   useEffect(() => {
     gameDataRef.current = {
-        myTeamId, teams, schedule, currentSimDate, // Removed boxScores
+        myTeamId, teams, schedule, currentSimDate, 
         tactics: userTactics, playoffSeries, transactions, prospects
     };
   }, [myTeamId, teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
@@ -123,6 +137,24 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Loading Message Cycler
+  useEffect(() => {
+    const isActuallyLoading = authLoading || isBaseDataLoading || (session && !hasInitialLoadRef.current);
+    if (isActuallyLoading) {
+        setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
+        const interval = setInterval(() => {
+            setLoadingText(prev => {
+                let nextIndex;
+                do {
+                    nextIndex = Math.floor(Math.random() * LOADING_MESSAGES.length);
+                } while (LOADING_MESSAGES[nextIndex] === prev && LOADING_MESSAGES.length > 1);
+                return LOADING_MESSAGES[nextIndex];
+            });
+        }, 1000);
+        return () => clearInterval(interval);
+    }
+  }, [authLoading, isBaseDataLoading, session]);
+
   // Initialize Base Data
   useEffect(() => {
       if (baseData && teams.length === 0 && !myTeamId) {
@@ -142,7 +174,6 @@ const App: React.FC = () => {
               setMyTeamId(saveData.team_id);
               if (gd.teams) setTeams(gd.teams);
               if (gd.schedule) setSchedule(gd.schedule);
-              // if (gd.boxScores) setBoxScores(gd.boxScores); // Deprecated
               if (gd.currentSimDate) setCurrentSimDate(gd.currentSimDate);
               if (gd.tactics) setUserTactics(gd.tactics);
               if (gd.playoffSeries) setPlayoffSeries(gd.playoffSeries);
@@ -181,7 +212,7 @@ const App: React.FC = () => {
     try {
         if (session?.user) {
             await supabase.from('saves').delete().eq('user_id', session.user.id);
-            await supabase.from('user_game_results').delete().eq('user_id', session.user.id); // Clean up results too
+            await supabase.from('user_game_results').delete().eq('user_id', session.user.id);
             localStorage.removeItem(`nba_gm_save_${session.user.id}`);
         }
         
@@ -192,7 +223,6 @@ const App: React.FC = () => {
         } else {
             await refetchBaseData();
         }
-        // setBoxScores({}); // Deprecated
         setPlayoffSeries([]);
         setTransactions([]);
         setCurrentSimDate(INITIAL_DATE);
@@ -208,7 +238,6 @@ const App: React.FC = () => {
   };
 
   // Auto Save Strategy [CTO Optimization]
-  // 5초 간격(너무 빈번함) -> 60초 간격으로 변경하여 Supabase DB 부하를 줄임.
   const triggerSave = useCallback(() => {
       if (isResettingRef.current || isLoggingOutRef.current || !session?.user || isGuestMode) return;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -225,7 +254,6 @@ const App: React.FC = () => {
 
   const advanceDate = useCallback(() => {
       setCurrentSimDate(prevDate => {
-          // Find teams that played on the date we are advancing from
           const teamsPlayedToday = schedule
               .filter(g => g.date === prevDate && g.played)
               .reduce((acc, g) => {
@@ -241,12 +269,11 @@ const App: React.FC = () => {
           setTeams(prevTeams => prevTeams.map(t => ({
               ...t,
               roster: t.roster.map(p => {
-                  // [System Update] Teams that played today do NOT recover stamina tonight.
                   if (teamsPlayedToday.has(t.id)) {
                       return p;
                   }
 
-                  const baseRec = 10; // [System Update] Reduced base recovery from 15 to 10
+                  const baseRec = 10; 
                   const staBonus = (p.stamina || 75) * 0.1;
                   const durBonus = (p.durability || 75) * 0.05;
                   const totalRec = baseRec + staBonus + durBonus;
@@ -261,7 +288,7 @@ const App: React.FC = () => {
           return nextDate;
       });
       setLastGameResult(null);
-  }, [setTeams, schedule]); // Added schedule to deps
+  }, [setTeams, schedule]);
 
   const handleSelectTeam = useCallback(async (teamId: string) => {
     if (myTeamId) return;
@@ -285,7 +312,6 @@ const App: React.FC = () => {
     const targetSimDate = currentSimDate;
     const unplayedGamesToday = schedule.filter(g => g.date === targetSimDate && !g.played);
     
-    // Helper to check if a team played yesterday (for Back-to-Back penalty)
     const playedYesterday = (teamId: string) => {
         const yesterday = new Date(currentSimDate);
         yesterday.setDate(yesterday.getDate() - 1);
@@ -307,12 +333,9 @@ const App: React.FC = () => {
     const processSimulation = async (precalcUserResult?: SimulationResult) => {
         let updatedTeams = [...teams];
         let updatedSchedule = [...schedule];
-        // [Optimized] let updatedBoxScores = { ...boxScores }; -> Removed local aggregation
         let updatedSeries = [...playoffSeries];
         let userGameResultOutput = null;
         let allPlayedToday: Game[] = [];
-        
-        // Batch for DB insert
         const gameResultsToInsert: any[] = [];
         
         const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
@@ -322,7 +345,6 @@ const App: React.FC = () => {
             const home = getTeam(game.homeTeamId); const away = getTeam(game.awayTeamId);
             if (!home || !away) continue;
 
-            // [System Update] Determine Back-to-Back status
             const homeB2B = playedYesterday(home.id);
             const awayB2B = playedYesterday(away.id);
 
@@ -330,7 +352,6 @@ const App: React.FC = () => {
             const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
             const homeWin = result.homeScore > result.awayScore;
 
-            // Update Tactical History (Stat Accumulation remains in-memory Team objects)
             const updateHistory = (t: Team, myBox: PlayerBoxScore[], oppBox: PlayerBoxScore[], tactics: TacticalSnapshot, isWin: boolean) => {
                 const history = { ...(t.tacticHistory || { offense: {}, defense: {} }) };
                 const updateRecord = (record: Record<string, TacticStatRecord>, key: string) => {
@@ -357,7 +378,6 @@ const App: React.FC = () => {
             updatedTeams[homeIdx] = { ...home, wins: home.wins + (homeWin ? 1 : 0), losses: home.losses + (homeWin ? 0 : 1), tacticHistory: updatedHomeHistory };
             updatedTeams[awayIdx] = { ...away, wins: away.wins + (homeWin ? 0 : 1), losses: away.losses + (homeWin ? 1 : 0), tacticHistory: updatedAwayHistory };
 
-            // Update Player Cumulative Stats
             const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: any) => {
                 const t = updatedTeams[teamIdx];
                 t.roster = t.roster.map(p => {
@@ -365,7 +385,6 @@ const App: React.FC = () => {
                     let targetStats = game.isPlayoff ? (p.playoffStats || INITIAL_STATS()) : p.stats;
                     if (box) { 
                         targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
-                        // [Bug Fix] Accumulate Zone Shooting Stats
                         targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0);
                         targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0);
                         targetStats.midM = (targetStats.midM || 0) + (box.midM || 0);
@@ -394,7 +413,6 @@ const App: React.FC = () => {
                 }
             }
             
-            // [Optimized] Prepare Data for DB Insert (No local state accumulation)
             if (session?.user && !isGuestMode) {
                 gameResultsToInsert.push({
                     user_id: session.user.id,
@@ -408,19 +426,16 @@ const App: React.FC = () => {
                 });
             }
 
-            // updatedBoxScores[game.id] = { home: result.homeBox, away: result.awayBox }; // Removed
             allPlayedToday.push(updatedGame);
             if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
         }
 
-        // [Optimized] Async DB Insert
         if (gameResultsToInsert.length > 0) {
             saveGameResults(gameResultsToInsert);
         }
 
         setTeams(updatedTeams); 
         setSchedule(updatedSchedule); 
-        // setBoxScores(updatedBoxScores); // Removed
         setPlayoffSeries(updatedSeries); 
         
         if (userGameResultOutput) {
@@ -450,20 +465,15 @@ const App: React.FC = () => {
   useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
 
   const tickerGames = useMemo(() => {
-    // 1. 오늘 날짜의 종료된 경기 확인
     const todayGames = schedule.filter(g => g.date === currentSimDate && g.played);
     if (todayGames.length > 0) return todayGames;
 
-    // 2. 오늘 결과가 없다면, 과거 기록 중 가장 최근 날짜의 경기들을 확인 (어제 등)
-    // schedule은 이미 날짜순으로 정렬되어 있다고 가정
-    // 배열의 뒤에서부터 played === true인 첫 번째 게임을 찾아 해당 날짜의 모든 게임 반환
     for (let i = schedule.length - 1; i >= 0; i--) {
         const game = schedule[i];
         if (game.played && game.date < currentSimDate) {
             return schedule.filter(g => g.date === game.date && g.played);
         }
     }
-
     return [];
   }, [schedule, currentSimDate]);
 
@@ -472,8 +482,9 @@ const App: React.FC = () => {
   if (isActuallyLoading) {
       return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
-            <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
-            <p className="text-sm font-bold uppercase tracking-widest text-slate-500">Connecting to NBA Front Office...</p>
+            <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6" />
+            <p className="text-xl font-black uppercase tracking-tight text-white oswald animate-pulse">{loadingText}</p>
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-2">Connecting to NBA Front Office...</p>
         </div>
       );
   }
@@ -486,7 +497,6 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-      {/* Auto Save Indicator (Optional, but good for UX) */}
       {saveGameMutation.isPending && (
           <div className="fixed bottom-4 right-4 z-[999] bg-slate-900/80 border border-slate-700 px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-slate-400 animate-pulse">
               <Save size={12} /> Saving...
@@ -537,6 +547,7 @@ const App: React.FC = () => {
               {view === 'OvrCalculator' && <OvrCalculatorView teams={teams} />}
               {view === 'SeasonReview' && myTeamId && <SeasonReviewView team={teams.find(t => t.id === myTeamId)!} teams={teams} transactions={transactions} onBack={() => setView('Dashboard')} />}
               {view === 'PlayoffReview' && myTeamId && <PlayoffReviewView team={teams.find(t => t.id === myTeamId)!} teams={teams} playoffSeries={playoffSeries} schedule={schedule} onBack={() => setView('Dashboard')} />}
+              {view === 'Draft' && <DraftView prospects={prospects} onDraft={(p) => console.log('Draft', p)} team={teams.find(t => t.id === myTeamId)!} />}
             </div>
             <Footer onNavigate={setView} />
         </main>
