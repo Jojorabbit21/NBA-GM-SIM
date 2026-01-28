@@ -1,37 +1,51 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Save, Calendar, CheckCircle2, Search, ChevronDown } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Save, Calendar, CheckCircle2, Search, ChevronDown, Loader2 } from 'lucide-react';
 import { Team, Game } from '../types';
+import { useMonthlySchedule } from '../services/queries';
+import { supabase } from '../services/supabaseClient';
 
 interface ScheduleViewProps {
-  schedule: Game[];
+  schedule: Game[]; // From App state (Local Source of Truth)
   teamId: string;
   teams: Team[];
   onExport: () => void;
   currentSimDate: string;
 }
 
-export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, teams, onExport, currentSimDate }) => {
+export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, onExport, currentSimDate }) => {
   const [currentDate, setCurrentDate] = useState(() => {
-    // 시뮬레이션 현재 날짜를 기반으로 달력 초기화
     if (currentSimDate) {
       const d = new Date(currentSimDate);
-      // 해당 월의 1일로 설정하여 달력 뷰가 해당 월을 가리키도록 함
       return new Date(d.getFullYear(), d.getMonth(), 1);
     }
-    return new Date(2025, 9, 1); // Fallback: 10월
+    return new Date(2025, 9, 1);
   }); 
   const [selectedTeamId, setSelectedTeamId] = useState<string>(teamId);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // [Fix] Automatically update calendar view when simulation date advances to a new month
+  // [Pagination] Fetch DB data for the current month view
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  
+  useEffect(() => {
+      supabase.auth.getUser().then(({ data }) => {
+          setUserId(data.user?.id);
+      });
+  }, []);
+
+  const { data: dbMonthlyGames, isLoading: isDbLoading } = useMonthlySchedule(
+      userId, 
+      currentDate.getFullYear(), 
+      currentDate.getMonth()
+  );
+
+  // [Sync] Update calendar view when sim date changes (only if needed)
   useEffect(() => {
     if (currentSimDate) {
         const simDate = new Date(currentSimDate);
         setCurrentDate(prev => {
-            // Only update if the month is different to avoid resetting user navigation unnecessarily
             if (prev.getMonth() !== simDate.getMonth() || prev.getFullYear() !== simDate.getFullYear()) {
                 return new Date(simDate.getFullYear(), simDate.getMonth(), 1);
             }
@@ -40,7 +54,47 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
     }
   }, [currentSimDate]);
 
-  const filteredGames = schedule.filter(g => (g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId));
+  // [Optimization] Efficiently merge Local + DB data and filter by team
+  // Priority: Local State (Unsaved Sim Results) > DB State (Saved Results) > Meta Schedule
+  const monthlyGames = useMemo(() => {
+      // 1. Base pool: Use DB data if available, otherwise filter from full local prop
+      let baseGames = dbMonthlyGames;
+      
+      if (!baseGames) {
+          // Fallback if DB fetch fails or loading: Filter from the huge local prop array
+          // Note: Filtering 1230 items is fast (O(N)), but we optimize to do it only when month changes
+          const y = currentDate.getFullYear();
+          const m = currentDate.getMonth();
+          baseGames = localSchedule.filter(g => {
+              const d = new Date(g.date);
+              return d.getFullYear() === y && d.getMonth() === m;
+          });
+      }
+
+      // 2. Overlay Local State (Crucial for immediate sim feedback before save)
+      // We assume `localSchedule` prop has the latest "played" status for current session
+      const mergedGames = baseGames?.map(g => {
+          // Find if there is a newer version in local state
+          // Optimization: This .find is technically O(N) inside map, but N is small (monthly games ~100-200)
+          // For absolute best perf, we could turn localSchedule into a Map, but passing that from App is complex.
+          // Since we only look at "played" games, we can optimize by only checking if 'g' is unplayed in DB but played in Local.
+          if (!g.played) {
+             const localMatch = localSchedule.find(lg => lg.id === g.id);
+             if (localMatch && localMatch.played) return localMatch;
+          }
+          return g;
+      }) || [];
+
+      // 3. Filter by Selected Team
+      return mergedGames.filter(g => (g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId));
+  }, [dbMonthlyGames, localSchedule, currentDate, selectedTeamId]);
+
+  // [Optimization] O(1) Lookup Map for Grid Rendering
+  const gameMap = useMemo(() => {
+      const map = new Map<string, Game>();
+      monthlyGames.forEach(g => map.set(g.date, g));
+      return map;
+  }, [monthlyGames]);
 
   const changeMonth = (offset: number) => {
     const next = new Date(currentDate);
@@ -66,35 +120,26 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
     return { start, total };
   })();
 
-  const days = Array.from({ length: 42 }, (_, i) => {
+  const days = useMemo(() => Array.from({ length: 42 }, (_, i) => {
     const day = i - start + 1;
     return (day > 0 && day <= total) ? day : null;
-  });
+  }), [start, total]);
 
   const getGameOnDate = (day: number) => {
-    const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-    const yyyy = dayDate.getFullYear();
-    const mm = String(dayDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(dayDate.getDate()).padStart(2, '0');
+    // Optimization: Build date string manually to avoid Date object creation overhead in loop
+    const yyyy = currentDate.getFullYear();
+    const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    return filteredGames.find(g => g.date === dateStr);
+    return gameMap.get(dateStr);
   };
 
   const isTodayDate = (day: number) => {
-    const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-    const yyyy = dayDate.getFullYear();
-    const mm = String(dayDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(dayDate.getDate()).padStart(2, '0');
+    const yyyy = currentDate.getFullYear();
+    const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
     const dateStr = `${yyyy}-${mm}-${dd}`;
-    
-    if (/^\d{4}-\d{2}-\d{2}$/.test(currentSimDate)) {
-        return dateStr === currentSimDate;
-    }
-    
-    const simDateObj = new Date(currentSimDate);
-    return dayDate.getFullYear() === simDateObj.getFullYear() &&
-           dayDate.getMonth() === simDateObj.getMonth() &&
-           dayDate.getDate() === simDateObj.getDate();
+    return dateStr === currentSimDate;
   };
 
   const selectedTeam = teams.find(t => t.id === selectedTeamId);
@@ -108,11 +153,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
   }, [teams, searchTerm]);
 
   return (
-    <div className="space-y-6 w-full flex flex-col pb-24">
+    <div className="space-y-6 w-full flex flex-col pb-24 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0 relative z-30">
         <div>
            <div className="flex items-center gap-3">
              <h2 className="text-5xl font-black ko-tight text-slate-100 uppercase">시즌 일정</h2>
+             {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={24} />}
            </div>
         </div>
         
@@ -198,7 +244,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
              if (day === null) return <div key={idx} className="border-b border-r border-slate-800/50 bg-slate-950/20 aspect-square"></div>;
              
              const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-             const game = getGameOnDate(day);
+             const game = getGameOnDate(day); // O(1) Lookup
              const isToday = isTodayDate(day);
              const isASB = dayDate >= asbStart && dayDate <= asbEnd;
 
@@ -216,12 +262,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
              } else if (game) {
                 bgStyle = 'bg-slate-800/40 hover:bg-slate-800/60';
              } else if (isToday) {
-                // If it is today AND no game, use today's background
                 bgStyle = "bg-indigo-500/10";
              }
 
-             // Ensure Today Outline is always applied if it is today
-             // Use ring-inset to keep the border inside the cell and prevent clipping
              if (isToday) {
                  bgStyle += " ring-2 ring-indigo-600 ring-inset z-10";
              }
