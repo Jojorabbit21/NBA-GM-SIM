@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { runFullMigration } from '../services/migration';
-import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert, Database, RefreshCw, Server } from 'lucide-react';
+import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert, Database, RefreshCw, Server, Terminal } from 'lucide-react';
 import { logError } from '../services/analytics'; 
 
 // Validation Regex Patterns
@@ -22,7 +22,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
+  const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
   
   // Migration State
   const [isMigrating, setIsMigrating] = useState(false);
@@ -128,7 +128,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         setMessage({ type: 'error', text: result.message });
       }
     } catch (e: any) {
-      setMessage({ type: 'error', text: e.message || "마이그레이션 실패" });
+      let errorText: React.ReactNode = e.message || "마이그레이션 실패";
+      
+      // RLS Policy Error Handling
+      if (e.message && e.message.includes("row-level security policy")) {
+          errorText = (
+            <div className="flex flex-col gap-1">
+                <span>⛔ DB 권한 오류 (RLS Policy Violation)</span>
+                <span className="text-[10px] font-mono bg-black/30 p-1 rounded">
+                    SQL Editor에서 다음 명령어를 실행하여 쓰기 권한을 부여해주세요:
+                </span>
+                <code className="text-[9px] font-mono bg-black/50 p-2 rounded block whitespace-pre-wrap select-all cursor-text">
+{`drop policy if exists "Public read meta teams" on public.meta_teams;
+create policy "Enable all access for meta teams" on public.meta_teams for all using (true) with check (true);
+create policy "Enable all access for meta players" on public.meta_players for all using (true) with check (true);`}
+                </code>
+            </div>
+          );
+      }
+      
+      setMessage({ type: 'error', text: errorText });
     } finally {
       setIsMigrating(false);
     }
@@ -272,7 +291,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
           {message && (
             <div className={`p-4 rounded-xl flex items-start gap-3 text-sm font-bold ${message.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
               <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-              <span>{message.text}</span>
+              <div className="flex-1 overflow-hidden">{message.text}</div>
             </div>
           )}
 
