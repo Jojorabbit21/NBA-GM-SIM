@@ -3,7 +3,7 @@ import React from 'react';
 import { 
   LayoutDashboard, Users, Trophy, BarChart3, Swords, 
   Calendar as CalendarIcon, ArrowLeftRight, Clock, 
-  RotateCcw, LogOut 
+  RotateCcw, LogOut, FlaskConical 
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 
@@ -112,6 +112,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon={<ArrowLeftRight size={20}/>} 
           label="트레이드" 
           onClick={() => onNavigate('Transactions')} 
+        />
+        <NavItem 
+          active={currentView === 'OvrCalculator'} 
+          icon={<FlaskConical size={20}/>} 
+          label="OVR 실험실" 
+          onClick={() => onNavigate('OvrCalculator')} 
         />
       </nav>
 
