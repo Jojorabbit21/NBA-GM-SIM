@@ -1,12 +1,12 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-// Fix: Added missing icon imports (Lock, Activity, Handshake, Target)
 import { Users, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, MinusCircle, Trash2, Send, ListFilter, ChevronRight, History, Clock, Search, Lock, Activity, Handshake, Target } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
 import { getTeamLogoUrl, TRADE_DEADLINE } from '../utils/constants';
 import { logEvent } from '../services/analytics'; 
+import { saveUserTransaction } from '../services/queries';
+import { supabase } from '../services/supabaseClient';
 
 // New Components
 import { TradeConfirmModal } from '../components/transactions/TradeConfirmModal';
@@ -51,27 +51,35 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     return new Date(currentSimDate) > new Date(TRADE_DEADLINE);
   }, [currentSimDate]);
 
-  const executeTrade = () => {
+  const executeTrade = async () => {
     if (!pendingTrade || !team) return;
     const { userAssets, targetAssets, targetTeam } = pendingTrade;
     
     logEvent('Trade', 'Executed', `${team.name} <-> ${targetTeam.name} (${userAssets.length} for ${targetAssets.length})`);
 
+    const newTransaction: Transaction = {
+        id: `tr_${Date.now()}`,
+        date: currentSimDate,
+        type: 'Trade',
+        teamId: team.id,
+        description: `${targetTeam.name}와의 트레이드: ${userAssets.length}명 <-> ${targetAssets.length}명 교환`,
+        details: {
+            acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+            traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+            partnerTeamId: targetTeam.id,
+            partnerTeamName: targetTeam.name
+        }
+    };
+
+    // 1. Update UI State immediately
     if (onAddTransaction) {
-        const newTransaction: Transaction = {
-            id: `tr_${Date.now()}`,
-            date: currentSimDate,
-            type: 'Trade',
-            teamId: team.id,
-            description: `${targetTeam.name}와의 트레이드: ${userAssets.length}명 <-> ${targetAssets.length}명 교환`,
-            details: {
-                acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-                traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-                partnerTeamId: targetTeam.id,
-                partnerTeamName: targetTeam.name
-            }
-        };
         onAddTransaction(newTransaction);
+    }
+
+    // 2. Save to RDB immediately (Async)
+    const { data: userData } = await supabase.auth.getUser();
+    if (userData?.user) {
+        saveUserTransaction(userData.user.id, newTransaction);
     }
 
     setTeams(prevTeams => prevTeams.map(t => {

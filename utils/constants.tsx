@@ -1,7 +1,6 @@
-
 import { Player, SeasonStats, Game, Team } from '../types';
 
-export const SEASON_START_DATE = '2025-10-22'; // 25-26 Season Start
+export const SEASON_START_DATE = '2025-10-20'; // 25-26 Season Start
 export const TRADE_DEADLINE = '2026-02-06';
 
 export const INITIAL_STATS = (): SeasonStats => ({
