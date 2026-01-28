@@ -1,11 +1,9 @@
-
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, User, ShieldAlert } from 'lucide-react';
 
 // Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{2,12}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
 interface AuthViewProps {
@@ -14,30 +12,26 @@ interface AuthViewProps {
 
 export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [loading, setLoading] = useState(false);
-  const [identifier, setIdentifier] = useState(''); 
   const [email, setEmail] = useState(''); 
-  const [nickname, setNickname] = useState(''); 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
   
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
-  const isNicknameValid = useMemo(() => nickname === '' || NICKNAME_REGEX.test(nickname), [nickname]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
   const isConfirmValid = useMemo(() => confirmPassword === '' || password === confirmPassword, [password, confirmPassword]);
 
   const isSignupFormValid = useMemo(() => {
     return (
       email !== '' && EMAIL_REGEX.test(email) &&
-      nickname !== '' && NICKNAME_REGEX.test(nickname) &&
       password !== '' && PASSWORD_REGEX.test(password) &&
       confirmPassword !== '' && password === confirmPassword
     );
-  }, [email, nickname, password, confirmPassword]);
+  }, [email, password, confirmPassword]);
 
   // [Safety] 프로필 데이터가 없는 경우 강제로 생성하는 함수
-  const ensureProfileExists = async (user: any, userNickname?: string) => {
+  const ensureProfileExists = async (user: any) => {
     try {
         const { data: profile } = await supabase
             .from('profiles')
@@ -47,10 +41,13 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
         if (!profile) {
             console.log("⚠️ No profile found. Creating manually...");
+            // Extract nickname from email (e.g. user@test.com -> user)
+            const nicknameFromEmail = user.email ? user.email.split('@')[0] : 'GM';
+            
             const { error: insertError } = await supabase.from('profiles').insert({
                 id: user.id,
                 email: user.email,
-                nickname: userNickname || user.user_metadata?.nickname || 'GM',
+                nickname: nicknameFromEmail,
                 created_at: new Date().toISOString()
             });
             if (insertError) console.error("Profile creation failed:", insertError);
@@ -78,42 +75,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
         const { data, error } = await (supabase.auth as any).signUp({
           email,
-          password,
-          options: {
-            data: { 
-                nickname: nickname 
-            }
-          }
+          password
         });
 
         if (error) throw error;
 
         // 회원가입 성공 시 프로필 즉시 확인/생성
         if (data.user) {
-            await ensureProfileExists(data.user, nickname);
+            await ensureProfileExists(data.user);
         }
 
         setMessage({ type: 'success', text: '회원가입 성공! 이제 로그인할 수 있습니다.' });
         setMode('login');
-        // 자동 로그인 처리를 원치 않는 경우 여기서 멈춤
       } else {
-        let loginEmail = identifier.trim();
-
-        if (!loginEmail.includes('@')) {
-            const { data: profile, error: profileError } = await supabase
-                .from('profiles')
-                .select('email')
-                .eq('nickname', loginEmail)
-                .maybeSingle();
-
-            if (profileError || !profile) {
-                throw new Error("닉네임을 찾을 수 없습니다. 이메일로 로그인해주세요.");
-            }
-            loginEmail = profile.email;
-        }
-
         const { data, error } = await (supabase.auth as any).signInWithPassword({
-          email: loginEmail,
+          email,
           password,
         });
         
@@ -151,60 +127,24 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         </div>
 
         <form onSubmit={handleAuth} className="space-y-5">
-          {/* ... inputs ... */}
           <div className="space-y-4">
-            {mode === 'login' ? (
+            <div className="space-y-1">
                 <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <User className="h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                        <Mail className={`h-5 w-5 transition-colors ${!isEmailValid && email ? 'text-red-500' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
                     </div>
                     <input
-                        type="text"
+                        type="email"
                         required
-                        placeholder="이메일 또는 닉네임"
-                        className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
+                        placeholder="이메일 주소"
+                        className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
+                            !isEmailValid && email ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500'
+                        }`}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
                     />
                 </div>
-            ) : (
-                <>
-                    <div className="space-y-1">
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <Mail className={`h-5 w-5 transition-colors ${!isEmailValid && email ? 'text-red-500' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
-                            </div>
-                            <input
-                                type="email"
-                                required
-                                placeholder="이메일 주소"
-                                className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
-                                    !isEmailValid && email ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500'
-                                }`}
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <User className={`h-5 w-5 transition-colors ${!isNicknameValid && nickname ? 'text-red-500' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
-                            </div>
-                            <input
-                                type="text"
-                                required
-                                placeholder="닉네임 (2~12자)"
-                                className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
-                                    !isNicknameValid && nickname ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500'
-                                }`}
-                                value={nickname}
-                                onChange={(e) => setNickname(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                </>
-            )}
+            </div>
 
             <div className="space-y-1">
                 <div className="relative group">

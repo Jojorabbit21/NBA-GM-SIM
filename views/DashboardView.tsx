@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useEffect } from 'react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries } from '../types';
 import { GameTactics, generateAutoTactics } from '../services/gameEngine';
@@ -32,35 +31,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
   playoffSeries = []
 }) => {
-  // 1. Find the next game for the user's team (regardless of unplayed/played) to show branding
-  const userGamesToday = useMemo(() => {
-    if (!team?.id || !currentSimDate) return [];
-    return schedule.filter(g => g.date === currentSimDate && (g.homeTeamId === team.id || g.awayTeamId === team.id));
-  }, [schedule, team?.id, currentSimDate]);
-
-  // 2. Determine if there's an actual game to simulate TODAY
-  const unplayedGamesToday = useMemo(() => {
-      if (!currentSimDate) return [];
-      return schedule.filter(g => g.date === currentSimDate && !g.played);
-  }, [schedule, currentSimDate]);
-
-  // [Fix] 사용자의 팀이 오늘 경기가 있는지 여부 판단
-  const userHasGameToday = useMemo(() => {
-      return unplayedGamesToday.some(g => g.homeTeamId === team?.id || g.awayTeamId === team?.id);
-  }, [unplayedGamesToday, team?.id]);
-
-  // 3. Current next game to show in header (prioritize unplayed today, then overall next)
+  // 1. Find the next game for the user's team (Secure Sorting)
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
-      return schedule.find(g => !g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id)) 
-             || schedule.filter(g => (g.homeTeamId === team.id || g.awayTeamId === team.id)).reverse().find(g => g.played);
+      
+      // Filter only my games
+      const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
+      
+      // Sort by Date (Crucial Fix: Ensure chronological order)
+      myGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      
+      // Find first unplayed game
+      return myGames.find(g => !g.played) || myGames[myGames.length - 1];
   }, [schedule, team?.id]);
 
   const isHome = nextGameDisplay?.homeTeamId === team?.id;
   const opponentId = isHome ? nextGameDisplay?.awayTeamId : nextGameDisplay?.homeTeamId;
   const opponent = useMemo(() => teams.find(t => t.id === opponentId), [teams, opponentId]);
 
-  // 4. Determine Current Playoff Series
+  // 2. Check if the NEXT game is actually TODAY
+  const userHasGameToday = useMemo(() => {
+      if (!nextGameDisplay || !currentSimDate) return false;
+      return nextGameDisplay.date === currentSimDate && !nextGameDisplay.played;
+  }, [nextGameDisplay, currentSimDate]);
+
+  // 3. Determine Current Playoff Series
   const currentSeries = useMemo(() => {
       if (!nextGameDisplay?.isPlayoff || !nextGameDisplay.seriesId || !playoffSeries) return undefined;
       return playoffSeries.find(s => s.id === nextGameDisplay.seriesId);

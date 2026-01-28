@@ -36,7 +36,7 @@ import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { Toast, ActionToast } from './components/SharedComponents';
 import { Sidebar } from './components/Sidebar';
 
-const INITIAL_DATE = '2025-10-22';
+const INITIAL_DATE = '2025-10-20';
 
 const LOADING_MESSAGES = [
     "라커룸을 청소하는 중...",
@@ -139,8 +139,8 @@ const App: React.FC = () => {
 
   // Loading Message Cycler
   useEffect(() => {
-    const isActuallyLoading = authLoading || isBaseDataLoading || (session && !hasInitialLoadRef.current);
-    if (isActuallyLoading) {
+    const isDataLoading = isBaseDataLoading || (session && !hasInitialLoadRef.current);
+    if (isDataLoading) {
         setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
         const interval = setInterval(() => {
             setLoadingText(prev => {
@@ -153,7 +153,7 @@ const App: React.FC = () => {
         }, 1000);
         return () => clearInterval(interval);
     }
-  }, [authLoading, isBaseDataLoading, session]);
+  }, [isBaseDataLoading, session]);
 
   // Initialize Base Data
   useEffect(() => {
@@ -477,9 +477,22 @@ const App: React.FC = () => {
     return [];
   }, [schedule, currentSimDate]);
 
-  const isActuallyLoading = authLoading || isBaseDataLoading || (session && !hasInitialLoadRef.current);
+  // Priority 1: Auth Loading
+  if (authLoading) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
+            <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6" />
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-2">Initializing...</p>
+        </div>
+      );
+  }
 
-  if (isActuallyLoading) {
+  // Priority 2: Auth View (If not authenticated)
+  if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
+
+  // Priority 3: Data Loading (If authenticated but data not ready)
+  const isDataLoading = isBaseDataLoading || (session && !hasInitialLoadRef.current);
+  if (isDataLoading) {
       return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
             <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6" />
@@ -488,8 +501,6 @@ const App: React.FC = () => {
         </div>
       );
   }
-
-  if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
   
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isBaseDataLoading} onSelectTeam={handleSelectTeam} dataSource='DB' />;
   if (view === 'Onboarding' && myTeamId) return <OnboardingView team={teams.find(t => t.id === myTeamId)!} onComplete={() => setView('Dashboard')} />;
