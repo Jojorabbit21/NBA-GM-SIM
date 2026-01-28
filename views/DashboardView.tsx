@@ -1,3 +1,4 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries } from '../types';
 import { GameTactics, generateAutoTactics } from '../services/gameEngine';
@@ -23,7 +24,7 @@ interface DashboardViewProps {
   onShowSeasonReview: () => void;
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
-  playoffSeries?: PlayoffSeries[]; // Added prop to receive series data
+  playoffSeries?: PlayoffSeries[];
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
@@ -31,17 +32,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
   playoffSeries = []
 }) => {
-  // 1. Find the next game for the user's team (Secure Sorting)
+  // 1. Find the next game for the user's team
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
-      
-      // Filter only my games
       const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
-      
-      // Sort by Date (Crucial Fix: Ensure chronological order)
       myGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      
-      // Find first unplayed game
       return myGames.find(g => !g.played) || myGames[myGames.length - 1];
   }, [schedule, team?.id]);
 
@@ -61,16 +56,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return playoffSeries.find(s => s.id === nextGameDisplay.seriesId);
   }, [nextGameDisplay, playoffSeries]);
 
+  // 4. Banner Visibility Logic
+  const isRegularSeasonFinished = useMemo(() => {
+      if (!team?.id) return false;
+      const myRegularGames = schedule.filter(g => !g.isPlayoff && (g.homeTeamId === team.id || g.awayTeamId === team.id));
+      return myRegularGames.length > 0 && myRegularGames.every(g => g.played);
+  }, [schedule, team?.id]);
+
+  const isPostseasonOver = useMemo(() => {
+      if (!team?.id || !playoffSeries || playoffSeries.length === 0) return false;
+      const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
+      if (myPlayoffSeries.length === 0) return false;
+
+      // Find the most recent (highest round) series
+      const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
+      if (!latest.finished) return false;
+
+      // If user lost any series, their run is over
+      if (latest.winnerId !== team.id) return true;
+
+      // If user won, check if it was the NBA Finals (Round 4)
+      return latest.round === 4;
+  }, [playoffSeries, team?.id]);
+
   const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   
-  const { starters, stopperId, defenseTactics } = tactics;
+  const { starters } = tactics;
   
   const healthySorted = useMemo(() => (team?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
   const injuredSorted = useMemo(() => (team?.roster || []).filter(p => p.health === 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
   const oppHealthySorted = useMemo(() => (opponent?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [opponent?.roster]);
   
-  // Ensure starters are valid
   useEffect(() => {
     if (healthySorted.length >= 5 && Object.values(starters).every(v => v === '')) {
       const newStarters = {
@@ -119,10 +136,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <DashboardReviewBanners 
         onShowSeasonReview={onShowSeasonReview} 
         onShowPlayoffReview={onShowPlayoffReview} 
-        hasPlayoffHistory={hasPlayoffHistory} 
+        hasPlayoffHistory={hasPlayoffHistory}
+        showSeasonBanner={isRegularSeasonFinished}
+        showPlayoffBanner={isPostseasonOver}
       />
 
-      {/* Main Dashboard Header Section */}
       <DashboardHeader 
         team={team}
         nextGame={nextGameDisplay}
@@ -139,9 +157,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         currentSeries={currentSeries}
       />
 
-      {/* [Optimization] Reduced background transparency and blur (bg-slate-900/80, backdrop-blur-xl) */}
       <div className="w-full max-w-[1900px] grid grid-cols-1 lg:grid-cols-12 min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
-          {/* Left Panel: Roster Table */}
           <RosterTable 
             activeRosterTab={activeRosterTab}
             setActiveRosterTab={setActiveRosterTab}
@@ -154,8 +170,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onUpdateTactics={onUpdateTactics}
             onViewPlayer={setViewPlayer}
           />
-
-          {/* Right Panel: Tactics Board */}
           <TacticsBoard 
             tactics={tactics}
             onUpdateTactics={onUpdateTactics}
