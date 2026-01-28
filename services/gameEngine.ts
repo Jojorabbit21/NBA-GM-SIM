@@ -538,15 +538,20 @@ function simulateTeamPerformance(
           const sliderIntensity = (sliders.pace + sliders.defIntensity + sliders.fullCourtPress) / 15; 
           let drain = baseDrain * sliderIntensity * tacticDrainMult;
           
+          // [System Update] Workload Penalty based on Minutes Played
+          let workloadMult = 1.0;
+          if (mp <= 15) workloadMult = 1.0;
+          else if (mp <= 25) workloadMult = 1.1;
+          else if (mp <= 32) workloadMult = 1.2;
+          else if (mp <= 36) workloadMult = 1.35;
+          else if (mp <= 40) workloadMult = 1.6;
+          else workloadMult = 1.8; // 40+ min (Overwork)
+
+          drain *= workloadMult;
+          
           // [System Update] Apply Back-to-Back Penalty (1.5x drain)
           if (isB2B) {
               drain *= 1.5;
-          }
-
-          const threshold = p.stamina * 0.4;
-          if (mp > threshold) {
-              const overMinutes = mp - threshold;
-              drain += overMinutes * 0.5;
           }
 
           isStopper = teamTactics?.defenseTactics.includes('AceStopper') && teamTactics.stopperId === p.id;

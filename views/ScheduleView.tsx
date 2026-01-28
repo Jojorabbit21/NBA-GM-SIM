@@ -176,7 +176,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule, teamId, te
         </div>
       </div>
 
-      <div className="bg-slate-900/80 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden backdrop-blur-sm flex flex-col relative z-10">
+      {/* [Optimization] bg-slate-900/80 -> bg-slate-900/95, Removed backdrop-blur-sm */}
+      <div className="bg-slate-900/95 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden flex flex-col relative z-10">
         <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
            <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>
            <div className="flex items-center gap-3">

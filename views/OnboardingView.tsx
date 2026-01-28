@@ -27,10 +27,11 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
 
   return (
     <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 lg:p-8 relative overflow-hidden ko-normal pretendard">
-      {/* Background Ambience */}
+      {/* Background Ambience (Optimized) */}
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-0 left-0 w-full h-1/2 bg-gradient-to-b from-slate-900 to-transparent opacity-80"></div>
-        <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-indigo-600/5 rounded-full blur-[100px]"></div>
+        {/* [Optimization] Reduced blur radius */}
+        <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-indigo-600/5 rounded-full blur-3xl opacity-30"></div>
       </div>
 
       <div className="max-w-3xl w-full bg-[#f8f9fa] text-slate-900 rounded-[3px] shadow-[0_20px_60px_rgba(0,0,0,0.5)] relative overflow-hidden transform transition-all duration-700 animate-in fade-in zoom-in-95">

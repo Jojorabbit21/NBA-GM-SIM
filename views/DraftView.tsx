@@ -61,7 +61,8 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-hidden">
         {/* Left: Prospect List */}
-        <div className="lg:col-span-4 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
+        <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
           <div className="p-6 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
             <span className="text-xs font-black uppercase text-slate-400 tracking-widest">Available Prospects ({filteredProspects.length})</span>
           </div>
@@ -91,7 +92,8 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
         </div>
 
         {/* Right: Scouting Analysis */}
-        <div className="lg:col-span-8 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl relative">
+        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
+        <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl relative">
           {selectedProspect ? (
             <div className="flex-1 flex flex-col min-h-0">
               <div className="p-8 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
