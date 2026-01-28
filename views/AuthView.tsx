@@ -111,7 +111,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   };
 
   const handleMigration = async () => {
-    if (!confirm("주의: 이 작업은 Supabase의 메타 데이터를 초기화하고 다시 적재합니다. 실행하시겠습니까?")) return;
+    if (!confirm("주의: 스케줄 데이터를 Supabase에 적재합니다. (기존 팀/선수 데이터는 유지됩니다)")) return;
     
     setIsMigrating(true);
     setMigrationPercent(0);
@@ -132,44 +132,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     } catch (e: any) {
       let errorText: React.ReactNode = e.message || "마이그레이션 실패";
       
-      const fixSql = `-- [1] 기존 테이블 정리 (CASCADE로 의존성 무시)
-DROP TABLE IF EXISTS public.meta_players CASCADE;
-DROP TABLE IF EXISTS public.meta_teams CASCADE;
-DROP TABLE IF EXISTS public.meta_schedule CASCADE;
-
--- [2] 구단 테이블 생성
-CREATE TABLE public.meta_teams (
-    id text NOT NULL PRIMARY KEY,
-    name text NOT NULL,
-    city text NOT NULL,
-    conference text,
-    division text,
-    logo_url text,
-    base_attributes jsonb
-);
-
--- [3] 선수 테이블 생성 (UNIQUE 제약조건 필수)
-CREATE TABLE public.meta_players (
-    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-    name text NOT NULL,
-    position text,
-    height numeric,
-    weight numeric,
-    salary numeric,
-    contract_years numeric,
-    base_team_id text REFERENCES public.meta_teams(id),
-    draft_year numeric,
-    base_attributes jsonb,
-    created_at timestamptz DEFAULT now(),
-    CONSTRAINT meta_players_name_key UNIQUE (name)
-);
-
--- [4] 스케줄 테이블 생성
-CREATE TABLE public.meta_schedule (
+      const fixSql = `-- 1. 스케줄 테이블 생성 (기존에 없다면)
+CREATE TABLE IF NOT EXISTS public.meta_schedule (
     id text NOT NULL PRIMARY KEY,
     game_date date NOT NULL,
-    home_team_id text NOT NULL REFERENCES public.meta_teams(id),
-    away_team_id text NOT NULL REFERENCES public.meta_teams(id),
+    home_team_id text NOT NULL,
+    away_team_id text NOT NULL,
     home_score int,
     away_score int,
     played boolean DEFAULT false,
@@ -177,19 +145,37 @@ CREATE TABLE public.meta_schedule (
     series_id text
 );
 
--- [5] 보안 정책(RLS) 재설정
-ALTER TABLE public.meta_teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.meta_players ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meta_schedule ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Enable all access for teams" ON public.meta_teams;
-DROP POLICY IF EXISTS "Enable all access for players" ON public.meta_players;
 DROP POLICY IF EXISTS "Enable all access for schedule" ON public.meta_schedule;
+CREATE POLICY "Enable all access for schedule" ON public.meta_schedule FOR ALL USING (true) WITH CHECK (true);
 
--- 누구나 읽기 가능, 서비스 역할만 쓰기 가능 (혹은 개발 중 편의를 위해 ALL 허용)
-CREATE POLICY "Enable all access for teams" ON public.meta_teams FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all access for players" ON public.meta_players FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all access for schedule" ON public.meta_schedule FOR ALL USING (true) WITH CHECK (true);`;
+-- 2. [NEW] 게임 결과(박스스코어) 저장용 테이블 생성
+CREATE TABLE IF NOT EXISTS public.user_game_results (
+    id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+    game_id text NOT NULL,
+    date date NOT NULL,
+    home_team_id text NOT NULL,
+    away_team_id text NOT NULL,
+    home_score int,
+    away_score int,
+    box_score jsonb,
+    created_at timestamptz DEFAULT now()
+);
+
+-- 인덱스 추가 (조회 속도 향상)
+CREATE INDEX IF NOT EXISTS idx_user_game_results_user_id ON public.user_game_results(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_game_results_game_id ON public.user_game_results(game_id);
+
+-- RLS 정책 설정 (본인 데이터만 접근 가능)
+ALTER TABLE public.user_game_results ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Users can insert their own results" ON public.user_game_results;
+DROP POLICY IF EXISTS "Users can select their own results" ON public.user_game_results;
+DROP POLICY IF EXISTS "Users can delete their own results" ON public.user_game_results;
+
+CREATE POLICY "Users can insert their own results" ON public.user_game_results FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can select their own results" ON public.user_game_results FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can delete their own results" ON public.user_game_results FOR DELETE USING (auth.uid() = user_id);`;
 
       // Error Handling Logic
       if (e.message && (e.message.includes("row-level security") || e.message.includes("ON CONFLICT") || e.message.includes("depends on") || e.message.includes("relation"))) {
@@ -197,11 +183,11 @@ CREATE POLICY "Enable all access for schedule" ON public.meta_schedule FOR ALL U
             <div className="flex flex-col gap-2 w-full">
                 <div className="flex items-center gap-2 text-red-400 font-bold">
                     <ShieldAlert size={18} />
-                    <span>DB 초기화 필요 (스케줄 테이블 포함)</span>
+                    <span>테이블 생성 및 설정 필요</span>
                 </div>
                 <div className="text-[11px] text-slate-400 leading-relaxed">
-                    새로운 스케줄 기능을 위해 <strong>meta_schedule</strong> 테이블이 필요합니다.<br/>
-                    아래 SQL을 실행하여 데이터베이스 구조를 업데이트해주세요.
+                    최적화를 위해 <strong>meta_schedule</strong> 및 <strong>user_game_results</strong> 테이블이 필요합니다.<br/>
+                    아래 SQL을 실행하여 DB 구조를 업데이트해주세요.
                 </div>
                 <div className="relative group">
                     <code className="text-[9px] font-mono bg-black/50 p-3 rounded-lg block whitespace-pre-wrap select-all cursor-text text-emerald-400 border border-slate-700 max-h-40 overflow-y-auto custom-scrollbar">
@@ -238,7 +224,7 @@ CREATE POLICY "Enable all access for schedule" ON public.meta_schedule FOR ALL U
                       <Database size={48} className="text-indigo-400 relative z-10" />
                   </div>
                   <div className="w-full space-y-2 text-center">
-                      <h3 className="text-xl font-black text-white uppercase tracking-tight">데이터베이스 초기화 중</h3>
+                      <h3 className="text-xl font-black text-white uppercase tracking-tight">스케줄 데이터 적재 중</h3>
                       <p className="text-sm font-bold text-slate-400">{migrationStatus}</p>
                   </div>
                   <div className="w-full space-y-2">

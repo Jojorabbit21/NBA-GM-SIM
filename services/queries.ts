@@ -282,14 +282,28 @@ export const useSaveGame = () => {
       return payload;
     },
     onSuccess: (savedData, variables) => {
-        // [Critical] Update Cache Immediately with the exact payload we just saved
-        // DB에서 다시 읽어올 필요가 없도록 클라이언트 캐시를 강제 업데이트
         queryClient.setQueryData(['saveData', variables.userId], savedData);
     }
   });
 };
 
-// 4. Session Heartbeat (Read-Only)
+// 4. Save Game Results (Box Scores) to dedicated table
+export const saveGameResults = async (results: any[]) => {
+    if (results.length === 0) return;
+    try {
+        const { error } = await supabase
+            .from('user_game_results')
+            .insert(results);
+        
+        if (error) throw error;
+        console.log(`✅ Saved ${results.length} game results to DB`);
+    } catch (e) {
+        console.error("Failed to save game results:", e);
+        // Fallback or retry logic could be added here
+    }
+};
+
+// 5. Session Heartbeat (Read-Only)
 export const useSessionHeartbeat = (userId: string | undefined, deviceId: string, enabled: boolean = true) => {
     return useQuery({
         queryKey: ['heartbeat', userId, deviceId],
@@ -311,7 +325,7 @@ export const useSessionHeartbeat = (userId: string | undefined, deviceId: string
     });
 };
 
-// 5. Scouting Report
+// 6. Scouting Report
 export const useScoutingReport = (player: Player | null) => {
     return useQuery({
         queryKey: ['scoutingReport', player?.id],

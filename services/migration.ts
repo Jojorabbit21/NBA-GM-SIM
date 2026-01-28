@@ -1,9 +1,6 @@
 
 import { supabase } from './supabaseClient';
 import { 
-    INITIAL_TEAMS_DATA, 
-    getTeamLogoUrl, 
-    TEAM_OWNERS, 
     parseCSVToObjects, 
     resolveTeamId 
 } from '../utils/constants';
@@ -11,91 +8,27 @@ import {
 type ProgressCallback = (message: string, percent: number) => void;
 
 /**
- * 1. Meta Teams 초기화
+ * 1. Meta Teams 초기화 (Skipped)
  */
 export async function seedMetaTeams(onProgress?: ProgressCallback) {
-    onProgress?.("팀 데이터 초기화 중...", 0);
-    
-    const teamsPayload = INITIAL_TEAMS_DATA.map(t => ({
-        id: t.id,
-        name: t.name,
-        city: t.city,
-        conference: t.conference,
-        division: t.division,
-        logo_url: getTeamLogoUrl(t.id),
-        base_attributes: {
-            owner: TEAM_OWNERS[t.id] || 'Unknown',
-            founded: 1946 
-        }
-    }));
-
-    const { error } = await supabase
-        .from('meta_teams')
-        .upsert(teamsPayload, { onConflict: 'id' });
-
-    if (error) throw error;
-    onProgress?.(`✅ 30개 팀 데이터 적재 완료`, 10);
+    // Skipped as per user request
+    console.log("Skipping Meta Teams Migration");
 }
 
 /**
- * 2. Meta Players 초기화 (CSV 기반)
+ * 2. Meta Players 초기화 (Skipped)
  */
 export async function seedMetaPlayers(onProgress?: ProgressCallback) {
-    onProgress?.("선수 데이터 CSV 다운로드 중...", 15);
-
-    // 1. Fetch CSV
-    const response = await fetch('/players.csv');
-    if (!response.ok) throw new Error("Failed to fetch players.csv");
-    const csvText = await response.text();
-    const players = parseCSVToObjects(csvText);
-    const totalPlayers = players.length;
-
-    onProgress?.(`선수 데이터 변환 중... (0/${totalPlayers})`, 20);
-
-    // 2. Transform Data
-    const playersPayload = players.map((p: any) => {
-        const teamName = p.Team || p.team;
-        const teamId = resolveTeamId(teamName);
-        const { id, ...attributes } = p;
-
-        return {
-            base_team_id: teamId !== 'unknown' ? teamId : null,
-            name: p.Name || p.name,
-            position: p.Position || p.position,
-            height: parseInt(p.Height || p.height || '200'),
-            weight: parseInt(p.Weight || p.weight || '100'),
-            draft_year: 2020,
-            base_attributes: attributes
-        };
-    });
-
-    // 3. Batch Insert
-    const chunkSize = 50; 
-    let processed = 0;
-
-    for (let i = 0; i < playersPayload.length; i += chunkSize) {
-        const chunk = playersPayload.slice(i, i + chunkSize);
-        const { error } = await supabase
-            .from('meta_players')
-            .upsert(chunk, { onConflict: 'name' }); 
-        
-        if (error) {
-            console.error("Error inserting players chunk:", error);
-            throw error;
-        }
-
-        processed += chunk.length;
-        // 진행률 계산: 20% ~ 60% 구간 매핑
-        const percent = 20 + Math.round((processed / totalPlayers) * 40);
-        onProgress?.(`선수 데이터 DB 적재 중... (${processed}/${totalPlayers})`, percent);
-    }
+    // Skipped as per user request
+    console.log("Skipping Meta Players Migration");
 }
 
 /**
  * 3. Meta Schedule 초기화 (CSV 기반, 중복 제거)
+ * Teams/Players가 이미 존재한다고 가정하고 스케줄만 적재합니다.
  */
 export async function seedMetaSchedule(onProgress?: ProgressCallback) {
-    onProgress?.("스케줄 데이터 CSV 다운로드 중...", 60);
+    onProgress?.("스케줄 데이터 CSV 다운로드 중...", 10);
 
     const response = await fetch('/schedule.csv');
     if (!response.ok) throw new Error("Failed to fetch schedule.csv");
@@ -106,6 +39,8 @@ export async function seedMetaSchedule(onProgress?: ProgressCallback) {
     // CSV contains 2460 rows (Home & Away perspective for each game).
     // We want 1230 unique games.
     const uniqueGames = new Map<string, any>();
+
+    onProgress?.("스케줄 데이터 정제 중...", 20);
 
     rawSchedule.forEach(row => {
         let dateStr = row.date || row.Date;
@@ -154,7 +89,7 @@ export async function seedMetaSchedule(onProgress?: ProgressCallback) {
     const gamesPayload = Array.from(uniqueGames.values());
     const totalGames = gamesPayload.length;
     
-    onProgress?.(`스케줄 데이터 정제 완료 (유니크 ${totalGames}경기)`, 70);
+    onProgress?.(`스케줄 데이터 정제 완료 (유니크 ${totalGames}경기)`, 30);
 
     // Batch Insert
     const chunkSize = 100;
@@ -172,8 +107,8 @@ export async function seedMetaSchedule(onProgress?: ProgressCallback) {
         }
 
         processed += chunk.length;
-        // 진행률 계산: 70% ~ 100% 구간 매핑
-        const percent = 70 + Math.round((processed / totalGames) * 30);
+        // 진행률 계산: 30% ~ 100% 구간 매핑
+        const percent = 30 + Math.round((processed / totalGames) * 70);
         onProgress?.(`스케줄 DB 적재 중... (${processed}/${totalGames})`, percent);
     }
 }
@@ -183,13 +118,15 @@ export async function seedMetaSchedule(onProgress?: ProgressCallback) {
  */
 export async function runFullMigration(onProgress?: ProgressCallback) {
     try {
-        await seedMetaTeams(onProgress);
-        await seedMetaPlayers(onProgress);
+        // [Modified] Skip Teams & Players, only run Schedule
+        // await seedMetaTeams(onProgress);
+        // await seedMetaPlayers(onProgress);
         await seedMetaSchedule(onProgress);
-        onProgress?.("모든 데이터 초기화 완료!", 100);
-        return { success: true, message: "메타 데이터 및 스케줄 초기화 완료!" };
+        
+        onProgress?.("스케줄 데이터 업데이트 완료!", 100);
+        return { success: true, message: "스케줄 데이터 적재가 완료되었습니다!" };
     } catch (e: any) {
         console.error("Migration Failed:", e);
-        return { success: false, message: e.message || "초기화 실패" };
+        return { success: false, message: e.message || "스케줄 초기화 실패" };
     }
 }

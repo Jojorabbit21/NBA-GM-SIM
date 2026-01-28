@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from './services/supabaseClient';
-import { useBaseData, useLoadSave, useSaveGame } from './services/queries';
+import { useBaseData, useLoadSave, useSaveGame, saveGameResults } from './services/queries';
 import { initGA, logPageView } from './services/analytics';
 import { Team, Game, AppView, PlayerBoxScore, TeamTacticHistory, TacticStatRecord, TacticalSnapshot, Player, Transaction, PlayoffSeries } from './types';
 import { generateSeasonSchedule, INITIAL_STATS } from './utils/constants';
@@ -54,7 +54,7 @@ const App: React.FC = () => {
   const [myTeamId, setMyTeamId] = useState<string | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
   const [schedule, setSchedule] = useState<Game[]>([]);
-  const [boxScores, setBoxScores] = useState<Record<string, { home: PlayerBoxScore[], away: PlayerBoxScore[] }>>({});
+  // [Removed] const [boxScores, setBoxScores] = useState<Record<string, { home: PlayerBoxScore[], away: PlayerBoxScore[] }>>({});
   const [playoffSeries, setPlayoffSeries] = useState<PlayoffSeries[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [prospects, setProspects] = useState<Player[]>([]);
@@ -92,10 +92,10 @@ const App: React.FC = () => {
   // Update GameData Ref for Save/Logout
   useEffect(() => {
     gameDataRef.current = {
-        myTeamId, teams, schedule, boxScores, currentSimDate, 
+        myTeamId, teams, schedule, currentSimDate, // Removed boxScores
         tactics: userTactics, playoffSeries, transactions, prospects
     };
-  }, [myTeamId, teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
+  }, [myTeamId, teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
 
   // Auth Listener
   useEffect(() => {
@@ -142,7 +142,7 @@ const App: React.FC = () => {
               setMyTeamId(saveData.team_id);
               if (gd.teams) setTeams(gd.teams);
               if (gd.schedule) setSchedule(gd.schedule);
-              if (gd.boxScores) setBoxScores(gd.boxScores);
+              // if (gd.boxScores) setBoxScores(gd.boxScores); // Deprecated
               if (gd.currentSimDate) setCurrentSimDate(gd.currentSimDate);
               if (gd.tactics) setUserTactics(gd.tactics);
               if (gd.playoffSeries) setPlayoffSeries(gd.playoffSeries);
@@ -181,6 +181,7 @@ const App: React.FC = () => {
     try {
         if (session?.user) {
             await supabase.from('saves').delete().eq('user_id', session.user.id);
+            await supabase.from('user_game_results').delete().eq('user_id', session.user.id); // Clean up results too
             localStorage.removeItem(`nba_gm_save_${session.user.id}`);
         }
         
@@ -191,7 +192,7 @@ const App: React.FC = () => {
         } else {
             await refetchBaseData();
         }
-        setBoxScores({});
+        // setBoxScores({}); // Deprecated
         setPlayoffSeries([]);
         setTransactions([]);
         setCurrentSimDate(INITIAL_DATE);
@@ -220,7 +221,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (myTeamId && session?.user && !isGuestMode) triggerSave();
-  }, [teams, schedule, boxScores, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
+  }, [teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const advanceDate = useCallback(() => {
       setCurrentSimDate(prevDate => {
@@ -306,10 +307,14 @@ const App: React.FC = () => {
     const processSimulation = async (precalcUserResult?: SimulationResult) => {
         let updatedTeams = [...teams];
         let updatedSchedule = [...schedule];
-        let updatedBoxScores = { ...boxScores };
+        // [Optimized] let updatedBoxScores = { ...boxScores }; -> Removed local aggregation
         let updatedSeries = [...playoffSeries];
         let userGameResultOutput = null;
         let allPlayedToday: Game[] = [];
+        
+        // Batch for DB insert
+        const gameResultsToInsert: any[] = [];
+        
         const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
 
         for (const game of unplayedGamesToday) {
@@ -325,6 +330,7 @@ const App: React.FC = () => {
             const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
             const homeWin = result.homeScore > result.awayScore;
 
+            // Update Tactical History (Stat Accumulation remains in-memory Team objects)
             const updateHistory = (t: Team, myBox: PlayerBoxScore[], oppBox: PlayerBoxScore[], tactics: TacticalSnapshot, isWin: boolean) => {
                 const history = { ...(t.tacticHistory || { offense: {}, defense: {} }) };
                 const updateRecord = (record: Record<string, TacticStatRecord>, key: string) => {
@@ -351,6 +357,7 @@ const App: React.FC = () => {
             updatedTeams[homeIdx] = { ...home, wins: home.wins + (homeWin ? 1 : 0), losses: home.losses + (homeWin ? 0 : 1), tacticHistory: updatedHomeHistory };
             updatedTeams[awayIdx] = { ...away, wins: away.wins + (homeWin ? 0 : 1), losses: away.losses + (homeWin ? 1 : 0), tacticHistory: updatedAwayHistory };
 
+            // Update Player Cumulative Stats
             const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: any) => {
                 const t = updatedTeams[teamIdx];
                 t.roster = t.roster.map(p => {
@@ -386,12 +393,35 @@ const App: React.FC = () => {
                     updatedSeries[sIdx] = { ...series, higherSeedWins: newH, lowerSeedWins: newL, finished, winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined };
                 }
             }
-            updatedBoxScores[game.id] = { home: result.homeBox, away: result.awayBox }; 
+            
+            // [Optimized] Prepare Data for DB Insert (No local state accumulation)
+            if (session?.user && !isGuestMode) {
+                gameResultsToInsert.push({
+                    user_id: session.user.id,
+                    game_id: game.id,
+                    date: game.date,
+                    home_team_id: game.homeTeamId,
+                    away_team_id: game.awayTeamId,
+                    home_score: result.homeScore,
+                    away_score: result.awayScore,
+                    box_score: { home: result.homeBox, away: result.awayBox }
+                });
+            }
+
+            // updatedBoxScores[game.id] = { home: result.homeBox, away: result.awayBox }; // Removed
             allPlayedToday.push(updatedGame);
             if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
         }
 
-        setTeams(updatedTeams); setSchedule(updatedSchedule); setBoxScores(updatedBoxScores); setPlayoffSeries(updatedSeries); 
+        // [Optimized] Async DB Insert
+        if (gameResultsToInsert.length > 0) {
+            saveGameResults(gameResultsToInsert);
+        }
+
+        setTeams(updatedTeams); 
+        setSchedule(updatedSchedule); 
+        // setBoxScores(updatedBoxScores); // Removed
+        setPlayoffSeries(updatedSeries); 
         
         if (userGameResultOutput) {
             const recap = await generateGameRecapNews(userGameResultOutput);
