@@ -133,11 +133,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     } catch (e: any) {
       let errorText: React.ReactNode = e.message || "마이그레이션 실패";
       
-      const fixSql = `-- [1] 기존 테이블 완전 초기화 (데이터 삭제됨)
-DROP TABLE IF EXISTS public.meta_players;
-DROP TABLE IF EXISTS public.meta_teams;
+      const fixSql = `-- [1] 기존 테이블 강제 삭제 (CASCADE로 의존성 무시)
+DROP TABLE IF EXISTS public.meta_players CASCADE;
+DROP TABLE IF EXISTS public.meta_teams CASCADE;
 
--- [2] 구단 테이블 생성 (Primary Key 설정)
+-- [2] 구단 테이블 생성
 CREATE TABLE public.meta_teams (
     id text NOT NULL PRIMARY KEY,
     name text NOT NULL,
@@ -148,7 +148,7 @@ CREATE TABLE public.meta_teams (
     base_attributes jsonb
 );
 
--- [3] 선수 테이블 생성 (Name Unique 설정)
+-- [3] 선수 테이블 생성 (UNIQUE 제약조건 필수)
 CREATE TABLE public.meta_players (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     name text NOT NULL,
@@ -160,28 +160,32 @@ CREATE TABLE public.meta_players (
     base_team_id text REFERENCES public.meta_teams(id),
     draft_year numeric,
     base_attributes jsonb,
+    created_at timestamptz DEFAULT now(),
+    -- 👇 Upsert 충돌 해결을 위한 필수 제약조건
     CONSTRAINT meta_players_name_key UNIQUE (name)
 );
 
--- [4] RLS(보안) 정책 설정
+-- [4] 보안 정책(RLS) 재설정
 ALTER TABLE public.meta_teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meta_players ENABLE ROW LEVEL SECURITY;
 
--- [5] 누구나 읽기/쓰기 허용 (개발용 정책)
+DROP POLICY IF EXISTS "Enable all access for teams" ON public.meta_teams;
+DROP POLICY IF EXISTS "Enable all access for players" ON public.meta_players;
+
 CREATE POLICY "Enable all access for teams" ON public.meta_teams FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Enable all access for players" ON public.meta_players FOR ALL USING (true) WITH CHECK (true);`;
 
       // Error Handling Logic
-      if (e.message && (e.message.includes("row-level security") || e.message.includes("ON CONFLICT"))) {
+      if (e.message && (e.message.includes("row-level security") || e.message.includes("ON CONFLICT") || e.message.includes("depends on"))) {
           errorText = (
             <div className="flex flex-col gap-2 w-full">
                 <div className="flex items-center gap-2 text-red-400 font-bold">
                     <ShieldAlert size={18} />
-                    <span>DB 구조 재설정 필요 (테이블 초기화)</span>
+                    <span>DB 제약조건 오류 (테이블 재생성 필요)</span>
                 </div>
                 <div className="text-[11px] text-slate-400 leading-relaxed">
-                    현재 DB 테이블에 <strong>Primary Key</strong> 또는 <strong>Unique 제약조건</strong>이 없습니다.<br/>
-                    아래 SQL을 실행하여 테이블을 올바른 구조로 <strong>재생성</strong>해주세요.
+                    <strong>meta_players</strong> 테이블이 다른 테이블에 연결되어 있어 삭제할 수 없습니다.<br/>
+                    <strong>CASCADE</strong> 옵션을 포함한 아래 SQL을 실행하여 강제로 초기화해주세요.
                 </div>
                 <div className="relative group">
                     <code className="text-[9px] font-mono bg-black/50 p-3 rounded-lg block whitespace-pre-wrap select-all cursor-text text-emerald-400 border border-slate-700 max-h-40 overflow-y-auto custom-scrollbar">
