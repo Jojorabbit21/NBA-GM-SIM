@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert } from 'lucide-react';
+import { runFullMigration } from '../services/migration';
+import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert, Database, RefreshCw, Server } from 'lucide-react';
 import { logError } from '../services/analytics'; 
 
 // Validation Regex Patterns
@@ -22,6 +23,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [confirmPassword, setConfirmPassword] = useState(''); 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string } | null>(null);
+  
+  // Migration State
+  const [isMigrating, setIsMigrating] = useState(false);
+  const [migrationStatus, setMigrationStatus] = useState<string>('');
+  const [migrationPercent, setMigrationPercent] = useState<number>(0);
 
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
   const isNicknameValid = useMemo(() => nickname === '' || NICKNAME_REGEX.test(nickname), [nickname]);
@@ -54,7 +60,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
-        // Fix: Cast supabase.auth to any to bypass broken signUp type
         const { data, error } = await (supabase.auth as any).signUp({
           email,
           password,
@@ -85,7 +90,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             loginEmail = profile.email;
         }
 
-        // Fix: Cast supabase.auth to any to bypass missing signInWithPassword type
         const { error } = await (supabase.auth as any).signInWithPassword({
           email: loginEmail,
           password,
@@ -104,9 +108,64 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     }
   };
 
+  const handleMigration = async () => {
+    if (!confirm("주의: 이 작업은 Supabase의 메타 데이터를 초기화하고 다시 적재합니다. 실행하시겠습니까?")) return;
+    
+    setIsMigrating(true);
+    setMigrationPercent(0);
+    setMigrationStatus("준비 중...");
+    setMessage(null);
+
+    try {
+      const result = await runFullMigration((msg, percent) => {
+          setMigrationStatus(msg);
+          setMigrationPercent(percent);
+      });
+
+      if (result.success) {
+        setMessage({ type: 'success', text: result.message });
+      } else {
+        setMessage({ type: 'error', text: result.message });
+      }
+    } catch (e: any) {
+      setMessage({ type: 'error', text: e.message || "마이그레이션 실패" });
+    } finally {
+      setIsMigrating(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
-      {/* [Optimization] Reduced blur complexity */}
+      
+      {/* Migration Progress Modal */}
+      {isMigrating && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-300">
+              <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 w-full max-w-md shadow-2xl flex flex-col items-center gap-6">
+                  <div className="relative">
+                      <div className="absolute inset-0 bg-indigo-500/20 rounded-full blur-xl animate-pulse"></div>
+                      <Database size={48} className="text-indigo-400 relative z-10" />
+                  </div>
+                  <div className="w-full space-y-2 text-center">
+                      <h3 className="text-xl font-black text-white uppercase tracking-tight">데이터베이스 초기화 중</h3>
+                      <p className="text-sm font-bold text-slate-400">{migrationStatus}</p>
+                  </div>
+                  <div className="w-full space-y-2">
+                      <div className="h-4 w-full bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                          <div 
+                            className="h-full bg-gradient-to-r from-indigo-600 to-blue-500 transition-all duration-300 ease-out" 
+                            style={{ width: `${migrationPercent}%` }}
+                          />
+                      </div>
+                      <div className="flex justify-between text-[10px] font-black uppercase text-slate-500">
+                          <span>Progress</span>
+                          <span>{migrationPercent}%</span>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+
+      {/* Background Ambience */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-3xl opacity-30"></div>
         <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl opacity-30"></div>
@@ -226,14 +285,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
               {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> 로그인</> : <><UserPlus size={20} /> 회원가입</>)}
             </button>
 
-            <button
-              type="button"
-              onClick={onGuestLogin}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-3"
-            >
-              <ShieldAlert size={18} className="text-amber-500" />
-              관리자 모드로 입장 (저장 불가)
-            </button>
+            <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onGuestLogin}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2"
+                >
+                  <ShieldAlert size={16} className="text-amber-500" />
+                  관리자 모드
+                </button>
+                
+                <button
+                  type="button"
+                  onClick={handleMigration}
+                  disabled={isMigrating}
+                  className="px-4 bg-slate-800 hover:bg-slate-700 disabled:bg-slate-900 text-slate-400 hover:text-white font-bold py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2"
+                  title="초기 데이터 적재 (DB Reset)"
+                >
+                  {isMigrating ? <Loader2 size={16} className="animate-spin" /> : <Server size={16} className="text-emerald-500" />}
+                </button>
+            </div>
           </div>
         </form>
 
