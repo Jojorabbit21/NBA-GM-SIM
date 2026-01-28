@@ -3,7 +3,7 @@ import React from 'react';
 import { 
   LayoutDashboard, Users, Trophy, BarChart3, Swords, 
   Calendar as CalendarIcon, ArrowLeftRight, Clock, 
-  RotateCcw, LogOut, FlaskConical, UserCircle
+  RotateCcw, LogOut, FlaskConical 
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 
@@ -43,23 +43,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout 
 }) => {
   return (
+    // [Optimization] bg-slate-900/60 -> bg-slate-900/95 (Almost opaque to save GPU)
     <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden">
       {/* Team Profile Section */}
       <div className="p-8 border-b border-slate-800 bg-slate-950/20">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 bg-slate-950 rounded-xl p-2 border border-slate-800 shadow-inner flex items-center justify-center">
-            {team?.logo ? (
-              <img src={team.logo} className="w-full h-full object-contain" alt="" />
-            ) : (
-              <UserCircle className="text-slate-700" size={32} />
-            )}
+            <img src={team?.logo} className="w-full h-full object-contain" alt="" />
           </div>
           <div className="min-w-0">
-            <h2 className="font-black text-lg leading-tight uppercase oswald text-white truncate">
-              {team?.name || 'NBA GENERAL MANAGER'}
-            </h2>
+            <h2 className="font-black text-lg leading-tight uppercase oswald text-white truncate">{team?.name || 'NBA GM'}</h2>
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
-              {team ? `${team.wins}W - ${team.losses}L` : 'SEASON 2025-26'}
+              {team?.wins || 0}W - {team?.losses || 0}L
             </span>
           </div>
         </div>
