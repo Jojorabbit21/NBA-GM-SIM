@@ -26,18 +26,18 @@ export const AuthInput: React.FC<AuthInputProps> = ({
 
   return (
     <div className="w-full flex flex-col mb-1">
-      {/* Input Label */}
-      <label className="text-[10px] pretendard font-medium text-slate-500 tracking-[0.15em] mb-2 ml-1.5">
+      {/* Input Label - Increased to 14px (text-sm) and added mb-2.5 for spacing */}
+      <label className="text-sm pretendard font-medium text-slate-500 mb-2.5 ml-1">
         {label}
       </label>
 
       <div className="relative group">
-        {/* The Input Field - Pretendard Medium applied to text and placeholder */}
+        {/* The Input Field - Text and Placeholder increased to 14px (text-sm) */}
         <input
           type={type}
           required
           placeholder={placeholder}
-          className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 px-5 outline-none transition-all duration-300 pretendard font-medium placeholder:text-slate-700 placeholder:font-medium ${
+          className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 px-5 outline-none transition-all duration-300 pretendard font-medium placeholder:text-slate-700 placeholder:text-sm placeholder:font-medium ${
             hasError 
               ? 'border-red-500 focus:ring-1 focus:ring-red-500/50' 
               : 'border-slate-800 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10'
@@ -47,7 +47,7 @@ export const AuthInput: React.FC<AuthInputProps> = ({
         />
       </div>
 
-      {/* Error Message Container - Pretendard Medium applied to error text */}
+      {/* Error Message Container */}
       <div className="h-6 mt-1 px-1.5 flex items-start">
         {hasError && (
           <div className="flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1 duration-200">

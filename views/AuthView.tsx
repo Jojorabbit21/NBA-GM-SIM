@@ -121,9 +121,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-white leading-tight dmsans uppercase tracking-tighter">
+          <h1 className="text-3xl font-bold text-white leading-tight dmsans tracking-tighter">
+            Basketball<br />
             General Manager<br />
-            <span className="text-indigo-500">Simulation</span>
+            Simulation
           </h1>
         </div>
 
