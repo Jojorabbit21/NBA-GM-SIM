@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Team } from '../types';
+import { ScoreGraph } from '../components/game/ScoreGraph';
 
 // Team Colors Mapping
 const TEAM_COLORS: Record<string, string> = {
@@ -138,131 +139,6 @@ const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
     return history;
 };
 
-const ScoreGraph: React.FC<{ 
-    history: { h: number, a: number, wp: number }[], 
-    progress: number, 
-    homeColor: string, 
-    awayColor: string,
-    homeLogo: string,
-    awayLogo: string,
-    homeTeamCode: string,
-    awayTeamCode: string
-}> = ({ history, progress, homeColor, awayColor, homeLogo, awayLogo, homeTeamCode, awayTeamCode }) => {
-    const VIEW_WIDTH = 100;
-    const VIEW_HEIGHT = 60;
-    const MID_Y = 30; // 50% line
-
-    const dataIndex = Math.floor((progress / 100) * (history.length - 1));
-    const dataSlice = history.slice(0, dataIndex + 1);
-
-    // Build points for the line
-    let points = "";
-    dataSlice.forEach((data, i) => {
-        const x = (i / (history.length - 1)) * VIEW_WIDTH;
-        // Map wp (0-100) to y. 100% Home = 0, 0% Home = VIEW_HEIGHT
-        const y = VIEW_HEIGHT - (data.wp / 100 * VIEW_HEIGHT);
-        points += `${x},${y} `;
-    });
-
-    const currentData = dataSlice[dataSlice.length - 1] || { wp: 50 };
-    const currentWP = currentData.wp;
-    const endX = (dataIndex / (history.length - 1)) * VIEW_WIDTH;
-    const endY = VIEW_HEIGHT - (currentWP / 100 * VIEW_HEIGHT);
-
-    // Create the closed path for filling
-    // Start at (0, MID_Y) -> Follow points -> (endX, MID_Y) -> Close
-    const fillPath = `M 0,${MID_Y} L ${points} L ${endX},${MID_Y} Z`;
-
-    const homeProb = currentWP.toFixed(0);
-    const awayProb = (100 - currentWP).toFixed(0);
-
-    return (
-        <div className="w-full relative flex flex-col mt-6 mb-2">
-            {/* Header: Logos & Percentages */}
-            <div className="flex justify-between items-end px-1 mb-2">
-                <div className="flex items-center gap-2">
-                    <img src={homeLogo} className="w-8 h-8 object-contain" alt="Home" />
-                    <div>
-                        <div className="text-2xl font-black oswald leading-none text-white">{homeProb}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{homeTeamCode}</div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2 text-right">
-                    <div>
-                        <div className="text-2xl font-black oswald leading-none text-white">{awayProb}%</div>
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{awayTeamCode}</div>
-                    </div>
-                    <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
-                </div>
-            </div>
-
-            {/* Graph Container */}
-            <div className="w-full h-40 bg-slate-950 border border-slate-800 rounded-lg relative overflow-hidden">
-                <svg 
-                    viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
-                    className="w-full h-full"
-                    preserveAspectRatio="none"
-                >
-                    <defs>
-                        {/* Gradient for Fill: Sharp transition at 50% */}
-                        <linearGradient id="wpGradient" x1="0" x2="0" y1="0" y2="1">
-                            <stop offset="50%" stopColor={homeColor} stopOpacity="0.4" />
-                            <stop offset="50%" stopColor={awayColor} stopOpacity="0.4" />
-                        </linearGradient>
-                        
-                        {/* Dot Pattern for Grid */}
-                        <pattern id="gridPattern" width="25" height="15" patternUnits="userSpaceOnUse">
-                            <circle cx="1" cy="1" r="0.5" fill="#334155" />
-                        </pattern>
-                    </defs>
-
-                    {/* Background Grid */}
-                    <rect width="100%" height="100%" fill="url(#gridPattern)" opacity="0.5" />
-                    
-                    {/* 50% Baseline */}
-                    <line x1="0" y1={MID_Y} x2="100" y2={MID_Y} stroke="#475569" strokeWidth="0.2" />
-
-                    {/* The Fill Area (Between Curve and Center) */}
-                    <path 
-                        d={fillPath} 
-                        fill="url(#wpGradient)" 
-                        stroke="none"
-                    />
-
-                    {/* The Curve Line */}
-                    <polyline 
-                        points={points} 
-                        fill="none" 
-                        stroke="#e2e8f0" 
-                        strokeWidth="0.8" 
-                        strokeDasharray="1.5 1"
-                        strokeLinecap="round"
-                        vectorEffect="non-scaling-stroke"
-                    />
-
-                    {/* End Dot */}
-                    {dataSlice.length > 0 && (
-                        <circle cx={endX} cy={endY} r="1" fill="white" className="animate-pulse" />
-                    )}
-                </svg>
-
-                {/* Y-Axis Labels (Overlay) */}
-                <div className="absolute right-1 top-1 text-[8px] text-slate-500 font-mono">100</div>
-                <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] text-slate-500 font-mono">50</div>
-                <div className="absolute right-1 bottom-1 text-[8px] text-slate-500 font-mono">100</div>
-            </div>
-
-            {/* X-Axis Labels */}
-            <div className="flex justify-between px-1 mt-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
-                <span>1st</span>
-                <span>2nd</span>
-                <span>3rd</span>
-                <span>4th</span>
-            </div>
-        </div>
-    );
-};
-
 export const GameSimulatingView: React.FC<{ 
   homeTeam: Team, 
   awayTeam: Team, 
@@ -386,7 +262,9 @@ export const GameSimulatingView: React.FC<{
       </div>
 
       <div className="relative z-10 w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
+        {/* Main Header with Away (Left) vs Home (Right) Layout */}
         <div className="flex items-center justify-between px-6 py-6 md:px-10 bg-slate-950/30">
+            {/* Left: Away Team */}
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
@@ -395,6 +273,7 @@ export const GameSimulatingView: React.FC<{
                 </div>
             </div>
 
+            {/* Center: Graph & Message */}
             <div className="flex-1 px-2 flex flex-col items-center justify-center">
                  <div className={`text-sm md:text-base font-black text-center min-h-[2rem] flex items-center justify-center break-keep leading-tight animate-pulse transition-colors duration-300 ${
                      Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
@@ -408,7 +287,7 @@ export const GameSimulatingView: React.FC<{
                     {currentMessage}
                  </div>
 
-                 {/* Updated Score Graph (ESPN Style Dark) */}
+                 {/* Score Graph Component */}
                  <ScoreGraph 
                     history={scoreTimeline} 
                     progress={progress} 
@@ -421,6 +300,7 @@ export const GameSimulatingView: React.FC<{
                  />
             </div>
 
+            {/* Right: Home Team */}
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
@@ -430,6 +310,7 @@ export const GameSimulatingView: React.FC<{
             </div>
         </div>
 
+        {/* Court Visualization */}
         <div className="relative w-full aspect-[94/50] bg-slate-950 border-t border-slate-800">
             <svg viewBox="0 0 94 50" className="absolute inset-0 w-full h-full opacity-80">
                 <rect width="94" height="50" fill="#0f172a" />

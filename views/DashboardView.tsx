@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Team, Game, Player, OffenseTactic, DefenseTactic } from '../types';
+import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries } from '../types';
 import { GameTactics, generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/SharedComponents';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -24,11 +24,13 @@ interface DashboardViewProps {
   onShowSeasonReview: () => void;
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
+  playoffSeries?: PlayoffSeries[]; // Added prop to receive series data
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
   team, teams, schedule, onSim, tactics, onUpdateTactics, 
-  currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false 
+  currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
+  playoffSeries = []
 }) => {
   // 1. Find the next game for the user's team (regardless of unplayed/played) to show branding
   const userGamesToday = useMemo(() => {
@@ -57,6 +59,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const isHome = nextGameDisplay?.homeTeamId === team?.id;
   const opponentId = isHome ? nextGameDisplay?.awayTeamId : nextGameDisplay?.homeTeamId;
   const opponent = useMemo(() => teams.find(t => t.id === opponentId), [teams, opponentId]);
+
+  // 4. Determine Current Playoff Series
+  const currentSeries = useMemo(() => {
+      if (!nextGameDisplay?.isPlayoff || !nextGameDisplay.seriesId || !playoffSeries) return undefined;
+      return playoffSeries.find(s => s.id === nextGameDisplay.seriesId);
+  }, [nextGameDisplay, playoffSeries]);
 
   const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
@@ -133,6 +141,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         onShowSeasonReview={onShowSeasonReview}
         onShowPlayoffReview={onShowPlayoffReview}
         hasPlayoffHistory={hasPlayoffHistory}
+        currentSeries={currentSeries}
       />
 
       {/* [Optimization] Reduced background transparency and blur (bg-slate-900/80, backdrop-blur-xl) */}
