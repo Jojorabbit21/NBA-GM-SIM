@@ -26,7 +26,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // [Pagination] Fetch DB data for the current month view
+  // [Pagination] Fetch ONLY Game Results for the current month
   const [userId, setUserId] = useState<string | undefined>(undefined);
   
   useEffect(() => {
@@ -35,7 +35,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       });
   }, []);
 
-  const { data: dbMonthlyGames, isLoading: isDbLoading } = useMonthlySchedule(
+  const { data: userResults, isLoading: isDbLoading } = useMonthlySchedule(
       userId, 
       currentDate.getFullYear(), 
       currentDate.getMonth()
@@ -54,40 +54,47 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
     }
   }, [currentSimDate]);
 
-  // [Optimization] Efficiently merge Local + DB data and filter by team
-  // Priority: Local State (Unsaved Sim Results) > DB State (Saved Results) > Meta Schedule
+  // [Optimization] Instant Rendering Strategy
+  // 1. Calculate base schedule from 'localSchedule' (Memory) -> INSTANT display
+  // 2. Overlay 'userResults' (DB) when they arrive -> Updates scores/played status
   const monthlyGames = useMemo(() => {
-      // 1. Base pool: Use DB data if available, otherwise filter from full local prop
-      let baseGames = dbMonthlyGames;
-      
-      if (!baseGames) {
-          // Fallback if DB fetch fails or loading: Filter from the huge local prop array
-          // Note: Filtering 1230 items is fast (O(N)), but we optimize to do it only when month changes
-          const y = currentDate.getFullYear();
-          const m = currentDate.getMonth();
-          baseGames = localSchedule.filter(g => {
-              const d = new Date(g.date);
-              return d.getFullYear() === y && d.getMonth() === m;
-          });
+      const y = currentDate.getFullYear();
+      const m = currentDate.getMonth();
+
+      // 1. Filter games for current month from full local schedule (O(N) but N=1230 is fast)
+      const baseGames = localSchedule.filter(g => {
+          const d = new Date(g.date);
+          return d.getFullYear() === y && d.getMonth() === m;
+      });
+
+      // 2. Create Map for DB Results (if available)
+      const resultMap = new Map<string, any>();
+      if (userResults) {
+          userResults.forEach((r: any) => resultMap.set(r.game_id, r));
       }
 
-      // 2. Overlay Local State (Crucial for immediate sim feedback before save)
-      // We assume `localSchedule` prop has the latest "played" status for current session
-      const mergedGames = baseGames?.map(g => {
-          // Find if there is a newer version in local state
-          // Optimization: This .find is technically O(N) inside map, but N is small (monthly games ~100-200)
-          // For absolute best perf, we could turn localSchedule into a Map, but passing that from App is complex.
-          // Since we only look at "played" games, we can optimize by only checking if 'g' is unplayed in DB but played in Local.
-          if (!g.played) {
-             const localMatch = localSchedule.find(lg => lg.id === g.id);
-             if (localMatch && localMatch.played) return localMatch;
+      // 3. Merge Local + DB
+      // Priority: Local "Played" status (most recent sim) > DB Result > Base
+      const mergedGames = baseGames.map(g => {
+          // If local state says played (just simulated), rely on it.
+          if (g.played) return g;
+
+          // Otherwise check DB for historical results
+          const dbResult = resultMap.get(g.id);
+          if (dbResult) {
+              return {
+                  ...g,
+                  played: true,
+                  homeScore: dbResult.home_score,
+                  awayScore: dbResult.away_score
+              };
           }
           return g;
-      }) || [];
+      });
 
-      // 3. Filter by Selected Team
+      // 4. Filter by Selected Team
       return mergedGames.filter(g => (g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId));
-  }, [dbMonthlyGames, localSchedule, currentDate, selectedTeamId]);
+  }, [localSchedule, userResults, currentDate, selectedTeamId]);
 
   // [Optimization] O(1) Lookup Map for Grid Rendering
   const gameMap = useMemo(() => {
@@ -126,7 +133,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   }), [start, total]);
 
   const getGameOnDate = (day: number) => {
-    // Optimization: Build date string manually to avoid Date object creation overhead in loop
     const yyyy = currentDate.getFullYear();
     const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
     const dd = String(day).padStart(2, '0');
@@ -222,7 +228,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         </div>
       </div>
 
-      {/* [Optimization] bg-slate-900/80 -> bg-slate-900/95, Removed backdrop-blur-sm */}
       <div className="bg-slate-900/95 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden flex flex-col relative z-10">
         <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
            <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>

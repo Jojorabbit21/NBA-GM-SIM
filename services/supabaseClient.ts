@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // 1. 환경 변수를 가져오거나 하드코딩된 값을 사용합니다. (테스트용)
@@ -17,6 +18,9 @@ export const isSupabaseConfigured = !!hasValidEnv;
 
 if (!hasValidEnv) {
     console.warn('⚠️ Supabase 연결 정보가 유효하지 않습니다. 하드코딩된 값을 확인하거나 .env 파일을 확인해주세요.');
+} else {
+    // [Debug] 연결된 프로젝트 URL 확인 (사용자 디버깅용)
+    console.log(`✅ Supabase Connected: ${supabaseUrl}`);
 }
 
 // 연결 정보가 없더라도 앱이 크래시되지 않도록 빈 클라이언트를 생성하거나, 

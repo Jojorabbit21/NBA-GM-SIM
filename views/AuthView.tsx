@@ -36,6 +36,31 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     );
   }, [email, nickname, password, confirmPassword]);
 
+  // [Safety] 프로필 데이터가 없는 경우 강제로 생성하는 함수
+  const ensureProfileExists = async (user: any, userNickname?: string) => {
+    try {
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (!profile) {
+            console.log("⚠️ No profile found. Creating manually...");
+            const { error: insertError } = await supabase.from('profiles').insert({
+                id: user.id,
+                email: user.email,
+                nickname: userNickname || user.user_metadata?.nickname || 'GM',
+                created_at: new Date().toISOString()
+            });
+            if (insertError) console.error("Profile creation failed:", insertError);
+            else console.log("✅ Profile created manually.");
+        }
+    } catch (e) {
+        console.error("Profile check failed:", e);
+    }
+  };
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
@@ -63,8 +88,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
         if (error) throw error;
 
-        setMessage({ type: 'success', text: '회원가입 성공! 이메일 인증 후 로그인해주세요.' });
+        // 회원가입 성공 시 프로필 즉시 확인/생성
+        if (data.user) {
+            await ensureProfileExists(data.user, nickname);
+        }
+
+        setMessage({ type: 'success', text: '회원가입 성공! 이제 로그인할 수 있습니다.' });
         setMode('login');
+        // 자동 로그인 처리를 원치 않는 경우 여기서 멈춤
       } else {
         let loginEmail = identifier.trim();
 
@@ -81,12 +112,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             loginEmail = profile.email;
         }
 
-        const { error } = await (supabase.auth as any).signInWithPassword({
+        const { data, error } = await (supabase.auth as any).signInWithPassword({
           email: loginEmail,
           password,
         });
         
         if (error) throw error;
+
+        // 로그인 성공 시 프로필 확인
+        if (data.user) {
+            await ensureProfileExists(data.user);
+        }
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
