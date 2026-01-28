@@ -1,7 +1,27 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { Player, Transaction, PlayerBoxScore } from '../types';
+import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { Player, PlayerBoxScore, Transaction } from '../types';
+import { GameTactics } from './gameEngine'; 
 import { logError } from './analytics'; 
+
+async function retryWithBackoff<T>(
+  operation: () => Promise<T>,
+  retries: number = 2,
+  delay: number = 2000
+): Promise<T> {
+  try {
+    return await operation();
+  } catch (error: any) {
+    const status = error?.status || error?.response?.status;
+    const message = error?.message || error?.response?.message || '';
+    const isRateLimit = status === 429 || status === 'RESOURCE_EXHAUSTED' || message.includes('quota') || message.includes('RESOURCE_EXHAUSTED');
+    const isServerError = typeof status === 'number' && status >= 500;
+    if (retries > 0 && (isRateLimit || isServerError)) {
+      await new Promise(resolve => setTimeout(resolve, delay));
+      return retryWithBackoff(operation, retries - 1, delay * 2);
+    } else { throw error; }
+  }
+}
 
 export async function generateScoutingReport(prospect: Player): Promise<string[]> {
     const fallback = [
@@ -35,6 +55,42 @@ export async function generateScoutingReport(prospect: Player): Promise<string[]
     return fallback;
 }
 
+export async function generateCPUTradeNews(tx: Transaction): Promise<string[] | null> {
+    if (!tx.details) return null;
+    const inPlayer = tx.details.acquired[0]?.name || "선수";
+
+    return [
+        `[Woj] ${tx.details.partnerTeamName}와 ${tx.description.split(' ')[0].replace('[CPU]', '').trim()}간의 트레이드가 최종 합의되었습니다.`,
+        `[BREAKING] ${inPlayer}, 새로운 유니폼을 입게 되었습니다. 리그 판도 변화 예고.`,
+        `[분석] 이번 트레이드는 양 팀의 니즈가 정확히 일치한 결과라는 평가입니다.`
+    ];
+}
+
 export async function generateOwnerWelcome(teamName: string) {
   return `[OWNER]: ${teamName}에 오신 것을 환영합니다. 우리의 목표와 실현 가능성을 점검해주십시오.`;
+}
+
+export async function generateGameRecapNews(gameResult: {
+  home: any; 
+  away: any; 
+  homeScore: number;
+  awayScore: number;
+  homeBox: PlayerBoxScore[];
+  awayBox: PlayerBoxScore[];
+  userTactics: GameTactics; 
+  myTeamId: string;
+}): Promise<string[] | null> {
+  const winner = gameResult.homeScore > gameResult.awayScore ? gameResult.home.name : gameResult.away.name;
+  const loser = gameResult.homeScore < gameResult.awayScore ? gameResult.home.name : gameResult.away.name;
+  const isWin = (gameResult.myTeamId === gameResult.home.id && gameResult.homeScore > gameResult.awayScore) ||
+                (gameResult.myTeamId === gameResult.away.id && gameResult.awayScore > gameResult.homeScore);
+  const myTeamName = gameResult.myTeamId === gameResult.home.id ? gameResult.home.name : gameResult.away.name;
+
+  return [
+    `[속보] ${winner}, ${loser} 상대로 ${Math.abs(gameResult.homeScore - gameResult.awayScore)}점차 승리`,
+    isWin 
+      ? `[경기 분석] ${myTeamName}의 전술적 승리, 팬들의 환호 속 경기 종료`
+      : `[경기 분석] ${myTeamName}, 아쉬운 패배... 다음 경기 반등 노린다`,
+    `[현장 반응] 경기장 분위기 고조, 양 팀 선수들 치열한 승부 펼쳐`
+  ];
 }
