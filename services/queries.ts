@@ -5,7 +5,6 @@ import {
   getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, 
   mapDatabaseScheduleToRuntimeGame,
-  calculatePlayerOvr,
   INITIAL_STATS
 } from '../utils/constants';
 import { Team, Player, Game, Transaction } from '../types';
@@ -29,6 +28,37 @@ const reconstructSchedule = (metaSchedule: Game[], userResults: any[]): Game[] =
         }
         return game;
     });
+};
+
+/**
+ * [CTO 핵심 로직] 메타데이터와 사용자 개별 상태를 병합하여 팀 정보를 복구합니다.
+ */
+const reconstructTeams = (baseTeams: Team[], userPlayerStates: any[]): Team[] => {
+    if (!userPlayerStates || userPlayerStates.length === 0) return baseTeams;
+    
+    // 유저 상태를 Map으로 변환하여 O(1) 탐색 가능하게 함
+    const stateMap = new Map(userPlayerStates.map(s => [s.player_id, s]));
+    
+    return baseTeams.map(team => ({
+        ...team,
+        // 해당 유저의 기록에서 팀 승패를 다시 계산 (또는 별도 컬럼에서 가져옴)
+        // 여기서는 편의상 로스터 데이터 복구에 집중
+        roster: team.roster.map(player => {
+            const savedState = stateMap.get(player.id);
+            if (savedState) {
+                return {
+                    ...player,
+                    condition: savedState.condition ?? 100,
+                    health: savedState.health ?? 'Healthy',
+                    injuryType: savedState.injury_type,
+                    returnDate: savedState.return_date,
+                    stats: savedState.stats || INITIAL_STATS(),
+                    playoffStats: savedState.playoff_stats || INITIAL_STATS(),
+                };
+            }
+            return player;
+        })
+    }));
 };
 
 // ============================================================================
@@ -82,8 +112,9 @@ export const useLoadSave = (userId: string | undefined) => {
     queryKey: ['fullGameState', userId],
     queryFn: async () => {
       if (!userId) return null;
-      console.log("🔄 Loading Game State (Hybrid RDB Strategy)...");
+      console.log("🔄 Loading Game State (Relational Reconstruction)...");
 
+      // 1. 기본 메타데이터 확보
       let baseData = queryClient.getQueryData<{teams: Team[], schedule: Game[]}>(['baseData']);
       if (!baseData) {
           const { teams, schedule } = await (async () => {
@@ -104,47 +135,49 @@ export const useLoadSave = (userId: string | undefined) => {
           queryClient.setQueryData(['baseData'], baseData);
       }
 
-      const { data: saveRecord, error: saveError } = await supabase
-        .from('saves')
-        .select('team_id, game_data, updated_at')
-        .eq('user_id', userId)
-        .maybeSingle();
+      // 2. 유저별 세션 데이터 및 개별 선수 상태/기록 병렬 로드
+      const [saveRes, statesRes, historyRes, txRes] = await Promise.all([
+          supabase.from('saves').select('*').eq('user_id', userId).maybeSingle(),
+          supabase.from('user_player_state').select('*').eq('user_id', userId),
+          supabase.from('user_game_results').select('game_id, home_score, away_score').eq('user_id', userId),
+          supabase.from('user_transactions').select('*').eq('user_id', userId).order('date', { ascending: false })
+      ]);
 
-      if (saveError) console.error("Save Load Error:", saveError);
+      if (!saveRes.data) return null;
 
-      const { data: resultHistory, error: historyError } = await supabase
-        .from('user_game_results')
-        .select('game_id, home_score, away_score')
-        .eq('user_id', userId);
-
-      if (historyError) console.error("History Load Error:", historyError);
-
-      const { data: txHistory, error: txError } = await supabase
-        .from('user_transactions')
-        .select('*')
-        .eq('user_id', userId)
-        .order('date', { ascending: false });
-
-      if (txError) console.error("Transaction Load Error:", txError);
-
-      if (!saveRecord) return null; 
-
-      console.log("...Reconstructing Game State...");
-      const finalTeams = saveRecord.game_data?.teams || baseData.teams;
-      const finalSchedule = reconstructSchedule(baseData.schedule, resultHistory || []);
-      const finalTransactions: Transaction[] = (txHistory || []).map((t: any) => ({
+      console.log("...Merging Relational Data into State...");
+      
+      // 3. 데이터 병합 (RDB -> Runtime Object)
+      const finalTeams = reconstructTeams(baseData.teams, statesRes.data || []);
+      const finalSchedule = reconstructSchedule(baseData.schedule, historyRes.data || []);
+      const finalTransactions: Transaction[] = (txRes.data || []).map((t: any) => ({
           id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
       }));
 
+      // 4. 팀별 승패 데이터는 경기 기록(user_game_results)을 통해 재계산하는 것이 가장 정확하지만,
+      // 성능을 위해 saves 테이블의 game_data에 요약본만 남겨두거나 여기서 즉석 계산합니다.
+      finalTeams.forEach(team => {
+          let wins = 0; let losses = 0;
+          finalSchedule.forEach(g => {
+              if (g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id)) {
+                  const isHome = g.homeTeamId === team.id;
+                  const won = isHome ? (g.homeScore! > g.awayScore!) : (g.awayScore! > g.homeScore!);
+                  if (won) wins++; else losses++;
+              }
+          });
+          team.wins = wins;
+          team.losses = losses;
+      });
+
       return {
-          team_id: saveRecord.team_id,
+          team_id: saveRes.data.team_id,
           game_data: {
-              ...saveRecord.game_data,
-              teams: finalTeams,
+              ...saveRes.data.game_data,
+              teams: finalTeams, // 복구된 전체 팀 정보
               schedule: finalSchedule,
               transactions: finalTransactions
           },
-          updated_at: saveRecord.updated_at
+          updated_at: saveRes.data.updated_at
       };
     },
     enabled: !!userId,
@@ -158,38 +191,50 @@ export const useSaveGame = () => {
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
       if (!userId || !teamId) throw new Error("Missing UserID or TeamID");
 
-      console.log("💾 Saving Game (Hybrid Optimization)...");
+      console.log("💾 Normalizing and Saving Game Data...");
 
-      const payloadData = {
+      // 1. 대용량 'teams' 배열을 제외한 가벼운 메타데이터 구성
+      const payloadMeta = {
           currentSimDate: gameData.currentSimDate,
           tactics: gameData.tactics,
           playoffSeries: gameData.playoffSeries,
-          prospects: gameData.prospects,
-          teams: gameData.teams, 
+          prospects: gameData.prospects
       };
 
-      const payload = {
+      const savePayload = {
         user_id: userId,
         team_id: teamId,
-        game_data: payloadData, 
+        game_data: payloadMeta, // 더 이상 teams를 포함하지 않음
         updated_at: new Date().toISOString()
       };
 
-      // [CRITICAL FIX]
-      // if SQL 'UNIQUE' constraint is correctly added, this will work.
-      // We use 'onConflict' targeting the columns defined in the UNIQUE index.
-      const { error } = await supabase
-        .from('saves')
-        .upsert(payload, { onConflict: 'user_id,team_id' });
-      
+      // 2. 개별 선수 상태 추출 (Normalization)
+      const playerStates = gameData.teams.flatMap((t: Team) => t.roster.map((p: Player) => ({
+          user_id: userId,
+          player_id: p.id,
+          condition: Math.round(p.condition),
+          health: p.health,
+          injury_type: p.injuryType,
+          return_date: p.returnDate,
+          stats: p.stats, // 개별 선수의 JSON은 크기가 작아 안전함
+          playoff_stats: p.playoffStats,
+          updated_at: new Date().toISOString()
+      })));
+
+      // 3. 병렬 업서트 실행
+      const results = await Promise.all([
+          supabase.from('saves').upsert(savePayload, { onConflict: 'user_id,team_id' }),
+          supabase.from('user_player_state').upsert(playerStates, { onConflict: 'user_id,player_id' })
+      ]);
+
+      const error = results.find(r => r.error);
       if (error) {
-          console.error("❌ Supabase Save Failed:", error);
-          // If the unique constraint is still missing, we can try a fallback or at least report it.
-          throw error;
+          console.error("❌ Database Upsert Failed:", error);
+          throw error.error;
       }
 
-      console.log("✅ Save Successful");
-      return payload;
+      console.log("✅ Hybrid RDB Save Successful");
+      return savePayload;
     }
   });
 };
@@ -271,6 +316,7 @@ export const useMonthlySchedule = (userId: string | undefined, year: number, mon
         },
         enabled: !!userId,
         staleTime: 1000 * 60 * 5,
+        // @ts-ignore
         keepPreviousData: true
     });
 };
