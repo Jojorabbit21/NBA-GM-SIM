@@ -6,30 +6,162 @@ import {
   getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, 
   mapDatabaseScheduleToRuntimeGame,
-  INITIAL_STATS
+  INITIAL_STATS,
+  INITIAL_TEAMS_DATA
 } from '../utils/constants';
-import { Team, Player, Game, Transaction } from '../types';
+import { Team, Player, Game, Transaction, SeasonStats, PlayoffSeries } from '../types';
 
 // ============================================================================
-//  DATA RECONSTRUCTION LOGIC
+//  HELPER: State Reconstruction (Event Sourcing Logic)
 // ============================================================================
 
-const reconstructSchedule = (metaSchedule: Game[], userResults: any[]): Game[] => {
-    if (!userResults || userResults.length === 0) return metaSchedule;
-    const resultMap = new Map(userResults.map((r: any) => [r.game_id, r]));
-    return metaSchedule.map(game => {
-        const result = resultMap.get(game.id);
-        if (result) {
-            return {
-                ...game,
-                played: true,
-                homeScore: result.home_score,
-                awayScore: result.away_score,
+/**
+ * DB의 Raw Data(트레이드, 경기결과)를 바탕으로 현재 시점의 팀/선수 상태를 재구성합니다.
+ */
+const reconstructGameState = (
+    baseTeams: Team[],
+    baseSchedule: Game[],
+    transactions: Transaction[],
+    gameResults: any[]
+) => {
+    // 1. Deep Copy Base Data (To avoid mutating cache)
+    const teamsMap = new Map<string, Team>();
+    const playerMap = new Map<string, Player>();
+
+    // 초기화: 선수들을 ID로 매핑하여 빠른 접근
+    baseTeams.forEach(t => {
+        const teamCopy = { ...t, roster: [], wins: 0, losses: 0, tacticHistory: { offense: {}, defense: {} } }; // Reset dynamic data
+        teamsMap.set(t.id, teamCopy);
+        t.roster.forEach(p => {
+            // 초기 스탯 리셋 (DB에서 계산할 것이므로)
+            const playerCopy = { 
+                ...p, 
+                stats: INITIAL_STATS(), 
+                playoffStats: INITIAL_STATS(),
+                teamId: t.id // 추적용 임시 필드
             };
-        }
-        return game;
+            playerMap.set(p.id, playerCopy);
+            // 초기 로스터 배정
+            teamCopy.roster.push(playerCopy);
+        });
     });
+
+    // 2. Apply Transactions (Roster Moves)
+    // 트레이드 로그를 순서대로 반영하여 선수의 현재 소속팀을 확정
+    transactions.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    transactions.forEach(tx => {
+        if (tx.type === 'Trade' && tx.details) {
+            const { acquired, traded, partnerTeamId } = tx.details;
+            
+            // My Team: Gained 'acquired', Lost 'traded'
+            const myTeam = teamsMap.get(tx.teamId);
+            const partnerTeam = teamsMap.get(partnerTeamId || '');
+
+            if (myTeam && partnerTeam) {
+                // Remove traded players from My Team
+                if (traded) {
+                    traded.forEach((tp: any) => {
+                        const player = playerMap.get(tp.id);
+                        if (player) {
+                            myTeam.roster = myTeam.roster.filter(p => p.id !== tp.id);
+                            // Add to Partner Team
+                            if (!partnerTeam.roster.find(p => p.id === tp.id)) {
+                                partnerTeam.roster.push(player);
+                            }
+                        }
+                    });
+                }
+                
+                // Remove acquired players from Partner Team (They act as 'traded' from partner's view)
+                if (acquired) {
+                    acquired.forEach((ap: any) => {
+                        const player = playerMap.get(ap.id);
+                        if (player) {
+                            partnerTeam.roster = partnerTeam.roster.filter(p => p.id !== ap.id);
+                            // Add to My Team
+                            if (!myTeam.roster.find(p => p.id === ap.id)) {
+                                myTeam.roster.push(player);
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    });
+
+    // 3. Aggregate Stats from Game Results
+    const scheduleMap = new Map<string, Game>();
+    baseSchedule.forEach(g => scheduleMap.set(g.id, { ...g }));
+
+    gameResults.forEach((res: any) => {
+        // 3-1. Update Schedule Status
+        const game = scheduleMap.get(res.game_id);
+        if (game) {
+            game.played = true;
+            game.homeScore = res.home_score;
+            game.awayScore = res.away_score;
+            
+            // 3-2. Update Team Standings
+            const homeTeam = teamsMap.get(game.homeTeamId);
+            const awayTeam = teamsMap.get(game.awayTeamId);
+            
+            if (homeTeam && awayTeam) {
+                if (res.home_score > res.away_score) {
+                    homeTeam.wins += 1;
+                    awayTeam.losses += 1;
+                } else {
+                    awayTeam.wins += 1;
+                    homeTeam.losses += 1;
+                }
+            }
+        }
+
+        // 3-3. Aggregate Player Box Scores
+        // DB의 box_score는 { home: PlayerBoxScore[], away: PlayerBoxScore[] } 형태임
+        const boxData = res.box_score;
+        if (boxData) {
+            const allBoxStats = [...(boxData.home || []), ...(boxData.away || [])];
+            
+            allBoxStats.forEach((stat: any) => {
+                const player = playerMap.get(stat.playerId);
+                if (player) {
+                    // Decide if regular season or playoff stats
+                    const targetStats = game?.isPlayoff ? player.playoffStats : player.stats;
+                    
+                    // Accumulate
+                    targetStats.g += 1;
+                    targetStats.gs += stat.gs || 0;
+                    targetStats.mp += stat.mp || 0;
+                    targetStats.pts += stat.pts || 0;
+                    targetStats.reb += stat.reb || 0;
+                    targetStats.offReb += stat.offReb || 0;
+                    targetStats.defReb += stat.defReb || 0;
+                    targetStats.ast += stat.ast || 0;
+                    targetStats.stl += stat.stl || 0;
+                    targetStats.blk += stat.blk || 0;
+                    targetStats.tov += stat.tov || 0;
+                    targetStats.fgm += stat.fgm || 0;
+                    targetStats.fga += stat.fga || 0;
+                    targetStats.p3m += stat.p3m || 0;
+                    targetStats.p3a += stat.p3a || 0;
+                    targetStats.ftm += stat.ftm || 0;
+                    targetStats.fta += stat.fta || 0;
+                    targetStats.rimM = (targetStats.rimM || 0) + (stat.rimM || 0);
+                    targetStats.rimA = (targetStats.rimA || 0) + (stat.rimA || 0);
+                    targetStats.midM = (targetStats.midM || 0) + (stat.midM || 0);
+                    targetStats.midA = (targetStats.midA || 0) + (stat.midA || 0);
+                }
+            });
+        }
+    });
+
+    return {
+        teams: Array.from(teamsMap.values()),
+        schedule: Array.from(scheduleMap.values())
+    };
 };
+
 
 // ============================================================================
 //  QUERIES
@@ -45,11 +177,16 @@ export const useBaseData = () => {
           supabase.from('meta_schedule').select('*').range(0, 2999)
       ]);
       
-      if (teamsResult.error) throw new Error("구단 정보를 불러올 수 없습니다.");
-      if (scheduleResult.error) throw new Error("일정 정보를 불러올 수 없습니다.");
+      // Fallback if DB is empty/error
+      let rawTeams = teamsResult.data || [];
+      if (rawTeams.length === 0) {
+          rawTeams = INITIAL_TEAMS_DATA as any[];
+      }
 
-      const teams: Team[] = (teamsResult.data || []).map((t: any) => {
-          const roster = (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id));
+      const teams: Team[] = rawTeams.map((t: any) => {
+          const rawPlayers = t.meta_players || [];
+          const roster = rawPlayers.map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id));
+          
           return {
               id: t.id,
               name: t.name,
@@ -82,44 +219,84 @@ export const useLoadSave = (userId: string | undefined) => {
     queryKey: ['fullGameState', userId],
     queryFn: async () => {
       if (!userId) return null;
-      console.log("🔄 Loading Game State (JSONB Reconstruction)...");
+      console.log("🔄 Reconstructing Game State from Event Log...");
 
-      // 1. 유저별 세션 데이터 및 트레이드 이력 로드
-      const [saveRes, historyRes, txRes] = await Promise.all([
-          supabase.from('saves').select('*').eq('user_id', userId).maybeSingle(),
-          supabase.from('user_game_results').select('game_id, home_score, away_score').eq('user_id', userId),
-          supabase.from('user_transactions').select('*').eq('user_id', userId).order('date', { ascending: false })
-      ]);
+      // 1. Fetch Save Metadata (Date, Team)
+      // Saves table structure: user_id | team_id | sim_date | updated_at
+      const { data: saveMeta, error: saveError } = await supabase
+          .from('saves')
+          .select('*')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-      if (!saveRes.data) return null;
-
-      const gd = saveRes.data.game_data;
-      const finalTransactions: Transaction[] = (txRes.data || []).map((t: any) => ({
-          id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
-      }));
-
-      // 기본 스케줄 메타데이터 가져오기
-      let baseData = queryClient.getQueryData<{teams: Team[], schedule: Game[]}>(['baseData']);
-      if (!baseData) {
-          // If query cache is empty, we still need to combine with results to show scores correctly
-          const { schedule: rawSchedule } = await (async () => {
-             const { data } = await supabase.from('meta_schedule').select('*').range(0, 2999);
-             return { schedule: mapDatabaseScheduleToRuntimeGame(data || []) };
-          })();
-          baseData = { teams: gd.teams, schedule: rawSchedule };
+      if (saveError || !saveMeta) {
+          console.log("No save found.");
+          return null;
       }
 
-      // 2. 경기 결과 매칭하여 스케줄 복구
-      const finalSchedule = reconstructSchedule(baseData.schedule, historyRes.data || []);
+      // 2. Fetch Base Data (Teams, Schedule, Players)
+      // Check cache first
+      let baseData = queryClient.getQueryData<{teams: Team[], schedule: Game[]}>(['baseData']);
+      if (!baseData) {
+          console.log("Base data missing in cache, fetching...");
+          // Manually trigger base data fetch if not in cache
+          // (Simplified for this function, assuming baseData is usually loaded by App)
+          const { data: teamsData } = await supabase.from('meta_teams').select('*, meta_players (*)');
+          const { data: schedData } = await supabase.from('meta_schedule').select('*');
+          
+          const teams = (teamsData || []).map((t: any) => ({
+             id: t.id, name: t.name, city: t.city, logo: getTeamLogoUrl(t.id),
+             conference: t.conference, division: t.division,
+             wins: 0, losses: 0, budget: 150, salaryCap: 140, luxuryTaxLine: 170,
+             roster: (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id))
+          }));
+          const schedule = mapDatabaseScheduleToRuntimeGame(schedData || []);
+          baseData = { teams, schedule };
+      }
 
+      // 3. Fetch Transactions (for Roster Moves)
+      const { data: transactions } = await supabase
+          .from('user_transactions')
+          .select('*')
+          .eq('user_id', userId);
+
+      // 4. Fetch Game Results (for Stats & Records)
+      // Note: fetching ALL results might be heavy eventually, but OK for now.
+      const { data: gameResults } = await supabase
+          .from('user_game_results')
+          .select('game_id, home_score, away_score, box_score')
+          .eq('user_id', userId);
+
+      // 5. Reconstruct State
+      console.time("ReconstructState");
+      const { teams: reconstructedTeams, schedule: reconstructedSchedule } = reconstructGameState(
+          baseData.teams,
+          baseData.schedule,
+          (transactions || []).map((t: any) => ({
+              id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
+          })),
+          gameResults || []
+      );
+      console.timeEnd("ReconstructState");
+
+      // 6. Return formatted game data
       return {
-          team_id: saveRes.data.team_id,
+          team_id: saveMeta.team_id,
           game_data: {
-              ...gd,
-              schedule: finalSchedule,
-              transactions: finalTransactions
+              teams: reconstructedTeams,
+              schedule: reconstructedSchedule,
+              currentSimDate: saveMeta.sim_date,
+              // Tactic & Playoff series are currently transient or derived, 
+              // IF we need to save tactics persistently, we'd need a separate column or table.
+              // For now, we reset tactics to default or need a 'user_tactics' table.
+              tactics: null, 
+              playoffSeries: [], // Playoff state logic needs a dedicated table if we want persistence across reloads without 'game_data' JSONB.
+              transactions: (transactions || []).map((t: any) => ({
+                id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
+              })),
+              prospects: [] // Prospects also need a home if not in JSONB
           },
-          updated_at: saveRes.data.updated_at
+          updated_at: saveMeta.updated_at
       };
     },
     enabled: !!userId,
@@ -133,30 +310,25 @@ export const useSaveGame = () => {
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
       if (!userId || !teamId) throw new Error("Missing UserID or TeamID");
 
-      console.log("💾 Saving Game Data to Central JSONB...");
+      console.log("💾 Updating Save Metadata (Date only)...");
 
-      // 모든 선수의 현재 누적 스탯이 포함된 teams 배열을 통째로 저장 (JSONB의 강점 활용)
+      // Now we only save the Date and Team ID. 
+      // Stats are saved via 'saveGameResults', Rosters via 'saveUserTransaction'.
       const savePayload = {
         user_id: userId,
         team_id: teamId,
-        game_data: {
-            teams: gameData.teams, // 선수들의 누적 스탯(zone stats 포함)이 여기에 모두 들어있습니다.
-            currentSimDate: gameData.currentSimDate,
-            tactics: gameData.tactics,
-            playoffSeries: gameData.playoffSeries,
-            prospects: gameData.prospects
-        },
+        sim_date: gameData.currentSimDate,
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase.from('saves').upsert(savePayload, { onConflict: 'user_id,team_id' });
+      const { error } = await supabase.from('saves').upsert(savePayload, { onConflict: 'user_id' });
 
       if (error) {
-          console.error("❌ Database Upsert Failed:", error);
+          console.error("❌ Save Update Failed:", error);
           throw error;
       }
 
-      console.log("✅ Game Save Successful");
+      console.log("✅ Save Metadata Updated");
       return savePayload;
     }
   });
@@ -164,6 +336,7 @@ export const useSaveGame = () => {
 
 export const saveGameResults = async (results: any[]) => {
     if (results.length === 0) return;
+    // user_game_results table must have: user_id, game_id, home_score, away_score, box_score (jsonb), date
     try {
         const { error } = await supabase
             .from('user_game_results')
