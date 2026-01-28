@@ -145,6 +145,22 @@ create policy "Enable all access for meta players" on public.meta_players for al
                 </code>
             </div>
           );
+      } else if (e.message && e.message.includes("there is no unique or exclusion constraint matching the ON CONFLICT specification")) {
+          errorText = (
+            <div className="flex flex-col gap-1">
+                <span>⛔ DB 제약조건 오류 (Constraint Missing)</span>
+                <span className="text-[10px] font-mono bg-black/30 p-1 rounded">
+                    Upsert를 위해 id/name 컬럼에 유니크 제약조건이 필요합니다. SQL Editor에서 실행하세요:
+                </span>
+                <code className="text-[9px] font-mono bg-black/50 p-2 rounded block whitespace-pre-wrap select-all cursor-text">
+{`-- meta_teams의 id(팀약어)를 Unique로 설정
+ALTER TABLE meta_teams ADD CONSTRAINT meta_teams_id_key UNIQUE (id);
+
+-- meta_players의 name을 Unique로 설정 (마이그레이션용)
+ALTER TABLE meta_players ADD CONSTRAINT meta_players_name_key UNIQUE (name);`}
+                </code>
+            </div>
+          );
       }
       
       setMessage({ type: 'error', text: errorText });
