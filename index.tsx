@@ -17,7 +17,7 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false, // 게임 상태 보존을 위해 기본적으로 끔
-      staleTime: 1000 * 60 * 5, // 5분간 데이터를 신선한 것으로 간주
+      staleTime: Infinity, // [CTO Update] 서버 부하 감소를 위해 데이터는 영원히 신선한 것으로 간주 (클라이언트가 Source of Truth)
     },
   },
 });

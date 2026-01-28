@@ -170,8 +170,8 @@ export const useLoadSave = (userId: string | undefined) => {
     enabled: !!userId,
     retry: 1,
     refetchOnWindowFocus: false,
-    staleTime: 0, // [CRITICAL FIX] Always checking freshness on mount/login
-    gcTime: 1000 * 60 * 5, 
+    staleTime: Infinity, // [CTO Update] 0 -> Infinity. DB 부하 방지. 초기 로드 1회만 수행.
+    gcTime: 1000 * 60 * 60 * 24, // 캐시 유지 시간 대폭 증가 (24시간)
   });
 };
 
@@ -203,6 +203,7 @@ export const useSaveGame = () => {
     },
     onSuccess: (savedData, variables) => {
         // [Critical] Update Cache Immediately with the exact payload we just saved
+        // DB에서 다시 읽어올 필요가 없도록 클라이언트 캐시를 강제 업데이트
         queryClient.setQueryData(['saveData', variables.userId], savedData);
     }
   });
