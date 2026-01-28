@@ -339,3 +339,60 @@ export const useScoutingReport = (player: Player | null) => {
         refetchOnWindowFocus: false,
     });
 };
+
+// 7. Monthly Schedule Loading (Optimization for Calendar)
+export const useMonthlySchedule = (userId: string | undefined, year: number, month: number) => {
+    return useQuery({
+        queryKey: ['monthlySchedule', userId, year, month],
+        queryFn: async () => {
+            // Calculate start and end date for the query
+            const startDate = new Date(year, month, 1).toISOString().split('T')[0];
+            const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+            // Fetch Schedule Meta (All games in this month)
+            const { data: scheduleData, error: scheduleError } = await supabase
+                .from('meta_schedule')
+                .select('*')
+                .gte('game_date', startDate)
+                .lte('game_date', endDate);
+
+            if (scheduleError) throw scheduleError;
+
+            // Fetch User Results (Only if logged in)
+            let userResults: any[] = [];
+            if (userId) {
+                const { data: resultsData, error: resultsError } = await supabase
+                    .from('user_game_results')
+                    .select('game_id, home_score, away_score')
+                    .eq('user_id', userId)
+                    .gte('date', startDate)
+                    .lte('date', endDate);
+                
+                if (resultsError) throw resultsError;
+                userResults = resultsData || [];
+            }
+
+            // Merge Data
+            const mergedSchedule = mapDatabaseScheduleToRuntimeGame(scheduleData || []);
+            
+            // Map results to schedule
+            const resultMap = new Map(userResults.map(r => [r.game_id, r]));
+            
+            return mergedSchedule.map(g => {
+                const result = resultMap.get(g.id);
+                if (result) {
+                    return {
+                        ...g,
+                        played: true,
+                        homeScore: result.home_score,
+                        awayScore: result.away_score
+                    };
+                }
+                return g;
+            });
+        },
+        enabled: true, // Always load, fallback to offline data if needed by App state
+        staleTime: 1000 * 60 * 5, // 5 minutes cache
+        keepPreviousData: true
+    });
+};
