@@ -135,7 +135,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         hasPlayoffHistory={hasPlayoffHistory}
       />
 
-      <div className="w-full max-w-[1900px] grid grid-cols-1 lg:grid-cols-12 min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/60 backdrop-blur-3xl">
+      {/* [Optimization] Reduced background transparency and blur (bg-slate-900/80, backdrop-blur-xl) */}
+      <div className="w-full max-w-[1900px] grid grid-cols-1 lg:grid-cols-12 min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
           {/* Left Panel: Roster Table */}
           <RosterTable 
             activeRosterTab={activeRosterTab}

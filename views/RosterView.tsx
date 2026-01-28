@@ -170,7 +170,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         onSelectTeam={setSelectedTeamId} dropdownRef={dropdownRef}
       />
 
-      <div className="flex flex-col gap-6 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl backdrop-blur-sm">
+      {/* [Optimization] bg-slate-900/60 -> bg-slate-900/95, Removed backdrop-blur-sm */}
+      <div className="flex flex-col gap-6 bg-slate-900/95 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0">
              <div className="flex bg-slate-950 rounded-xl p-1.5 border border-slate-800 overflow-x-auto max-w-full">
                  <button onClick={() => setTab('roster')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
@@ -200,7 +201,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
          {tab === 'tactics' ? <TacticsHistory team={selectedTeam} /> : (
              <div className="w-full overflow-x-auto">
                 <table className="w-full text-left border-collapse table-auto">
-                   <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-sm z-20">
+                   <thead className="sticky top-0 bg-slate-900/95 z-20">
                       <tr className="border-b border-slate-800 text-slate-500">
                          <SortHeader label="Player Info" sortKey="name" align="left" width="200px" className="pl-8 px-6" />
                          {tab === 'roster' && (

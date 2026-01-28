@@ -6,9 +6,9 @@ import { Team } from '../types';
 // Team Colors Mapping
 const TEAM_COLORS: Record<string, string> = {
   'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
-  'dal': '#00538C', 'den': '#0E2240', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#002D62',
-  'lac': '#1D428A', 'lal': '#552583', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
-  'nop': '#0C2340', 'nyk': '#006BB6', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
+  'dal': '#00538C', 'den': '#FEC524', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FDBB30',
+  'lac': '#1D428A', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
+  'nop': '#85714D', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
   'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
 };
 
@@ -144,97 +144,121 @@ const ScoreGraph: React.FC<{
     homeColor: string, 
     awayColor: string,
     homeLogo: string,
-    awayLogo: string
-}> = ({ history, progress, homeColor, awayColor, homeLogo, awayLogo }) => {
-    const VIEW_WIDTH = 48; // X axis (Minutes)
-    const VIEW_HEIGHT = 200; // Y axis total
-    const MID_Y = 100;
-    const MARGIN_Y = 20; // Increased margin to prevent any clipping at 99.9%
+    awayLogo: string,
+    homeTeamCode: string,
+    awayTeamCode: string
+}> = ({ history, progress, homeColor, awayColor, homeLogo, awayLogo, homeTeamCode, awayTeamCode }) => {
+    const VIEW_WIDTH = 100;
+    const VIEW_HEIGHT = 60;
+    const MID_Y = 30; // 50% line
 
     const dataIndex = Math.floor((progress / 100) * (history.length - 1));
     const dataSlice = history.slice(0, dataIndex + 1);
 
-    // Scaling Logic:
-    // Home 100% -> y = MARGIN_Y
-    // Away 100% -> y = 200 - MARGIN_Y
-    let pathD = `M 0 ${MID_Y}`;
-    const stepX = VIEW_WIDTH / (history.length - 1);
-
+    // Build points for the line
+    let points = "";
     dataSlice.forEach((data, i) => {
-        const x = i * stepX;
-        const wpIndex = (data.wp - 50) / 50; // -1.0 to 1.0
-        const y = MID_Y - (wpIndex * (100 - MARGIN_Y));
-        pathD += ` L ${x} ${y}`;
+        const x = (i / (history.length - 1)) * VIEW_WIDTH;
+        // Map wp (0-100) to y. 100% Home = 0, 0% Home = VIEW_HEIGHT
+        const y = VIEW_HEIGHT - (data.wp / 100 * VIEW_HEIGHT);
+        points += `${x},${y} `;
     });
 
     const currentData = dataSlice[dataSlice.length - 1] || { wp: 50 };
-    const currentWPIndex = (currentData.wp - 50) / 50;
-    const dotY = MID_Y - (currentWPIndex * (100 - MARGIN_Y));
-    const dotX = dataIndex * stepX;
-    
-    // Status color for dot
-    const dotColor = currentData.wp > 50 ? homeColor : (currentData.wp < 50 ? awayColor : '#fff');
+    const currentWP = currentData.wp;
+    const endX = (dataIndex / (history.length - 1)) * VIEW_WIDTH;
+    const endY = VIEW_HEIGHT - (currentWP / 100 * VIEW_HEIGHT);
+
+    // Create the closed path for filling
+    // Start at (0, MID_Y) -> Follow points -> (endX, MID_Y) -> Close
+    const fillPath = `M 0,${MID_Y} L ${points} L ${endX},${MID_Y} Z`;
+
+    const homeProb = currentWP.toFixed(0);
+    const awayProb = (100 - currentWP).toFixed(0);
 
     return (
-        <div className="w-full h-24 relative my-4 overflow-visible bg-slate-950/80 rounded-2xl border border-white/5 shadow-inner">
-             {/* Center Baseline */}
-             <div className="absolute top-1/2 left-0 w-full h-[1px] bg-slate-800 border-t border-dashed border-slate-700/20 z-0"></div>
-             
-             <svg 
-                viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
-                className="w-full h-full overflow-visible relative z-10"
-                preserveAspectRatio="none"
-             >
-                 {/* Team Logos as Background Watermarks (Centered and highly visible but faint) */}
-                 <image 
-                    href={homeLogo} 
-                    x="14" 
-                    y="25" 
-                    width="20" 
-                    height="50" 
-                    preserveAspectRatio="xMidYMid meet" 
-                    className="opacity-15 pointer-events-none" 
-                 />
-                 <image 
-                    href={awayLogo} 
-                    x="14" 
-                    y="125" 
-                    width="20" 
-                    height="50" 
-                    preserveAspectRatio="xMidYMid meet" 
-                    className="opacity-15 pointer-events-none" 
-                 />
+        <div className="w-full relative flex flex-col mt-6 mb-2">
+            {/* Header: Logos & Percentages */}
+            <div className="flex justify-between items-end px-1 mb-2">
+                <div className="flex items-center gap-2">
+                    <img src={homeLogo} className="w-8 h-8 object-contain" alt="Home" />
+                    <div>
+                        <div className="text-2xl font-black oswald leading-none text-white">{homeProb}%</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{homeTeamCode}</div>
+                    </div>
+                </div>
+                <div className="flex items-center gap-2 text-right">
+                    <div>
+                        <div className="text-2xl font-black oswald leading-none text-white">{awayProb}%</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{awayTeamCode}</div>
+                    </div>
+                    <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
+                </div>
+            </div>
 
-                 {/* Win Probability Path: Actual 0.1px Sharp White Line */}
-                 <path 
-                    d={pathD} 
-                    fill="none" 
-                    stroke="#ffffff" 
-                    strokeWidth="1" 
-                    vectorEffect="non-scaling-stroke"
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
-                    className="transition-all duration-300 ease-linear"
-                 />
-                 
-                 {/* Progress Indicator Pulse */}
-                 {dataSlice.length > 0 && (
-                     <circle 
-                        cx={dotX} 
-                        cy={dotY} 
-                        r="1.5" 
-                        fill={dotColor} 
-                        stroke="#fff"
-                        strokeWidth="0.5"
-                        className="animate-pulse shadow-lg shadow-white/50"
-                     />
-                 )}
-             </svg>
-             
-             {/* Value Label (Current Win Prob) */}
-             <div className={`absolute top-2 right-3 text-[9px] font-black uppercase tracking-[0.2em] oswald italic ${currentData.wp > 50 ? 'text-indigo-400' : 'text-slate-400'}`}>
-                WP: {currentData.wp.toFixed(1)}%
-             </div>
+            {/* Graph Container */}
+            <div className="w-full h-40 bg-slate-950 border border-slate-800 rounded-lg relative overflow-hidden">
+                <svg 
+                    viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
+                    className="w-full h-full"
+                    preserveAspectRatio="none"
+                >
+                    <defs>
+                        {/* Gradient for Fill: Sharp transition at 50% */}
+                        <linearGradient id="wpGradient" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="50%" stopColor={homeColor} stopOpacity="0.4" />
+                            <stop offset="50%" stopColor={awayColor} stopOpacity="0.4" />
+                        </linearGradient>
+                        
+                        {/* Dot Pattern for Grid */}
+                        <pattern id="gridPattern" width="25" height="15" patternUnits="userSpaceOnUse">
+                            <circle cx="1" cy="1" r="0.5" fill="#334155" />
+                        </pattern>
+                    </defs>
+
+                    {/* Background Grid */}
+                    <rect width="100%" height="100%" fill="url(#gridPattern)" opacity="0.5" />
+                    
+                    {/* 50% Baseline */}
+                    <line x1="0" y1={MID_Y} x2="100" y2={MID_Y} stroke="#475569" strokeWidth="0.2" />
+
+                    {/* The Fill Area (Between Curve and Center) */}
+                    <path 
+                        d={fillPath} 
+                        fill="url(#wpGradient)" 
+                        stroke="none"
+                    />
+
+                    {/* The Curve Line */}
+                    <polyline 
+                        points={points} 
+                        fill="none" 
+                        stroke="#e2e8f0" 
+                        strokeWidth="0.8" 
+                        strokeDasharray="1.5 1"
+                        strokeLinecap="round"
+                        vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* End Dot */}
+                    {dataSlice.length > 0 && (
+                        <circle cx={endX} cy={endY} r="1" fill="white" className="animate-pulse" />
+                    )}
+                </svg>
+
+                {/* Y-Axis Labels (Overlay) */}
+                <div className="absolute right-1 top-1 text-[8px] text-slate-500 font-mono">100</div>
+                <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[8px] text-slate-500 font-mono">50</div>
+                <div className="absolute right-1 bottom-1 text-[8px] text-slate-500 font-mono">100</div>
+            </div>
+
+            {/* X-Axis Labels */}
+            <div className="flex justify-between px-1 mt-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider">
+                <span>1st</span>
+                <span>2nd</span>
+                <span>3rd</span>
+                <span>4th</span>
+            </div>
         </div>
     );
 };
@@ -362,7 +386,7 @@ export const GameSimulatingView: React.FC<{
       </div>
 
       <div className="relative z-10 w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-6 py-8 md:px-12 bg-slate-950/30">
+        <div className="flex items-center justify-between px-6 py-6 md:px-10 bg-slate-950/30">
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
@@ -371,8 +395,8 @@ export const GameSimulatingView: React.FC<{
                 </div>
             </div>
 
-            <div className="flex-1 px-4 flex flex-col items-center justify-center">
-                 <div className={`text-sm md:text-base font-black text-center min-h-[2.5rem] flex items-center justify-center break-keep leading-tight animate-pulse transition-colors duration-300 ${
+            <div className="flex-1 px-2 flex flex-col items-center justify-center">
+                 <div className={`text-sm md:text-base font-black text-center min-h-[2rem] flex items-center justify-center break-keep leading-tight animate-pulse transition-colors duration-300 ${
                      Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
                         ? 'text-slate-500'
                         : progress > 94 && Math.abs(displayScore.h - displayScore.a) <= 3
@@ -384,7 +408,7 @@ export const GameSimulatingView: React.FC<{
                     {currentMessage}
                  </div>
 
-                 {/* Sharp Win Probability Graph with Watermark Logos */}
+                 {/* Updated Score Graph (ESPN Style Dark) */}
                  <ScoreGraph 
                     history={scoreTimeline} 
                     progress={progress} 
@@ -392,17 +416,9 @@ export const GameSimulatingView: React.FC<{
                     awayColor={awayColor} 
                     homeLogo={homeTeam.logo}
                     awayLogo={awayTeam.logo}
+                    homeTeamCode={homeTeam.id.toUpperCase()}
+                    awayTeamCode={awayTeam.id.toUpperCase()}
                  />
-
-                 <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden shadow-inner border border-slate-700 mt-2">
-                    <div className={`h-full transition-all duration-300 ease-linear ${
-                        Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
-                            ? 'bg-slate-600'
-                            : progress > 94 && Math.abs(displayScore.h - displayScore.a) <= 3
-                                ? 'bg-gradient-to-r from-red-600 to-orange-500 shadow-[0_0_20px_rgba(220,38,38,0.6)]'
-                                : 'bg-gradient-to-r from-indigo-600 to-blue-500'
-                    }`} style={{ width: `${progress}%` }}></div>
-                 </div>
             </div>
 
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">

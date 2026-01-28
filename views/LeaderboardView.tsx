@@ -139,7 +139,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
       </div>
 
       {/* Main Table Container */}
-      <div className="flex-1 bg-slate-900/60 border border-slate-800 rounded-3xl shadow-2xl backdrop-blur-sm overflow-hidden flex flex-col min-h-0">
+      {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90, removed backdrop-blur */}
+      <div className="flex-1 bg-slate-900/90 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col min-h-0">
           {sortedPlayers.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full py-20 text-slate-500">
                   <BarChart3 size={48} className="mb-4 opacity-20" />
@@ -149,7 +150,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
           ) : (
               <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
                   <table className="w-full text-left border-collapse table-fixed">
-                      <thead className="sticky top-0 bg-slate-900/95 backdrop-blur-md z-20 shadow-sm">
+                      <thead className="sticky top-0 bg-slate-900/95 z-20 shadow-sm">
                           <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                               <th className="py-4 px-2 w-[5%] text-center">Rank</th>
                               <th className="py-4 px-6 w-[28%]">Player</th>

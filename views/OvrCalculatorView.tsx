@@ -148,7 +148,8 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
       </div>
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        <div className="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
+        <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-indigo-400">
                     <Settings2 size={18} />
@@ -193,7 +194,8 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
             </div>
         </div>
 
-        <div className="lg:col-span-7 bg-slate-900/60 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
+        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
                 <div className="flex items-center gap-3">
                     <User size={18} className="text-slate-400" />

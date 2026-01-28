@@ -17,7 +17,8 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, on
   const fullTeamName = fullTeam ? `${fullTeam.city} ${fullTeam.name}` : offer.teamName;
   
   return (
-    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 hover:border-indigo-500/70 transition-all group relative overflow-hidden shadow-xl">
+    // [Optimization] bg-slate-900/60 -> bg-slate-900 (Solid background to prevent expensive blur calculation during scroll)
+    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 hover:border-indigo-500/70 transition-all group relative overflow-hidden shadow-xl">
        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-600/5 blur-[50px] rounded-full group-hover:bg-indigo-600/10 transition-colors" />
        <div className="flex flex-col gap-6 relative z-10">
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -43,7 +44,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, on
              </div>
              <div className="flex flex-col gap-2">
                 {offer.players.map(p => (
-                  <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-900/60 transition-colors">
+                  <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-950/80 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
                        <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>

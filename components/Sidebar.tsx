@@ -43,7 +43,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout 
 }) => {
   return (
-    <aside className="w-72 border-r border-slate-800 bg-slate-900/60 flex flex-col shadow-2xl z-20 overflow-hidden">
+    // [Optimization] bg-slate-900/60 -> bg-slate-900/95 (Almost opaque to save GPU)
+    <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden">
       {/* Team Profile Section */}
       <div className="p-8 border-b border-slate-800 bg-slate-950/20">
         <div className="flex items-center gap-4">

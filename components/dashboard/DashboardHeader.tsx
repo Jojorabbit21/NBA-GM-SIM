@@ -23,14 +23,17 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick 
 }) => {
   return (
-    <div className="w-full max-w-[1900px] bg-slate-900/60 border border-white/10 rounded-3xl shadow-[0_50px_120px_rgba(0,0,0,0.8)] backdrop-blur-3xl overflow-hidden flex flex-col mb-6">
+    // [Optimization] Reduced shadow spread (120px -> shadow-2xl) and blur (3xl -> md) to prevent GPU crash
+    <div className="w-full max-w-[1900px] bg-slate-900/80 border border-white/10 rounded-3xl shadow-2xl backdrop-blur-md overflow-hidden flex flex-col mb-6">
         <style>{`
+            /* [Optimization] Changed from width to transform: scaleX for GPU acceleration */
             @keyframes fillProgress {
-                from { width: 0%; }
-                to { width: 100%; }
+                from { transform: scaleX(0); }
+                to { transform: scaleX(1); }
             }
             .animate-fill-progress {
                 animation: fillProgress 2s linear forwards;
+                transform-origin: left;
             }
         `}</style>
         <div className="px-8 py-8 border-b border-white/5 bg-white/5 flex flex-col lg:flex-row items-center justify-between gap-8">
@@ -67,7 +70,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     <button 
                         onClick={onSimClick} 
                         disabled={isSimulating} 
-                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_15px_40px_rgba(79,70,229,0.4)] transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10 min-w-[280px]"
+                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-xl transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10 min-w-[280px]"
                     >
                         {isSimulating ? <Loader2 size={22} className="animate-spin" /> : <Zap size={22} className="group-hover:animate-pulse text-yellow-400 fill-yellow-400" />}
                         <span className="text-xl oswald uppercase tracking-widest text-white ko-tight">{isSimulating ? '진행 중...' : '경기 시작'}</span>
@@ -76,11 +79,11 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     <button 
                         onClick={onSimClick} 
                         disabled={isSimulating} 
-                        className="relative bg-slate-700 hover:bg-blue-600 disabled:bg-slate-800 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_10px_30px_rgba(0,0,0,0.3)] transition-all hover:scale-[1.05] active:scale-95 border border-white/10 group ring-4 ring-white/5 overflow-hidden min-w-[280px]"
+                        className="relative bg-slate-700 hover:bg-blue-600 disabled:bg-slate-800 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-xl transition-all hover:scale-[1.05] active:scale-95 border border-white/10 group ring-4 ring-white/5 overflow-hidden min-w-[280px]"
                     >
-                        {/* Smooth Progress Bar Background */}
+                        {/* Smooth Progress Bar Background (Optimized) */}
                         {isSimulating && (
-                            <div className="absolute inset-y-0 left-0 bg-blue-500/40 animate-fill-progress z-0" />
+                            <div className="absolute inset-0 bg-blue-500/40 animate-fill-progress z-0 w-full h-full origin-left" />
                         )}
                         
                         <div className="relative z-10 flex items-center gap-4">
@@ -104,9 +107,9 @@ export const DashboardReviewBanners: React.FC<{
 }> = ({ onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory }) => {
     return (
       <div className="w-full max-w-[1900px] flex flex-col md:flex-row gap-6 animate-in slide-in-from-top-4 duration-500 mb-6">
-          <div className="flex-1 bg-gradient-to-br from-orange-600 to-red-600 rounded-3xl p-1 shadow-[0_10px_40px_rgba(234,88,12,0.3)] border border-orange-400/50 relative overflow-hidden group">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-white/20 transition-colors"></div>
-              <div className="bg-orange-950/20 backdrop-blur-sm rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
+          <div className="flex-1 bg-gradient-to-br from-orange-600 to-red-600 rounded-3xl p-1 shadow-lg border border-orange-400/50 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none group-hover:bg-white/20 transition-colors"></div>
+              <div className="bg-orange-950/40 backdrop-blur-md rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
                   <div className="flex items-center gap-5">
                       <div className="p-3 bg-white/20 rounded-2xl border border-white/20 shadow-inner">
                           <BarChart3 size={28} className="text-white" />
@@ -126,8 +129,8 @@ export const DashboardReviewBanners: React.FC<{
           </div>
           {/* Always render layout to keep consistent, hide button if no history */}
           <div className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-1 shadow-lg border border-indigo-400/50 relative overflow-hidden group animate-in slide-in-from-right-4 duration-500">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-[80px] pointer-events-none group-hover:bg-white/20 transition-colors"></div>
-              <div className="bg-indigo-950/40 backdrop-blur-sm rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none group-hover:bg-white/20 transition-colors"></div>
+              <div className="bg-indigo-950/40 backdrop-blur-md rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
                   <div className="flex items-center gap-5">
                       <div className="p-3 bg-white/20 rounded-2xl border border-white/20 shadow-inner animate-pulse-subtle">
                           <Trophy size={28} className="text-white fill-white" />

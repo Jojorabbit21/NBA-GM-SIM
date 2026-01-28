@@ -190,7 +190,8 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
               </div>
 
               <div className="bg-gradient-to-br from-orange-950/30 to-slate-950 border border-orange-500/30 rounded-[2rem] shadow-[0_0_40px_rgba(234,88,12,0.1)] relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-[100px] pointer-events-none group-hover:bg-orange-500/20 transition-colors duration-700"></div>
+                  {/* [Optimization] blur-[100px] -> blur-3xl */}
+                  <div className="absolute top-0 right-0 w-96 h-96 bg-orange-500/10 rounded-full blur-3xl pointer-events-none group-hover:bg-orange-500/20 transition-colors duration-700"></div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-orange-500/20 relative z-10">
                       

@@ -202,7 +202,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
               <button onClick={() => setActiveTab('History')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><History size={16} /> 이력</button>
            </div>
       </div>
-      <div className="flex-1 bg-slate-900/60 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden shadow-2xl min-h-0">
+      {/* [Optimization] bg-slate-900/60 -> bg-slate-900/95 (Almost opaque) */}
+      <div className="flex-1 bg-slate-900/95 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden shadow-2xl min-h-0">
          <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/20 flex flex-col gap-6">
             <div className="flex justify-between items-center w-full">
               <div className="flex items-center gap-3">

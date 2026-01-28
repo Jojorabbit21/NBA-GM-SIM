@@ -57,7 +57,8 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
     const leader = sorted.length > 0 ? sorted[0] : null;
     
     return (
-      <div className="bg-slate-900/60 rounded-[1.5rem] border border-slate-800 overflow-hidden shadow-xl flex flex-col">
+      // [Optimization] bg-slate-900/60 -> bg-slate-900/90
+      <div className="bg-slate-900/90 rounded-[1.5rem] border border-slate-800 overflow-hidden shadow-xl flex flex-col">
         <div className="bg-slate-800/40 px-6 py-4 border-b border-slate-800 flex items-center justify-between">
            <h3 className={`text-lg font-black oswald uppercase tracking-wider text-${highlightColor}-400`}>{title}</h3>
            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{teamList.length} TEAMS</span>
