@@ -10,7 +10,7 @@ import { generateAutoTactics, GameTactics, SimulationResult, simulateGame } from
 import { generateGameRecapNews, generateOwnerWelcome } from './services/geminiService';
 
 // Icons
-import { Loader2, AlertTriangle, Clock } from 'lucide-react';
+import { Loader2, AlertTriangle, Clock, Save } from 'lucide-react';
 
 // Views
 import { AuthView } from './views/AuthView';
@@ -206,7 +206,8 @@ const App: React.FC = () => {
     }
   };
 
-  // Auto Save
+  // Auto Save Strategy [CTO Optimization]
+  // 5초 간격(너무 빈번함) -> 60초 간격으로 변경하여 Supabase DB 부하를 줄임.
   const triggerSave = useCallback(() => {
       if (isResettingRef.current || isLoggingOutRef.current || !session?.user || isGuestMode) return;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
@@ -214,7 +215,7 @@ const App: React.FC = () => {
           const currentData = gameDataRef.current;
           if (!currentData.myTeamId) return;
           saveGameMutation.mutate({ userId: session.user.id, teamId: currentData.myTeamId, gameData: currentData });
-      }, 5000); 
+      }, 60000); // 60s debounce
   }, [session, isGuestMode, saveGameMutation]);
 
   useEffect(() => {
@@ -455,6 +456,12 @@ const App: React.FC = () => {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 overflow-hidden ko-normal pretendard">
       {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+      {/* Auto Save Indicator (Optional, but good for UX) */}
+      {saveGameMutation.isPending && (
+          <div className="fixed bottom-4 right-4 z-[999] bg-slate-900/80 border border-slate-700 px-4 py-2 rounded-full flex items-center gap-2 text-xs font-bold text-slate-400 animate-pulse">
+              <Save size={12} /> Saving...
+          </div>
+      )}
       
       {showResetConfirm && (
         <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
