@@ -14,16 +14,9 @@ import { Team, Player, Game, Transaction } from '../types';
 //  DATA RECONSTRUCTION LOGIC
 // ============================================================================
 
-/**
- * [Schedule Reconstruction]
- * Meta Schedule (Base) + User Game Results (Played Status & Scores)
- * This allows us to not save the entire schedule in the JSON blob.
- */
 const reconstructSchedule = (metaSchedule: Game[], userResults: any[]): Game[] => {
     if (!userResults || userResults.length === 0) return metaSchedule;
-
     const resultMap = new Map(userResults.map((r: any) => [r.game_id, r]));
-
     return metaSchedule.map(game => {
         const result = resultMap.get(game.id);
         if (result) {
@@ -32,7 +25,6 @@ const reconstructSchedule = (metaSchedule: Game[], userResults: any[]): Game[] =
                 played: true,
                 homeScore: result.home_score,
                 awayScore: result.away_score,
-                // Note: We don't load full box scores into the main schedule list to keep memory usage low.
             };
         }
         return game;
@@ -43,7 +35,6 @@ const reconstructSchedule = (metaSchedule: Game[], userResults: any[]): Game[] =
 //  QUERIES
 // ============================================================================
 
-// 1. Base Data Query (Meta Data Only - Static)
 export const useBaseData = () => {
   return useQuery({
     queryKey: ['baseData'],
@@ -84,7 +75,6 @@ export const useBaseData = () => {
   });
 };
 
-// 2. Load Save (Hybrid: Teams JSON + Schedule RDB + Transactions RDB)
 export const useLoadSave = (userId: string | undefined) => {
   const queryClient = useQueryClient();
 
@@ -92,29 +82,21 @@ export const useLoadSave = (userId: string | undefined) => {
     queryKey: ['fullGameState', userId],
     queryFn: async () => {
       if (!userId) return null;
-
       console.log("🔄 Loading Game State (Hybrid RDB Strategy)...");
 
-      // 1. Ensure Base Data is available
       let baseData = queryClient.getQueryData<{teams: Team[], schedule: Game[]}>(['baseData']);
-      
       if (!baseData) {
-          console.log("...Base data not in cache, fetching...");
           const { teams, schedule } = await (async () => {
              const [tr, sr] = await Promise.all([
                 supabase.from('meta_teams').select('*, meta_players (*)'),
                 supabase.from('meta_schedule').select('*').range(0, 2999)
              ]);
              if (tr.error || sr.error) throw new Error("Base Data Fetch Failed");
-             
-             const mappedTeams: Team[] = (tr.data || []).map((t: any) => {
-                const roster = (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id));
-                return {
-                    id: t.id, name: t.name, city: t.city, logo: getTeamLogoUrl(t.id),
-                    conference: t.conference, division: t.division, salaryCap: 140, luxuryTaxLine: 170, budget: 200, wins: 0, losses: 0,
-                    roster: roster.sort((a: Player, b: Player) => b.ovr - a.ovr)
-                };
-             });
+             const mappedTeams: Team[] = (tr.data || []).map((t: any) => ({
+                id: t.id, name: t.name, city: t.city, logo: getTeamLogoUrl(t.id),
+                conference: t.conference, division: t.division, salaryCap: 140, luxuryTaxLine: 170, budget: 200, wins: 0, losses: 0,
+                roster: (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id)).sort((a: Player, b: Player) => b.ovr - a.ovr)
+             }));
              const mappedSchedule = mapDatabaseScheduleToRuntimeGame(sr.data || []);
              return { teams: mappedTeams, schedule: mappedSchedule };
           })();
@@ -122,7 +104,6 @@ export const useLoadSave = (userId: string | undefined) => {
           queryClient.setQueryData(['baseData'], baseData);
       }
 
-      // 2. Fetch User Save Data (Teams State, Tactics, etc.)
       const { data: saveRecord, error: saveError } = await supabase
         .from('saves')
         .select('team_id, game_data, updated_at')
@@ -131,7 +112,6 @@ export const useLoadSave = (userId: string | undefined) => {
 
       if (saveError) console.error("Save Load Error:", saveError);
 
-      // 3. Fetch User Game Results (Played History)
       const { data: resultHistory, error: historyError } = await supabase
         .from('user_game_results')
         .select('game_id, home_score, away_score')
@@ -139,35 +119,21 @@ export const useLoadSave = (userId: string | undefined) => {
 
       if (historyError) console.error("History Load Error:", historyError);
 
-      // 4. Fetch User Transactions (Trade History)
       const { data: txHistory, error: txError } = await supabase
         .from('user_transactions')
         .select('*')
         .eq('user_id', userId)
-        .order('date', { ascending: false }); // Latest first
+        .order('date', { ascending: false });
 
       if (txError) console.error("Transaction Load Error:", txError);
 
-      // If no save exists, return null (New Game)
-      if (!saveRecord) {
-          console.log("No save file found. Starting fresh.");
-          return null; 
-      }
+      if (!saveRecord) return null; 
 
-      // 5. Reconstruct State
       console.log("...Reconstructing Game State...");
-      
       const finalTeams = saveRecord.game_data?.teams || baseData.teams;
       const finalSchedule = reconstructSchedule(baseData.schedule, resultHistory || []);
-      
-      // Map DB transactions to runtime objects
       const finalTransactions: Transaction[] = (txHistory || []).map((t: any) => ({
-          id: t.id,
-          date: t.date,
-          type: t.type,
-          teamId: t.team_id,
-          description: t.description,
-          details: t.details
+          id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
       }));
 
       return {
@@ -176,7 +142,7 @@ export const useLoadSave = (userId: string | undefined) => {
               ...saveRecord.game_data,
               teams: finalTeams,
               schedule: finalSchedule,
-              transactions: finalTransactions // Inject loaded transactions
+              transactions: finalTransactions
           },
           updated_at: saveRecord.updated_at
       };
@@ -187,26 +153,19 @@ export const useLoadSave = (userId: string | undefined) => {
   });
 };
 
-// 3. Save Game Mutation (Optimized - Excludes Schedule & Transactions)
 export const useSaveGame = () => {
-  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
       if (!userId || !teamId) throw new Error("Missing UserID or TeamID");
 
       console.log("💾 Saving Game (Hybrid Optimization)...");
 
-      // Prepare Payload
-      // We save 'teams' fully.
-      // We DO NOT save 'schedule' (RDB: user_game_results).
-      // We DO NOT save 'transactions' (RDB: user_transactions).
       const payloadData = {
           currentSimDate: gameData.currentSimDate,
           tactics: gameData.tactics,
           playoffSeries: gameData.playoffSeries,
           prospects: gameData.prospects,
           teams: gameData.teams, 
-          // OMITTED: schedule, transactions
       };
 
       const payload = {
@@ -216,20 +175,21 @@ export const useSaveGame = () => {
         updated_at: new Date().toISOString()
       };
 
+      // [CRITICAL FIX]
+      // if SQL 'UNIQUE' constraint is correctly added, this will work.
+      // We use 'onConflict' targeting the columns defined in the UNIQUE index.
       const { error } = await supabase
         .from('saves')
         .upsert(payload, { onConflict: 'user_id,team_id' });
       
       if (error) {
           console.error("❌ Supabase Save Failed:", error);
+          // If the unique constraint is still missing, we can try a fallback or at least report it.
           throw error;
       }
 
-      console.log("✅ Save Successful (Optimized JSONB - No Logs)");
+      console.log("✅ Save Successful");
       return payload;
-    },
-    onSuccess: (savedData, variables) => {
-        // Optional: Update cache if needed
     }
   });
 };
@@ -240,7 +200,6 @@ export const saveGameResults = async (results: any[]) => {
         const { error } = await supabase
             .from('user_game_results')
             .insert(results);
-        
         if (error) console.error("Failed to save game results:", error);
     } catch (e) {
         console.error("Failed to save game results:", e);
@@ -258,13 +217,8 @@ export const saveUserTransaction = async (userId: string, transaction: Transacti
             description: transaction.description,
             details: transaction.details
         };
-
-        const { error } = await supabase
-            .from('user_transactions')
-            .insert(payload);
-        
+        const { error } = await supabase.from('user_transactions').insert(payload);
         if (error) console.error("Failed to save transaction:", error);
-        else console.log("✅ Transaction saved to RDB");
     } catch (e) {
         console.error("Failed to save transaction:", e);
     }
@@ -275,11 +229,7 @@ export const useSessionHeartbeat = (userId: string | undefined, deviceId: string
         queryKey: ['heartbeat', userId, deviceId],
         queryFn: async () => {
             if (!userId) return null;
-            const { data } = await supabase
-                .from('profiles')
-                .select('active_device_id')
-                .eq('id', userId)
-                .single();
+            const { data } = await supabase.from('profiles').select('active_device_id').eq('id', userId).single();
             return data?.active_device_id === deviceId;
         },
         enabled: !!userId && enabled,
@@ -308,17 +258,14 @@ export const useMonthlySchedule = (userId: string | undefined, year: number, mon
         queryKey: ['monthlySchedule', userId, year, month],
         queryFn: async () => {
             if (!userId) return []; 
-
             const startDate = new Date(year, month, 1).toISOString().split('T')[0];
             const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
-
             const { data: resultsData, error: resultsError } = await supabase
                 .from('user_game_results')
                 .select('game_id, home_score, away_score')
                 .eq('user_id', userId)
                 .gte('date', startDate)
                 .lte('date', endDate);
-            
             if (resultsError) throw resultsError;
             return resultsData || [];
         },
