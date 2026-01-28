@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
-import { getTeamLogoUrl } from '../utils/constants';
+import { getTeamLogoUrl, TEAM_OWNERS } from '../utils/constants';
 
 interface SeasonReviewViewProps {
   team: Team;
@@ -139,6 +139,8 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
           bg: "bg-red-500/5"
       };
   }
+
+  const ownerName = TEAM_OWNERS[team.id] || "The Ownership Group";
 
   // Stat Item Component
   const StatBox = ({ label, value, rank, isPercent = false, inverse = false }: { label: string, value: number, rank: number, isPercent?: boolean, inverse?: boolean }) => {
@@ -436,7 +438,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                   
                   <div className="space-y-4 flex-1">
                       <div>
-                          <h4 className={`text-xs font-black uppercase tracking-[0.2em] mb-1 ${ownerMood.color}`}>From the Desk of the Owner</h4>
+                          <h4 className={`text-xs font-black uppercase tracking-[0.2em] mb-1 ${ownerMood.color}`}>From the Desk of {ownerName}</h4>
                           <h3 className="text-2xl font-black text-white">{ownerMood.title}</h3>
                       </div>
                       <div className="relative">
@@ -444,7 +446,8 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                       </div>
                       <div className="pt-4 flex justify-end">
                           <div className="text-right">
-                              <div className="h-px w-32 bg-slate-700 mb-2 ml-auto"></div>
+                              <p className="font-handwriting text-xl text-slate-300 transform -rotate-2 mb-2 pr-4">{ownerName}</p>
+                              <div className="h-px w-48 bg-slate-700 mb-2 ml-auto"></div>
                               <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Authorized Signature</p>
                           </div>
                       </div>

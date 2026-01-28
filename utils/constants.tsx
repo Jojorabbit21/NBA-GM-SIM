@@ -18,6 +18,39 @@ export const getTeamLogoUrl = (id: string): string => {
   return `https://a.espncdn.com/i/teamlogos/nba/500/${espnId}.png`;
 };
 
+export const TEAM_OWNERS: Record<string, string> = {
+  'atl': '토니 레슬러',
+  'bos': '빌 치좀',
+  'det': '톰 고어스',
+  'nyk': '제임스 돌란',
+  'chi': '제리 라인스도프',
+  'was': '모뉴먼트 스포츠&엔터테인먼트',
+  'phi': '해리스 블리처 스포츠 엔터테인먼트',
+  'ind': '허버트 사이먼',
+  'mia': '미키 애리슨',
+  'bkn': '차이충신',
+  'mil': '웨슬리 이든스 & 마크 래즈리',
+  'cha': '릭 슈날 & 게이브 플롯킨',
+  'tor': '메이플 리프 스포츠&엔터테인먼트',
+  'cle': '댄 길버트',
+  'orl': 'RDV 스포츠 Inc.',
+  'sas': '스퍼츠 스포츠&엔터테인먼트',
+  'den': '조쉬 크뢴케',
+  'sac': '비베크 라나디베',
+  'hou': '틸먼 퍼티타',
+  'por': '토마스 던든',
+  'gsw': '조 레이콥',
+  'dal': '패트릭 듀몽',
+  'uta': '라이언 스미스',
+  'lal': '마크 월터',
+  'mem': '멤피스 배스킷볼 LLC',
+  'min': '마크 로리',
+  'nop': '게일 벤슨',
+  'okc': '프로페셔널 배스킷볼 클럽 LLC',
+  'phx': '맷 이시비아',
+  'lac': '스티브 발머'
+};
+
 export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, conference: 'East' | 'West', division: 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest' }[] = [
   { id: 'bos', name: '셀틱스', city: '보스턴', conference: 'East', division: 'Atlantic' },
   { id: 'bkn', name: '네츠', city: '브루클린', conference: 'East', division: 'Atlantic' },
