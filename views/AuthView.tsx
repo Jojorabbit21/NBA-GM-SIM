@@ -2,8 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { runFullMigration } from '../services/migration';
-import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, Settings, User, Check, XCircle, ShieldAlert, Database, RefreshCw, Server, Terminal, Copy } from 'lucide-react';
-import { logError } from '../services/analytics'; 
+import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, User, ShieldAlert, Database, Server, Copy } from 'lucide-react';
 
 // Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -133,9 +132,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     } catch (e: any) {
       let errorText: React.ReactNode = e.message || "마이그레이션 실패";
       
-      const fixSql = `-- [1] 기존 테이블 강제 삭제 (CASCADE로 의존성 무시)
+      const fixSql = `-- [1] 기존 테이블 정리 (CASCADE로 의존성 무시)
 DROP TABLE IF EXISTS public.meta_players CASCADE;
 DROP TABLE IF EXISTS public.meta_teams CASCADE;
+DROP TABLE IF EXISTS public.meta_schedule CASCADE;
 
 -- [2] 구단 테이블 생성
 CREATE TABLE public.meta_teams (
@@ -161,31 +161,47 @@ CREATE TABLE public.meta_players (
     draft_year numeric,
     base_attributes jsonb,
     created_at timestamptz DEFAULT now(),
-    -- 👇 Upsert 충돌 해결을 위한 필수 제약조건
     CONSTRAINT meta_players_name_key UNIQUE (name)
 );
 
--- [4] 보안 정책(RLS) 재설정
+-- [4] 스케줄 테이블 생성
+CREATE TABLE public.meta_schedule (
+    id text NOT NULL PRIMARY KEY,
+    game_date date NOT NULL,
+    home_team_id text NOT NULL REFERENCES public.meta_teams(id),
+    away_team_id text NOT NULL REFERENCES public.meta_teams(id),
+    home_score int,
+    away_score int,
+    played boolean DEFAULT false,
+    is_playoff boolean DEFAULT false,
+    series_id text
+);
+
+-- [5] 보안 정책(RLS) 재설정
 ALTER TABLE public.meta_teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.meta_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.meta_schedule ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Enable all access for teams" ON public.meta_teams;
 DROP POLICY IF EXISTS "Enable all access for players" ON public.meta_players;
+DROP POLICY IF EXISTS "Enable all access for schedule" ON public.meta_schedule;
 
+-- 누구나 읽기 가능, 서비스 역할만 쓰기 가능 (혹은 개발 중 편의를 위해 ALL 허용)
 CREATE POLICY "Enable all access for teams" ON public.meta_teams FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Enable all access for players" ON public.meta_players FOR ALL USING (true) WITH CHECK (true);`;
+CREATE POLICY "Enable all access for players" ON public.meta_players FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Enable all access for schedule" ON public.meta_schedule FOR ALL USING (true) WITH CHECK (true);`;
 
       // Error Handling Logic
-      if (e.message && (e.message.includes("row-level security") || e.message.includes("ON CONFLICT") || e.message.includes("depends on"))) {
+      if (e.message && (e.message.includes("row-level security") || e.message.includes("ON CONFLICT") || e.message.includes("depends on") || e.message.includes("relation"))) {
           errorText = (
             <div className="flex flex-col gap-2 w-full">
                 <div className="flex items-center gap-2 text-red-400 font-bold">
                     <ShieldAlert size={18} />
-                    <span>DB 제약조건 오류 (테이블 재생성 필요)</span>
+                    <span>DB 초기화 필요 (스케줄 테이블 포함)</span>
                 </div>
                 <div className="text-[11px] text-slate-400 leading-relaxed">
-                    <strong>meta_players</strong> 테이블이 다른 테이블에 연결되어 있어 삭제할 수 없습니다.<br/>
-                    <strong>CASCADE</strong> 옵션을 포함한 아래 SQL을 실행하여 강제로 초기화해주세요.
+                    새로운 스케줄 기능을 위해 <strong>meta_schedule</strong> 테이블이 필요합니다.<br/>
+                    아래 SQL을 실행하여 데이터베이스 구조를 업데이트해주세요.
                 </div>
                 <div className="relative group">
                     <code className="text-[9px] font-mono bg-black/50 p-3 rounded-lg block whitespace-pre-wrap select-all cursor-text text-emerald-400 border border-slate-700 max-h-40 overflow-y-auto custom-scrollbar">
@@ -254,6 +270,7 @@ CREATE POLICY "Enable all access for players" ON public.meta_players FOR ALL USI
         </div>
 
         <form onSubmit={handleAuth} className="space-y-5">
+          {/* ... inputs ... */}
           <div className="space-y-4">
             {mode === 'login' ? (
                 <div className="relative group">
