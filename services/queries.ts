@@ -3,19 +3,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { generateScoutingReport } from './geminiService';
 import { 
-  INITIAL_TEAMS_DATA, 
   getTeamLogoUrl, 
-  parseCSVToObjects, 
   mapDatabasePlayerToRuntimePlayer, 
   mapDatabaseScheduleToRuntimeGame,
-  calculatePlayerOvr,
-  resolveTeamId
+  calculatePlayerOvr
 } from '../utils/constants';
-import { Team, Player, Game } from '../types';
+import { Team, Player } from '../types';
 
-// --- Data Transformation Helpers ---
-const syncOvrWithLatestWeights = (teamsToSync: Team[]): Team[] => {
-    return teamsToSync.map(t => ({
+// Helper: Recalculate OVR for all players in teams
+const syncOvrWithLatestWeights = (teams: Team[]): Team[] => {
+    return teams.map(t => ({
         ...t,
         roster: t.roster.map(p => ({
             ...p,
@@ -24,150 +21,65 @@ const syncOvrWithLatestWeights = (teamsToSync: Team[]): Team[] => {
     }));
 };
 
-// Helper: Fetch all rows from a table using pagination (handles >1000 rows)
-async function fetchAllRows(tableName: string) {
-    let allData: any[] = [];
-    let page = 0;
-    const pageSize = 1000;
-    let hasMore = true;
-
-    while (hasMore) {
-        const { data, error } = await supabase
-            .from(tableName)
-            .select('*')
-            .range(page * pageSize, (page + 1) * pageSize - 1);
-        
-        if (error) throw error;
-        
-        if (data && data.length > 0) {
-            allData = allData.concat(data);
-            if (data.length < pageSize) {
-                hasMore = false;
-            } else {
-                page++;
-            }
-        } else {
-            hasMore = false;
-        }
-    }
-    return allData;
-}
-
-// --- Hooks ---
-
-// 1. Base Data Loading (Priority: Supabase DB > CSV)
+// 1. Base Data Query (Teams & Schedule) - DB ONLY
 export const useBaseData = () => {
   return useQuery({
     queryKey: ['baseData'],
     queryFn: async () => {
-      // 1. Try to fetch from Supabase first
-      let dbTeams: any[] | null = null;
-      let dbPlayers: any[] | null = null;
-      let dbSchedule: any[] | null = null;
-
-      try {
-        // Parallel fetch for initial check, but schedule might need recursion
-        const [teamsResult, playersResult] = await Promise.all([
-             supabase.from('meta_teams').select('*'),
-             supabase.from('meta_players').select('*')
-        ]);
-        
-        // Fetch schedule with pagination helper
-        const scheduleData = await fetchAllRows('meta_schedule');
-
-        if (!teamsResult.error && !playersResult.error && teamsResult.data && playersResult.data) {
-            dbTeams = teamsResult.data;
-            dbPlayers = playersResult.data;
-            dbSchedule = scheduleData;
-            console.log(`✅ Loaded base data from Supabase (Players: ${dbPlayers.length}, Schedule: ${dbSchedule.length})`);
-        }
-      } catch (e) {
-          console.warn("⚠️ Failed to load from DB, falling back to CSV", e);
-      }
-
-      let loadedSchedule: Game[] = [];
-      let combinedPlayers: any[] = dbPlayers || [];
-      let initialTeamsSource = dbTeams || INITIAL_TEAMS_DATA;
-
-      // Fallback: If DB load failed, load players CSV
-      if (!dbPlayers) {
-          try {
-            const playersRes = await fetch('/players.csv');
-            if (playersRes.ok) {
-                const text = await playersRes.text();
-                combinedPlayers = parseCSVToObjects(text);
-                console.log("ℹ️ Loaded players from CSV (Fallback)");
-            }
-          } catch(e) { console.error("CSV Load Error", e); }
-      }
-
-      // Schedule Loading Logic: DB -> CSV
-      if (dbSchedule && dbSchedule.length > 0) {
-           loadedSchedule = mapDatabaseScheduleToRuntimeGame(dbSchedule);
-      } else {
-           // Fallback CSV
-           try {
-               const scheduleRes = await fetch('/schedule.csv');
-               if (scheduleRes.ok) {
-                   const text = await scheduleRes.text();
-                   const rawSchedule = parseCSVToObjects(text);
-                   const parsedGames = mapDatabaseScheduleToRuntimeGame(rawSchedule);
-                   // Deduplicate CSV schedule (it contains rows for both home/away per game)
-                   const gameMap = new Map<string, Game>();
-                   parsedGames.forEach(g => {
-                        if (!gameMap.has(g.id)) {
-                             gameMap.set(g.id, g);
-                        }
-                   });
-                   loadedSchedule = Array.from(gameMap.values());
-                   console.log("ℹ️ Loaded schedule from CSV (Fallback)");
-               }
-           } catch(e) { console.error("Schedule CSV Load Error", e); }
-      }
+      // 1. Fetch Teams & Players from Supabase
+      const { data: teamsData, error: teamsError } = await supabase
+        .from('meta_teams')
+        .select(`
+            *,
+            meta_players (*)
+        `);
       
-      // Sort schedule by date
-      loadedSchedule.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      if (teamsError) {
+          console.error("❌ Failed to fetch base data (Teams):", teamsError);
+          throw new Error("데이터베이스 연결 실패: 구단 정보를 불러올 수 없습니다.");
+      }
 
-      // 3. Construct Roster Map
-      const fullRosterMap: Record<string, any[]> = {};
-      combinedPlayers.forEach((p: any) => {
-        let teamId = p.base_team_id;
-        
-        if (!teamId) {
-            const teamName = p.Team || p.team || p.team_name;
-            if (teamName) teamId = resolveTeamId(teamName);
-        }
+      // 2. Fetch Schedule from Supabase
+      const { data: scheduleData, error: scheduleError } = await supabase
+        .from('meta_schedule')
+        .select('*');
 
-        if (teamId && teamId !== 'unknown') {
-          if (!fullRosterMap[teamId]) fullRosterMap[teamId] = [];
-          fullRosterMap[teamId].push(mapDatabasePlayerToRuntimePlayer(p, teamId));
-        }
+      if (scheduleError) {
+          console.error("❌ Failed to fetch base data (Schedule):", scheduleError);
+          throw new Error("데이터베이스 연결 실패: 일정 정보를 불러올 수 없습니다.");
+      }
+
+      // 3. Map to Runtime Objects
+      const teams: Team[] = (teamsData || []).map((t: any) => {
+          // DB의 meta_players 데이터를 Runtime Player 객체로 변환
+          const roster = (t.meta_players || []).map((p: any) => mapDatabasePlayerToRuntimePlayer(p, t.id));
+          
+          return {
+              id: t.id,
+              name: t.name,
+              city: t.city,
+              logo: getTeamLogoUrl(t.id),
+              conference: t.conference,
+              division: t.division,
+              salaryCap: 140,
+              luxuryTaxLine: 170,
+              budget: 200, 
+              wins: 0,
+              losses: 0,
+              roster: roster.sort((a: Player, b: Player) => b.ovr - a.ovr)
+          };
       });
 
-      // 4. Construct Teams
-      const initializedTeams: Team[] = initialTeamsSource.map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        city: t.city,
-        conference: t.conference,
-        division: t.division,
-        logo: t.logo_url || getTeamLogoUrl(t.id),
-        roster: fullRosterMap[t.id] || [],
-        wins: 0, 
-        losses: 0, 
-        budget: 200, 
-        salaryCap: 140, 
-        luxuryTaxLine: 170,
-        tacticHistory: { offense: {}, defense: {} }
-      }));
+      const schedule = mapDatabaseScheduleToRuntimeGame(scheduleData || []);
 
-      const teams = syncOvrWithLatestWeights(initializedTeams);
+      console.log(`✅ Base Data Loaded from DB: ${teams.length} Teams, ${schedule.length} Games`);
 
-      return { teams, schedule: loadedSchedule };
+      return { teams, schedule };
     },
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: Infinity, // 데이터는 불변으로 가정 (새로고침 전까지)
+    gcTime: 1000 * 60 * 60 * 24, // 24시간 캐싱
     refetchOnWindowFocus: false,
+    retry: 1
   });
 };
 
@@ -187,26 +99,26 @@ export const useLoadSave = (userId: string | undefined) => {
             .from('saves')
             .select('team_id, game_data, updated_at')
             .eq('user_id', userId)
-            .maybeSingle();
+            .maybeSingle(); // 에러를 던지지 않고 데이터가 없으면 null 반환
           
           if (!error && data) {
               remoteData = data;
           }
       } catch (e) {
-          console.warn("Supabase load failed.", e);
+          console.warn("Supabase save load warning:", e);
       }
 
-      // 2. Fetch from LocalStorage
+      // 2. Fetch from LocalStorage (Backup)
       try {
           const localString = localStorage.getItem(`nba_gm_save_${userId}`);
           if (localString) {
               localData = JSON.parse(localString);
           }
       } catch (e) {
-          console.error("LocalStorage load failed.", e);
+          console.error("LocalStorage load error:", e);
       }
 
-      // 3. Compare Timestamps and Select Best Source
+      // 3. Compare Timestamps
       let finalData = null;
       let source = '';
 
@@ -229,9 +141,10 @@ export const useLoadSave = (userId: string | undefined) => {
           source = 'Local (Only)';
       }
 
-      console.log(`Loading Save Data from: ${source}`, finalData?.updated_at);
-
+      // 데이터가 없으면 (신규 유저) 조용히 리턴
       if (!finalData) return null;
+
+      console.log(`📂 Game Data Loaded from: ${source}`, finalData.updated_at);
 
       // 4. Process Data (OVR Sync)
       if (finalData.game_data && finalData.game_data.teams) {
@@ -248,14 +161,14 @@ export const useLoadSave = (userId: string | undefined) => {
       return finalData;
     },
     enabled: !!userId,
-    retry: 1,
+    retry: false, // 데이터가 없으면 재시도하지 않음 (신규 유저 무한 루프 방지)
     refetchOnWindowFocus: false,
-    staleTime: Infinity, // [CTO Update] 0 -> Infinity. DB 부하 방지. 초기 로드 1회만 수행.
-    gcTime: 1000 * 60 * 60 * 24, // 캐시 유지 시간 대폭 증가 (24시간)
+    staleTime: Infinity, 
+    gcTime: 1000 * 60 * 60 * 24, 
   });
 };
 
-// 3. Save Game Mutation (Dual Save: LocalStorage + Supabase)
+// 3. Save Game Mutation
 export const useSaveGame = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -268,7 +181,7 @@ export const useSaveGame = () => {
         updated_at: timestamp
       };
 
-      // 1. Save to LocalStorage (Synchronous backup)
+      // 1. Save to LocalStorage (Immediate Backup)
       try {
           localStorage.setItem(`nba_gm_save_${userId}`, JSON.stringify(payload));
       } catch (e) {
@@ -282,12 +195,13 @@ export const useSaveGame = () => {
       return payload;
     },
     onSuccess: (savedData, variables) => {
+        // 캐시 즉시 업데이트
         queryClient.setQueryData(['saveData', variables.userId], savedData);
     }
   });
 };
 
-// 4. Save Game Results (Box Scores) to dedicated table
+// 4. Save Game Results (Box Scores)
 export const saveGameResults = async (results: any[]) => {
     if (results.length === 0) return;
     try {
@@ -296,26 +210,23 @@ export const saveGameResults = async (results: any[]) => {
             .insert(results);
         
         if (error) throw error;
-        console.log(`✅ Saved ${results.length} game results to DB`);
+        // 성공 시 로그 생략 (너무 빈번할 수 있음)
     } catch (e) {
         console.error("Failed to save game results:", e);
-        // Fallback or retry logic could be added here
     }
 };
 
-// 5. Session Heartbeat (Read-Only)
+// 5. Session Heartbeat
 export const useSessionHeartbeat = (userId: string | undefined, deviceId: string, enabled: boolean = true) => {
     return useQuery({
         queryKey: ['heartbeat', userId, deviceId],
         queryFn: async () => {
             if (!userId) return null;
-            
             const { data } = await supabase
                 .from('profiles')
                 .select('active_device_id')
                 .eq('id', userId)
                 .single();
-            
             return data?.active_device_id === deviceId;
         },
         enabled: !!userId && enabled,
@@ -340,59 +251,28 @@ export const useScoutingReport = (player: Player | null) => {
     });
 };
 
-// 7. Monthly Schedule Loading (Optimization for Calendar)
+// 7. Monthly Schedule
 export const useMonthlySchedule = (userId: string | undefined, year: number, month: number) => {
     return useQuery({
         queryKey: ['monthlySchedule', userId, year, month],
         queryFn: async () => {
-            // Calculate start and end date for the query
             const startDate = new Date(year, month, 1).toISOString().split('T')[0];
             const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
-            // Fetch Schedule Meta (All games in this month)
-            const { data: scheduleData, error: scheduleError } = await supabase
-                .from('meta_schedule')
-                .select('*')
-                .gte('game_date', startDate)
-                .lte('game_date', endDate);
+            if (!userId) return [];
 
-            if (scheduleError) throw scheduleError;
-
-            // Fetch User Results (Only if logged in)
-            let userResults: any[] = [];
-            if (userId) {
-                const { data: resultsData, error: resultsError } = await supabase
-                    .from('user_game_results')
-                    .select('game_id, home_score, away_score')
-                    .eq('user_id', userId)
-                    .gte('date', startDate)
-                    .lte('date', endDate);
-                
-                if (resultsError) throw resultsError;
-                userResults = resultsData || [];
-            }
-
-            // Merge Data
-            const mergedSchedule = mapDatabaseScheduleToRuntimeGame(scheduleData || []);
+            const { data: resultsData, error: resultsError } = await supabase
+                .from('user_game_results')
+                .select('game_id, home_score, away_score')
+                .eq('user_id', userId)
+                .gte('date', startDate)
+                .lte('date', endDate);
             
-            // Map results to schedule
-            const resultMap = new Map(userResults.map(r => [r.game_id, r]));
-            
-            return mergedSchedule.map(g => {
-                const result = resultMap.get(g.id);
-                if (result) {
-                    return {
-                        ...g,
-                        played: true,
-                        homeScore: result.home_score,
-                        awayScore: result.away_score
-                    };
-                }
-                return g;
-            });
+            if (resultsError) throw resultsError;
+            return resultsData || [];
         },
-        enabled: true, // Always load, fallback to offline data if needed by App state
-        staleTime: 1000 * 60 * 5, // 5 minutes cache
+        enabled: !!userId,
+        staleTime: 1000 * 60 * 5,
         keepPreviousData: true
     });
 };
