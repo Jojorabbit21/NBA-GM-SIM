@@ -1,3 +1,4 @@
+
 import { Player, SeasonStats, Game, Team } from '../types';
 
 export const SEASON_START_DATE = '2025-10-20'; // 25-26 Season Start
@@ -18,36 +19,13 @@ export const getTeamLogoUrl = (id: string): string => {
 };
 
 export const TEAM_OWNERS: Record<string, string> = {
-  'atl': '토니 레슬러',
-  'bos': '빌 치좀',
-  'det': '톰 고어스',
-  'nyk': '제임스 돌란',
-  'chi': '제리 라인스도프',
-  'was': '모뉴먼트 스포츠&엔터테인먼트',
-  'phi': '해리스 블리처 스포츠 엔터테인먼트',
-  'ind': '허버트 사이먼',
-  'mia': '미키 애리슨',
-  'bkn': '차이충신',
-  'mil': '웨슬리 이든스 & 마크 래즈리',
-  'cha': '릭 슈날 & 게이브 플롯킨',
-  'tor': '메이플 리프 스포츠&엔터테인먼트',
-  'cle': '댄 길버트',
-  'orl': 'RDV 스포츠 Inc.',
-  'sas': '스퍼츠 스포츠&엔터테인먼트',
-  'den': '조쉬 크뢴케',
-  'sac': '비베크 라나디베',
-  'hou': '틸먼 퍼티타',
-  'por': '토마스 던든',
-  'gsw': '조 레이콥',
-  'dal': '패트릭 듀몽',
-  'uta': '라이언 스미스',
-  'lal': '마크 월터',
-  'mem': '멤피스 배스킷볼 LLC',
-  'min': '마크 로리',
-  'nop': '게일 벤슨',
-  'okc': '프로페셔널 배스킷볼 클럽 LLC',
-  'phx': '맷 이시비아',
-  'lac': '스티브 발머'
+  'atl': '토니 레슬러', 'bos': '빌 치좀', 'det': '톰 고어스', 'nyk': '제임스 돌란', 'chi': '제리 라인스도프',
+  'was': '모뉴먼트 스포츠&엔터테인먼트', 'phi': '해리스 블리처 스포츠 엔터테인먼트', 'ind': '허버트 사이먼',
+  'mia': '미키 애리슨', 'bkn': '차이충신', 'mil': '웨슬리 이든스 & 마크 래즈리', 'cha': '릭 슈날 & 게이브 플롯킨',
+  'tor': '메이플 리프 스포츠&엔터테인먼트', 'cle': '댄 길버트', 'orl': 'RDV 스포츠 Inc.', 'sas': '스퍼츠 스포츠&엔터테인먼트',
+  'den': '조쉬 크뢴케', 'sac': '비베크 라나디베', 'hou': '틸먼 퍼티타', 'por': '토마스 던든', 'gsw': '조 레이콥',
+  'dal': '패트릭 듀몽', 'uta': '라이언 스미스', 'lal': '마크 월터', 'mem': '멤피스 배스킷볼 LLC',
+  'min': '마크 로리', 'nop': '게일 벤슨', 'okc': '프로페셔널 배스킷볼 클럽 LLC', 'phx': '맷 이시비아', 'lac': '스티브 발머'
 };
 
 export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, conference: 'East' | 'West', division: 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest' }[] = [
@@ -83,103 +61,69 @@ export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, confe
   { id: 'sas', name: '스퍼스', city: '샌안토니오', conference: 'West', division: 'Southwest' },
 ];
 
-// Robust Team Name Mapping (Handles English, Korean, City, Team Name, and Common Abbreviations)
 const TEAM_NAME_MAP: Record<string, string> = {
-  // Explicit Full Korean Names (from players.csv)
-  '보스턴 셀틱스': 'bos',
-  '브루클린 네츠': 'bkn',
-  '뉴욕 닉스': 'nyk',
-  '필라델피아 세븐티식서스': 'phi',
-  '토론토 랩터스': 'tor',
-  '시카고 불스': 'chi',
-  '클리블랜드 캐벌리어스': 'cle',
-  '디트로이트 피스톤즈': 'det',
-  '인디애나 페이서스': 'ind',
-  '밀워키 벅스': 'mil',
-  '애틀랜타 호크스': 'atl',
-  '샬럿 호네츠': 'cha',
-  '마이애미 히트': 'mia',
-  '올랜도 매직': 'orl',
-  '워싱턴 위저즈': 'was',
-  '덴버 너게츠': 'den',
-  '미네소타 팀버울브스': 'min',
-  '오클라호마시티 썬더': 'okc',
-  '포틀랜드 트레일블레이저스': 'por',
-  '유타 재즈': 'uta',
-  '골든스테이트 워리어스': 'gsw',
-  'la 클리퍼스': 'lac', '엘에이 클리퍼스': 'lac',
-  'la 레이커스': 'lal', '엘에이 레이커스': 'lal',
-  '피닉스 선즈': 'phx',
-  '새크라멘토 킹스': 'sac',
-  '댈러스 매버릭스': 'dal',
-  '휴스턴 로케츠': 'hou',
-  '멤피스 그리즐리스': 'mem',
-  '뉴올리언스 펠리컨스': 'nop',
-  '샌안토니오 스퍼스': 'sas',
+  // [Canonical IDs - Self Mapping]
+  'bos': 'bos', 'bkn': 'bkn', 'nyk': 'nyk', 'phi': 'phi', 'tor': 'tor',
+  'chi': 'chi', 'cle': 'cle', 'det': 'det', 'ind': 'ind', 'mil': 'mil',
+  'atl': 'atl', 'cha': 'cha', 'mia': 'mia', 'orl': 'orl', 'was': 'was',
+  'den': 'den', 'min': 'min', 'okc': 'okc', 'por': 'por', 'uta': 'uta',
+  'gsw': 'gsw', 'lac': 'lac', 'lal': 'lal', 'phx': 'phx', 'sac': 'sac',
+  'dal': 'dal', 'hou': 'hou', 'mem': 'mem', 'nop': 'nop', 'sas': 'sas',
 
-  // Atlantic
-  'boston': 'bos', 'celtics': 'bos', '보스턴': 'bos', '셀틱스': 'bos', 'bos': 'bos',
-  'brooklyn': 'bkn', 'nets': 'bkn', '브루클린': 'bkn', '네츠': 'bkn', 'bkn': 'bkn', 'brk': 'bkn',
-  'new york': 'nyk', 'knicks': 'nyk', 'ny': 'nyk', '뉴욕': 'nyk', '닉스': 'nyk', 'nyk': 'nyk',
-  'philadelphia': 'phi', '76ers': 'phi', 'sixers': 'phi', '필라델피아': 'phi', '세븐티식서스': 'phi', 'phi': 'phi',
-  'toronto': 'tor', 'raptors': 'tor', '토론토': 'tor', '랩터스': 'tor', 'tor': 'tor',
-  // Central
-  'chicago': 'chi', 'bulls': 'chi', '시카고': 'chi', '불스': 'chi', 'chi': 'chi',
-  'cleveland': 'cle', 'cavaliers': 'cle', 'cavs': 'cle', '클리블랜드': 'cle', '캐벌리어스': 'cle', 'cle': 'cle',
-  'detroit': 'det', 'pistons': 'det', '디트로이트': 'det', '피스톤즈': 'det', 'det': 'det',
-  'indiana': 'ind', 'pacers': 'ind', '인디애나': 'ind', '페이서스': 'ind', 'ind': 'ind',
-  'milwaukee': 'mil', 'bucks': 'mil', '밀워키': 'mil', '벅스': 'mil', 'mil': 'mil',
-  // Southeast
-  'atlanta': 'atl', 'hawks': 'atl', '애틀랜타': 'atl', '호크스': 'atl', 'atl': 'atl',
-  'charlotte': 'cha', 'hornets': 'cha', '샬럿': 'cha', '호네츠': 'cha', 'cha': 'cha', 'cho': 'cha', 'charlote': 'cha',
-  'miami': 'mia', 'heat': 'mia', '마이애미': 'mia', '히트': 'mia', 'mia': 'mia',
-  'orlando': 'orl', 'magic': 'orl', '올랜도': 'orl', '매직': 'orl', 'orl': 'orl',
-  'washington': 'was', 'wizards': 'was', '워싱턴': 'was', '위저즈': 'was', 'was': 'was',
-  // Northwest
-  'denver': 'den', 'nuggets': 'den', '덴버': 'den', '너게츠': 'den', '너겟츠': 'den', 'den': 'den',
-  'minnesota': 'min', 'timberwolves': 'min', 'wolves': 'min', '미네소타': 'min', '팀버울브스': 'min', '팀버울브즈': 'min', 'min': 'min',
-  'oklahoma city': 'okc', 'thunder': 'okc', 'okc': 'okc', '오클라호마시티': 'okc', '오클': 'okc', '썬더': 'okc',
-  'portland': 'por', 'trail blazers': 'por', 'blazers': 'por', '포틀랜드': 'por', '트레일블레이저스': 'por', 'por': 'por',
-  'utah': 'uta', 'jazz': 'uta', '유타': 'uta', '재즈': 'uta', 'uta': 'uta',
-  // Pacific
-  'golden state': 'gsw', 'warriors': 'gsw', 'gs': 'gsw', '골든스테이트': 'gsw', '워리어스': 'gsw', 'gsw': 'gsw',
-  'la clippers': 'lac', 'clippers': 'lac', '클리퍼스': 'lac', 'lac': 'lac',
-  'la lakers': 'lal', 'lakers': 'lal', '레이커스': 'lal', 'lal': 'lal',
-  'phoenix': 'phx', 'suns': 'phx', '피닉스': 'phx', '선즈': 'phx', 'phx': 'phx', 'pho': 'phx', 'pheonix': 'phx', 'phonix': 'phx',
-  'sacramento': 'sac', 'kings': 'sac', '새크라멘토': 'sac', '킹스': 'sac', 'sac': 'sac',
-  // Southwest
-  'dallas': 'dal', 'mavericks': 'dal', 'mavs': 'dal', '댈러스': 'dal', '매버릭스': 'dal', 'dal': 'dal',
-  'houston': 'hou', 'rockets': 'hou', '휴스턴': 'hou', '로케츠': 'hou', 'hou': 'hou',
-  'memphis': 'mem', 'grizzlies': 'mem', '멤피스': 'mem', '그리즐리스': 'mem', 'mem': 'mem',
-  'new orleans': 'nop', 'pelicans': 'nop', 'pels': 'nop', '뉴올리언스': 'nop', '펠리컨스': 'nop', 'nop': 'nop', 'no': 'nop',
-  'san antonio': 'sas', 'spurs': 'sas', '샌안토니오': 'sas', '스퍼스': 'sas', 'sas': 'sas'
+  // [Short Korean Names]
+  '셀틱스': 'bos', '네츠': 'bkn', '닉스': 'nyk', '세븐티식서스': 'phi', '랩터스': 'tor',
+  '불스': 'chi', '캐벌리어스': 'cle', '피스톤즈': 'det', '페이서스': 'ind', '벅스': 'mil',
+  '호크스': 'atl', '호네츠': 'cha', '히트': 'mia', '매직': 'orl', '위저즈': 'was',
+  '너게츠': 'den', '너겟츠': 'den', '팀버울브스': 'min', '팀버울브즈': 'min', '썬더': 'okc', '트레일블레이저스': 'por', '재즈': 'uta',
+  '워리어스': 'gsw', '클리퍼스': 'lac', '레이커스': 'lal', '선즈': 'phx', '킹스': 'sac',
+  '매버릭스': 'dal', '로케츠': 'hou', '그리즐리스': 'mem', '펠리컨스': 'nop', '스퍼스': 'sas',
+
+  // [Full Korean Names]
+  '보스턴 셀틱스': 'bos', '브루클린 네츠': 'bkn', '뉴욕 닉스': 'nyk', '필라델피아 세븐티식서스': 'phi', '토론토 랩터스': 'tor',
+  '시카고 불스': 'chi', '클리블랜드 캐벌리어스': 'cle', '디트로이트 피스톤즈': 'det', '인디애나 페이서스': 'ind', '밀워키 벅스': 'mil',
+  '애틀랜타 호크스': 'atl', '샬럿 호네츠': 'cha', '마이애미 히트': 'mia', '올랜도 매직': 'orl', '워싱턴 위저즈': 'was',
+  '덴버 너게츠': 'den', '미네소타 팀버울브스': 'min', '오클라호마시티 썬더': 'okc', '포틀랜드 트레일블레이저스': 'por', '유타 재즈': 'uta',
+  '골든스테이트 워리어스': 'gsw', 'la 클리퍼스': 'lac', '엘에이 클리퍼스': 'lac', 'la 레이커스': 'lal', '엘에이 레이커스': 'lal',
+  '피닉스 선즈': 'phx', '새크라멘토 킹스': 'sac', '댈러스 매버릭스': 'dal', '휴스턴 로케츠': 'hou', '멤피스 그리즐리스': 'mem',
+  '뉴올리언스 펠리컨스': 'nop', '샌안토니오 스퍼스': 'sas',
+  
+  // [English Names]
+  'boston': 'bos', 'celtics': 'bos', 'brooklyn': 'bkn', 'nets': 'bkn', 'new york': 'nyk', 'knicks': 'nyk', 'philadelphia': 'phi', 'sixers': 'phi',
+  'toronto': 'tor', 'raptors': 'tor', 'chicago': 'chi', 'bulls': 'chi', 'cleveland': 'cle', 'cavs': 'cle', 'detroit': 'det', 'pistons': 'det',
+  'indiana': 'ind', 'pacers': 'ind', 'milwaukee': 'mil', 'bucks': 'mil', 'atlanta': 'atl', 'hawks': 'atl', 'charlotte': 'cha', 'hornets': 'cha',
+  'miami': 'mia', 'heat': 'mia', 'orlando': 'orl', 'magic': 'orl', 'washington': 'was', 'wizards': 'was', 'denver': 'den', 'nuggets': 'den',
+  'minnesota': 'min', 'timberwolves': 'min', 'oklahoma city': 'okc', 'thunder': 'okc', 'portland': 'por', 'trail blazers': 'por', 'utah': 'uta', 'jazz': 'uta',
+  'golden state': 'gsw', 'warriors': 'gsw', 'clippers': 'lac', 'lakers': 'lal', 'phoenix': 'phx', 'suns': 'phx', 'sacramento': 'sac', 'kings': 'sac',
+  'dallas': 'dal', 'mavericks': 'dal', 'houston': 'hou', 'rockets': 'hou', 'memphis': 'mem', 'grizzlies': 'mem', 'new orleans': 'nop', 'pelicans': 'nop',
+  'san antonio': 'sas', 'spurs': 'sas'
 };
 
 export const normalizeName = (name: string): string => {
     if (!name) return "";
-    return name
-        .replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '')
-        .replace(/(II|III|IV|Jr|Sr)$/i, '')
-        .toLowerCase()
-        .trim();
+    return name.replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '').replace(/(II|III|IV|Jr|Sr)$/i, '').toLowerCase().trim();
 };
-
-const SORTED_KEYS = Object.keys(TEAM_NAME_MAP).sort((a, b) => b.length - a.length);
 
 export const resolveTeamId = (input: string): string => {
     if (!input) return 'unknown';
     const normalized = input.toLowerCase().trim();
     
-    // 1. Direct Match (O(1))
+    // 0. Check if it's already a valid canonical ID (e.g. 'bos', 'gsw')
+    // This allows the function to be idempotent (resolveTeamId('bos') -> 'bos')
+    const validIds = Object.values(TEAM_NAME_MAP);
+    if (validIds.includes(normalized)) return normalized;
+
+    // 1. Direct Map Lookup (O(1))
     if (TEAM_NAME_MAP[normalized]) return TEAM_NAME_MAP[normalized];
 
-    // 2. Partial Match (Longest keys first)
-    for (const key of SORTED_KEYS) {
-        if (normalized.includes(key)) {
-            return TEAM_NAME_MAP[key];
+    // 2. Partial Match (Safer)
+    // Only verify if the INPUT contains the key (e.g. "Boston Celtics" contains "celtics")
+    if (normalized.length >= 3) {
+        for (const key in TEAM_NAME_MAP) {
+             if (normalized.includes(key)) {
+                 return TEAM_NAME_MAP[key];
+             }
         }
     }
-    
     return 'unknown';
 };
 
@@ -207,7 +151,6 @@ export const parseCSVToObjects = (csv: string): any[] => {
     const headers = headersLine.split(',').map(h => h.trim().toLowerCase());
     const result = [];
     for (let i = 1; i < lines.length; i++) {
-        // Handle comma inside quotes (simple version) or split by comma
         const values = lines[i].split(',').map(v => v.trim());
         if (values.length < headers.length - 1) continue;
         const obj: any = {};
@@ -224,104 +167,75 @@ export const parseCSVToObjects = (csv: string): any[] => {
 export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
     const position = overridePosition || p.position || 'PG';
     const v = (key: string, def = 70) => {
-        // [DB Support] Handle flat structure (p[key]) AND nested structure (p.base_attributes[key])
-        if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
-        if (p.base_attributes && p.base_attributes[key.toLowerCase()] !== undefined) return p.base_attributes[key.toLowerCase()];
-        
-        return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
+        // [Flat Support] Directly check the object properties (case-insensitive)
+        const val = p[key] ?? p[key.toLowerCase()] ?? p[key.toUpperCase()];
+        return (val !== undefined && val !== null) ? Number(val) : def;
     };
     
-    const threeAvg = (
-        v('threeCorner', v('threec', v('3c'))) + 
-        v('three45', v('3_45')) + 
-        v('threeTop', v('threet', v('3t')))
-    ) / 3;
+    const threeAvg = (v('threecorner', v('3c', v('three_corner', 0))) + v('three45', v('3_45', 0)) + v('threetop', v('3t', v('three_top', 0)))) / 3 || v('out', 70);
 
     const attr = {
-        close: v('closeShot', v('close')),
-        mid: v('midRange', v('mid')),
-        threeAvg: threeAvg || v('threeAvg'),
-        ft: v('ft'),
-        shotIq: v('shotIq', v('siq')),
-        offConsist: v('offConsist', v('ocon')),
-        layup: v('layup', v('lay')),
-        dunk: v('dunk', v('dnk')),
-        post: v('postPlay', v('post')),
-        drawFoul: v('drawFoul', v('draw')),
-        hands: v('hands'),
-        passAcc: v('passAcc', v('pacc')),
-        handling: v('handling', v('handl')),
-        spdBall: v('spdBall', v('spwb')),
-        passVision: v('passVision', v('pvis')),
-        passIq: v('passIq', v('piq')),
-        stamina: v('stamina', v('sta')),
-        intDef: v('intDef', v('idef')),
-        perDef: v('perDef', v('pdef')),
-        steal: v('steal', v('stl')),
-        blk: v('blk'),
-        helpDefIq: v('helpDefIq', v('hdef')),
-        passPerc: v('passPerc', v('pper')),
-        defConsist: v('defConsist', v('dcon')),
-        offReb: v('offReb', v('oreb')),
-        defReb: v('defReb', v('dreb')),
-        potential: v('potential', v('pot')),
+        close: v('closeshot', v('close', 70)),
+        mid: v('midrange', v('mid', 70)),
+        threeAvg: threeAvg,
+        ft: v('ft', 70),
+        shotIq: v('shotIq', v('siq', 70)),
+        offConsist: v('offconsist', v('ocon', 70)),
+        layup: v('layup', v('lay', 70)),
+        dunk: v('dunk', v('dnk', 70)),
+        post: v('postplay', v('post', 70)),
+        drawFoul: v('drawfoul', v('draw', 70)),
+        hands: v('hands', 70),
+        passAcc: v('passacc', v('pacc', 70)),
+        handling: v('handling', v('handl', 70)),
+        spdBall: v('spdball', v('spwb', 70)),
+        passVision: v('passvision', v('pvis', 70)),
+        passIq: v('passiq', v('piq', 70)),
+        stamina: v('stamina', v('sta', 70)),
+        intDef: v('intdef', v('idef', 70)),
+        perDef: v('perdef', v('pdef', 70)),
+        steal: v('steal', v('stl', 70)),
+        blk: v('blk', 70),
+        helpDefIq: v('helpdefiq', v('hdef', 70)),
+        passPerc: v('passperc', v('pper', 70)),
+        defConsist: v('defconsist', v('dcon', 70)),
+        offReb: v('offreb', v('oreb', 70)),
+        defReb: v('defreb', v('dreb', 70)),
+        potential: v('potential', v('pot', 75)),
         intangibles: v('intangibles', 70),
         height: v('height', 200),
-        strength: v('strength', v('str')),
-        vertical: v('vertical', v('vert')),
-        durability: v('durability', v('dur')),
-        agility: v('agility', v('agi')),
-        hustle: v('hustle', v('hus')),
-        speed: v('speed', v('spd')),
+        strength: v('strength', v('str', 70)),
+        vertical: v('vertical', v('vert', 70)),
+        durability: v('durability', v('dur', 70)),
+        agility: v('agility', v('agi', 70)),
+        hustle: v('hustle', v('hus', 70)),
+        speed: v('speed', v('spd', 70)),
     };
 
     const calc = (weights: {val: number, w: number}[]) => {
-        let totalVal = 0;
-        let totalWeight = 0;
-        weights.forEach(item => {
-            totalVal += (item.val ?? 0) * item.w;
-            totalWeight += item.w;
-        });
+        let totalVal = 0, totalWeight = 0;
+        weights.forEach(item => { totalVal += item.val * item.w; totalWeight += item.w; });
         return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
     };
 
     if (position.includes('PG')) {
         return calc([{ val: attr.close, w: 10 }, { val: attr.mid, w: 20 }, { val: attr.threeAvg, w: 25 }, { val: attr.ft, w: 10 }, { val: attr.shotIq, w: 45 }, { val: attr.offConsist, w: 25 }, { val: attr.layup, w: 25 }, { val: attr.hands, w: 40 }, { val: attr.stamina, w: 15 }, { val: attr.passAcc, w: 25 }, { val: attr.handling, w: 15 }, { val: attr.spdBall, w: 10 }, { val: attr.passVision, w: 25 }, { val: attr.passIq, w: 50 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }]);
     } else if (position.includes('SG')) {
-        return calc([
-            { val: attr.close, w: 300 }, { val: attr.mid, w: 100 }, { val: attr.threeAvg, w: 150 }, { val: attr.ft, w: 100 }, { val: attr.shotIq, w: 500 }, { val: attr.offConsist, w: 500 }, { val: attr.layup, w: 200 }, { val: attr.dunk, w: 150 }, { val: attr.post, w: 0 }, { val: attr.drawFoul, w: 50 }, { val: attr.hands, w: 250 }, { val: attr.intDef, w: 0 }, { val: attr.perDef, w: 0 }, { val: attr.steal, w: 0 }, { val: attr.blk, w: 0 }, { val: attr.helpDefIq, w: 0 }, { val: attr.passPerc, w: 0 }, { val: attr.defConsist, w: 5 }, { val: attr.offReb, w: 0 }, { val: attr.defReb, w: 0 }, { val: attr.speed, w: 0 }, { val: attr.agility, w: 0 }, { val: attr.strength, w: 0 }, { val: attr.vertical, w: 0 }, { val: attr.stamina, w: 0 }, { val: attr.hustle, w: 0 }, { val: attr.durability, w: 0 }, { val: attr.passAcc, w: 0 }, { val: attr.handling, w: 0 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 0 }, { val: attr.passIq, w: 0 }, { val: attr.intangibles, w: 50 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 30 }
-        ]);
+        return calc([{ val: attr.close, w: 300 }, { val: attr.mid, w: 100 }, { val: attr.threeAvg, w: 150 }, { val: attr.ft, w: 100 }, { val: attr.shotIq, w: 500 }, { val: attr.offConsist, w: 500 }, { val: attr.layup, w: 200 }, { val: attr.dunk, w: 150 }, { val: attr.hands, w: 250 }, { val: attr.intangibles, w: 50 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 30 }]);
     } else if (position.includes('SF')) {
-        return calc([
-            { val: attr.close, w: 300 }, { val: attr.mid, w: 150 }, { val: attr.threeAvg, w: 50 }, { val: attr.ft, w: 150 }, { val: attr.shotIq, w: 300 }, { val: attr.offConsist, w: 500 }, { val: attr.layup, w: 500 }, { val: attr.dunk, w: 100 }, { val: attr.post, w: 0 }, { val: attr.drawFoul, w: 150 }, { val: attr.hands, w: 250 }, { val: attr.intDef, w: 200 }, { val: attr.perDef, w: 200 }, { val: attr.steal, w: 10 }, { val: attr.blk, w: 0 }, { val: attr.helpDefIq, w: 10 }, { val: attr.passPerc, w: 10 }, { val: attr.defConsist, w: 0 }, { val: attr.speed, w: 0 }, { val: attr.agility, w: 100 }, { val: attr.strength, w: 0 }, { val: attr.vertical, w: 100 }, { val: attr.stamina, w: 200 }, { val: attr.hustle, w: 200 }, { val: attr.durability, w: 0 }, { val: attr.passAcc, w: 0 }, { val: attr.handling, w: 0 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 0 }, { val: attr.passIq, w: 0 }, { val: attr.offReb, w: 0 }, { val: attr.defReb, w: 0 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 100 }
-        ]);
+        return calc([{ val: attr.close, w: 300 }, { val: attr.mid, w: 150 }, { val: attr.threeAvg, w: 50 }, { val: attr.ft, w: 150 }, { val: attr.shotIq, w: 300 }, { val: attr.offConsist, w: 500 }, { val: attr.layup, w: 500 }, { val: attr.dunk, w: 100 }, { val: attr.drawFoul, w: 150 }, { val: attr.hands, w: 250 }, { val: attr.intDef, w: 200 }, { val: attr.perDef, w: 200 }, { val: attr.vertical, w: 100 }, { val: attr.stamina, w: 200 }, { val: attr.hustle, w: 200 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 100 }]);
     } else if (position.includes('PF')) {
-        return calc([
-            { val: attr.close, w: 450 }, { val: attr.mid, w: 50 }, { val: attr.threeAvg, w: 50 }, { val: attr.ft, w: 150 }, { val: attr.shotIq, w: 100 }, { val: attr.offConsist, w: 600 },
-            { val: attr.layup, w: 500 }, { val: attr.dunk, w: 350 }, { val: attr.post, w: 0 }, { val: attr.drawFoul, w: 0 }, { val: attr.hands, w: 500 },
-            { val: attr.intDef, w: 200 }, { val: attr.perDef, w: 50 }, { val: attr.steal, w: 0 }, { val: attr.blk, w: 50 }, { val: attr.helpDefIq, w: 0 }, { val: attr.passPerc, w: 0 }, { val: attr.defConsist, w: 0 },
-            { val: attr.offReb, w: 100 }, { val: attr.defReb, w: 160 },
-            { val: attr.speed, w: 0 }, { val: attr.agility, w: 0 }, { val: attr.strength, w: 100 }, { val: attr.vertical, w: 100 }, { val: attr.stamina, w: 100 }, { val: attr.hustle, w: 0 }, { val: attr.durability, w: 50 },
-            { val: attr.passAcc, w: 50 }, { val: attr.handling, w: 50 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 50 }, { val: attr.passIq, w: 50 },
-            { val: attr.intangibles, w: 10 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 150 }
-        ]);
+        return calc([{ val: attr.close, w: 450 }, { val: attr.offConsist, w: 600 }, { val: attr.layup, w: 500 }, { val: attr.dunk, w: 350 }, { val: attr.hands, w: 500 }, { val: attr.intDef, w: 200 }, { val: attr.offReb, w: 100 }, { val: attr.defReb, w: 160 }, { val: attr.strength, w: 100 }, { val: attr.vertical, w: 100 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 150 }]);
     } else if (position.includes('C')) {
-        return calc([
-            { val: attr.close, w: 300 }, { val: attr.mid, w: 0 }, { val: attr.threeAvg, w: 0 }, { val: attr.ft, w: 0 }, { val: attr.shotIq, w: 200 }, { val: attr.offConsist, w: 0 }, { val: attr.layup, w: 0 }, { val: attr.dunk, w: 0 }, { val: attr.post, w: 200 }, { val: attr.drawFoul, w: 250 }, { val: attr.hands, w: 200 }, { val: attr.intDef, w: 250 }, { val: attr.perDef, w: 0 }, { val: attr.steal, w: 0 }, { val: attr.blk, w: 100 }, { val: attr.helpDefIq, w: 0 }, { val: attr.passPerc, w: 0 }, { val: attr.defConsist, w: 200 }, { val: attr.offReb, w: 100 }, { val: attr.defReb, w: 100 }, { val: attr.speed, w: 0 }, { val: attr.agility, w: 0 }, { val: attr.strength, w: 150 }, { val: attr.vertical, w: 0 }, { val: attr.stamina, w: 150 }, { val: attr.hustle, w: 0 }, { val: attr.durability, w: 150 }, { val: attr.passAcc, w: 100 }, { val: attr.handling, w: 200 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 0 }, { val: attr.passIq, w: 100 }, { val: attr.intangibles, w: 15 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 180 }
-        ]);
+        return calc([{ val: attr.close, w: 300 }, { val: attr.shotIq, w: 200 }, { val: attr.post, w: 200 }, { val: attr.drawFoul, w: 250 }, { val: attr.hands, w: 200 }, { val: attr.intDef, w: 250 }, { val: attr.blk, w: 100 }, { val: attr.defConsist, w: 200 }, { val: attr.offReb, w: 100 }, { val: attr.defReb, w: 100 }, { val: attr.strength, w: 150 }, { val: attr.stamina, w: 150 }, { val: attr.durability, w: 150 }, { val: attr.passAcc, w: 100 }, { val: attr.handling, w: 200 }, { val: attr.passIq, w: 100 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 180 }]);
     }
     return 70;
 };
 
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
-    // Helper to get value case-insensitively, handling flat and nested attributes
     const v = (key: string, def: any = 70) => {
-        // Check base_attributes first (Supabase structure)
-        if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
-        if (p.base_attributes && p.base_attributes[key.toLowerCase()] !== undefined) return p.base_attributes[key.toLowerCase()];
-        
-        // Then check top-level keys (CSV structure)
-        return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
+        const val = p[key] ?? p[key.toLowerCase()] ?? p[key.toUpperCase()];
+        return (val !== undefined && val !== null) ? val : def;
     };
 
     const name = p.name || p.Name || v('name', "Unknown Player");
@@ -337,7 +251,7 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         height: p.height || v('height', 200),
         weight: p.weight || v('weight', 100),
         salary: p.salary || v('salary', 1.0),
-        contractYears: p.contract_years || v('contract_years', v('contractyears', v('contractYears', 1))),
+        contractYears: v('contract_years', v('contractyears', v('contractYears', 1))),
         health: injury ? 'Injured' : 'Healthy',
         injuryType: injury?.type,
         returnDate: injury?.returnDate,
@@ -346,45 +260,45 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         potential: v('potential', v('pot', ovr + 5)),
         revealedPotential: v('potential', v('pot', ovr + 5)),
         intangibles: v('intangibles', 70), 
-        speed: v('speed', v('spd')),
-        agility: v('agility', v('agi')),
-        strength: v('strength', v('str')),
-        vertical: v('vertical', v('vert')),
-        stamina: v('stamina', v('sta')),
-        hustle: v('hustle', v('hus')),
-        durability: v('durability', v('dur')),
-        ath: Math.round(((v('spd') + v('agi') + v('str') + v('vert')) || 280) / 4),
-        closeShot: v('closeShot', v('close')),
-        midRange: v('midRange', v('mid')),
-        threeCorner: v('threeCorner', v('threec', v('3c'))),
-        three45: v('three45', v('3_45')),
-        threeTop: v('threeTop', v('threet', v('3t'))),
-        ft: v('ft'),
-        shotIq: v('shotIq', v('siq')),
-        offConsist: v('offConsist', v('ocon')),
-        out: Math.round((v('close', 70) + v('mid', 70) + v('threec', 70)) / 3),
-        layup: v('layup', v('lay')),
-        dunk: v('dunk', v('dnk')),
-        postPlay: v('postPlay', v('post')),
-        drawFoul: v('drawFoul', v('draw')),
-        hands: v('hands'),
-        ins: Math.round((v('lay', 70) + v('dnk', 70) + v('post', 70)) / 3),
-        passAcc: v('passAcc', v('pacc')),
-        handling: v('handling', v('handl')),
-        spdBall: v('spdBall', v('spwb')),
-        passIq: v('passIq', v('piq')),
-        passVision: v('passVision', v('pvis')),
+        speed: v('speed', v('spd', 70)),
+        agility: v('agility', v('agi', 70)),
+        strength: v('strength', v('str', 70)),
+        vertical: v('vertical', v('vert', 70)),
+        stamina: v('stamina', v('sta', 70)),
+        hustle: v('hustle', v('hus', 70)),
+        durability: v('durability', v('dur', 70)),
+        ath: Math.round((v('spd', 70) + v('agi', 70) + v('str', 70) + v('vert', 70)) / 4),
+        closeShot: v('closeshot', v('close', 70)),
+        midRange: v('midrange', v('mid', 70)),
+        threeCorner: v('threecorner', v('3c', 70)),
+        three45: v('three45', v('3_45', 70)),
+        threeTop: v('threetop', v('3t', 70)),
+        ft: v('ft', 70),
+        shotIq: v('shotIq', v('siq', 70)),
+        offConsist: v('offconsist', v('ocon', 70)),
+        out: Math.round((v('close', 70) + v('mid', 70) + v('threecorner', v('3c', 70))) / 3),
+        layup: v('layup', v('lay', 70)),
+        dunk: v('dunk', v('dnk', 70)),
+        postPlay: v('postplay', v('post', 70)),
+        drawFoul: v('drawfoul', v('draw', 70)),
+        hands: v('hands', 70),
+        ins: Math.round((v('lay', 70) + v('dunk', 70) + v('post', 70)) / 3),
+        passAcc: v('passacc', v('pacc', 70)),
+        handling: v('handling', v('handl', 70)),
+        spdBall: v('spdball', v('spwb', 70)),
+        passIq: v('passiq', v('piq', 70)),
+        passVision: v('passvision', v('pvis', 70)),
         plm: Math.round((v('pacc', 70) + v('handl', 70) + v('pvis', 70)) / 3),
-        intDef: v('intDef', v('idef')),
-        perDef: v('perDef', v('pdef')),
-        steal: v('steal', v('stl')),
-        blk: v('blk'),
-        helpDefIq: v('helpDefIq', v('hdef')),
-        passPerc: v('passPerc', v('pper')),
-        defConsist: v('defConsist', v('dcon')),
+        intDef: v('intdef', v('idef', 70)),
+        perDef: v('perdef', v('pdef', 70)),
+        steal: v('steal', v('stl', 70)),
+        blk: v('blk', 70),
+        helpDefIq: v('helpdefiq', v('hdef', 70)),
+        passPerc: v('passperc', v('pper', 70)),
+        defConsist: v('defconsist', v('dcon', 70)),
         def: Math.round((v('idef', 70) + v('pdef', 70) + v('stl', 70) + v('blk', 70)) / 4),
-        offReb: v('offReb', v('oreb')),
-        defReb: v('defReb', v('dreb')),
+        offReb: v('offreb', v('oreb', 70)),
+        defReb: v('defreb', v('dreb', 70)),
         reb: Math.round((v('oreb', 70) + v('dreb', 70)) / 2),
         stats: INITIAL_STATS(),
         playoffStats: INITIAL_STATS()
@@ -393,79 +307,19 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
 
 export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
     return rows.map(r => {
-        // Handle explicit DB columns (home_team_id, away_team_id)
         if (r.home_team_id && r.away_team_id) {
              return {
-                 id: r.id || `g_${r.home_team_id}_${r.away_team_id}_${r.game_date}`,
-                 homeTeamId: r.home_team_id,
-                 awayTeamId: r.away_team_id,
-                 date: r.game_date,
-                 homeScore: r.home_score ?? undefined,
-                 awayScore: r.away_score ?? undefined,
-                 played: !!r.played,
-                 isPlayoff: r.is_playoff || false,
-                 seriesId: r.series_id || undefined
+                 id: r.id, homeTeamId: r.home_team_id, awayTeamId: r.away_team_id, date: r.game_date,
+                 homeScore: r.home_score ?? undefined, awayScore: r.away_score ?? undefined,
+                 played: !!r.played, isPlayoff: r.is_playoff || false, seriesId: r.series_id || undefined
              };
         }
-
-        // Fallback for CSV-like structure
-        let dateStr = r.date || r.Date;
-        if (dateStr && dateStr.includes(' ')) {
-            try {
-                const d = new Date(dateStr);
-                if (!isNaN(d.getTime())) {
-                    dateStr = d.toISOString().split('T')[0];
-                }
-            } catch(e) {}
-        }
-
-        const site = r.site || r.Site;
-        const homeName = (site === '홈' || site === 'Home') ? (r.team || r.Team) : (r.opponent || r.Opponent);
-        const awayName = (site === '홈' || site === 'Home') ? (r.opponent || r.Opponent) : (r.team || r.Team);
-
-        const homeTeamId = resolveTeamId(homeName);
-        const awayTeamId = resolveTeamId(awayName);
-
         return {
-            id: r.id || `g_${homeTeamId}_${awayTeamId}_${dateStr}`,
-            homeTeamId,
-            awayTeamId,
-            date: dateStr,
-            homeScore: r.tmscore || r.home_score || undefined,
-            awayScore: r.oppscore || r.away_score || undefined,
-            played: !!(r.tmscore || r.home_score),
-            isPlayoff: r.isplayoff || false,
-            seriesId: r.seriesid || undefined
+            id: r.id || `g_${resolveTeamId(r.team)}_${resolveTeamId(r.opponent)}_${r.date}`,
+            homeTeamId: resolveTeamId(r.site === '홈' ? r.team : r.opponent),
+            awayTeamId: resolveTeamId(r.site === '홈' ? r.opponent : r.team),
+            date: r.date, homeScore: r.tmscore || undefined, awayScore: r.oppscore || undefined,
+            played: !!r.tmscore, isPlayoff: r.isplayoff || false, seriesId: r.seriesid || undefined
         };
     });
-};
-
-export const generateSeasonSchedule = (myTeamId: string): Game[] => {
-  const games: Game[] = [];
-  const teamIds = INITIAL_TEAMS_DATA.map(t => t.id);
-  const startDate = new Date(SEASON_START_DATE);
-  for (let i = 0; i < 82; i++) {
-    const oppIdx = (teamIds.indexOf(myTeamId) + i + 1) % teamIds.length;
-    const opponentId = teamIds[oppIdx];
-    const gameDate = new Date(startDate);
-    gameDate.setDate(startDate.getDate() + i * 2);
-    const isHome = i % 2 === 0;
-    games.push({ id: `game_${i}_${myTeamId}`, homeTeamId: isHome ? myTeamId : opponentId, awayTeamId: isHome ? opponentId : myTeamId, date: gameDate.toISOString().split('T')[0], played: false });
-  }
-  return games;
-};
-
-export const exportScheduleToCSV = (schedule: Game[]) => {
-  const headers = ['id', 'date', 'homeTeamId', 'awayTeamId', 'homeScore', 'awayScore', 'played', 'isPlayoff'];
-  const rows = schedule.map(g => [g.id, g.date, g.homeTeamId, g.awayTeamId, g.homeScore ?? '', g.awayScore ?? '', g.played, g.isPlayoff ?? false]);
-  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', 'nba_schedule.csv');
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 };

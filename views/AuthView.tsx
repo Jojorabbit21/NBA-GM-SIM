@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
@@ -11,7 +12,6 @@ interface AuthViewProps {
   onGuestLogin: () => void;
 }
 
-// Internal Component for Alerts - Applied Pretendard Medium
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => (
   <div className={`p-4 rounded-xl flex items-start gap-3 text-sm pretendard font-medium animate-in zoom-in-95 duration-200 mb-6 ${
     type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
@@ -29,7 +29,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
   
-  // Validation State
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
   const isConfirmValid = useMemo(() => confirmPassword === '' || password === confirmPassword, [password, confirmPassword]);
@@ -44,6 +43,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
   const ensureProfileExists = async (user: any) => {
     try {
+        console.log(`[Auth] Ensuring profile for ${user.id}...`);
         const { data: profile } = await supabase
             .from('profiles')
             .select('id')
@@ -52,15 +52,19 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
         if (!profile) {
             const nicknameFromEmail = user.email ? user.email.split('@')[0] : 'GM';
-            await supabase.from('profiles').insert({
+            const { error } = await supabase.from('profiles').upsert({
                 id: user.id,
                 email: user.email,
                 nickname: nicknameFromEmail,
                 created_at: new Date().toISOString()
             });
+            if (error) console.error("[Auth] Profile creation error:", error.message);
+            else console.log("[Auth] New profile created successfully.");
+        } else {
+            console.log("[Auth] Profile already exists.");
         }
     } catch (e) {
-        console.error("Profile check failed:", e);
+        console.error("[Auth] Profile check failed:", e);
     }
   };
 
@@ -78,7 +82,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
 
-        const { data, error } = await (supabase.auth as any).signUp({
+        const { data, error } = await supabase.auth.signUp({
           email,
           password
         });
@@ -91,13 +95,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        const { data, error } = await (supabase.auth as any).signInWithPassword({
+        const { data, error } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         
         if (error) throw error;
-        if (data.user) await ensureProfileExists(data.user);
+        if (data.user) {
+            console.log("[Auth] Login successful. Checking profile...");
+            await ensureProfileExists(data.user);
+        }
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
@@ -112,8 +119,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
-      
-      {/* Background Ambience */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
         <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-3xl opacity-30"></div>
         <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl opacity-30"></div>
