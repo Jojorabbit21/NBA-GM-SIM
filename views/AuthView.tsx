@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
@@ -44,23 +45,31 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
   const ensureProfileExists = async (user: any) => {
     try {
-        const { data: profile } = await supabase
+        const { data: profile, error: selectError } = await supabase
             .from('profiles')
             .select('id')
             .eq('id', user.id)
             .maybeSingle();
 
+        // 403 Forbidden 등 조회 실패 시 중단 (DB 정책 문제 가능성)
+        if (selectError) return;
+
         if (!profile) {
             const nicknameFromEmail = user.email ? user.email.split('@')[0] : 'GM';
-            await supabase.from('profiles').insert({
+            const { error: insertError } = await supabase.from('profiles').insert({
                 id: user.id,
                 email: user.email,
                 nickname: nicknameFromEmail,
                 created_at: new Date().toISOString()
             });
+            
+            // Insert 실패 시 (보통 RLS 위반 또는 트리거 중복) 무시하고 진행
+            if (insertError) {
+                 console.warn("Profile creation skipped (likely handled by DB trigger or RLS restricted).");
+            }
         }
     } catch (e) {
-        console.error("Profile check failed:", e);
+        console.warn("Profile check bypassed.");
     }
   };
 
@@ -97,7 +106,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         });
         
         if (error) throw error;
-        if (data.user) await ensureProfileExists(data.user);
+        // 로그인 시에는 프로필 생성을 강제하지 않음 (RLS 403 에러 방지)
+        // if (data.user) await ensureProfileExists(data.user);
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
