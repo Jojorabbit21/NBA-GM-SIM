@@ -219,9 +219,9 @@ export const GameSimulatingView: React.FC<{
             
             // [Logic Update] Buzzer Beater Trigger Condition
             // - Must be extremely close to the end (96%+)
-            // - Must be a close game (<= 3 pts)
+            // - Must be a close game (<= 2 pts, ensuring a single shot can win it)
             // - Must not have triggered already
-            if (!isBuzzerBeaterTriggeredRef.current && prev > 96 && prev < 99 && scoreDiff <= 3) {
+            if (!isBuzzerBeaterTriggeredRef.current && prev > 96 && prev < 99 && scoreDiff <= 2) {
                  // 20% Chance to trigger the event on last possession
                  if (Math.random() < 0.20) {
                      isBuzzerBeaterTriggeredRef.current = true;
