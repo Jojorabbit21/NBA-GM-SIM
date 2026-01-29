@@ -11,7 +11,9 @@ export const useSimulation = (
     teams: Team[], setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
     schedule: Game[], setSchedule: React.Dispatch<React.SetStateAction<Game[]>>,
     myTeamId: string | null,
-    currentSimDate: string, setCurrentSimDate: React.Dispatch<React.SetStateAction<string>>,
+    currentSimDate: string, 
+    // Changed: Accepts a saving function instead of simple setState
+    onDateChange: (newDate: string) => void,
     playoffSeries: any[], setPlayoffSeries: React.Dispatch<React.SetStateAction<any[]>>,
     setTransactions: React.Dispatch<React.SetStateAction<any[]>>,
     setNews: React.Dispatch<React.SetStateAction<any[]>>,
@@ -28,83 +30,69 @@ export const useSimulation = (
     useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
 
     const advanceDate = useCallback(() => {
-        setCurrentSimDate(prevDate => {
-            const teamsPlayedToday = schedule
-                .filter(g => g.date === prevDate && g.played)
-                .reduce((acc, g) => {
-                    acc.add(g.homeTeamId);
-                    acc.add(g.awayTeamId);
-                    return acc;
-                }, new Set<string>());
+        // [Logic Update] Calculate next date synchronously based on current prop
+        const prevDate = currentSimDate;
+        const teamsPlayedToday = schedule
+            .filter(g => g.date === prevDate && g.played)
+            .reduce((acc, g) => {
+                acc.add(g.homeTeamId);
+                acc.add(g.awayTeamId);
+                return acc;
+            }, new Set<string>());
 
-            const currentDateObj = new Date(prevDate);
-            currentDateObj.setDate(currentDateObj.getDate() + 1);
-            const nextDate = currentDateObj.toISOString().split('T')[0];
+        const currentDateObj = new Date(prevDate);
+        currentDateObj.setDate(currentDateObj.getDate() + 1);
+        const nextDate = currentDateObj.toISOString().split('T')[0];
+        
+        // [Trade Logic] Dynamic Probability based on Deadline Proximity
+        const deadline = new Date(TRADE_DEADLINE);
+        const start = new Date(SEASON_START_DATE);
+        const current = new Date(nextDate);
+
+        if (current <= deadline) {
+            const totalDuration = deadline.getTime() - start.getTime();
+            const elapsed = current.getTime() - start.getTime();
+            let progress = elapsed / totalDuration;
+            if (progress < 0) progress = 0;
             
-            // [Trade Logic Update] Dynamic Probability based on Deadline Proximity
-            const deadline = new Date(TRADE_DEADLINE);
-            const start = new Date(SEASON_START_DATE);
-            const current = new Date(nextDate);
+            // Exponential Curve: (progress)^3 * 0.7
+            const tradeChance = Math.pow(progress, 3) * 0.70;
+            const isTradeTriggered = Math.random() < tradeChance;
 
-            if (current <= deadline) {
-                // Calculate progress from 0.0 to 1.0
-                const totalDuration = deadline.getTime() - start.getTime();
-                const elapsed = current.getTime() - start.getTime();
-                let progress = elapsed / totalDuration;
-                if (progress < 0) progress = 0;
-                
-                // Exponential Curve: (progress)^3 * 0.7
-                // Early season: ~0%, Mid season: ~10%, Deadline week: ~50-70%
-                const tradeChance = Math.pow(progress, 3) * 0.70;
-                const isTradeTriggered = Math.random() < tradeChance;
-
-                if (isTradeTriggered) {
-                    setTeams(prevTeams => {
-                        const tradeResult = simulateCPUTrades(prevTeams, myTeamId);
-                        if (tradeResult) {
-                            const { updatedTeams, transaction } = tradeResult;
-                            if (transaction) {
-                                setTransactions(prev => [transaction, ...prev]);
-                                if (session?.user && !isGuestMode) {
-                                    saveUserTransaction(session.user.id, transaction);
-                                }
-                                generateCPUTradeNews(transaction).then(newsItems => {
-                                    if (newsItems) setNews(prev => [...newsItems, ...prev.slice(0, 5)]);
-                                });
-                                setToastMessage("🔥 BLOCKBUSTER: 트레이드 데드라인 임박 대형 트레이드 성사!");
-                                return updatedTeams.map(t => ({
-                                    ...t,
-                                    roster: t.roster.map(p => {
-                                        if (teamsPlayedToday.has(t.id)) return p;
-                                        const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                                        return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
-                                    })
-                                }));
+            if (isTradeTriggered) {
+                setTeams(prevTeams => {
+                    const tradeResult = simulateCPUTrades(prevTeams, myTeamId);
+                    if (tradeResult) {
+                        const { updatedTeams, transaction } = tradeResult;
+                        if (transaction) {
+                            setTransactions(prev => [transaction, ...prev]);
+                            if (session?.user && !isGuestMode) {
+                                saveUserTransaction(session.user.id, transaction);
                             }
+                            generateCPUTradeNews(transaction).then(newsItems => {
+                                if (newsItems) setNews(prev => [...newsItems, ...prev.slice(0, 5)]);
+                            });
+                            setToastMessage("🔥 BLOCKBUSTER: 트레이드 데드라인 임박 대형 트레이드 성사!");
+                            return updatedTeams.map(t => ({
+                                ...t,
+                                roster: t.roster.map(p => {
+                                    if (teamsPlayedToday.has(t.id)) return p;
+                                    const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
+                                    return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
+                                })
+                            }));
                         }
-                        // If no trade happened or failed, just return updated condition
-                        return prevTeams.map(t => ({
-                            ...t,
-                            roster: t.roster.map(p => {
-                                if (teamsPlayedToday.has(t.id)) return p;
-                                const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                                return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
-                            })
-                        }));
-                    });
-                } else {
-                    // No trade triggered, just update condition
-                    setTeams(prevTeams => prevTeams.map(t => ({
+                    }
+                    return prevTeams.map(t => ({
                         ...t,
                         roster: t.roster.map(p => {
                             if (teamsPlayedToday.has(t.id)) return p;
                             const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
                             return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
                         })
-                    })));
-                }
+                    }));
+                });
             } else {
-                // After deadline, just update condition
                 setTeams(prevTeams => prevTeams.map(t => ({
                     ...t,
                     roster: t.roster.map(p => {
@@ -114,11 +102,22 @@ export const useSimulation = (
                     })
                 })));
             }
+        } else {
+            setTeams(prevTeams => prevTeams.map(t => ({
+                ...t,
+                roster: t.roster.map(p => {
+                    if (teamsPlayedToday.has(t.id)) return p;
+                    const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
+                    return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
+                })
+            })));
+        }
 
-            return nextDate;
-        });
+        // Trigger Immediate Save via Callback
+        onDateChange(nextDate);
         setLastGameResult(null);
-    }, [schedule, myTeamId, session, isGuestMode, setTeams, setTransactions, setNews, setToastMessage, setCurrentSimDate]);
+
+    }, [schedule, myTeamId, session, isGuestMode, setTeams, setTransactions, setNews, setToastMessage, currentSimDate, onDateChange]);
 
     const handleExecuteSim = async (tactics: GameTactics) => {
         const myTeam = teams.find(t => t.id === myTeamId);

@@ -76,7 +76,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     }, [saveData, isSaveLoading, session, isGuestMode]);
 
-    // Auto Save Logic
+    // Auto Save Logic (Debounced)
     const triggerSave = useCallback(() => {
         if (isResettingRef.current || !session?.user || isGuestMode) return;
         
@@ -96,6 +96,32 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     useEffect(() => {
         if (myTeamId) triggerSave();
     }, [teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, myTeamId, triggerSave]);
+
+    // [New] Immediate Save for Critical Events (Date Change)
+    const saveDateImmediately = useCallback(async (newDate: string) => {
+        // 1. Update Local State
+        setCurrentSimDate(newDate);
+
+        // 2. Validate Env
+        if (isResettingRef.current || !session?.user || isGuestMode || !myTeamId) return;
+
+        // 3. Update Ref immediately to ensure payload is fresh
+        gameDataRef.current = { ...gameDataRef.current, currentSimDate: newDate };
+        isDirtyRef.current = false; // Reset dirty flag since we are saving now
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); // Cancel pending debounce
+
+        console.log(`💾 Immediate Save Triggered: Date advanced to ${newDate}`);
+        
+        try {
+            await saveGameMutation.mutateAsync({ 
+                userId: session.user.id, 
+                teamId: myTeamId, 
+                gameData: gameDataRef.current 
+            });
+        } catch (e) {
+            console.error("Failed to save date immediately:", e);
+        }
+    }, [session, isGuestMode, myTeamId, saveGameMutation]);
 
     // Actions
     const handleSelectTeam = useCallback(async (teamId: string) => {
@@ -167,6 +193,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         transactions, setTransactions,
         prospects, setProspects,
         currentSimDate, setCurrentSimDate,
+        saveDateImmediately, // Export new function
         userTactics, setUserTactics,
         news, setNews,
         isBaseDataLoading,
