@@ -1,5 +1,5 @@
 
-import { Team, Player, PlayerBoxScore, OffenseTactic, DefenseTactic, TacticalSnapshot } from '../types';
+import { Team, Player, PlayerBoxScore, OffenseTactic, DefenseTactic, TacticalSnapshot, GameTactics, TacticalSliders, RosterUpdate, SimulationResult } from '../types';
 
 // ==========================================================================================
 //  🏀 NBA GM SIMULATOR - GAME ENGINE
@@ -57,44 +57,6 @@ const POSITION_PENALTY_MAP: Record<string, Record<string, number>> = {
   'PF': { 'PG': 0.40, 'SG': 0.30, 'SF': 0.05, 'C': 0.10 },
   'C':  { 'PG': 0.50, 'SG': 0.50, 'SF': 0.35, 'PF': 0.10 }
 };
-
-export interface TacticalSliders {
-  pace: number;
-  offReb: number;
-  defIntensity: number;
-  defReb: number;
-  fullCourtPress: number;
-  zoneUsage: number;
-  rotationFlexibility: number;
-}
-
-export interface GameTactics {
-  offenseTactics: OffenseTactic[];
-  defenseTactics: DefenseTactic[];
-  sliders: TacticalSliders;
-  starters: { PG: string; SG: string; SF: string; PF: string; C: string };
-  minutesLimits: Record<string, number>;
-  stopperId?: string;
-}
-
-export interface RosterUpdate {
-    [playerId: string]: {
-        condition: number;
-        health: 'Healthy' | 'Injured' | 'Day-to-Day';
-        injuryType?: string;
-        returnDate?: string;
-    };
-}
-
-export interface SimulationResult {
-    homeScore: number;
-    awayScore: number;
-    homeBox: PlayerBoxScore[];
-    awayBox: PlayerBoxScore[];
-    rosterUpdates: RosterUpdate;
-    homeTactics: TacticalSnapshot;
-    awayTactics: TacticalSnapshot;
-}
 
 // ------------------------------------------------------------------------------------------
 //  SIMULATION & TACTICS LOGIC
