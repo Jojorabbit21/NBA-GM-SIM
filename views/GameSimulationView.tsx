@@ -283,8 +283,50 @@ export const GameSimulatingView: React.FC<{
   const homeColor = TEAM_COLORS[homeTeam.id] || '#ffffff';
   const awayColor = TEAM_COLORS[awayTeam.id] || '#94a3b8';
 
+  const scoreDiff = Math.abs(displayScore.h - displayScore.a);
+  const isGarbage = progress > 60 && scoreDiff >= 20;
+  const isSuperClutch = progress > 94 && scoreDiff <= 3;
+  const isClutch = progress > 85 && scoreDiff <= 10;
+
+  // Dynamic Message Classes
+  let messageClass = "text-indigo-300";
+  if (isGarbage) {
+      messageClass = "text-slate-500 font-medium";
+  } else if (isSuperClutch) {
+      // 부글부글 끓는 효과 (진동 + 커짐 + 붉은색)
+      messageClass = "text-red-500 font-black text-2xl animate-shake-intense drop-shadow-[0_0_15px_rgba(239,68,68,0.9)] scale-125";
+  } else if (isClutch) {
+      // 심장 박동 효과
+      messageClass = "text-orange-400 font-black text-xl animate-pulse-fast drop-shadow-[0_0_8px_rgba(249,115,22,0.6)] scale-110";
+  }
+
   return (
     <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-4 overflow-hidden">
+      <style>{`
+        @keyframes shake-intense {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        .animate-shake-intense {
+            animation: shake-intense 0.5s infinite;
+        }
+        @keyframes pulse-fast {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+        }
+        .animate-pulse-fast {
+            animation: pulse-fast 1s infinite;
+        }
+      `}</style>
       <div className="absolute inset-0 opacity-10 pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-[150px]"></div>
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[150px]"></div>
@@ -304,15 +346,7 @@ export const GameSimulatingView: React.FC<{
 
             {/* Center: Graph & Message */}
             <div className="flex-1 px-2 flex flex-col items-center justify-center">
-                 <div className={`text-sm md:text-base font-black text-center min-h-[2rem] flex items-center justify-center break-keep leading-tight animate-pulse transition-colors duration-300 ${
-                     Math.abs(displayScore.h - displayScore.a) >= 20 && progress > 60 
-                        ? 'text-slate-500'
-                        : progress > 94 && Math.abs(displayScore.h - displayScore.a) <= 3
-                            ? 'text-red-400 drop-shadow-[0_0_8px_rgba(248,113,113,0.5)]'
-                            : progress > 85 && Math.abs(displayScore.h - displayScore.a) <= 10
-                                ? 'text-yellow-400'
-                                : 'text-indigo-300'
-                 }`}>
+                 <div className={`text-sm md:text-base font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-tight transition-all duration-300 ${messageClass}`}>
                     {currentMessage}
                  </div>
 
