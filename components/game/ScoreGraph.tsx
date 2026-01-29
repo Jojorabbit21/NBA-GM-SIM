@@ -102,6 +102,11 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     const homeProb = currentWP.toFixed(0);
     const awayProb = (100 - currentWP).toFixed(0);
 
+    // [Visual Fix] Calculate Percentage Coordinates for the Head Dot (Div)
+    // endX is 0-100 (matches %), endY is 0-60 (needs normalization to %)
+    const headLeft = `${endX}%`;
+    const headTop = `${(endY / VIEW_HEIGHT) * 100}%`;
+
     return (
         <div className="w-full relative flex flex-col mt-6 mb-2">
             {/* Header: Logos & Percentages */}
@@ -126,19 +131,13 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
             </div>
 
             {/* Graph Container */}
-            <div className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-inner">
+            <div className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-inner group">
                 <svg 
                     viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
                     className="w-full h-full"
                     preserveAspectRatio="none"
                 >
                     <defs>
-                        {/* 
-                            Gradient Logic (Simplified for performance):
-                            - Y=0 (Top): Away Win Territory -> Away Color 50% opacity
-                            - Y=30 (Mid): Tie Game -> 0% opacity
-                            - Y=60 (Bottom): Home Win Territory -> Home Color 50% opacity
-                        */}
                         <linearGradient id="wpGradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={VIEW_HEIGHT}>
                             {/* Away Territory (Top half) */}
                             <stop offset="0" stopColor={awayColor} stopOpacity="0.5" />
@@ -180,12 +179,17 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                         vectorEffect="non-scaling-stroke"
                         className="drop-shadow-md"
                     />
-
-                    {/* End Dot */}
-                    {points.length > 0 && (
-                        <circle cx={endX} cy={endY} r="1.2" fill="white" className="animate-pulse shadow-lg" />
-                    )}
                 </svg>
+
+                {/* [Update] Perfect Circle Head using absolute Div */}
+                {points.length > 0 && (
+                    <div 
+                        className="absolute w-2 h-2 bg-white rounded-full shadow-[0_0_10px_white] z-20 transform -translate-x-1/2 -translate-y-1/2 transition-all duration-100 ease-linear"
+                        style={{ left: headLeft, top: headTop }}
+                    >
+                        <div className="absolute inset-0 bg-white/50 rounded-full animate-ping"></div>
+                    </div>
+                )}
             </div>
 
             {/* X-Axis Labels (Q1 ~ Q4) */}
