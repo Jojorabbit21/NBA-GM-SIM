@@ -80,8 +80,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                        <div className="flex items-center gap-1 flex-shrink-0">
                                             {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
                                             {p.isStopper && (
-                                                <div className="group/tooltip relative">
-                                                    <Shield size={12} className="text-blue-400 fill-blue-900/50" />
+                                                <div className="flex items-center justify-center" title="Ace Stopper">
+                                                    <Shield size={12} className="text-cyan-400 fill-cyan-900" />
                                                 </div>
                                             )}
                                             {p.isAceTarget && (p.matchupEffect || 0) < 0 && (
