@@ -29,4 +29,15 @@ if (!hasValidEnv) {
 const validUrl = hasValidEnv ? supabaseUrl : 'https://placeholder-project.supabase.co';
 const validKey = hasValidEnv ? supabaseAnonKey : 'placeholder-key';
 
-export const supabase = createClient(validUrl, validKey);
+// [Fix] Explicitly add apikey to global headers to ensure PostgREST receives it
+export const supabase = createClient(validUrl, validKey, {
+    auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+    },
+    global: {
+        headers: {
+            'apikey': validKey
+        }
+    }
+});

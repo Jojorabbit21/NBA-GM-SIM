@@ -95,6 +95,8 @@ const App: React.FC = () => {
   const isResettingRef = useRef(false);
   const isLoggingOutRef = useRef(false);
   const hasInitialLoadRef = useRef(false);
+  // [CTO Update] Dirty flag to prevent redundant saves
+  const isDirtyRef = useRef(false);
 
   // Mutations & Queries
   const saveGameMutation = useSaveGame();
@@ -184,6 +186,8 @@ const App: React.FC = () => {
               if (saveData.team_id) { setView('Dashboard'); }
           }
           hasInitialLoadRef.current = true;
+          // Reset dirty flag after initial load to prevent immediate save
+          isDirtyRef.current = false; 
       }
   }, [saveData, isSaveLoading, session, isGuestMode]);
 
@@ -230,6 +234,7 @@ const App: React.FC = () => {
         setTransactions([]);
         setCurrentSimDate(INITIAL_DATE);
         setUserTactics(null);
+        isDirtyRef.current = false; // Reset dirty flag
         
         console.log("🛠️ [RESET] Refreshing Base Data...");
         if (baseData) { 
@@ -264,16 +269,34 @@ const App: React.FC = () => {
   // Auto Save Strategy [CTO Optimization]
   const triggerSave = useCallback(() => {
       if (isResettingRef.current || isLoggingOutRef.current || !session?.user || isGuestMode) return;
+      
+      // Clear any existing timer
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      
+      // Set debounce timer
       saveTimeoutRef.current = setTimeout(() => {
+          // [Optimization] Check if data is actually dirty before saving
+          if (!isDirtyRef.current) {
+              return;
+          }
+
           const currentData = gameDataRef.current;
           if (!currentData.myTeamId) return;
+
+          // Mark as clean optimistically before saving to catch changes during save
+          isDirtyRef.current = false;
+
           saveGameMutation.mutate({ userId: session.user.id, teamId: currentData.myTeamId, gameData: currentData });
       }, 60000); 
   }, [session, isGuestMode, saveGameMutation]);
 
+  // Effect to track changes and trigger save
   useEffect(() => {
-    if (myTeamId && session?.user && !isGuestMode) triggerSave();
+    if (myTeamId && session?.user && !isGuestMode) {
+        // Mark as dirty whenever any dependency changes
+        isDirtyRef.current = true;
+        triggerSave();
+    }
   }, [teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const advanceDate = useCallback(() => {
