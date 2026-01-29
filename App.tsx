@@ -1,15 +1,17 @@
+
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from './services/supabaseClient';
-import { useBaseData, useLoadSave, useSaveGame, saveGameResults } from './services/queries';
+import { supabase, supabaseUrl, supabaseKey } from './services/supabaseClient';
+import { useBaseData, useLoadSave, useSaveGame, saveGameResults, saveUserTransaction } from './services/queries';
 import { initGA, logPageView } from './services/analytics';
 import { Team, Game, AppView, PlayerBoxScore, TeamTacticHistory, TacticStatRecord, TacticalSnapshot, Player, Transaction, PlayoffSeries } from './types';
-import { generateSeasonSchedule, INITIAL_STATS } from './utils/constants';
+import { generateSeasonSchedule, INITIAL_STATS, TRADE_DEADLINE } from './utils/constants';
 import { generateAutoTactics, GameTactics, SimulationResult, simulateGame } from './services/gameEngine';
-import { generateGameRecapNews, generateOwnerWelcome } from './services/geminiService';
+import { generateGameRecapNews, generateOwnerWelcome, generateCPUTradeNews } from './services/geminiService';
+import { simulateCPUTrades } from './services/tradeEngine';
 
 // Icons
-import { Loader2, AlertTriangle, Clock, Save } from 'lucide-react';
+import { Loader2, Clock, Save, Newspaper } from 'lucide-react';
 
 // Views
 import { AuthView } from './views/AuthView';
@@ -35,8 +37,9 @@ import { Footer } from './components/Footer';
 import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { Toast, ActionToast } from './components/SharedComponents';
 import { Sidebar } from './components/Sidebar';
+import { ResetDataModal } from './components/ResetDataModal';
 
-const INITIAL_DATE = '2025-10-22';
+const INITIAL_DATE = '2025-10-20';
 
 const LOADING_MESSAGES = [
     "라커룸을 청소하는 중...",
@@ -92,6 +95,7 @@ const App: React.FC = () => {
   const isResettingRef = useRef(false);
   const isLoggingOutRef = useRef(false);
   const hasInitialLoadRef = useRef(false);
+  const isDirtyRef = useRef(false);
 
   // Mutations & Queries
   const saveGameMutation = useSaveGame();
@@ -111,11 +115,65 @@ const App: React.FC = () => {
     };
   }, [myTeamId, teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
 
+  // --- Auth Logging Logic (History Mode) ---
+  const insertAuthLog = async (userId: string, type: 'login' | 'logout') => {
+      if (!userId) return;
+      try {
+          await supabase.from('login_logs').insert({
+              user_id: userId,
+              type: type,
+              user_agent: navigator.userAgent,
+              timestamp: new Date().toISOString() // 명시적으로 현재 시간 기록
+          });
+      } catch (e) {
+          console.warn(`Failed to log ${type}:`, e);
+      }
+  };
+
+  // Browser Close/Tab Close Detection (Best Effort Logout Log)
+  useEffect(() => {
+      const handleUnload = () => {
+          if (session?.user?.id && supabaseUrl && supabaseKey) {
+              // keepalive: true ensures the request is sent even if the browser closes
+              const url = `${supabaseUrl}/rest/v1/login_logs`;
+              const headers = {
+                  'Content-Type': 'application/json',
+                  'apikey': supabaseKey,
+                  'Authorization': `Bearer ${session.access_token}`,
+                  'Prefer': 'return=minimal'
+              };
+              
+              const body = JSON.stringify({ 
+                  user_id: session.user.id,
+                  type: 'logout',
+                  user_agent: navigator.userAgent,
+                  timestamp: new Date().toISOString()
+              });
+              
+              fetch(url, {
+                  method: 'POST',
+                  headers,
+                  body,
+                  keepalive: true
+              }).catch(() => {});
+          }
+      };
+
+      window.addEventListener('beforeunload', handleUnload);
+      return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [session]);
+
   // Auth Listener
   useEffect(() => {
+    // 1. Check Initial Session
     (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
       if (session && !isLoggingOutRef.current) {
         setSession(session);
+        // Do not log login on page refresh, only on actual sign-in event is better, 
+        // but session check happens on refresh too. 
+        // To avoid duplicate 'login' logs on refresh, we rely on the SIGNED_IN event below 
+        // or we can just accept it (since session might have been restored).
+        // Let's rely on onAuthStateChange for 'SIGNED_IN'.
       } else if (!session) {
         setSession(null);
         hasInitialLoadRef.current = false;
@@ -123,13 +181,22 @@ const App: React.FC = () => {
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
+    // 2. Auth State Change Listener
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((event: string, session: any) => {
       if (isLoggingOutRef.current) return;
-      if (session) setSession(session);
-      else { 
-        setSession(null); 
-        hasInitialLoadRef.current = false; 
-        setView('TeamSelect');
+      
+      if (event === 'SIGNED_IN' && session) {
+          setSession(session);
+          insertAuthLog(session.user.id, 'login'); // Explicit Login Log
+      } else if (event === 'SIGNED_OUT') {
+          // Log out is handled explicitly in handleLogout usually, 
+          // but if it happens automatically (token expiry), this catches it.
+          // Note: RLS might prevent insertion here if session is already gone.
+          setSession(null); 
+          hasInitialLoadRef.current = false; 
+          setView('TeamSelect');
+      } else if (session) {
+          setSession(session);
       }
       setAuthLoading(false);
     });
@@ -139,8 +206,8 @@ const App: React.FC = () => {
 
   // Loading Message Cycler
   useEffect(() => {
-    const isActuallyLoading = authLoading || isBaseDataLoading || (session && !hasInitialLoadRef.current);
-    if (isActuallyLoading) {
+    const isDataLoading = isBaseDataLoading || (session && !hasInitialLoadRef.current);
+    if (isDataLoading) {
         setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
         const interval = setInterval(() => {
             setLoadingText(prev => {
@@ -153,7 +220,7 @@ const App: React.FC = () => {
         }, 1000);
         return () => clearInterval(interval);
     }
-  }, [authLoading, isBaseDataLoading, session]);
+  }, [isBaseDataLoading, session]);
 
   // Initialize Base Data
   useEffect(() => {
@@ -167,7 +234,6 @@ const App: React.FC = () => {
   useEffect(() => {
       if (isLoggingOutRef.current || isResettingRef.current || isGuestMode) return;
       
-      // We wait until isSaveLoading is false before making the decision to stay or move
       if (session?.user && !isSaveLoading && !hasInitialLoadRef.current) {
           if (saveData && saveData.game_data) {
               const gd = saveData.game_data;
@@ -179,77 +245,133 @@ const App: React.FC = () => {
               if (gd.playoffSeries) setPlayoffSeries(gd.playoffSeries);
               if (gd.transactions) setTransactions(gd.transactions);
               if (gd.prospects) setProspects(gd.prospects);
-              
-              // If team data exists, set Dashboard view BEFORE flipping hasInitialLoadRef
-              if (saveData.team_id) {
-                  setView('Dashboard');
-              }
+              if (saveData.team_id) { setView('Dashboard'); }
           }
-          // Flipping this true means we are done determining the first view for a logged-in user
           hasInitialLoadRef.current = true;
+          // Reset dirty flag after initial load to prevent immediate save
+          isDirtyRef.current = false; 
       }
   }, [saveData, isSaveLoading, session, isGuestMode]);
 
   // Logout Logic
   const handleLogout = async () => {
+      if (isLoggingOutRef.current) return;
       isLoggingOutRef.current = true;
-      if (session) {
-          await (supabase.auth as any).signOut();
+      
+      try {
+          if (session?.user) {
+             // 1. Explicitly log logout BEFORE destroying session (to pass RLS)
+             await insertAuthLog(session.user.id, 'logout');
+             
+             // 2. Perform Sign Out
+             await (supabase.auth as any).signOut();
+          }
+      } catch (e) {
+          console.error("Logout process error:", e);
+      } finally {
+          setIsGuestMode(false);
+          setSession(null);
+          setMyTeamId(null);
+          setView('TeamSelect');
+          hasInitialLoadRef.current = false;
+          setTimeout(() => { isLoggingOutRef.current = false; }, 500);
       }
-      setIsGuestMode(false);
-      setSession(null);
-      setMyTeamId(null);
-      setView('TeamSelect');
-      hasInitialLoadRef.current = false;
-      setTimeout(() => { isLoggingOutRef.current = false; }, 500);
   };
 
-  // Reset Data Logic
+  // Reset Data Logic with Fix for Infinite Loading
   const handleResetData = async () => {
+    console.log("🛠️ [RESET] Starting Data Reset Process...");
     isResettingRef.current = true;
-    setShowResetConfirm(false);
     
     try {
         if (session?.user) {
-            await supabase.from('saves').delete().eq('user_id', session.user.id);
-            await supabase.from('user_game_results').delete().eq('user_id', session.user.id);
-            localStorage.removeItem(`nba_gm_save_${session.user.id}`);
+            const userId = session.user.id;
+            console.log(`🛠️ [RESET] Deleting data for User ID: ${userId}`);
+
+            // Parallel Deletion
+            await Promise.all([
+                supabase.from('saves').delete().eq('user_id', userId),
+                supabase.from('user_game_results').delete().eq('user_id', userId),
+                supabase.from('user_transactions').delete().eq('user_id', userId)
+            ]);
+            
+            console.log("🛠️ [RESET] Clearing Query Cache & Storage...");
+            localStorage.removeItem(`nba_gm_save_${userId}`);
+            
+            // Critical: Remove the cached save data so it doesn't get reloaded by the useEffect
+            queryClient.removeQueries({ queryKey: ['fullGameState', userId] });
+            queryClient.setQueryData(['fullGameState', userId], null);
         }
-        
+
+        console.log("🛠️ [RESET] Resetting Local React State...");
         setMyTeamId(null);
-        if (baseData) {
-            setTeams(baseData.teams);
-            setSchedule(baseData.schedule);
-        } else {
-            await refetchBaseData();
-        }
         setPlayoffSeries([]);
         setTransactions([]);
         setCurrentSimDate(INITIAL_DATE);
         setUserTactics(null);
+        isDirtyRef.current = false; // Reset dirty flag
+        
+        console.log("🛠️ [RESET] Refreshing Base Data...");
+        if (baseData) { 
+            console.log("🛠️ [RESET] Using existing baseData cache.");
+            setTeams(baseData.teams); 
+            setSchedule(baseData.schedule); 
+        } else { 
+            console.log("🛠️ [RESET] Fetching baseData from source...");
+            await refetchBaseData(); 
+        }
+        
+        console.log("🛠️ [RESET] Setting view to TeamSelect...");
         setView('TeamSelect');
-        hasInitialLoadRef.current = false;
+        
+        // Critical Fix: Set this to TRUE because we are done with the "Loading" phase of the reset
+        // We are now in a clean state ready for Team Selection
+        hasInitialLoadRef.current = true; 
+        
         setToastMessage("구단 데이터가 완전히 초기화되었습니다.");
+        console.log("✅ [RESET] Reset Process Completed Successfully.");
+
     } catch (e) {
+        console.error("❌ [RESET] Critical Error during reset:", e);
         setToastMessage("초기화 중 오류가 발생했습니다.");
     } finally {
-        setTimeout(() => { isResettingRef.current = false; }, 500);
+        setShowResetConfirm(false);
+        isResettingRef.current = false;
+        console.log("🛠️ [RESET] isResettingRef set to false.");
     }
   };
 
   // Auto Save Strategy [CTO Optimization]
   const triggerSave = useCallback(() => {
       if (isResettingRef.current || isLoggingOutRef.current || !session?.user || isGuestMode) return;
+      
+      // Clear any existing timer
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      
+      // Set debounce timer
       saveTimeoutRef.current = setTimeout(() => {
+          // [Optimization] Check if data is actually dirty before saving
+          if (!isDirtyRef.current) {
+              return;
+          }
+
           const currentData = gameDataRef.current;
           if (!currentData.myTeamId) return;
+
+          // Mark as clean optimistically before saving to catch changes during save
+          isDirtyRef.current = false;
+
           saveGameMutation.mutate({ userId: session.user.id, teamId: currentData.myTeamId, gameData: currentData });
-      }, 60000); // 60s debounce
+      }, 60000); 
   }, [session, isGuestMode, saveGameMutation]);
 
+  // Effect to track changes and trigger save
   useEffect(() => {
-    if (myTeamId && session?.user && !isGuestMode) triggerSave();
+    if (myTeamId && session?.user && !isGuestMode) {
+        // Mark as dirty whenever any dependency changes
+        isDirtyRef.current = true;
+        triggerSave();
+    }
   }, [teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects, myTeamId, session, isGuestMode, triggerSave]);
 
   const advanceDate = useCallback(() => {
@@ -266,29 +388,49 @@ const App: React.FC = () => {
           currentDateObj.setDate(currentDateObj.getDate() + 1);
           const nextDate = currentDateObj.toISOString().split('T')[0];
           
-          setTeams(prevTeams => prevTeams.map(t => ({
-              ...t,
-              roster: t.roster.map(p => {
-                  if (teamsPlayedToday.has(t.id)) {
-                      return p;
+          setTeams(prevTeams => {
+              // Check for CPU-CPU trades on advance date
+              const isTradeSeason = new Date(nextDate) <= new Date(TRADE_DEADLINE);
+              // 약 2%의 확률로 CPU 트레이드 발생
+              if (isTradeSeason && Math.random() < 0.02) {
+                  const tradeResult = simulateCPUTrades(prevTeams, myTeamId);
+                  if (tradeResult) {
+                      const { updatedTeams, transaction } = tradeResult;
+                      if (transaction) {
+                          setTransactions(prev => [transaction, ...prev]);
+                          if (session?.user && !isGuestMode) {
+                              saveUserTransaction(session.user.id, transaction);
+                          }
+                          generateCPUTradeNews(transaction).then(newsItems => {
+                              if (newsItems) setNews(prev => [...newsItems, ...prev.slice(0, 5)]);
+                          });
+                          setToastMessage("리그 속보: CPU 구단 간 트레이드 성사!");
+                      }
+                      return updatedTeams.map(t => ({
+                          ...t,
+                          roster: t.roster.map(p => {
+                              if (teamsPlayedToday.has(t.id)) return p;
+                              const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
+                              return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
+                          })
+                      }));
                   }
+              }
 
-                  const baseRec = 10; 
-                  const staBonus = (p.stamina || 75) * 0.1;
-                  const durBonus = (p.durability || 75) * 0.05;
-                  const totalRec = baseRec + staBonus + durBonus;
-                  
-                  return {
-                      ...p,
-                      condition: Math.min(100, Math.round((p.condition || 100) + totalRec))
-                  };
-              })
-          })));
+              return prevTeams.map(t => ({
+                  ...t,
+                  roster: t.roster.map(p => {
+                      if (teamsPlayedToday.has(t.id)) return p;
+                      const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
+                      return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
+                  })
+              }));
+          });
 
           return nextDate;
       });
       setLastGameResult(null);
-  }, [setTeams, schedule]);
+  }, [setTeams, schedule, myTeamId, session, isGuestMode]);
 
   const handleSelectTeam = useCallback(async (teamId: string) => {
     if (myTeamId) return;
@@ -321,10 +463,7 @@ const App: React.FC = () => {
 
     if (unplayedGamesToday.length === 0) {
         setIsSimulating(true);
-        setTimeout(() => {
-            advanceDate();
-            setIsSimulating(false);
-        }, 2000);
+        setTimeout(() => { advanceDate(); setIsSimulating(false); }, 2000);
         return;
     }
 
@@ -337,7 +476,6 @@ const App: React.FC = () => {
         let userGameResultOutput = null;
         let allPlayedToday: Game[] = [];
         const gameResultsToInsert: any[] = [];
-        
         const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
 
         for (const game of unplayedGamesToday) {
@@ -345,10 +483,7 @@ const App: React.FC = () => {
             const home = getTeam(game.homeTeamId); const away = getTeam(game.awayTeamId);
             if (!home || !away) continue;
 
-            const homeB2B = playedYesterday(home.id);
-            const awayB2B = playedYesterday(away.id);
-
-            const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined, homeB2B, awayB2B);
+            const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined, playedYesterday(home.id), playedYesterday(away.id));
             const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
             const homeWin = result.homeScore > result.awayScore;
 
@@ -362,8 +497,7 @@ const App: React.FC = () => {
                     r.ptsFor += totals.pts; r.ptsAgainst += oppBox.reduce((sum, p) => sum + p.pts, 0);
                     r.fgm += totals.fgm; r.fga += totals.fga; r.p3m += totals.p3m; r.p3a += totals.p3a; r.rimM += totals.rimM; r.rimA += totals.rimA; r.midM += totals.midM; r.midA += totals.midA;
                 };
-                updateRecord(history.offense, tactics.offense);
-                updateRecord(history.defense, tactics.defense);
+                updateRecord(history.offense, tactics.offense); updateRecord(history.defense, tactics.defense);
                 if (tactics.stopperId) {
                     if (!history.defense['AceStopper']) history.defense['AceStopper'] = { games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, aceImpact: 0 };
                     const r = history.defense['AceStopper']; const targetAceBox = oppBox.find(b => b.isAceTarget);
@@ -372,11 +506,8 @@ const App: React.FC = () => {
                 return history;
             };
 
-            const updatedHomeHistory = updateHistory(home, result.homeBox, result.awayBox, result.homeTactics, homeWin);
-            const updatedAwayHistory = updateHistory(away, result.awayBox, result.homeBox, result.awayTactics, !homeWin);
-
-            updatedTeams[homeIdx] = { ...home, wins: home.wins + (homeWin ? 1 : 0), losses: home.losses + (homeWin ? 0 : 1), tacticHistory: updatedHomeHistory };
-            updatedTeams[awayIdx] = { ...away, wins: away.wins + (homeWin ? 0 : 1), losses: away.losses + (homeWin ? 1 : 0), tacticHistory: updatedAwayHistory };
+            updatedTeams[homeIdx] = { ...home, wins: home.wins + (homeWin ? 1 : 0), losses: home.losses + (homeWin ? 0 : 1), tacticHistory: updateHistory(home, result.homeBox, result.awayBox, result.homeTactics, homeWin) };
+            updatedTeams[awayIdx] = { ...away, wins: away.wins + (homeWin ? 0 : 1), losses: away.losses + (homeWin ? 1 : 0), tacticHistory: updateHistory(away, result.awayBox, result.homeBox, result.awayTactics, !homeWin) };
 
             const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: any) => {
                 const t = updatedTeams[teamIdx];
@@ -385,22 +516,17 @@ const App: React.FC = () => {
                     let targetStats = game.isPlayoff ? (p.playoffStats || INITIAL_STATS()) : p.stats;
                     if (box) { 
                         targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
-                        targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0);
-                        targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0);
-                        targetStats.midM = (targetStats.midM || 0) + (box.midM || 0);
-                        targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
+                        targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0); targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
                     }
                     const returnObj = { ...p, condition: update?.condition !== undefined ? Math.round(update.condition) : p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
                     if (game.isPlayoff) returnObj.playoffStats = targetStats; else returnObj.stats = targetStats;
                     return returnObj;
                 });
             };
-            updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates);
-            updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
+            updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates); updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
 
             const updatedGame: Game = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, tactics: { home: result.homeTactics, away: result.awayTactics } };
-            const schIdx = updatedSchedule.findIndex(g => g.id === game.id);
-            if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
+            const schIdx = updatedSchedule.findIndex(g => g.id === game.id); if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
             
             if (game.isPlayoff && game.seriesId) {
                 const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
@@ -412,53 +538,29 @@ const App: React.FC = () => {
                     updatedSeries[sIdx] = { ...series, higherSeedWins: newH, lowerSeedWins: newL, finished, winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined };
                 }
             }
-            
             if (session?.user && !isGuestMode) {
-                gameResultsToInsert.push({
-                    user_id: session.user.id,
-                    game_id: game.id,
-                    date: game.date,
-                    home_team_id: game.homeTeamId,
-                    away_team_id: game.awayTeamId,
-                    home_score: result.homeScore,
-                    away_score: result.awayScore,
-                    box_score: { home: result.homeBox, away: result.awayBox }
-                });
+                gameResultsToInsert.push({ user_id: session.user.id, game_id: game.id, date: game.date, home_team_id: game.homeTeamId, away_team_id: game.awayTeamId, home_score: result.homeScore, away_score: result.awayScore, box_score: { home: result.homeBox, away: result.awayBox } });
             }
-
             allPlayedToday.push(updatedGame);
             if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
         }
 
-        if (gameResultsToInsert.length > 0) {
-            saveGameResults(gameResultsToInsert);
-        }
-
-        setTeams(updatedTeams); 
-        setSchedule(updatedSchedule); 
-        setPlayoffSeries(updatedSeries); 
+        if (gameResultsToInsert.length > 0) { saveGameResults(gameResultsToInsert); }
+        setTeams(updatedTeams); setSchedule(updatedSchedule); setPlayoffSeries(updatedSeries); 
         
         if (userGameResultOutput) {
             const recap = await generateGameRecapNews(userGameResultOutput);
             setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
             setView('GameResult');
-        } else {
-            setIsSimulating(false);
-            advanceDate();
-        }
+        } else { setIsSimulating(false); advanceDate(); }
     };
     
     if (userGameToday) {
         const home = updatedTeamsRef.current.find(t => t.id === userGameToday.homeTeamId)!; const away = updatedTeamsRef.current.find(t => t.id === userGameToday.awayTeamId)!;
-        const homeB2B = playedYesterday(home.id);
-        const awayB2B = playedYesterday(away.id);
-        const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics, homeB2B, awayB2B);
+        const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics, playedYesterday(home.id), playedYesterday(away.id));
         setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); setView('GameSim');
         finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
-    } else { 
-        setIsSimulating(true); 
-        setTimeout(() => processSimulation(), 2000); 
-    }
+    } else { setIsSimulating(true); setTimeout(() => processSimulation(), 2000); }
   };
 
   const updatedTeamsRef = useRef(teams);
@@ -467,19 +569,25 @@ const App: React.FC = () => {
   const tickerGames = useMemo(() => {
     const todayGames = schedule.filter(g => g.date === currentSimDate && g.played);
     if (todayGames.length > 0) return todayGames;
-
     for (let i = schedule.length - 1; i >= 0; i--) {
-        const game = schedule[i];
-        if (game.played && game.date < currentSimDate) {
-            return schedule.filter(g => g.date === game.date && g.played);
-        }
+        const game = schedule[i]; if (game.played && game.date < currentSimDate) { return schedule.filter(g => g.date === game.date && g.played); }
     }
     return [];
   }, [schedule, currentSimDate]);
 
-  const isActuallyLoading = authLoading || isBaseDataLoading || (session && !hasInitialLoadRef.current);
+  if (authLoading) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
+            <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6" />
+            <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-2">Initializing...</p>
+        </div>
+      );
+  }
 
-  if (isActuallyLoading) {
+  if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
+
+  const isDataLoading = isBaseDataLoading || (session && !hasInitialLoadRef.current);
+  if (isDataLoading) {
       return (
         <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
             <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6" />
@@ -488,8 +596,6 @@ const App: React.FC = () => {
         </div>
       );
   }
-
-  if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
   
   if (view === 'TeamSelect') return <TeamSelectView teams={teams} isInitializing={isBaseDataLoading} onSelectTeam={handleSelectTeam} dataSource='DB' />;
   if (view === 'Onboarding' && myTeamId) return <OnboardingView team={teams.find(t => t.id === myTeamId)!} onComplete={() => setView('Dashboard')} />;
@@ -503,21 +609,12 @@ const App: React.FC = () => {
           </div>
       )}
       
-      {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-slate-900 border border-slate-700 p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="bg-red-500/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-red-500/30">
-                    <AlertTriangle className="text-red-500" size={32} />
-                </div>
-                <h3 className="text-2xl font-black text-white mb-2 uppercase oswald">데이터 초기화</h3>
-                <p className="text-slate-400 font-bold text-sm leading-relaxed mb-8">현재 진행 중인 모든 시즌 데이터와 세이브 파일이 영구적으로 삭제됩니다. 계속하시겠습니까?</p>
-                <div className="flex gap-4">
-                    <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 font-black uppercase text-xs tracking-widest transition-all">취소</button>
-                    <button onClick={handleResetData} className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black uppercase text-xs tracking-widest transition-all shadow-lg shadow-red-900/30">초기화 실행</button>
-                </div>
-            </div>
-        </div>
-      )}
+      <ResetDataModal 
+        isOpen={showResetConfirm} 
+        isLoading={isResettingRef.current} 
+        onClose={() => setShowResetConfirm(false)} 
+        onConfirm={handleResetData} 
+      />
 
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar 
@@ -534,6 +631,26 @@ const App: React.FC = () => {
             <div className="h-10 bg-slate-900 border-b border-slate-800 flex items-center relative z-10 flex-shrink-0">
                 <LiveScoreTicker games={tickerGames} />
             </div>
+
+            {/* News Ticker Overlay */}
+            {news && news.length > 0 && (
+                <div className="bg-indigo-950/40 border-b border-indigo-500/20 px-8 py-2.5 flex items-center gap-4 overflow-hidden relative group">
+                    <div className="flex-shrink-0 flex items-center gap-2 text-indigo-400 font-black text-[10px] uppercase tracking-[0.2em] oswald">
+                        <Newspaper size={14} className="animate-pulse" />
+                        <span>NBA Ticker</span>
+                    </div>
+                    <div className="flex-1 overflow-hidden relative h-5">
+                        <div className="absolute inset-0 flex items-center animate-marquee whitespace-nowrap gap-12">
+                            {[...news, ...news].map((item, i) => (
+                                <span key={i} className="text-xs font-bold text-slate-300 ko-tight flex items-center gap-3">
+                                    <div className="w-1 h-1 rounded-full bg-indigo-500"></div>
+                                    {typeof item === 'string' ? item : item.content}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="flex-1 p-8 lg:p-12">
               {view === 'Dashboard' && myTeamId && <DashboardView team={teams.find(t => t.id === myTeamId)!} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics || generateAutoTactics(teams.find(t => t.id === myTeamId)!)} onUpdateTactics={setUserTactics} currentSimDate={currentSimDate} isSimulating={isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={playoffSeries.length > 0} playoffSeries={playoffSeries} />}
