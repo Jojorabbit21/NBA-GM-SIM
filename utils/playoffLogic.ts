@@ -18,11 +18,18 @@ const SEED_MATCHUPS_R1 = [
  * 정규 시즌이 종료되었는지 확인하고, 초기 대진표(Play-in or Round 1)를 생성합니다.
  */
 export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSeries: PlayoffSeries[], currentDate: string): PlayoffSeries[] {
+    // 0. Safety Check: Data integrity
+    if (!teams || teams.length < 30 || !schedule || schedule.length === 0) {
+        return currentSeries;
+    }
+
     // 1. Check if Regular Season is done
     const regularSeasonGames = schedule.filter(g => !g.isPlayoff);
     const unplayedRegular = regularSeasonGames.filter(g => !g.played);
 
     // 아직 정규시즌이 끝나지 않았거나, 이미 플레이오프 시리즈가 존재하면 스킵
+    // *Important*: If schedule is empty (loading), unplayedRegular is 0, which might trigger this. 
+    // The safety check at step 0 handles this.
     if (unplayedRegular.length > 0 || currentSeries.length > 0) return currentSeries;
 
     // 2. Generate Seeds
@@ -33,6 +40,9 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
     const eastSeeds = getSeeds('East');
     const westSeeds = getSeeds('West');
 
+    // Double check we have enough teams seeded
+    if (eastSeeds.length < 8 || westSeeds.length < 8) return currentSeries;
+
     // *Simpler Logic for V1: Skip Play-in, go straight to Round 1 for stability*
     const newSeries: PlayoffSeries[] = [];
     
@@ -41,6 +51,10 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
         SEED_MATCHUPS_R1.forEach(m => {
             const high = seeds[m.h - 1];
             const low = seeds[m.l - 1];
+            
+            // Safety guard against undefined teams
+            if (!high || !low) return;
+
             newSeries.push({
                 id: `${conf}_R1_${high.id}_vs_${low.id}`,
                 round: 1,
@@ -58,7 +72,9 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
     createSeries('East', eastSeeds, 1);
     createSeries('West', westSeeds, 1);
 
-    console.log("🏆 Playoffs Initialized: Round 1 Started");
+    if (newSeries.length > 0) {
+        console.log("🏆 Playoffs Initialized: Round 1 Started");
+    }
     return newSeries;
 }
 
@@ -68,7 +84,8 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
 export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSeries[], currentDate: string): { newGames: Game[], updatedSeries: PlayoffSeries[] } {
     const newGames: Game[] = [];
     const updatedSeries = [...seriesList];
-    let hasChanges = false;
+    
+    if (!seriesList || seriesList.length === 0) return { newGames, updatedSeries };
 
     // 1. Check each active series
     updatedSeries.forEach(series => {
@@ -111,13 +128,6 @@ export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSe
         }
     });
 
-    // 2. Check for Round Advancement (Create Next Round Series)
-    // Logic: If all series in a bracket block are finished, create the next round series
-    // (Simplified: Just checking simple progression for now)
-    
-    // ... Advanced Bracket Logic would go here ... 
-    // For now, we rely on the manual creation or simple advancement in hooks.
-
     return { newGames, updatedSeries };
 }
 
@@ -125,33 +135,6 @@ export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSe
  * 시리즈 승자 결정 및 라운드 종료 처리
  */
 export function advancePlayoffRound(seriesList: PlayoffSeries[], teams: Team[]): PlayoffSeries[] {
-    let nextRoundSeries: PlayoffSeries[] = [];
-    
-    // Group by Round & Conference
-    // R1 -> Semis -> Conf Finals -> Finals
-    
-    // Check Round 1 -> Semis
-    const r1 = seriesList.filter(s => s.round === 1 && s.finished);
-    const r2 = seriesList.filter(s => s.round === 2);
-    
-    if (r1.length === 8 && r2.length === 0) {
-        // Create Semis
-        ['East', 'West'].forEach(conf => {
-            const confSeries = r1.filter(s => s.conference === conf);
-            // Assuming standard bracket order (1v8, 4v5, 3v6, 2v7)
-            // Winner of (1v8) vs Winner of (4v5)
-            // Winner of (3v6) vs Winner of (2v7)
-            // Note: We need to track seed in series to match correctly, or infer from ID. 
-            // Simplified: Just take winners and assume seeding logic holds if we sorted correctly initially.
-            
-            // Re-find original seed by checking ID or team wins
-            // Just pairing strictly for MVP: 0 vs 1, 2 vs 3 in the array index if sorted?
-            // Safer: Match by IDs.
-            
-            // Let's implement a robust bracket linker later. 
-            // For MVP: Simple notification that round is done.
-        });
-    }
-
-    return [...seriesList, ...nextRoundSeries];
+    // Placeholder for future round logic
+    return [...seriesList];
 }

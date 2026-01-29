@@ -31,6 +31,9 @@ export const useSimulation = (
 
     // [Playoff Hook] Generate Schedule Automatically
     useEffect(() => {
+        // [Fix] Do not run logic if data is not yet loaded
+        if (!teams || teams.length === 0 || !schedule || schedule.length === 0) return;
+
         // Run this check whenever date or series changes
         const currentSeries = playoffSeries;
         
@@ -173,7 +176,12 @@ export const useSimulation = (
             for (const game of unplayedGamesToday) {
                 const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
                 const home = getTeam(game.homeTeamId); const away = getTeam(game.awayTeamId);
-                if (!home || !away) continue;
+                
+                // [Safety Check] Ensure teams exist before simulation
+                if (!home || !away) {
+                    console.warn(`Skipping simulation for game ${game.id}: Teams not found.`);
+                    continue;
+                }
 
                 const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined, playedYesterday(home.id), playedYesterday(away.id));
                 const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
