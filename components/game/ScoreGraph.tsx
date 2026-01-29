@@ -134,20 +134,18 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 >
                     <defs>
                         {/* 
-                            Gradient Logic:
-                            - Y=0 (Top): Away Win Territory -> Away Color
-                            - Y=30 (Mid): Tie Game -> Transparent
-                            - Y=60 (Bottom): Home Win Territory -> Home Color
+                            Gradient Logic (Simplified for performance):
+                            - Y=0 (Top): Away Win Territory -> Away Color 50% opacity
+                            - Y=30 (Mid): Tie Game -> 0% opacity
+                            - Y=60 (Bottom): Home Win Territory -> Home Color 50% opacity
                         */}
                         <linearGradient id="wpGradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={VIEW_HEIGHT}>
                             {/* Away Territory (Top half) */}
                             <stop offset="0" stopColor={awayColor} stopOpacity="0.5" />
-                            <stop offset="0.4" stopColor={awayColor} stopOpacity="0.15" />
                             <stop offset="0.5" stopColor={awayColor} stopOpacity="0" />
                             
                             {/* Home Territory (Bottom half) */}
                             <stop offset="0.5" stopColor={homeColor} stopOpacity="0" />
-                            <stop offset="0.6" stopColor={homeColor} stopOpacity="0.15" />
                             <stop offset="1" stopColor={homeColor} stopOpacity="0.5" />
                         </linearGradient>
                     </defs>

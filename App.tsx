@@ -50,6 +50,13 @@ const ViewLoader = () => (
     </div>
 );
 
+const FullScreenLoader = () => (
+    <div className="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-slate-950/90 backdrop-blur-md text-slate-200">
+        <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-4" />
+        <p className="text-sm font-black uppercase tracking-widest animate-pulse text-slate-400">Loading Game Engine...</p>
+    </div>
+);
+
 const App: React.FC = () => {
     // 1. Auth Hook
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
@@ -243,7 +250,7 @@ const App: React.FC = () => {
                     <Footer onNavigate={(v) => setView(v)} />
                 </main>
 
-                <Suspense fallback={null}>
+                <Suspense fallback={<FullScreenLoader />}>
                     {view === 'GameSim' && sim.activeGame && <GameSimulatingView homeTeam={gameData.teams.find(t => t.id === sim.activeGame!.homeTeamId)!} awayTeam={gameData.teams.find(t => t.id === sim.activeGame!.awayTeamId)!} userTeamId={gameData.myTeamId} finalHomeScore={sim.activeGame.homeScore} finalAwayScore={sim.activeGame.awayScore} onSimulationComplete={() => sim.finalizeSimRef.current?.()} />}
                     {view === 'GameResult' && sim.lastGameResult && <GameResultView result={sim.lastGameResult} myTeamId={gameData.myTeamId!} teams={gameData.teams} onFinish={() => { sim.setIsSimulating(false); setView('Dashboard'); }} />}
                 </Suspense>
