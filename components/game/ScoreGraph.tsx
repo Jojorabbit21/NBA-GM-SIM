@@ -12,6 +12,45 @@ interface ScoreGraphProps {
     awayTeamCode: string;
 }
 
+// Function to generate a smooth Bezier curve path from points
+const getSmoothPath = (points: {x: number, y: number}[]) => {
+    if (points.length === 0) return "";
+    if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
+
+    let d = `M ${points[0].x},${points[0].y}`;
+    
+    // Smoothing factor (0.2 is essentially a 20% smoothing, similar to a radius)
+    const smoothing = 0.2;
+
+    const line = (p0: any, p1: any) => {
+        const lengthX = p1.x - p0.x;
+        const lengthY = p1.y - p0.y;
+        return {
+            length: Math.sqrt(Math.pow(lengthX, 2) + Math.pow(lengthY, 2)),
+            angle: Math.atan2(lengthY, lengthX)
+        };
+    };
+
+    const controlPoint = (current: any, previous: any, next: any, reverse: boolean) => {
+        const p = previous || current;
+        const n = next || current;
+        const o = line(p, n);
+        const angle = o.angle + (reverse ? Math.PI : 0);
+        const length = o.length * smoothing;
+        const x = current.x + Math.cos(angle) * length;
+        const y = current.y + Math.sin(angle) * length;
+        return { x, y };
+    };
+
+    for (let i = 0; i < points.length - 1; i++) {
+        const cp1 = controlPoint(points[i], points[i - 1], points[i + 1], false);
+        const cp2 = controlPoint(points[i + 1], points[i], points[i + 2], true);
+        d += ` C ${cp1.x},${cp1.y} ${cp2.x},${cp2.y} ${points[i + 1].x},${points[i + 1].y}`;
+    }
+
+    return d;
+};
+
 export const ScoreGraph: React.FC<ScoreGraphProps> = ({ 
     history, progress, homeColor, awayColor, homeLogo, awayLogo, homeTeamCode, awayTeamCode 
 }) => {
@@ -22,27 +61,27 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     const dataIndex = Math.floor((progress / 100) * (history.length - 1));
     const dataSlice = history.slice(0, dataIndex + 1);
 
-    // Build points for the line
-    let points = "";
-    dataSlice.forEach((data, i) => {
-        const x = (i / (history.length - 1)) * VIEW_WIDTH;
-        
-        // [Logic Change] 
-        // Before: y = VIEW_HEIGHT - (wp / 100 * VIEW_HEIGHT) => 100% Home was Top (0)
-        // Now: y = (wp / 100) * VIEW_HEIGHT => 100% Home is Bottom (60), 0% Home (100% Away) is Top (0)
-        // This ensures the graph fills towards the bottom when Home is winning.
-        const y = (data.wp / 100) * VIEW_HEIGHT;
-        points += `${x},${y} `;
-    });
+    // Prepare points for smooth path generation
+    const points = dataSlice.map((data, i) => ({
+        x: (i / (history.length - 1)) * VIEW_WIDTH,
+        // Y Calculation:
+        // WP 50 -> 30 (Mid)
+        // WP 100 -> 60 (Bottom - Home Wins)
+        // WP 0 -> 0 (Top - Away Wins)
+        y: (data.wp / 100) * VIEW_HEIGHT
+    }));
+
+    const pathData = getSmoothPath(points);
 
     const currentData = dataSlice[dataSlice.length - 1] || { wp: 50 };
     const currentWP = currentData.wp;
-    const endX = (dataIndex / (history.length - 1)) * VIEW_WIDTH;
-    const endY = (currentWP / 100) * VIEW_HEIGHT;
+    const endX = points.length > 0 ? points[points.length - 1].x : 0;
+    const endY = points.length > 0 ? points[points.length - 1].y : MID_Y;
 
     // Create the closed path for filling
-    // Start at (0, MID_Y) -> Follow points -> (endX, MID_Y) -> Close
-    const fillPath = `M 0,${MID_Y} L ${points} L ${endX},${MID_Y} Z`;
+    // Combine smooth curve with closing lines to the center baseline
+    // M 0,MID_Y -> (Curve) -> L endX,MID_Y -> Z
+    const fillPath = `M 0,${MID_Y} ${pathData.replace(/^M [^ ]+/, "L")} L ${endX},${MID_Y} Z`;
 
     const homeProb = currentWP.toFixed(0);
     const awayProb = (100 - currentWP).toFixed(0);
@@ -71,7 +110,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
             </div>
 
             {/* Graph Container */}
-            <div className="w-full h-40 bg-slate-950 border border-slate-800 rounded-lg relative overflow-hidden">
+            <div className="w-full h-40 bg-slate-900 border border-slate-800 rounded-2xl relative overflow-hidden shadow-inner">
                 <svg 
                     viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} 
                     className="w-full h-full"
@@ -85,49 +124,52 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                         */}
                         <linearGradient id="wpGradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={VIEW_HEIGHT}>
                             <stop offset="0" stopColor={awayColor} stopOpacity="0.4" />
-                            <stop offset="0.5" stopColor={awayColor} stopOpacity="0.4" />
-                            <stop offset="0.5" stopColor={homeColor} stopOpacity="0.4" />
+                            <stop offset="0.5" stopColor={awayColor} stopOpacity="0.1" />
+                            <stop offset="0.5" stopColor={homeColor} stopOpacity="0.1" />
                             <stop offset="1" stopColor={homeColor} stopOpacity="0.4" />
                         </linearGradient>
                     </defs>
 
                     {/* Background & Quarters Separators */}
-                    <rect width="100%" height="100%" fill="#0f172a" opacity="0.5" />
+                    <rect width="100%" height="100%" fill="#0f172a" opacity="0.8" />
                     
-                    {/* Quarter Lines (Solid, as requested) */}
-                    <line x1="25" y1="0" x2="25" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" />
-                    <line x1="50" y1="0" x2="50" y2={VIEW_HEIGHT} stroke="#334155" strokeWidth="0.4" /> {/* Halftime - slightly thicker */}
-                    <line x1="75" y1="0" x2="75" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" />
+                    {/* Quarter Lines */}
+                    <line x1="25" y1="0" x2="25" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
+                    <line x1="50" y1="0" x2="50" y2={VIEW_HEIGHT} stroke="#334155" strokeWidth="0.5" /> {/* Halftime */}
+                    <line x1="75" y1="0" x2="75" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
 
-                    {/* 0 Baseline (The Tie Line) */}
-                    <line x1="0" y1={MID_Y} x2="100" y2={MID_Y} stroke="#475569" strokeWidth="0.2" strokeDasharray="2 2" />
+                    {/* 50% Baseline (The Tie Line) */}
+                    <line x1="0" y1={MID_Y} x2="100" y2={MID_Y} stroke="#475569" strokeWidth="0.4" strokeDasharray="3 3" />
 
                     {/* The Fill Area */}
                     <path 
                         d={fillPath} 
                         fill="url(#wpGradient)" 
                         stroke="none"
+                        className="transition-all duration-300"
                     />
 
-                    {/* The Curve Line */}
-                    <polyline 
-                        points={points} 
+                    {/* The Curve Line (Smoothed) */}
+                    <path 
+                        d={pathData} 
                         fill="none" 
                         stroke="#e2e8f0" 
                         strokeWidth="0.8" 
                         strokeLinecap="round"
+                        strokeLinejoin="round"
                         vectorEffect="non-scaling-stroke"
+                        className="drop-shadow-md"
                     />
 
                     {/* End Dot */}
-                    {dataSlice.length > 0 && (
-                        <circle cx={endX} cy={endY} r="1" fill="white" className="animate-pulse" />
+                    {points.length > 0 && (
+                        <circle cx={endX} cy={endY} r="1.2" fill="white" className="animate-pulse shadow-lg" />
                     )}
                 </svg>
             </div>
 
             {/* X-Axis Labels (Q1 ~ Q4) */}
-            <div className="flex px-1 mt-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider relative h-4">
+            <div className="flex px-1 mt-1.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider relative h-4">
                 <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
                 <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>
                 <span className="absolute left-[62.5%] -translate-x-1/2">3Q</span>
