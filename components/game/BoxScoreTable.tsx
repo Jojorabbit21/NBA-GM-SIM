@@ -1,6 +1,5 @@
-
 import React, { useMemo } from 'react';
-import { Crown, Shield, Lock, LockOpen } from 'lucide-react';
+import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { Team, PlayerBoxScore } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 
@@ -95,7 +94,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                                     {isDebuff ? (
                                                         <Lock size={10} className="text-red-400" />
                                                     ) : (
-                                                        <LockOpen size={10} className={isBuff ? "text-emerald-400" : "text-slate-400"} />
+                                                        <Unlock size={10} className={isBuff ? "text-emerald-400" : "text-slate-400"} />
                                                     )}
                                                     <span className={`text-[9px] font-black leading-none ${isDebuff ? 'text-red-400' : isBuff ? 'text-emerald-400' : 'text-slate-400'}`}>
                                                         {effect > 0 ? '+' : ''}{effect}%
