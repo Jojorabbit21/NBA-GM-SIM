@@ -5,9 +5,8 @@ import {
     ChevronDown, ChevronUp, Wallet, Brain, 
     ArrowLeft, HelpCircle, Zap, Scale, Cpu, 
     Users, AlertCircle, ShieldAlert, Timer, Settings2, DollarSign,
-    ArrowLeftRight, ClipboardList, Database, Loader2, CheckCircle2
+    ArrowLeftRight, ClipboardList
 } from 'lucide-react';
-import { checkMissingPlayers, seedMissingPlayers } from '../services/migration';
 
 interface HelpViewProps {
     onBack: () => void;
@@ -176,104 +175,6 @@ const SECTION_DATA = [
     }
 ];
 
-// Admin Section for Data Integrity
-const AdminSection: React.FC = () => {
-    const [status, setStatus] = useState<'idle' | 'checking' | 'found' | 'fixing' | 'done'>('idle');
-    const [missingCount, setMissingCount] = useState(0);
-    const [missingList, setMissingList] = useState<any[]>([]);
-    const [log, setLog] = useState('');
-
-    const handleCheck = async () => {
-        setStatus('checking');
-        setLog("로스터 파일과 DB를 대조 중입니다...");
-        try {
-            const missing = await checkMissingPlayers((msg) => setLog(msg));
-            if (missing.length > 0) {
-                setMissingCount(missing.length);
-                setMissingList(missing);
-                setStatus('found');
-                setLog(`총 ${missing.length}명의 누락된 선수가 발견되었습니다.`);
-            } else {
-                setStatus('done');
-                setLog("모든 선수가 DB에 정상적으로 등록되어 있습니다.");
-            }
-        } catch (e: any) {
-            setLog(`오류 발생: ${e.message}`);
-            setStatus('idle');
-        }
-    };
-
-    const handleFix = async () => {
-        setStatus('fixing');
-        try {
-            await seedMissingPlayers(missingList, (msg) => setLog(msg));
-            setStatus('done');
-            setLog("복구 완료! 새로고침하여 데이터를 확인하세요.");
-        } catch (e: any) {
-            setLog(`복구 실패: ${e.message}`);
-            setStatus('found'); // Retry allowed
-        }
-    };
-
-    return (
-        <div className="space-y-6 text-slate-300 text-base leading-relaxed">
-            <div className="bg-red-950/20 p-6 rounded-2xl border border-red-500/30">
-                <h4 className="text-red-400 font-black mb-3 flex items-center gap-2">
-                    <Database size={20} /> 데이터 무결성 검사
-                </h4>
-                <p className="mb-4 text-sm text-slate-400">
-                    로스터 파일(CSV)과 현재 데이터베이스(DB)를 대조하여 누락된 선수를 찾아내고 복구합니다.
-                    게임 진행 중 선수가 보이지 않을 경우 이 기능을 사용하세요.
-                </p>
-                
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xs text-slate-300 mb-4 min-h-[60px] flex items-center justify-center text-center">
-                    {log || "대기 중..."}
-                </div>
-
-                <div className="flex gap-4">
-                    {status === 'idle' || status === 'done' ? (
-                        <button 
-                            onClick={handleCheck}
-                            className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2"
-                        >
-                            <Target size={16} /> 누락 선수 스캔
-                        </button>
-                    ) : null}
-
-                    {status === 'found' && (
-                        <button 
-                            onClick={handleFix}
-                            className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg animate-pulse"
-                        >
-                            <Zap size={16} /> {missingCount}명 복구 실행
-                        </button>
-                    )}
-
-                    {(status === 'checking' || status === 'fixing') && (
-                        <div className="flex items-center gap-2 text-indigo-400 px-4">
-                            <Loader2 className="animate-spin" size={20} />
-                            <span className="text-xs font-bold uppercase tracking-widest">Processing...</span>
-                        </div>
-                    )}
-                </div>
-
-                {status === 'found' && missingList.length > 0 && (
-                    <div className="mt-4 p-4 bg-slate-900/50 rounded-xl max-h-40 overflow-y-auto custom-scrollbar">
-                        <p className="text-xs font-bold text-slate-500 mb-2 uppercase tracking-widest">누락된 선수 명단:</p>
-                        <div className="flex flex-wrap gap-2">
-                            {missingList.map((p, idx) => (
-                                <span key={idx} className="text-[10px] font-bold bg-slate-800 text-slate-300 px-2 py-1 rounded border border-slate-700">
-                                    {p.Name} ({p.Team})
-                                </span>
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-};
-
 export const HelpView: React.FC<HelpViewProps> = ({ onBack }) => {
     const [openSection, setOpenSection] = useState<string | null>('basics');
 
@@ -331,34 +232,6 @@ export const HelpView: React.FC<HelpViewProps> = ({ onBack }) => {
                         )}
                     </div>
                 ))}
-                
-                {/* Admin Section (Last Item) */}
-                <div className={`w-full border border-red-900/30 rounded-[2rem] overflow-hidden transition-all duration-300 ${openSection === 'admin' ? 'bg-slate-900/60 shadow-2xl ring-1 ring-red-500/30' : 'bg-slate-900/20 hover:bg-slate-900/40'}`}>
-                    <button 
-                        onClick={() => toggleSection('admin')}
-                        className="w-full flex items-center justify-between p-8 text-left group"
-                    >
-                        <div className="flex items-center gap-6">
-                            <div className={`p-4 rounded-2xl bg-slate-950 border border-slate-800 ${openSection === 'admin' ? 'scale-110 shadow-red-500/20 shadow-xl' : ''} transition-transform`}>
-                                <ShieldAlert className="text-red-500" size={28} />
-                            </div>
-                            <span className={`text-2xl font-black uppercase tracking-tight ${openSection === 'admin' ? 'text-red-400' : 'text-slate-500 group-hover:text-red-400/70'}`}>
-                                5. 관리자 패널 (Admin)
-                            </span>
-                        </div>
-                        <div className={`p-2 rounded-full transition-colors ${openSection === 'admin' ? 'bg-red-500/20 text-red-400' : 'text-slate-600'}`}>
-                            {openSection === 'admin' ? <ChevronUp size={28} /> : <ChevronDown size={28} />}
-                        </div>
-                    </button>
-                    
-                    {openSection === 'admin' && (
-                        <div className="px-8 pb-10 pl-[7rem] animate-in slide-in-from-top-4 duration-500">
-                            <div className="pt-8 border-t border-slate-800/50">
-                                <AdminSection />
-                            </div>
-                        </div>
-                    )}
-                </div>
 
             </div>
         </div>
