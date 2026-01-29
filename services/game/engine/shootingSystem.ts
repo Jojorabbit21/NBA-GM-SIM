@@ -112,25 +112,37 @@ export function calculateShootingStats(
     let midM = Math.round(midA * midSuccessRate);
 
     // 5. Stopper Effect
-    // [Fix] Only set as target if stopper actually played (> 0 min)
+    // Only set as target if stopper actually played (> 0 min)
     const isAceTarget = !!(oppHasStopper && p.id === acePlayerId && stopperId && stopperMP > 0);
     let matchupEffect = 0;
 
     if (isAceTarget && stopperPlayer) {
         const perDef = stopperPlayer.perDef || 50;
-        let rawImpact = 10 - ((perDef - 40) * 0.63); // Negative value means difficulty increased
+        
+        // [Balance Update] Wider Range Calculation (-50% ~ +50%)
+        // Formula: 40 - (Defense * 0.9)
+        // If Def=100 -> 40 - 90 = -50 (Max Suppression)
+        // If Def=40  -> 40 - 36 = +4 (Minor Advantage for Ace)
+        let rawImpact = 40 - (perDef * 0.9); 
         
         // Calculate Overlap Factor
         let overlapRatio = stopperMP >= mp ? 1.0 : (stopperMP / mp);
         
-        // Freedom Bonus
+        // [Balance Update] Freedom Bonus (Dynamic)
+        // If Ace plays without Stopper, bonus increases significantly
         let freedomBonus = 0;
-        if (mp > stopperMP + 8) {
-            freedomBonus = 5; 
+        const minutesWithoutStopper = Math.max(0, mp - stopperMP);
+        
+        if (minutesWithoutStopper > 0) {
+            // +1.2% bonus per minute played without stopper, capped at +35%
+            freedomBonus = Math.min(35, minutesWithoutStopper * 1.2); 
         }
 
         let adjustedImpact = (rawImpact * overlapRatio) + freedomBonus;
-        adjustedImpact = Math.max(-27, Math.min(10, adjustedImpact)); 
+        
+        // Cap the total impact between -50% and +50%
+        adjustedImpact = Math.max(-50, Math.min(50, adjustedImpact)); 
+        
         matchupEffect = Math.round(adjustedImpact);
         
         const factor = (1.0 + (matchupEffect / 100));

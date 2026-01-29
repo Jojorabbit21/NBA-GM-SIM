@@ -61,6 +61,13 @@ const SUPER_CLUTCH_MESSAGES = [
     "역사에 남을 명승부...",
 ];
 
+const BUZZER_BEATER_MESSAGES = [
+    "버저비터! 믿을 수 없는 기적입니다!",
+    "종료 부저와 함께 림을 가릅니다!",
+    "경기를 끝내는 위닝샷! 스타디움이 폭발합니다!",
+    "드라마 같은 역전승! 영웅이 탄생합니다!"
+];
+
 const GARBAGE_MESSAGES = [
     "점수 차가 많이 벌어졌습니다.",
     "주전 선수들이 벤치로 물러나 휴식을 취합니다.",
@@ -162,6 +169,7 @@ export const GameSimulatingView: React.FC<{
   const [progress, setProgress] = useState(0);
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
   const [currentMessage, setCurrentMessage] = useState(GENERAL_MESSAGES[0]);
+  const [isBuzzerBeaterActive, setIsBuzzerBeaterActive] = useState(false);
   
   const isFinishedRef = useRef(false);
   const progressRef = useRef(0);
@@ -198,7 +206,7 @@ export const GameSimulatingView: React.FC<{
 
             const isGarbage = prev > 60 && scoreDiff >= 20;
             const isLateGame = prev > 85;
-            const isSuperClutch = prev > 94 && scoreDiff <= 5;
+            const isSuperClutch = prev > 94 && scoreDiff <= 3;
             
             let speedConfig = SIMULATION_SPEED.NORMAL;
             if (isGarbage) speedConfig = SIMULATION_SPEED.GARBAGE;
@@ -260,9 +268,28 @@ export const GameSimulatingView: React.FC<{
         const scoreDiff = Math.abs(currentScore.h - currentScore.a);
         
         let targetPool = GENERAL_MESSAGES;
+        let isSuperClutch = false;
+
         if (currentProgress > 60 && scoreDiff >= 20) targetPool = GARBAGE_MESSAGES;
-        else if (currentProgress > 94 && scoreDiff <= 3) targetPool = SUPER_CLUTCH_MESSAGES;
+        else if (currentProgress > 94 && scoreDiff <= 3) {
+            targetPool = SUPER_CLUTCH_MESSAGES;
+            isSuperClutch = true;
+        }
         else if (currentProgress > 85 && scoreDiff <= 10) targetPool = CLUTCH_MESSAGES;
+
+        // [Feature] Random Buzzer Beater Event Trigger (5-20% chance in super clutch)
+        if (isSuperClutch && !isBuzzerBeaterActive) {
+            // Roll dice (approx 15% chance per tick)
+            if (Math.random() < 0.15) {
+                 setIsBuzzerBeaterActive(true);
+                 targetPool = BUZZER_BEATER_MESSAGES;
+            }
+        }
+        
+        // If already triggered, stick to Buzzer Beater messages
+        if (isBuzzerBeaterActive) {
+            targetPool = BUZZER_BEATER_MESSAGES;
+        }
 
         setCurrentMessage(prev => {
             if (targetPool.length <= 1) return targetPool[0];
@@ -276,7 +303,7 @@ export const GameSimulatingView: React.FC<{
         clearInterval(shotTimer);
         clearInterval(msgTimer);
     };
-  }, [scoreTimeline]); 
+  }, [scoreTimeline, isBuzzerBeaterActive]); 
 
   if (!homeTeam || !awayTeam) return null;
 
@@ -292,6 +319,9 @@ export const GameSimulatingView: React.FC<{
   let messageClass = "text-indigo-300";
   if (isGarbage) {
       messageClass = "text-slate-500 font-medium";
+  } else if (isBuzzerBeaterActive) {
+      // [Update] Buzzer Beater Visuals: Flash White/Red, Scale 1.35
+      messageClass = "text-red-500 font-black text-2xl animate-buzzer-beater scale-[1.35] drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]";
   } else if (isSuperClutch) {
       // 부글부글 끓는 효과 (진동 + 커짐 + 붉은색)
       messageClass = "text-red-500 font-black text-2xl animate-shake-intense drop-shadow-[0_0_15px_rgba(239,68,68,0.9)] scale-125";
@@ -325,6 +355,13 @@ export const GameSimulatingView: React.FC<{
         }
         .animate-pulse-fast {
             animation: pulse-fast 1s infinite;
+        }
+        @keyframes flash-text {
+            0%, 100% { color: #ef4444; text-shadow: 0 0 10px #ef4444; } /* Red */
+            50% { color: #ffffff; text-shadow: 0 0 20px #ffffff; } /* White */
+        }
+        .animate-buzzer-beater {
+            animation: shake-intense 0.5s infinite, flash-text 0.15s infinite;
         }
       `}</style>
       <div className="absolute inset-0 opacity-10 pointer-events-none">
