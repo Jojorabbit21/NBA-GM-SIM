@@ -71,17 +71,33 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
         y: (data.wp / 100) * VIEW_HEIGHT
     }));
 
+    if (points.length === 0) return null;
+
     const pathData = getSmoothPath(points);
 
     const currentData = dataSlice[dataSlice.length - 1] || { wp: 50 };
     const currentWP = currentData.wp;
-    const endX = points.length > 0 ? points[points.length - 1].x : 0;
-    const endY = points.length > 0 ? points[points.length - 1].y : MID_Y;
+    const startX = points[0].x;
+    const startY = points[0].y;
+    const endX = points[points.length - 1].x;
+    const endY = points[points.length - 1].y;
+
+    // Fix: Extract curve commands safely without malformed 'L C' syntax
+    // If path contains Curves ('C'), extract from the first 'C'. Otherwise it's just M x,y (single point)
+    let curveCommands = "";
+    const firstCIndex = pathData.indexOf('C');
+    if (firstCIndex !== -1) {
+        curveCommands = pathData.substring(firstCIndex);
+    }
 
     // Create the closed path for filling
-    // Combine smooth curve with closing lines to the center baseline
-    // M 0,MID_Y -> (Curve) -> L endX,MID_Y -> Z
-    const fillPath = `M 0,${MID_Y} ${pathData.replace(/^M [^ ]+/, "L")} L ${endX},${MID_Y} Z`;
+    // 1. Move to Start Baseline (0, 30)
+    // 2. Line to First Data Point
+    // 3. Curve through Data Points
+    // 4. Line to End Data Point (redundant if curve includes it, but safe)
+    // 5. Line to End Baseline (endX, 30)
+    // 6. Close (Z)
+    const fillPath = `M 0,${MID_Y} L ${startX},${startY} ${curveCommands} L ${endX},${MID_Y} Z`;
 
     const homeProb = currentWP.toFixed(0);
     const awayProb = (100 - currentWP).toFixed(0);
