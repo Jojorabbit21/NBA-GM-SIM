@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries } from '../types';
-import { GameTactics, generateAutoTactics } from '../services/gameEngine';
+import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries, GameTactics } from '../types';
+import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/SharedComponents';
 import { calculatePlayerOvr } from '../utils/constants';
 import { logEvent } from '../services/analytics'; 

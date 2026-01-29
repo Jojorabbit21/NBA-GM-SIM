@@ -1,7 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { Player, PlayerBoxScore, Transaction } from '../types';
-import { GameTactics } from './gameEngine'; 
+import { Player, PlayerBoxScore, Transaction, GameTactics } from '../types';
 import { logError } from './analytics'; 
 
 async function retryWithBackoff<T>(

@@ -210,4 +210,42 @@ export interface TradeOffer {
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
 
+export interface TacticalSliders {
+  pace: number;
+  offReb: number;
+  defIntensity: number;
+  defReb: number;
+  fullCourtPress: number;
+  zoneUsage: number;
+  rotationFlexibility: number;
+}
+
+export interface GameTactics {
+  offenseTactics: OffenseTactic[];
+  defenseTactics: DefenseTactic[];
+  sliders: TacticalSliders;
+  starters: { PG: string; SG: string; SF: string; PF: string; C: string };
+  minutesLimits: Record<string, number>;
+  stopperId?: string;
+}
+
+export interface RosterUpdate {
+    [playerId: string]: {
+        condition: number;
+        health: 'Healthy' | 'Injured' | 'Day-to-Day';
+        injuryType?: string;
+        returnDate?: string;
+    };
+}
+
+export interface SimulationResult {
+    homeScore: number;
+    awayScore: number;
+    homeBox: PlayerBoxScore[];
+    awayBox: PlayerBoxScore[];
+    rosterUpdates: RosterUpdate;
+    homeTactics: TacticalSnapshot;
+    awayTactics: TacticalSnapshot;
+}
+
 export type AppView = 'Dashboard' | 'Standings' | 'Leaderboard' | 'Roster' | 'Schedule' | 'Transactions' | 'Draft' | 'TeamSelect' | 'Onboarding' | 'GamePrep' | 'GameSim' | 'GameResult' | 'Playoffs' | 'SeasonReview' | 'PlayoffReview' | 'OvrCalculator' | 'Help';

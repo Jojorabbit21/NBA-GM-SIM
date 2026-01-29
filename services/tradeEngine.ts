@@ -196,65 +196,110 @@ export function generateCounterOffers(targetPlayers: Player[], targetTeam: Team,
 /**
  * [CPU-CPU Trade Logic]
  * AI 구단들이 자율적으로 트레이드를 시뮬레이션합니다.
+ * Logic Update:
+ * - Contenders (Win% >= 0.60): Passive (Rarely trade unless huge steal)
+ * - Playoff Hopefuls (0.50 <= Win% < 0.60): Buyers (Aggressively seek upgrades)
+ * - Tankers (Win% <= 0.40): Sellers (Sell Vets for Young Talent)
  */
 export function simulateCPUTrades(allTeams: Team[], myTeamId: string | null): { updatedTeams: Team[], transaction?: Transaction } | null {
     const otherTeams = allTeams.filter(t => t.id !== myTeamId);
     if (otherTeams.length < 2) return null;
 
-    // 1. 성향 기반 팀 분류
-    const contenders = otherTeams.filter(t => (t.wins / (t.wins + t.losses || 1)) >= 0.55);
-    const sellers = otherTeams.filter(t => (t.wins / (t.wins + t.losses || 1)) <= 0.40);
+    // 1. Categorize Teams based on Standings
+    const buyers = otherTeams.filter(t => {
+        const winPct = t.wins / (t.wins + t.losses || 1);
+        return winPct >= 0.45 && winPct < 0.60; // Hopefuls & Mid-tier wanting to push
+    });
+    
+    const sellers = otherTeams.filter(t => {
+        const winPct = t.wins / (t.wins + t.losses || 1);
+        return winPct < 0.40; // Tankers
+    });
 
-    if (contenders.length === 0 || sellers.length === 0) return null;
+    // Contenders (>0.60) are excluded from active 'Buyer' pool to simulate "sticking with what works",
+    // unless we want to add a specific 'All-in' logic later. For now, they are passive.
 
-    // 2. 무작위 팀 매칭
-    const buyer = contenders[Math.floor(Math.random() * contenders.length)];
+    if (buyers.length === 0 || sellers.length === 0) return null;
+
+    // 2. Randomly pick one Buyer and one Seller
+    const buyer = buyers[Math.floor(Math.random() * buyers.length)];
     const seller = sellers[Math.floor(Math.random() * sellers.length)];
 
-    // 3. 자산 구성 (Seller는 베테랑, Buyer는 유망주나 샐러리 필러)
-    const sellerVets = seller.roster.filter(p => p.age >= 29 && p.ovr >= 78).sort((a, b) => b.ovr - a.ovr);
-    if (sellerVets.length === 0) return null;
-    const targetPlayer = sellerVets[0];
+    // 3. Define Targets
+    // Buyer wants: Best possible player (OVR > 78) from Seller, preferably Vet (Age > 26)
+    const sellerAssets = seller.roster
+        .filter(p => p.ovr >= 78 && p.age >= 26 && p.salary > 5) 
+        .sort((a, b) => b.ovr - a.ovr);
+    
+    if (sellerAssets.length === 0) return null;
+    const targetVet = sellerAssets[0]; // The best vet available
 
-    const buyerAssets = buyer.roster.filter(p => p.id !== buyer.roster[0].id) // 코어 제외
-                                    .sort((a, b) => getPlayerTradeValue(a) - getPlayerTradeValue(b));
+    // Seller wants: Young Prospect (Age <= 24, POT >= 80) from Buyer
+    const buyerAssets = buyer.roster
+        .filter(p => p.age <= 24 && p.potential >= 80 && p.id !== buyer.roster[0].id) // Protect top star
+        .sort((a, b) => b.potential - a.potential);
+    
+    if (buyerAssets.length === 0) return null;
+    
+    // 4. Try to construct a package
+    // Buyer gives: 1 Prospect + Salary Filler (if needed)
+    // Seller gives: 1 Vet
 
-    // 단순 매칭 시도 (1:1 or 1:2)
-    for (let p of buyerAssets) {
-        const valToSeller = getContextualTradeValue(p, seller, true);
-        const valToBuyer = getContextualTradeValue(targetPlayer, buyer, true);
-        const salaryDiff = Math.abs(p.salary - targetPlayer.salary);
+    const tradeAsset = buyerAssets[0];
+    const salaryDiff = targetVet.salary - tradeAsset.salary;
+    const buyerPackage = [tradeAsset];
 
-        // CPU간 트레이드는 성사 조건을 조금 더 완화 (상호 니즈 일치 시)
-        if (valToSeller >= getPlayerTradeValue(targetPlayer) * 0.9 && salaryDiff < 10) {
-            const updatedTeams = allTeams.map(t => {
-                if (t.id === seller.id) {
-                    const roster = t.roster.filter(rp => rp.id !== targetPlayer.id);
-                    return { ...t, roster: [...roster, p] };
-                }
-                if (t.id === buyer.id) {
-                    const roster = t.roster.filter(rp => rp.id !== p.id);
-                    return { ...t, roster: [...roster, targetPlayer] };
-                }
-                return t;
-            });
+    // If salary doesn't match, add filler
+    if (salaryDiff > 5) {
+        const filler = buyer.roster
+            .filter(p => p.id !== tradeAsset.id && p.ovr < 75) // Low value filler
+            .sort((a,b) => Math.abs(b.salary - salaryDiff) - Math.abs(a.salary - salaryDiff))[0];
+        
+        if (filler) buyerPackage.push(filler);
+    }
 
-            const tx: Transaction = {
-                id: `cpu_tr_${Date.now()}`,
-                date: 'TODAY',
-                type: 'Trade',
-                teamId: buyer.id,
-                description: `[CPU] ${buyer.name} - ${seller.name} 트레이드 합의`,
-                details: {
-                    acquired: [{ id: targetPlayer.id, name: targetPlayer.name, ovr: targetPlayer.ovr, position: targetPlayer.position }],
-                    traded: [{ id: p.id, name: p.name, ovr: p.ovr, position: p.position }],
-                    partnerTeamId: seller.id,
-                    partnerTeamName: seller.name
-                }
-            };
+    // 5. Value Check
+    const vetValue = getPlayerTradeValue(targetVet);
+    const packageValue = buyerPackage.reduce((sum, p) => sum + getPlayerTradeValue(p), 0);
+    const packageSalary = buyerPackage.reduce((sum, p) => sum + p.salary, 0);
 
-            return { updatedTeams, transaction: tx };
-        }
+    // AI Acceptance Logic:
+    // Seller: Is getting good value for an old player? (Value Ratio > 0.85 is enough for tankers)
+    // Buyer: Is getting an upgrade? (Vet OVR > Prospect OVR + 3)
+    // Salary: Must be somewhat close
+    
+    const salaryMatch = Math.abs(packageSalary - targetVet.salary) < 8 || (packageSalary > 0 && targetVet.salary / packageSalary < 1.25 && targetVet.salary / packageSalary > 0.75);
+    const valueFair = packageValue >= vetValue * 0.85; // Tankers sell slightly cheap for future
+    const isUpgrade = targetVet.ovr > tradeAsset.ovr + 2;
+
+    if (salaryMatch && valueFair && isUpgrade) {
+        const updatedTeams = allTeams.map(t => {
+            if (t.id === seller.id) {
+                const roster = t.roster.filter(rp => rp.id !== targetVet.id);
+                return { ...t, roster: [...roster, ...buyerPackage] };
+            }
+            if (t.id === buyer.id) {
+                const roster = t.roster.filter(rp => !buyerPackage.some(bp => bp.id === rp.id));
+                return { ...t, roster: [...roster, targetVet] };
+            }
+            return t;
+        });
+
+        const tx: Transaction = {
+            id: `cpu_tr_${Date.now()}`,
+            date: 'TODAY',
+            type: 'Trade',
+            teamId: buyer.id,
+            description: `[CPU] ${buyer.name} (Buyer) - ${seller.name} (Seller) 빅딜 성사`,
+            details: {
+                acquired: [{ id: targetVet.id, name: targetVet.name, ovr: targetVet.ovr, position: targetVet.position }],
+                traded: buyerPackage.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                partnerTeamId: seller.id,
+                partnerTeamName: seller.name
+            }
+        };
+
+        return { updatedTeams, transaction: tx };
     }
 
     return null;
