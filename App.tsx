@@ -11,7 +11,7 @@ import { generateGameRecapNews, generateOwnerWelcome, generateCPUTradeNews } fro
 import { simulateCPUTrades } from './services/tradeEngine';
 
 // Icons
-import { Loader2, AlertTriangle, Clock, Save, Newspaper } from 'lucide-react';
+import { Loader2, Clock, Save, Newspaper } from 'lucide-react';
 
 // Views
 import { AuthView } from './views/AuthView';
@@ -37,6 +37,7 @@ import { Footer } from './components/Footer';
 import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { Toast, ActionToast } from './components/SharedComponents';
 import { Sidebar } from './components/Sidebar';
+import { ResetDataModal } from './components/ResetDataModal';
 
 const INITIAL_DATE = '2025-10-20';
 
@@ -198,30 +199,65 @@ const App: React.FC = () => {
       setTimeout(() => { isLoggingOutRef.current = false; }, 500);
   };
 
-  // Reset Data Logic
+  // Reset Data Logic with Fix for Infinite Loading
   const handleResetData = async () => {
+    console.log("🛠️ [RESET] Starting Data Reset Process...");
     isResettingRef.current = true;
-    setShowResetConfirm(false);
+    
     try {
         if (session?.user) {
-            await supabase.from('saves').delete().eq('user_id', session.user.id);
-            await supabase.from('user_game_results').delete().eq('user_id', session.user.id);
-            localStorage.removeItem(`nba_gm_save_${session.user.id}`);
+            const userId = session.user.id;
+            console.log(`🛠️ [RESET] Deleting data for User ID: ${userId}`);
+
+            // Parallel Deletion
+            await Promise.all([
+                supabase.from('saves').delete().eq('user_id', userId),
+                supabase.from('user_game_results').delete().eq('user_id', userId),
+                supabase.from('user_transactions').delete().eq('user_id', userId)
+            ]);
+            
+            console.log("🛠️ [RESET] Clearing Query Cache & Storage...");
+            localStorage.removeItem(`nba_gm_save_${userId}`);
+            
+            // Critical: Remove the cached save data so it doesn't get reloaded by the useEffect
+            queryClient.removeQueries({ queryKey: ['fullGameState', userId] });
+            queryClient.setQueryData(['fullGameState', userId], null);
         }
+
+        console.log("🛠️ [RESET] Resetting Local React State...");
         setMyTeamId(null);
-        if (baseData) { setTeams(baseData.teams); setSchedule(baseData.schedule); } 
-        else { await refetchBaseData(); }
         setPlayoffSeries([]);
         setTransactions([]);
         setCurrentSimDate(INITIAL_DATE);
         setUserTactics(null);
+        
+        console.log("🛠️ [RESET] Refreshing Base Data...");
+        if (baseData) { 
+            console.log("🛠️ [RESET] Using existing baseData cache.");
+            setTeams(baseData.teams); 
+            setSchedule(baseData.schedule); 
+        } else { 
+            console.log("🛠️ [RESET] Fetching baseData from source...");
+            await refetchBaseData(); 
+        }
+        
+        console.log("🛠️ [RESET] Setting view to TeamSelect...");
         setView('TeamSelect');
-        hasInitialLoadRef.current = false;
+        
+        // Critical Fix: Set this to TRUE because we are done with the "Loading" phase of the reset
+        // We are now in a clean state ready for Team Selection
+        hasInitialLoadRef.current = true; 
+        
         setToastMessage("구단 데이터가 완전히 초기화되었습니다.");
+        console.log("✅ [RESET] Reset Process Completed Successfully.");
+
     } catch (e) {
+        console.error("❌ [RESET] Critical Error during reset:", e);
         setToastMessage("초기화 중 오류가 발생했습니다.");
     } finally {
-        setTimeout(() => { isResettingRef.current = false; }, 500);
+        setShowResetConfirm(false);
+        isResettingRef.current = false;
+        console.log("🛠️ [RESET] isResettingRef set to false.");
     }
   };
 
@@ -475,21 +511,12 @@ const App: React.FC = () => {
           </div>
       )}
       
-      {showResetConfirm && (
-        <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
-            <div className="bg-slate-900 border border-slate-700 p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-                <div className="bg-red-500/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-red-500/30">
-                    <AlertTriangle className="text-red-500" size={32} />
-                </div>
-                <h3 className="text-2xl font-black text-white mb-2 uppercase oswald">데이터 초기화</h3>
-                <p className="text-slate-400 font-bold text-sm leading-relaxed mb-8">현재 진행 중인 모든 시즌 데이터와 세이브 파일이 영구적으로 삭제됩니다. 계속하시겠습니까?</p>
-                <div className="flex gap-4">
-                    <button onClick={() => setShowResetConfirm(false)} className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 font-black uppercase text-xs tracking-widest transition-all">취소</button>
-                    <button onClick={handleResetData} className="flex-1 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white font-black uppercase text-xs tracking-widest transition-all shadow-lg shadow-red-900/30">초기화 실행</button>
-                </div>
-            </div>
-        </div>
-      )}
+      <ResetDataModal 
+        isOpen={showResetConfirm} 
+        isLoading={isResettingRef.current} 
+        onClose={() => setShowResetConfirm(false)} 
+        onConfirm={handleResetData} 
+      />
 
       <div className="flex-1 flex overflow-hidden relative">
         <Sidebar 
