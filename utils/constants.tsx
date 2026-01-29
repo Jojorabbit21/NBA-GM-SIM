@@ -1,4 +1,6 @@
+
 import { Player, SeasonStats, Game, Team } from '../types';
+import { POSITION_WEIGHTS, PositionType } from './overallWeights';
 
 export const SEASON_START_DATE = '2025-10-20'; // 25-26 Season Start
 export const TRADE_DEADLINE = '2026-02-06';
@@ -223,6 +225,16 @@ export const parseCSVToObjects = (csv: string): any[] => {
 
 export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
     const position = overridePosition || p.position || 'PG';
+    
+    // Normalize position key to match overallWeights types
+    let posKey: PositionType = 'PG';
+    if (position.includes('SG')) posKey = 'SG';
+    else if (position.includes('SF')) posKey = 'SF';
+    else if (position.includes('PF')) posKey = 'PF';
+    else if (position.includes('C')) posKey = 'C';
+    
+    const weights = POSITION_WEIGHTS[posKey];
+
     const v = (key: string, def = 70) => {
         // [DB Support] Handle flat structure (p[key]) AND nested structure (p.base_attributes[key])
         if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
@@ -237,16 +249,17 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
         v('threeTop', v('threet', v('3t')))
     ) / 3;
 
-    const attr = {
-        close: v('closeShot', v('close')),
-        mid: v('midRange', v('mid')),
+    // Construct an attribute object with standardized keys matching overallWeights.ts
+    const attr: Record<string, number> = {
+        closeShot: v('closeShot', v('close')),
+        midRange: v('midRange', v('mid')),
         threeAvg: threeAvg || v('threeAvg'),
         ft: v('ft'),
         shotIq: v('shotIq', v('siq')),
         offConsist: v('offConsist', v('ocon')),
         layup: v('layup', v('lay')),
         dunk: v('dunk', v('dnk')),
-        post: v('postPlay', v('post')),
+        postPlay: v('postPlay', v('post')),
         drawFoul: v('drawFoul', v('draw')),
         hands: v('hands'),
         passAcc: v('passAcc', v('pacc')),
@@ -275,42 +288,19 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
         speed: v('speed', v('spd')),
     };
 
-    const calc = (weights: {val: number, w: number}[]) => {
-        let totalVal = 0;
-        let totalWeight = 0;
-        weights.forEach(item => {
-            totalVal += (item.val ?? 0) * item.w;
-            totalWeight += item.w;
-        });
-        return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
-    };
+    let totalVal = 0;
+    let totalWeight = 0;
 
-    if (position.includes('PG')) {
-        return calc([{ val: attr.close, w: 10 }, { val: attr.mid, w: 20 }, { val: attr.threeAvg, w: 25 }, { val: attr.ft, w: 10 }, { val: attr.shotIq, w: 45 }, { val: attr.offConsist, w: 25 }, { val: attr.layup, w: 25 }, { val: attr.hands, w: 40 }, { val: attr.stamina, w: 15 }, { val: attr.passAcc, w: 25 }, { val: attr.handling, w: 15 }, { val: attr.spdBall, w: 10 }, { val: attr.passVision, w: 25 }, { val: attr.passIq, w: 50 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }]);
-    } else if (position.includes('SG')) {
-        return calc([
-            { val: attr.close, w: 300 }, { val: attr.mid, w: 100 }, { val: attr.threeAvg, w: 150 }, { val: attr.ft, w: 100 }, { val: attr.shotIq, w: 500 }, { val: attr.offConsist, w: 500 }, { val: attr.layup, w: 200 }, { val: attr.dunk, w: 150 }, { val: attr.post, w: 0 }, { val: attr.drawFoul, w: 50 }, { val: attr.hands, w: 250 }, { val: attr.intDef, w: 0 }, { val: attr.perDef, w: 0 }, { val: attr.steal, w: 0 }, { val: attr.blk, w: 0 }, { val: attr.helpDefIq, w: 0 }, { val: attr.passPerc, w: 0 }, { val: attr.defConsist, w: 5 }, { val: attr.offReb, w: 0 }, { val: attr.defReb, w: 0 }, { val: attr.speed, w: 0 }, { val: attr.agility, w: 0 }, { val: attr.strength, w: 0 }, { val: attr.vertical, w: 0 }, { val: attr.stamina, w: 0 }, { val: attr.hustle, w: 0 }, { val: attr.durability, w: 0 }, { val: attr.passAcc, w: 0 }, { val: attr.handling, w: 0 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 0 }, { val: attr.passIq, w: 0 }, { val: attr.intangibles, w: 50 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 30 }
-        ]);
-    } else if (position.includes('SF')) {
-        return calc([
-            { val: attr.close, w: 300 }, { val: attr.mid, w: 150 }, { val: attr.threeAvg, w: 50 }, { val: attr.ft, w: 150 }, { val: attr.shotIq, w: 300 }, { val: attr.offConsist, w: 500 }, { val: attr.layup, w: 500 }, { val: attr.dunk, w: 100 }, { val: attr.post, w: 0 }, { val: attr.drawFoul, w: 150 }, { val: attr.hands, w: 250 }, { val: attr.intDef, w: 200 }, { val: attr.perDef, w: 200 }, { val: attr.steal, w: 10 }, { val: attr.blk, w: 0 }, { val: attr.helpDefIq, w: 10 }, { val: attr.passPerc, w: 10 }, { val: attr.defConsist, w: 0 }, { val: attr.speed, w: 0 }, { val: attr.agility, w: 100 }, { val: attr.strength, w: 0 }, { val: attr.vertical, w: 100 }, { val: attr.stamina, w: 200 }, { val: attr.hustle, w: 200 }, { val: attr.durability, w: 0 }, { val: attr.passAcc, w: 0 }, { val: attr.handling, w: 0 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 0 }, { val: attr.passIq, w: 0 }, { val: attr.offReb, w: 0 }, { val: attr.defReb, w: 0 }, { val: attr.intangibles, w: 5 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 100 }
-        ]);
-    } else if (position.includes('PF')) {
-        return calc([
-            { val: attr.close, w: 450 }, { val: attr.mid, w: 50 }, { val: attr.threeAvg, w: 50 }, { val: attr.ft, w: 150 }, { val: attr.shotIq, w: 100 }, { val: attr.offConsist, w: 600 },
-            { val: attr.layup, w: 500 }, { val: attr.dunk, w: 350 }, { val: attr.post, w: 0 }, { val: attr.drawFoul, w: 0 }, { val: attr.hands, w: 500 },
-            { val: attr.intDef, w: 200 }, { val: attr.perDef, w: 50 }, { val: attr.steal, w: 0 }, { val: attr.blk, w: 50 }, { val: attr.helpDefIq, w: 0 }, { val: attr.passPerc, w: 0 }, { val: attr.defConsist, w: 0 },
-            { val: attr.offReb, w: 100 }, { val: attr.defReb, w: 160 },
-            { val: attr.speed, w: 0 }, { val: attr.agility, w: 0 }, { val: attr.strength, w: 100 }, { val: attr.vertical, w: 100 }, { val: attr.stamina, w: 100 }, { val: attr.hustle, w: 0 }, { val: attr.durability, w: 50 },
-            { val: attr.passAcc, w: 50 }, { val: attr.handling, w: 50 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 50 }, { val: attr.passIq, w: 50 },
-            { val: attr.intangibles, w: 10 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 150 }
-        ]);
-    } else if (position.includes('C')) {
-        return calc([
-            { val: attr.close, w: 300 }, { val: attr.mid, w: 0 }, { val: attr.threeAvg, w: 0 }, { val: attr.ft, w: 0 }, { val: attr.shotIq, w: 200 }, { val: attr.offConsist, w: 0 }, { val: attr.layup, w: 0 }, { val: attr.dunk, w: 0 }, { val: attr.post, w: 200 }, { val: attr.drawFoul, w: 250 }, { val: attr.hands, w: 200 }, { val: attr.intDef, w: 250 }, { val: attr.perDef, w: 0 }, { val: attr.steal, w: 0 }, { val: attr.blk, w: 100 }, { val: attr.helpDefIq, w: 0 }, { val: attr.passPerc, w: 0 }, { val: attr.defConsist, w: 200 }, { val: attr.offReb, w: 100 }, { val: attr.defReb, w: 100 }, { val: attr.speed, w: 0 }, { val: attr.agility, w: 0 }, { val: attr.strength, w: 150 }, { val: attr.vertical, w: 0 }, { val: attr.stamina, w: 150 }, { val: attr.hustle, w: 0 }, { val: attr.durability, w: 150 }, { val: attr.passAcc, w: 100 }, { val: attr.handling, w: 200 }, { val: attr.spdBall, w: 0 }, { val: attr.passVision, w: 0 }, { val: attr.passIq, w: 100 }, { val: attr.intangibles, w: 15 }, { val: attr.potential, w: 500 }, { val: attr.height, w: 180 }
-        ]);
+    for (const key in weights) {
+        if (weights.hasOwnProperty(key)) {
+            const w = weights[key];
+            const val = attr[key] ?? 0;
+            totalVal += val * w;
+            totalWeight += w;
+        }
     }
-    return 70;
+
+    return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
 };
 
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
