@@ -218,10 +218,24 @@ export const GameSimulatingView: React.FC<{
             const isSuperClutch = prev > 94 && scoreDiff <= 3;
             
             // [Logic Update] Buzzer Beater Trigger Condition
-            // - Must be extremely close to the end (96%+)
-            // - Must be a close game (<= 2 pts, ensuring a single shot can win it)
-            // - Must not have triggered already
-            if (!isBuzzerBeaterTriggeredRef.current && prev > 96 && prev < 99 && scoreDiff <= 2) {
+            // 1. Must be extremely close to the end (96%+)
+            // 2. Must be a close game (<= 2 pts, ensuring a single shot can win it)
+            // 3. Must not have triggered already
+            // 4. [NEW] The Eventual Winner MUST be currently LOSING or TIED.
+            //    (If they are already winning, a "game-winning buzzer beater" makes no sense narrative-wise)
+            
+            const eventualWinnerIsHome = finalHomeScore > finalAwayScore;
+            const isWinnerTrailingOrTied = eventualWinnerIsHome 
+                ? currentData.h <= currentData.a 
+                : currentData.a <= currentData.h;
+
+            if (
+                !isBuzzerBeaterTriggeredRef.current && 
+                prev > 96 && 
+                prev < 99 && 
+                scoreDiff <= 2 && 
+                isWinnerTrailingOrTied
+            ) {
                  // 20% Chance to trigger the event on last possession
                  if (Math.random() < 0.20) {
                      isBuzzerBeaterTriggeredRef.current = true;
@@ -251,7 +265,7 @@ export const GameSimulatingView: React.FC<{
     };
     runSimulationStep();
     return () => clearTimeout(timeoutId);
-  }, [scoreTimeline]); // Removed displayScore from deps
+  }, [scoreTimeline, finalHomeScore, finalAwayScore]); // Added final scores to deps
 
   useEffect(() => {
       if (scoreTimeline.length === 0) return;
