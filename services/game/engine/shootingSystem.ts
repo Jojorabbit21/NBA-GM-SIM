@@ -112,10 +112,11 @@ export function calculateShootingStats(
     let midM = Math.round(midA * midSuccessRate);
 
     // 5. Stopper Effect
-    const isAceTarget = !!(oppHasStopper && p.id === acePlayerId && stopperId);
+    // [Fix] Only set as target if stopper actually played (> 0 min)
+    const isAceTarget = !!(oppHasStopper && p.id === acePlayerId && stopperId && stopperMP > 0);
     let matchupEffect = 0;
 
-    if (isAceTarget && stopperPlayer && stopperMP > 0) {
+    if (isAceTarget && stopperPlayer) {
         const perDef = stopperPlayer.perDef || 50;
         let rawImpact = 10 - ((perDef - 40) * 0.63); // Negative value means difficulty increased
         
