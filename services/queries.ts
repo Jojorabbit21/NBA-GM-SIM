@@ -6,10 +6,12 @@ import {
   getTeamLogoUrl, 
   mapDatabasePlayerToRuntimePlayer, 
   mapDatabaseScheduleToRuntimeGame,
+  resolveTeamId,
   INITIAL_STATS,
   INITIAL_TEAMS_DATA
 } from '../utils/constants';
 import { Team, Player, Game, Transaction, SeasonStats, PlayoffSeries } from '../types';
+import { generateNextPlayoffGames } from '../utils/playoffLogic';
 
 // ============================================================================
 //  HELPER: State Reconstruction (Event Sourcing Logic)
@@ -22,7 +24,9 @@ const reconstructGameState = (
     baseTeams: Team[],
     baseSchedule: Game[],
     transactions: Transaction[],
-    gameResults: any[]
+    gameResults: any[],
+    playoffSeries?: PlayoffSeries[],
+    currentDate?: string
 ) => {
     // 1. Deep Copy Base Data (To avoid mutating cache)
     const teamsMap = new Map<string, Team>();
@@ -96,24 +100,45 @@ const reconstructGameState = (
 
     gameResults.forEach((res: any) => {
         // 3-1. Update Schedule Status
-        const game = scheduleMap.get(res.game_id);
-        if (game) {
+        let game = scheduleMap.get(res.game_id);
+        
+        // [Fix] Handle Dynamic Playoff Games (Not in Meta Schedule)
+        if (!game) {
+            game = {
+                id: res.game_id,
+                homeTeamId: res.home_team_id || resolveTeamId(res.home_team_name) || 'unknown', // Fallback if IDs missing
+                awayTeamId: res.away_team_id || resolveTeamId(res.away_team_name) || 'unknown',
+                date: res.date,
+                played: true,
+                homeScore: res.home_score,
+                awayScore: res.away_score,
+                isPlayoff: res.is_playoff || false,
+                seriesId: res.series_id || undefined,
+            };
+            // Only add if teams are valid
+            if (game.homeTeamId !== 'unknown' && game.awayTeamId !== 'unknown') {
+                 scheduleMap.set(game.id, game);
+            }
+        } else {
             game.played = true;
             game.homeScore = res.home_score;
             game.awayScore = res.away_score;
+            // Ensure playoff metadata is synced if existing game
+            if (res.is_playoff) game.isPlayoff = true;
+            if (res.series_id) game.seriesId = res.series_id;
+        }
             
-            // 3-2. Update Team Standings
-            const homeTeam = teamsMap.get(game.homeTeamId);
-            const awayTeam = teamsMap.get(game.awayTeamId);
-            
-            if (homeTeam && awayTeam) {
-                if (res.home_score > res.away_score) {
-                    homeTeam.wins += 1;
-                    awayTeam.losses += 1;
-                } else {
-                    awayTeam.wins += 1;
-                    homeTeam.losses += 1;
-                }
+        // 3-2. Update Team Standings
+        const homeTeam = teamsMap.get(game.homeTeamId);
+        const awayTeam = teamsMap.get(game.awayTeamId);
+        
+        if (homeTeam && awayTeam) {
+            if (res.home_score > res.away_score) {
+                homeTeam.wins += 1;
+                awayTeam.losses += 1;
+            } else {
+                awayTeam.wins += 1;
+                homeTeam.losses += 1;
             }
         }
 
@@ -156,9 +181,22 @@ const reconstructGameState = (
         }
     });
 
+    let reconstructedSchedule = Array.from(scheduleMap.values());
+
+    // 4. [Playoff Fix] Generate Future Playoff Games
+    // The DB only stores finished games. If a series is active, we need to regenerate the NEXT unplayed game.
+    if (playoffSeries && playoffSeries.length > 0 && currentDate) {
+        const { newGames } = generateNextPlayoffGames(reconstructedSchedule, playoffSeries, currentDate);
+        if (newGames.length > 0) {
+            // Append these generated future games to schedule
+            // They will be "played: false"
+            reconstructedSchedule = [...reconstructedSchedule, ...newGames];
+        }
+    }
+
     return {
         teams: Array.from(teamsMap.values()),
-        schedule: Array.from(scheduleMap.values())
+        schedule: reconstructedSchedule
     };
 };
 
@@ -221,8 +259,8 @@ export const useLoadSave = (userId: string | undefined) => {
       if (!userId) return null;
       console.log("🔄 Reconstructing Game State from Event Log...");
 
-      // 1. Fetch Save Metadata (Date, Team)
-      // Saves table structure: user_id | team_id | sim_date | updated_at
+      // 1. Fetch Save Metadata (Date, Team, Tactics)
+      // Saves table structure: user_id | team_id | sim_date | tactics | playoff_series | updated_at
       const { data: saveMeta, error: saveError } = await supabase
           .from('saves')
           .select('*')
@@ -261,10 +299,10 @@ export const useLoadSave = (userId: string | undefined) => {
           .eq('user_id', userId);
 
       // 4. Fetch Game Results (for Stats & Records)
-      // Note: fetching ALL results might be heavy eventually, but OK for now.
+      // [Update] Select extended columns (team_ids, is_playoff, series_id) to reconstruct dynamic games
       const { data: gameResults } = await supabase
           .from('user_game_results')
-          .select('game_id, home_score, away_score, box_score, date')
+          .select('game_id, home_score, away_score, box_score, date, home_team_id, away_team_id, is_playoff, series_id')
           .eq('user_id', userId);
 
       // 5. Reconstruct State
@@ -275,13 +313,12 @@ export const useLoadSave = (userId: string | undefined) => {
           (transactions || []).map((t: any) => ({
               id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
           })),
-          gameResults || []
+          gameResults || [],
+          saveMeta.playoff_series, // Pass saved playoff series state
+          saveMeta.sim_date        // Pass saved date
       );
       console.timeEnd("ReconstructState");
 
-      // [Reverted] Do not calculate date from game history. 
-      // Rely on the 'saveMeta.sim_date' which is now updated immediately via 'saveDateImmediately'.
-      
       // 6. Return formatted game data
       return {
           team_id: saveMeta.team_id,
@@ -289,8 +326,8 @@ export const useLoadSave = (userId: string | undefined) => {
               teams: reconstructedTeams,
               schedule: reconstructedSchedule,
               currentSimDate: saveMeta.sim_date, // Direct use of DB Date
-              tactics: null, 
-              playoffSeries: [], 
+              tactics: saveMeta.tactics || null, // Load Tactics from DB
+              playoffSeries: saveMeta.playoff_series || [], // Load Playoff Series from DB
               transactions: (transactions || []).map((t: any) => ({
                 id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
               })),
@@ -310,21 +347,27 @@ export const useSaveGame = () => {
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
       if (!userId || !teamId) throw new Error("Missing UserID or TeamID");
 
-      console.log("💾 Updating Save Metadata (Date only)...");
+      console.log("💾 Updating Save Metadata (Date, Tactics, Playoff Series)...");
 
-      // Now we only save the Date and Team ID. 
-      // Stats are saved via 'saveGameResults', Rosters via 'saveUserTransaction'.
+      // Now we save Tactics and Playoff Series along with Date
       const savePayload = {
         user_id: userId,
         team_id: teamId,
         sim_date: gameData.currentSimDate,
+        tactics: gameData.tactics, // Save Tactics
+        playoff_series: gameData.playoffSeries, // Save Playoff Series
         updated_at: new Date().toISOString()
       };
 
       const { error } = await supabase.from('saves').upsert(savePayload, { onConflict: 'user_id' });
 
       if (error) {
-          console.error("❌ Save Update Failed:", error);
+          // [Enhanced Logging] Identify missing column errors
+          if (error.code === '42703') { // PostgreSQL Undefined Column error code
+             console.error("❌ Save Failed: Database schema mismatch. Please add 'tactics' and 'playoff_series' columns to 'saves' table.");
+          } else {
+             console.error("❌ Save Update Failed:", error);
+          }
           throw error;
       }
 
