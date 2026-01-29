@@ -3,6 +3,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { injectSpeedInsights } from '@vercel/speed-insights';
+import './index.css'; // Tailwind CSS Import
 import App from './App';
 
 // Vercel Speed Insights 초기화

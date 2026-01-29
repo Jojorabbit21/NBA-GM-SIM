@@ -1,0 +1,63 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 커스텀 스크롤바 스타일 (기존 index.html의 스타일 이관) */
+body {
+    background-color: #0f172a;
+    color: #f8fafc;
+    -webkit-font-smoothing: antialiased;
+}
+
+.text-huge { font-size: clamp(3rem, 8vw, 6rem); line-height: 0.9; }
+
+@keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+}
+.animate-marquee {
+    animation-name: marquee;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-duration: 60s;
+}
+.animate-marquee:hover { animation-play-state: paused; }
+
+@keyframes pulse-subtle {
+    0%, 100% { opacity: 1; filter: brightness(1); }
+    50% { opacity: 0.9; filter: brightness(1.1); }
+}
+.animate-pulse-subtle { animation: pulse-subtle 3s infinite ease-in-out; }
+
+.text-shadow-ovr { text-shadow: 0px 1.5px 3px rgba(0, 0, 0, 0.5); }
+.ko-tight { letter-spacing: -0.025em; }
+.ko-normal { letter-spacing: -0.01em; }
+.custom-scrollbar-hide::-webkit-scrollbar { display: none; }
+.custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+::-webkit-scrollbar-track {
+    background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 5px;
+    border: 2px solid #0f172a;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #4f46e5;
+}
+::-webkit-scrollbar-thumb:active {
+    background: #6366f1;
+}
+::-webkit-scrollbar-corner {
+    background: #0f172a;
+}
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #334155 #0f172a;
+}
