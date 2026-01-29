@@ -169,11 +169,6 @@ const App: React.FC = () => {
     (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
       if (session && !isLoggingOutRef.current) {
         setSession(session);
-        // Do not log login on page refresh, only on actual sign-in event is better, 
-        // but session check happens on refresh too. 
-        // To avoid duplicate 'login' logs on refresh, we rely on the SIGNED_IN event below 
-        // or we can just accept it (since session might have been restored).
-        // Let's rely on onAuthStateChange for 'SIGNED_IN'.
       } else if (!session) {
         setSession(null);
         hasInitialLoadRef.current = false;
@@ -187,7 +182,8 @@ const App: React.FC = () => {
       
       if (event === 'SIGNED_IN' && session) {
           setSession(session);
-          insertAuthLog(session.user.id, 'login'); // Explicit Login Log
+          // [Fix] Removed implicit login logging here to prevent duplicate logs on token refresh.
+          // Login logging is now handled explicitly in AuthView.tsx
       } else if (event === 'SIGNED_OUT') {
           // Log out is handled explicitly in handleLogout usually, 
           // but if it happens automatically (token expiry), this catches it.
