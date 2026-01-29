@@ -58,12 +58,15 @@ const POSITION_PENALTY_MAP: Record<string, Record<string, number>> = {
   'C':  { 'PG': 0.50, 'SG': 0.50, 'SF': 0.35, 'PF': 0.10 }
 };
 
+// Stable Sort Helper: OVR desc, then ID asc (to ensure deterministic results)
+const stableSort = (a: Player, b: Player) => b.ovr - a.ovr || a.id.localeCompare(b.id);
+
 // ------------------------------------------------------------------------------------------
 //  SIMULATION & TACTICS LOGIC
 // ------------------------------------------------------------------------------------------
 
 export function generateAutoTactics(team: Team): GameTactics {
-  const healthy = team.roster.filter(p => p.health !== 'Injured').sort((a,b) => b.ovr - a.ovr);
+  const healthy = team.roster.filter(p => p.health !== 'Injured').sort(stableSort);
   
   const pickedIds = new Set<string>();
 
@@ -256,7 +259,8 @@ function distributeMinutes(roster: Player[], isStarter: boolean[], limits: Recor
     let used = 0;
     
     roster.forEach((p, i) => {
-        if (limits[p.id] !== undefined && limits[p.id] > 0) {
+        // [Fix] Respect explicit 0 limit (bench)
+        if (limits[p.id] !== undefined) {
             minutes[i] = limits[p.id];
         } else if (isStarter[i]) {
             minutes[i] = 32;
@@ -395,7 +399,7 @@ function simulateTeamPerformance(
     const rosterUpdates: RosterUpdate = {};
     const sliders = teamTactics.sliders;
     
-    const healthyPlayers = team.roster.filter(p => p.health !== 'Injured').sort((a,b) => b.ovr - a.ovr);
+    const healthyPlayers = team.roster.filter(p => p.health !== 'Injured').sort(stableSort);
     
     const starterIdsMap = teamTactics.starters; // { PG: 'id', SG: 'id'... }
     const starterIds = Object.values(starterIdsMap);
@@ -410,7 +414,8 @@ function simulateTeamPerformance(
     
     // Opponent Minutes (Estimate to help with defense metrics)
     const oppSliders = oppTactics.sliders;
-    const oppSorted = oppTeam.roster.filter(p => p.health !== 'Injured').sort((a,b) => b.ovr - a.ovr);
+    // [Fix] Use stableSort to ensure deterministic opponent minutes mapping
+    const oppSorted = oppTeam.roster.filter(p => p.health !== 'Injured').sort(stableSort);
     const oppStarterIds = Object.values(oppTactics.starters);
     const oppIsStarter = oppSorted.map(p => oppStarterIds.includes(p.id));
     const oppMinsEst = distributeMinutes(oppSorted, oppIsStarter, oppTactics.minutesLimits, oppSliders);
@@ -709,7 +714,7 @@ function simulateTeamPerformance(
               // they get a "Freedom Bonus" for the non-guarded minutes.
               let freedomBonus = 0;
               if (aceMP > stopperMP + 8) {
-                  freedomBonus = 3; // +3% FG effectiveness due to exploiting bench/switch matchups
+                  freedomBonus = 5; // +5% FG effectiveness due to exploiting bench/switch matchups
               }
 
               // Final Impact = (Negative Impact * Overlap) + Freedom Bonus
