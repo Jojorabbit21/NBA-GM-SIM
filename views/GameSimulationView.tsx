@@ -174,6 +174,7 @@ export const GameSimulatingView: React.FC<{
   const isFinishedRef = useRef(false);
   const progressRef = useRef(0);
   const onCompleteRef = useRef(onSimulationComplete);
+  const isBuzzerBeaterTriggeredRef = useRef(false);
   
   useEffect(() => {
       onCompleteRef.current = onSimulationComplete;
@@ -193,7 +194,15 @@ export const GameSimulatingView: React.FC<{
     
     const runSimulationStep = () => {
         setProgress(prev => {
+            // Game Finished
             if (prev >= 100) {
+                progressRef.current = 100;
+                return 100;
+            }
+
+            // [Logic Update] Buzzer Beater Handling in Simulation Loop
+            // 1. If triggered previously, verify we jump straight to 100% (Game Over)
+            if (isBuzzerBeaterTriggeredRef.current) {
                 progressRef.current = 100;
                 return 100;
             }
@@ -208,6 +217,23 @@ export const GameSimulatingView: React.FC<{
             const isLateGame = prev > 85;
             const isSuperClutch = prev > 94 && scoreDiff <= 3;
             
+            // [Logic Update] Buzzer Beater Trigger Condition
+            // - Must be extremely close to the end (96%+)
+            // - Must be a close game (<= 3 pts)
+            // - Must not have triggered already
+            if (!isBuzzerBeaterTriggeredRef.current && prev > 96 && prev < 99 && scoreDiff <= 3) {
+                 // 20% Chance to trigger the event on last possession
+                 if (Math.random() < 0.20) {
+                     isBuzzerBeaterTriggeredRef.current = true;
+                     setIsBuzzerBeaterActive(true);
+                     
+                     // Pause specifically for the "Shot in the air" effect
+                     // The next tick will hit the block above and force 100%
+                     timeoutId = setTimeout(runSimulationStep, 2000); 
+                     return prev; // Stay at current progress for drama
+                 }
+            }
+
             let speedConfig = SIMULATION_SPEED.NORMAL;
             if (isGarbage) speedConfig = SIMULATION_SPEED.GARBAGE;
             else if (isSuperClutch) speedConfig = SIMULATION_SPEED.CLUTCH;
@@ -262,34 +288,24 @@ export const GameSimulatingView: React.FC<{
             setCurrentMessage("경기 종료 - 결과 집계 중...");
             return;
         }
+        
+        // [Fix] If Buzzer Beater triggered, lock the message pool and don't random cycle
+        if (isBuzzerBeaterActive) {
+             const nextMsg = BUZZER_BEATER_MESSAGES[Math.floor(Math.random() * BUZZER_BEATER_MESSAGES.length)];
+             setCurrentMessage(nextMsg);
+             return; 
+        }
+
         const currentProgress = progressRef.current;
         const approxIdx = Math.floor((currentProgress / 100) * (scoreTimeline.length - 1));
         const currentScore = scoreTimeline[approxIdx] || { h: 0, a: 0 };
         const scoreDiff = Math.abs(currentScore.h - currentScore.a);
         
         let targetPool = GENERAL_MESSAGES;
-        let isSuperClutch = false;
-
-        if (currentProgress > 60 && scoreDiff >= 20) targetPool = GARBAGE_MESSAGES;
-        else if (currentProgress > 94 && scoreDiff <= 3) {
-            targetPool = SUPER_CLUTCH_MESSAGES;
-            isSuperClutch = true;
-        }
-        else if (currentProgress > 85 && scoreDiff <= 10) targetPool = CLUTCH_MESSAGES;
-
-        // [Feature] Random Buzzer Beater Event Trigger (5-20% chance in super clutch)
-        if (isSuperClutch && !isBuzzerBeaterActive) {
-            // Roll dice (approx 15% chance per tick)
-            if (Math.random() < 0.15) {
-                 setIsBuzzerBeaterActive(true);
-                 targetPool = BUZZER_BEATER_MESSAGES;
-            }
-        }
         
-        // If already triggered, stick to Buzzer Beater messages
-        if (isBuzzerBeaterActive) {
-            targetPool = BUZZER_BEATER_MESSAGES;
-        }
+        if (currentProgress > 60 && scoreDiff >= 20) targetPool = GARBAGE_MESSAGES;
+        else if (currentProgress > 94 && scoreDiff <= 3) targetPool = SUPER_CLUTCH_MESSAGES;
+        else if (currentProgress > 85 && scoreDiff <= 10) targetPool = CLUTCH_MESSAGES;
 
         setCurrentMessage(prev => {
             if (targetPool.length <= 1) return targetPool[0];
