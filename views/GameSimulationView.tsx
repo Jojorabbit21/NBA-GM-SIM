@@ -218,26 +218,27 @@ export const GameSimulatingView: React.FC<{
             const isSuperClutch = prev > 94 && scoreDiff <= 3;
             
             // [Logic Update] Buzzer Beater Trigger Condition
-            // 1. Must be extremely close to the end (96%+)
-            // 2. Must be a close game (<= 2 pts, ensuring a single shot can win it)
-            // 3. Must not have triggered already
-            // 4. [NEW] The Eventual Winner MUST be currently LOSING or TIED.
-            //    (If they are already winning, a "game-winning buzzer beater" makes no sense narrative-wise)
-            
             const eventualWinnerIsHome = finalHomeScore > finalAwayScore;
             const isWinnerTrailingOrTied = eventualWinnerIsHome 
                 ? currentData.h <= currentData.a 
                 : currentData.a <= currentData.h;
 
+            // [Fix] Calculate remaining points to ensure we don't jump over multiple possessions
+            const remainingHomePoints = finalHomeScore - currentData.h;
+            const remainingAwayPoints = finalAwayScore - currentData.a;
+            const totalRemainingPoints = remainingHomePoints + remainingAwayPoints;
+
             if (
                 !isBuzzerBeaterTriggeredRef.current && 
                 prev > 96 && 
                 prev < 99 && 
-                scoreDiff <= 2 && 
-                isWinnerTrailingOrTied
+                scoreDiff <= 3 && // Relaxed slightly to 3 for a tie-game 3pt buzzer beater scenario
+                isWinnerTrailingOrTied &&
+                totalRemainingPoints > 0 && // Must be a scoring play left
+                totalRemainingPoints <= 3   // Must be a SINGLE possession (2 or 3 pts, or 1 FT)
             ) {
-                 // 20% Chance to trigger the event on last possession
-                 if (Math.random() < 0.20) {
+                 // 30% Chance to trigger the event for drama
+                 if (Math.random() < 0.30) {
                      isBuzzerBeaterTriggeredRef.current = true;
                      setIsBuzzerBeaterActive(true);
                      
