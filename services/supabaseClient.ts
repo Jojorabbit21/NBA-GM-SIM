@@ -19,22 +19,22 @@ if (!isSupabaseConfigured) {
     console.log('Current Key Status:', isKeyValid ? 'OK' : 'Missing/Invalid');
     console.warn('💡 Tip: .env 파일을 수정했다면 반드시 개발 서버를 재시작(npm start)해야 적용됩니다.');
 } else {
-    console.log('✅ Supabase Client Initialized');
+    // console.log('✅ Supabase Client Initialized'); // 로그 노이즈 감소를 위해 주석 처리
 }
 
-// 3. 클라이언트 생성
+// 3. 클라이언트 생성 및 상수 Export
 // 환경 변수가 없을 경우 앱이 멈추는 것을 방지하기 위해 더미 값을 넣지만, 실제 네트워크 요청은 실패하게 됩니다.
-const validUrl = isUrlValid ? envUrl! : 'https://placeholder.supabase.co';
-const validKey = isKeyValid ? envKey! : 'placeholder-key';
+export const supabaseUrl = isUrlValid ? envUrl! : 'https://placeholder.supabase.co';
+export const supabaseKey = isKeyValid ? envKey! : 'placeholder-key';
 
-export const supabase = createClient(validUrl, validKey, {
+export const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: {
         persistSession: true,
         autoRefreshToken: true,
     },
     global: {
         headers: {
-            'apikey': validKey
+            'apikey': supabaseKey
         }
     }
 });
