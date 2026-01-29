@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase, supabaseUrl, supabaseKey } from './services/supabaseClient';
 import { useBaseData, useLoadSave, useSaveGame, saveGameResults, saveUserTransaction } from './services/queries';
@@ -13,24 +13,27 @@ import { simulateCPUTrades } from './services/tradeEngine';
 // Icons
 import { Loader2, Clock, Save, Newspaper } from 'lucide-react';
 
-// Views
+// Views - Static Imports (Critical Paths)
 import { AuthView } from './views/AuthView';
 import { TeamSelectView } from './views/TeamSelectView';
 import { OnboardingView } from './views/OnboardingView';
-import { DashboardView } from './views/DashboardView';
-import { RosterView } from './views/RosterView';
-import { ScheduleView } from './views/ScheduleView';
-import { StandingsView } from './views/StandingsView';
-import { LeaderboardView } from './views/LeaderboardView';
-import { TransactionsView } from './views/TransactionsView';
-import { PlayoffsView } from './views/PlayoffsView';
-import { SeasonReviewView } from './views/SeasonReviewView';
-import { PlayoffReviewView } from './views/PlayoffReviewView';
-import { DraftView } from './views/DraftView';
-import { HelpView } from './views/HelpView';
-import { OvrCalculatorView } from './views/OvrCalculatorView';
-import { GameSimulatingView } from './views/GameSimulationView';
-import { GameResultView } from './views/GameResultView';
+
+// Views - Lazy Imports (Optimization for Bundle Size)
+// Named exports require: .then(module => ({ default: module.ComponentName }))
+const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
+const RosterView = lazy(() => import('./views/RosterView').then(m => ({ default: m.RosterView })));
+const ScheduleView = lazy(() => import('./views/ScheduleView').then(m => ({ default: m.ScheduleView })));
+const StandingsView = lazy(() => import('./views/StandingsView').then(m => ({ default: m.StandingsView })));
+const LeaderboardView = lazy(() => import('./views/LeaderboardView').then(m => ({ default: m.LeaderboardView })));
+const TransactionsView = lazy(() => import('./views/TransactionsView').then(m => ({ default: m.TransactionsView })));
+const PlayoffsView = lazy(() => import('./views/PlayoffsView').then(m => ({ default: m.PlayoffsView })));
+const SeasonReviewView = lazy(() => import('./views/SeasonReviewView').then(m => ({ default: m.SeasonReviewView })));
+const PlayoffReviewView = lazy(() => import('./views/PlayoffReviewView').then(m => ({ default: m.PlayoffReviewView })));
+const DraftView = lazy(() => import('./views/DraftView').then(m => ({ default: m.DraftView })));
+const HelpView = lazy(() => import('./views/HelpView').then(m => ({ default: m.HelpView })));
+const OvrCalculatorView = lazy(() => import('./views/OvrCalculatorView').then(m => ({ default: m.OvrCalculatorView })));
+const GameSimulatingView = lazy(() => import('./views/GameSimulationView').then(m => ({ default: m.GameSimulatingView })));
+const GameResultView = lazy(() => import('./views/GameResultView').then(m => ({ default: m.GameResultView })));
 
 // Components
 import { Footer } from './components/Footer';
@@ -55,6 +58,14 @@ const LOADING_MESSAGES = [
     "FA 시장 동향 파악 중...",
     "드래프트 픽 순번 확인 중..."
 ];
+
+// Fallback Loader for Suspense
+const ViewLoader = () => (
+    <div className="flex flex-col items-center justify-center h-full w-full min-h-[400px] text-slate-500 gap-4">
+        <Loader2 className="w-10 h-10 animate-spin text-indigo-500" />
+        <p className="text-xs font-bold uppercase tracking-widest animate-pulse">Loading View...</p>
+    </div>
+);
 
 const App: React.FC = () => {
   const queryClient = useQueryClient();
@@ -182,12 +193,7 @@ const App: React.FC = () => {
       
       if (event === 'SIGNED_IN' && session) {
           setSession(session);
-          // [Fix] Removed implicit login logging here to prevent duplicate logs on token refresh.
-          // Login logging is now handled explicitly in AuthView.tsx
       } else if (event === 'SIGNED_OUT') {
-          // Log out is handled explicitly in handleLogout usually, 
-          // but if it happens automatically (token expiry), this catches it.
-          // Note: RLS might prevent insertion here if session is already gone.
           setSession(null); 
           hasInitialLoadRef.current = false; 
           setView('TeamSelect');
@@ -649,24 +655,28 @@ const App: React.FC = () => {
             )}
 
             <div className="flex-1 p-8 lg:p-12">
-              {view === 'Dashboard' && myTeamId && <DashboardView team={teams.find(t => t.id === myTeamId)!} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics || generateAutoTactics(teams.find(t => t.id === myTeamId)!)} onUpdateTactics={setUserTactics} currentSimDate={currentSimDate} isSimulating={isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={playoffSeries.length > 0} playoffSeries={playoffSeries} />}
-              {view === 'Roster' && <RosterView allTeams={teams} myTeamId={myTeamId!} />}
-              {view === 'Standings' && <StandingsView teams={teams} onTeamClick={id => console.log(id)} />}
-              {view === 'Leaderboard' && <LeaderboardView teams={teams} />}
-              {view === 'Playoffs' && <PlayoffsView teams={teams} schedule={schedule} series={playoffSeries} setSeries={setPlayoffSeries} setSchedule={setSchedule} myTeamId={myTeamId!} />}
-              {view === 'Schedule' && <ScheduleView schedule={schedule} teamId={myTeamId!} teams={teams} onExport={() => {}} currentSimDate={currentSimDate} />}
-              {view === 'Transactions' && myTeamId && <TransactionsView team={teams.find(t => t.id === myTeamId)!} teams={teams} setTeams={setTeams} addNews={() => {}} onShowToast={setToastMessage} currentSimDate={currentSimDate} transactions={transactions} onAddTransaction={(t) => setTransactions(prev => [t, ...prev])} />}
-              {view === 'Help' && <HelpView onBack={() => setView('Dashboard')} />}
-              {view === 'OvrCalculator' && <OvrCalculatorView teams={teams} />}
-              {view === 'SeasonReview' && myTeamId && <SeasonReviewView team={teams.find(t => t.id === myTeamId)!} teams={teams} transactions={transactions} onBack={() => setView('Dashboard')} />}
-              {view === 'PlayoffReview' && myTeamId && <PlayoffReviewView team={teams.find(t => t.id === myTeamId)!} teams={teams} playoffSeries={playoffSeries} schedule={schedule} onBack={() => setView('Dashboard')} />}
-              {view === 'Draft' && <DraftView prospects={prospects} onDraft={(p) => console.log('Draft', p)} team={teams.find(t => t.id === myTeamId)!} />}
+              <Suspense fallback={<ViewLoader />}>
+                {view === 'Dashboard' && myTeamId && <DashboardView team={teams.find(t => t.id === myTeamId)!} teams={teams} schedule={schedule} onSim={handleExecuteSim} tactics={userTactics || generateAutoTactics(teams.find(t => t.id === myTeamId)!)} onUpdateTactics={setUserTactics} currentSimDate={currentSimDate} isSimulating={isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={playoffSeries.length > 0} playoffSeries={playoffSeries} />}
+                {view === 'Roster' && <RosterView allTeams={teams} myTeamId={myTeamId!} />}
+                {view === 'Standings' && <StandingsView teams={teams} onTeamClick={id => console.log(id)} />}
+                {view === 'Leaderboard' && <LeaderboardView teams={teams} />}
+                {view === 'Playoffs' && <PlayoffsView teams={teams} schedule={schedule} series={playoffSeries} setSeries={setPlayoffSeries} setSchedule={setSchedule} myTeamId={myTeamId!} />}
+                {view === 'Schedule' && <ScheduleView schedule={schedule} teamId={myTeamId!} teams={teams} onExport={() => {}} currentSimDate={currentSimDate} />}
+                {view === 'Transactions' && myTeamId && <TransactionsView team={teams.find(t => t.id === myTeamId)!} teams={teams} setTeams={setTeams} addNews={() => {}} onShowToast={setToastMessage} currentSimDate={currentSimDate} transactions={transactions} onAddTransaction={(t) => setTransactions(prev => [t, ...prev])} />}
+                {view === 'Help' && <HelpView onBack={() => setView('Dashboard')} />}
+                {view === 'OvrCalculator' && <OvrCalculatorView teams={teams} />}
+                {view === 'SeasonReview' && myTeamId && <SeasonReviewView team={teams.find(t => t.id === myTeamId)!} teams={teams} transactions={transactions} onBack={() => setView('Dashboard')} />}
+                {view === 'PlayoffReview' && myTeamId && <PlayoffReviewView team={teams.find(t => t.id === myTeamId)!} teams={teams} playoffSeries={playoffSeries} schedule={schedule} onBack={() => setView('Dashboard')} />}
+                {view === 'Draft' && <DraftView prospects={prospects} onDraft={(p) => console.log('Draft', p)} team={teams.find(t => t.id === myTeamId)!} />}
+              </Suspense>
             </div>
             <Footer onNavigate={setView} />
         </main>
 
-        {view === 'GameSim' && activeGame && <GameSimulatingView homeTeam={teams.find(t => t.id === activeGame.homeTeamId)!} awayTeam={teams.find(t => t.id === activeGame.awayTeamId)!} userTeamId={myTeamId} finalHomeScore={activeGame.homeScore} finalAwayScore={activeGame.awayScore} onSimulationComplete={() => finalizeSimRef.current?.()} />}
-        {view === 'GameResult' && lastGameResult && <GameResultView result={lastGameResult} myTeamId={myTeamId!} teams={teams} onFinish={() => { setIsSimulating(false); setView('Dashboard'); }} />}
+        <Suspense fallback={null}>
+          {view === 'GameSim' && activeGame && <GameSimulatingView homeTeam={teams.find(t => t.id === activeGame.homeTeamId)!} awayTeam={teams.find(t => t.id === activeGame.awayTeamId)!} userTeamId={myTeamId} finalHomeScore={activeGame.homeScore} finalAwayScore={activeGame.awayScore} onSimulationComplete={() => finalizeSimRef.current?.()} />}
+          {view === 'GameResult' && lastGameResult && <GameResultView result={lastGameResult} myTeamId={myTeamId!} teams={teams} onFinish={() => { setIsSimulating(false); setView('Dashboard'); }} />}
+        </Suspense>
       </div>
     </div>
   );
