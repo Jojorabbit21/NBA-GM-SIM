@@ -1,8 +1,7 @@
 
 import React from 'react';
 import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle } from 'lucide-react';
-import { GameTactics } from '../../services/gameEngine';
-import { OffenseTactic, DefenseTactic, Team } from '../../types';
+import { OffenseTactic, DefenseTactic, Team, GameTactics } from '../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO, getEfficiencyStyles } from '../../utils/tacticUtils';
 
 interface TacticsBoardProps {

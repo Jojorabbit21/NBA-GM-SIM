@@ -1,6 +1,5 @@
 
-import { Team, Player, OffenseTactic, DefenseTactic } from '../types';
-import { GameTactics } from '../services/gameEngine';
+import { Team, Player, OffenseTactic, DefenseTactic, GameTactics } from '../types';
 
 export const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
   'Balance': { label: '밸런스 오펜스', desc: '모든 공격 루트의 조화 및 체급 위주' },
