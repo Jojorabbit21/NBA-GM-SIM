@@ -75,7 +75,8 @@ const App: React.FC = () => {
         gameData.teams, gameData.setTeams,
         gameData.schedule, gameData.setSchedule,
         gameData.myTeamId,
-        gameData.currentSimDate, gameData.setCurrentSimDate,
+        gameData.currentSimDate, 
+        gameData.saveDateImmediately, // [Update] Pass immediate save function instead of setter
         gameData.playoffSeries, gameData.setPlayoffSeries,
         gameData.setTransactions,
         gameData.setNews,

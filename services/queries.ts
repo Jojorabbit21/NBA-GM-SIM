@@ -264,7 +264,7 @@ export const useLoadSave = (userId: string | undefined) => {
       // Note: fetching ALL results might be heavy eventually, but OK for now.
       const { data: gameResults } = await supabase
           .from('user_game_results')
-          .select('game_id, home_score, away_score, box_score')
+          .select('game_id, home_score, away_score, box_score, date')
           .eq('user_id', userId);
 
       // 5. Reconstruct State
@@ -279,22 +279,22 @@ export const useLoadSave = (userId: string | undefined) => {
       );
       console.timeEnd("ReconstructState");
 
+      // [Reverted] Do not calculate date from game history. 
+      // Rely on the 'saveMeta.sim_date' which is now updated immediately via 'saveDateImmediately'.
+      
       // 6. Return formatted game data
       return {
           team_id: saveMeta.team_id,
           game_data: {
               teams: reconstructedTeams,
               schedule: reconstructedSchedule,
-              currentSimDate: saveMeta.sim_date,
-              // Tactic & Playoff series are currently transient or derived, 
-              // IF we need to save tactics persistently, we'd need a separate column or table.
-              // For now, we reset tactics to default or need a 'user_tactics' table.
+              currentSimDate: saveMeta.sim_date, // Direct use of DB Date
               tactics: null, 
-              playoffSeries: [], // Playoff state logic needs a dedicated table if we want persistence across reloads without 'game_data' JSONB.
+              playoffSeries: [], 
               transactions: (transactions || []).map((t: any) => ({
                 id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
               })),
-              prospects: [] // Prospects also need a home if not in JSONB
+              prospects: [] 
           },
           updated_at: saveMeta.updated_at
       };
