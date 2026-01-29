@@ -407,10 +407,19 @@ function simulateTeamPerformance(
     healthyPlayers.forEach((p, i) => {
         minutesMap[p.id] = finalMinutesList[i];
     });
-
+    
+    // Opponent Minutes (Estimate to help with defense metrics)
     const oppSliders = oppTactics.sliders;
     const oppSorted = oppTeam.roster.filter(p => p.health !== 'Injured').sort((a,b) => b.ovr - a.ovr);
-    const oppMinsEst = distributeMinutes(oppSorted, oppSorted.map((_, i) => i < 5), {}, oppSliders);
+    const oppStarterIds = Object.values(oppTactics.starters);
+    const oppIsStarter = oppSorted.map(p => oppStarterIds.includes(p.id));
+    const oppMinsEst = distributeMinutes(oppSorted, oppIsStarter, oppTactics.minutesLimits, oppSliders);
+    
+    const oppMinutesMap: Record<string, number> = {};
+    oppSorted.forEach((p, i) => {
+        oppMinutesMap[p.id] = oppMinsEst[i];
+    });
+
     const oppDefMetrics = getOpponentDefensiveMetrics(oppSorted, oppMinsEst);
 
     const hcaBase = (Math.random() * 0.02) + 0.01; 
@@ -516,8 +525,11 @@ function simulateTeamPerformance(
               drain *= 1.5;
           }
 
+          // [Ace Stopper Fix] Only drain extra stamina if playing significant minutes
+          // If Stopper plays 0 or very few minutes, the drain is naturally low via mp, 
+          // but we shouldn't apply extra multiplier for "chasing ace" if they aren't on court much.
           isStopper = teamTactics?.defenseTactics.includes('AceStopper') && teamTactics.stopperId === p.id;
-          if (isStopper) drain *= 1.25;
+          if (isStopper && mp > 5) drain *= 1.25;
 
           // Game fatigue subtracts from preGameCondition
           newCondition = Math.max(0, Math.floor(preGameCondition - drain));
@@ -672,23 +684,49 @@ function simulateTeamPerformance(
       ));
       let midM = Math.round(midA * midSuccessRate);
 
-      // 5. Stopper Effect
+      // 5. Stopper Effect [FIXED Logic]
       const oppHasStopper = oppTactics?.defenseTactics.includes('AceStopper');
-      isAceTarget = !!(oppHasStopper && p.id === acePlayer.id);
+      // Only set isAceTarget if this player IS the Ace AND opponent has a stopper ASSIGNED.
+      isAceTarget = !!(oppHasStopper && p.id === acePlayer.id && oppTactics.stopperId);
 
       if (isAceTarget && oppTactics?.stopperId) {
-          const stopper = oppTeam.roster.find(d => d.id === oppTactics.stopperId);
-          if (stopper) {
+          const stopperId = oppTactics.stopperId;
+          const stopper = oppTeam.roster.find(d => d.id === stopperId);
+          // Check Stopper Minutes from Map
+          const stopperMP = oppMinutesMap[stopperId] || 0;
+          const aceMP = mp;
+
+          if (stopper && stopperMP > 0) {
               const perDef = stopper.perDef || 50;
-              let fgpImpact = 10 - ((perDef - 40) * 0.63);
-              fgpImpact = Math.max(-27, Math.min(10, fgpImpact)); 
-              matchupEffect = Math.round(fgpImpact);
+              let rawImpact = 10 - ((perDef - 40) * 0.63); // Negative value means diffculty increased
               
-              // Apply reduction to makes
-              const factor = (1.0 + (fgpImpact / 100));
+              // Calculate Overlap Factor (Minute Differential Logic)
+              // If Stopper plays 15 mins and Ace plays 35 mins -> Overlap ratio is ~0.42
+              // Effective Impact should be reduced.
+              let overlapRatio = stopperMP >= aceMP ? 1.0 : (stopperMP / aceMP);
+              
+              // [Logic Update] If Ace plays significantly more than stopper (e.g. +10 mins), 
+              // they get a "Freedom Bonus" for the non-guarded minutes.
+              let freedomBonus = 0;
+              if (aceMP > stopperMP + 8) {
+                  freedomBonus = 3; // +3% FG effectiveness due to exploiting bench/switch matchups
+              }
+
+              // Final Impact = (Negative Impact * Overlap) + Freedom Bonus
+              let adjustedImpact = (rawImpact * overlapRatio) + freedomBonus;
+
+              // Cap impact
+              adjustedImpact = Math.max(-27, Math.min(10, adjustedImpact)); 
+              matchupEffect = Math.round(adjustedImpact);
+              
+              // Apply reduction/boost to makes
+              const factor = (1.0 + (matchupEffect / 100));
               rimM = Math.round(rimM * factor);
               midM = Math.round(midM * factor);
               p3m = Math.round(p3m * factor);
+          } else {
+              // Stopper assigned but didn't play (0 minutes) -> No Effect
+              matchupEffect = 0;
           }
       }
 

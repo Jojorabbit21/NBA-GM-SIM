@@ -177,9 +177,12 @@ export const GameSimulatingView: React.FC<{
 
   const [displayScore, setDisplayScore] = useState({ h: 0, a: 0 });
 
-  // [Update] Simulation Speed Logic
+  // [Update] Simulation Speed Logic (Fixed Jumping Bug)
+  // Reason for fix: `displayScore` dependency caused rapid re-renders and potential race conditions.
+  // Now speed is determined by looking up the timeline directly using progress.
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
+    
     const runSimulationStep = () => {
         setProgress(prev => {
             if (prev >= 100) {
@@ -187,8 +190,12 @@ export const GameSimulatingView: React.FC<{
                 return 100;
             }
             
-            // Determine phase
-            const scoreDiff = Math.abs(displayScore.h - displayScore.a);
+            // Calculate current score from timeline based on current progress
+            // Using direct timeline lookup avoids state synchronization lag
+            const currentIndex = Math.floor((prev / 100) * (scoreTimeline.length - 1));
+            const currentData = scoreTimeline[currentIndex] || { h: 0, a: 0 };
+            const scoreDiff = Math.abs(currentData.h - currentData.a);
+
             const isGarbage = prev > 60 && scoreDiff >= 20;
             const isLateGame = prev > 85;
             const isSuperClutch = prev > 94 && scoreDiff <= 5;
@@ -207,7 +214,7 @@ export const GameSimulatingView: React.FC<{
     };
     runSimulationStep();
     return () => clearTimeout(timeoutId);
-  }, [displayScore]); // Dependency on displayScore to check scoreDiff dynamically
+  }, [scoreTimeline]); // Removed displayScore from deps
 
   useEffect(() => {
       if (scoreTimeline.length === 0) return;
@@ -240,7 +247,7 @@ export const GameSimulatingView: React.FC<{
             const y = Math.max(2, Math.min(48, 25 + Math.sin(angle) * dist));
             return [...prev.slice(-40), { id: Date.now(), x, y, isMake }];
         });
-    }, 200); // Slightly slower shot generation to match slower game speed
+    }, 200); 
 
     const msgTimer = setInterval(() => {
         if (isFinishedRef.current) {
