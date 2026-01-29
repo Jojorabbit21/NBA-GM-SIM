@@ -106,6 +106,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         });
         
         if (error) throw error;
+        
+        // [Log Update] 로그인 성공 시 명시적으로 로그 기록
+        if (data.user) {
+            try {
+                await supabase.from('login_logs').insert({
+                    user_id: data.user.id,
+                    type: 'login',
+                    user_agent: navigator.userAgent,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (logError) {
+                console.warn("Login logging failed", logError);
+            }
+        }
+
         // 로그인 시에는 프로필 생성을 강제하지 않음 (RLS 403 에러 방지)
         // if (data.user) await ensureProfileExists(data.user);
       }

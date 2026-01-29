@@ -3,6 +3,7 @@
   "name": "nba-gm-sim-2026",
   "version": "1.0.6",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@google/genai": "latest",
     "@supabase/supabase-js": "^2.39.3",

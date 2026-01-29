@@ -1,10 +1,9 @@
 
 import React from 'react';
 import { Users, Eye, ShieldAlert, Lock } from 'lucide-react';
-import { Player, Team } from '../../types';
+import { Player, Team, GameTactics } from '../../types';
 import { getOvrBadgeStyle, getRankStyle } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { GameTactics } from '../../services/gameEngine';
 
 interface RosterTableProps {
   activeRosterTab: 'mine' | 'opponent';

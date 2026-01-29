@@ -1,6 +1,5 @@
-
 import React, { useMemo } from 'react';
-import { Crown, Shield, Lock } from 'lucide-react';
+import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { Team, PlayerBoxScore } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 
@@ -72,6 +71,11 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                        const isMvp = p.playerId === mvpId;
                        const ovr = playerInfo?.ovr || 0;
                        
+                       // Matchup Effect Logic
+                       const effect = p.matchupEffect || 0;
+                       const isDebuff = effect < 0;
+                       const isBuff = effect > 0;
+                       
                        return (
                            <tr key={p.playerId} className={`hover:bg-white/5 transition-colors group ${isMvp ? 'bg-amber-900/10' : ''}`}>
                                <td className="py-2.5 px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
@@ -80,15 +84,20 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                        <div className="flex items-center gap-1 flex-shrink-0">
                                             {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
                                             {p.isStopper && (
-                                                <div className="group/tooltip relative">
-                                                    <Shield size={12} className="text-blue-400 fill-blue-900/50" />
+                                                <div className="flex items-center justify-center" title="Ace Stopper">
+                                                    <Shield size={12} className="text-cyan-400 fill-cyan-900" />
                                                 </div>
                                             )}
-                                            {p.isAceTarget && (p.matchupEffect || 0) < 0 && (
-                                                <div className="flex items-center gap-1 bg-red-950/50 border border-red-500/30 px-1.5 py-0.5 rounded">
-                                                    <Lock size={10} className="text-red-400" />
-                                                    <span className="text-[9px] font-black text-red-400 leading-none">
-                                                        {p.matchupEffect}%
+                                            {/* Ace Target Chip: Shows regardless of +/- value if targeted */}
+                                            {p.isAceTarget && (
+                                                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${isDebuff ? 'bg-red-950/50 border-red-500/30' : isBuff ? 'bg-emerald-950/50 border-emerald-500/30' : 'bg-slate-800 border-slate-600/30'}`}>
+                                                    {isDebuff ? (
+                                                        <Lock size={10} className="text-red-400" />
+                                                    ) : (
+                                                        <Unlock size={10} className={isBuff ? "text-emerald-400" : "text-slate-400"} />
+                                                    )}
+                                                    <span className={`text-[9px] font-black leading-none ${isDebuff ? 'text-red-400' : isBuff ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                        {effect > 0 ? '+' : ''}{effect}%
                                                     </span>
                                                 </div>
                                             )}
