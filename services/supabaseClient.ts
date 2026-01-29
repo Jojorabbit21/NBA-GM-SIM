@@ -1,35 +1,32 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// 1. 환경 변수를 가져오거나 하드코딩된 값을 사용합니다. (테스트용)
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'https://buummihpewiaeltywdff.supabase.co';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ1dW1taWhwZXdpYWVsdHl3ZGZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg4ODcxNzgsImV4cCI6MjA4NDQ2MzE3OH0.evU-Zs8GecMUSMVwedkhnXihFxtNssuADR5wGvcUYOw';
+// 1. 환경 변수 로드 (Vite/CRA 호환성을 위해 process.env와 import.meta.env 모두 체크)
+// 주의: 번들러가 빌드 타임에 문자열을 치환할 수 있도록 'process.env.변수명'을 직접 사용해야 합니다.
+const envUrl = process.env.REACT_APP_SUPABASE_URL || (import.meta as any).env?.REACT_APP_SUPABASE_URL;
+const envKey = process.env.REACT_APP_SUPABASE_ANON_KEY || (import.meta as any).env?.REACT_APP_SUPABASE_ANON_KEY;
 
-// 유효성 검사: URL과 Key가 모두 존재하고, placeholder가 아니어야 함
-const hasValidEnv = 
-    supabaseUrl && 
-    supabaseUrl.startsWith('http') && 
-    supabaseAnonKey && 
-    supabaseAnonKey !== 'placeholder-key' &&
-    supabaseAnonKey.length > 20;
+// 2. 유효성 검사 및 디버깅
+// URL은 https://로 시작해야 하고, Key는 일정 길이 이상이어야 정상으로 간주
+const isUrlValid = envUrl && envUrl.startsWith('http');
+const isKeyValid = envKey && envKey.length > 20;
 
-// 내보내기: 앱의 다른 곳에서 Supabase 연결 상태를 확인할 수 있도록 함
-export const isSupabaseConfigured = !!hasValidEnv;
+export const isSupabaseConfigured = !!(isUrlValid && isKeyValid);
 
-if (!hasValidEnv) {
-    console.warn('⚠️ Supabase 연결 정보가 유효하지 않습니다. 하드코딩된 값을 확인하거나 .env 파일을 확인해주세요.');
+if (!isSupabaseConfigured) {
+    console.error('🚨 [Supabase Error] 환경 변수가 올바르게 로드되지 않았습니다.');
+    console.log('Current URL Status:', isUrlValid ? 'OK' : 'Missing/Invalid', envUrl);
+    console.log('Current Key Status:', isKeyValid ? 'OK' : 'Missing/Invalid');
+    console.warn('💡 Tip: .env 파일을 수정했다면 반드시 개발 서버를 재시작(npm start)해야 적용됩니다.');
 } else {
-    // [Debug] 연결된 프로젝트 URL 확인 (사용자 디버깅용)
-    console.log(`✅ Supabase Connected: ${supabaseUrl}`);
+    console.log('✅ Supabase Client Initialized');
 }
 
-// 연결 정보가 없더라도 앱이 크래시되지 않도록 빈 클라이언트를 생성하거나, 
-// 유효한 경우 정상적인 클라이언트를 생성합니다.
-// 유효하지 않을 경우 기능을 제한하기 위해 더미 URL 사용
-const validUrl = hasValidEnv ? supabaseUrl : 'https://placeholder-project.supabase.co';
-const validKey = hasValidEnv ? supabaseAnonKey : 'placeholder-key';
+// 3. 클라이언트 생성
+// 환경 변수가 없을 경우 앱이 멈추는 것을 방지하기 위해 더미 값을 넣지만, 실제 네트워크 요청은 실패하게 됩니다.
+const validUrl = isUrlValid ? envUrl! : 'https://placeholder.supabase.co';
+const validKey = isKeyValid ? envKey! : 'placeholder-key';
 
-// [Fix] Explicitly add apikey to global headers to ensure PostgREST receives it
 export const supabase = createClient(validUrl, validKey, {
     auth: {
         persistSession: true,
