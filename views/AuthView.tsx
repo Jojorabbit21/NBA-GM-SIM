@@ -1,71 +1,82 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { Lock, Mail, UserPlus, LogIn, Loader2, AlertCircle, User, ShieldAlert } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, AlertCircle, ShieldAlert } from 'lucide-react';
+import { AuthInput } from '../components/auth/AuthInput';
 
 // Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
-const NICKNAME_REGEX = /^[a-zA-Z0-9가-힣]{2,12}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
 interface AuthViewProps {
   onGuestLogin: () => void;
 }
 
+// Internal Component for Alerts - Applied Pretendard Medium
+const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => (
+  <div className={`p-4 rounded-xl flex items-start gap-3 text-sm pretendard font-medium animate-in zoom-in-95 duration-200 mb-6 ${
+    type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+  }`}>
+    <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
+    <div className="flex-1 overflow-hidden">{children}</div>
+  </div>
+);
+
 export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [loading, setLoading] = useState(false);
-  const [identifier, setIdentifier] = useState(''); 
   const [email, setEmail] = useState(''); 
-  const [nickname, setNickname] = useState(''); 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
   
+  // Validation State
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
-  const isNicknameValid = useMemo(() => nickname === '' || NICKNAME_REGEX.test(nickname), [nickname]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
   const isConfirmValid = useMemo(() => confirmPassword === '' || password === confirmPassword, [password, confirmPassword]);
 
   const isSignupFormValid = useMemo(() => {
     return (
       email !== '' && EMAIL_REGEX.test(email) &&
-      nickname !== '' && NICKNAME_REGEX.test(nickname) &&
       password !== '' && PASSWORD_REGEX.test(password) &&
       confirmPassword !== '' && password === confirmPassword
     );
-  }, [email, nickname, password, confirmPassword]);
+  }, [email, password, confirmPassword]);
 
-  // [Safety] 프로필 데이터가 없는 경우 강제로 생성하는 함수
-  const ensureProfileExists = async (user: any, userNickname?: string) => {
+  const ensureProfileExists = async (user: any) => {
     try {
-        const { data: profile } = await supabase
+        const { data: profile, error: selectError } = await supabase
             .from('profiles')
             .select('id')
             .eq('id', user.id)
             .maybeSingle();
 
+        // 403 Forbidden 등 조회 실패 시 중단 (DB 정책 문제 가능성)
+        if (selectError) return;
+
         if (!profile) {
-            console.log("⚠️ No profile found. Creating manually...");
+            const nicknameFromEmail = user.email ? user.email.split('@')[0] : 'GM';
             const { error: insertError } = await supabase.from('profiles').insert({
                 id: user.id,
                 email: user.email,
-                nickname: userNickname || user.user_metadata?.nickname || 'GM',
+                nickname: nicknameFromEmail,
                 created_at: new Date().toISOString()
             });
-            if (insertError) console.error("Profile creation failed:", insertError);
-            else console.log("✅ Profile created manually.");
+            
+            // Insert 실패 시 (보통 RLS 위반 또는 트리거 중복) 무시하고 진행
+            if (insertError) {
+                 console.warn("Profile creation skipped (likely handled by DB trigger or RLS restricted).");
+            }
         }
     } catch (e) {
-        console.error("Profile check failed:", e);
+        console.warn("Profile check bypassed.");
     }
   };
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSupabaseConfigured) {
-        const configError = 'Supabase 연결 설정이 되어있지 않습니다. 아래의 관리자 모드를 이용하세요.';
-        setMessage({ type: 'error', text: configError });
+        setMessage({ type: 'error', text: 'Supabase 연결 설정이 되어있지 않습니다. 관리자 모드를 이용하세요.' });
         return;
     }
 
@@ -78,51 +89,25 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
         const { data, error } = await (supabase.auth as any).signUp({
           email,
-          password,
-          options: {
-            data: { 
-                nickname: nickname 
-            }
-          }
+          password
         });
 
         if (error) throw error;
-
-        // 회원가입 성공 시 프로필 즉시 확인/생성
-        if (data.user) {
-            await ensureProfileExists(data.user, nickname);
-        }
+        if (data.user) await ensureProfileExists(data.user);
 
         setMessage({ type: 'success', text: '회원가입 성공! 이제 로그인할 수 있습니다.' });
         setMode('login');
-        // 자동 로그인 처리를 원치 않는 경우 여기서 멈춤
+        setPassword('');
+        setConfirmPassword('');
       } else {
-        let loginEmail = identifier.trim();
-
-        if (!loginEmail.includes('@')) {
-            const { data: profile, error: profileError } = await supabase
-                .from('profiles')
-                .select('email')
-                .eq('nickname', loginEmail)
-                .maybeSingle();
-
-            if (profileError || !profile) {
-                throw new Error("닉네임을 찾을 수 없습니다. 이메일로 로그인해주세요.");
-            }
-            loginEmail = profile.email;
-        }
-
         const { data, error } = await (supabase.auth as any).signInWithPassword({
-          email: loginEmail,
+          email,
           password,
         });
         
         if (error) throw error;
-
-        // 로그인 성공 시 프로필 확인
-        if (data.user) {
-            await ensureProfileExists(data.user);
-        }
+        // 로그인 시에는 프로필 생성을 강제하지 않음 (RLS 403 에러 방지)
+        // if (data.user) await ensureProfileExists(data.user);
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
@@ -145,124 +130,77 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       </div>
 
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-black text-white italic tracking-tighter mb-2">NBA <span className="text-indigo-500">2025-26</span></h1>
-          <p className="text-slate-500 text-sm font-bold uppercase tracking-widest">단장 시뮬레이션</p>
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold text-white leading-tight dmsans tracking-tighter">
+            Basketball<br />
+            General Manager<br />
+            Simulation
+          </h1>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-5">
-          {/* ... inputs ... */}
-          <div className="space-y-4">
-            {mode === 'login' ? (
-                <div className="relative group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                        <User className="h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
-                    </div>
-                    <input
-                        type="text"
-                        required
-                        placeholder="이메일 또는 닉네임"
-                        className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
-                        value={identifier}
-                        onChange={(e) => setIdentifier(e.target.value)}
-                    />
-                </div>
-            ) : (
-                <>
-                    <div className="space-y-1">
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <Mail className={`h-5 w-5 transition-colors ${!isEmailValid && email ? 'text-red-500' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
-                            </div>
-                            <input
-                                type="email"
-                                required
-                                placeholder="이메일 주소"
-                                className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
-                                    !isEmailValid && email ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500'
-                                }`}
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="space-y-1">
-                        <div className="relative group">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                <User className={`h-5 w-5 transition-colors ${!isNicknameValid && nickname ? 'text-red-500' : 'text-slate-500 group-focus-within:text-indigo-400'}`} />
-                            </div>
-                            <input
-                                type="text"
-                                required
-                                placeholder="닉네임 (2~12자)"
-                                className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
-                                    !isNicknameValid && nickname ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500'
-                                }`}
-                                value={nickname}
-                                onChange={(e) => setNickname(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                </>
-            )}
+        <form onSubmit={handleAuth} className="space-y-0">
+          <AuthInput 
+            label="이메일"
+            type="email"
+            placeholder="이메일 주소"
+            value={email}
+            onChange={setEmail}
+            isValid={isEmailValid}
+            errorMsg="올바른 이메일 형식이 아닙니다."
+            showError={email !== ''}
+          />
 
-            <div className="space-y-1">
-                <div className="relative group">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                    <Lock className={`h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors`} />
-                  </div>
-                  <input
-                    type="password"
-                    required
-                    placeholder="비밀번호"
-                    className="w-full bg-slate-950 border border-slate-700 text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-medium"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                </div>
-            </div>
+          <AuthInput 
+            label="비밀번호"
+            type="password"
+            placeholder="비밀번호"
+            value={password}
+            onChange={setPassword}
+            isValid={mode === 'login' ? true : isPasswordValid}
+            errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수"
+            showError={mode === 'signup' && password !== ''}
+          />
 
-            {mode === 'signup' && (
-                <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
-                    <div className="relative group">
-                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <Lock className={`h-5 w-5 ${!isConfirmValid && confirmPassword ? 'text-red-500' : 'text-slate-500'} group-focus-within:text-indigo-400 transition-colors`} />
-                        </div>
-                        <input
-                            type="password"
-                            required
-                            placeholder="비밀번호 확인"
-                            className={`w-full bg-slate-950 border text-white text-sm rounded-xl py-4 pl-12 pr-4 focus:outline-none focus:ring-1 transition-all font-medium ${
-                                !isConfirmValid && confirmPassword ? 'border-red-500 focus:ring-red-500' : 'border-slate-700 focus:border-indigo-500 focus:ring-indigo-500'
-                            }`}
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                        />
-                    </div>
-                </div>
-            )}
-          </div>
-
-          {message && (
-            <div className={`p-4 rounded-xl flex items-start gap-3 text-sm font-bold ${message.type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}`}>
-              <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-              <div className="flex-1 overflow-hidden">{message.text}</div>
-            </div>
+          {mode === 'signup' && (
+            <AuthInput 
+              label="비밀번호 확인"
+              type="password"
+              placeholder="비밀번호 확인"
+              value={confirmPassword}
+              onChange={setConfirmPassword}
+              isValid={isConfirmValid}
+              errorMsg="비밀번호가 일치하지 않습니다."
+              showError={confirmPassword !== ''}
+            />
           )}
 
-          <div className="space-y-3 pt-2">
+          {message && (
+            <AuthAlert type={message.type}>
+              {message.text}
+            </AuthAlert>
+          )}
+
+          <div className="space-y-3 pt-4">
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3"
+              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
             >
-              {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> 로그인</> : <><UserPlus size={20} /> 회원가입</>)}
+              {loading ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                mode === 'login' ? (
+                  <><LogIn size={20} /> <span className="pretendard font-medium">로그인</span></>
+                ) : (
+                  <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>
+                )
+              )}
             </button>
 
             <button
               type="button"
               onClick={onGuestLogin}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2"
+              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 pretendard font-medium py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2 active:scale-[0.98]"
             >
               <ShieldAlert size={16} className="text-amber-500" />
               관리자 / 게스트 모드
@@ -273,7 +211,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         <div className="mt-8 text-center border-t border-slate-800 pt-6">
           <button
             onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }}
-            className="text-slate-500 hover:text-indigo-400 font-bold text-sm transition-all"
+            className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all"
           >
             {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
           </button>

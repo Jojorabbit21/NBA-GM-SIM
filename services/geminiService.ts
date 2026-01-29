@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
-import { Player, PlayerBoxScore } from '../types';
+import { Player, PlayerBoxScore, Transaction } from '../types';
 import { GameTactics } from './gameEngine'; 
 import { logError } from './analytics'; 
 
@@ -14,16 +14,12 @@ async function retryWithBackoff<T>(
   } catch (error: any) {
     const status = error?.status || error?.response?.status;
     const message = error?.message || error?.response?.message || '';
-    
     const isRateLimit = status === 429 || status === 'RESOURCE_EXHAUSTED' || message.includes('quota') || message.includes('RESOURCE_EXHAUSTED');
     const isServerError = typeof status === 'number' && status >= 500;
-
     if (retries > 0 && (isRateLimit || isServerError)) {
       await new Promise(resolve => setTimeout(resolve, delay));
       return retryWithBackoff(operation, retries - 1, delay * 2);
-    } else {
-      throw error;
-    }
+    } else { throw error; }
   }
 }
 
@@ -33,55 +29,41 @@ export async function generateScoutingReport(prospect: Player): Promise<string[]
         `현재 오버롤 ${prospect.ovr} 수준으로 즉시 전력보다는 장기적인 육성이 필요해 보입니다.`,
         "워크에식과 농구 지능 면에서 높은 점수를 받고 있어, 팀의 핵심 조각으로 성장할 잠재력이 충분합니다."
     ];
-
     if (!process.env.API_KEY) return fallback;
-
     try {
-        // ALWAYS use process.env.API_KEY directly as per guidelines
         const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
         const prompt = `You are an elite NBA Scout. Provide a 3-point scouting report in KOREAN for this draft prospect.
         Name: ${prospect.name}
         Position: ${prospect.position}
         Current OVR: ${prospect.ovr}
         Attributes: ATH(${prospect.ath}), OUT(${prospect.out}), INS(${prospect.ins}), PLM(${prospect.plm}), DEF(${prospect.def}), REB(${prospect.reb})
-        
-        Requirements:
-        1. Point 1: Playstyle analysis and biggest strength.
-        2. Point 2: Major weakness and area of improvement.
-        3. Point 3: Potential NBA player comparison and overall ceiling.
-        
         Return as a JSON array of 3 strings.`;
-
         const response = await ai.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                }
+                responseSchema: { type: Type.ARRAY, items: { type: Type.STRING } }
             }
         });
-
-        // Use .text property as per guidelines
         const jsonStr = response.text;
         if (jsonStr) {
             const parsed = JSON.parse(jsonStr);
             if (Array.isArray(parsed) && parsed.length >= 3) return parsed;
         }
-    } catch (e: any) {
-        logError('Gemini API', `Scouting Report Failed: ${e.message}`);
-    }
+    } catch (e: any) { logError('Gemini API', `Scouting Report Failed: ${e.message}`); }
     return fallback;
 }
 
-export async function generateNewsTicker(teamName: string, recentEvents: string[]) {
-  return [
-    `Standard News: ${teamName} 구단이 시즌 운영에 박차를 가하고 있습니다.`,
-    `NBA Ticker: 2025-26 정규리그 개막 이후 순위권 경쟁이 치열합니다.`,
-    `League Info: 모든 팀들이 플레이오프 진출을 위한 로스터 최적화에 집중하고 있습니다.`
-  ];
+export async function generateCPUTradeNews(tx: Transaction): Promise<string[] | null> {
+    if (!tx.details) return null;
+    const inPlayer = tx.details.acquired[0]?.name || "선수";
+
+    return [
+        `[Woj] ${tx.details.partnerTeamName}와 ${tx.description.split(' ')[0].replace('[CPU]', '').trim()}간의 트레이드가 최종 합의되었습니다.`,
+        `[BREAKING] ${inPlayer}, 새로운 유니폼을 입게 되었습니다. 리그 판도 변화 예고.`,
+        `[분석] 이번 트레이드는 양 팀의 니즈가 정확히 일치한 결과라는 평가입니다.`
+    ];
 }
 
 export async function generateOwnerWelcome(teamName: string) {

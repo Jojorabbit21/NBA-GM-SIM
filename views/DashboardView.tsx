@@ -24,7 +24,7 @@ interface DashboardViewProps {
   onShowSeasonReview: () => void;
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
-  playoffSeries?: PlayoffSeries[]; // Added prop to receive series data
+  playoffSeries?: PlayoffSeries[];
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
@@ -32,50 +32,62 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
   playoffSeries = []
 }) => {
-  // 1. Find the next game for the user's team (regardless of unplayed/played) to show branding
-  const userGamesToday = useMemo(() => {
-    if (!team?.id || !currentSimDate) return [];
-    return schedule.filter(g => g.date === currentSimDate && (g.homeTeamId === team.id || g.awayTeamId === team.id));
-  }, [schedule, team?.id, currentSimDate]);
-
-  // 2. Determine if there's an actual game to simulate TODAY
-  const unplayedGamesToday = useMemo(() => {
-      if (!currentSimDate) return [];
-      return schedule.filter(g => g.date === currentSimDate && !g.played);
-  }, [schedule, currentSimDate]);
-
-  // [Fix] 사용자의 팀이 오늘 경기가 있는지 여부 판단
-  const userHasGameToday = useMemo(() => {
-      return unplayedGamesToday.some(g => g.homeTeamId === team?.id || g.awayTeamId === team?.id);
-  }, [unplayedGamesToday, team?.id]);
-
-  // 3. Current next game to show in header (prioritize unplayed today, then overall next)
+  // 1. Find the next game for the user's team
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
-      return schedule.find(g => !g.played && (g.homeTeamId === team.id || g.awayTeamId === team.id)) 
-             || schedule.filter(g => (g.homeTeamId === team.id || g.awayTeamId === team.id)).reverse().find(g => g.played);
+      const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
+      myGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      return myGames.find(g => !g.played) || myGames[myGames.length - 1];
   }, [schedule, team?.id]);
 
   const isHome = nextGameDisplay?.homeTeamId === team?.id;
   const opponentId = isHome ? nextGameDisplay?.awayTeamId : nextGameDisplay?.homeTeamId;
   const opponent = useMemo(() => teams.find(t => t.id === opponentId), [teams, opponentId]);
 
-  // 4. Determine Current Playoff Series
+  // 2. Check if the NEXT game is actually TODAY
+  const userHasGameToday = useMemo(() => {
+      if (!nextGameDisplay || !currentSimDate) return false;
+      return nextGameDisplay.date === currentSimDate && !nextGameDisplay.played;
+  }, [nextGameDisplay, currentSimDate]);
+
+  // 3. Determine Current Playoff Series
   const currentSeries = useMemo(() => {
       if (!nextGameDisplay?.isPlayoff || !nextGameDisplay.seriesId || !playoffSeries) return undefined;
       return playoffSeries.find(s => s.id === nextGameDisplay.seriesId);
   }, [nextGameDisplay, playoffSeries]);
 
+  // 4. Banner Visibility Logic
+  const isRegularSeasonFinished = useMemo(() => {
+      if (!team?.id) return false;
+      const myRegularGames = schedule.filter(g => !g.isPlayoff && (g.homeTeamId === team.id || g.awayTeamId === team.id));
+      return myRegularGames.length > 0 && myRegularGames.every(g => g.played);
+  }, [schedule, team?.id]);
+
+  const isPostseasonOver = useMemo(() => {
+      if (!team?.id || !playoffSeries || playoffSeries.length === 0) return false;
+      const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
+      if (myPlayoffSeries.length === 0) return false;
+
+      // Find the most recent (highest round) series
+      const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
+      if (!latest.finished) return false;
+
+      // If user lost any series, their run is over
+      if (latest.winnerId !== team.id) return true;
+
+      // If user won, check if it was the NBA Finals (Round 4)
+      return latest.round === 4;
+  }, [playoffSeries, team?.id]);
+
   const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   
-  const { starters, stopperId, defenseTactics } = tactics;
+  const { starters } = tactics;
   
   const healthySorted = useMemo(() => (team?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
   const injuredSorted = useMemo(() => (team?.roster || []).filter(p => p.health === 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
   const oppHealthySorted = useMemo(() => (opponent?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [opponent?.roster]);
   
-  // Ensure starters are valid
   useEffect(() => {
     if (healthySorted.length >= 5 && Object.values(starters).every(v => v === '')) {
       const newStarters = {
@@ -124,10 +136,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <DashboardReviewBanners 
         onShowSeasonReview={onShowSeasonReview} 
         onShowPlayoffReview={onShowPlayoffReview} 
-        hasPlayoffHistory={hasPlayoffHistory} 
+        hasPlayoffHistory={hasPlayoffHistory}
+        showSeasonBanner={isRegularSeasonFinished}
+        showPlayoffBanner={isPostseasonOver}
       />
 
-      {/* Main Dashboard Header Section */}
       <DashboardHeader 
         team={team}
         nextGame={nextGameDisplay}
@@ -144,9 +157,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         currentSeries={currentSeries}
       />
 
-      {/* [Optimization] Reduced background transparency and blur (bg-slate-900/80, backdrop-blur-xl) */}
       <div className="w-full max-w-[1900px] grid grid-cols-1 lg:grid-cols-12 min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
-          {/* Left Panel: Roster Table */}
           <RosterTable 
             activeRosterTab={activeRosterTab}
             setActiveRosterTab={setActiveRosterTab}
@@ -159,8 +170,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             onUpdateTactics={onUpdateTactics}
             onViewPlayer={setViewPlayer}
           />
-
-          {/* Right Panel: Tactics Board */}
           <TacticsBoard 
             tactics={tactics}
             onUpdateTactics={onUpdateTactics}

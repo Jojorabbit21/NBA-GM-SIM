@@ -69,7 +69,9 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
 
       // 2. Create Map for DB Results (if available)
       const resultMap = new Map<string, any>();
-      if (userResults) {
+      // Fix: Error in file views/ScheduleView.tsx on line 73: Property 'forEach' does not exist on type 'unknown'.
+      // Added Array.isArray check to narrow type and allow forEach.
+      if (userResults && Array.isArray(userResults)) {
           userResults.forEach((r: any) => resultMap.set(r.game_id, r));
       }
 
