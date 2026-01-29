@@ -13,6 +13,15 @@ const TEAM_COLORS: Record<string, string> = {
   'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
 };
 
+// [Config] Simulation Speed Control
+// Lower increment / Higher delay = Slower game
+export const SIMULATION_SPEED = {
+    NORMAL: { INC: 0.6, DELAY: 60 },      // Base speed (approx 50% slower than before)
+    LATE: { INC: 0.4, DELAY: 150 },       // 4th Quarter (85%+)
+    CLUTCH: { INC: 0.2, DELAY: 400 },     // Last minute close game (94%+)
+    GARBAGE: { INC: 1.5, DELAY: 30 }      // Blowout games
+};
+
 const GENERAL_MESSAGES = [
     "코칭 스태프가 머리를 맞대는 중...",
     "선수들이 작전 타임에 물 마시는 중...",
@@ -64,6 +73,7 @@ const GARBAGE_MESSAGES = [
 ];
 
 // WP Calculation Logic: Score diff + Time remaining
+// 50% is the baseline (Tie).
 const calculateWinProbability = (homeScore: number, awayScore: number, timePassed: number) => {
     const totalTime = 48;
     const timeRemaining = Math.max(0, totalTime - timePassed);
@@ -80,7 +90,9 @@ const calculateWinProbability = (homeScore: number, awayScore: number, timePasse
 const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
     let currentHome = 0;
     let currentAway = 0;
+    // [Fix] Ensure the graph starts exactly at 50%
     const history: { h: number, a: number, wp: number }[] = [{ h: 0, a: 0, wp: 50 }];
+    
     const scoreDiff = Math.abs(finalHome - finalAway);
     const isClutchGame = scoreDiff <= 5;
     let momentum = 0;
@@ -165,6 +177,7 @@ export const GameSimulatingView: React.FC<{
 
   const [displayScore, setDisplayScore] = useState({ h: 0, a: 0 });
 
+  // [Update] Simulation Speed Logic
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     const runSimulationStep = () => {
@@ -173,19 +186,28 @@ export const GameSimulatingView: React.FC<{
                 progressRef.current = 100;
                 return 100;
             }
-            const isLateGame = prev > 85; 
-            const isVeryLateGame = prev > 94;
-            const increment = isVeryLateGame ? 0.3 : (isLateGame ? 0.5 : 1.2);
-            const next = Math.min(100, prev + increment);
+            
+            // Determine phase
+            const scoreDiff = Math.abs(displayScore.h - displayScore.a);
+            const isGarbage = prev > 60 && scoreDiff >= 20;
+            const isLateGame = prev > 85;
+            const isSuperClutch = prev > 94 && scoreDiff <= 5;
+            
+            let speedConfig = SIMULATION_SPEED.NORMAL;
+            if (isGarbage) speedConfig = SIMULATION_SPEED.GARBAGE;
+            else if (isSuperClutch) speedConfig = SIMULATION_SPEED.CLUTCH;
+            else if (isLateGame) speedConfig = SIMULATION_SPEED.LATE;
+
+            const next = Math.min(100, prev + speedConfig.INC);
             progressRef.current = next;
-            const delay = isVeryLateGame ? 250 : (isLateGame ? 100 : 30);
-            timeoutId = setTimeout(runSimulationStep, delay);
+            
+            timeoutId = setTimeout(runSimulationStep, speedConfig.DELAY);
             return next;
         });
     };
     runSimulationStep();
     return () => clearTimeout(timeoutId);
-  }, []); 
+  }, [displayScore]); // Dependency on displayScore to check scoreDiff dynamically
 
   useEffect(() => {
       if (scoreTimeline.length === 0) return;
@@ -218,7 +240,7 @@ export const GameSimulatingView: React.FC<{
             const y = Math.max(2, Math.min(48, 25 + Math.sin(angle) * dist));
             return [...prev.slice(-40), { id: Date.now(), x, y, isMake }];
         });
-    }, 120);
+    }, 200); // Slightly slower shot generation to match slower game speed
 
     const msgTimer = setInterval(() => {
         if (isFinishedRef.current) {
@@ -241,7 +263,7 @@ export const GameSimulatingView: React.FC<{
             do { next = targetPool[Math.floor(Math.random() * targetPool.length)]; } while (next === prev);
             return next;
         });
-    }, 1500); 
+    }, 2000); 
 
     return () => {
         clearInterval(shotTimer);
