@@ -116,11 +116,80 @@ const App: React.FC = () => {
     };
   }, [myTeamId, teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
 
+  // --- Auth Logging Logic ---
+  const handleLoginLog = async (userId: string) => {
+    // 세션 스토리지에 로그 ID가 이미 있다면(새로고침 등) 중복 기록 방지
+    if (sessionStorage.getItem('current_log_id')) return;
+
+    try {
+        const { data, error } = await supabase
+            .from('login_logs')
+            .insert({ 
+                user_id: userId,
+                user_agent: navigator.userAgent
+            })
+            .select('id')
+            .single();
+        
+        if (data) {
+            sessionStorage.setItem('current_log_id', data.id);
+        }
+    } catch (e) {
+        console.error("Failed to log login:", e);
+    }
+  };
+
+  const handleLogoutLog = async () => {
+      const logId = sessionStorage.getItem('current_log_id');
+      if (!logId) return;
+
+      try {
+          await supabase
+            .from('login_logs')
+            .update({ logout_at: new Date().toISOString() })
+            .eq('id', logId);
+          
+          sessionStorage.removeItem('current_log_id');
+      } catch (e) {
+          console.error("Failed to log logout:", e);
+      }
+  };
+
+  // Browser Close/Tab Close Detection (Best Effort)
+  useEffect(() => {
+      const handleUnload = () => {
+          const logId = sessionStorage.getItem('current_log_id');
+          if (logId) {
+              // keepalive: true ensures the request is sent even if the browser closes
+              const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/login_logs?id=eq.${logId}`;
+              const headers = {
+                  'Content-Type': 'application/json',
+                  'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY || '',
+                  'Authorization': `Bearer ${session?.access_token || ''}`,
+                  'Prefer': 'return=minimal'
+              };
+              const body = JSON.stringify({ logout_at: new Date().toISOString() });
+              
+              // Use fetch with keepalive as it's more reliable than sendBeacon for JSON with headers in some contexts
+              fetch(url, {
+                  method: 'PATCH',
+                  headers,
+                  body,
+                  keepalive: true
+              });
+          }
+      };
+
+      window.addEventListener('beforeunload', handleUnload);
+      return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [session]);
+
   // Auth Listener
   useEffect(() => {
     (supabase.auth as any).getSession().then(({ data: { session } }: any) => {
       if (session && !isLoggingOutRef.current) {
         setSession(session);
+        handleLoginLog(session.user.id); // Log login on initial load
       } else if (!session) {
         setSession(null);
         hasInitialLoadRef.current = false;
@@ -128,13 +197,19 @@ const App: React.FC = () => {
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((_event: any, session: any) => {
+    const { data: { subscription } } = (supabase.auth as any).onAuthStateChange((event: string, session: any) => {
       if (isLoggingOutRef.current) return;
-      if (session) setSession(session);
-      else { 
-        setSession(null); 
-        hasInitialLoadRef.current = false; 
-        setView('TeamSelect');
+      
+      if (event === 'SIGNED_IN' && session) {
+          setSession(session);
+          handleLoginLog(session.user.id);
+      } else if (event === 'SIGNED_OUT') {
+          handleLogoutLog(); // Log logout
+          setSession(null); 
+          hasInitialLoadRef.current = false; 
+          setView('TeamSelect');
+      } else if (session) {
+          setSession(session);
       }
       setAuthLoading(false);
     });
@@ -194,6 +269,7 @@ const App: React.FC = () => {
   // Logout Logic
   const handleLogout = async () => {
       isLoggingOutRef.current = true;
+      // Logout log is handled by onAuthStateChange event 'SIGNED_OUT'
       if (session) { await (supabase.auth as any).signOut(); }
       setIsGuestMode(false);
       setSession(null);
