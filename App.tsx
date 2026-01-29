@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from './services/supabaseClient';
+import { supabase, supabaseUrl, supabaseKey } from './services/supabaseClient';
 import { useBaseData, useLoadSave, useSaveGame, saveGameResults, saveUserTransaction } from './services/queries';
 import { initGA, logPageView } from './services/analytics';
 import { Team, Game, AppView, PlayerBoxScore, TeamTacticHistory, TacticStatRecord, TacticalSnapshot, Player, Transaction, PlayoffSeries } from './types';
@@ -131,11 +131,18 @@ const App: React.FC = () => {
             .select('id')
             .single();
         
+        if (error) {
+            // RLS 정책 위반이나 기타 DB 에러 시 조용히 무시 (사용자 경험 방해 X)
+            console.warn("Login logging skipped:", error.message);
+            return;
+        }
+
         if (data) {
             sessionStorage.setItem('current_log_id', data.id);
         }
     } catch (e) {
-        console.error("Failed to log login:", e);
+        // 네트워크 에러 등
+        console.warn("Login log network error");
     }
   };
 
@@ -151,20 +158,21 @@ const App: React.FC = () => {
           
           sessionStorage.removeItem('current_log_id');
       } catch (e) {
-          console.error("Failed to log logout:", e);
+          console.warn("Logout log error");
       }
   };
 
   // Browser Close/Tab Close Detection (Best Effort)
+  // [Fix] Using exported supabaseUrl and supabaseKey to ensure values exist
   useEffect(() => {
       const handleUnload = () => {
           const logId = sessionStorage.getItem('current_log_id');
-          if (logId) {
+          if (logId && supabaseUrl && supabaseKey) {
               // keepalive: true ensures the request is sent even if the browser closes
-              const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/login_logs?id=eq.${logId}`;
+              const url = `${supabaseUrl}/rest/v1/login_logs?id=eq.${logId}`;
               const headers = {
                   'Content-Type': 'application/json',
-                  'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY || '',
+                  'apikey': supabaseKey,
                   'Authorization': `Bearer ${session?.access_token || ''}`,
                   'Prefer': 'return=minimal'
               };
@@ -176,7 +184,7 @@ const App: React.FC = () => {
                   headers,
                   body,
                   keepalive: true
-              });
+              }).catch(() => {}); // Ignore errors during unload
           }
       };
 
