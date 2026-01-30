@@ -142,7 +142,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
       <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
         {/* Main Background Image - Applied Blur & Scale to hide edges */}
         <img 
-            src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background.png" 
+            src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background2.png" 
             alt="Background" 
             className="w-full h-full object-cover opacity-30 blur-sm scale-110 transform-gpu" 
         />
