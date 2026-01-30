@@ -393,6 +393,7 @@ function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
 function mapDbPlayer(p: any): Player {
     // 1. Normalize Attributes from DB JSON
     const attrs = normalizeAttributes(p.base_attributes || {});
+    const a = p.base_attributes || {}; // Access raw attributes for metadata
     
     // 2. Calculate Derived Stats
     const ins = (attrs.layup + attrs.dunk + attrs.postPlay + attrs.closeShot) / 4;
@@ -412,6 +413,9 @@ function mapDbPlayer(p: any): Player {
     const injury = KNOWN_INJURIES[normName];
     const health = injury ? 'Injured' : 'Healthy';
 
+    // [Fix] Age Mapping: Check top-level column then base_attributes
+    const age = Number(p.age ?? a.age ?? a.AGE ?? a.Age ?? 25);
+
     // 4. Construct Object (Fix: Spread first to avoid overwrites)
     return {
         ...attrs, // [Fix] Spread first
@@ -419,7 +423,7 @@ function mapDbPlayer(p: any): Player {
         id: p.id,
         name: p.name,
         position: p.position || 'G',
-        age: Number(p.age || 20),
+        age,
         salary: Number(p.salary || 1),
         contractYears: Number(p.contract_years || 1),
         ovr: finalOvr,

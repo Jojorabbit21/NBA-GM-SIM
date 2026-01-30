@@ -199,8 +199,6 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
     const name = p.name || "Unknown Player";
     
     // [Fix] Injury Override Logic
-    // 1. Check normalized name against KNOWN_INJURIES
-    // 2. If match found, FORCE 'Injured' status regardless of DB value
     const norm = normalizeName(name);
     const knownInjury = KNOWN_INJURIES[norm];
     
@@ -215,6 +213,9 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         injuryType = knownInjury.type;
         returnDate = knownInjury.returnDate;
     }
+
+    // [Fix] Age Mapping: Check top-level column then base_attributes
+    const age = Number(p.age ?? a.age ?? a.AGE ?? a.Age ?? 25);
 
     // Stats Mapping
     const closeShot = getVal('CLOSE', 'closeShot');
@@ -280,7 +281,7 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         id: p.id || `p_${norm}_${teamId}_${Date.now()}`,
         name,
         position: p.position || 'G',
-        age: p.age || 25,
+        age,
         height: p.height || 200,
         weight: p.weight || 100,
         salary: p.salary || 1.0,
