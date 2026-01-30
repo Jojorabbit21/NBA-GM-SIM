@@ -11,14 +11,15 @@ interface Player {
   contractYears: number;
   ovr: number;
   potential: number;
-  // Specific Stats for Need Analysis
+  // Stats
   def: number;
   out: number; 
   reb: number;
   plm: number;
+  ins: number; 
+  ath: number;
   intDef: number;
   perDef: number;
-  threeCorner: number;
   [key: string]: any;
 }
 
@@ -53,7 +54,6 @@ interface TeamNeeds {
 // --- Debug Logger ---
 const DEBUG = true;
 const LOG = (msg: string, data?: any) => {
-    // Vercel logs capture console.log/error
     const timestamp = new Date().toISOString();
     if (data) console.log(`[${timestamp}] [TradeEngine] ${msg}`, JSON.stringify(data));
     else console.log(`[${timestamp}] [TradeEngine] ${msg}`);
@@ -63,10 +63,9 @@ const LOG = (msg: string, data?: any) => {
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        // [Balance Update] Lowered from 3.0 to 2.75 to make superstar trades mathematically possible
         VALUE_EXPONENT: 2.75, 
         SUPERSTAR_PREMIUM_THRESHOLD: 94,
-        SUPERSTAR_MULTIPLIER: 1.3 // Lowered from 2.0 to 1.3
+        SUPERSTAR_MULTIPLIER: 1.3 
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
@@ -86,6 +85,99 @@ const TRADE_CONFIG = {
 
 // --- Helper Functions ---
 
+// 0. Attribute Mapper (DB Keys -> Runtime Keys)
+function normalizeAttributes(attrs: any) {
+    const get = (keys: string[]) => {
+        for (const k of keys) {
+            if (attrs[k] !== undefined) return Number(attrs[k]);
+            if (attrs[k.toLowerCase()] !== undefined) return Number(attrs[k.toLowerCase()]);
+        }
+        return 50; // Default
+    };
+
+    return {
+        // Shooting
+        closeShot: get(['CLOSE', 'closeShot']),
+        midRange: get(['MID', 'midRange']),
+        threeCorner: get(['3C', 'threeCorner']),
+        three45: get(['3_45', 'three45']),
+        threeTop: get(['3T', 'threeTop']),
+        ft: get(['FT', 'ft']),
+        shotIq: get(['SIQ', 'shotIq']),
+        offConsist: get(['OCON', 'offConsist']),
+        
+        // Inside
+        layup: get(['LAY', 'layup']),
+        dunk: get(['DNK', 'dunk']),
+        postPlay: get(['POST', 'postPlay']),
+        drawFoul: get(['DRAW', 'drawFoul']),
+        hands: get(['HANDS', 'hands']),
+
+        // Playmaking
+        passAcc: get(['PACC', 'passAcc']),
+        handling: get(['HANDL', 'handling']),
+        spdBall: get(['SPWB', 'spdBall']),
+        passVision: get(['PVIS', 'passVision']),
+        passIq: get(['PIQ', 'passIq']),
+
+        // Defense
+        intDef: get(['IDEF', 'intDef']),
+        perDef: get(['PDEF', 'perDef']),
+        steal: get(['STL', 'steal']),
+        blk: get(['BLK', 'blk']),
+        helpDefIq: get(['HDEF', 'helpDefIq']),
+        passPerc: get(['PPER', 'passPerc']),
+        defConsist: get(['DCON', 'defConsist']),
+        
+        // Rebound
+        offReb: get(['OREB', 'offReb']),
+        defReb: get(['DREB', 'defReb']),
+        
+        // Athleticism
+        speed: get(['SPD', 'speed']),
+        agility: get(['AGI', 'agility']),
+        strength: get(['STR', 'strength']),
+        vertical: get(['VERT', 'vertical']),
+        stamina: get(['STA', 'stamina']),
+        hustle: get(['HUS', 'hustle']),
+        durability: get(['DUR', 'durability']),
+        
+        // Meta
+        potential: get(['POT', 'potential']),
+        intangibles: get(['INTANGIBLES', 'intangibles']),
+    };
+}
+
+// 0.1 Calculate OVR from Normalized Stats
+function calculateOvr(p: any): number {
+    const a = p; // Normalized attributes
+    
+    // Group Stats
+    const ins = (a.layup + a.dunk + a.postPlay + a.closeShot) / 4;
+    const threeAvg = (a.threeCorner + a.three45 + a.threeTop) / 3;
+    const out = (a.midRange + threeAvg + a.ft) / 3;
+    const def = (a.perDef + a.intDef + a.steal + a.blk) / 4;
+    const plm = (a.handling + a.passAcc + a.passVision) / 3;
+    const reb = (a.offReb + a.defReb) / 2;
+    const ath = (a.speed + a.agility + a.strength + a.vertical) / 4;
+
+    // Position Weighting
+    let pos = p.position || 'PG';
+    
+    let weightedOvr = 0;
+    if (pos.includes('G')) { // Guards
+        weightedOvr = (out * 0.25) + (plm * 0.25) + (ath * 0.15) + (def * 0.15) + (ins * 0.15) + (reb * 0.05);
+    } else if (pos.includes('F')) { // Forwards
+        weightedOvr = (out * 0.20) + (ins * 0.20) + (def * 0.20) + (ath * 0.20) + (reb * 0.10) + (plm * 0.10);
+    } else { // Centers
+        weightedOvr = (ins * 0.25) + (def * 0.25) + (reb * 0.25) + (ath * 0.15) + (out * 0.05) + (plm * 0.05);
+    }
+
+    weightedOvr += (a.intangibles - 70) * 0.05;
+
+    return Math.round(Math.min(99, Math.max(40, weightedOvr)));
+}
+
 // 1. Calculate Base Trade Value
 function getPlayerTradeValue(p: Player): number {
     const C = TRADE_CONFIG;
@@ -104,14 +196,12 @@ function getPlayerTradeValue(p: Player): number {
 
     // 3. Age & Potential
     if (p.age <= 23) {
-        // High potential young players get massive value boost
         if (p.potential > safeOvr) {
             const potDiff = p.potential - safeOvr;
-            const potBonus = 1.0 + (potDiff * 0.05); // 5% bonus per potential point diff
+            const potBonus = 1.0 + (potDiff * 0.05); 
             baseValue *= potBonus;
         }
     } else if (p.age >= 32) {
-        // Age decline
         const decline = (p.age - 31) * 0.1;
         baseValue *= Math.max(0.1, 1.0 - decline);
     }
@@ -139,11 +229,9 @@ function analyzeTeamSituation(team: Team): TeamNeeds {
         const depth = roster.filter(p => p.position.includes(pos));
         const bestAtPos = depth.reduce((max, p) => p.ovr > (max?.ovr || 0) ? p : max, null as Player | null);
         
-        // Weak if no starter > 75 OR very thin depth
         if (!bestAtPos || bestAtPos.ovr < 75 || depth.length < 2) {
             weakPositions.push(pos);
         }
-        // Strong if starter > 82
         if (bestAtPos && bestAtPos.ovr > 82) {
             strongPositions.push(pos);
         }
@@ -201,39 +289,54 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
 }
 
 // 4. Dynamic Core Asset Definition
-// Returns a filter function that identifies core assets for THIS specific team
 function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
     const has90 = roster.some(p => p.ovr >= 90);
     const has85 = roster.some(p => p.ovr >= 85);
 
     return (p: Player) => {
-        // Rule 1: If team has 90+ players, only they are core.
         if (has90) return p.ovr >= 90;
-        // Rule 2: If no 90+, but has 85+, they are core.
         if (has85) return p.ovr >= 85;
-        // Rule 3: If no 85+, team has NO core assets (everything is tradable).
         return false;
     };
 }
 
-// 5. Data Mapper
+// 5. Data Mapper (DB -> Engine Player)
 function mapDbPlayer(p: any): Player {
-    const attr = p.base_attributes || {};
-    const v = (k1: string, k2: string, def = 50) => 
-        (attr[k1] !== undefined ? attr[k1] : (p[k1] !== undefined ? p[k1] : (p[k2] !== undefined ? p[k2] : def)));
+    // 1. Normalize Attributes from DB JSON
+    const attrs = normalizeAttributes(p.base_attributes || {});
+    
+    // 2. Calculate Derived Stats
+    const ins = (attrs.layup + attrs.dunk + attrs.postPlay + attrs.closeShot) / 4;
+    const threeAvg = (attrs.threeCorner + attrs.three45 + attrs.threeTop) / 3;
+    const out = (attrs.midRange + threeAvg + attrs.ft) / 3;
+    const def = (attrs.perDef + attrs.intDef + attrs.steal + attrs.blk) / 4;
+    const plm = (attrs.handling + attrs.passAcc + attrs.passVision) / 3;
+    const reb = (attrs.offReb + attrs.defReb) / 2;
+    const ath = (attrs.speed + attrs.agility + attrs.strength + attrs.vertical) / 4;
+    
+    // 3. Determine OVR
+    // Trust DB OVR if it exists and > 40, else recalculate
+    const dbOvr = Number(p.ovr || (p.base_attributes && p.base_attributes.ovr));
+    const calculatedOvr = calculateOvr({ ...attrs, position: p.position });
+    const finalOvr = (dbOvr && dbOvr > 40) ? dbOvr : calculatedOvr;
 
     return {
         id: p.id,
         name: p.name,
-        position: p.position,
-        age: p.age,
-        salary: p.salary,
-        contractYears: p.contract_years,
-        ovr: attr.ovr || p.ovr || 70,
-        potential: attr.potential || p.pot || 75,
-        def: v('def', 'def'), out: v('out', 'out'), reb: v('reb', 'reb'), plm: v('plm', 'plm'),
-        intDef: v('intDef', 'idef'), perDef: v('perDef', 'pdef'), threeCorner: v('threeCorner', '3c'),
-        ...attr
+        position: p.position || 'G',
+        age: Number(p.age || 20),
+        salary: Number(p.salary || 1),
+        contractYears: Number(p.contract_years || 1),
+        ovr: finalOvr,
+        potential: attrs.potential || (finalOvr + 5),
+        
+        // Engine Specific Stats
+        def, out, reb, plm, ins, ath,
+        intDef: attrs.intDef,
+        perDef: attrs.perDef,
+        threeCorner: attrs.threeCorner,
+        
+        ...attrs // Spread all normalized attributes
     };
 }
 
@@ -252,7 +355,7 @@ export default async function handler(req: any, res: any) {
         const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-        // Fetch DB Data
+        // Fetch DB Data - Single Source of Truth
         const { data: teamsData, error: teamsError } = await supabaseClient
             .from('meta_teams')
             .select('*, meta_players(*)');
@@ -277,7 +380,6 @@ export default async function handler(req: any, res: any) {
             const userMaxOvr = Math.max(...tradingPlayers.map((p: Player) => p.ovr));
             
             const isSuperstarTrade = userMaxOvr >= 94; // User offering a top-tier superstar
-            const isStarTrade = userMaxOvr >= 88;      // User offering a star
             
             LOG(`Generating offers for user package. Salary: ${userSalary}, MaxOVR: ${userMaxOvr}, Players: ${tradingPlayers.length}`);
 
@@ -298,9 +400,6 @@ export default async function handler(req: any, res: any) {
                     userValueToAI += val;
                 });
                 
-                // Debug log for value
-                // LOG(`[Target: ${targetTeam.name}] User Package Value to AI: ${userValueToAI}`);
-
                 if (userValueToAI < 300) continue; 
 
                 // 2. Candidate Selection
@@ -333,9 +432,6 @@ export default async function handler(req: any, res: any) {
                              pack.push(star);
                              packValue += getContextualValue(star, needs, false);
                              packSalary += star.salary;
-                         } else {
-                             // No star to match, unlikely to trade. Try quantity?
-                             // continue; 
                          }
                     }
 
@@ -381,10 +477,7 @@ export default async function handler(req: any, res: any) {
                     }
 
                     // 4. Validation
-                    // If User gives Superstar, AI must pay up (Value Ratio > 0.9)
-                    // If AI returns a Superstar (95+), we treat it as 1:1 value (User premium is matched by AI premium in getPlayerTradeValue)
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
-                    // Relaxed range: 0.85 to 1.5
                     const validValue = valRatio >= 0.85 && valRatio <= 1.5;
 
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
