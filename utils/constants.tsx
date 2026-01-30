@@ -1,3 +1,4 @@
+
 import { Player, SeasonStats, Game, Team } from '../types';
 import { POSITION_WEIGHTS, PositionType } from './overallWeights';
 
@@ -84,75 +85,45 @@ export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, confe
   { id: 'sas', name: '스퍼스', city: '샌안토니오', conference: 'West', division: 'Southwest' },
 ];
 
-// Robust Team Name Mapping (Handles English, Korean, City, Team Name, and Common Abbreviations)
 const TEAM_NAME_MAP: Record<string, string> = {
-  // Explicit Full Korean Names (from players.csv)
-  '보스턴 셀틱스': 'bos',
-  '브루클린 네츠': 'bkn',
-  '뉴욕 닉스': 'nyk',
-  '필라델피아 세븐티식서스': 'phi',
-  '토론토 랩터스': 'tor',
-  '시카고 불스': 'chi',
-  '클리블랜드 캐벌리어스': 'cle',
-  '디트로이트 피스톤즈': 'det',
-  '인디애나 페이서스': 'ind',
-  '밀워키 벅스': 'mil',
-  '애틀랜타 호크스': 'atl',
-  '샬럿 호네츠': 'cha',
-  '마이애미 히트': 'mia',
-  '올랜도 매직': 'orl',
-  '워싱턴 위저즈': 'was',
-  '덴버 너게츠': 'den',
-  '미네소타 팀버울브스': 'min',
-  '오클라호마시티 썬더': 'okc',
-  '포틀랜드 트레일블레이저스': 'por',
-  '유타 재즈': 'uta',
-  '골든스테이트 워리어스': 'gsw',
-  'la 클리퍼스': 'lac', '엘에이 클리퍼스': 'lac',
-  'la 레이커스': 'lal', '엘에이 레이커스': 'lal',
-  '피닉스 선즈': 'phx',
-  '새크라멘토 킹스': 'sac',
-  '댈러스 매버릭스': 'dal',
-  '휴스턴 로케츠': 'hou',
-  '멤피스 그리즐리스': 'mem',
-  '뉴올리언스 펠리컨스': 'nop',
-  '샌안토니오 스퍼스': 'sas',
+  // Direct Match from CSV (Used for migration/seeding, but here for compatibility if needed)
+  '보스턴 셀틱스': 'bos', '브루클린 네츠': 'bkn', '뉴욕 닉스': 'nyk', '필라델피아 세븐티식서스': 'phi', '토론토 랩터스': 'tor',
+  '시카고 불스': 'chi', '클리블랜드 캐벌리어스': 'cle', '디트로이트 피스톤즈': 'det', '인디애나 페이서스': 'ind', '밀워키 벅스': 'mil',
+  '애틀랜타 호크스': 'atl', '샬럿 호네츠': 'cha', '마이애미 히트': 'mia', '올랜도 매직': 'orl', '워싱턴 위저즈': 'was',
+  '덴버 너게츠': 'den', '미네소타 팀버울브스': 'min', '오클라호마시티 썬더': 'okc', '포틀랜드 트레일블레이저스': 'por', '유타 재즈': 'uta',
+  '골든스테이트 워리어스': 'gsw', 'la 클리퍼스': 'lac', '엘에이 클리퍼스': 'lac', 'la 레이커스': 'lal', '엘에이 레이커스': 'lal', '피닉스 선즈': 'phx',
+  '새크라멘토 킹스': 'sac', '댈러스 매버릭스': 'dal', '휴스턴 로케츠': 'hou', '멤피스 그리즐리스': 'mem', '뉴올리언스 펠리컨스': 'nop', '샌안토니오 스퍼스': 'sas',
 
-  // Atlantic
+  // Common Aliases
   'boston': 'bos', 'celtics': 'bos', '보스턴': 'bos', '셀틱스': 'bos', 'bos': 'bos',
   'brooklyn': 'bkn', 'nets': 'bkn', '브루클린': 'bkn', '네츠': 'bkn', 'bkn': 'bkn', 'brk': 'bkn',
   'new york': 'nyk', 'knicks': 'nyk', 'ny': 'nyk', '뉴욕': 'nyk', '닉스': 'nyk', 'nyk': 'nyk',
   'philadelphia': 'phi', '76ers': 'phi', 'sixers': 'phi', '필라델피아': 'phi', '세븐티식서스': 'phi', 'phi': 'phi',
   'toronto': 'tor', 'raptors': 'tor', '토론토': 'tor', '랩터스': 'tor', 'tor': 'tor',
-  // Central
   'chicago': 'chi', 'bulls': 'chi', '시카고': 'chi', '불스': 'chi', 'chi': 'chi',
   'cleveland': 'cle', 'cavaliers': 'cle', 'cavs': 'cle', '클리블랜드': 'cle', '캐벌리어스': 'cle', 'cle': 'cle',
   'detroit': 'det', 'pistons': 'det', '디트로이트': 'det', '피스톤즈': 'det', 'det': 'det',
   'indiana': 'ind', 'pacers': 'ind', '인디애나': 'ind', '페이서스': 'ind', 'ind': 'ind',
   'milwaukee': 'mil', 'bucks': 'mil', '밀워키': 'mil', '벅스': 'mil', 'mil': 'mil',
-  // Southeast
   'atlanta': 'atl', 'hawks': 'atl', '애틀랜타': 'atl', '호크스': 'atl', 'atl': 'atl',
-  'charlotte': 'cha', 'hornets': 'cha', '샬럿': 'cha', '호네츠': 'cha', 'cha': 'cha', 'cho': 'cha', 'charlote': 'cha',
+  'charlotte': 'cha', 'hornets': 'cha', '샬럿': 'cha', '호네츠': 'cha', 'cha': 'cha',
   'miami': 'mia', 'heat': 'mia', '마이애미': 'mia', '히트': 'mia', 'mia': 'mia',
   'orlando': 'orl', 'magic': 'orl', '올랜도': 'orl', '매직': 'orl', 'orl': 'orl',
   'washington': 'was', 'wizards': 'was', '워싱턴': 'was', '위저즈': 'was', 'was': 'was',
-  // Northwest
-  'denver': 'den', 'nuggets': 'den', '덴버': 'den', '너게츠': 'den', '너겟츠': 'den', 'den': 'den',
-  'minnesota': 'min', 'timberwolves': 'min', 'wolves': 'min', '미네소타': 'min', '팀버울브스': 'min', '팀버울브즈': 'min', 'min': 'min',
-  'oklahoma city': 'okc', 'thunder': 'okc', 'okc': 'okc', '오클라호마시티': 'okc', '오클': 'okc', '썬더': 'okc',
+  'denver': 'den', 'nuggets': 'den', '덴버': 'den', '너게츠': 'den', 'den': 'den',
+  'minnesota': 'min', 'timberwolves': 'min', 'wolves': 'min', '미네소타': 'min', '팀버울브스': 'min', 'min': 'min',
+  'oklahoma city': 'okc', 'thunder': 'okc', 'okc': 'okc', '오클라호마시티': 'okc', '썬더': 'okc',
   'portland': 'por', 'trail blazers': 'por', 'blazers': 'por', '포틀랜드': 'por', '트레일블레이저스': 'por', 'por': 'por',
   'utah': 'uta', 'jazz': 'uta', '유타': 'uta', '재즈': 'uta', 'uta': 'uta',
-  // Pacific
   'golden state': 'gsw', 'warriors': 'gsw', 'gs': 'gsw', '골든스테이트': 'gsw', '워리어스': 'gsw', 'gsw': 'gsw',
   'la clippers': 'lac', 'clippers': 'lac', '클리퍼스': 'lac', 'lac': 'lac',
   'la lakers': 'lal', 'lakers': 'lal', '레이커스': 'lal', 'lal': 'lal',
-  'phoenix': 'phx', 'suns': 'phx', '피닉스': 'phx', '선즈': 'phx', 'phx': 'phx', 'pho': 'phx', 'pheonix': 'phx', 'phonix': 'phx',
+  'phoenix': 'phx', 'suns': 'phx', '피닉스': 'phx', '선즈': 'phx', 'phx': 'phx',
   'sacramento': 'sac', 'kings': 'sac', '새크라멘토': 'sac', '킹스': 'sac', 'sac': 'sac',
-  // Southwest
   'dallas': 'dal', 'mavericks': 'dal', 'mavs': 'dal', '댈러스': 'dal', '매버릭스': 'dal', 'dal': 'dal',
   'houston': 'hou', 'rockets': 'hou', '휴스턴': 'hou', '로케츠': 'hou', 'hou': 'hou',
   'memphis': 'mem', 'grizzlies': 'mem', '멤피스': 'mem', '그리즐리스': 'mem', 'mem': 'mem',
-  'new orleans': 'nop', 'pelicans': 'nop', 'pels': 'nop', '뉴올리언스': 'nop', '펠리컨스': 'nop', 'nop': 'nop', 'no': 'nop',
+  'new orleans': 'nop', 'pelicans': 'nop', 'pels': 'nop', '뉴올리언스': 'nop', '펠리컨스': 'nop', 'nop': 'nop',
   'san antonio': 'sas', 'spurs': 'sas', '샌안토니오': 'sas', '스퍼스': 'sas', 'sas': 'sas'
 };
 
@@ -170,17 +141,12 @@ const SORTED_KEYS = Object.keys(TEAM_NAME_MAP).sort((a, b) => b.length - a.lengt
 export const resolveTeamId = (input: string): string => {
     if (!input) return 'unknown';
     const normalized = input.toLowerCase().trim();
-    
-    // 1. Direct Match (O(1))
     if (TEAM_NAME_MAP[normalized]) return TEAM_NAME_MAP[normalized];
-
-    // 2. Partial Match (Longest keys first)
     for (const key of SORTED_KEYS) {
         if (normalized.includes(key)) {
             return TEAM_NAME_MAP[key];
         }
     }
-    
     return 'unknown';
 };
 
@@ -200,7 +166,10 @@ const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
   "dejountemurray": { type: "아킬레스건 통증", returnDate: "2026-01-15" }
 };
 
+// [Cleanup] Parse CSV removed from runtime. Data now comes strictly from Supabase.
+// Only used in migration scripts if needed, but not here.
 export const parseCSVToObjects = (csv: string): any[] => {
+    // Legacy support for seeding if absolutely necessary, otherwise unused in main app
     const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
     if (lines.length < 2) return [];
     let headersLine = lines[0];
@@ -208,7 +177,6 @@ export const parseCSVToObjects = (csv: string): any[] => {
     const headers = headersLine.split(',').map(h => h.trim().toLowerCase());
     const result = [];
     for (let i = 1; i < lines.length; i++) {
-        // Handle comma inside quotes (simple version) or split by comma
         const values = lines[i].split(',').map(v => v.trim());
         if (values.length < headers.length - 1) continue;
         const obj: any = {};
@@ -223,9 +191,8 @@ export const parseCSVToObjects = (csv: string): any[] => {
 };
 
 export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
-    const position = overridePosition || p.position || 'PG';
+    const position = overridePosition || p.position || p.Position || 'PG';
     
-    // Normalize position key to match overallWeights types
     let posKey: PositionType = 'PG';
     if (position.includes('SG')) posKey = 'SG';
     else if (position.includes('SF')) posKey = 'SF';
@@ -234,57 +201,55 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
     
     const weights = POSITION_WEIGHTS[posKey];
 
-    const v = (key: string, def = 70) => {
-        // [DB Support] Handle flat structure (p[key]) AND nested structure (p.base_attributes[key])
-        if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
-        if (p.base_attributes && p.base_attributes[key.toLowerCase()] !== undefined) return p.base_attributes[key.toLowerCase()];
-        
-        return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
+    // Helper: Safely access properties.
+    // If p is a runtime Player object, keys are already camelCase.
+    // If p comes from DB, we expect 'base_attributes' to be handled before calling this, 
+    // or p should be the already-mapped object.
+    const v = (key: string, altKey?: string) => {
+        if (p[key] !== undefined) return Number(p[key]);
+        if (altKey && p[altKey] !== undefined) return Number(p[altKey]);
+        return 50; 
     };
-    
-    const threeAvg = (
-        v('threeCorner', v('threec', v('3c'))) + 
-        v('three45', v('3_45')) + 
-        v('threeTop', v('threet', v('3t')))
-    ) / 3;
 
-    // Construct an attribute object with standardized keys matching overallWeights.ts
+    // Calculate standardized attributes for weight calculation
+    const threeAvg = (v('threeCorner') + v('three45') + v('threeTop')) / 3;
+
     const attr: Record<string, number> = {
-        closeShot: v('closeShot', v('close')),
-        midRange: v('midRange', v('mid')),
-        threeAvg: threeAvg || v('threeAvg'),
+        closeShot: v('closeShot'),
+        midRange: v('midRange'),
+        threeAvg: threeAvg,
         ft: v('ft'),
-        shotIq: v('shotIq', v('siq')),
-        offConsist: v('offConsist', v('ocon')),
-        layup: v('layup', v('lay')),
-        dunk: v('dunk', v('dnk')),
-        postPlay: v('postPlay', v('post')),
-        drawFoul: v('drawFoul', v('draw')),
+        shotIq: v('shotIq'),
+        offConsist: v('offConsist'),
+        layup: v('layup'),
+        dunk: v('dunk'),
+        postPlay: v('postPlay'),
+        drawFoul: v('drawFoul'),
         hands: v('hands'),
-        passAcc: v('passAcc', v('pacc')),
-        handling: v('handling', v('handl')),
-        spdBall: v('spdBall', v('spwb')),
-        passVision: v('passVision', v('pvis')),
-        passIq: v('passIq', v('piq')),
-        stamina: v('stamina', v('sta')),
-        intDef: v('intDef', v('idef')),
-        perDef: v('perDef', v('pdef')),
-        steal: v('steal', v('stl')),
+        passAcc: v('passAcc'),
+        handling: v('handling'),
+        spdBall: v('spdBall'),
+        passVision: v('passVision'),
+        passIq: v('passIq'),
+        stamina: v('stamina'),
+        intDef: v('intDef'),
+        perDef: v('perDef'),
+        steal: v('steal'),
         blk: v('blk'),
-        helpDefIq: v('helpDefIq', v('hdef')),
-        passPerc: v('passPerc', v('pper')),
-        defConsist: v('defConsist', v('dcon')),
-        offReb: v('offReb', v('oreb')),
-        defReb: v('defReb', v('dreb')),
-        potential: v('potential', v('pot')),
-        intangibles: v('intangibles', 70),
-        height: v('height', 200),
-        strength: v('strength', v('str')),
-        vertical: v('vertical', v('vert')),
-        durability: v('durability', v('dur')),
-        agility: v('agility', v('agi')),
-        hustle: v('hustle', v('hus')),
-        speed: v('speed', v('spd')),
+        helpDefIq: v('helpDefIq'),
+        passPerc: v('passPerc'),
+        defConsist: v('defConsist'),
+        offReb: v('offReb'),
+        defReb: v('defReb'),
+        potential: v('potential'),
+        intangibles: v('intangibles'),
+        height: v('height', '200'),
+        strength: v('strength'),
+        vertical: v('vertical'),
+        durability: v('durability'),
+        agility: v('agility'),
+        hustle: v('hustle'),
+        speed: v('speed'),
     };
 
     let totalVal = 0;
@@ -293,7 +258,7 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
     for (const key in weights) {
         if (weights.hasOwnProperty(key)) {
             const w = weights[key];
-            const val = attr[key] ?? 0;
+            const val = attr[key] ?? 50;
             totalVal += val * w;
             totalWeight += w;
         }
@@ -302,79 +267,125 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
     return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
 };
 
+// [Critical Update] Strictly rely on Supabase `base_attributes` structure
+// Removed ambiguous fallback logic (looking for "LAY" or "3C" at top level).
 export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player => {
-    // Helper to get value case-insensitively, handling flat and nested attributes
-    const v = (key: string, def: any = 70) => {
-        // Check base_attributes first (Supabase structure)
-        if (p.base_attributes && p.base_attributes[key] !== undefined) return p.base_attributes[key];
-        if (p.base_attributes && p.base_attributes[key.toLowerCase()] !== undefined) return p.base_attributes[key.toLowerCase()];
-        
-        // Then check top-level keys (CSV structure)
-        return p[key] ?? p[key.toLowerCase()] ?? p[key.replace(/([A-Z])/g, "_$1").toLowerCase()] ?? def;
+    // 1. Extract Attributes from DB JSONB column
+    const a = p.base_attributes || {};
+
+    // Helper to get value from DB keys (usually UPPERCASE short codes) or map to default
+    // We explicitly map the DB short keys to runtime long keys here.
+    const getVal = (shortKey: string, longKey: string) => {
+        // Check short key, long key, and lowercase variants inside base_attributes
+        return Number(a[shortKey] ?? a[longKey] ?? a[shortKey.toLowerCase()] ?? a[longKey.toLowerCase()] ?? 50);
     };
 
-    const name = p.name || p.Name || v('name', "Unknown Player");
+    const name = p.name || "Unknown Player";
     const norm = normalizeName(name);
     const injury = KNOWN_INJURIES[norm];
-    const ovr = calculatePlayerOvr(p);
-    
+
+    // 2. Map Stats
+    // Shooting
+    const closeShot = getVal('CLOSE', 'closeShot');
+    const midRange = getVal('MID', 'midRange');
+    const threeCorner = getVal('3C', 'threeCorner');
+    const three45 = getVal('3_45', 'three45');
+    const threeTop = getVal('3T', 'threeTop');
+    const ft = getVal('FT', 'ft');
+    const shotIq = getVal('SIQ', 'shotIq');
+    const offConsist = getVal('OCON', 'offConsist');
+
+    // Inside
+    const layup = getVal('LAY', 'layup');
+    const dunk = getVal('DNK', 'dunk');
+    const postPlay = getVal('POST', 'postPlay');
+    const drawFoul = getVal('DRAW', 'drawFoul');
+    const hands = getVal('HANDS', 'hands');
+
+    // Playmaking
+    const passAcc = getVal('PACC', 'passAcc');
+    const handling = getVal('HANDL', 'handling');
+    const spdBall = getVal('SPWB', 'spdBall');
+    const passVision = getVal('PVIS', 'passVision');
+    const passIq = getVal('PIQ', 'passIq');
+
+    // Defense
+    const intDef = getVal('IDEF', 'intDef');
+    const perDef = getVal('PDEF', 'perDef');
+    const steal = getVal('STL', 'steal');
+    const blk = getVal('BLK', 'blk');
+    const helpDefIq = getVal('HDEF', 'helpDefIq');
+    const passPerc = getVal('PPER', 'passPerc');
+    const defConsist = getVal('DCON', 'defConsist');
+
+    // Rebounding
+    const offReb = getVal('OREB', 'offReb');
+    const defReb = getVal('DREB', 'defReb');
+
+    // Athleticism
+    const speed = getVal('SPD', 'speed');
+    const agility = getVal('AGI', 'agility');
+    const strength = getVal('STR', 'strength');
+    const vertical = getVal('VERT', 'vertical');
+    const stamina = getVal('STA', 'stamina');
+    const hustle = getVal('HUS', 'hustle');
+    const durability = getVal('DUR', 'durability');
+
+    // Meta
+    const intangibles = getVal('INTANGIBLES', 'intangibles');
+    const potential = getVal('POT', 'potential');
+
+    // 3. Derived Aggregates
+    const threeAvg = (threeCorner + three45 + threeTop) / 3;
+    const ins = Math.round((layup + dunk + postPlay) / 3);
+    const out = Math.round((closeShot + midRange + threeAvg) / 3);
+    const plm = Math.round((passAcc + handling + passVision) / 3);
+    const def = Math.round((intDef + perDef + steal + blk) / 4);
+    const reb = Math.round((offReb + defReb) / 2);
+    const ath = Math.round((speed + agility + strength + vertical) / 4);
+
+    // 4. Calculate OVR
+    // Trust DB OVR if it exists and > 40, else recalculate
+    const dbOvr = p.ovr || a.ovr;
+    const runtimePlayerForCalc = {
+        position: p.position || 'G',
+        closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist,
+        layup, dunk, postPlay, drawFoul, hands,
+        passAcc, handling, spdBall, passVision, passIq,
+        intDef, perDef, steal, blk, helpDefIq, passPerc, defConsist,
+        offReb, defReb,
+        speed, agility, strength, vertical, stamina, hustle, durability,
+        intangibles, potential, height: p.height
+    };
+    const calculatedOvr = calculatePlayerOvr(runtimePlayerForCalc);
+    const ovr = (dbOvr && dbOvr > 40) ? dbOvr : calculatedOvr;
+
     return {
         id: p.id || `p_${norm}_${teamId}_${Date.now()}`,
         name,
-        position: p.position || v('position', 'G'),
-        age: p.age || v('age', 25),
-        height: p.height || v('height', 200),
-        weight: p.weight || v('weight', 100),
-        salary: p.salary || v('salary', 1.0),
-        contractYears: p.contract_years || v('contract_years', v('contractyears', v('contractYears', 1))),
+        position: p.position || 'G',
+        age: p.age || 25,
+        height: p.height || 200,
+        weight: p.weight || 100,
+        salary: p.salary || 1.0,
+        contractYears: p.contract_years || 1,
         health: injury ? 'Injured' : 'Healthy',
         injuryType: injury?.type,
         returnDate: injury?.returnDate,
         condition: 100,
         ovr,
-        potential: v('potential', v('pot', ovr + 5)),
-        revealedPotential: v('potential', v('pot', ovr + 5)),
-        intangibles: v('intangibles', 70), 
-        speed: v('speed', v('spd')),
-        agility: v('agility', v('agi')),
-        strength: v('strength', v('str')),
-        vertical: v('vertical', v('vert')),
-        stamina: v('stamina', v('sta')),
-        hustle: v('hustle', v('hus')),
-        durability: v('durability', v('dur')),
-        ath: Math.round(((v('spd') + v('agi') + v('str') + v('vert')) || 280) / 4),
-        closeShot: v('closeShot', v('close')),
-        midRange: v('midRange', v('mid')),
-        threeCorner: v('threeCorner', v('threec', v('3c'))),
-        three45: v('three45', v('3_45')),
-        threeTop: v('threeTop', v('threet', v('3t'))),
-        ft: v('ft'),
-        shotIq: v('shotIq', v('siq')),
-        offConsist: v('offConsist', v('ocon')),
-        out: Math.round((v('close', 70) + v('mid', 70) + v('threec', 70)) / 3),
-        layup: v('layup', v('lay')),
-        dunk: v('dunk', v('dnk')),
-        postPlay: v('postPlay', v('post')),
-        drawFoul: v('drawFoul', v('draw')),
-        hands: v('hands'),
-        ins: Math.round((v('lay', 70) + v('dnk', 70) + v('post', 70)) / 3),
-        passAcc: v('passAcc', v('pacc')),
-        handling: v('handling', v('handl')),
-        spdBall: v('spdBall', v('spwb')),
-        passIq: v('passIq', v('piq')),
-        passVision: v('passVision', v('pvis')),
-        plm: Math.round((v('pacc', 70) + v('handl', 70) + v('pvis', 70)) / 3),
-        intDef: v('intDef', v('idef')),
-        perDef: v('perDef', v('pdef')),
-        steal: v('steal', v('stl')),
-        blk: v('blk'),
-        helpDefIq: v('helpDefIq', v('hdef')),
-        passPerc: v('passPerc', v('pper')),
-        defConsist: v('defConsist', v('dcon')),
-        def: Math.round((v('idef', 70) + v('pdef', 70) + v('stl', 70) + v('blk', 70)) / 4),
-        offReb: v('offReb', v('oreb')),
-        defReb: v('defReb', v('dreb')),
-        reb: Math.round((v('oreb', 70) + v('dreb', 70)) / 2),
+        potential: potential || (ovr + 5),
+        revealedPotential: potential || (ovr + 5),
+        intangibles,
+        
+        // Stats
+        speed, agility, strength, vertical, stamina, hustle, durability, ath,
+        closeShot, midRange, threeCorner, three45, threeTop, ft, shotIq, offConsist, out,
+        layup, dunk, postPlay, drawFoul, hands, ins,
+        passAcc, handling, spdBall, passIq, passVision, plm,
+        intDef, perDef, steal, blk, helpDefIq, passPerc, defConsist, def,
+        offReb, defReb, reb,
+
         stats: INITIAL_STATS(),
         playoffStats: INITIAL_STATS()
     };
@@ -457,10 +468,4 @@ export const exportScheduleToCSV = (schedule: Game[]) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-};
-
-export const getPlayerTradeValue = (p: Player): number => {
-    let val = Math.pow(Math.max(40, p.ovr) - 40, 2.5);
-    if (p.age < 24) val *= 1.2;
-    return Math.floor(val);
 };
