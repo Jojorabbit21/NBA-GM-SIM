@@ -24,11 +24,12 @@ interface TransactionsViewProps {
   currentSimDate: string;
   transactions?: Transaction[];
   onAddTransaction?: (t: Transaction) => void;
+  onForceSave?: () => Promise<void>; // Added onForceSave prop
 }
 
 const MAX_DAILY_TRADES = 5;
 
-export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction }) => {
+export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction, onForceSave }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'mine'>('all');
   const [blockSelectedIds, setBlockSelectedIds] = useState<Set<string>>(new Set());
@@ -44,6 +45,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
   const [proposalSearchPerformed, setProposalSearchPerformed] = useState(false);
   
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
+  const [isExecutingTrade, setIsExecutingTrade] = useState(false); // Added execution state
 
   const [pendingTrade, setPendingTrade] = useState<{
     userAssets: Player[],
@@ -88,49 +90,63 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
   }, [transactions, historyFilter, team.id]);
 
   const executeTrade = async () => {
-    if (!pendingTrade || !team) return;
+    if (!pendingTrade || !team || isExecutingTrade) return;
     const { userAssets, targetAssets, targetTeam } = pendingTrade;
     
+    setIsExecutingTrade(true);
     logEvent('Trade', 'Executed', `${team.name} <-> ${targetTeam.name} (${userAssets.length} for ${targetAssets.length})`);
 
-    const newTransaction: Transaction = {
-        id: `tr_${Date.now()}`,
-        date: currentSimDate,
-        type: 'Trade',
-        teamId: team.id,
-        description: `${targetTeam.name}와의 트레이드 합의`,
-        details: {
-            acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-            traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-            partnerTeamId: targetTeam.id,
-            partnerTeamName: targetTeam.name
+    try {
+        const newTransaction: Transaction = {
+            id: `tr_${Date.now()}`,
+            date: currentSimDate,
+            type: 'Trade',
+            teamId: team.id,
+            description: `${targetTeam.name}와의 트레이드 합의`,
+            details: {
+                acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                partnerTeamId: targetTeam.id,
+                partnerTeamName: targetTeam.name
+            }
+        };
+
+        if (onAddTransaction) {
+            onAddTransaction(newTransaction);
         }
-    };
 
-    if (onAddTransaction) {
-        onAddTransaction(newTransaction);
+        const { data: userData } = await (supabase.auth as any).getUser();
+        if (userData?.user) {
+            await saveUserTransaction(userData.user.id, newTransaction);
+        }
+
+        setTeams(prevTeams => prevTeams.map(t => {
+            if (t.id === team.id) {
+                const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
+                return { ...t, roster: [...remaining, ...targetAssets] };
+            }
+            if (targetTeam && t.id === targetTeam.id) {
+                const remaining = t.roster.filter(p => !targetAssets.some(x => x.id === p.id));
+                return { ...t, roster: [...remaining, ...userAssets] };
+            }
+            return t;
+        }));
+
+        // [Critical] Force Save Game State immediately to ensure sync
+        if (onForceSave) {
+            await onForceSave();
+        }
+
+        onShowToast(`트레이드 성사! 총 ${targetAssets.length}명의 선수가 합류했습니다.`);
+    } catch (e) {
+        console.error("Trade Execution Failed:", e);
+        onShowToast("트레이드 처리 중 오류가 발생했습니다.");
+    } finally {
+        setIsExecutingTrade(false);
+        setPendingTrade(null);
+        setBlockSelectedIds(new Set()); setBlockOffers([]); setBlockSearchPerformed(false);
+        setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false);
     }
-
-    const { data: userData } = await (supabase.auth as any).getUser();
-    if (userData?.user) {
-        saveUserTransaction(userData.user.id, newTransaction);
-    }
-
-    setTeams(prevTeams => prevTeams.map(t => {
-      if (t.id === team.id) {
-        const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
-        return { ...t, roster: [...remaining, ...targetAssets] };
-      }
-      if (targetTeam && t.id === targetTeam.id) {
-        const remaining = t.roster.filter(p => !targetAssets.some(x => x.id === p.id));
-        return { ...t, roster: [...remaining, ...userAssets] };
-      }
-      return t;
-    }));
-    onShowToast(`트레이드 성사! 총 ${targetAssets.length}명의 선수가 합류했습니다.`);
-    setPendingTrade(null);
-    setBlockSelectedIds(new Set()); setBlockOffers([]); setBlockSearchPerformed(false);
-    setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false);
   };
 
   const toggleBlockPlayer = (id: string) => {
@@ -204,7 +220,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
             return;
         }
         const requestedPlayers = targetTeam.roster.filter(p => proposalSelectedIds.has(p.id));
-        const generatedRequirements = await generateCounterOffers(requestedPlayers, targetTeam, team);
+        // [Fix] Pass 'teams' as 4th argument to satisfy updated signature and inject state
+        const generatedRequirements = await generateCounterOffers(requestedPlayers, targetTeam, team, teams);
         setProposalRequirements(generatedRequirements);
     } catch (e) {
         console.error(e);
@@ -243,16 +260,27 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
        {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
        {pendingTrade && (
-         <TradeConfirmModal 
-            userAssets={pendingTrade.userAssets} 
-            targetAssets={pendingTrade.targetAssets} 
-            userTeam={team} 
-            targetTeam={pendingTrade.targetTeam} 
-            onConfirm={executeTrade} 
-            onCancel={() => setPendingTrade(null)} 
-         />
+         <div className="relative z-[200]">
+             {isExecutingTrade && (
+                 <div className="fixed inset-0 z-[210] flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-300">
+                     <Loader2 className="w-16 h-16 text-indigo-500 animate-spin mb-4" />
+                     <p className="text-xl font-black text-white uppercase tracking-widest animate-pulse">트레이드 처리 중...</p>
+                     <p className="text-xs text-slate-400 font-bold mt-2">리그 사무국 승인 및 데이터 저장 중입니다.</p>
+                 </div>
+             )}
+             <TradeConfirmModal 
+                userAssets={pendingTrade.userAssets} 
+                targetAssets={pendingTrade.targetAssets} 
+                userTeam={team} 
+                targetTeam={pendingTrade.targetTeam} 
+                onConfirm={executeTrade} 
+                onCancel={() => setPendingTrade(null)} 
+             />
+         </div>
        )}
+       {/* ... rest of the component (header, tabs, roster list) remains same ... */}
        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
+           {/* ... Header Content ... */}
            <div>
                <div className="flex items-center gap-4">
                    <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">트레이드 센터</h2>
