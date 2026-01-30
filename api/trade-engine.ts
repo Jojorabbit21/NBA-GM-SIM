@@ -83,6 +83,56 @@ const TRADE_CONFIG = {
     }
 };
 
+// --- Weights Constant (Synced with Client) ---
+type PositionType = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
+const POSITION_WEIGHTS: Record<PositionType, Record<string, number>> = {
+  PG: { 
+      closeShot: 10, midRange: 20, threeAvg: 25, ft: 10, shotIq: 45, offConsist: 25, 
+      layup: 25, dunk: 0, postPlay: 0, drawFoul: 0, hands: 40, 
+      intDef: 0, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 0, 
+      offReb: 0, defReb: 0, 
+      speed: 0, agility: 0, strength: 0, vertical: 0, stamina: 15, hustle: 0, durability: 0, 
+      passAcc: 25, handling: 15, spdBall: 10, passVision: 25, passIq: 50, 
+      intangibles: 5, potential: 500, height: 0 
+  },
+  SG: { 
+      closeShot: 300, midRange: 100, threeAvg: 150, ft: 100, shotIq: 500, offConsist: 500, 
+      layup: 200, dunk: 150, postPlay: 0, drawFoul: 50, hands: 250, 
+      intDef: 0, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 5, 
+      offReb: 0, defReb: 0, 
+      speed: 0, agility: 0, strength: 0, vertical: 0, stamina: 0, hustle: 0, durability: 0, 
+      passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, 
+      intangibles: 50, potential: 500, height: 30 
+  },
+  SF: { 
+      closeShot: 300, midRange: 150, threeAvg: 50, ft: 150, shotIq: 300, offConsist: 500, 
+      layup: 500, dunk: 100, postPlay: 0, drawFoul: 150, hands: 250, 
+      intDef: 200, perDef: 200, steal: 10, blk: 0, helpDefIq: 10, passPerc: 10, defConsist: 0, 
+      offReb: 0, defReb: 0, 
+      speed: 0, agility: 100, strength: 0, vertical: 100, stamina: 200, hustle: 200, durability: 0, 
+      passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, 
+      intangibles: 5, potential: 500, height: 100 
+  },
+  PF: { 
+      closeShot: 450, midRange: 50, threeAvg: 50, ft: 150, shotIq: 100, offConsist: 600, 
+      layup: 500, dunk: 350, postPlay: 0, drawFoul: 0, hands: 500, 
+      intDef: 200, perDef: 50, steal: 0, blk: 50, helpDefIq: 0, passPerc: 0, defConsist: 0, 
+      offReb: 100, defReb: 160, 
+      speed: 0, agility: 0, strength: 100, vertical: 100, stamina: 100, hustle: 0, durability: 50, 
+      passAcc: 50, handling: 50, spdBall: 0, passVision: 50, passIq: 50, 
+      intangibles: 10, potential: 500, height: 150 
+  },
+  C: { 
+      closeShot: 300, midRange: 0, threeAvg: 0, ft: 0, shotIq: 200, offConsist: 0, 
+      layup: 0, dunk: 0, postPlay: 200, drawFoul: 250, hands: 200, 
+      intDef: 250, perDef: 0, steal: 0, blk: 100, helpDefIq: 0, passPerc: 0, defConsist: 200, 
+      offReb: 100, defReb: 100, 
+      speed: 0, agility: 0, strength: 150, vertical: 0, stamina: 150, hustle: 0, durability: 150, 
+      passAcc: 100, handling: 200, spdBall: 0, passVision: 0, passIq: 100, 
+      intangibles: 15, potential: 500, height: 180 
+  }
+};
+
 // --- Helper Functions ---
 
 // 0. Attribute Mapper (DB Keys -> Runtime Keys)
@@ -145,37 +195,46 @@ function normalizeAttributes(attrs: any) {
         // Meta
         potential: get(['POT', 'potential']),
         intangibles: get(['INTANGIBLES', 'intangibles']),
+        height: get(['HEIGHT', 'height']) // Added for Center calculation
     };
 }
 
-// 0.1 Calculate OVR from Normalized Stats
+// 0.1 Calculate OVR from Normalized Stats (Synced with Client Logic)
 function calculateOvr(p: any): number {
-    const a = p; // Normalized attributes
-    
-    // Group Stats
-    const ins = (a.layup + a.dunk + a.postPlay + a.closeShot) / 4;
-    const threeAvg = (a.threeCorner + a.three45 + a.threeTop) / 3;
-    const out = (a.midRange + threeAvg + a.ft) / 3;
-    const def = (a.perDef + a.intDef + a.steal + a.blk) / 4;
-    const plm = (a.handling + a.passAcc + a.passVision) / 3;
-    const reb = (a.offReb + a.defReb) / 2;
-    const ath = (a.speed + a.agility + a.strength + a.vertical) / 4;
+    const position = p.position || 'PG';
+    let posKey: PositionType = 'PG';
+    if (position.includes('SG')) posKey = 'SG';
+    else if (position.includes('SF')) posKey = 'SF';
+    else if (position.includes('PF')) posKey = 'PF';
+    else if (position.includes('C')) posKey = 'C';
 
-    // Position Weighting
-    let pos = p.position || 'PG';
+    const weights = POSITION_WEIGHTS[posKey];
     
-    let weightedOvr = 0;
-    if (pos.includes('G')) { // Guards
-        weightedOvr = (out * 0.25) + (plm * 0.25) + (ath * 0.15) + (def * 0.15) + (ins * 0.15) + (reb * 0.05);
-    } else if (pos.includes('F')) { // Forwards
-        weightedOvr = (out * 0.20) + (ins * 0.20) + (def * 0.20) + (ath * 0.20) + (reb * 0.10) + (plm * 0.10);
-    } else { // Centers
-        weightedOvr = (ins * 0.25) + (def * 0.25) + (reb * 0.25) + (ath * 0.15) + (out * 0.05) + (plm * 0.05);
+    // Prepare attribute object
+    const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
+    const attr: Record<string, number> = {
+        closeShot: p.closeShot, midRange: p.midRange, threeAvg: threeAvg, ft: p.ft, shotIq: p.shotIq, offConsist: p.offConsist,
+        layup: p.layup, dunk: p.dunk, postPlay: p.postPlay, drawFoul: p.drawFoul, hands: p.hands,
+        passAcc: p.passAcc, handling: p.handling, spdBall: p.spdBall, passVision: p.passVision, passIq: p.passIq,
+        stamina: p.stamina, intDef: p.intDef, perDef: p.perDef, steal: p.steal, blk: p.blk, helpDefIq: p.helpDefIq,
+        passPerc: p.passPerc, defConsist: p.defConsist, offReb: p.offReb, defReb: p.defReb, potential: p.potential,
+        intangibles: p.intangibles, height: p.height || 200, strength: p.strength, vertical: p.vertical,
+        durability: p.durability, agility: p.agility, hustle: p.hustle, speed: p.speed
+    };
+
+    let totalVal = 0;
+    let totalWeight = 0;
+
+    for (const key in weights) {
+        if (weights.hasOwnProperty(key)) {
+            const w = weights[key];
+            const val = attr[key] ?? 50;
+            totalVal += val * w;
+            totalWeight += w;
+        }
     }
 
-    weightedOvr += (a.intangibles - 70) * 0.05;
-
-    return Math.round(Math.min(99, Math.max(40, weightedOvr)));
+    return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
 }
 
 // 1. Calculate Base Trade Value
@@ -315,9 +374,10 @@ function mapDbPlayer(p: any): Player {
     const ath = (attrs.speed + attrs.agility + attrs.strength + attrs.vertical) / 4;
     
     // 3. Determine OVR
-    const dbOvr = Number(p.ovr || (p.base_attributes && p.base_attributes.ovr));
+    // Recalculate using full weights instead of trusting DB OVR blindly (fixes Giannis issue)
+    // The DB OVR might be outdated or calculated with a simpler formula.
     const calculatedOvr = calculateOvr({ ...attrs, position: p.position });
-    const finalOvr = (dbOvr && dbOvr > 40) ? dbOvr : calculatedOvr;
+    const finalOvr = calculatedOvr;
 
     return {
         ...attrs, // Spread FIRST to avoid overwriting calculated overrides below
@@ -331,14 +391,12 @@ function mapDbPlayer(p: any): Player {
         ovr: finalOvr,
         
         // Override potential if needed (default from normalize is 50)
-        // If DB had a specific potential (not default 50), use it. Otherwise calc based on OVR.
         potential: (attrs.potential && attrs.potential !== 50) ? attrs.potential : (finalOvr + 5),
         
         // Engine Specific Stats
         def, out, reb, plm, ins, ath,
         
         // Explicitly map keys that might be missing from spread if they came from calculations above
-        // (Though spread ...attrs handles intDef, perDef, threeCorner directly)
     };
 }
 
