@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Users, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, MinusCircle, Trash2, Send, ListFilter, ChevronRight, History, Clock, Search, Lock, Activity, Handshake, Target, Filter } from 'lucide-react';
+import { Users, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, MinusCircle, Trash2, Send, ListFilter, ChevronRight, History, Clock, Search, Lock, Activity, Handshake, Target, Filter, Check } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
@@ -357,7 +357,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                 return (
                                     <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
                                         <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleBlockPlayer(p.id)}>
-                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <CheckCircle2 size={16} className="text-white" />}</div>
+                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={20} className="text-white" strokeWidth={3} />}</div>
                                             <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                                             <div className="text-left flex-1 min-w-0">
                                                 <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
@@ -377,7 +377,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                     return (
                                         <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
                                         <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleProposalPlayer(p.id)}>
-                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <CheckCircle2 size={16} className="text-white" />}</div>
+                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={20} className="text-white" strokeWidth={3} />}</div>
                                             <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                                             <div className="text-left flex-1 min-w-0">
                                                 <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
