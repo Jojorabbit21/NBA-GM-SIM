@@ -84,25 +84,25 @@ const TRADE_CONFIG = {
     },
     INJURY: { // [Update] Injury Penalties
         DTD_PENALTY: 0.90, // 10% value drop
-        INJURED_PENALTY: 0.40 // 60% value drop (Major injury)
+        INJURED_PENALTY: 0.20 // 80% value drop (Major injury)
     }
 };
 
 // [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades
 const KNOWN_INJURIES: Record<string, any> = {
-  "jaysontatum": { type: "ACL" },
-  "tyresehaliburton": { type: "ACL" },
-  "taureanprince": { type: "Neck" },
-  "scoothenderson": { type: "Hamstring" },
-  "sethcurry": { type: "Back" },
-  "bradleybeal": { type: "Hip" },
-  "kyrieirving": { type: "Knee" },
-  "derecklively": { type: "Foot" },
-  "zachedey": { type: "Ankle" },
-  "scottypippen": { type: "Toe" },
-  "brandonclarke": { type: "Ankle" },
-  "tyjerome": { type: "Calf" },
-  "dejountemurray": { type: "Achilles" }
+  "제이슨테이텀": { type: "ACL" },
+  "타이리스할리버튼": { type: "ACL" },
+  "토린프린스": { type: "Neck" },
+  "스쿳헨더슨": { type: "Hamstring" },
+  "세스커리": { type: "Back" },
+  "브래들리빌": { type: "Hip" },
+  "카이리어빙": { type: "Knee" },
+  "데렉라이블리": { type: "Foot" },
+  "잭이디": { type: "Ankle" },
+  "스카티피펜주니어": { type: "Toe" },
+  "브랜던클락": { type: "Ankle" },
+  "타이제롬": { type: "Calf" },
+  "디존테머레이": { type: "Achilles" }
 };
 
 const normalizeName = (name: string): string => {
