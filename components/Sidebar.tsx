@@ -17,8 +17,17 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
-// NBA Team Primary Colors
-const TEAM_COLORS: Record<string, string> = {
+// 1. Team Info Section Background Colors
+const TEAM_INFO_BG_COLORS: Record<string, string> = {
+  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
+  'dal': '#00538C', 'den': '#FEC524', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FDBB30',
+  'lac': '#1D428A', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
+  'nop': '#85714D', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
+  'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
+};
+
+// 2. Navigation Active State Colors
+const TEAM_NAV_ACTIVE_COLORS: Record<string, string> = {
   'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
   'dal': '#00538C', 'den': '#FEC524', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FDBB30',
   'lac': '#1D428A', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
@@ -81,8 +90,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onResetClick, 
   onLogout 
 }) => {
-  // Determine Team Color
-  const teamColor = team ? (TEAM_COLORS[team.id] || '#4f46e5') : '#4f46e5';
+  // Determine Colors
+  const infoBgColor = team ? (TEAM_INFO_BG_COLORS[team.id] || '#4f46e5') : '#4f46e5';
+  const navActiveColor = team ? (TEAM_NAV_ACTIVE_COLORS[team.id] || '#4f46e5') : '#4f46e5';
 
   return (
     <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500">
@@ -90,7 +100,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Team Profile Section - Redesigned */}
       <div 
         className="p-8 border-b border-slate-800 relative overflow-hidden transition-colors duration-700"
-        style={{ backgroundColor: teamColor }}
+        style={{ backgroundColor: infoBgColor }}
       >
         {/* Gradient Overlay for Depth & Text Readability */}
         <div className="absolute inset-0 bg-gradient-to-br from-black/5 via-black/10 to-black/40 pointer-events-none"></div>
@@ -98,7 +108,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none mix-blend-overlay"></div>
 
         <div className="flex items-center gap-5 relative z-10">
-          {/* Logo - Container Removed, Size Increased */}
+          {/* Logo */}
           <img 
             src={team?.logo} 
             className="w-16 h-16 object-contain drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300" 
@@ -110,7 +120,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {team?.name || 'NBA GM'}
             </h2>
             
-            {/* Stats - Increased Size & Contrast */}
+            {/* Stats */}
             <span className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block text-white/90 drop-shadow-sm">
               {team?.wins || 0}W - {team?.losses || 0}L
             </span>
@@ -121,13 +131,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Date Ticker */}
       <div className="px-8 py-5 border-b border-slate-800 bg-slate-800/20 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <Clock size={16} style={{ color: teamColor }} />
+          {/* Fixed Slate Color for Icon */}
+          <Clock size={16} className="text-slate-400" />
           <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
         </div>
-        <div 
-            className="w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_currentColor]"
-            style={{ backgroundColor: teamColor, color: teamColor }}
-        ></div>
+        {/* Fixed Green Color for Dot */}
+        <div className="w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)] bg-emerald-500"></div>
       </div>
 
       {/* Main Navigation */}
@@ -137,56 +146,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon={<LayoutDashboard size={20}/>} 
           label="라커룸" 
           onClick={() => onNavigate('Dashboard')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'Roster'} 
           icon={<Users size={20}/>} 
           label="로스터 & 기록" 
           onClick={() => onNavigate('Roster')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'Standings'} 
           icon={<Trophy size={20}/>} 
           label="순위표" 
           onClick={() => onNavigate('Standings')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'Leaderboard'} 
           icon={<BarChart3 size={20}/>} 
           label="리더보드" 
           onClick={() => onNavigate('Leaderboard')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'Playoffs'} 
           icon={<Swords size={20}/>} 
           label="플레이오프" 
           onClick={() => onNavigate('Playoffs')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'Schedule'} 
           icon={<CalendarIcon size={20}/>} 
           label="일정" 
           onClick={() => onNavigate('Schedule')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'Transactions'} 
           icon={<ArrowLeftRight size={20}/>} 
           label="트레이드" 
           onClick={() => onNavigate('Transactions')} 
-          color={teamColor}
+          color={navActiveColor}
         />
         <NavItem 
           active={currentView === 'OvrCalculator'} 
           icon={<FlaskConical size={20}/>} 
           label="OVR 실험실" 
           onClick={() => onNavigate('OvrCalculator')} 
-          color={teamColor}
+          color={navActiveColor}
         />
       </nav>
 
