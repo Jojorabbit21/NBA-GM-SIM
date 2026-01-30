@@ -166,30 +166,6 @@ const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
   "dejountemurray": { type: "아킬레스건 통증", returnDate: "2026-01-15" }
 };
 
-// [Cleanup] Parse CSV removed from runtime. Data now comes strictly from Supabase.
-// Only used in migration scripts if needed, but not here.
-export const parseCSVToObjects = (csv: string): any[] => {
-    // Legacy support for seeding if absolutely necessary, otherwise unused in main app
-    const lines = csv.split(/\r?\n/).filter(l => l.trim() !== '');
-    if (lines.length < 2) return [];
-    let headersLine = lines[0];
-    if (headersLine.charCodeAt(0) === 0xFEFF) headersLine = headersLine.slice(1);
-    const headers = headersLine.split(',').map(h => h.trim().toLowerCase());
-    const result = [];
-    for (let i = 1; i < lines.length; i++) {
-        const values = lines[i].split(',').map(v => v.trim());
-        if (values.length < headers.length - 1) continue;
-        const obj: any = {};
-        headers.forEach((h, index) => {
-            const val = values[index];
-            if (val !== undefined && val !== '' && !isNaN(Number(val))) obj[h] = Number(val);
-            else obj[h] = val;
-        });
-        result.push(obj);
-    }
-    return result;
-};
-
 export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
     const position = overridePosition || p.position || p.Position || 'PG';
     
@@ -202,9 +178,6 @@ export const calculatePlayerOvr = (p: any, overridePosition?: string): number =>
     const weights = POSITION_WEIGHTS[posKey];
 
     // Helper: Safely access properties.
-    // If p is a runtime Player object, keys are already camelCase.
-    // If p comes from DB, we expect 'base_attributes' to be handled before calling this, 
-    // or p should be the already-mapped object.
     const v = (key: string, altKey?: string) => {
         if (p[key] !== undefined) return Number(p[key]);
         if (altKey && p[altKey] !== undefined) return Number(p[altKey]);
