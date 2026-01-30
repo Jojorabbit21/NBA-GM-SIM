@@ -226,7 +226,14 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       <div className="flex flex-col min-w-0">
                                           <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
                                               <span className="text-base font-black text-white truncate max-w-[160px] group-hover:text-indigo-400 group-hover:underline">{p.name}</span>
-                                              {p.health === 'Injured' && <span className="px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase">OUT</span>}
+                                              {p.health !== 'Healthy' && (
+                                                  <span 
+                                                    className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black text-white uppercase cursor-help ${p.health === 'Injured' ? 'bg-red-600' : 'bg-amber-600'}`}
+                                                    title={`복귀 예정: ${p.returnDate || '미정'} (${p.injuryType || '부상'})`}
+                                                  >
+                                                    {p.health === 'Injured' ? 'OUT' : 'DTD'}
+                                                  </span>
+                                              )}
                                           </div>
                                       </div>
                                   </div>
