@@ -31,7 +31,6 @@ const reconstructGameState = (
     // 1. Deep Copy Base Data (To avoid mutating cache)
     const teamsMap = new Map<string, Team>();
     const playerMap = new Map<string, Player>();
-    const playerOwnerMap = new Map<string, string>(); // [Fix] Track current owner of each player
 
     // 초기화: 선수들을 ID로 매핑하여 빠른 접근
     baseTeams.forEach(t => {
@@ -46,7 +45,6 @@ const reconstructGameState = (
                 teamId: t.id // 추적용 임시 필드
             };
             playerMap.set(p.id, playerCopy);
-            playerOwnerMap.set(p.id, t.id); // Initialize ownership
             // 초기 로스터 배정
             teamCopy.roster.push(playerCopy);
         });
@@ -62,42 +60,38 @@ const reconstructGameState = (
             const myTeamId = tx.teamId;
             const partnerTeamId = tx.details.partnerTeamId;
 
-            // [Robust Move Logic]
-            // Instead of blindly removing from 'partnerTeamId', check 'playerOwnerMap' to see where the player REALLY is.
-            // This handles cases where players were moved by previous transactions (e.g. CPU trades) or if transaction logs have stale team IDs.
-            const movePlayer = (playerId: string, toTeamId: string) => {
-                const currentOwnerId = playerOwnerMap.get(playerId);
+            // [Critical Fix: Global Purge Strategy]
+            // Instead of trusting where the player "should" be, we search ALL teams and remove the player instance.
+            // This prevents duplication bugs where a player exists in both Team A (failed removal) and Team B (successful addition).
+            const movePlayerSafely = (playerId: string, targetTeamId: string) => {
                 const player = playerMap.get(playerId);
-                const toTeam = teamsMap.get(toTeamId);
+                const targetTeam = teamsMap.get(targetTeamId);
 
-                if (currentOwnerId && player && toTeam) {
-                    // 1. Remove from current owner
-                    const fromTeam = teamsMap.get(currentOwnerId);
-                    if (fromTeam) {
-                        fromTeam.roster = fromTeam.roster.filter(p => p.id !== playerId);
+                if (!player || !targetTeam) return;
+
+                // 1. Global Purge: Remove player from ALL teams
+                teamsMap.forEach(t => {
+                    const idx = t.roster.findIndex(p => p.id === playerId);
+                    if (idx !== -1) {
+                        t.roster.splice(idx, 1);
                     }
-                    
-                    // 2. Add to new owner (avoid duplicates)
-                    if (!toTeam.roster.find(p => p.id === playerId)) {
-                        toTeam.roster.push(player);
-                    }
-                    
-                    // 3. Update Ownership Map
-                    playerOwnerMap.set(playerId, toTeamId);
-                }
+                });
+
+                // 2. Add to Target Team
+                targetTeam.roster.push(player);
             };
 
             // Process 'traded' players: My Team -> Partner Team
             if (traded && partnerTeamId) {
                 traded.forEach((tp: any) => {
-                    movePlayer(tp.id, partnerTeamId);
+                    movePlayerSafely(tp.id, partnerTeamId);
                 });
             }
             
             // Process 'acquired' players: Partner (or anywhere) -> My Team
             if (acquired) {
                 acquired.forEach((ap: any) => {
-                    movePlayer(ap.id, myTeamId);
+                    movePlayerSafely(ap.id, myTeamId);
                 });
             }
         }
