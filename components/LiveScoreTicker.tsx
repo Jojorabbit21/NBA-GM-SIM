@@ -5,9 +5,10 @@ import { resolveTeamId } from '../utils/constants';
 
 interface LiveScoreTickerProps {
   games: Game[];
+  label?: string; // Add optional label
 }
 
-export const LiveScoreTicker: React.FC<LiveScoreTickerProps> = ({ games }) => {
+export const LiveScoreTicker: React.FC<LiveScoreTickerProps> = ({ games, label }) => {
   // 무한 루프 효과를 위해 데이터 복제
   const tickerItems = games.length > 0 ? [...games, ...games, ...games] : [];
 
@@ -22,7 +23,9 @@ export const LiveScoreTicker: React.FC<LiveScoreTickerProps> = ({ games }) => {
             alt="ESPN" 
         />
         <div className="w-[1px] h-3 bg-white/30"></div>
-        <span className="text-[10px] font-black text-red-100 uppercase tracking-widest mt-0.5 whitespace-nowrap">Today's Results</span>
+        <span className="text-[10px] font-black text-red-100 uppercase tracking-widest mt-0.5 whitespace-nowrap">
+            {label || "Today's Results"}
+        </span>
       </div>
 
       {/* Marquee Content */}

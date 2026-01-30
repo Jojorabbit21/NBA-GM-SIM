@@ -101,6 +101,7 @@ export const resolveTeamId = (input: string): string => {
     if (!input) return 'unknown';
     const normalized = input.toLowerCase().trim();
     const found = INITIAL_TEAMS_DATA.find(t => 
+      t.id.toLowerCase() === normalized || // Check ID directly
       t.name.toLowerCase() === normalized || 
       t.city.toLowerCase() === normalized || 
       (t.city + ' ' + t.name).toLowerCase() === normalized

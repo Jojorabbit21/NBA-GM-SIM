@@ -133,16 +133,20 @@ const App: React.FC = () => {
         });
     };
 
-    const tickerGames = useMemo(() => {
+    // [Update] Ticker Data Logic with Dynamic Label
+    const tickerData = useMemo(() => {
         const todayGames = gameData.schedule.filter(g => g.date === gameData.currentSimDate && g.played);
-        if (todayGames.length > 0) return todayGames;
+        if (todayGames.length > 0) return { games: todayGames, label: "Today's Results" };
+        
         for (let i = gameData.schedule.length - 1; i >= 0; i--) {
             const game = gameData.schedule[i]; 
             if (game.played && game.date < gameData.currentSimDate) { 
-                return gameData.schedule.filter(g => g.date === game.date && g.played); 
+                const pastGames = gameData.schedule.filter(g => g.date === game.date && g.played);
+                // Return 'Latest Results' instead of specific date for cleaner UI, or use date if preferred
+                return { games: pastGames, label: "Latest Results" }; 
             }
         }
-        return [];
+        return { games: [], label: "Today's Results" };
     }, [gameData.schedule, gameData.currentSimDate]);
 
     // --- Render Conditions ---
@@ -210,7 +214,7 @@ const App: React.FC = () => {
 
                 <main className="flex-1 overflow-y-auto bg-slate-950/50 relative flex flex-col">
                     <div className="h-10 bg-slate-900 border-b border-slate-800 flex items-center relative z-10 flex-shrink-0">
-                        <LiveScoreTicker games={tickerGames} />
+                        <LiveScoreTicker games={tickerData.games} label={tickerData.label} />
                     </div>
 
                     {gameData.news && gameData.news.length > 0 && (
