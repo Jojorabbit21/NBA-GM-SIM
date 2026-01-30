@@ -64,13 +64,14 @@ const LOG = (msg: string, data?: any) => {
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        VALUE_EXPONENT: 2.9, // [Balance] Increased from 2.75 to 2.9 to widen gap between tiers
+        // [Balance] Increased to 3.15 to make stars strictly better than sum of parts
+        VALUE_EXPONENT: 3.15, 
         SUPERSTAR_PREMIUM_THRESHOLD: 94,
-        SUPERSTAR_MULTIPLIER: 1.4 // [Balance] Increased from 1.3 to 1.4
+        SUPERSTAR_MULTIPLIER: 1.5 
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
-        BAD_CONTRACT_PENALTY: 0.8, 
+        BAD_CONTRACT_PENALTY: 0.7, 
     },
     NEEDS: { 
         POSITION_BONUS: 0.25,
@@ -83,16 +84,16 @@ const TRADE_CONFIG = {
         CEILING_MATCH: 1.25
     },
     INJURY: { 
-        DTD_PENALTY: 0.90, // 10% value drop
-        INJURED_PENALTY: 0.10 // 90% value drop (Major injury - essentially worthless as asset)
+        DTD_PENALTY: 0.90, 
+        INJURED_PENALTY: 0.10 
     },
     DEPTH: {
-        MAX_CORE_ASSETS_IN_DEAL: 2, // Maximum number of "Core" players AI can give up in one trade
+        MAX_CORE_ASSETS_IN_DEAL: 2, 
         MIN_ROSTER_SIZE: 13
     }
 };
 
-// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades (Includes English & Korean)
+// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades
 const KNOWN_INJURIES: Record<string, any> = {
   // English Keys
   "jaysontatum": { type: "ACL" },
@@ -219,7 +220,6 @@ function getPlayerTradeValue(p: Player): number {
 
     if (safeOvr < 80 && p.salary > 20) baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
 
-    // [Update] 5. Injury Penalty
     if (p.health === 'Injured') {
         baseValue *= C.INJURY.INJURED_PENALTY;
     } else if (p.health === 'Day-to-Day') {
@@ -270,15 +270,10 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
     const C = TRADE_CONFIG.NEEDS;
 
     if (isAcquiring) {
-        // [Logic] Toxic Asset / Negative Value Logic for Injured Players with Salary
         if (player.health === 'Injured') {
             if (needs.isContender) {
-                // Contenders reject injured players immediately by assigning massive negative value
-                // Salary Dump Logic: Value = -1 * (Salary * 20)
                 return -1 * (player.salary * 20);
             } else if (player.salary > 5) {
-                // Rebuilders apply heavy cost for absorbing salary of injured player
-                // Value = Base(Low) - Cost(Salary * 10)
                 return value - (player.salary * 10);
             }
         }
@@ -328,7 +323,6 @@ function mapDbPlayer(p: any): Player {
     
     const finalOvr = calculateOvr({ ...attrs, position: p.position });
 
-    // [Update] Check known injury
     const normName = normalizeName(p.name);
     const injury = KNOWN_INJURIES[normName];
     const health = injury ? 'Injured' : 'Healthy';
@@ -383,11 +377,23 @@ export default async function handler(req: any, res: any) {
             const { tradingPlayers, desiredPositions } = payload;
             const offers: TradeOffer[] = [];
 
-            const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
-            const userMaxOvr = Math.max(...tradingPlayers.map((p: Player) => p.ovr));
-            const isSuperstarTrade = userMaxOvr >= 94; 
+            // [Logic] Package Dilution Logic (CONDITIONAL)
+            // Goal: Allow packages of 5 stars (value sum) but penalize packages of 5 scrubs (diminishing returns)
+            const sortedUserPlayers = [...tradingPlayers].sort((a: Player, b: Player) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
             
-            LOG(`Generating offers for user package. Salary: ${userSalary}, MaxOVR: ${userMaxOvr}, Players: ${tradingPlayers.length}`);
+            const userMaxOvr = sortedUserPlayers.length > 0 ? sortedUserPlayers[0].ovr : 0;
+            const userMaxPot = Math.max(...tradingPlayers.map((p: Player) => p.potential));
+            const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
+            
+            // Asset Tier Ceiling
+            let maxOvrCeiling = 99;
+            if (userMaxOvr < 75 && userMaxPot < 80) {
+                maxOvrCeiling = 79; 
+            } else if (userMaxOvr < 82) {
+                maxOvrCeiling = userMaxOvr + 6; 
+            }
+
+            LOG(`Generating offers. Max User OVR: ${userMaxOvr}, Ceiling: ${maxOvrCeiling}`);
 
             const otherTeams = allTeams.filter(t => t.id !== payload.myTeamId);
 
@@ -395,27 +401,33 @@ export default async function handler(req: any, res: any) {
                 const needs = analyzeTeamSituation(targetTeam);
                 const isCore = getCoreAssetFilter(targetTeam.roster);
 
-                // [Logic] Identify AI's Core Pieces (Starters + High Pot Young)
-                // Used to prevent "gutting the roster" when user offers a superstar
-                const sortedRoster = [...targetTeam.roster].sort((a, b) => b.ovr - a.ovr);
-                const aiStarters = sortedRoster.slice(0, 5).map(p => p.id);
-                const aiKeyYoung = sortedRoster.filter(p => p.age <= 24 && p.potential >= 80).map(p => p.id);
-
+                // [Logic] Calculate User Package Value with Conditional Dilution
                 let userValueToAI = 0;
-                tradingPlayers.forEach((p: Player) => {
-                    // For user players, use dynamic logic.
-                    // If Injured, value will be extremely low or negative for Contenders.
+                
+                sortedUserPlayers.forEach((p: Player, idx: number) => {
                     let val = getContextualValue(p, needs, true);
-                    if (p.ovr >= 95) val *= 1.5; 
-                    else if (p.ovr >= 90) val *= 1.2;
+                    
+                    // Value Shield: If player is Good (OVR >= 80) or Young Pot (Pot >= 80 & Age <= 24), they retain value.
+                    // Otherwise, applies diminishing returns based on package slot.
+                    const isValuableAsset = p.ovr >= 80 || (p.age <= 24 && p.potential >= 80);
+                    
+                    if (!isValuableAsset) {
+                        if (idx === 2) val *= 0.5; // 3rd best is a scrub? 50%
+                        else if (idx === 3) val *= 0.2; // 4th best is a scrub? 20%
+                        else if (idx >= 4) val = 0.1; // 5th best is a scrub? 10%
+                    }
+                    
                     userValueToAI += val;
                 });
                 
                 if (userValueToAI < 100) continue; 
 
+                // Filter candidates based on Tier Ceiling
                 let candidates = targetTeam.roster.filter(p => {
+                    if (p.ovr > maxOvrCeiling) return false;
+                    
                     if (isCore(p)) {
-                        if (isSuperstarTrade && p.ovr < userMaxOvr) return true; 
+                        if (p.ovr >= 90 && userMaxOvr < 88) return false;
                         return false; 
                     }
                     return true;
@@ -428,18 +440,6 @@ export default async function handler(req: any, res: any) {
                     let packValue = 0;
                     let packSalary = 0;
                     
-                    if (isSuperstarTrade) {
-                         const stars = candidates.filter(p => p.ovr >= 85 || (p.potential >= 88 && p.age <= 24)).sort((a,b) => b.ovr - a.ovr);
-                         if (stars.length > 0) {
-                             const star = stars[Math.floor(Math.random() * Math.min(2, stars.length))];
-                             pack.push(star);
-                             packValue += getContextualValue(star, needs, false);
-                             packSalary += star.salary;
-                         }
-                    }
-
-                    // [Logic] Core Asset Protection
-                    // While building the package, we filter `pool` to ensure we don't pick too many core players.
                     let pool = candidates.filter(p => !pack.includes(p));
                     
                     const salaryMin = userSalary * 0.75;
@@ -449,14 +449,6 @@ export default async function handler(req: any, res: any) {
                     while (pack.length < 5 && attempts < 50) {
                         attempts++;
                         
-                        // [New] Check current core count in pack
-                        const coresInPack = pack.filter(p => aiStarters.includes(p.id) || aiKeyYoung.includes(p.id)).length;
-                        
-                        // [New] If limit reached, remove remaining cores from pool for this iteration
-                        if (coresInPack >= TRADE_CONFIG.DEPTH.MAX_CORE_ASSETS_IN_DEAL) {
-                            pool = pool.filter(p => !aiStarters.includes(p.id) && !aiKeyYoung.includes(p.id));
-                        }
-
                         const isSalOk = packSalary >= salaryMin;
                         const isValOk = packValue >= valueTarget * 0.9;
 
@@ -467,7 +459,6 @@ export default async function handler(req: any, res: any) {
                         let nextPiece: Player | undefined;
 
                         if (!isValOk && valDeficit > 5000) {
-                            // If we need value, try to find highest val in pool
                             nextPiece = pool.sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a))[0];
                         } else if (!isSalOk && salDeficit > 5) {
                             nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.find(p => p.salary > 5);
@@ -479,15 +470,13 @@ export default async function handler(req: any, res: any) {
                             pack.push(nextPiece);
                             packValue += getContextualValue(nextPiece, needs, false);
                             packSalary += nextPiece.salary;
-                            // Remove from pool immediately
                             const idx = pool.findIndex(p => p.id === nextPiece!.id);
                             if (idx > -1) pool.splice(idx, 1);
                         }
                     }
 
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
-                    // [Balance] Cap Ratio at 1.15 to prevent AI from overpaying massively (User Feedback: 1.3+ is too easy)
-                    const validValue = valRatio >= 0.85 && valRatio <= 1.15;
+                    const validValue = valRatio >= 0.85 && valRatio <= 1.15; 
 
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35);
@@ -502,7 +491,7 @@ export default async function handler(req: any, res: any) {
                                 teamName: targetTeam.name,
                                 players: pack,
                                 diffValue: packValue - userValueToAI,
-                                analysis: [`Value Ratio: ${valRatio.toFixed(2)}`, `Salary Ratio: ${salRatio.toFixed(2)}`]
+                                analysis: [`Value Ratio: ${valRatio.toFixed(2)}`, `Conditional Dilution Applied`]
                             });
                         }
                     }
@@ -534,8 +523,6 @@ export default async function handler(req: any, res: any) {
                 targetSalary += p.salary;
             });
             
-            LOG(`[Counter] Target Pkg Value: ${targetValueToAI}, Salary: ${targetSalary}`);
-
             let forcedPackageCandidates: Player[] = [];
             
             if (isTargetingSuperstar) {
@@ -559,7 +546,22 @@ export default async function handler(req: any, res: any) {
                      pack.push(...forcedPackageCandidates);
                 }
 
-                let packValue = pack.reduce((s,p) => s + getContextualValue(p, needs, true), 0);
+                // Apply Conditional Dilution to Package being built
+                const sortedPack = [...pack].sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
+                let packValue = 0;
+                
+                sortedPack.forEach((p, idx) => {
+                    let val = getContextualValue(p, needs, true);
+                    const isValuableAsset = p.ovr >= 80 || (p.age <= 24 && p.potential >= 80);
+                    
+                    if (!isValuableAsset) {
+                        if (idx === 2) val *= 0.5;
+                        else if (idx === 3) val *= 0.2;
+                        else if (idx >= 4) val = 0.1;
+                    }
+                    packValue += val;
+                });
+
                 let packSalary = pack.reduce((s,p) => s + p.salary, 0);
 
                 let pool = candidates.filter(p => !pack.includes(p));
@@ -584,7 +586,20 @@ export default async function handler(req: any, res: any) {
 
                     if (next && !pack.includes(next)) {
                         pack.push(next);
-                        packValue += getContextualValue(next, needs, true);
+                        // Recalculate value with new member using Conditional Dilution
+                        const newPack = [...pack, next].sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
+                        packValue = 0;
+                        newPack.forEach((p, idx) => {
+                            let val = getContextualValue(p, needs, true);
+                            const isValuableAsset = p.ovr >= 80 || (p.age <= 24 && p.potential >= 80);
+                            
+                            if (!isValuableAsset) {
+                                if (idx === 2) val *= 0.5;
+                                else if (idx === 3) val *= 0.2;
+                                else if (idx >= 4) val = 0.1;
+                            }
+                            packValue += val;
+                        });
                         packSalary += next.salary;
                         pool = pool.filter(p => p.id !== next!.id);
                     }
@@ -604,7 +619,7 @@ export default async function handler(req: any, res: any) {
                             teamName: myTeam.name,
                             players: pack,
                             diffValue: packValue - targetValueToAI,
-                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Value Met: ${Math.round(packValue)} >= ${Math.round(targetValueToAI)}`]
+                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Value Met with Conditional Dilution`]
                         });
                     }
                 }
