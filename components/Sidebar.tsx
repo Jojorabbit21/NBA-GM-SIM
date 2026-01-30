@@ -26,7 +26,16 @@ const TEAM_INFO_BG_COLORS: Record<string, string> = {
   'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
 };
 
-// 2. Navigation Active State Colors
+// 2. Team Info Section Text Colors (New)
+const TEAM_INFO_TEXT_COLORS: Record<string, string> = {
+  'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#FFFFFF', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
+  'dal': '#FFFFFF', 'den': '#FFFFFF', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#FFFFFF',
+  'lac': '#FFFFFF', 'lal': '#FFFFFF', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
+  'nop': '#FFFFFF', 'nyk': '#FFFFFF', 'okc': '#FFFFFF', 'orl': '#FFFFFF', 'phi': '#FFFFFF', 'phx': '#FFFFFF',
+  'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#FFFFFF', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
+};
+
+// 3. Navigation Active State Background Colors
 const TEAM_NAV_ACTIVE_COLORS: Record<string, string> = {
   'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
   'dal': '#00538C', 'den': '#FEC524', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FDBB30',
@@ -35,7 +44,16 @@ const TEAM_NAV_ACTIVE_COLORS: Record<string, string> = {
   'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
 };
 
-const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string }> = ({ active, icon, label, onClick, color }) => {
+// 4. Navigation Active State Text Colors (New)
+const TEAM_NAV_TEXT_COLORS: Record<string, string> = {
+  'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#FFFFFF', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
+  'dal': '#FFFFFF', 'den': '#FFFFFF', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#FFFFFF',
+  'lac': '#FFFFFF', 'lal': '#FFFFFF', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
+  'nop': '#FFFFFF', 'nyk': '#FFFFFF', 'okc': '#FFFFFF', 'orl': '#FFFFFF', 'phi': '#FFFFFF', 'phx': '#FFFFFF',
+  'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#FFFFFF', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
+};
+
+const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string }> = ({ active, icon, label, onClick, color, textColor }) => {
   // Convert Hex to RGB for opacity handling in shadows/hovers
   const hexToRgb = (hex: string) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -48,11 +66,12 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
       onClick={onClick} 
       className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
         active 
-          ? 'text-white shadow-lg ring-1' 
+          ? 'shadow-lg ring-1' // Removed 'text-white' to allow dynamic color
           : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
       }`}
       style={active ? {
         backgroundColor: color,
+        color: textColor, // Apply Dynamic Text Color
         boxShadow: `0 10px 15px -3px rgba(${rgb}, 0.4)`,
         borderColor: `rgba(${rgb}, 0.3)`
       } : {}}
@@ -63,7 +82,7 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
         style={!active ? { color: 'inherit' } : {}}
       >
         {React.cloneElement(icon as React.ReactElement<any>, {
-           color: active ? 'white' : undefined,
+           color: active ? textColor : undefined, // Apply Dynamic Icon Color
            className: !active ? `transition-colors duration-300 group-hover:text-[${color}]` : ''
         })}
       </span>
@@ -92,7 +111,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   // Determine Colors
   const infoBgColor = team ? (TEAM_INFO_BG_COLORS[team.id] || '#4f46e5') : '#4f46e5';
+  const infoTextColor = team ? (TEAM_INFO_TEXT_COLORS[team.id] || '#FFFFFF') : '#FFFFFF';
+  
   const navActiveColor = team ? (TEAM_NAV_ACTIVE_COLORS[team.id] || '#4f46e5') : '#4f46e5';
+  const navTextColor = team ? (TEAM_NAV_TEXT_COLORS[team.id] || '#FFFFFF') : '#FFFFFF';
 
   return (
     <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500">
@@ -116,12 +138,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           />
           
           <div className="min-w-0">
-            <h2 className="font-black text-2xl leading-none uppercase oswald text-white truncate drop-shadow-md">
+            <h2 
+                className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md"
+                style={{ color: infoTextColor }}
+            >
               {team?.name || 'NBA GM'}
             </h2>
             
             {/* Stats */}
-            <span className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block text-white/90 drop-shadow-sm">
+            <span 
+                className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-90"
+                style={{ color: infoTextColor }}
+            >
               {team?.wins || 0}W - {team?.losses || 0}L
             </span>
           </div>
@@ -147,6 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="라커룸" 
           onClick={() => onNavigate('Dashboard')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'Roster'} 
@@ -154,6 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="로스터 & 기록" 
           onClick={() => onNavigate('Roster')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'Standings'} 
@@ -161,6 +191,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="순위표" 
           onClick={() => onNavigate('Standings')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'Leaderboard'} 
@@ -168,6 +199,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="리더보드" 
           onClick={() => onNavigate('Leaderboard')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'Playoffs'} 
@@ -175,6 +207,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="플레이오프" 
           onClick={() => onNavigate('Playoffs')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'Schedule'} 
@@ -182,6 +215,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="일정" 
           onClick={() => onNavigate('Schedule')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'Transactions'} 
@@ -189,6 +223,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="트레이드" 
           onClick={() => onNavigate('Transactions')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
         <NavItem 
           active={currentView === 'OvrCalculator'} 
@@ -196,6 +231,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           label="OVR 실험실" 
           onClick={() => onNavigate('OvrCalculator')} 
           color={navActiveColor}
+          textColor={navTextColor}
         />
       </nav>
 
