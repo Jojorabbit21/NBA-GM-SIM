@@ -188,7 +188,15 @@ export const useSimulation = (
                     const t = updatedTeams[teamIdx];
                     t.roster = t.roster.map(p => {
                         const update = rosterUpdates[p.id]; const box = boxScore.find(b => b.playerId === p.id);
-                        let targetStats = game.isPlayoff ? (p.playoffStats || INITIAL_STATS()) : p.stats;
+                        
+                        // [Critical Fix] Defensive Copy to prevent undefined access
+                        // Use spread to create a shallow copy, preventing mutation of the reference if it exists,
+                        // and providing a fresh INITIAL_STATS object if it's undefined.
+                        // This prevents "Cannot read properties of undefined (reading 'g')" crashes.
+                        let targetStats = game.isPlayoff 
+                            ? { ...(p.playoffStats || INITIAL_STATS()) } 
+                            : { ...(p.stats || INITIAL_STATS()) };
+
                         if (box) { 
                             targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
                             targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0); targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
