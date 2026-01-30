@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, MinusCircle, Trash2, Send, ListFilter, ChevronRight, History, Clock, Search, Lock, Activity, Handshake, Target, Filter } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
@@ -25,6 +26,8 @@ interface TransactionsViewProps {
   onAddTransaction?: (t: Transaction) => void;
 }
 
+const MAX_DAILY_TRADES = 5;
+
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'mine'>('all');
@@ -47,6 +50,32 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     targetAssets: Player[],
     targetTeam: Team
   } | null>(null);
+
+  // [Trade Limit Logic]
+  const [dailyTradeAttempts, setDailyTradeAttempts] = useState(0);
+
+  useEffect(() => {
+      const key = `trade_ops_${team.id}_${currentSimDate}`;
+      const saved = localStorage.getItem(key);
+      setDailyTradeAttempts(saved ? parseInt(saved, 10) : 0);
+  }, [currentSimDate, team.id]);
+
+  const incrementTradeAttempts = () => {
+      const newVal = dailyTradeAttempts + 1;
+      setDailyTradeAttempts(newVal);
+      localStorage.setItem(`trade_ops_${team.id}_${currentSimDate}`, newVal.toString());
+  };
+
+  const isTradeLimitReached = dailyTradeAttempts >= MAX_DAILY_TRADES;
+
+  const TradeLimitChip = () => (
+      <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 mr-2 transition-colors ${isTradeLimitReached ? 'bg-red-950/30 border-red-500/50 text-red-400' : 'bg-slate-950/50 border-slate-700 text-slate-400'}`} title="일일 트레이드 업무 제한">
+          <Activity size={14} className={isTradeLimitReached ? "animate-pulse" : ""} />
+          <span className="text-[10px] font-black uppercase tracking-wider font-mono">
+              Daily Ops: {dailyTradeAttempts}/{MAX_DAILY_TRADES}
+          </span>
+      </div>
+  );
 
   const isTradeDeadlinePassed = useMemo(() => {
     return new Date(currentSimDate) > new Date(TRADE_DEADLINE);
@@ -123,9 +152,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
 
   const handleSearchBlockOffers = async () => {
     if (blockSelectedIds.size === 0 || isTradeDeadlinePassed) return;
+    
+    if (isTradeLimitReached) {
+        onShowToast(`금일 트레이드 업무 한도(${MAX_DAILY_TRADES}회)를 초과했습니다.`);
+        return;
+    }
+
     logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}, Targets: ${targetPositions.join(',')}`); 
 
     setBlockIsProcessing(true); setBlockSearchPerformed(true);
+    incrementTradeAttempts(); // Count usage
     
     try {
         const targetPlayers = (team?.roster || []).filter(p => blockSelectedIds.has(p.id));
@@ -150,9 +186,16 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
 
   const handleRequestRequirements = async () => {
     if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) return;
+
+    if (isTradeLimitReached) {
+        onShowToast(`금일 트레이드 업무 한도(${MAX_DAILY_TRADES}회)를 초과했습니다.`);
+        return;
+    }
+
     logEvent('Trade', 'Request Proposal', `Target: ${proposalTargetTeamId}, Assets: ${proposalSelectedIds.size}`);
 
     setProposalIsProcessing(true); setProposalSearchPerformed(true);
+    incrementTradeAttempts(); // Count usage
     
     try {
         const targetTeam = teams.find(t => t.id === proposalTargetTeamId);
@@ -248,11 +291,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                     </div>
                  ) : activeTab === 'Block' ? (
                     <>
+                        <TradeLimitChip />
                         <PositionFilter selected={targetPositions} onToggle={toggleTargetPosition} />
                         <button onClick={handleSearchBlockOffers} disabled={blockSelectedIds.size === 0 || blockIsProcessing} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!blockSearchPerformed && blockSelectedIds.size > 0 && !blockIsProcessing ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={blockIsProcessing ? 'animate-spin' : ''} />{blockIsProcessing ? '협상 중...' : `오퍼 탐색`}</button>
                     </>
                  ) : activeTab === 'Proposal' ? (
                     <>
+                        <TradeLimitChip />
                         <button onClick={() => { setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false); }} className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center" disabled={proposalSelectedIds.size === 0}><Trash2 size={18} /> 전체 해제</button>
                         <button onClick={handleRequestRequirements} disabled={proposalSelectedIds.size === 0 || proposalIsProcessing || !proposalTargetTeamId} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!proposalSearchPerformed && proposalSelectedIds.size > 0 && !proposalIsProcessing && proposalTargetTeamId ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={proposalIsProcessing ? 'animate-spin' : ''} />{proposalIsProcessing ? '조건 분석 중...' : `제안 요청`}</button>
                     </>
