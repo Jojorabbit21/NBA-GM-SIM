@@ -342,9 +342,12 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         weight: p.weight || 100,
         salary: p.salary || 1.0,
         contractYears: p.contract_years || 1,
+        
+        // [Injury Update] Prioritize KNOWN_INJURIES constant
         health: injury ? 'Injured' : 'Healthy',
         injuryType: injury?.type,
         returnDate: injury?.returnDate,
+        
         condition: 100,
         ovr,
         potential: potential || (ovr + 5),
@@ -426,19 +429,4 @@ export const generateSeasonSchedule = (myTeamId: string): Game[] => {
     games.push({ id: `game_${i}_${myTeamId}`, homeTeamId: isHome ? myTeamId : opponentId, awayTeamId: isHome ? opponentId : myTeamId, date: gameDate.toISOString().split('T')[0], played: false });
   }
   return games;
-};
-
-export const exportScheduleToCSV = (schedule: Game[]) => {
-  const headers = ['id', 'date', 'homeTeamId', 'awayTeamId', 'homeScore', 'awayScore', 'played', 'isPlayoff'];
-  const rows = schedule.map(g => [g.id, g.date, g.homeTeamId, g.awayTeamId, g.homeScore ?? '', g.awayScore ?? '', g.played, g.isPlayoff ?? false]);
-  const csvContent = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.setAttribute('href', url);
-  link.setAttribute('download', 'nba_schedule.csv');
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
 };

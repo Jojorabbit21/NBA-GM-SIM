@@ -83,7 +83,8 @@ const TRADE_CONFIG = {
     }
 };
 
-// --- Weights Constant (Synced with Client) ---
+// --- OVR Weights (Synced from Client) ---
+// This ensures server-side valuation matches what users see in the UI.
 type PositionType = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 const POSITION_WEIGHTS: Record<PositionType, Record<string, number>> = {
   PG: { 
@@ -195,11 +196,11 @@ function normalizeAttributes(attrs: any) {
         // Meta
         potential: get(['POT', 'potential']),
         intangibles: get(['INTANGIBLES', 'intangibles']),
-        height: get(['HEIGHT', 'height']) // Added for Center calculation
+        height: get(['HEIGHT', 'height'])
     };
 }
 
-// 0.1 Calculate OVR from Normalized Stats (Synced with Client Logic)
+// 0.1 Calculate OVR from Normalized Stats (Weighted)
 function calculateOvr(p: any): number {
     const position = p.position || 'PG';
     let posKey: PositionType = 'PG';
@@ -210,8 +211,9 @@ function calculateOvr(p: any): number {
 
     const weights = POSITION_WEIGHTS[posKey];
     
-    // Prepare attribute object
+    // Calculate 3pt avg
     const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
+    
     const attr: Record<string, number> = {
         closeShot: p.closeShot, midRange: p.midRange, threeAvg: threeAvg, ft: p.ft, shotIq: p.shotIq, offConsist: p.offConsist,
         layup: p.layup, dunk: p.dunk, postPlay: p.postPlay, drawFoul: p.drawFoul, hands: p.hands,
@@ -276,7 +278,6 @@ function getPlayerTradeValue(p: Player): number {
 // 2. Analyze Team Needs
 function analyzeTeamSituation(team: Team): TeamNeeds {
     const roster = team.roster;
-    // Sort by OVR for top-end talent check
     const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
     const top8 = sorted.slice(0, 8);
     
@@ -322,24 +323,20 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
     const C = TRADE_CONFIG.NEEDS;
 
     if (isAcquiring) {
-        // Fit Bonus
         let fitMult = 1.0;
         if (needs.weakPositions.some(pos => player.position.includes(pos))) {
             fitMult += C.POSITION_BONUS;
         }
-        // Stat Need Bonus
         if (needs.statNeeds.includes('DEF') && player.def > 75) fitMult += 0.1;
         if (needs.statNeeds.includes('3PT') && player.out > 75) fitMult += 0.1;
         if (needs.statNeeds.includes('REB') && player.reb > 75) fitMult += 0.1;
 
         value *= fitMult;
 
-        // Strategy Bonus
         if (needs.isContender && player.ovr >= 80) value *= 1.25; 
         if (needs.isSeller && player.age <= 23) value *= 1.35; 
 
     } else {
-        // Selling Logic
         if (needs.isSeller && player.age > 28) value *= 0.7; // "Dump him"
         if (needs.isContender && player.ovr > 80) value *= 1.3; // "We need him"
     }
@@ -373,14 +370,13 @@ function mapDbPlayer(p: any): Player {
     const reb = (attrs.offReb + attrs.defReb) / 2;
     const ath = (attrs.speed + attrs.agility + attrs.strength + attrs.vertical) / 4;
     
-    // 3. Determine OVR
-    // Recalculate using full weights instead of trusting DB OVR blindly (fixes Giannis issue)
-    // The DB OVR might be outdated or calculated with a simpler formula.
+    // 3. Determine OVR (Use precise weighted calc)
     const calculatedOvr = calculateOvr({ ...attrs, position: p.position });
     const finalOvr = calculatedOvr;
 
+    // 4. Construct Object (Fix: Spread first to avoid overwrites)
     return {
-        ...attrs, // Spread FIRST to avoid overwriting calculated overrides below
+        ...attrs, // [Fix] Spread first
 
         id: p.id,
         name: p.name,
@@ -390,13 +386,11 @@ function mapDbPlayer(p: any): Player {
         contractYears: Number(p.contract_years || 1),
         ovr: finalOvr,
         
-        // Override potential if needed (default from normalize is 50)
+        // Ensure potential is correctly set
         potential: (attrs.potential && attrs.potential !== 50) ? attrs.potential : (finalOvr + 5),
         
         // Engine Specific Stats
         def, out, reb, plm, ins, ath,
-        
-        // Explicitly map keys that might be missing from spread if they came from calculations above
     };
 }
 
@@ -415,7 +409,6 @@ export default async function handler(req: any, res: any) {
         const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-        // Fetch DB Data - Single Source of Truth
         const { data: teamsData, error: teamsError } = await supabaseClient
             .from('meta_teams')
             .select('*, meta_players(*)');
@@ -435,11 +428,9 @@ export default async function handler(req: any, res: any) {
             const { tradingPlayers, desiredPositions } = payload;
             const offers: TradeOffer[] = [];
 
-            // 1. Analyze User Package
             const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
             const userMaxOvr = Math.max(...tradingPlayers.map((p: Player) => p.ovr));
-            
-            const isSuperstarTrade = userMaxOvr >= 94; // User offering a top-tier superstar
+            const isSuperstarTrade = userMaxOvr >= 94; 
             
             LOG(`Generating offers for user package. Salary: ${userSalary}, MaxOVR: ${userMaxOvr}, Players: ${tradingPlayers.length}`);
 
@@ -447,47 +438,36 @@ export default async function handler(req: any, res: any) {
 
             for (const targetTeam of otherTeams) {
                 const needs = analyzeTeamSituation(targetTeam);
-                const isCore = getCoreAssetFilter(targetTeam.roster); // Dynamic Core Logic
+                const isCore = getCoreAssetFilter(targetTeam.roster);
 
-                // User Value Calculation
                 let userValueToAI = 0;
                 tradingPlayers.forEach((p: Player) => {
                     let val = getContextualValue(p, needs, true);
-                    // [Feature] User Scarcity Premium: 
-                    // If user puts a 95+ superstar on block, multiply value
-                    if (p.ovr >= 95) val *= 1.5; // Toned down from 2.0 to ensure matches
+                    if (p.ovr >= 95) val *= 1.5; 
                     else if (p.ovr >= 90) val *= 1.2;
                     userValueToAI += val;
                 });
                 
                 if (userValueToAI < 300) continue; 
 
-                // 2. Candidate Selection
-                // Filter: AI protects its Core Assets unless getting a better player
                 let candidates = targetTeam.roster.filter(p => {
                     if (isCore(p)) {
-                        // AI only gives up Core if User offers Superstar (94+) AND Core is worse than User's player
                         if (isSuperstarTrade && p.ovr < userMaxOvr) return true; 
-                        return false; // Otherwise protect core
+                        return false; 
                     }
                     return true;
                 });
                 
-                // Shuffle for variety
                 candidates.sort(() => Math.random() - 0.5);
 
-                // 3. Generate Packages
                 for (let i = 0; i < 20; i++) {
                     const pack: Player[] = [];
                     let packValue = 0;
                     let packSalary = 0;
                     
-                    // Force Headliner Logic
                     if (isSuperstarTrade) {
-                         // Try to find a matching star from candidates
                          const stars = candidates.filter(p => p.ovr >= 85 || (p.potential >= 88 && p.age <= 24)).sort((a,b) => b.ovr - a.ovr);
                          if (stars.length > 0) {
-                             // Pick one of top 2 available stars
                              const star = stars[Math.floor(Math.random() * Math.min(2, stars.length))];
                              pack.push(star);
                              packValue += getContextualValue(star, needs, false);
@@ -495,18 +475,14 @@ export default async function handler(req: any, res: any) {
                          }
                     }
 
-                    // Fill logic
                     const pool = candidates.filter(p => !pack.includes(p));
                     const salaryMin = userSalary * 0.75;
-                    // Lower value target slightly to allow deals to happen (0.85 of user val)
                     const valueTarget = userValueToAI; 
 
                     let attempts = 0;
                     while (pack.length < 5 && attempts < 50) {
                         attempts++;
                         const isSalOk = packSalary >= salaryMin;
-                        // AI wants to *receive* more value or at least equal.
-                        // But to generate offers, we assume AI is willing to pay ~90% of user value if it fills a need
                         const isValOk = packValue >= valueTarget * 0.9;
 
                         if (isSalOk && isValOk) break;
@@ -516,13 +492,10 @@ export default async function handler(req: any, res: any) {
                         let nextPiece: Player | undefined;
 
                         if (!isValOk && valDeficit > 5000) {
-                            // Need Value: Get best available
                             nextPiece = pool.sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a))[0];
                         } else if (!isSalOk && salDeficit > 5) {
-                            // Need Salary
                             nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.find(p => p.salary > 5);
                         } else {
-                            // Filler
                             nextPiece = pool[Math.floor(Math.random() * pool.length)]; 
                         }
 
@@ -530,13 +503,11 @@ export default async function handler(req: any, res: any) {
                             pack.push(nextPiece);
                             packValue += getContextualValue(nextPiece, needs, false);
                             packSalary += nextPiece.salary;
-                            // Remove from pool
                             const idx = pool.indexOf(nextPiece);
                             if (idx > -1) pool.splice(idx, 1);
                         }
                     }
 
-                    // 4. Validation
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
                     const validValue = valRatio >= 0.85 && valRatio <= 1.5;
 
@@ -560,11 +531,6 @@ export default async function handler(req: any, res: any) {
                 }
             }
             
-            // Log if no offers
-            if (offers.length === 0) {
-                LOG("No offers generated. Relaxing constraints or user value too high?");
-            }
-
             result = { offers: offers.sort((a, b) => b.diffValue - a.diffValue).slice(0, 5) };
         }
 
@@ -585,7 +551,6 @@ export default async function handler(req: any, res: any) {
             
             targetPlayers.forEach((p: Player) => {
                 let v = getContextualValue(p, needs, false); 
-                // AI protecting its Superstar: High Markup
                 if (isCore(p)) v *= 1.3; 
                 targetValueToAI += v;
                 targetSalary += p.salary;
@@ -593,24 +558,16 @@ export default async function handler(req: any, res: any) {
             
             LOG(`[Counter] Target Pkg Value: ${targetValueToAI}, Salary: ${targetSalary}`);
 
-            // [Feature] User Buying Superstar Routes
-            // Route A: 2x 90+ Players
-            // Route B: 1x 90+ Player + High Potential Prospects
             let forcedPackageCandidates: Player[] = [];
             
             if (isTargetingSuperstar) {
                 const user90s = myTeam.roster.filter(p => p.ovr >= 90);
                 const userHighPot = myTeam.roster.filter(p => p.potential >= 88 && p.age <= 24 && p.ovr < 90);
 
-                // Check for Route A (2x 90+)
                 if (user90s.length >= 2) {
                     forcedPackageCandidates = user90s.slice(0, 2);
-                    LOG(`[Route A] Found 2x 90+ players for superstar trade.`);
-                } 
-                // Check for Route B (1x 90+ & Prospects)
-                else if (user90s.length >= 1 && userHighPot.length >= 2) {
+                } else if (user90s.length >= 1 && userHighPot.length >= 2) {
                     forcedPackageCandidates = [user90s[0], ...userHighPot.slice(0, 2)];
-                    LOG(`[Route B] Found 1x 90+ & prospects for superstar trade.`);
                 }
             }
 
@@ -620,7 +577,6 @@ export default async function handler(req: any, res: any) {
             for (let i = 0; i < 20; i++) {
                 const pack: Player[] = [];
                 
-                // If special route identified, force those players first
                 if (forcedPackageCandidates.length > 0 && i === 0) {
                      pack.push(...forcedPackageCandidates);
                 }
@@ -628,7 +584,6 @@ export default async function handler(req: any, res: any) {
                 let packValue = pack.reduce((s,p) => s + getContextualValue(p, needs, true), 0);
                 let packSalary = pack.reduce((s,p) => s + p.salary, 0);
 
-                // Fill rest
                 let pool = candidates.filter(p => !pack.includes(p));
                 let attempts = 0;
                 
@@ -642,11 +597,11 @@ export default async function handler(req: any, res: any) {
                     let next: Player | undefined;
 
                     if (valueNeeded > 5000) {
-                         next = pool[0]; // Need big value
+                         next = pool[0]; 
                     } else if (salaryNeeded > 5) {
                          next = pool.find(p => Math.abs(p.salary - salaryNeeded) < 5) || pool.find(p => p.salary > 5);
                     } else {
-                         next = pool.find(p => p.salary < 5); // Filler
+                         next = pool.find(p => p.salary < 5);
                     }
 
                     if (next && !pack.includes(next)) {
@@ -661,7 +616,6 @@ export default async function handler(req: any, res: any) {
                 const isSal = Math.abs(packSalary - targetSalary) < 5 || (salRatio >= 0.75 && salRatio <= 1.25);
                 const isVal = packValue >= targetValueToAI;
 
-                // Special override: If Route A/B was used, AI is more lenient on exact value match
                 const isSpecialRoute = forcedPackageCandidates.length > 0 && forcedPackageCandidates.every(fc => pack.includes(fc));
                 
                 if ((isSal && isVal) || (isSpecialRoute && isSal)) {
