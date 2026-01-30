@@ -53,20 +53,20 @@ interface TeamNeeds {
 // --- Debug Logger ---
 const DEBUG = true;
 const LOG = (msg: string, data?: any) => {
-    if (DEBUG) {
-        if (data) console.log(`[TradeEngine] ${msg}`, JSON.stringify(data, null, 2));
-        else console.log(`[TradeEngine] ${msg}`);
-    }
+    // Vercel logs capture console.log/error
+    const timestamp = new Date().toISOString();
+    if (data) console.log(`[${timestamp}] [TradeEngine] ${msg}`, JSON.stringify(data));
+    else console.log(`[${timestamp}] [TradeEngine] ${msg}`);
 };
 
 // --- Configuration ---
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        // [Balance] High exponent to value Quality > Quantity.
-        VALUE_EXPONENT: 3.0, 
-        SUPERSTAR_PREMIUM_THRESHOLD: 95,
-        SUPERSTAR_MULTIPLIER: 2.0 
+        // [Balance Update] Lowered from 3.0 to 2.75 to make superstar trades mathematically possible
+        VALUE_EXPONENT: 2.75, 
+        SUPERSTAR_PREMIUM_THRESHOLD: 94,
+        SUPERSTAR_MULTIPLIER: 1.3 // Lowered from 2.0 to 1.3
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
@@ -95,11 +95,11 @@ function getPlayerTradeValue(p: Player): number {
     // 1. Base OVR Value (Exponential Curve)
     let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
-    // 2. Superstar Premium (Significant Boost for 95+)
+    // 2. Superstar Premium
     if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) {
         baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
-    } else if (safeOvr >= 90) {
-        baseValue *= 1.5; // Minor premium for 90+
+    } else if (safeOvr >= 88) {
+        baseValue *= 1.15; 
     }
 
     // 3. Age & Potential
@@ -246,10 +246,13 @@ export default async function handler(req: any, res: any) {
 
     try {
         const { action, payload } = req.body;
+        LOG(`Action Received: ${action}`);
+
         const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
         const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
+        // Fetch DB Data
         const { data: teamsData, error: teamsError } = await supabaseClient
             .from('meta_teams')
             .select('*, meta_players(*)');
@@ -259,6 +262,7 @@ export default async function handler(req: any, res: any) {
             id: t.id, name: t.name, roster: (t.meta_players || []).map(mapDbPlayer),
             salaryCap: 140, luxuryTaxLine: 170 
         }));
+        
         const myTeam = allTeams.find(t => t.id === payload.myTeamId);
         
         let result: any = null;
@@ -272,8 +276,10 @@ export default async function handler(req: any, res: any) {
             const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
             const userMaxOvr = Math.max(...tradingPlayers.map((p: Player) => p.ovr));
             
-            const isSuperstarTrade = userMaxOvr >= 95; // User offering a top-tier superstar
-            const isStarTrade = userMaxOvr >= 90;      // User offering a star
+            const isSuperstarTrade = userMaxOvr >= 94; // User offering a top-tier superstar
+            const isStarTrade = userMaxOvr >= 88;      // User offering a star
+            
+            LOG(`Generating offers for user package. Salary: ${userSalary}, MaxOVR: ${userMaxOvr}, Players: ${tradingPlayers.length}`);
 
             const otherTeams = allTeams.filter(t => t.id !== payload.myTeamId);
 
@@ -286,18 +292,22 @@ export default async function handler(req: any, res: any) {
                 tradingPlayers.forEach((p: Player) => {
                     let val = getContextualValue(p, needs, true);
                     // [Feature] User Scarcity Premium: 
-                    // If user puts a 95+ superstar on block, double the value.
-                    if (p.ovr >= 95) val *= 2.0; 
+                    // If user puts a 95+ superstar on block, multiply value
+                    if (p.ovr >= 95) val *= 1.5; // Toned down from 2.0 to ensure matches
+                    else if (p.ovr >= 90) val *= 1.2;
                     userValueToAI += val;
                 });
                 
-                if (userValueToAI < 500) continue; 
+                // Debug log for value
+                // LOG(`[Target: ${targetTeam.name}] User Package Value to AI: ${userValueToAI}`);
+
+                if (userValueToAI < 300) continue; 
 
                 // 2. Candidate Selection
                 // Filter: AI protects its Core Assets unless getting a better player
                 let candidates = targetTeam.roster.filter(p => {
                     if (isCore(p)) {
-                        // AI only gives up Core if User offers Superstar (95+) AND Core is worse than User's player
+                        // AI only gives up Core if User offers Superstar (94+) AND Core is worse than User's player
                         if (isSuperstarTrade && p.ovr < userMaxOvr) return true; 
                         return false; // Otherwise protect core
                     }
@@ -313,30 +323,34 @@ export default async function handler(req: any, res: any) {
                     let packValue = 0;
                     let packSalary = 0;
                     
-                    // If User offers Superstar, AI MUST offer its best available asset (even if it's a core)
-                    // The 'candidates' filter above already handles the "Untouchable" logic
+                    // Force Headliner Logic
                     if (isSuperstarTrade) {
                          // Try to find a matching star from candidates
-                         const star = candidates.find(p => p.ovr >= 85);
-                         if (star) {
+                         const stars = candidates.filter(p => p.ovr >= 85 || (p.potential >= 88 && p.age <= 24)).sort((a,b) => b.ovr - a.ovr);
+                         if (stars.length > 0) {
+                             // Pick one of top 2 available stars
+                             const star = stars[Math.floor(Math.random() * Math.min(2, stars.length))];
                              pack.push(star);
                              packValue += getContextualValue(star, needs, false);
                              packSalary += star.salary;
                          } else {
-                             // If no star available to match superstar, maybe this team can't afford it
-                             // Or they offer multiple solid players
+                             // No star to match, unlikely to trade. Try quantity?
+                             // continue; 
                          }
                     }
 
                     // Fill logic
                     const pool = candidates.filter(p => !pack.includes(p));
                     const salaryMin = userSalary * 0.75;
+                    // Lower value target slightly to allow deals to happen (0.85 of user val)
                     const valueTarget = userValueToAI; 
 
                     let attempts = 0;
                     while (pack.length < 5 && attempts < 50) {
                         attempts++;
                         const isSalOk = packSalary >= salaryMin;
+                        // AI wants to *receive* more value or at least equal.
+                        // But to generate offers, we assume AI is willing to pay ~90% of user value if it fills a need
                         const isValOk = packValue >= valueTarget * 0.9;
 
                         if (isSalOk && isValOk) break;
@@ -352,6 +366,7 @@ export default async function handler(req: any, res: any) {
                             // Need Salary
                             nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.find(p => p.salary > 5);
                         } else {
+                            // Filler
                             nextPiece = pool[Math.floor(Math.random() * pool.length)]; 
                         }
 
@@ -369,7 +384,8 @@ export default async function handler(req: any, res: any) {
                     // If User gives Superstar, AI must pay up (Value Ratio > 0.9)
                     // If AI returns a Superstar (95+), we treat it as 1:1 value (User premium is matched by AI premium in getPlayerTradeValue)
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
-                    const validValue = valRatio >= 0.9 && valRatio <= 1.4;
+                    // Relaxed range: 0.85 to 1.5
+                    const validValue = valRatio >= 0.85 && valRatio <= 1.5;
 
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35);
@@ -384,13 +400,18 @@ export default async function handler(req: any, res: any) {
                                 teamName: targetTeam.name,
                                 players: pack,
                                 diffValue: packValue - userValueToAI,
-                                analysis: [`Balanced Trade`]
+                                analysis: [`Value Ratio: ${valRatio.toFixed(2)}`, `Salary Ratio: ${salRatio.toFixed(2)}`]
                             });
                         }
                     }
                 }
             }
             
+            // Log if no offers
+            if (offers.length === 0) {
+                LOG("No offers generated. Relaxing constraints or user value too high?");
+            }
+
             result = { offers: offers.sort((a, b) => b.diffValue - a.diffValue).slice(0, 5) };
         }
 
@@ -412,10 +433,12 @@ export default async function handler(req: any, res: any) {
             targetPlayers.forEach((p: Player) => {
                 let v = getContextualValue(p, needs, false); 
                 // AI protecting its Superstar: High Markup
-                if (isCore(p)) v *= 1.5; 
+                if (isCore(p)) v *= 1.3; 
                 targetValueToAI += v;
                 targetSalary += p.salary;
             });
+            
+            LOG(`[Counter] Target Pkg Value: ${targetValueToAI}, Salary: ${targetSalary}`);
 
             // [Feature] User Buying Superstar Routes
             // Route A: 2x 90+ Players
@@ -496,7 +519,7 @@ export default async function handler(req: any, res: any) {
                             teamName: myTeam.name,
                             players: pack,
                             diffValue: packValue - targetValueToAI,
-                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Fair Exchange`]
+                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Value Met: ${Math.round(packValue)} >= ${Math.round(targetValueToAI)}`]
                         });
                     }
                 }
