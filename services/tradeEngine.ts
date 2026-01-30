@@ -36,7 +36,8 @@ export async function generateTradeOffers(
         myTeamId: myTeam.id,
         tradingPlayers: tradingPlayers.map(p => ({
             id: p.id, name: p.name, salary: p.salary, position: p.position,
-            age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears
+            age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears,
+            health: p.health // [Update] Pass health status
         })),
         desiredPositions
     });
@@ -53,7 +54,8 @@ export async function generateCounterOffers(
         targetTeamId: targetTeam.id,
         targetPlayers: targetPlayers.map(p => ({
             id: p.id, name: p.name, salary: p.salary, position: p.position,
-            age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears
+            age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears,
+            health: p.health // [Update] Pass health status
         }))
     });
     return data?.offers || [];

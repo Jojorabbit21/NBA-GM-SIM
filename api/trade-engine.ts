@@ -11,6 +11,7 @@ interface Player {
   contractYears: number;
   ovr: number;
   potential: number;
+  health?: 'Healthy' | 'Injured' | 'Day-to-Day'; // [Update] Added Health
   // Stats
   def: number;
   out: number; 
@@ -80,11 +81,36 @@ const TRADE_CONFIG = {
         TAX_LINE: 170, 
         FLOOR_MATCH: 0.75, 
         CEILING_MATCH: 1.25
+    },
+    INJURY: { // [Update] Injury Penalties
+        DTD_PENALTY: 0.90, // 10% value drop
+        INJURED_PENALTY: 0.40 // 60% value drop (Major injury)
     }
 };
 
+// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades
+const KNOWN_INJURIES: Record<string, any> = {
+  "jaysontatum": { type: "ACL" },
+  "tyresehaliburton": { type: "ACL" },
+  "taureanprince": { type: "Neck" },
+  "scoothenderson": { type: "Hamstring" },
+  "sethcurry": { type: "Back" },
+  "bradleybeal": { type: "Hip" },
+  "kyrieirving": { type: "Knee" },
+  "derecklively": { type: "Foot" },
+  "zachedey": { type: "Ankle" },
+  "scottypippen": { type: "Toe" },
+  "brandonclarke": { type: "Ankle" },
+  "tyjerome": { type: "Calf" },
+  "dejountemurray": { type: "Achilles" }
+};
+
+const normalizeName = (name: string): string => {
+    if (!name) return "";
+    return name.replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '').replace(/(II|III|IV|Jr|Sr)$/i, '').toLowerCase().trim();
+};
+
 // --- OVR Weights (Synced from Client) ---
-// This ensures server-side valuation matches what users see in the UI.
 type PositionType = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 const POSITION_WEIGHTS: Record<PositionType, Record<string, number>> = {
   PG: { 
@@ -272,6 +298,13 @@ function getPlayerTradeValue(p: Player): number {
          baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
     }
 
+    // [Update] 5. Injury Penalty
+    if (p.health === 'Injured') {
+        baseValue *= C.INJURY.INJURED_PENALTY;
+    } else if (p.health === 'Day-to-Day') {
+        baseValue *= C.INJURY.DTD_PENALTY;
+    }
+
     return Math.max(1, Math.floor(baseValue));
 }
 
@@ -374,6 +407,11 @@ function mapDbPlayer(p: any): Player {
     const calculatedOvr = calculateOvr({ ...attrs, position: p.position });
     const finalOvr = calculatedOvr;
 
+    // [Update] Check known injury
+    const normName = normalizeName(p.name);
+    const injury = KNOWN_INJURIES[normName];
+    const health = injury ? 'Injured' : 'Healthy';
+
     // 4. Construct Object (Fix: Spread first to avoid overwrites)
     return {
         ...attrs, // [Fix] Spread first
@@ -385,6 +423,7 @@ function mapDbPlayer(p: any): Player {
         salary: Number(p.salary || 1),
         contractYears: Number(p.contract_years || 1),
         ovr: finalOvr,
+        health, // [Update] Mapped Health Status
         
         // Ensure potential is correctly set
         potential: (attrs.potential && attrs.potential !== 50) ? attrs.potential : (finalOvr + 5),
@@ -647,9 +686,9 @@ export default async function handler(req: any, res: any) {
                     const buyer = buyers[Math.floor(Math.random() * buyers.length)];
                     
                     if (seller.id !== buyer.id) {
-                         const tradeAsset = seller.roster.find(p => p.age >= 28 && p.salary > 10 && p.ovr > 78);
+                         const tradeAsset = seller.roster.find(p => p.age >= 28 && p.salary > 10 && p.ovr > 78 && p.health !== 'Injured'); // [Update] Filter Injured for CPU trades
                          if (tradeAsset) {
-                             const buyerAssets = buyer.roster.filter(p => (p.age <= 24 && p.potential > 75) || (p.salary > 5 && p.ovr < 75));
+                             const buyerAssets = buyer.roster.filter(p => (p.age <= 24 && p.potential > 75 && p.health !== 'Injured') || (p.salary > 5 && p.ovr < 75 && p.health !== 'Injured'));
                              let pack: Player[] = [];
                              let packSal = 0;
                              let packVal = 0;
