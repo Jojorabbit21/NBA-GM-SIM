@@ -242,6 +242,7 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
     const steal = getVal('STL', 'steal');
     const blk = getVal('BLK', 'blk');
     const helpDefIq = getVal('HDEF', 'helpDefIq');
+    const helpDefIqVal = getVal('HDEF', 'helpDefIq'); // Duplicate?
     const passPerc = getVal('PPER', 'passPerc');
     const defConsist = getVal('DCON', 'defConsist');
     const offReb = getVal('OREB', 'offReb');
@@ -278,8 +279,13 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
     const calculatedOvr = calculatePlayerOvr(runtimePlayerForCalc);
     const ovr = (dbOvr && dbOvr > 40) ? dbOvr : calculatedOvr;
 
+    // [Critical Fix] Deterministic ID Generation
+    // Removed Date.now() to ensure IDs remain stable across reloads if DB IDs are missing.
+    // This prevents duplication issues where transaction logs refer to old IDs.
+    const fallbackId = `p_${norm}_${teamId}`; 
+
     return {
-        id: p.id || `p_${norm}_${teamId}_${Date.now()}`,
+        id: p.id || fallbackId,
         name,
         position: p.position || 'G',
         age,

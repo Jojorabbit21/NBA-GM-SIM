@@ -31,6 +31,7 @@ const reconstructGameState = (
     // 1. Deep Copy Base Data (To avoid mutating cache)
     const teamsMap = new Map<string, Team>();
     const playerMap = new Map<string, Player>();
+    const playerOwnerMap = new Map<string, string>(); // [Fix] Track current owner of each player
 
     // 초기화: 선수들을 ID로 매핑하여 빠른 접근
     baseTeams.forEach(t => {
@@ -45,6 +46,7 @@ const reconstructGameState = (
                 teamId: t.id // 추적용 임시 필드
             };
             playerMap.set(p.id, playerCopy);
+            playerOwnerMap.set(p.id, t.id); // Initialize ownership
             // 초기 로스터 배정
             teamCopy.roster.push(playerCopy);
         });
@@ -56,40 +58,47 @@ const reconstructGameState = (
     
     transactions.forEach(tx => {
         if (tx.type === 'Trade' && tx.details) {
-            const { acquired, traded, partnerTeamId } = tx.details;
-            
-            // My Team: Gained 'acquired', Lost 'traded'
-            const myTeam = teamsMap.get(tx.teamId);
-            const partnerTeam = teamsMap.get(partnerTeamId || '');
+            const { acquired, traded } = tx.details;
+            const myTeamId = tx.teamId;
+            const partnerTeamId = tx.details.partnerTeamId;
 
-            if (myTeam && partnerTeam) {
-                // Remove traded players from My Team
-                if (traded) {
-                    traded.forEach((tp: any) => {
-                        const player = playerMap.get(tp.id);
-                        if (player) {
-                            myTeam.roster = myTeam.roster.filter(p => p.id !== tp.id);
-                            // Add to Partner Team
-                            if (!partnerTeam.roster.find(p => p.id === tp.id)) {
-                                partnerTeam.roster.push(player);
-                            }
-                        }
-                    });
+            // [Robust Move Logic]
+            // Instead of blindly removing from 'partnerTeamId', check 'playerOwnerMap' to see where the player REALLY is.
+            // This handles cases where players were moved by previous transactions (e.g. CPU trades) or if transaction logs have stale team IDs.
+            const movePlayer = (playerId: string, toTeamId: string) => {
+                const currentOwnerId = playerOwnerMap.get(playerId);
+                const player = playerMap.get(playerId);
+                const toTeam = teamsMap.get(toTeamId);
+
+                if (currentOwnerId && player && toTeam) {
+                    // 1. Remove from current owner
+                    const fromTeam = teamsMap.get(currentOwnerId);
+                    if (fromTeam) {
+                        fromTeam.roster = fromTeam.roster.filter(p => p.id !== playerId);
+                    }
+                    
+                    // 2. Add to new owner (avoid duplicates)
+                    if (!toTeam.roster.find(p => p.id === playerId)) {
+                        toTeam.roster.push(player);
+                    }
+                    
+                    // 3. Update Ownership Map
+                    playerOwnerMap.set(playerId, toTeamId);
                 }
-                
-                // Remove acquired players from Partner Team (They act as 'traded' from partner's view)
-                if (acquired) {
-                    acquired.forEach((ap: any) => {
-                        const player = playerMap.get(ap.id);
-                        if (player) {
-                            partnerTeam.roster = partnerTeam.roster.filter(p => p.id !== ap.id);
-                            // Add to My Team
-                            if (!myTeam.roster.find(p => p.id === ap.id)) {
-                                myTeam.roster.push(player);
-                            }
-                        }
-                    });
-                }
+            };
+
+            // Process 'traded' players: My Team -> Partner Team
+            if (traded && partnerTeamId) {
+                traded.forEach((tp: any) => {
+                    movePlayer(tp.id, partnerTeamId);
+                });
+            }
+            
+            // Process 'acquired' players: Partner (or anywhere) -> My Team
+            if (acquired) {
+                acquired.forEach((ap: any) => {
+                    movePlayer(ap.id, myTeamId);
+                });
             }
         }
     });
