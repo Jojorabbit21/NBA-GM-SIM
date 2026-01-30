@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Handshake, ChevronRight } from 'lucide-react';
+import { Handshake, ChevronRight, FileText } from 'lucide-react';
 import { Player, TradeOffer, Team } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 import { getTeamLogoUrl } from '../../utils/constants';
@@ -15,7 +15,8 @@ interface OfferCardProps {
 export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, onPlayerClick }) => {
   const fullTeam = teams.find(t => t.id === offer.teamId);
   const fullTeamName = fullTeam ? `${fullTeam.city} ${fullTeam.name}` : offer.teamName;
-  
+  const analysis = offer.analysis || [];
+
   return (
     // [Optimization] bg-slate-900/60 -> bg-slate-900 (Solid background to prevent expensive blur calculation during scroll)
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 hover:border-indigo-500/70 transition-all group relative overflow-hidden shadow-xl">
@@ -56,6 +57,20 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, on
                   </div>
                 ))}
              </div>
+             
+             {/* AI Analysis Log */}
+             {analysis.length > 0 && (
+                 <div className="mt-4 p-3 bg-slate-950 rounded-xl border border-slate-800/50">
+                    <div className="flex items-center gap-2 mb-2 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                        <FileText size={12} /> AI Analysis
+                    </div>
+                    <div className="space-y-1">
+                        {analysis.map((log, i) => (
+                            <p key={i} className="text-[10px] text-slate-400 font-mono leading-tight">{log}</p>
+                        ))}
+                    </div>
+                 </div>
+             )}
           </div>
        </div>
     </div>

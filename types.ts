@@ -205,6 +205,7 @@ export interface TradeOffer {
   teamName: string;
   players: Player[];
   diffValue: number;
+  analysis?: string[]; // Added: AI reasoning logs
 }
 
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
