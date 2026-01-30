@@ -403,6 +403,7 @@ export default async function handler(req: any, res: any) {
 
                 // [Logic] Calculate User Package Value with Conditional Dilution
                 let userValueToAI = 0;
+                let isDiluted = false;
                 
                 sortedUserPlayers.forEach((p: Player, idx: number) => {
                     let val = getContextualValue(p, needs, true);
@@ -412,9 +413,9 @@ export default async function handler(req: any, res: any) {
                     const isValuableAsset = p.ovr >= 80 || (p.age <= 24 && p.potential >= 80);
                     
                     if (!isValuableAsset) {
-                        if (idx === 2) val *= 0.5; // 3rd best is a scrub? 50%
-                        else if (idx === 3) val *= 0.2; // 4th best is a scrub? 20%
-                        else if (idx >= 4) val = 0.1; // 5th best is a scrub? 10%
+                        if (idx === 2) { val *= 0.5; isDiluted = true; } // 3rd best is a scrub? 50%
+                        else if (idx === 3) { val *= 0.2; isDiluted = true; } // 4th best is a scrub? 20%
+                        else if (idx >= 4) { val = 0.1; isDiluted = true; } // 5th best is a scrub? 10%
                     }
                     
                     userValueToAI += val;
@@ -476,7 +477,10 @@ export default async function handler(req: any, res: any) {
                     }
 
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
-                    const validValue = valRatio >= 0.85 && valRatio <= 1.15; 
+                    
+                    // [Balance] If Dilution Applied, Cap Value Ratio at 1.0 (No Overpay allowed)
+                    const maxRatio = isDiluted ? 1.0 : 1.15;
+                    const validValue = valRatio >= 0.85 && valRatio <= maxRatio; 
 
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35);
@@ -491,7 +495,10 @@ export default async function handler(req: any, res: any) {
                                 teamName: targetTeam.name,
                                 players: pack,
                                 diffValue: packValue - userValueToAI,
-                                analysis: [`Value Ratio: ${valRatio.toFixed(2)}`, `Conditional Dilution Applied`]
+                                analysis: [
+                                    `Value Ratio: ${valRatio.toFixed(2)}`,
+                                    isDiluted ? `Dilution Active (Max Ratio: 1.0)` : `Standard Deal`
+                                ]
                             });
                         }
                     }
