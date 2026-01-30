@@ -81,9 +81,10 @@ const TRADE_CONFIG = {
         SALARY_DUMP_BONUS: 0.2 
     },
     SALARY: {
+        CAP_LINE: 140,
         TAX_LINE: 170, 
-        FLOOR_MATCH: 0.75, 
-        CEILING_MATCH: 1.25
+        APRON_1: 178,
+        APRON_2: 189
     },
     INJURY: { 
         DTD_PENALTY: 0.90, 
@@ -299,7 +300,58 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
     return Math.floor(value);
 }
 
-// 4. Core Asset Filter
+// 4. Validate Trade Legality (Apron Rules)
+function validateTradeLegality(team: Team, outgoing: Player[], incoming: Player[]): { valid: boolean; reason?: string } {
+    const currentSalary = team.roster.reduce((sum, p) => sum + p.salary, 0);
+    const outSal = outgoing.reduce((sum, p) => sum + p.salary, 0);
+    const inSal = incoming.reduce((sum, p) => sum + p.salary, 0);
+    
+    // Constants
+    const { CAP_LINE, TAX_LINE, APRON_1, APRON_2 } = TRADE_CONFIG.SALARY;
+
+    // 2nd Apron Rules
+    if (currentSalary >= APRON_2) {
+        // Aggregation Ban: Cannot send 2+ players to get 1 (or essentially aggregate salaries)
+        // Simplified Logic: If sending > 1 player, reject.
+        if (outgoing.length > 1) return { valid: false, reason: "2nd Apron: Aggregation Ban (Cannot send multiple players)" };
+        
+        // Dollar for Dollar: Incoming <= Outgoing
+        if (inSal > outSal) return { valid: false, reason: "2nd Apron: Cannot increase salary" };
+        
+        return { valid: true };
+    }
+
+    // 1st Apron Rules
+    if (currentSalary >= APRON_1) {
+        // 100% Matching: Incoming <= Outgoing
+        if (inSal > outSal) return { valid: false, reason: "1st Apron: Salary matching limited to 100%" };
+        
+        return { valid: true };
+    }
+
+    // Taxpayer Rules (Above Tax, Below Apron 1)
+    if (currentSalary >= TAX_LINE) {
+        // 110% Rule (Simplified from 125% -> 110%)
+        const maxIncoming = (outSal * 1.10) + 0.25;
+        if (inSal > maxIncoming) return { valid: false, reason: "Taxpayer: Max 110% matching exceeded" };
+        return { valid: true };
+    }
+
+    // Standard Rules (Under Tax)
+    // 125% + 0.25M Rule or Cap Space Absorption
+    if (currentSalary < CAP_LINE) {
+        const room = CAP_LINE - currentSalary;
+        // If room exists, logic is complex, but generally if inSal fits in room + outSal, it's fine.
+        if (inSal <= room + outSal + 0.1) return { valid: true };
+    }
+
+    const maxIncoming = (outSal * 1.25) + 0.25;
+    if (inSal > maxIncoming) return { valid: false, reason: "Standard: Max 125% matching exceeded" };
+
+    return { valid: true };
+}
+
+// 5. Core Asset Filter
 function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
     const has90 = roster.some(p => p.ovr >= 90);
     const has85 = roster.some(p => p.ovr >= 85);
@@ -310,7 +362,7 @@ function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
     };
 }
 
-// 5. Data Mapper (DB -> Engine Player)
+// 6. Data Mapper (DB -> Engine Player)
 function mapDbPlayer(p: any): Player {
     const attrs = normalizeAttributes(p.base_attributes || {});
     const a = p.base_attributes || {}; 
@@ -444,26 +496,20 @@ export default async function handler(req: any, res: any) {
                     
                     let pool = candidates.filter(p => !pack.includes(p));
                     
-                    const salaryMin = userSalary * 0.75;
                     const valueTarget = userValueToAI; 
 
                     let attempts = 0;
                     while (pack.length < 5 && attempts < 50) {
                         attempts++;
                         
-                        const isSalOk = packSalary >= salaryMin;
                         const isValOk = packValue >= valueTarget * 0.9;
+                        if (isValOk) break; // We break on value first, check salary/apron later
 
-                        if (isSalOk && isValOk) break;
-
-                        const salDeficit = salaryMin - packSalary;
                         const valDeficit = valueTarget - packValue;
                         let nextPiece: Player | undefined;
 
-                        if (!isValOk && valDeficit > 5000) {
+                        if (valDeficit > 5000) {
                             nextPiece = pool.sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a))[0];
-                        } else if (!isSalOk && salDeficit > 5) {
-                            nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.find(p => p.salary > 5);
                         } else {
                             nextPiece = pool[Math.floor(Math.random() * pool.length)]; 
                         }
@@ -483,12 +529,13 @@ export default async function handler(req: any, res: any) {
                     const maxRatio = isDiluted ? 1.0 : 1.15;
                     const validValue = valRatio >= 0.85 && valRatio <= maxRatio; 
 
-                    const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
-                    const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35);
-
                     const posValid = desiredPositions.length === 0 || pack.some(p => desiredPositions.some((dp: string) => p.position.includes(dp)));
 
-                    if (validValue && validSalary && posValid && pack.length > 0) {
+                    // [Apron Logic] Validate Trade Rules
+                    const aiTradeValid = validateTradeLegality(targetTeam, pack, sortedUserPlayers);
+                    const userTradeValid = validateTradeLegality(myTeam, sortedUserPlayers, pack);
+
+                    if (validValue && aiTradeValid.valid && userTradeValid.valid && posValid && pack.length > 0) {
                         const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.length === pack.length && o.players.every(p => pack.some(pk => pk.id === p.id)));
                         if (!isDup) {
                             offers.push({
@@ -498,7 +545,7 @@ export default async function handler(req: any, res: any) {
                                 diffValue: packValue - userValueToAI,
                                 analysis: [
                                     `Value Ratio: ${valRatio.toFixed(2)}`,
-                                    isDiluted ? `Dilution Active (Max Ratio: 1.0)` : `Standard Deal`
+                                    isDiluted ? `Dilution Active` : `Standard Deal`
                                 ]
                             });
                         }
@@ -577,17 +624,14 @@ export default async function handler(req: any, res: any) {
                 
                 while (pack.length < 5 && attempts < 50) {
                     attempts++;
-                    const salaryNeeded = targetSalary - packSalary;
                     const valueNeeded = targetValueToAI - packValue;
 
-                    if (Math.abs(salaryNeeded) < 5 && valueNeeded <= 0) break;
+                    if (valueNeeded <= 0) break;
 
                     let next: Player | undefined;
 
                     if (valueNeeded > 5000) {
                          next = pool[0]; 
-                    } else if (salaryNeeded > 5) {
-                         next = pool.find(p => Math.abs(p.salary - salaryNeeded) < 5) || pool.find(p => p.salary > 5);
                     } else {
                          next = pool.find(p => p.salary < 5);
                     }
@@ -613,13 +657,16 @@ export default async function handler(req: any, res: any) {
                     }
                 }
 
-                const salRatio = targetSalary > 0 ? packSalary / targetSalary : 0;
-                const isSal = Math.abs(packSalary - targetSalary) < 5 || (salRatio >= 0.75 && salRatio <= 1.25);
-                const isVal = packValue >= targetValueToAI;
+                // [Apron Logic] Validate Trade Rules
+                // User is sending PACK, getting TARGET
+                const userTradeValid = validateTradeLegality(myTeam, pack, targetPlayers);
+                // AI is sending TARGET, getting PACK
+                const aiTradeValid = validateTradeLegality(targetTeam, targetPlayers, pack);
 
+                const isVal = packValue >= targetValueToAI;
                 const isSpecialRoute = forcedPackageCandidates.length > 0 && forcedPackageCandidates.every(fc => pack.includes(fc));
                 
-                if ((isSal && isVal) || (isSpecialRoute && isSal)) {
+                if ((userTradeValid.valid && aiTradeValid.valid && isVal) || (isSpecialRoute && userTradeValid.valid && aiTradeValid.valid)) {
                     const isDup = offers.some(o => o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
                     if (!isDup) {
                         offers.push({
@@ -627,7 +674,7 @@ export default async function handler(req: any, res: any) {
                             teamName: myTeam.name,
                             players: pack,
                             diffValue: packValue - targetValueToAI,
-                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Value Met with Conditional Dilution`]
+                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Value Met`]
                         });
                     }
                 }
@@ -665,10 +712,15 @@ export default async function handler(req: any, res: any) {
                              }
 
                              const assetVal = getPlayerTradeValue(tradeAsset);
-                             const isSal = packSal >= tradeAsset.salary * 0.75 && packSal <= tradeAsset.salary * 1.25;
                              const isVal = packVal >= assetVal * 0.8; 
 
-                             if (isSal && isVal && pack.length > 0) {
+                             // [Apron Logic] Validate Trade Rules
+                             // Buyer sends PACK, gets ASSET
+                             const buyerValid = validateTradeLegality(buyer, pack, [tradeAsset]);
+                             // Seller sends ASSET, gets PACK
+                             const sellerValid = validateTradeLegality(seller, [tradeAsset], pack);
+
+                             if (buyerValid.valid && sellerValid.valid && isVal && pack.length > 0) {
                                  result = {
                                      success: true,
                                      transaction: {
