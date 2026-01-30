@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, MinusCircle, Trash2, Send, ListFilter, ChevronRight, History, Clock, Search, Lock, Activity, Handshake, Target, Filter } from 'lucide-react';
 import { Team, Player, TradeOffer, Transaction } from '../types';
@@ -83,7 +82,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
         onAddTransaction(newTransaction);
     }
 
-    const { data: userData } = await supabase.auth.getUser();
+    const { data: userData } = await (supabase.auth as any).getUser();
     if (userData?.user) {
         saveUserTransaction(userData.user.id, newTransaction);
     }
@@ -122,16 +121,23 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
       setBlockSearchPerformed(false);
   };
 
-  const handleSearchBlockOffers = () => {
+  const handleSearchBlockOffers = async () => {
     if (blockSelectedIds.size === 0 || isTradeDeadlinePassed) return;
     logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}, Targets: ${targetPositions.join(',')}`); 
 
     setBlockIsProcessing(true); setBlockSearchPerformed(true);
-    setTimeout(() => {
-      const targetPlayers = (team?.roster || []).filter(p => blockSelectedIds.has(p.id));
-      const generatedOffers = generateTradeOffers(targetPlayers, team, teams, targetPositions);
-      setBlockOffers(generatedOffers); setBlockIsProcessing(false);
-    }, 1200);
+    
+    try {
+        const targetPlayers = (team?.roster || []).filter(p => blockSelectedIds.has(p.id));
+        const generatedOffers = await generateTradeOffers(targetPlayers, team, teams, targetPositions);
+        setBlockOffers(generatedOffers);
+    } catch (e) {
+        console.error(e);
+        onShowToast("오퍼 검색 중 오류가 발생했습니다.");
+        setBlockOffers([]);
+    } finally {
+        setBlockIsProcessing(false);
+    }
   };
 
   const toggleProposalPlayer = (id: string) => {
@@ -142,21 +148,27 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     setProposalSelectedIds(next); setProposalRequirements([]); setProposalSearchPerformed(false);
   };
 
-  const handleRequestRequirements = () => {
+  const handleRequestRequirements = async () => {
     if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) return;
     logEvent('Trade', 'Request Proposal', `Target: ${proposalTargetTeamId}, Assets: ${proposalSelectedIds.size}`);
 
     setProposalIsProcessing(true); setProposalSearchPerformed(true);
-    setTimeout(() => {
-      const targetTeam = teams.find(t => t.id === proposalTargetTeamId);
-      if (!targetTeam) {
+    
+    try {
+        const targetTeam = teams.find(t => t.id === proposalTargetTeamId);
+        if (!targetTeam) {
+            setProposalIsProcessing(false);
+            return;
+        }
+        const requestedPlayers = targetTeam.roster.filter(p => proposalSelectedIds.has(p.id));
+        const generatedRequirements = await generateCounterOffers(requestedPlayers, targetTeam, team);
+        setProposalRequirements(generatedRequirements);
+    } catch (e) {
+        console.error(e);
+        onShowToast("제안 분석 중 오류가 발생했습니다.");
+    } finally {
         setProposalIsProcessing(false);
-        return;
-      }
-      const requestedPlayers = targetTeam.roster.filter(p => proposalSelectedIds.has(p.id));
-      const generatedRequirements = generateCounterOffers(requestedPlayers, targetTeam, team);
-      setProposalRequirements(generatedRequirements); setProposalIsProcessing(false);
-    }, 1200);
+    }
   };
 
   const getSnapshot = (id: string, savedOvr?: number, savedPos?: string) => {

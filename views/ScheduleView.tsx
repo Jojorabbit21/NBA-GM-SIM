@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Save, Calendar, CheckCircle2, Search, ChevronDown, Loader2 } from 'lucide-react';
 import { Team, Game } from '../types';
@@ -30,7 +29,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   const [userId, setUserId] = useState<string | undefined>(undefined);
   
   useEffect(() => {
-      supabase.auth.getUser().then(({ data }) => {
+      (supabase.auth as any).getUser().then(({ data }: any) => {
           setUserId(data.user?.id);
       });
   }, []);
