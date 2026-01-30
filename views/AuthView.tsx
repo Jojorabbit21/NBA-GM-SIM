@@ -157,10 +157,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300">
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-white leading-tight dmsans tracking-tighter">
-            Basketball<br />
-            General Manager<br />
-            Simulation
+          <h1 className="text-4xl font-black text-white leading-tight oswald tracking-tighter uppercase italic">
+            Courtside GM
           </h1>
         </div>
 
@@ -221,15 +219,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
                   <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>
                 )
               )}
-            </button>
-
-            <button
-              type="button"
-              onClick={onGuestLogin}
-              className="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 pretendard font-medium py-3.5 rounded-xl text-xs uppercase tracking-widest transition-all border border-slate-700 flex items-center justify-center gap-2 active:scale-[0.98]"
-            >
-              <ShieldAlert size={16} className="text-amber-500" />
-              관리자 / 게스트 모드
             </button>
           </div>
         </form>
