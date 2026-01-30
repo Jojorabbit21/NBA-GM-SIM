@@ -85,11 +85,12 @@ export const INITIAL_TEAMS_DATA: { id: string, name: string, city: string, confe
   { id: 'sas', name: '스퍼스', city: '샌안토니오', conference: 'West', division: 'Southwest' },
 ];
 
+// Normalize Name: Remove dots, spaces, hyphens, and lowercase for robust matching
 export const normalizeName = (name: string): string => {
     if (!name) return "";
     return name
-        .replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '')
-        .replace(/(II|III|IV|Jr|Sr)$/i, '')
+        .replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '') // Remove all spaces and punctuation
+        .replace(/(II|III|IV|Jr|Sr)$/i, '') // Remove suffixes
         .toLowerCase()
         .trim();
 };
@@ -99,7 +100,6 @@ const SORTED_KEYS = Object.keys(INITIAL_TEAMS_DATA).sort((a: any, b: any) => b.l
 export const resolveTeamId = (input: string): string => {
     if (!input) return 'unknown';
     const normalized = input.toLowerCase().trim();
-    // Simple lookup based on TEAM_NAME_MAP logic (omitted for brevity in this snippet as it's large, but conceptually used here)
     const found = INITIAL_TEAMS_DATA.find(t => 
       t.name.toLowerCase() === normalized || 
       t.city.toLowerCase() === normalized || 
@@ -108,38 +108,39 @@ export const resolveTeamId = (input: string): string => {
     return found ? found.id : 'unknown';
 };
 
-// [Critical Update] Expanded Injury List based on 2025-26 Roster Data
-// This ensures these players are marked as 'Injured' and excluded from game logic.
-const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
-  // Boston Celtics
+// [Critical] Known Injuries Database
+// Keys must be fully normalized (lowercase, no spaces)
+// Date Format: YYYY-MM-DD
+export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
+  // Boston
   "jaysontatum": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
   
-  // Indiana Pacers
+  // Pacers
   "tyresehaliburton": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
   
-  // Milwaukee Bucks
+  // Bucks
   "taureanprince": { type: "Neck Surgery", returnDate: "2026-06-15" },
   
-  // Portland Trail Blazers
+  // Portland
   "scoothenderson": { type: "Hamstring Strain", returnDate: "2025-11-05" },
   
-  // Golden State Warriors
+  // Warriors
   "sethcurry": { type: "Lower Back", returnDate: "2025-12-01" },
   
-  // LA Clippers (Note: Beal listed here in prompt data)
+  // Clippers
   "bradleybeal": { type: "Left Hip (Season Out)", returnDate: "2026-06-01" },
   
-  // Dallas Mavericks
+  // Mavs
   "kyrieirving": { type: "Knee Surgery", returnDate: "2026-07-01" },
   "derecklively": { type: "Right Foot Surgery", returnDate: "2026-02-15" },
   
-  // Memphis Grizzlies
+  // Grizzlies
   "zachedey": { type: "Ankle Sprain", returnDate: "2026-02-01" },
   "scottypippen": { type: "Left Toe Fracture", returnDate: "2026-04-01" },
   "brandonclarke": { type: "Ankle Injury", returnDate: "2026-03-01" },
   "tyjerome": { type: "Calf Strain", returnDate: "2026-03-15" },
   
-  // New Orleans Pelicans
+  // Pelicans
   "dejountemurray": { type: "Achilles Soreness", returnDate: "2026-01-15" }
 };
 
@@ -197,9 +198,23 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
 
     const name = p.name || "Unknown Player";
     
-    // [Fix] Normalized lookup for injuries
+    // [Fix] Injury Override Logic
+    // 1. Check normalized name against KNOWN_INJURIES
+    // 2. If match found, FORCE 'Injured' status regardless of DB value
     const norm = normalizeName(name);
-    const injury = KNOWN_INJURIES[norm];
+    const knownInjury = KNOWN_INJURIES[norm];
+    
+    // Default from DB (usually 'Healthy' or previously saved state)
+    let health: 'Healthy' | 'Injured' | 'Day-to-Day' = (p.health as any) || 'Healthy';
+    let injuryType = p.injuryType;
+    let returnDate = p.returnDate;
+
+    // Apply Override if known injury exists
+    if (knownInjury) {
+        health = 'Injured';
+        injuryType = knownInjury.type;
+        returnDate = knownInjury.returnDate;
+    }
 
     // Stats Mapping
     const closeShot = getVal('CLOSE', 'closeShot');
@@ -271,10 +286,9 @@ export const mapDatabasePlayerToRuntimePlayer = (p: any, teamId: string): Player
         salary: p.salary || 1.0,
         contractYears: p.contract_years || 1,
         
-        // [Critial] Force override health based on KNOWN_INJURIES
-        health: injury ? 'Injured' : 'Healthy',
-        injuryType: injury?.type,
-        returnDate: injury?.returnDate,
+        health,
+        injuryType,
+        returnDate,
         
         condition: 100,
         ovr,
