@@ -300,12 +300,14 @@ export default async function handler(req: any, res: any) {
                     userValueToAI += val;
                 });
                 
-                // Debug Log for Value
-                // LOG(`Team ${targetTeam.name} | UserVal: ${userValueToAI} | Needs: ${needs.weakPositions.join(',')}`);
+                // [LOG] AI Valuation of User Package
+                if (Math.random() < 0.1) {
+                    LOG(`[Target: ${targetTeam.name}] AI values user package at ${userValueToAI}. Needs: ${needs.weakPositions.join(', ')}`);
+                }
 
-                // Threshold Check
-                if (userValueToAI < 200) { // Lowered to 200 to allow dumping role players
-                    // LOG(`Skipping ${targetTeam.name}: Value too low`);
+                // Threshold Check - lowered to catch even low value assets
+                if (userValueToAI < 100) { 
+                    // LOG(`Skipping ${targetTeam.name}: Value too low (${userValueToAI})`);
                     continue; 
                 }
 
@@ -326,7 +328,10 @@ export default async function handler(req: any, res: any) {
                     // 1. Mandatory Core Piece if Superstar Trade
                     if (isSuperstarTrade) {
                          const core = candidates.find(p => p.ovr >= 82 || (p.potential >= 88 && p.age <= 24));
-                         if (!core) break; // If they can't offer a core, they can't trade for a superstar
+                         if (!core) {
+                             if (i === 0) LOG(`[Target: ${targetTeam.name}] No core assets for superstar trade.`);
+                             break;
+                         }
                          pack.push(core);
                          packValue += getContextualValue(core, needs, false);
                          packSalary += core.salary;
@@ -389,7 +394,7 @@ export default async function handler(req: any, res: any) {
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
                     
-                    const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.30); // Widened range
+                    const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35); // Widened range
                     const validValue = valRatio >= 0.60 && valRatio <= 1.4; // Widened range
 
                     const posValid = desiredPositions.length === 0 || pack.some(p => desiredPositions.some((dp: string) => p.position.includes(dp)));
@@ -397,6 +402,7 @@ export default async function handler(req: any, res: any) {
                     if (validSalary && validValue && posValid && pack.length > 0) {
                         const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
                         if (!isDup) {
+                            LOG(`[Target: ${targetTeam.name}] Offer Created! PackValue: ${packValue}, UserValue: ${userValueToAI}, Ratio: ${valRatio.toFixed(2)}`);
                             const reason = [];
                             if (needs.weakPositions.length > 0) reason.push(`Weak: ${needs.weakPositions.join(',')}`);
                             if (isSuperstarTrade) reason.push("Blockbuster");
@@ -410,6 +416,9 @@ export default async function handler(req: any, res: any) {
                                 analysis: reason
                             });
                         }
+                    } else if (i === 0) {
+                        // Log failure reason only for the first attempt to avoid spam
+                        // LOG(`[Target: ${targetTeam.name}] Failed Logic: SalRatio=${salRatio.toFixed(2)} (${validSalary}), ValRatio=${valRatio.toFixed(2)} (${validValue}), Pack=${pack.length}`);
                     }
                 }
             }
