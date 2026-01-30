@@ -3,7 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries, GameTactics } from '../types';
 import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/SharedComponents';
-import { calculatePlayerOvr } from '../utils/constants';
+import { calculatePlayerOvr, KNOWN_INJURIES, normalizeName } from '../utils/constants';
 import { logEvent } from '../services/analytics'; 
 import { calculateTacticScore } from '../utils/tacticUtils';
 
@@ -68,14 +68,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
       if (myPlayoffSeries.length === 0) return false;
 
-      // Find the most recent (highest round) series
       const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
       if (!latest.finished) return false;
 
-      // If user lost any series, their run is over
       if (latest.winnerId !== team.id) return true;
-
-      // If user won, check if it was the NBA Finals (Round 4)
       return latest.round === 4;
   }, [playoffSeries, team?.id]);
 
@@ -84,10 +80,47 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   
   const { starters } = tactics;
   
-  const healthySorted = useMemo(() => (team?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
-  const injuredSorted = useMemo(() => (team?.roster || []).filter(p => p.health === 'Injured').sort((a, b) => b.ovr - a.ovr), [team?.roster]);
-  const oppHealthySorted = useMemo(() => (opponent?.roster || []).filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [opponent?.roster]);
+  // [CRITICAL FIX] Apply Health Status Check based on Current Date
+  // If player has a known injury and ReturnDate > CurrentDate -> Force Injured
+  // If ReturnDate <= CurrentDate -> Force Healthy (Recovery)
+  const effectiveRoster = useMemo(() => {
+      if (!team?.roster) return [];
+      const today = new Date(currentSimDate || new Date());
+
+      return team.roster.map(p => {
+          // If player is marked injured (either by DB or constants.tsx override)
+          if (p.health === 'Injured' && p.returnDate) {
+              const returnDate = new Date(p.returnDate);
+              // If we passed the return date, heal them
+              if (today >= returnDate) {
+                  return { ...p, health: 'Healthy' as const, injuryType: undefined, returnDate: undefined };
+              }
+          }
+          return p;
+      });
+  }, [team?.roster, currentSimDate]);
+
+  const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [effectiveRoster]);
+  const injuredSorted = useMemo(() => effectiveRoster.filter(p => p.health === 'Injured').sort((a, b) => b.ovr - a.ovr), [effectiveRoster]);
   
+  // Also apply to opponent for consistency
+  const effectiveOppRoster = useMemo(() => {
+      if (!opponent?.roster) return [];
+      const today = new Date(currentSimDate || new Date());
+      return opponent.roster.map(p => {
+          if (p.health === 'Injured' && p.returnDate) {
+              const returnDate = new Date(p.returnDate);
+              if (today >= returnDate) {
+                  return { ...p, health: 'Healthy' as const, injuryType: undefined, returnDate: undefined };
+              }
+          }
+          return p;
+      });
+  }, [opponent?.roster, currentSimDate]);
+
+  const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [effectiveOppRoster]);
+  
+  // Auto-Fill Starters if Empty (checking against healthy players only)
   useEffect(() => {
     if (healthySorted.length >= 5 && Object.values(starters).every(v => v === '')) {
       const newStarters = {
@@ -102,21 +135,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [healthySorted, starters, tactics, onUpdateTactics]);
 
   const myOvr = useMemo(() => {
-    if (!team?.roster?.length) return 0;
-    return Math.round(team.roster.reduce((s, p) => s + p.ovr, 0) / team.roster.length);
-  }, [team?.roster]);
+    if (!effectiveRoster.length) return 0;
+    return Math.round(effectiveRoster.reduce((s, p) => s + p.ovr, 0) / effectiveRoster.length);
+  }, [effectiveRoster]);
 
   const opponentOvrValue = useMemo(() => {
-    if (!opponent?.roster?.length) return 0;
-    return Math.round(opponent.roster.reduce((s, p) => s + p.ovr, 0) / opponent.roster.length);
-  }, [opponent?.roster]);
+    if (!effectiveOppRoster.length) return 0;
+    return Math.round(effectiveOppRoster.reduce((s, p) => s + p.ovr, 0) / effectiveOppRoster.length);
+  }, [effectiveOppRoster]);
 
   const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
-      return calculateTacticScore(type, team, tactics);
+      // Pass the effective (health-adjusted) roster to tactic calc
+      return calculateTacticScore(type, { ...team, roster: effectiveRoster }, tactics);
   };
 
   const handleAutoSet = () => {
-    const autoTactics = generateAutoTactics(team);
+    const autoTactics = generateAutoTactics({ ...team, roster: effectiveRoster });
     onUpdateTactics(autoTactics);
   };
 
@@ -124,7 +158,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     onSim(tactics);
   };
 
-  const playerTeam = viewPlayer ? (team.roster.some(rp => rp.id === viewPlayer.id) ? team : opponent) : null;
+  const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : opponent) : null;
 
   if (!team) return null;
 
