@@ -85,6 +85,10 @@ const TRADE_CONFIG = {
     INJURY: { 
         DTD_PENALTY: 0.90, // 10% value drop
         INJURED_PENALTY: 0.10 // 90% value drop (Major injury - essentially worthless as asset)
+    },
+    DEPTH: {
+        MAX_CORE_ASSETS_IN_DEAL: 2, // Maximum number of "Core" players AI can give up in one trade
+        MIN_ROSTER_SIZE: 13
     }
 };
 
@@ -391,6 +395,12 @@ export default async function handler(req: any, res: any) {
                 const needs = analyzeTeamSituation(targetTeam);
                 const isCore = getCoreAssetFilter(targetTeam.roster);
 
+                // [Logic] Identify AI's Core Pieces (Starters + High Pot Young)
+                // Used to prevent "gutting the roster" when user offers a superstar
+                const sortedRoster = [...targetTeam.roster].sort((a, b) => b.ovr - a.ovr);
+                const aiStarters = sortedRoster.slice(0, 5).map(p => p.id);
+                const aiKeyYoung = sortedRoster.filter(p => p.age <= 24 && p.potential >= 80).map(p => p.id);
+
                 let userValueToAI = 0;
                 tradingPlayers.forEach((p: Player) => {
                     // For user players, use dynamic logic.
@@ -401,8 +411,6 @@ export default async function handler(req: any, res: any) {
                     userValueToAI += val;
                 });
                 
-                // If user package has negative or very low value (e.g. dump), AI ignores unless it's a specific dump scenario logic (not fully implemented yet)
-                // Effectively rejects the trade.
                 if (userValueToAI < 100) continue; 
 
                 let candidates = targetTeam.roster.filter(p => {
@@ -430,13 +438,25 @@ export default async function handler(req: any, res: any) {
                          }
                     }
 
-                    const pool = candidates.filter(p => !pack.includes(p));
+                    // [Logic] Core Asset Protection
+                    // While building the package, we filter `pool` to ensure we don't pick too many core players.
+                    let pool = candidates.filter(p => !pack.includes(p));
+                    
                     const salaryMin = userSalary * 0.75;
                     const valueTarget = userValueToAI; 
 
                     let attempts = 0;
                     while (pack.length < 5 && attempts < 50) {
                         attempts++;
+                        
+                        // [New] Check current core count in pack
+                        const coresInPack = pack.filter(p => aiStarters.includes(p.id) || aiKeyYoung.includes(p.id)).length;
+                        
+                        // [New] If limit reached, remove remaining cores from pool for this iteration
+                        if (coresInPack >= TRADE_CONFIG.DEPTH.MAX_CORE_ASSETS_IN_DEAL) {
+                            pool = pool.filter(p => !aiStarters.includes(p.id) && !aiKeyYoung.includes(p.id));
+                        }
+
                         const isSalOk = packSalary >= salaryMin;
                         const isValOk = packValue >= valueTarget * 0.9;
 
@@ -447,6 +467,7 @@ export default async function handler(req: any, res: any) {
                         let nextPiece: Player | undefined;
 
                         if (!isValOk && valDeficit > 5000) {
+                            // If we need value, try to find highest val in pool
                             nextPiece = pool.sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a))[0];
                         } else if (!isSalOk && salDeficit > 5) {
                             nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.find(p => p.salary > 5);
@@ -458,7 +479,8 @@ export default async function handler(req: any, res: any) {
                             pack.push(nextPiece);
                             packValue += getContextualValue(nextPiece, needs, false);
                             packSalary += nextPiece.salary;
-                            const idx = pool.indexOf(nextPiece);
+                            // Remove from pool immediately
+                            const idx = pool.findIndex(p => p.id === nextPiece!.id);
                             if (idx > -1) pool.splice(idx, 1);
                         }
                     }
