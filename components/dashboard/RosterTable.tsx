@@ -77,7 +77,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                     const assignedSlot = Object.entries(starters).find(([slot, id]) => id === p.id)?.[0];
                                     const isStarter = !!assignedSlot;
                                     const isSelectedStopper = stopperId === p.id;
-                                    const cond = Math.round(p.condition || 100); // [Fix] Round to integer
+                                    const cond = Math.round(p.condition || 100); 
                                     const displayOvr = assignedSlot ? calculatePlayerOvr(p, assignedSlot) : p.ovr;
                                     let condColor = 'bg-emerald-500';
                                     if (cond < 60) condColor = 'bg-red-500';
@@ -143,44 +143,44 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 })}
                             </tbody>
                         </table>
+                        
+                        {/* Injured Reserve Table */}
                         {injuredSorted.length > 0 && (
-                            <div className="flex flex-col mt-10 border-t border-white/10 bg-red-950/5">
-                                <div className="px-8 py-4 bg-red-950/20 flex items-center gap-3 border-b border-white/5">
+                            <div className="flex flex-col mt-10 border-t-2 border-red-900/30 bg-red-950/10">
+                                <div className="px-8 py-4 bg-red-950/20 flex items-center gap-3 border-b border-red-900/20">
                                     <ShieldAlert size={18} className="text-red-500" />
                                     <h4 className="text-sm font-black uppercase text-red-400 tracking-[0.2em] oswald">Injured Reserve (부상자 명단)</h4>
                                 </div>
                                 <table className="w-full text-left border-collapse table-fixed">
                                     <thead>
-                                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5 bg-slate-950/30">
+                                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-900/30">
                                             <th className="py-3 px-8 min-w-[150px]">이름</th>
-                                            <th className="py-3 px-4 text-right w-16">POS</th>
-                                            <th className="py-3 px-4 text-right w-20">OVR</th>
-                                            <th className="py-3 px-4 text-right w-60">부상 상태</th>
-                                            <th className="py-3 px-8 text-right min-w-[180px]">복귀 예정일</th>
+                                            <th className="py-3 px-4 text-center w-20">OVR</th>
+                                            <th className="py-3 px-4 text-center w-16">POS</th>
+                                            <th className="py-3 px-4 text-left w-60">부상명</th>
+                                            <th className="py-3 px-8 text-left min-w-[180px]">복귀 예정일</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-white/5">
+                                    <tbody className="divide-y divide-slate-800/50">
                                         {injuredSorted.map(p => (
                                             <tr key={p.id} className="hover:bg-red-500/5 transition-all group">
                                                 <td className="py-4 px-8 cursor-pointer" onClick={() => onViewPlayer(p)}>
                                                     <span className="font-black text-base text-slate-400 group-hover:text-red-400">{p.name}</span>
                                                 </td>
-                                                <td className="py-4 px-4 text-right">
-                                                    <span className="text-xs font-black text-slate-600 px-2 py-1 rounded-md border border-white/5 uppercase tracking-tighter">{p.position}</span>
+                                                <td className="py-4 px-4 text-center">
+                                                    <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto grayscale opacity-70"}>{p.ovr}</div>
                                                 </td>
-                                                <td className="py-4 px-4 text-right">
-                                                    <div className="flex items-center justify-end">
-                                                        <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-0"}>{p.ovr}</div>
-                                                    </div>
+                                                <td className="py-4 px-4 text-center">
+                                                    <span className="text-xs font-black text-slate-600 px-2 py-1 rounded-md border border-slate-800 uppercase tracking-tighter">{p.position}</span>
                                                 </td>
-                                                <td className="py-4 px-4 text-right">
-                                                    <span className="pretendard text-base font-bold text-red-500 whitespace-nowrap">
-                                                        {p.injuryType || '상태 점검 중'}
+                                                <td className="py-4 px-4 text-left">
+                                                    <span className="pretendard text-sm font-bold text-red-500 whitespace-nowrap">
+                                                        {p.injuryType || 'Unknown Injury'}
                                                     </span>
                                                 </td>
-                                                <td className="py-4 px-8 text-right">
-                                                    <span className="pretendard text-base font-black text-slate-400 tracking-tight">
-                                                        {p.returnDate || '미정'}
+                                                <td className="py-4 px-8 text-left">
+                                                    <span className="pretendard text-sm font-black text-slate-400 tracking-tight">
+                                                        {p.returnDate || 'TBD'}
                                                     </span>
                                                 </td>
                                             </tr>
