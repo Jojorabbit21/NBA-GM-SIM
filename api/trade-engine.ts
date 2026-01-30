@@ -315,12 +315,13 @@ function mapDbPlayer(p: any): Player {
     const ath = (attrs.speed + attrs.agility + attrs.strength + attrs.vertical) / 4;
     
     // 3. Determine OVR
-    // Trust DB OVR if it exists and > 40, else recalculate
     const dbOvr = Number(p.ovr || (p.base_attributes && p.base_attributes.ovr));
     const calculatedOvr = calculateOvr({ ...attrs, position: p.position });
     const finalOvr = (dbOvr && dbOvr > 40) ? dbOvr : calculatedOvr;
 
     return {
+        ...attrs, // Spread FIRST to avoid overwriting calculated overrides below
+
         id: p.id,
         name: p.name,
         position: p.position || 'G',
@@ -328,15 +329,16 @@ function mapDbPlayer(p: any): Player {
         salary: Number(p.salary || 1),
         contractYears: Number(p.contract_years || 1),
         ovr: finalOvr,
-        potential: attrs.potential || (finalOvr + 5),
+        
+        // Override potential if needed (default from normalize is 50)
+        // If DB had a specific potential (not default 50), use it. Otherwise calc based on OVR.
+        potential: (attrs.potential && attrs.potential !== 50) ? attrs.potential : (finalOvr + 5),
         
         // Engine Specific Stats
         def, out, reb, plm, ins, ath,
-        intDef: attrs.intDef,
-        perDef: attrs.perDef,
-        threeCorner: attrs.threeCorner,
         
-        ...attrs // Spread all normalized attributes
+        // Explicitly map keys that might be missing from spread if they came from calculations above
+        // (Though spread ...attrs handles intDef, perDef, threeCorner directly)
     };
 }
 
