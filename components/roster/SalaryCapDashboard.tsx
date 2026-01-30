@@ -12,11 +12,51 @@ const SECOND_APRON = 189;
 const SALARY_CAP = 140;
 
 const getCapStatus = (cap: number) => {
-  if (cap >= SECOND_APRON) return { label: '2차 에이프런 초과', msg: '강력한 영입 제한 및 지명권 패널티가 적용되는 단계입니다.', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/50' };
-  if (cap >= FIRST_APRON) return { label: '1차 에이프런 초과', msg: '미드레벨 예외 조항 사용 제한 등 팀 운영 유동성이 제약됩니다.', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/50' };
-  if (cap >= TAX_LEVEL) return { label: '사치세 납부 구간', msg: '샐러리 캡을 초과하여 구단 운영비 외 추가 세금이 부과됩니다.', color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/50' };
-  if (cap >= SALARY_CAP) return { label: '샐러리 캡 초과', msg: '사치세 라인 미만이지만, FA 영입 시 예외 조항 위주로 운영해야 합니다.', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/50' };
-  return { label: '캡 스페이스 여유', msg: '공격적인 FA 영입 및 트레이드 흡수가 가능한 건강한 상태입니다.', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-400/50' };
+  if (cap >= SECOND_APRON) return { 
+      label: '2차 에이프런 초과', 
+      msg: '강력한 영입 제한 및 지명권 패널티가 적용되는 단계입니다.', 
+      color: 'text-red-500', 
+      bg: 'bg-red-500/10', 
+      border: 'border-red-500/50',
+      bar: 'bg-red-500',
+      iconBg: 'bg-red-500/20'
+  };
+  if (cap >= FIRST_APRON) return { 
+      label: '1차 에이프런 초과', 
+      msg: '미드레벨 예외 조항 사용 제한 등 팀 운영 유동성이 제약됩니다.', 
+      color: 'text-orange-500', 
+      bg: 'bg-orange-500/10', 
+      border: 'border-orange-500/50',
+      bar: 'bg-orange-500',
+      iconBg: 'bg-orange-500/20'
+  };
+  if (cap >= TAX_LEVEL) return { 
+      label: '사치세 납부 구간', 
+      msg: '샐러리 캡을 초과하여 구단 운영비 외 추가 세금이 부과됩니다.', 
+      color: 'text-amber-400', 
+      bg: 'bg-amber-400/10', 
+      border: 'border-amber-400/50',
+      bar: 'bg-amber-400',
+      iconBg: 'bg-amber-400/20'
+  };
+  if (cap >= SALARY_CAP) return { 
+      label: '샐러리 캡 초과', 
+      msg: '사치세 라인 미만이지만, FA 영입 시 예외 조항 위주로 운영해야 합니다.', 
+      color: 'text-blue-400', 
+      bg: 'bg-blue-500/10', 
+      border: 'border-blue-500/50',
+      bar: 'bg-blue-400',
+      iconBg: 'bg-blue-500/20'
+  };
+  return { 
+      label: '캡 스페이스 여유', 
+      msg: '공격적인 FA 영입 및 트레이드 흡수가 가능한 건강한 상태입니다.', 
+      color: 'text-emerald-400', 
+      bg: 'bg-emerald-500/10', 
+      border: 'border-emerald-400/50',
+      bar: 'bg-emerald-400',
+      iconBg: 'bg-emerald-500/20'
+  };
 };
 
 const getVisualPercentage = (cap: number) => {
@@ -72,7 +112,7 @@ export const SalaryCapDashboard: React.FC<SalaryCapDashboardProps> = ({ currentT
             <div className="flex-[10] bg-red-500/5"></div>
           </div>
           <div 
-            className={`h-full transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(0,0,0,0.5)] relative z-10 ${capStatus.color.replace('text', 'bg')}`} 
+            className={`h-full transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(0,0,0,0.5)] relative z-10 ${capStatus.bar}`} 
             style={{ width: `${visualPercentage}%` }} 
           />
           <div 

@@ -9,10 +9,42 @@ const FIRST_APRON = 178;
 const SECOND_APRON = 189;
 
 const getCapStatus = (cap: number) => {
-  if (cap >= SECOND_APRON) return { label: '2차 에이프런 초과', msg: '로스터 구성 및 트레이드에 강력한 제약이 발생합니다.', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/50' };
-  if (cap >= FIRST_APRON) return { label: '1차 에이프런 초과', msg: '샐러리 유동성이 감소하며 영입 제약이 적용됩니다.', color: 'text-orange-500', bg: 'bg-orange-500/10', border: 'border-orange-500/50' };
-  if (cap >= TAX_LEVEL) return { label: '사치세 납부 대상', msg: '사치세 구간입니다. 구단 운영 비용이 증가할 수 있습니다.', color: 'text-amber-400', bg: 'bg-amber-400/10', border: 'border-amber-400/50' };
-  return { label: '샐러리캡 여유', msg: '구단 샐러리가 건강하며 추가적인 전력 보강이 가능합니다.', color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-400/50' };
+  if (cap >= SECOND_APRON) return { 
+      label: '2차 에이프런 초과', 
+      msg: '로스터 구성 및 트레이드에 강력한 제약이 발생합니다.', 
+      color: 'text-red-500', 
+      bg: 'bg-red-500/10', 
+      border: 'border-red-500/50',
+      bar: 'bg-red-500',
+      iconBg: 'bg-red-500/20'
+  };
+  if (cap >= FIRST_APRON) return { 
+      label: '1차 에이프런 초과', 
+      msg: '샐러리 유동성이 감소하며 영입 제약이 적용됩니다.', 
+      color: 'text-orange-500', 
+      bg: 'bg-orange-500/10', 
+      border: 'border-orange-500/50',
+      bar: 'bg-orange-500',
+      iconBg: 'bg-orange-500/20'
+  };
+  if (cap >= TAX_LEVEL) return { 
+      label: '사치세 납부 대상', 
+      msg: '사치세 구간입니다. 구단 운영 비용이 증가할 수 있습니다.', 
+      color: 'text-amber-400', 
+      bg: 'bg-amber-400/10', 
+      border: 'border-amber-400/50',
+      bar: 'bg-amber-400',
+      iconBg: 'bg-amber-400/20'
+  };
+  return { 
+      label: '샐러리캡 여유', 
+      msg: '구단 샐러리가 건강하며 추가적인 전력 보강이 가능합니다.', 
+      color: 'text-emerald-400', 
+      bg: 'bg-emerald-500/10', 
+      border: 'border-emerald-400/50',
+      bar: 'bg-emerald-400',
+      iconBg: 'bg-emerald-500/20'
+  };
 };
 
 const getVisualPercentage = (cap: number) => {
@@ -105,7 +137,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                 </div>
                 <div className="space-y-2">
                     <div className="relative h-4 w-full bg-slate-800/50 rounded-full overflow-hidden border border-slate-700/50">
-                        <div className={`h-full transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(0,0,0,0.5)] ${status.color.replace('text', 'bg')}`} style={{ width: `${visualWidth}%` }} />
+                        <div className={`h-full transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(0,0,0,0.5)] ${status.bar}`} style={{ width: `${visualWidth}%` }} />
                         <div className="absolute inset-0 flex pointer-events-none">
                             <div className="flex-1 border-r border-slate-700/50 relative"></div>
                             <div className="flex-1 border-r border-slate-700/50 relative"></div>
@@ -122,7 +154,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div className={`md:col-span-3 p-5 rounded-3xl border ${status.bg} ${status.border} flex items-center gap-4`}>
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${status.color.replace('text', 'bg').replace('500', '500/20')}`}>
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0 ${status.iconBg}`}>
                            <Info className={status.color} size={24} />
                         </div>
                         <div>
