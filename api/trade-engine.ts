@@ -50,6 +50,15 @@ interface TeamNeeds {
     isTaxPayer: boolean;
 }
 
+// --- Debug Logger ---
+const DEBUG = true;
+const LOG = (msg: string, data?: any) => {
+    if (DEBUG) {
+        if (data) console.log(`[TradeEngine] ${msg}`, JSON.stringify(data, null, 2));
+        else console.log(`[TradeEngine] ${msg}`);
+    }
+};
+
 // --- Configuration ---
 const TRADE_CONFIG = {
     BASE: { 
@@ -78,21 +87,23 @@ const TRADE_CONFIG = {
 // --- Helper Functions ---
 
 // 1. Calculate Base Trade Value
-function getPlayerTradeValue(p: Player, debugLog: string[] = []): number {
+function getPlayerTradeValue(p: Player): number {
     const C = TRADE_CONFIG;
-    const effectiveOvr = Math.max(C.BASE.REPLACEMENT_LEVEL_OVR, p.ovr);
+    // Safety check for OVR
+    const safeOvr = typeof p.ovr === 'number' ? p.ovr : 70;
+    const effectiveOvr = Math.max(C.BASE.REPLACEMENT_LEVEL_OVR, safeOvr);
     
     // 1. Base OVR Value
     let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
     // 2. Superstar Premium
-    if (p.ovr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) {
+    if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) {
         baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
     }
 
     // 3. Age & Potential
     if (p.age <= 23) {
-        if (p.potential > p.ovr) {
+        if (p.potential > safeOvr) {
             const potBonus = 1.0 + Math.min(0.5, (p.potential - 70) * 0.02);
             baseValue *= potBonus;
         }
@@ -102,8 +113,7 @@ function getPlayerTradeValue(p: Player, debugLog: string[] = []): number {
     }
 
     // 4. Contract Efficiency (Simplified)
-    // Don't penalize superstars
-    if (p.ovr < 85 && p.salary > 25) {
+    if (safeOvr < 85 && p.salary > 25) {
          baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
     }
 
@@ -125,10 +135,10 @@ function analyzeTeamSituation(team: Team): TeamNeeds {
     positions.forEach(pos => {
         // Map general positions (G, F) to specific ones
         const depth = roster.filter(p => {
-            if (p.ovr < 70) return false; // Ignore scrubs
+            if (p.ovr < 70) return false; 
             if (p.position === pos) return true;
-            if (pos === 'PG' || pos === 'SG') return p.position === 'G';
-            if (pos === 'SF' || pos === 'PF') return p.position === 'F';
+            if ((pos === 'PG' || pos === 'SG') && p.position === 'G') return true;
+            if ((pos === 'SF' || pos === 'PF') && p.position === 'F') return true;
             return false;
         });
 
@@ -172,12 +182,15 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
 
     if (isAcquiring) {
         // Fit Bonus
+        let fitMult = 1.0;
         if (needs.weakPositions.some(pos => player.position.includes(pos))) {
-            value *= (1 + C.POSITION_BONUS);
+            fitMult += C.POSITION_BONUS;
         }
-        if (needs.statNeeds.includes('DEF') && player.def > 75) value *= 1.1;
-        if (needs.statNeeds.includes('3PT') && player.out > 75) value *= 1.1;
-        if (needs.statNeeds.includes('REB') && player.reb > 75) value *= 1.1;
+        if (needs.statNeeds.includes('DEF') && player.def > 75) fitMult += 0.1;
+        if (needs.statNeeds.includes('3PT') && player.out > 75) fitMult += 0.1;
+        if (needs.statNeeds.includes('REB') && player.reb > 75) fitMult += 0.1;
+
+        value *= fitMult;
 
         // Strategy Bonus
         if (needs.isContender && player.ovr >= 80) value *= 1.2;
@@ -198,10 +211,13 @@ function getUntouchables(team: Team, needs: TeamNeeds): Set<string> {
     const roster = [...team.roster].sort((a, b) => b.ovr - a.ovr);
     
     if (needs.isContender) {
+        // Keep top 3 players
         roster.slice(0, 3).forEach(p => untouchables.add(p.id));
     } else {
+        // Keep young prospects
         roster.filter(p => p.age <= 24 && p.potential >= 82).forEach(p => untouchables.add(p.id));
-        if (roster[0] && roster[0].age <= 26) untouchables.add(roster[0].id);
+        // Franchise player if young
+        if (roster[0] && roster[0].age <= 27) untouchables.add(roster[0].id);
     }
     return untouchables;
 }
@@ -245,6 +261,8 @@ export default async function handler(req: any, res: any) {
         const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
         const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
+        LOG(`Action Received: ${action}`);
+
         const { data: teamsData, error: teamsError } = await supabaseClient
             .from('meta_teams')
             .select('*, meta_players(*)');
@@ -263,6 +281,8 @@ export default async function handler(req: any, res: any) {
             const { tradingPlayers, desiredPositions } = payload;
             const offers: TradeOffer[] = [];
             
+            LOG(`Generating offers for ${tradingPlayers.length} players`, tradingPlayers.map((p: any) => `${p.name}(${p.ovr})`));
+
             const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
             const userOvrMax = Math.max(...tradingPlayers.map((p: Player) => p.ovr));
             const isSuperstarTrade = userOvrMax >= 88;
@@ -276,14 +296,22 @@ export default async function handler(req: any, res: any) {
                 
                 let userValueToAI = 0;
                 tradingPlayers.forEach((p: Player) => {
-                    userValueToAI += getContextualValue(p, needs, true, logs);
+                    const val = getContextualValue(p, needs, true, logs);
+                    userValueToAI += val;
                 });
+                
+                // Debug Log for Value
+                // LOG(`Team ${targetTeam.name} | UserVal: ${userValueToAI} | Needs: ${needs.weakPositions.join(',')}`);
 
-                if (userValueToAI < 300) continue; // Lowered threshold slightly
+                // Threshold Check
+                if (userValueToAI < 200) { // Lowered to 200 to allow dumping role players
+                    // LOG(`Skipping ${targetTeam.name}: Value too low`);
+                    continue; 
+                }
 
                 // Candidate Pool: Exclude untouchables (unless superstar trade)
                 let candidates = targetTeam.roster.filter(p => {
-                     if (isSuperstarTrade) return p.ovr < 96; 
+                     if (isSuperstarTrade) return p.ovr < 97; 
                      return !untouchables.has(p.id);
                 });
                 
@@ -297,8 +325,8 @@ export default async function handler(req: any, res: any) {
                     
                     // 1. Mandatory Core Piece if Superstar Trade
                     if (isSuperstarTrade) {
-                         const core = candidates.find(p => p.ovr >= 80 || (p.potential >= 85 && p.age <= 24));
-                         if (!core) break;
+                         const core = candidates.find(p => p.ovr >= 82 || (p.potential >= 88 && p.age <= 24));
+                         if (!core) break; // If they can't offer a core, they can't trade for a superstar
                          pack.push(core);
                          packValue += getContextualValue(core, needs, false);
                          packSalary += core.salary;
@@ -312,7 +340,7 @@ export default async function handler(req: any, res: any) {
                     while (attempts < 20 && pack.length < 5) {
                         attempts++;
                         const isSalOk = packSalary >= salaryMin;
-                        // AI is okay if it gives slightly less value (0.7) or more (1.2)
+                        // AI is okay if it gives slightly less value (0.7) or more (1.3)
                         const isValOk = packValue >= valueTarget * 0.7; 
 
                         if (isSalOk && isValOk) break;
@@ -326,22 +354,29 @@ export default async function handler(req: any, res: any) {
                         
                         if (pool.length === 0) break;
 
-                        if (!isValOk && valDeficit > 2000) {
+                        if (!isValOk && valDeficit > 1500) { // If value gap is huge
                             // Need Value: Find best available player
                             const best = [...pool].sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a))[0];
-                            if (best && (packSalary + best.salary < userSalary * 1.3)) {
+                            if (best && (packSalary + best.salary < userSalary * 1.35)) {
                                 nextPiece = best;
                             } else {
-                                // Fallback: Random
-                                nextPiece = pool[Math.floor(Math.random() * pool.length)];
+                                // Fallback: Random but prefer younger/higher pot
+                                nextPiece = pool.find(p => p.potential > 80);
                             }
                         } else if (!isSalOk) {
                             // Need Salary: Find player matching deficit
-                            nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.sort((a,b) => b.salary - a.salary)[0];
+                            // Prioritize bad contracts if AI is rebuilding
+                            if (needs.isSeller) {
+                                nextPiece = pool.find(p => p.salary > 20) || pool.find(p => Math.abs(p.salary - salDeficit) < 5);
+                            } else {
+                                nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.sort((a,b) => b.salary - a.salary)[0];
+                            }
                         } else {
-                            // Just filler
-                            nextPiece = pool.find(p => p.ovr < 75);
+                            // Just filler (low value, low salary)
+                            nextPiece = pool.find(p => p.ovr < 75 && p.salary < 5);
                         }
+
+                        if (!nextPiece) nextPiece = pool[Math.floor(Math.random() * pool.length)];
 
                         if (nextPiece) {
                             pack.push(nextPiece);
@@ -354,8 +389,8 @@ export default async function handler(req: any, res: any) {
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
                     
-                    const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.75 && salRatio <= 1.25);
-                    const validValue = valRatio >= 0.65 && valRatio <= 1.3; // Allow AI to win trade or pay premium
+                    const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.30); // Widened range
+                    const validValue = valRatio >= 0.60 && valRatio <= 1.4; // Widened range
 
                     const posValid = desiredPositions.length === 0 || pack.some(p => desiredPositions.some((dp: string) => p.position.includes(dp)));
 
@@ -363,9 +398,9 @@ export default async function handler(req: any, res: any) {
                         const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
                         if (!isDup) {
                             const reason = [];
-                            if (needs.weakPositions.length > 0) reason.push(`Needs: ${needs.weakPositions.join(',')}`);
-                            if (isSuperstarTrade) reason.push("Blockbuster Offer");
-                            else if (packValue < userValueToAI) reason.push("Value Deal");
+                            if (needs.weakPositions.length > 0) reason.push(`Weak: ${needs.weakPositions.join(',')}`);
+                            if (isSuperstarTrade) reason.push("Blockbuster");
+                            else if (packValue < userValueToAI) reason.push("Value Win");
                             
                             offers.push({
                                 teamId: targetTeam.id,
@@ -378,6 +413,7 @@ export default async function handler(req: any, res: any) {
                     }
                 }
             }
+            LOG(`Total Offers Generated: ${offers.length}`);
             result = { offers: offers.sort((a, b) => b.diffValue - a.diffValue).slice(0, 5) };
         }
 
@@ -391,7 +427,7 @@ export default async function handler(req: any, res: any) {
             const untouchables = getUntouchables(targetTeam, needs);
 
             if (targetPlayers.some((p: Player) => untouchables.has(p.id))) {
-                 // Hard to trade for untouchables
+                 LOG(`Warning: Target includes untouchables.`);
             }
 
             let targetValueToAI = 0;
@@ -401,6 +437,8 @@ export default async function handler(req: any, res: any) {
                 targetValueToAI += v;
                 targetSalary += p.salary;
             });
+
+            LOG(`User targeting ${targetPlayers.length} players from ${targetTeam.name}. Total Val: ${targetValueToAI}`);
 
             const candidates = myTeam.roster.sort((a,b) => b.ovr - a.ovr);
             const offers: TradeOffer[] = [];
@@ -432,7 +470,7 @@ export default async function handler(req: any, res: any) {
                     if (salaryNeeded > 5) {
                         next = pool.find(p => Math.abs(p.salary - salaryNeeded) < 5) || pool.find(p => p.salary < salaryNeeded + 5);
                     } else if (valueNeeded > 0) {
-                         next = pool[0]; 
+                         next = pool[0]; // Best remaining
                     } else {
                          next = pool.find(p => p.salary < 5); 
                     }
