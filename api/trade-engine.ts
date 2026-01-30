@@ -16,7 +16,7 @@ interface Player {
   out: number; 
   reb: number;
   plm: number;
-  intDef: number; // Added for detailed calculation
+  intDef: number;
   perDef: number;
   threeCorner: number;
   [key: string]: any;
@@ -63,11 +63,10 @@ const LOG = (msg: string, data?: any) => {
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        // [Balance] Increased exponent from 2.5 to 2.9 to emphasize QUALITY over QUANTITY.
-        // Now 1x 85 OVR >>> 5x 70 OVR in math value.
-        VALUE_EXPONENT: 2.9, 
-        SUPERSTAR_PREMIUM_THRESHOLD: 88,
-        SUPERSTAR_MULTIPLIER: 1.5 
+        // [Balance] High exponent to value Quality > Quantity.
+        VALUE_EXPONENT: 3.0, 
+        SUPERSTAR_PREMIUM_THRESHOLD: 95,
+        SUPERSTAR_MULTIPLIER: 2.0 
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
@@ -90,16 +89,17 @@ const TRADE_CONFIG = {
 // 1. Calculate Base Trade Value
 function getPlayerTradeValue(p: Player): number {
     const C = TRADE_CONFIG;
-    // Safety check for OVR
     const safeOvr = typeof p.ovr === 'number' ? p.ovr : 70;
     const effectiveOvr = Math.max(C.BASE.REPLACEMENT_LEVEL_OVR, safeOvr);
     
     // 1. Base OVR Value (Exponential Curve)
     let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
-    // 2. Superstar Premium (Significant Boost)
+    // 2. Superstar Premium (Significant Boost for 95+)
     if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) {
         baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
+    } else if (safeOvr >= 90) {
+        baseValue *= 1.5; // Minor premium for 90+
     }
 
     // 3. Age & Potential
@@ -110,14 +110,13 @@ function getPlayerTradeValue(p: Player): number {
             const potBonus = 1.0 + (potDiff * 0.05); // 5% bonus per potential point diff
             baseValue *= potBonus;
         }
-    } else if (p.age >= 31) {
+    } else if (p.age >= 32) {
         // Age decline
-        const decline = (p.age - 30) * 0.1;
+        const decline = (p.age - 31) * 0.1;
         baseValue *= Math.max(0.1, 1.0 - decline);
     }
 
     // 4. Contract Efficiency
-    // Don't penalize superstars for high salary, but penalize bad role players
     if (safeOvr < 80 && p.salary > 20) {
          baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
     }
@@ -163,7 +162,6 @@ function analyzeTeamSituation(team: Team): TeamNeeds {
     const taxLine = team.luxuryTaxLine || TRADE_CONFIG.SALARY.TAX_LINE;
     const isTaxPayer = totalSalary > taxLine;
     
-    // Contender Logic: If top 2 players average 85+ OVR
     const top2Ovr = (sorted[0]?.ovr || 0) + (sorted[1]?.ovr || 0);
     const isContender = top2Ovr > 170; 
     const isSeller = !isContender && (team.wins || 0) < (team.losses || 0) * 1.5;
@@ -190,39 +188,32 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
         value *= fitMult;
 
         // Strategy Bonus
-        if (needs.isContender && player.ovr >= 80) value *= 1.25; // Contenders overpay for "Win Now"
-        if (needs.isSeller && player.age <= 23) value *= 1.35; // Sellers overpay for youth
+        if (needs.isContender && player.ovr >= 80) value *= 1.25; 
+        if (needs.isSeller && player.age <= 23) value *= 1.35; 
 
     } else {
-        // Selling Logic (Giving away)
+        // Selling Logic
         if (needs.isSeller && player.age > 28) value *= 0.7; // "Dump him"
-        if (needs.isContender && player.ovr > 78) value *= 1.3; // "We need him"
+        if (needs.isContender && player.ovr > 80) value *= 1.3; // "We need him"
     }
 
     return Math.floor(value);
 }
 
-// 4. Untouchables
-function getUntouchables(team: Team, needs: TeamNeeds, isBlockbuster: boolean): Set<string> {
-    const untouchables = new Set<string>();
-    const roster = [...team.roster].sort((a, b) => b.ovr - a.ovr);
-    
-    // If it's a blockbuster (Superstar incoming), almost no one is untouchable except the Franchise Player
-    if (isBlockbuster) {
-        if (roster.length > 0) untouchables.add(roster[0].id); // Only the best player is safe
-        return untouchables;
-    }
+// 4. Dynamic Core Asset Definition
+// Returns a filter function that identifies core assets for THIS specific team
+function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
+    const has90 = roster.some(p => p.ovr >= 90);
+    const has85 = roster.some(p => p.ovr >= 85);
 
-    if (needs.isContender) {
-        // Contenders keep their core 3
-        roster.slice(0, 3).forEach(p => untouchables.add(p.id));
-    } else {
-        // Rebuilders keep young high-potential players
-        roster.filter(p => p.age <= 24 && p.potential >= 85).forEach(p => untouchables.add(p.id));
-        // And the best player if he's not old
-        if (roster[0] && roster[0].age <= 28) untouchables.add(roster[0].id);
-    }
-    return untouchables;
+    return (p: Player) => {
+        // Rule 1: If team has 90+ players, only they are core.
+        if (has90) return p.ovr >= 90;
+        // Rule 2: If no 90+, but has 85+, they are core.
+        if (has85) return p.ovr >= 85;
+        // Rule 3: If no 85+, team has NO core assets (everything is tradable).
+        return false;
+    };
 }
 
 // 5. Data Mapper
@@ -281,75 +272,64 @@ export default async function handler(req: any, res: any) {
             const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
             const userMaxOvr = Math.max(...tradingPlayers.map((p: Player) => p.ovr));
             
-            // Define Trade Tier
-            const isSuperstarTrade = userMaxOvr >= 88; // Getting an All-NBA guy
-            const isStarTrade = userMaxOvr >= 80;     // Getting an All-Star/Starter
-            
-            // Headliner Quality Requirement (To prevent 5 scrubs for 1 star)
-            // The AI must include at least one player close to this quality
-            const requiredHeadlinerQuality = isSuperstarTrade ? 82 : (isStarTrade ? 76 : 0);
+            const isSuperstarTrade = userMaxOvr >= 95; // User offering a top-tier superstar
+            const isStarTrade = userMaxOvr >= 90;      // User offering a star
 
             const otherTeams = allTeams.filter(t => t.id !== payload.myTeamId);
 
             for (const targetTeam of otherTeams) {
                 const needs = analyzeTeamSituation(targetTeam);
-                // If Superstar trade, relax untouchables (User is giving a GOD, AI should offer their best)
-                const untouchables = getUntouchables(targetTeam, needs, isSuperstarTrade);
-                
+                const isCore = getCoreAssetFilter(targetTeam.roster); // Dynamic Core Logic
+
+                // User Value Calculation
                 let userValueToAI = 0;
                 tradingPlayers.forEach((p: Player) => {
-                    userValueToAI += getContextualValue(p, needs, true);
+                    let val = getContextualValue(p, needs, true);
+                    // [Feature] User Scarcity Premium: 
+                    // If user puts a 95+ superstar on block, double the value.
+                    if (p.ovr >= 95) val *= 2.0; 
+                    userValueToAI += val;
                 });
                 
-                // Early Exit: If user offer is trash to this team, skip
                 if (userValueToAI < 500) continue; 
 
                 // 2. Candidate Selection
-                let candidates = targetTeam.roster.filter(p => !untouchables.has(p.id));
-                
-                // Filter out really bad players unless they are salary filler
-                // We want Quality assets first
-                let qualityAssets = candidates.filter(p => {
-                    if (isSuperstarTrade) return p.ovr >= 78 || p.potential >= 85;
-                    if (isStarTrade) return p.ovr >= 74 || p.potential >= 80;
+                // Filter: AI protects its Core Assets unless getting a better player
+                let candidates = targetTeam.roster.filter(p => {
+                    if (isCore(p)) {
+                        // AI only gives up Core if User offers Superstar (95+) AND Core is worse than User's player
+                        if (isSuperstarTrade && p.ovr < userMaxOvr) return true; 
+                        return false; // Otherwise protect core
+                    }
                     return true;
                 });
                 
-                // If quality assets pool is empty for a major trade, fallback or skip
-                if (isStarTrade && qualityAssets.length === 0) {
-                     // Try to find *anyone* tradable who is decent
-                     qualityAssets = candidates.filter(p => p.ovr >= 72); 
-                     if (qualityAssets.length === 0) {
-                         // LOG(`[Target: ${targetTeam.name}] No quality assets to match user package.`);
-                         continue;
-                     }
-                }
-                
-                // 3. Generate Packages (Try multiple combos)
+                // Shuffle for variety
+                candidates.sort(() => Math.random() - 0.5);
+
+                // 3. Generate Packages
                 for (let i = 0; i < 20; i++) {
                     const pack: Player[] = [];
                     let packValue = 0;
                     let packSalary = 0;
-                    let hasHeadliner = false;
-
-                    // A. Pick Headliner (Essential for quality match)
-                    if (requiredHeadlinerQuality > 0) {
-                        const potentialHeadliners = qualityAssets.filter(p => p.ovr >= requiredHeadlinerQuality || (p.potential >= 85 && p.age <= 23));
-                        if (potentialHeadliners.length > 0) {
-                            const headliner = potentialHeadliners[Math.floor(Math.random() * potentialHeadliners.length)];
-                            pack.push(headliner);
-                            packValue += getContextualValue(headliner, needs, false);
-                            packSalary += headliner.salary;
-                            hasHeadliner = true;
-                        } else {
-                            // If we can't find a single headliner for a superstar trade, we probably can't make this deal
-                            if (isSuperstarTrade) break; 
-                        }
+                    
+                    // If User offers Superstar, AI MUST offer its best available asset (even if it's a core)
+                    // The 'candidates' filter above already handles the "Untouchable" logic
+                    if (isSuperstarTrade) {
+                         // Try to find a matching star from candidates
+                         const star = candidates.find(p => p.ovr >= 85);
+                         if (star) {
+                             pack.push(star);
+                             packValue += getContextualValue(star, needs, false);
+                             packSalary += star.salary;
+                         } else {
+                             // If no star available to match superstar, maybe this team can't afford it
+                             // Or they offer multiple solid players
+                         }
                     }
 
-                    // B. Fill the rest (Value & Salary matching)
-                    // Shuffle rest of candidates
-                    const pool = candidates.filter(p => !pack.includes(p)).sort(() => Math.random() - 0.5);
+                    // Fill logic
+                    const pool = candidates.filter(p => !pack.includes(p));
                     const salaryMin = userSalary * 0.75;
                     const valueTarget = userValueToAI; 
 
@@ -357,79 +337,60 @@ export default async function handler(req: any, res: any) {
                     while (pack.length < 5 && attempts < 50) {
                         attempts++;
                         const isSalOk = packSalary >= salaryMin;
-                        const isValOk = packValue >= valueTarget * 0.85; // AI wants to win the trade slightly or be even
+                        const isValOk = packValue >= valueTarget * 0.9;
 
-                        if (isSalOk && isValOk && hasHeadliner) break;
+                        if (isSalOk && isValOk) break;
 
                         const salDeficit = salaryMin - packSalary;
                         const valDeficit = valueTarget - packValue;
-                        
                         let nextPiece: Player | undefined;
 
                         if (!isValOk && valDeficit > 5000) {
-                            // We need a GOOD piece, not filler
-                            nextPiece = pool.find(p => getContextualValue(p, needs, false) > valDeficit * 0.3);
+                            // Need Value: Get best available
+                            nextPiece = pool.sort((a,b) => getPlayerTradeValue(b) - getPlayerTradeValue(a))[0];
                         } else if (!isSalOk && salDeficit > 5) {
-                            // We need Salary
+                            // Need Salary
                             nextPiece = pool.find(p => Math.abs(p.salary - salDeficit) < 5) || pool.find(p => p.salary > 5);
                         } else {
-                            // Filler
-                            nextPiece = pool[0]; 
+                            nextPiece = pool[Math.floor(Math.random() * pool.length)]; 
                         }
 
                         if (nextPiece && !pack.includes(nextPiece)) {
-                            // Don't add garbage to a superstar trade just for fun
-                            if (isSuperstarTrade && nextPiece.ovr < 70 && !isSalOk) {
-                                // Only add scrub if we desperately need salary matching
-                            } else {
-                                pack.push(nextPiece);
-                                packValue += getContextualValue(nextPiece, needs, false);
-                                packSalary += nextPiece.salary;
-                                // Update headliner status if we accidentally picked a good one
-                                if (nextPiece.ovr >= requiredHeadlinerQuality) hasHeadliner = true;
-                                // Remove from pool
-                                const idx = pool.indexOf(nextPiece);
-                                if (idx > -1) pool.splice(idx, 1);
-                            }
+                            pack.push(nextPiece);
+                            packValue += getContextualValue(nextPiece, needs, false);
+                            packSalary += nextPiece.salary;
+                            // Remove from pool
+                            const idx = pool.indexOf(nextPiece);
+                            if (idx > -1) pool.splice(idx, 1);
                         }
                     }
 
-                    // 4. Validate Package
-                    // Quality Check: Did we include a core piece?
-                    const validQuality = !requiredHeadlinerQuality || hasHeadliner || (packValue > userValueToAI * 1.2); // If value is massive, maybe quantity is okay (rare)
+                    // 4. Validation
+                    // If User gives Superstar, AI must pay up (Value Ratio > 0.9)
+                    // If AI returns a Superstar (95+), we treat it as 1:1 value (User premium is matched by AI premium in getPlayerTradeValue)
+                    const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
+                    const validValue = valRatio >= 0.9 && valRatio <= 1.4;
 
-                    // Salary Check
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35);
 
-                    // Value Check
-                    const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
-                    const validValue = valRatio >= 0.85 && valRatio <= 1.4; // Tighter range
-
-                    // Position Check
                     const posValid = desiredPositions.length === 0 || pack.some(p => desiredPositions.some((dp: string) => p.position.includes(dp)));
 
-                    if (validQuality && validSalary && validValue && posValid && pack.length > 0) {
+                    if (validValue && validSalary && posValid && pack.length > 0) {
                         const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.length === pack.length && o.players.every(p => pack.some(pk => pk.id === p.id)));
-                        
                         if (!isDup) {
-                            const reason = [];
-                            if (hasHeadliner) reason.push("Core Asset Included");
-                            if (needs.weakPositions.length > 0) reason.push(`Fits Needs: ${needs.weakPositions.join(',')}`);
-                            
                             offers.push({
                                 teamId: targetTeam.id,
                                 teamName: targetTeam.name,
                                 players: pack,
                                 diffValue: packValue - userValueToAI,
-                                analysis: reason
+                                analysis: [`Balanced Trade`]
                             });
                         }
                     }
                 }
             }
             
-            // Sort by Best Value Difference for the user (High to Low)
             result = { offers: offers.sort((a, b) => b.diffValue - a.diffValue).slice(0, 5) };
         }
 
@@ -440,93 +401,94 @@ export default async function handler(req: any, res: any) {
             if (!targetTeam) throw new Error("Target team not found");
 
             const needs = analyzeTeamSituation(targetTeam);
-            // User is trying to take targetPlayers. Are they untouchable?
-            const untouchables = getUntouchables(targetTeam, needs, false); 
-            
-            // Note: In manual proposal, we let user try for untouchables, but AI valuation will be extremely high.
-            // If player is untouchable, AI demands 2x value.
+            const isCore = getCoreAssetFilter(targetTeam.roster);
+
+            const targetMaxOvr = Math.max(...targetPlayers.map((p: Player) => p.ovr));
+            const isTargetingSuperstar = targetMaxOvr >= 95;
 
             let targetValueToAI = 0;
             let targetSalary = 0;
             
             targetPlayers.forEach((p: Player) => {
                 let v = getContextualValue(p, needs, false); 
-                if (untouchables.has(p.id)) v *= 2.0; // "He's not for sale!" premium
+                // AI protecting its Superstar: High Markup
+                if (isCore(p)) v *= 1.5; 
                 targetValueToAI += v;
                 targetSalary += p.salary;
             });
 
+            // [Feature] User Buying Superstar Routes
+            // Route A: 2x 90+ Players
+            // Route B: 1x 90+ Player + High Potential Prospects
+            let forcedPackageCandidates: Player[] = [];
+            
+            if (isTargetingSuperstar) {
+                const user90s = myTeam.roster.filter(p => p.ovr >= 90);
+                const userHighPot = myTeam.roster.filter(p => p.potential >= 88 && p.age <= 24 && p.ovr < 90);
+
+                // Check for Route A (2x 90+)
+                if (user90s.length >= 2) {
+                    forcedPackageCandidates = user90s.slice(0, 2);
+                    LOG(`[Route A] Found 2x 90+ players for superstar trade.`);
+                } 
+                // Check for Route B (1x 90+ & Prospects)
+                else if (user90s.length >= 1 && userHighPot.length >= 2) {
+                    forcedPackageCandidates = [user90s[0], ...userHighPot.slice(0, 2)];
+                    LOG(`[Route B] Found 1x 90+ & prospects for superstar trade.`);
+                }
+            }
+
             const candidates = myTeam.roster.sort((a,b) => b.ovr - a.ovr);
             const offers: TradeOffer[] = [];
-            
-            // Required Quality for User Assets
-            const targetMaxOvr = Math.max(...targetPlayers.map((p: Player) => p.ovr));
-            const requiredUserHeadliner = targetMaxOvr >= 85 ? 80 : (targetMaxOvr >= 80 ? 75 : 0);
 
-            for (let i = 0; i < 30; i++) {
+            for (let i = 0; i < 20; i++) {
                 const pack: Player[] = [];
-                let packValue = 0;
-                let packSalary = 0;
-                let hasHeadliner = false;
-
-                // A. Find matching piece for needs
-                const neededPlayers = candidates.filter(p => needs.weakPositions.some(wp => p.position.includes(wp)) && !pack.includes(p));
                 
-                // Prioritize Headliner
-                if (requiredUserHeadliner > 0) {
-                    const elite = candidates.find(p => p.ovr >= requiredUserHeadliner && !pack.includes(p));
-                    if (elite) {
-                        pack.push(elite);
-                        packValue += getContextualValue(elite, needs, true);
-                        packSalary += elite.salary;
-                        hasHeadliner = true;
-                    }
+                // If special route identified, force those players first
+                if (forcedPackageCandidates.length > 0 && i === 0) {
+                     pack.push(...forcedPackageCandidates);
                 }
 
-                // If no headliner yet, try to add a needed player or best available
-                if (pack.length === 0) {
-                     const p = neededPlayers[0] || candidates[0];
-                     pack.push(p);
-                     packValue += getContextualValue(p, needs, true);
-                     packSalary += p.salary;
-                }
+                let packValue = pack.reduce((s,p) => s + getContextualValue(p, needs, true), 0);
+                let packSalary = pack.reduce((s,p) => s + p.salary, 0);
 
-                // B. Fill
+                // Fill rest
+                let pool = candidates.filter(p => !pack.includes(p));
                 let attempts = 0;
-                while (attempts < 20 && pack.length < 5) {
+                
+                while (pack.length < 5 && attempts < 50) {
                     attempts++;
                     const salaryNeeded = targetSalary - packSalary;
                     const valueNeeded = targetValueToAI - packValue;
 
                     if (Math.abs(salaryNeeded) < 5 && valueNeeded <= 0) break;
 
-                    let pool = candidates.filter(p => !pack.includes(p));
                     let next: Player | undefined;
 
-                    if (salaryNeeded > 5) {
-                        next = pool.find(p => Math.abs(p.salary - salaryNeeded) < 5) || pool.find(p => p.salary < salaryNeeded + 5);
-                    } else if (valueNeeded > 0) {
-                         next = pool[0]; // Best remaining
+                    if (valueNeeded > 5000) {
+                         next = pool[0]; // Need big value
+                    } else if (salaryNeeded > 5) {
+                         next = pool.find(p => Math.abs(p.salary - salaryNeeded) < 5) || pool.find(p => p.salary > 5);
                     } else {
-                         next = pool.find(p => p.salary < 5); 
+                         next = pool.find(p => p.salary < 5); // Filler
                     }
 
-                    if (next) {
-                         pack.push(next);
-                         packValue += getContextualValue(next, needs, true);
-                         packSalary += next.salary;
-                         if (next.ovr >= requiredUserHeadliner) hasHeadliner = true;
+                    if (next && !pack.includes(next)) {
+                        pack.push(next);
+                        packValue += getContextualValue(next, needs, true);
+                        packSalary += next.salary;
+                        pool = pool.filter(p => p.id !== next!.id);
                     }
                 }
 
                 const salRatio = targetSalary > 0 ? packSalary / targetSalary : 0;
                 const isSal = Math.abs(packSalary - targetSalary) < 5 || (salRatio >= 0.75 && salRatio <= 1.25);
                 const isVal = packValue >= targetValueToAI;
-                
-                // Quality Check
-                const isQuality = !requiredUserHeadliner || hasHeadliner;
 
-                if (isSal && isVal && isQuality) {
+                // Special override: If Route A/B was used, AI is more lenient on exact value match
+                const isSpecialRoute = forcedPackageCandidates.length > 0 && forcedPackageCandidates.every(fc => pack.includes(fc));
+                
+                if ((isSal && isVal) || (isSpecialRoute && isSal)) {
                     const isDup = offers.some(o => o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
                     if (!isDup) {
                         offers.push({
@@ -534,7 +496,7 @@ export default async function handler(req: any, res: any) {
                             teamName: myTeam.name,
                             players: pack,
                             diffValue: packValue - targetValueToAI,
-                            analysis: [`Fair Exchange`]
+                            analysis: isSpecialRoute ? ["Superstar Swap Accepted"] : [`Fair Exchange`]
                         });
                     }
                 }
