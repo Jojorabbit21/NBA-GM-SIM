@@ -432,7 +432,7 @@ export default async function handler(req: any, res: any) {
                     const valValid = finalValRatio >= minValRatio && finalValRatio <= maxValRatio;
 
                     // Positional Filter (Optional)
-                    const posValid = desiredPositions.length === 0 || pack.some(p => desiredPositions.some(dp => p.position.includes(dp)));
+                    const posValid = desiredPositions.length === 0 || pack.some(p => desiredPositions.some((dp: string) => p.position.includes(dp)));
 
                     if (salValid && valValid && posValid && pack.length > 0) {
                         const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
