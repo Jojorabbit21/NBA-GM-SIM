@@ -138,10 +138,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
       
-      {/* Background Ambience */}
-      <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-3xl opacity-30"></div>
-        <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl opacity-30"></div>
+      {/* Background Ambience & Image */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none">
+        {/* Main Background Image */}
+        <img 
+            src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background.png" 
+            alt="Background" 
+            className="w-full h-full object-cover opacity-20" 
+        />
+        
+        {/* Gradient Overlay to blend with slate-950 */}
+        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/50 to-slate-950/80"></div>
+
+        {/* Decorative Orbs */}
+        <div className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] bg-indigo-600/20 rounded-full blur-3xl opacity-30 mix-blend-screen"></div>
+        <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl opacity-30 mix-blend-screen"></div>
       </div>
 
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300">
