@@ -49,7 +49,17 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, on
                      <div className="flex items-center gap-4 flex-1 min-w-0">
                        <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>
-                         <div className="font-bold text-sm text-slate-100 truncate hover:text-indigo-400 hover:underline">{p.name}</div>
+                         <div className="flex items-center gap-2">
+                            <div className="font-bold text-sm text-slate-100 truncate hover:text-indigo-400 hover:underline">{p.name}</div>
+                            {p.health !== 'Healthy' && (
+                                <span 
+                                    className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'bg-red-900/50 text-red-400 border border-red-500/30' : 'bg-amber-900/50 text-amber-400 border border-amber-500/30'}`}
+                                    title={`부상: ${p.injuryType || 'Unknown'} (복귀: ${p.returnDate || 'TBD'})`}
+                                >
+                                    {p.health === 'Injured' ? 'OUT' : 'DTD'}
+                                </span>
+                            )}
+                         </div>
                          <div className="text-[10px] text-slate-500 uppercase font-black tracking-tight">{p.position}</div>
                        </div>
                      </div>
