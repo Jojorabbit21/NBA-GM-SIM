@@ -19,7 +19,7 @@ interface SidebarProps {
 
 // NBA Team Primary Colors
 const TEAM_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
+  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
   'dal': '#00538C', 'den': '#FEC524', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FDBB30',
   'lac': '#1D428A', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
   'nop': '#85714D', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
@@ -53,16 +53,14 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
         className="transition-colors relative z-10"
         style={!active ? { color: 'inherit' } : {}}
       >
-        {/* If not active, apply color on hover via inline style or CSS variable, 
-            but for simplicity here we use group-hover with dynamic style on parent */}
         {React.cloneElement(icon as React.ReactElement<any>, {
-           color: active ? 'white' : undefined, // Reset icon color if active
+           color: active ? 'white' : undefined,
            className: !active ? `transition-colors duration-300 group-hover:text-[${color}]` : ''
         })}
       </span>
       
       {/* Label */}
-      <span className="text-sm font-bold ko-tight tracking-tight relative z-10" style={!active ? {} : {}}>
+      <span className="text-sm font-bold ko-tight tracking-tight relative z-10">
         {label}
       </span>
 
@@ -87,29 +85,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const teamColor = team ? (TEAM_COLORS[team.id] || '#4f46e5') : '#4f46e5';
 
   return (
-    // [Optimization] bg-slate-900/60 -> bg-slate-900/95 (Almost opaque to save GPU)
-    <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden">
-      {/* Team Profile Section */}
-      <div className="p-8 border-b border-slate-800 bg-slate-950/20 relative">
-        {/* Dynamic ambient glow based on team color */}
-        <div 
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-32 rounded-full blur-[60px] opacity-10 pointer-events-none"
-            style={{ backgroundColor: teamColor }}
-        ></div>
+    <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500">
+      
+      {/* Team Profile Section - Redesigned */}
+      <div 
+        className="p-8 border-b border-slate-800 relative overflow-hidden transition-colors duration-700"
+        style={{ backgroundColor: teamColor }}
+      >
+        {/* Gradient Overlay for Depth & Text Readability */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/5 via-black/10 to-black/40 pointer-events-none"></div>
+        {/* Decorative Orb */}
+        <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none mix-blend-overlay"></div>
 
-        <div className="flex items-center gap-4 relative z-10">
-          <div 
-            className="w-14 h-14 bg-slate-950 rounded-2xl p-2 border shadow-lg flex items-center justify-center transition-all duration-500"
-            style={{ borderColor: `${teamColor}40`, boxShadow: `0 0 15px ${teamColor}20` }}
-          >
-            <img src={team?.logo} className="w-full h-full object-contain drop-shadow-md" alt="" />
-          </div>
+        <div className="flex items-center gap-5 relative z-10">
+          {/* Logo - Container Removed, Size Increased */}
+          <img 
+            src={team?.logo} 
+            className="w-16 h-16 object-contain drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300" 
+            alt="" 
+          />
+          
           <div className="min-w-0">
-            <h2 className="font-black text-lg leading-tight uppercase oswald text-white truncate">{team?.name || 'NBA GM'}</h2>
-            <span 
-                className="text-[10px] font-black uppercase tracking-widest mt-1 inline-block"
-                style={{ color: teamColor }}
-            >
+            <h2 className="font-black text-2xl leading-none uppercase oswald text-white truncate drop-shadow-md">
+              {team?.name || 'NBA GM'}
+            </h2>
+            
+            {/* Stats - Increased Size & Contrast */}
+            <span className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block text-white/90 drop-shadow-sm">
               {team?.wins || 0}W - {team?.losses || 0}L
             </span>
           </div>
