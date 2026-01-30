@@ -7,6 +7,37 @@ import { Team, Player, TradeOffer, Transaction } from '../types';
 //  ALL proprietary algorithms have been moved to the server to prevent client-side inspection.
 // ==========================================================================================
 
+// Helper to minimize payload size (Network Optimization)
+// We only send attributes strictly needed for trade valuation logic.
+const serializeLeagueState = (teams: Team[]) => {
+    return teams.map(t => ({
+        id: t.id,
+        name: t.name,
+        salaryCap: t.salaryCap,
+        luxuryTaxLine: t.luxuryTaxLine,
+        wins: t.wins,
+        losses: t.losses,
+        roster: t.roster.map(p => ({
+            id: p.id,
+            name: p.name,
+            position: p.position,
+            age: p.age,
+            salary: p.salary,
+            contractYears: p.contractYears,
+            ovr: p.ovr,
+            potential: p.potential,
+            health: p.health,
+            injuryType: p.injuryType,
+            returnDate: p.returnDate,
+            // Core attributes for valuation
+            def: p.def, out: p.out, reb: p.reb, plm: p.plm, ins: p.ins, ath: p.ath,
+            intDef: p.intDef, perDef: p.perDef,
+            // Stats used for fit analysis
+            height: p.height
+        }))
+    }));
+};
+
 async function callTradeApi(action: string, payload: any) {
     try {
         const response = await fetch('/api/trade-engine', {
@@ -29,15 +60,19 @@ async function callTradeApi(action: string, payload: any) {
 export async function generateTradeOffers(
     tradingPlayers: Player[], 
     myTeam: Team, 
-    allTeams: Team[], // Kept for interface compatibility
+    allTeams: Team[], 
     desiredPositions: string[] = []
 ): Promise<TradeOffer[]> {
+    // [Fix] Inject current client state (allTeams) so server knows about recent trades
+    const leagueState = serializeLeagueState(allTeams);
+
     const data = await callTradeApi('generate-offers', {
         myTeamId: myTeam.id,
+        leagueState, // Pass current state
         tradingPlayers: tradingPlayers.map(p => ({
             id: p.id, name: p.name, salary: p.salary, position: p.position,
             age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears,
-            health: p.health // [Update] Pass health status
+            health: p.health
         })),
         desiredPositions
     });
@@ -47,15 +82,35 @@ export async function generateTradeOffers(
 export async function generateCounterOffers(
     targetPlayers: Player[], 
     targetTeam: Team, 
-    myTeam: Team
+    myTeam: Team,
+    allTeams: Team[] // [Update] Need allTeams to pass state
 ): Promise<TradeOffer[]> {
+    // [Fix] Inject current client state
+    // Note: generateCounterOffers signature in types might need update if strict, 
+    // but JS allows extra args. In usage (TransactionsView), we should pass `teams`.
+    // If interface restricts, we rely on `targetTeam` and `myTeam` being up to date, 
+    // but `leagueState` is safer for global context. 
+    // Here we assume `allTeams` is available or passed. 
+    // *Correction*: The View calls this. We need to update the View or use a global hook context.
+    // For now, let's assume `allTeams` is passed or available via the argument. 
+    // Actually, `TransactionsView` calls this. We must update the call site in `TransactionsView.tsx` as well.
+    
+    // To handle the signature mismatch without breaking types everywhere immediately,
+    // we can use the passed `targetTeam` and `myTeam` as the core, but ideal is full state.
+    // However, since `generateCounterOffers` only involves 2 teams, passing full league is less critical
+    // UNLESS 3-team trades are involved (not yet). 
+    // BUT, we should still pass `leagueState` containing at least these 2 teams updated.
+    
+    const partialState = serializeLeagueState(allTeams || [myTeam, targetTeam]);
+
     const data = await callTradeApi('generate-counter-offers', {
         myTeamId: myTeam.id,
         targetTeamId: targetTeam.id,
+        leagueState: partialState,
         targetPlayers: targetPlayers.map(p => ({
             id: p.id, name: p.name, salary: p.salary, position: p.position,
             age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears,
-            health: p.health // [Update] Pass health status
+            health: p.health 
         }))
     });
     return data?.offers || [];
@@ -66,16 +121,20 @@ export async function simulateCPUTrades(
     myTeamId: string | null
 ): Promise<{ updatedTeams: Team[], transaction?: Transaction } | null> {
     
-    // 1. Request trade simulation from the server
-    // The server uses its own DB-backed roster to find a valid trade.
-    const data = await callTradeApi('simulate-cpu-trades', { myTeamId });
+    // [Fix] Pass full league state to CPU trade logic too
+    // This prevents CPU from trading players that the user might have just acquired 
+    // (if the user acquired them but the DB hasn't synced yet).
+    const leagueState = serializeLeagueState(allTeams);
+
+    const data = await callTradeApi('simulate-cpu-trades', { 
+        myTeamId,
+        leagueState 
+    });
     
     if (data?.success && data?.transaction) {
         const tx = data.transaction;
         
-        // 2. Apply the server-approved trade to the LOCAL client state
-        // We receive the Transaction object which tells us who went where.
-        // We must manually swap these players in the local `allTeams` array so the UI updates instantly.
+        // Apply the server-approved trade to the LOCAL client state
         const buyerId = tx.teamId;
         const sellerId = tx.details.partnerTeamId;
         const acquired = tx.details.acquired; // Players going to Buyer

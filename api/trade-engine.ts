@@ -410,19 +410,30 @@ export default async function handler(req: any, res: any) {
         const { action, payload } = req.body;
         LOG(`Action Received: ${action}`);
 
-        const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
-        const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
-        const supabaseClient = createClient(supabaseUrl, supabaseKey);
+        let allTeams: Team[] = [];
 
-        const { data: teamsData, error: teamsError } = await supabaseClient
-            .from('meta_teams')
-            .select('*, meta_players(*)');
-        if (teamsError) throw teamsError;
+        // [CRITICAL FIX] 
+        // 1. Prefer `leagueState` from Client if available (contains recent trade changes)
+        // 2. Fallback to Supabase Fetch (for cold starts or CPU logic if no state provided)
+        if (payload.leagueState && Array.isArray(payload.leagueState) && payload.leagueState.length > 0) {
+            LOG("Using injected League State from Client.");
+            allTeams = payload.leagueState;
+        } else {
+            LOG("Fetching Base Data from Supabase (Fallback).");
+            const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || '';
+            const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || '';
+            const supabaseClient = createClient(supabaseUrl, supabaseKey);
 
-        const allTeams: Team[] = teamsData.map((t: any) => ({
-            id: t.id, name: t.name, roster: (t.meta_players || []).map(mapDbPlayer),
-            salaryCap: 140, luxuryTaxLine: 170 
-        }));
+            const { data: teamsData, error: teamsError } = await supabaseClient
+                .from('meta_teams')
+                .select('*, meta_players(*)');
+            if (teamsError) throw teamsError;
+
+            allTeams = teamsData.map((t: any) => ({
+                id: t.id, name: t.name, roster: (t.meta_players || []).map(mapDbPlayer),
+                salaryCap: 140, luxuryTaxLine: 170 
+            }));
+        }
         
         const myTeam = allTeams.find(t => t.id === payload.myTeamId);
         
@@ -438,7 +449,6 @@ export default async function handler(req: any, res: any) {
             
             const userMaxOvr = sortedUserPlayers.length > 0 ? sortedUserPlayers[0].ovr : 0;
             const userMaxPot = Math.max(...tradingPlayers.map((p: Player) => p.potential));
-            const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
             
             // Asset Tier Ceiling
             let maxOvrCeiling = 99;
@@ -569,13 +579,11 @@ export default async function handler(req: any, res: any) {
             const isTargetingSuperstar = targetMaxOvr >= 95;
 
             let targetValueToAI = 0;
-            let targetSalary = 0;
             
             targetPlayers.forEach((p: Player) => {
                 let v = getContextualValue(p, needs, false); 
                 if (isCore(p)) v *= 1.3; 
                 targetValueToAI += v;
-                targetSalary += p.salary;
             });
             
             let forcedPackageCandidates: Player[] = [];
@@ -617,8 +625,6 @@ export default async function handler(req: any, res: any) {
                     packValue += val;
                 });
 
-                let packSalary = pack.reduce((s,p) => s + p.salary, 0);
-
                 let pool = candidates.filter(p => !pack.includes(p));
                 let attempts = 0;
                 
@@ -652,7 +658,6 @@ export default async function handler(req: any, res: any) {
                             }
                             packValue += val;
                         });
-                        packSalary += next.salary;
                         pool = pool.filter(p => p.id !== next!.id);
                     }
                 }

@@ -76,7 +76,7 @@ const App: React.FC = () => {
         gameData.schedule, gameData.setSchedule,
         gameData.myTeamId,
         gameData.currentSimDate, 
-        gameData.saveDateImmediately, // [Update] Pass immediate save function instead of setter
+        (newDate) => { gameData.setCurrentSimDate(newDate); gameData.forceSave(); }, // Use forceSave for date changes
         gameData.playoffSeries, gameData.setPlayoffSeries,
         gameData.setTransactions,
         gameData.setNews,
@@ -244,7 +244,7 @@ const App: React.FC = () => {
                             {view === 'Leaderboard' && <LeaderboardView teams={gameData.teams} />}
                             {view === 'Playoffs' && <PlayoffsView teams={gameData.teams} schedule={gameData.schedule} series={gameData.playoffSeries} setSeries={gameData.setPlayoffSeries} setSchedule={gameData.setSchedule} myTeamId={gameData.myTeamId!} />}
                             {view === 'Schedule' && <ScheduleView schedule={gameData.schedule} teamId={gameData.myTeamId!} teams={gameData.teams} onExport={() => {}} currentSimDate={gameData.currentSimDate} />}
-                            {view === 'Transactions' && gameData.myTeamId && <TransactionsView team={gameData.teams.find(t => t.id === gameData.myTeamId)!} teams={gameData.teams} setTeams={gameData.setTeams} addNews={() => {}} onShowToast={setToastMessage} currentSimDate={gameData.currentSimDate} transactions={gameData.transactions} onAddTransaction={(t) => gameData.setTransactions(prev => [t, ...prev])} />}
+                            {view === 'Transactions' && gameData.myTeamId && <TransactionsView team={gameData.teams.find(t => t.id === gameData.myTeamId)!} teams={gameData.teams} setTeams={gameData.setTeams} addNews={() => {}} onShowToast={setToastMessage} currentSimDate={gameData.currentSimDate} transactions={gameData.transactions} onAddTransaction={(t) => gameData.setTransactions(prev => [t, ...prev])} onForceSave={gameData.forceSave} />}
                             {view === 'Help' && <HelpView onBack={() => setView('Dashboard')} />}
                             {view === 'OvrCalculator' && <OvrCalculatorView teams={gameData.teams} />}
                             {view === 'SeasonReview' && gameData.myTeamId && <SeasonReviewView team={gameData.teams.find(t => t.id === gameData.myTeamId)!} teams={gameData.teams} transactions={gameData.transactions} onBack={() => setView('Dashboard')} />}
