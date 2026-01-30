@@ -139,12 +139,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
       
       {/* Background Ambience & Image */}
-      <div className="absolute inset-0 w-full h-full pointer-events-none">
-        {/* Main Background Image */}
+      <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
+        {/* Main Background Image - Applied Blur & Scale to hide edges */}
         <img 
             src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background.png" 
             alt="Background" 
-            className="w-full h-full object-cover opacity-20" 
+            className="w-full h-full object-cover opacity-30 blur-sm scale-110 transform-gpu" 
         />
         
         {/* Gradient Overlay to blend with slate-950 */}
