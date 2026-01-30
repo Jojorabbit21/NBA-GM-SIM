@@ -113,35 +113,35 @@ export const resolveTeamId = (input: string): string => {
 // Date Format: YYYY-MM-DD
 export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
   // Boston
-  "jaysontatum": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
+  "제이슨테이텀": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
   
   // Pacers
-  "tyresehaliburton": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
+  "타이리스할리버튼": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
   
   // Bucks
-  "taureanprince": { type: "Neck Surgery", returnDate: "2026-06-15" },
+  "토린프린스": { type: "Neck Surgery", returnDate: "2026-06-15" },
   
   // Portland
-  "scoothenderson": { type: "Hamstring Strain", returnDate: "2025-11-05" },
+  "스쿳헨더슨": { type: "Hamstring Strain", returnDate: "2025-11-05" },
   
   // Warriors
-  "sethcurry": { type: "Lower Back", returnDate: "2025-12-01" },
+  "세스커리": { type: "Lower Back", returnDate: "2025-12-01" },
   
   // Clippers
-  "bradleybeal": { type: "Left Hip (Season Out)", returnDate: "2026-06-01" },
+  "브래들리빌": { type: "Left Hip (Season Out)", returnDate: "2026-06-01" },
   
   // Mavs
-  "kyrieirving": { type: "Knee Surgery", returnDate: "2026-07-01" },
-  "derecklively": { type: "Right Foot Surgery", returnDate: "2026-02-15" },
+  "카이리어빙": { type: "Knee Surgery", returnDate: "2026-07-01" },
+  "데렉라이블리": { type: "Right Foot Surgery", returnDate: "2026-02-15" },
   
   // Grizzlies
-  "zachedey": { type: "Ankle Sprain", returnDate: "2026-02-01" },
-  "scottypippen": { type: "Left Toe Fracture", returnDate: "2026-04-01" },
-  "brandonclarke": { type: "Ankle Injury", returnDate: "2026-03-01" },
-  "tyjerome": { type: "Calf Strain", returnDate: "2026-03-15" },
+  "잭이디": { type: "Ankle Sprain", returnDate: "2026-02-01" },
+  "스카티피펜주니어": { type: "Left Toe Fracture", returnDate: "2026-04-01" },
+  "브랜던클락": { type: "Ankle Injury", returnDate: "2026-03-01" },
+  "타이제롬": { type: "Calf Strain", returnDate: "2026-03-15" },
   
   // Pelicans
-  "dejountemurray": { type: "Achilles Soreness", returnDate: "2026-01-15" }
+  "디존테머레이": { type: "Achilles Soreness", returnDate: "2026-01-15" }
 };
 
 export const calculatePlayerOvr = (p: any, overridePosition?: string): number => {
