@@ -266,7 +266,7 @@ export default async function handler(req: any, res: any) {
             
             const userSalary = tradingPlayers.reduce((sum: number, p: Player) => sum + p.salary, 0);
             const userOvrSum = tradingPlayers.reduce((sum: number, p: Player) => sum + p.ovr, 0);
-            const userBestPlayer = [...tradingPlayers].sort((a,b) => b.ovr - a.ovr)[0];
+            const userBestPlayer = [...tradingPlayers].sort((a: Player, b: Player) => b.ovr - a.ovr)[0];
             const isSuperstarTrade = userBestPlayer.ovr >= 90;
 
             const otherTeams = allTeams.filter(t => t.id !== payload.myTeamId);
@@ -348,7 +348,7 @@ export default async function handler(req: any, res: any) {
 
                     if (isSalaryValid && (isValueValid || isSuperstarValid) && pack.length > 0) {
                         // Check duplicate
-                        const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.every(p => pack.some(pk => pk.id === p.id)));
+                        const isDup = offers.some(o => o.teamId === targetTeam.id && o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
                         if (!isDup) {
                             const analysis = [`[Needs] Weak: ${needs.weakPositions.join(',')} | Stat: ${needs.statNeeds.join(',')}`];
                             if (needs.isSeller) analysis.push(`[Strategy] Salary Dump / Rebuild Mode`);
@@ -379,7 +379,7 @@ export default async function handler(req: any, res: any) {
             const untouchables = getUntouchables(targetTeam, needs);
 
             // 1. Is User asking for untouchable?
-            const askingUntouchable = targetPlayers.some(p => untouchables.has(p.id));
+            const askingUntouchable = targetPlayers.some((p: Player) => untouchables.has(p.id));
             if (askingUntouchable) {
                 // AI mostly refuses, unless user overpays significantly. 
                 // For simplicity, we just return empty or very high demand.
@@ -388,7 +388,7 @@ export default async function handler(req: any, res: any) {
             // 2. Evaluate what user wants
             let valueUserWants = 0;
             let salaryUserWants = 0;
-            targetPlayers.forEach(p => {
+            targetPlayers.forEach((p: Player) => {
                 valueUserWants += getContextualValue(p, needs, false); // Value AI loses
                 salaryUserWants += p.salary;
             });
@@ -431,7 +431,7 @@ export default async function handler(req: any, res: any) {
                 // Validation
                 // AI demands profit: User Value > AI Value * 1.1
                 if (packValue >= valueUserWants * 1.1 && Math.abs(packSalary - salaryUserWants) < 10) {
-                     const isDup = offers.some(o => o.players.every(p => pack.some(pk => pk.id === p.id)));
+                     const isDup = offers.some(o => o.players.every((p: Player) => pack.some((pk: Player) => pk.id === p.id)));
                      if (!isDup) {
                         offers.push({
                             teamId: myTeam.id,
@@ -505,7 +505,7 @@ export default async function handler(req: any, res: any) {
                                     description: `[CPU] ${buyer.name} acquires ${vet.name}`,
                                     details: {
                                         acquired: [{ id: vet.id, name: vet.name, ovr: vet.ovr, position: vet.position }],
-                                        traded: tradePack.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                                        traded: tradePack.map((p: Player) => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
                                         partnerTeamId: seller.id,
                                         partnerTeamName: seller.name
                                     }
