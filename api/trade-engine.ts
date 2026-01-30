@@ -11,7 +11,7 @@ interface Player {
   contractYears: number;
   ovr: number;
   potential: number;
-  health?: 'Healthy' | 'Injured' | 'Day-to-Day'; // [Update] Added Health
+  health?: 'Healthy' | 'Injured' | 'Day-to-Day'; 
   // Stats
   def: number;
   out: number; 
@@ -82,14 +82,30 @@ const TRADE_CONFIG = {
         FLOOR_MATCH: 0.75, 
         CEILING_MATCH: 1.25
     },
-    INJURY: { // [Update] Injury Penalties
+    INJURY: { 
         DTD_PENALTY: 0.90, // 10% value drop
-        INJURED_PENALTY: 0.20 // 80% value drop (Major injury)
+        INJURED_PENALTY: 0.10 // 90% value drop (Major injury - essentially worthless as asset)
     }
 };
 
-// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades
+// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades (Includes English & Korean)
 const KNOWN_INJURIES: Record<string, any> = {
+  // English Keys
+  "jaysontatum": { type: "ACL" },
+  "tyresehaliburton": { type: "ACL" },
+  "taureanprince": { type: "Neck" },
+  "scoothenderson": { type: "Hamstring" },
+  "sethcurry": { type: "Back" },
+  "bradleybeal": { type: "Hip" },
+  "kyrieirving": { type: "Knee" },
+  "derecklively": { type: "Foot" },
+  "zachedey": { type: "Ankle" },
+  "scottypippenjr": { type: "Toe" },
+  "brandonclarke": { type: "Ankle" },
+  "tyjerome": { type: "Calf" },
+  "dejountemurray": { type: "Achilles" },
+  
+  // Korean Keys (Fallback)
   "제이슨테이텀": { type: "ACL" },
   "타이리스할리버튼": { type: "ACL" },
   "토린프린스": { type: "Neck" },
@@ -110,136 +126,52 @@ const normalizeName = (name: string): string => {
     return name.replace(/[\s\.\,\-\u3000\u00a0\u200b]+/g, '').replace(/(II|III|IV|Jr|Sr)$/i, '').toLowerCase().trim();
 };
 
-// --- OVR Weights (Synced from Client) ---
+// --- OVR Weights ---
 type PositionType = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
 const POSITION_WEIGHTS: Record<PositionType, Record<string, number>> = {
-  PG: { 
-      closeShot: 10, midRange: 20, threeAvg: 25, ft: 10, shotIq: 45, offConsist: 25, 
-      layup: 25, dunk: 0, postPlay: 0, drawFoul: 0, hands: 40, 
-      intDef: 0, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 0, 
-      offReb: 0, defReb: 0, 
-      speed: 0, agility: 0, strength: 0, vertical: 0, stamina: 15, hustle: 0, durability: 0, 
-      passAcc: 25, handling: 15, spdBall: 10, passVision: 25, passIq: 50, 
-      intangibles: 5, potential: 500, height: 0 
-  },
-  SG: { 
-      closeShot: 300, midRange: 100, threeAvg: 150, ft: 100, shotIq: 500, offConsist: 500, 
-      layup: 200, dunk: 150, postPlay: 0, drawFoul: 50, hands: 250, 
-      intDef: 0, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 5, 
-      offReb: 0, defReb: 0, 
-      speed: 0, agility: 0, strength: 0, vertical: 0, stamina: 0, hustle: 0, durability: 0, 
-      passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, 
-      intangibles: 50, potential: 500, height: 30 
-  },
-  SF: { 
-      closeShot: 300, midRange: 150, threeAvg: 50, ft: 150, shotIq: 300, offConsist: 500, 
-      layup: 500, dunk: 100, postPlay: 0, drawFoul: 150, hands: 250, 
-      intDef: 200, perDef: 200, steal: 10, blk: 0, helpDefIq: 10, passPerc: 10, defConsist: 0, 
-      offReb: 0, defReb: 0, 
-      speed: 0, agility: 100, strength: 0, vertical: 100, stamina: 200, hustle: 200, durability: 0, 
-      passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, 
-      intangibles: 5, potential: 500, height: 100 
-  },
-  PF: { 
-      closeShot: 450, midRange: 50, threeAvg: 50, ft: 150, shotIq: 100, offConsist: 600, 
-      layup: 500, dunk: 350, postPlay: 0, drawFoul: 0, hands: 500, 
-      intDef: 200, perDef: 50, steal: 0, blk: 50, helpDefIq: 0, passPerc: 0, defConsist: 0, 
-      offReb: 100, defReb: 160, 
-      speed: 0, agility: 0, strength: 100, vertical: 100, stamina: 100, hustle: 0, durability: 50, 
-      passAcc: 50, handling: 50, spdBall: 0, passVision: 50, passIq: 50, 
-      intangibles: 10, potential: 500, height: 150 
-  },
-  C: { 
-      closeShot: 300, midRange: 0, threeAvg: 0, ft: 0, shotIq: 200, offConsist: 0, 
-      layup: 0, dunk: 0, postPlay: 200, drawFoul: 250, hands: 200, 
-      intDef: 250, perDef: 0, steal: 0, blk: 100, helpDefIq: 0, passPerc: 0, defConsist: 200, 
-      offReb: 100, defReb: 100, 
-      speed: 0, agility: 0, strength: 150, vertical: 0, stamina: 150, hustle: 0, durability: 150, 
-      passAcc: 100, handling: 200, spdBall: 0, passVision: 0, passIq: 100, 
-      intangibles: 15, potential: 500, height: 180 
-  }
+  PG: { closeShot: 10, midRange: 20, threeAvg: 25, ft: 10, shotIq: 45, offConsist: 25, layup: 25, dunk: 0, postPlay: 0, drawFoul: 0, hands: 40, intDef: 0, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 0, offReb: 0, defReb: 0, speed: 0, agility: 0, strength: 0, vertical: 0, stamina: 15, hustle: 0, durability: 0, passAcc: 25, handling: 15, spdBall: 10, passVision: 25, passIq: 50, intangibles: 5, potential: 500, height: 0 },
+  SG: { closeShot: 300, midRange: 100, threeAvg: 150, ft: 100, shotIq: 500, offConsist: 500, layup: 200, dunk: 150, postPlay: 0, drawFoul: 50, hands: 250, intDef: 0, perDef: 0, steal: 0, blk: 0, helpDefIq: 0, passPerc: 0, defConsist: 5, offReb: 0, defReb: 0, speed: 0, agility: 0, strength: 0, vertical: 0, stamina: 0, hustle: 0, durability: 0, passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, intangibles: 50, potential: 500, height: 30 },
+  SF: { closeShot: 300, midRange: 150, threeAvg: 50, ft: 150, shotIq: 300, offConsist: 500, layup: 500, dunk: 100, postPlay: 0, drawFoul: 150, hands: 250, intDef: 200, perDef: 200, steal: 10, blk: 0, helpDefIq: 10, passPerc: 10, defConsist: 0, offReb: 0, defReb: 0, speed: 0, agility: 100, strength: 0, vertical: 100, stamina: 200, hustle: 200, durability: 0, passAcc: 0, handling: 0, spdBall: 0, passVision: 0, passIq: 0, intangibles: 5, potential: 500, height: 100 },
+  PF: { closeShot: 450, midRange: 50, threeAvg: 50, ft: 150, shotIq: 100, offConsist: 600, layup: 500, dunk: 350, postPlay: 0, drawFoul: 0, hands: 500, intDef: 200, perDef: 50, steal: 0, blk: 50, helpDefIq: 0, passPerc: 0, defConsist: 0, offReb: 100, defReb: 160, speed: 0, agility: 0, strength: 100, vertical: 100, stamina: 100, hustle: 0, durability: 50, passAcc: 50, handling: 50, spdBall: 0, passVision: 50, passIq: 50, intangibles: 10, potential: 500, height: 150 },
+  C: { closeShot: 300, midRange: 0, threeAvg: 0, ft: 0, shotIq: 200, offConsist: 0, layup: 0, dunk: 0, postPlay: 200, drawFoul: 250, hands: 200, intDef: 250, perDef: 0, steal: 0, blk: 100, helpDefIq: 0, passPerc: 0, defConsist: 200, offReb: 100, defReb: 100, speed: 0, agility: 0, strength: 150, vertical: 0, stamina: 150, hustle: 0, durability: 150, passAcc: 100, handling: 200, spdBall: 0, passVision: 0, passIq: 100, intangibles: 15, potential: 500, height: 180 }
 };
 
 // --- Helper Functions ---
 
-// 0. Attribute Mapper (DB Keys -> Runtime Keys)
 function normalizeAttributes(attrs: any) {
     const get = (keys: string[]) => {
         for (const k of keys) {
             if (attrs[k] !== undefined) return Number(attrs[k]);
             if (attrs[k.toLowerCase()] !== undefined) return Number(attrs[k.toLowerCase()]);
         }
-        return 50; // Default
+        return 50; 
     };
-
     return {
-        // Shooting
-        closeShot: get(['CLOSE', 'closeShot']),
-        midRange: get(['MID', 'midRange']),
-        threeCorner: get(['3C', 'threeCorner']),
-        three45: get(['3_45', 'three45']),
-        threeTop: get(['3T', 'threeTop']),
-        ft: get(['FT', 'ft']),
-        shotIq: get(['SIQ', 'shotIq']),
-        offConsist: get(['OCON', 'offConsist']),
-        
-        // Inside
-        layup: get(['LAY', 'layup']),
-        dunk: get(['DNK', 'dunk']),
-        postPlay: get(['POST', 'postPlay']),
-        drawFoul: get(['DRAW', 'drawFoul']),
-        hands: get(['HANDS', 'hands']),
-
-        // Playmaking
-        passAcc: get(['PACC', 'passAcc']),
-        handling: get(['HANDL', 'handling']),
-        spdBall: get(['SPWB', 'spdBall']),
-        passVision: get(['PVIS', 'passVision']),
-        passIq: get(['PIQ', 'passIq']),
-
-        // Defense
-        intDef: get(['IDEF', 'intDef']),
-        perDef: get(['PDEF', 'perDef']),
-        steal: get(['STL', 'steal']),
-        blk: get(['BLK', 'blk']),
-        helpDefIq: get(['HDEF', 'helpDefIq']),
-        passPerc: get(['PPER', 'passPerc']),
-        defConsist: get(['DCON', 'defConsist']),
-        
-        // Rebound
-        offReb: get(['OREB', 'offReb']),
-        defReb: get(['DREB', 'defReb']),
-        
-        // Athleticism
-        speed: get(['SPD', 'speed']),
-        agility: get(['AGI', 'agility']),
-        strength: get(['STR', 'strength']),
-        vertical: get(['VERT', 'vertical']),
-        stamina: get(['STA', 'stamina']),
-        hustle: get(['HUS', 'hustle']),
-        durability: get(['DUR', 'durability']),
-        
-        // Meta
-        potential: get(['POT', 'potential']),
-        intangibles: get(['INTANGIBLES', 'intangibles']),
-        height: get(['HEIGHT', 'height'])
+        closeShot: get(['CLOSE', 'closeShot']), midRange: get(['MID', 'midRange']),
+        threeCorner: get(['3C', 'threeCorner']), three45: get(['3_45', 'three45']), threeTop: get(['3T', 'threeTop']),
+        ft: get(['FT', 'ft']), shotIq: get(['SIQ', 'shotIq']), offConsist: get(['OCON', 'offConsist']),
+        layup: get(['LAY', 'layup']), dunk: get(['DNK', 'dunk']), postPlay: get(['POST', 'postPlay']),
+        drawFoul: get(['DRAW', 'drawFoul']), hands: get(['HANDS', 'hands']),
+        passAcc: get(['PACC', 'passAcc']), handling: get(['HANDL', 'handling']), spdBall: get(['SPWB', 'spdBall']),
+        passVision: get(['PVIS', 'passVision']), passIq: get(['PIQ', 'passIq']),
+        intDef: get(['IDEF', 'intDef']), perDef: get(['PDEF', 'perDef']), steal: get(['STL', 'steal']),
+        blk: get(['BLK', 'blk']), helpDefIq: get(['HDEF', 'helpDefIq']), passPerc: get(['PPER', 'passPerc']),
+        defConsist: get(['DCON', 'defConsist']), offReb: get(['OREB', 'offReb']), defReb: get(['DREB', 'defReb']),
+        speed: get(['SPD', 'speed']), agility: get(['AGI', 'agility']), strength: get(['STR', 'strength']),
+        vertical: get(['VERT', 'vertical']), stamina: get(['STA', 'stamina']), hustle: get(['HUS', 'hustle']),
+        durability: get(['DUR', 'durability']), potential: get(['POT', 'potential']),
+        intangibles: get(['INTANGIBLES', 'intangibles']), height: get(['HEIGHT', 'height'])
     };
 }
 
-// 0.1 Calculate OVR from Normalized Stats (Weighted)
 function calculateOvr(p: any): number {
     const position = p.position || 'PG';
     let posKey: PositionType = 'PG';
-    if (position.includes('SG')) posKey = 'SG';
-    else if (position.includes('SF')) posKey = 'SF';
-    else if (position.includes('PF')) posKey = 'PF';
-    else if (position.includes('C')) posKey = 'C';
+    if (position.includes('SG')) posKey = 'SG'; else if (position.includes('SF')) posKey = 'SF';
+    else if (position.includes('PF')) posKey = 'PF'; else if (position.includes('C')) posKey = 'C';
 
     const weights = POSITION_WEIGHTS[posKey];
-    
-    // Calculate 3pt avg
     const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
-    
     const attr: Record<string, number> = {
         closeShot: p.closeShot, midRange: p.midRange, threeAvg: threeAvg, ft: p.ft, shotIq: p.shotIq, offConsist: p.offConsist,
         layup: p.layup, dunk: p.dunk, postPlay: p.postPlay, drawFoul: p.drawFoul, hands: p.hands,
@@ -252,7 +184,6 @@ function calculateOvr(p: any): number {
 
     let totalVal = 0;
     let totalWeight = 0;
-
     for (const key in weights) {
         if (weights.hasOwnProperty(key)) {
             const w = weights[key];
@@ -261,7 +192,6 @@ function calculateOvr(p: any): number {
             totalWeight += w;
         }
     }
-
     return Math.min(99, Math.max(40, Math.round(totalWeight > 0 ? totalVal / totalWeight : 50)));
 }
 
@@ -271,32 +201,19 @@ function getPlayerTradeValue(p: Player): number {
     const safeOvr = typeof p.ovr === 'number' ? p.ovr : 70;
     const effectiveOvr = Math.max(C.BASE.REPLACEMENT_LEVEL_OVR, safeOvr);
     
-    // 1. Base OVR Value (Exponential Curve)
     let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
-    // 2. Superstar Premium
-    if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) {
-        baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
-    } else if (safeOvr >= 88) {
-        baseValue *= 1.15; 
-    }
+    if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
+    else if (safeOvr >= 88) baseValue *= 1.15; 
 
-    // 3. Age & Potential
-    if (p.age <= 23) {
-        if (p.potential > safeOvr) {
-            const potDiff = p.potential - safeOvr;
-            const potBonus = 1.0 + (potDiff * 0.05); 
-            baseValue *= potBonus;
-        }
+    if (p.age <= 23 && p.potential > safeOvr) {
+        const potDiff = p.potential - safeOvr;
+        baseValue *= (1.0 + (potDiff * 0.05));
     } else if (p.age >= 32) {
-        const decline = (p.age - 31) * 0.1;
-        baseValue *= Math.max(0.1, 1.0 - decline);
+        baseValue *= Math.max(0.1, 1.0 - ((p.age - 31) * 0.1));
     }
 
-    // 4. Contract Efficiency
-    if (safeOvr < 80 && p.salary > 20) {
-         baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
-    }
+    if (safeOvr < 80 && p.salary > 20) baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
 
     // [Update] 5. Injury Penalty
     if (p.health === 'Injured') {
@@ -313,7 +230,6 @@ function analyzeTeamSituation(team: Team): TeamNeeds {
     const roster = team.roster;
     const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
     const top8 = sorted.slice(0, 8);
-    
     const positions = ['PG', 'SG', 'SF', 'PF', 'C'];
     const weakPositions: string[] = [];
     const strongPositions: string[] = [];
@@ -321,13 +237,8 @@ function analyzeTeamSituation(team: Team): TeamNeeds {
     positions.forEach(pos => {
         const depth = roster.filter(p => p.position.includes(pos));
         const bestAtPos = depth.reduce((max, p) => p.ovr > (max?.ovr || 0) ? p : max, null as Player | null);
-        
-        if (!bestAtPos || bestAtPos.ovr < 75 || depth.length < 2) {
-            weakPositions.push(pos);
-        }
-        if (bestAtPos && bestAtPos.ovr > 82) {
-            strongPositions.push(pos);
-        }
+        if (!bestAtPos || bestAtPos.ovr < 75 || depth.length < 2) weakPositions.push(pos);
+        if (bestAtPos && bestAtPos.ovr > 82) strongPositions.push(pos);
     });
 
     const statNeeds: string[] = [];
@@ -341,13 +252,12 @@ function analyzeTeamSituation(team: Team): TeamNeeds {
 
     const totalSalary = roster.reduce((s, p) => s + p.salary, 0);
     const taxLine = team.luxuryTaxLine || TRADE_CONFIG.SALARY.TAX_LINE;
-    const isTaxPayer = totalSalary > taxLine;
     
     const top2Ovr = (sorted[0]?.ovr || 0) + (sorted[1]?.ovr || 0);
     const isContender = top2Ovr > 170; 
     const isSeller = !isContender && (team.wins || 0) < (team.losses || 0) * 1.5;
 
-    return { weakPositions, strongPositions, statNeeds, isContender, isSeller, capSpace: taxLine - totalSalary, isTaxPayer };
+    return { weakPositions, strongPositions, statNeeds, isContender, isSeller, capSpace: taxLine - totalSalary, isTaxPayer: totalSalary > taxLine };
 }
 
 // 3. Contextual Value (Team's Perspective)
@@ -356,10 +266,21 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
     const C = TRADE_CONFIG.NEEDS;
 
     if (isAcquiring) {
-        let fitMult = 1.0;
-        if (needs.weakPositions.some(pos => player.position.includes(pos))) {
-            fitMult += C.POSITION_BONUS;
+        // [Logic] Toxic Asset / Negative Value Logic for Injured Players with Salary
+        if (player.health === 'Injured') {
+            if (needs.isContender) {
+                // Contenders reject injured players immediately by assigning massive negative value
+                // Salary Dump Logic: Value = -1 * (Salary * 20)
+                return -1 * (player.salary * 20);
+            } else if (player.salary > 5) {
+                // Rebuilders apply heavy cost for absorbing salary of injured player
+                // Value = Base(Low) - Cost(Salary * 10)
+                return value - (player.salary * 10);
+            }
         }
+
+        let fitMult = 1.0;
+        if (needs.weakPositions.some(pos => player.position.includes(pos))) fitMult += C.POSITION_BONUS;
         if (needs.statNeeds.includes('DEF') && player.def > 75) fitMult += 0.1;
         if (needs.statNeeds.includes('3PT') && player.out > 75) fitMult += 0.1;
         if (needs.statNeeds.includes('REB') && player.reb > 75) fitMult += 0.1;
@@ -370,18 +291,17 @@ function getContextualValue(player: Player, needs: TeamNeeds, isAcquiring: boole
         if (needs.isSeller && player.age <= 23) value *= 1.35; 
 
     } else {
-        if (needs.isSeller && player.age > 28) value *= 0.7; // "Dump him"
-        if (needs.isContender && player.ovr > 80) value *= 1.3; // "We need him"
+        if (needs.isSeller && player.age > 28) value *= 0.7; 
+        if (needs.isContender && player.ovr > 80) value *= 1.3; 
     }
 
     return Math.floor(value);
 }
 
-// 4. Dynamic Core Asset Definition
+// 4. Core Asset Filter
 function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
     const has90 = roster.some(p => p.ovr >= 90);
     const has85 = roster.some(p => p.ovr >= 85);
-
     return (p: Player) => {
         if (has90) return p.ovr >= 90;
         if (has85) return p.ovr >= 85;
@@ -391,11 +311,9 @@ function getCoreAssetFilter(roster: Player[]): (p: Player) => boolean {
 
 // 5. Data Mapper (DB -> Engine Player)
 function mapDbPlayer(p: any): Player {
-    // 1. Normalize Attributes from DB JSON
     const attrs = normalizeAttributes(p.base_attributes || {});
-    const a = p.base_attributes || {}; // Access raw attributes for metadata
+    const a = p.base_attributes || {}; 
     
-    // 2. Calculate Derived Stats
     const ins = (attrs.layup + attrs.dunk + attrs.postPlay + attrs.closeShot) / 4;
     const threeAvg = (attrs.threeCorner + attrs.three45 + attrs.threeTop) / 3;
     const out = (attrs.midRange + threeAvg + attrs.ft) / 3;
@@ -404,22 +322,17 @@ function mapDbPlayer(p: any): Player {
     const reb = (attrs.offReb + attrs.defReb) / 2;
     const ath = (attrs.speed + attrs.agility + attrs.strength + attrs.vertical) / 4;
     
-    // 3. Determine OVR (Use precise weighted calc)
-    const calculatedOvr = calculateOvr({ ...attrs, position: p.position });
-    const finalOvr = calculatedOvr;
+    const finalOvr = calculateOvr({ ...attrs, position: p.position });
 
     // [Update] Check known injury
     const normName = normalizeName(p.name);
     const injury = KNOWN_INJURIES[normName];
     const health = injury ? 'Injured' : 'Healthy';
 
-    // [Fix] Age Mapping: Check top-level column then base_attributes
     const age = Number(p.age ?? a.age ?? a.AGE ?? a.Age ?? 25);
 
-    // 4. Construct Object (Fix: Spread first to avoid overwrites)
     return {
-        ...attrs, // [Fix] Spread first
-
+        ...attrs,
         id: p.id,
         name: p.name,
         position: p.position || 'G',
@@ -427,16 +340,11 @@ function mapDbPlayer(p: any): Player {
         salary: Number(p.salary || 1),
         contractYears: Number(p.contract_years || 1),
         ovr: finalOvr,
-        health, // [Update] Mapped Health Status
-        
-        // Ensure potential is correctly set
+        health, 
         potential: (attrs.potential && attrs.potential !== 50) ? attrs.potential : (finalOvr + 5),
-        
-        // Engine Specific Stats
         def, out, reb, plm, ins, ath,
     };
 }
-
 
 // --- API Handler ---
 export default async function handler(req: any, res: any) {
@@ -485,13 +393,17 @@ export default async function handler(req: any, res: any) {
 
                 let userValueToAI = 0;
                 tradingPlayers.forEach((p: Player) => {
+                    // For user players, use dynamic logic.
+                    // If Injured, value will be extremely low or negative for Contenders.
                     let val = getContextualValue(p, needs, true);
                     if (p.ovr >= 95) val *= 1.5; 
                     else if (p.ovr >= 90) val *= 1.2;
                     userValueToAI += val;
                 });
                 
-                if (userValueToAI < 300) continue; 
+                // If user package has negative or very low value (e.g. dump), AI ignores unless it's a specific dump scenario logic (not fully implemented yet)
+                // Effectively rejects the trade.
+                if (userValueToAI < 100) continue; 
 
                 let candidates = targetTeam.roster.filter(p => {
                     if (isCore(p)) {
@@ -690,7 +602,7 @@ export default async function handler(req: any, res: any) {
                     const buyer = buyers[Math.floor(Math.random() * buyers.length)];
                     
                     if (seller.id !== buyer.id) {
-                         const tradeAsset = seller.roster.find(p => p.age >= 28 && p.salary > 10 && p.ovr > 78 && p.health !== 'Injured'); // [Update] Filter Injured for CPU trades
+                         const tradeAsset = seller.roster.find(p => p.age >= 28 && p.salary > 10 && p.ovr > 78 && p.health !== 'Injured'); // Filter Injured for CPU trades
                          if (tradeAsset) {
                              const buyerAssets = buyer.roster.filter(p => (p.age <= 24 && p.potential > 75 && p.health !== 'Injured') || (p.salary > 5 && p.ovr < 75 && p.health !== 'Injured'));
                              let pack: Player[] = [];
