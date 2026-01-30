@@ -64,9 +64,9 @@ const LOG = (msg: string, data?: any) => {
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        VALUE_EXPONENT: 2.75, 
+        VALUE_EXPONENT: 2.9, // [Balance] Increased from 2.75 to 2.9 to widen gap between tiers
         SUPERSTAR_PREMIUM_THRESHOLD: 94,
-        SUPERSTAR_MULTIPLIER: 1.3 
+        SUPERSTAR_MULTIPLIER: 1.4 // [Balance] Increased from 1.3 to 1.4
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
@@ -486,7 +486,8 @@ export default async function handler(req: any, res: any) {
                     }
 
                     const valRatio = userValueToAI > 0 ? packValue / userValueToAI : 0;
-                    const validValue = valRatio >= 0.85 && valRatio <= 1.5;
+                    // [Balance] Cap Ratio at 1.15 to prevent AI from overpaying massively (User Feedback: 1.3+ is too easy)
+                    const validValue = valRatio >= 0.85 && valRatio <= 1.15;
 
                     const salRatio = userSalary > 0 ? packSalary / userSalary : 0;
                     const validSalary = Math.abs(packSalary - userSalary) < 5 || (salRatio >= 0.70 && salRatio <= 1.35);
