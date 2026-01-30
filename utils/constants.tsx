@@ -1,4 +1,3 @@
-
 import { Player, SeasonStats, Game, Team } from '../types';
 import { POSITION_WEIGHTS, PositionType } from './overallWeights';
 
@@ -458,4 +457,10 @@ export const exportScheduleToCSV = (schedule: Game[]) => {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+};
+
+export const getPlayerTradeValue = (p: Player): number => {
+    let val = Math.pow(Math.max(40, p.ovr) - 40, 2.5);
+    if (p.age < 24) val *= 1.2;
+    return Math.floor(val);
 };

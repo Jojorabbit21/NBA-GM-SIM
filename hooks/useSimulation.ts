@@ -31,13 +31,10 @@ export const useSimulation = (
 
     // [Playoff Hook] Generate Schedule Automatically
     useEffect(() => {
-        // [Fix] Do not run logic if data is not yet loaded
         if (!teams || teams.length === 0 || !schedule || schedule.length === 0) return;
 
-        // Run this check whenever date or series changes
         const currentSeries = playoffSeries;
         
-        // 1. Init Playoffs if needed
         const newSeriesList = checkAndInitPlayoffs(teams, schedule, currentSeries, currentSimDate);
         if (newSeriesList.length > currentSeries.length) {
             setPlayoffSeries(newSeriesList);
@@ -45,7 +42,6 @@ export const useSimulation = (
             return;
         }
 
-        // 2. Generate Next Games
         const { newGames } = generateNextPlayoffGames(schedule, currentSeries, currentSimDate);
         if (newGames.length > 0) {
             setSchedule(prev => [...prev, ...newGames]);
@@ -55,7 +51,7 @@ export const useSimulation = (
     }, [currentSimDate, schedule, playoffSeries, teams, setSchedule, setPlayoffSeries, setToastMessage]);
 
 
-    const advanceDate = useCallback(() => {
+    const advanceDate = useCallback(async () => {
         const prevDate = currentSimDate;
         const teamsPlayedToday = schedule
             .filter(g => g.date === prevDate && g.played)
@@ -74,6 +70,8 @@ export const useSimulation = (
         const start = new Date(SEASON_START_DATE);
         const current = new Date(nextDate);
 
+        let newTeams = [...teams]; // Work with local copy first
+
         if (current <= deadline) {
             const totalDuration = deadline.getTime() - start.getTime();
             const elapsed = current.getTime() - start.getTime();
@@ -84,63 +82,40 @@ export const useSimulation = (
             const isTradeTriggered = Math.random() < tradeChance;
 
             if (isTradeTriggered) {
-                setTeams(prevTeams => {
-                    const tradeResult = simulateCPUTrades(prevTeams, myTeamId);
-                    if (tradeResult) {
-                        const { updatedTeams, transaction } = tradeResult;
-                        if (transaction) {
-                            setTransactions(prev => [transaction, ...prev]);
-                            if (session?.user && !isGuestMode) {
-                                saveUserTransaction(session.user.id, transaction);
-                            }
-                            generateCPUTradeNews(transaction).then(newsItems => {
-                                if (newsItems) setNews(prev => [...newsItems, ...prev.slice(0, 5)]);
-                            });
-                            setToastMessage("🔥 BLOCKBUSTER: 트레이드 데드라인 임박 대형 트레이드 성사!");
-                            return updatedTeams.map(t => ({
-                                ...t,
-                                roster: t.roster.map(p => {
-                                    if (teamsPlayedToday.has(t.id)) return p;
-                                    const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                                    return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
-                                })
-                            }));
+                // Async call to server
+                const tradeResult = await simulateCPUTrades(newTeams, myTeamId);
+                if (tradeResult) {
+                    const { updatedTeams, transaction } = tradeResult;
+                    newTeams = updatedTeams; // Update local copy
+                    if (transaction) {
+                        setTransactions(prev => [transaction, ...prev]);
+                        if (session?.user && !isGuestMode) {
+                            saveUserTransaction(session.user.id, transaction);
                         }
+                        generateCPUTradeNews(transaction).then(newsItems => {
+                            if (newsItems) setNews(prev => [...newsItems, ...prev.slice(0, 5)]);
+                        });
+                        setToastMessage("🔥 BLOCKBUSTER: 트레이드 데드라인 임박 대형 트레이드 성사!");
                     }
-                    return prevTeams.map(t => ({
-                        ...t,
-                        roster: t.roster.map(p => {
-                            if (teamsPlayedToday.has(t.id)) return p;
-                            const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                            return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
-                        })
-                    }));
-                });
-            } else {
-                setTeams(prevTeams => prevTeams.map(t => ({
-                    ...t,
-                    roster: t.roster.map(p => {
-                        if (teamsPlayedToday.has(t.id)) return p;
-                        const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                        return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
-                    })
-                })));
+                }
             }
-        } else {
-            setTeams(prevTeams => prevTeams.map(t => ({
-                ...t,
-                roster: t.roster.map(p => {
-                    if (teamsPlayedToday.has(t.id)) return p;
-                    const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                    return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
-                })
-            })));
         }
 
+        // Recovery Logic
+        newTeams = newTeams.map(t => ({
+            ...t,
+            roster: t.roster.map(p => {
+                if (teamsPlayedToday.has(t.id)) return p;
+                const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
+                return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
+            })
+        }));
+        
+        setTeams(newTeams);
         onDateChange(nextDate);
         setLastGameResult(null);
 
-    }, [schedule, myTeamId, session, isGuestMode, setTeams, setTransactions, setNews, setToastMessage, currentSimDate, onDateChange]);
+    }, [schedule, myTeamId, session, isGuestMode, teams, setTeams, setTransactions, setNews, setToastMessage, currentSimDate, onDateChange]);
 
     const handleExecuteSim = async (tactics: GameTactics) => {
         const myTeam = teams.find(t => t.id === myTeamId);
@@ -158,7 +133,11 @@ export const useSimulation = (
 
         if (unplayedGamesToday.length === 0) {
             setIsSimulating(true);
-            setTimeout(() => { advanceDate(); setIsSimulating(false); }, 2000);
+            // Wait for async advanceDate
+            setTimeout(async () => { 
+                await advanceDate(); 
+                setIsSimulating(false); 
+            }, 2000);
             return;
         }
 
@@ -177,11 +156,7 @@ export const useSimulation = (
                 const isUserGame = (game.homeTeamId === myTeamId || game.awayTeamId === myTeamId);
                 const home = getTeam(game.homeTeamId); const away = getTeam(game.awayTeamId);
                 
-                // [Safety Check] Ensure teams exist before simulation
-                if (!home || !away) {
-                    console.warn(`Skipping simulation for game ${game.id}: Teams not found.`);
-                    continue;
-                }
+                if (!home || !away) continue;
 
                 const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined, playedYesterday(home.id), playedYesterday(away.id));
                 const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
@@ -228,7 +203,6 @@ export const useSimulation = (
                 const updatedGame: Game = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, tactics: { home: result.homeTactics, away: result.awayTactics } };
                 const schIdx = updatedSchedule.findIndex(g => g.id === game.id); if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
                 
-                // [Playoff Update] Update Series Score
                 if (game.isPlayoff && game.seriesId) {
                     const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
                     if (sIdx !== -1) {
@@ -239,14 +213,7 @@ export const useSimulation = (
                         const newL = series.lowerSeedWins + (!isHigherWinner ? 1 : 0);
                         const target = series.targetWins || 4; 
                         const finished = newH >= target || newL >= target;
-                        
-                        updatedSeries[sIdx] = { 
-                            ...series, 
-                            higherSeedWins: newH, 
-                            lowerSeedWins: newL, 
-                            finished, 
-                            winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined 
-                        };
+                        updatedSeries[sIdx] = { ...series, higherSeedWins: newH, lowerSeedWins: newL, finished, winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined };
                     }
                 }
 
@@ -276,7 +243,7 @@ export const useSimulation = (
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
             } else { 
                 setIsSimulating(false); 
-                advanceDate(); 
+                await advanceDate(); // Ensure next day calculation is awaited
             }
         };
         
@@ -289,7 +256,6 @@ export const useSimulation = (
                 setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); 
                 finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
             } else {
-                // If teams missing, skip simulation for user game (shouldn't happen in healthy state)
                 setIsSimulating(true);
                 setTimeout(() => processSimulation(), 2000);
             }
