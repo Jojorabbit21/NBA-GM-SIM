@@ -12,6 +12,8 @@ interface Player {
   ovr: number;
   potential: number;
   health?: 'Healthy' | 'Injured' | 'Day-to-Day'; 
+  injuryType?: string;
+  returnDate?: string;
   // Stats
   def: number;
   out: number; 
@@ -93,37 +95,37 @@ const TRADE_CONFIG = {
     }
 };
 
-// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades
-const KNOWN_INJURIES: Record<string, any> = {
+// [Update] Synced KNOWN_INJURIES for Server-Side CPU Trades with Dates
+const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {
   // English Keys
-  "jaysontatum": { type: "ACL" },
-  "tyresehaliburton": { type: "ACL" },
-  "taureanprince": { type: "Neck" },
-  "scoothenderson": { type: "Hamstring" },
-  "sethcurry": { type: "Back" },
-  "bradleybeal": { type: "Hip" },
-  "kyrieirving": { type: "Knee" },
-  "derecklively": { type: "Foot" },
-  "zachedey": { type: "Ankle" },
-  "scottypippenjr": { type: "Toe" },
-  "brandonclarke": { type: "Ankle" },
-  "tyjerome": { type: "Calf" },
-  "dejountemurray": { type: "Achilles" },
+  "jaysontatum": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
+  "tyresehaliburton": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
+  "taureanprince": { type: "Neck Surgery", returnDate: "2026-06-15" },
+  "scoothenderson": { type: "Hamstring Strain", returnDate: "2025-11-05" },
+  "sethcurry": { type: "Lower Back", returnDate: "2025-12-01" },
+  "bradleybeal": { type: "Left Hip (Season Out)", returnDate: "2026-06-01" },
+  "kyrieirving": { type: "Knee Surgery", returnDate: "2026-07-01" },
+  "derecklively": { type: "Right Foot Surgery", returnDate: "2026-02-15" },
+  "zachedey": { type: "Ankle Sprain", returnDate: "2026-02-01" },
+  "scottypippenjr": { type: "Left Toe Fracture", returnDate: "2026-04-01" },
+  "brandonclarke": { type: "Ankle Injury", returnDate: "2026-03-01" },
+  "tyjerome": { type: "Calf Strain", returnDate: "2026-03-15" },
+  "dejountemurray": { type: "Achilles Soreness", returnDate: "2026-01-15" },
   
   // Korean Keys (Fallback)
-  "제이슨테이텀": { type: "ACL" },
-  "타이리스할리버튼": { type: "ACL" },
-  "토린프린스": { type: "Neck" },
-  "스쿳헨더슨": { type: "Hamstring" },
-  "세스커리": { type: "Back" },
-  "브래들리빌": { type: "Hip" },
-  "카이리어빙": { type: "Knee" },
-  "데렉라이블리": { type: "Foot" },
-  "잭이디": { type: "Ankle" },
-  "스카티피펜주니어": { type: "Toe" },
-  "브랜던클락": { type: "Ankle" },
-  "타이제롬": { type: "Calf" },
-  "디존테머레이": { type: "Achilles" }
+  "제이슨테이텀": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
+  "타이리스할리버튼": { type: "ACL (Season Out)", returnDate: "2026-07-01" },
+  "토린프린스": { type: "Neck Surgery", returnDate: "2026-06-15" },
+  "스쿳헨더슨": { type: "Hamstring Strain", returnDate: "2025-11-05" },
+  "세스커리": { type: "Lower Back", returnDate: "2025-12-01" },
+  "브래들리빌": { type: "Left Hip (Season Out)", returnDate: "2026-06-01" },
+  "카이리어빙": { type: "Knee Surgery", returnDate: "2026-07-01" },
+  "데렉라이블리": { type: "Right Foot Surgery", returnDate: "2026-02-15" },
+  "잭이디": { type: "Ankle Sprain", returnDate: "2026-02-01" },
+  "스카티피펜주니어": { type: "Left Toe Fracture", returnDate: "2026-04-01" },
+  "브랜던클락": { type: "Ankle Injury", returnDate: "2026-03-01" },
+  "타이제롬": { type: "Calf Strain", returnDate: "2026-03-15" },
+  "디존테머레이": { type: "Achilles Soreness", returnDate: "2026-01-15" }
 };
 
 const normalizeName = (name: string): string => {
@@ -339,6 +341,8 @@ function mapDbPlayer(p: any): Player {
         contractYears: Number(p.contract_years || 1),
         ovr: finalOvr,
         health, 
+        injuryType: injury?.type,
+        returnDate: injury?.returnDate,
         potential: (attrs.potential && attrs.potential !== 50) ? attrs.potential : (finalOvr + 5),
         def, out, reb, plm, ins, ath,
     };
@@ -378,7 +382,6 @@ export default async function handler(req: any, res: any) {
             const offers: TradeOffer[] = [];
 
             // [Logic] Package Dilution Logic (CONDITIONAL)
-            // Goal: Allow packages of 5 stars (value sum) but penalize packages of 5 scrubs (diminishing returns)
             const sortedUserPlayers = [...tradingPlayers].sort((a: Player, b: Player) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
             
             const userMaxOvr = sortedUserPlayers.length > 0 ? sortedUserPlayers[0].ovr : 0;
@@ -408,8 +411,6 @@ export default async function handler(req: any, res: any) {
                 sortedUserPlayers.forEach((p: Player, idx: number) => {
                     let val = getContextualValue(p, needs, true);
                     
-                    // Value Shield: If player is Good (OVR >= 80) or Young Pot (Pot >= 80 & Age <= 24), they retain value.
-                    // Otherwise, applies diminishing returns based on package slot.
                     const isValuableAsset = p.ovr >= 80 || (p.age <= 24 && p.potential >= 80);
                     
                     if (!isValuableAsset) {
