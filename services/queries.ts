@@ -407,13 +407,27 @@ export const useSaveGame = () => {
 
 export const saveGameResults = async (results: any[]) => {
     if (results.length === 0) return;
-    try {
-        const { error } = await supabase
-            .from('user_game_results')
-            .insert(results);
-        if (error) console.error("Failed to save game results:", error);
-    } catch (e) {
-        console.error("Failed to save game results:", e);
+    
+    // [FIX: Safe Save Strategy]
+    // 1. Try insertion with full data (including new 'tactics' field)
+    const { error } = await supabase.from('user_game_results').insert(results);
+
+    // 2. If it fails (likely due to schema mismatch if tactics column is missing), retry without tactics
+    if (error) {
+        console.warn("⚠️ Full game result save failed (likely schema mismatch). Retrying without tactics data...", error.message);
+        
+        const safeResults = results.map(r => {
+            const { tactics, ...rest } = r; // Omit tactics from payload
+            return rest;
+        });
+        
+        const { error: retryError } = await supabase.from('user_game_results').insert(safeResults);
+        
+        if (retryError) {
+            console.error("❌ Critical: Failed to save game results even without tactics.", retryError);
+        } else {
+            console.log("✅ Recovered: Game results saved (without tactics data).");
+        }
     }
 };
 
