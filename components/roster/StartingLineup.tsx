@@ -15,8 +15,8 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   const [imageError, setImageError] = useState(false);
 
   // Shared container class for aspect ratio and basic styling
-  // Removed border border-slate-800 to eliminate outline on filled cards
-  const containerClass = "relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-slate-900";
+  // Removed bg-slate-900 to make background transparent for filled cards
+  const containerClass = "relative w-full aspect-[2/3] rounded-xl overflow-hidden";
 
   // 1. 플레이어가 할당되지 않은 경우 (빈 슬롯)
   if (!player) {
@@ -35,7 +35,7 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
       return (
         <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-600`}>
            {/* OVR Badge (Top-Left) - Larger Size */}
-           <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-lg`}>
+           <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-xl`}>
              {player.ovr}
            </div>
 
@@ -61,7 +61,7 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
     <div className={`${containerClass} shadow-xl`}>
        
        {/* OVR Badge (Top-Left) - Larger Size */}
-       <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-lg`}>
+       <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-xl`}>
           {player.ovr}
        </div>
 
