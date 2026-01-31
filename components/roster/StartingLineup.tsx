@@ -33,14 +33,9 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   if (imageError) {
       return (
         <div className={`${containerClass} bg-slate-900/30 border-dashed border-slate-600`}>
-           {/* OVR Badge (Top-Left) */}
-           <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-7 !h-7 !text-xs`}>
+           {/* OVR Badge (Top-Left) - Larger Size */}
+           <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-lg`}>
              {player.ovr}
-           </div>
-
-           {/* Position Label (Top-Right) */}
-           <div className="absolute top-2 right-2 z-20 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-white/10">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{positionLabel}</span>
            </div>
 
            {/* Center Content */}
@@ -64,14 +59,9 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   return (
     <div className={`${containerClass} shadow-xl`}>
        
-       {/* OVR Badge (Top-Left) - Global Style */}
-       <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)}`}>
+       {/* OVR Badge (Top-Left) - Larger Size */}
+       <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-lg`}>
           {player.ovr}
-       </div>
-
-       {/* Position Label Badge (Top-Right) */}
-       <div className="absolute top-2 right-2 z-20 bg-black/60 backdrop-blur-sm px-1.5 py-0.5 rounded border border-white/10">
-          <span className="text-[9px] font-black text-white uppercase tracking-widest">{positionLabel}</span>
        </div>
 
        {/* Image Loader */}
@@ -87,6 +77,7 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-50 pointer-events-none z-10"></div>
        
        {/* NOTE: Name removed when image exists per request */}
+       {/* NOTE: Position Label removed per request */}
     </div>
   );
 };
