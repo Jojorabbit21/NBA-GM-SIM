@@ -27,11 +27,8 @@ const serializeLeagueState = (teams: Team[]) => {
             ovr: p.ovr,
             potential: p.potential,
             health: p.health,
-            injuryType: p.injuryType,
-            returnDate: p.returnDate,
-            // Core attributes for valuation
+            // Core attributes for valuation only (Reduced payload)
             def: p.def, out: p.out, reb: p.reb, plm: p.plm, ins: p.ins, ath: p.ath,
-            intDef: p.intDef, perDef: p.perDef,
             // Stats used for fit analysis
             height: p.height
         }))
@@ -39,20 +36,36 @@ const serializeLeagueState = (teams: Team[]) => {
 };
 
 async function callTradeApi(action: string, payload: any) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s Timeout
+
     try {
         const response = await fetch('/api/trade-engine', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action, payload })
+            body: JSON.stringify({ action, payload }),
+            signal: controller.signal
         });
 
+        clearTimeout(timeoutId);
+
         if (!response.ok) {
-            throw new Error('Trade Engine API Failed');
+            const errText = await response.text();
+            throw new Error(`Trade Engine API Failed: ${response.status} - ${errText}`);
         }
 
-        return await response.json();
-    } catch (e) {
-        console.error(`Trade API Error (${action}):`, e);
+        const data = await response.json();
+        
+        // Debug Log from Server
+        if (data.logs) {
+            console.groupCollapsed(`[TradeEngine] Server Logs (${action})`);
+            data.logs.forEach((l: string) => console.log(l));
+            console.groupEnd();
+        }
+
+        return data;
+    } catch (e: any) {
+        console.error(`Trade API Error (${action}):`, e.message);
         return null;
     }
 }
@@ -83,24 +96,9 @@ export async function generateCounterOffers(
     targetPlayers: Player[], 
     targetTeam: Team, 
     myTeam: Team,
-    allTeams: Team[] // [Update] Need allTeams to pass state
+    allTeams: Team[] 
 ): Promise<TradeOffer[]> {
     // [Fix] Inject current client state
-    // Note: generateCounterOffers signature in types might need update if strict, 
-    // but JS allows extra args. In usage (TransactionsView), we should pass `teams`.
-    // If interface restricts, we rely on `targetTeam` and `myTeam` being up to date, 
-    // but `leagueState` is safer for global context. 
-    // Here we assume `allTeams` is available or passed. 
-    // *Correction*: The View calls this. We need to update the View or use a global hook context.
-    // For now, let's assume `allTeams` is passed or available via the argument. 
-    // Actually, `TransactionsView` calls this. We must update the call site in `TransactionsView.tsx` as well.
-    
-    // To handle the signature mismatch without breaking types everywhere immediately,
-    // we can use the passed `targetTeam` and `myTeam` as the core, but ideal is full state.
-    // However, since `generateCounterOffers` only involves 2 teams, passing full league is less critical
-    // UNLESS 3-team trades are involved (not yet). 
-    // BUT, we should still pass `leagueState` containing at least these 2 teams updated.
-    
     const partialState = serializeLeagueState(allTeams || [myTeam, targetTeam]);
 
     const data = await callTradeApi('generate-counter-offers', {
@@ -121,9 +119,6 @@ export async function simulateCPUTrades(
     myTeamId: string | null
 ): Promise<{ updatedTeams: Team[], transaction?: Transaction } | null> {
     
-    // [Fix] Pass full league state to CPU trade logic too
-    // This prevents CPU from trading players that the user might have just acquired 
-    // (if the user acquired them but the DB hasn't synced yet).
     const leagueState = serializeLeagueState(allTeams);
 
     const data = await callTradeApi('simulate-cpu-trades', { 
