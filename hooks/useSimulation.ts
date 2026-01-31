@@ -7,6 +7,7 @@ import { simulateCPUTrades } from '../services/tradeEngine';
 import { INITIAL_STATS, TRADE_DEADLINE, SEASON_START_DATE } from '../utils/constants';
 import { saveGameResults, saveUserTransaction } from '../services/queries';
 import { checkAndInitPlayoffs, generateNextPlayoffGames } from '../utils/playoffLogic';
+import { updateTeamTacticHistory } from '../utils/tacticUtils';
 
 export const useSimulation = (
     teams: Team[], setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
@@ -105,9 +106,18 @@ export const useSimulation = (
         newTeams = newTeams.map(t => ({
             ...t,
             roster: t.roster.map(p => {
-                if (teamsPlayedToday.has(t.id)) return p;
-                const baseRec = 10; const staBonus = (p.stamina || 75) * 0.1; const durBonus = (p.durability || 75) * 0.05;
-                return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + baseRec + staBonus + durBonus)) };
+                // Calculate Base Recovery Amount
+                const baseRec = 10; 
+                const staBonus = (p.stamina || 75) * 0.1; 
+                const durBonus = (p.durability || 75) * 0.05;
+                let totalRecovery = baseRec + staBonus + durBonus;
+
+                // [Update] If team played today, recover only 50% of the normal amount
+                if (teamsPlayedToday.has(t.id)) {
+                    totalRecovery *= 0.5;
+                }
+
+                return { ...p, condition: Math.min(100, Math.round((p.condition || 100) + totalRecovery)) };
             })
         }));
         
@@ -162,37 +172,25 @@ export const useSimulation = (
                 const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
                 const homeWin = result.homeScore > result.awayScore;
 
-                const updateHistory = (t: Team, myBox: PlayerBoxScore[], oppBox: PlayerBoxScore[], tactics: TacticalSnapshot, isWin: boolean) => {
-                    const history = { ...(t.tacticHistory || { offense: {}, defense: {} }) };
-                    const updateRecord = (record: Record<string, TacticStatRecord>, key: string) => {
-                        if (!record[key]) record[key] = { games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, aceImpact: 0 };
-                        const r = record[key];
-                        const totals = myBox.reduce((acc, p) => ({ pts: acc.pts + p.pts, fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga, p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a, rimM: acc.rimM + (p.rimM || 0), rimA: acc.rimA + (p.rimA || 0), midM: acc.midM + (p.midM || 0), midA: acc.midA + (p.midA || 0) }), { pts: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 });
-                        r.games++; if (isWin) r.wins++;
-                        r.ptsFor += totals.pts; r.ptsAgainst += oppBox.reduce((sum, p) => sum + p.pts, 0);
-                        r.fgm += totals.fgm; r.fga += totals.fga; r.p3m += totals.p3m; r.p3a += totals.p3a; r.rimM += totals.rimM; r.rimA += totals.rimA; r.midM += totals.midM; r.midA += totals.midA;
-                    };
-                    updateRecord(history.offense, tactics.offense); updateRecord(history.defense, tactics.defense);
-                    if (tactics.stopperId) {
-                        if (!history.defense['AceStopper']) history.defense['AceStopper'] = { games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, aceImpact: 0 };
-                        const r = history.defense['AceStopper']; const targetAceBox = oppBox.find(b => b.isAceTarget);
-                        if (targetAceBox) { r.games++; if (isWin) r.wins++; r.ptsAgainst += targetAceBox.pts; r.fgm += targetAceBox.fgm; r.fga += targetAceBox.fga; r.p3m += targetAceBox.p3m; r.p3a += targetAceBox.p3a; r.aceImpact = (r.aceImpact || 0) + (targetAceBox.matchupEffect || 0); }
-                    }
-                    return history;
+                updatedTeams[homeIdx] = { 
+                    ...home, 
+                    wins: home.wins + (homeWin ? 1 : 0), 
+                    losses: home.losses + (homeWin ? 0 : 1), 
+                    tacticHistory: updateTeamTacticHistory(home, result.homeBox, result.awayBox, result.homeTactics, homeWin) 
                 };
-
-                updatedTeams[homeIdx] = { ...home, wins: home.wins + (homeWin ? 1 : 0), losses: home.losses + (homeWin ? 0 : 1), tacticHistory: updateHistory(home, result.homeBox, result.awayBox, result.homeTactics, homeWin) };
-                updatedTeams[awayIdx] = { ...away, wins: away.wins + (homeWin ? 0 : 1), losses: away.losses + (homeWin ? 1 : 0), tacticHistory: updateHistory(away, result.awayBox, result.homeBox, result.awayTactics, !homeWin) };
+                
+                updatedTeams[awayIdx] = { 
+                    ...away, 
+                    wins: away.wins + (homeWin ? 0 : 1), 
+                    losses: away.losses + (homeWin ? 1 : 0), 
+                    tacticHistory: updateTeamTacticHistory(away, result.awayBox, result.homeBox, result.awayTactics, !homeWin) 
+                };
 
                 const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: any) => {
                     const t = updatedTeams[teamIdx];
                     t.roster = t.roster.map(p => {
                         const update = rosterUpdates[p.id]; const box = boxScore.find(b => b.playerId === p.id);
                         
-                        // [Critical Fix] Defensive Copy to prevent undefined access
-                        // Use spread to create a shallow copy, preventing mutation of the reference if it exists,
-                        // and providing a fresh INITIAL_STATS object if it's undefined.
-                        // This prevents "Cannot read properties of undefined (reading 'g')" crashes.
                         let targetStats = game.isPlayoff 
                             ? { ...(p.playoffStats || INITIAL_STATS()) } 
                             : { ...(p.stats || INITIAL_STATS()) };
@@ -236,7 +234,8 @@ export const useSimulation = (
                         away_score: result.awayScore, 
                         box_score: { home: result.homeBox, away: result.awayBox },
                         is_playoff: game.isPlayoff, 
-                        series_id: game.seriesId 
+                        series_id: game.seriesId,
+                        tactics: { home: result.homeTactics, away: result.awayTactics } // [FIX] Save tactics to DB
                     });
                 }
                 allPlayedToday.push(updatedGame);

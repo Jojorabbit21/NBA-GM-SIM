@@ -12,6 +12,7 @@ import {
 } from '../utils/constants';
 import { Team, Player, Game, Transaction, SeasonStats, PlayoffSeries } from '../types';
 import { generateNextPlayoffGames } from '../utils/playoffLogic';
+import { updateTeamTacticHistory } from '../utils/tacticUtils';
 
 // ============================================================================
 //  HELPER: State Reconstruction (Event Sourcing Logic)
@@ -60,9 +61,6 @@ const reconstructGameState = (
             const myTeamId = tx.teamId;
             const partnerTeamId = tx.details.partnerTeamId;
 
-            // [Critical Fix: Global Purge Strategy]
-            // Instead of trusting where the player "should" be, we search ALL teams and remove the player instance.
-            // This prevents duplication bugs where a player exists in both Team A (failed removal) and Team B (successful addition).
             const movePlayerSafely = (playerId: string, targetTeamId: string) => {
                 const player = playerMap.get(playerId);
                 const targetTeam = teamsMap.get(targetTeamId);
@@ -136,17 +134,32 @@ const reconstructGameState = (
         const awayTeam = teamsMap.get(game.awayTeamId);
         
         if (homeTeam && awayTeam) {
-            if (res.home_score > res.away_score) {
+            const homeWin = res.home_score > res.away_score;
+            if (homeWin) {
                 homeTeam.wins += 1;
                 awayTeam.losses += 1;
             } else {
                 awayTeam.wins += 1;
                 homeTeam.losses += 1;
             }
+
+            // [New] Reconstruct Tactic History (If stored in game log)
+            // Note: This relies on the 'tactics' column in user_game_results which might be missing for old games.
+            // A fallback snapshot restore is implemented in useLoadSave below.
+            if (res.tactics && res.box_score) {
+                 const homeBox = res.box_score.home || [];
+                 const awayBox = res.box_score.away || [];
+                 
+                 if (res.tactics.home) {
+                     homeTeam.tacticHistory = updateTeamTacticHistory(homeTeam, homeBox, awayBox, res.tactics.home, homeWin);
+                 }
+                 if (res.tactics.away) {
+                     awayTeam.tacticHistory = updateTeamTacticHistory(awayTeam, awayBox, homeBox, res.tactics.away, !homeWin);
+                 }
+            }
         }
 
         // 3-3. Aggregate Player Box Scores
-        // DB의 box_score는 { home: PlayerBoxScore[], away: PlayerBoxScore[] } 형태임
         const boxData = res.box_score;
         if (boxData) {
             const allBoxStats = [...(boxData.home || []), ...(boxData.away || [])];
@@ -154,10 +167,8 @@ const reconstructGameState = (
             allBoxStats.forEach((stat: any) => {
                 const player = playerMap.get(stat.playerId);
                 if (player) {
-                    // Decide if regular season or playoff stats
                     const targetStats = game?.isPlayoff ? player.playoffStats : player.stats;
                     
-                    // Accumulate
                     targetStats.g += 1;
                     targetStats.gs += stat.gs || 0;
                     targetStats.mp += stat.mp || 0;
@@ -187,12 +198,9 @@ const reconstructGameState = (
     let reconstructedSchedule = Array.from(scheduleMap.values());
 
     // 4. [Playoff Fix] Generate Future Playoff Games
-    // The DB only stores finished games. If a series is active, we need to regenerate the NEXT unplayed game.
     if (playoffSeries && playoffSeries.length > 0 && currentDate) {
         const { newGames } = generateNextPlayoffGames(reconstructedSchedule, playoffSeries, currentDate);
         if (newGames.length > 0) {
-            // Append these generated future games to schedule
-            // They will be "played: false"
             reconstructedSchedule = [...reconstructedSchedule, ...newGames];
         }
     }
@@ -218,7 +226,6 @@ export const useBaseData = () => {
           supabase.from('meta_schedule').select('*').range(0, 2999)
       ]);
       
-      // Fallback if DB is empty/error
       let rawTeams = teamsResult.data || [];
       if (rawTeams.length === 0) {
           rawTeams = INITIAL_TEAMS_DATA as any[];
@@ -262,8 +269,7 @@ export const useLoadSave = (userId: string | undefined) => {
       if (!userId) return null;
       console.log("🔄 Reconstructing Game State from Event Log...");
 
-      // 1. Fetch Save Metadata (Date, Team, Tactics)
-      // Saves table structure: user_id | team_id | sim_date | tactics | playoff_series | updated_at
+      // 1. Fetch Save Metadata
       const { data: saveMeta, error: saveError } = await supabase
           .from('saves')
           .select('*')
@@ -275,13 +281,10 @@ export const useLoadSave = (userId: string | undefined) => {
           return null;
       }
 
-      // 2. Fetch Base Data (Teams, Schedule, Players)
-      // Check cache first
+      // 2. Fetch Base Data
       let baseData = queryClient.getQueryData<{teams: Team[], schedule: Game[]}>(['baseData']);
       if (!baseData) {
           console.log("Base data missing in cache, fetching...");
-          // Manually trigger base data fetch if not in cache
-          // (Simplified for this function, assuming baseData is usually loaded by App)
           const { data: teamsData } = await supabase.from('meta_teams').select('*, meta_players (*)');
           const { data: schedData } = await supabase.from('meta_schedule').select('*');
           
@@ -295,17 +298,16 @@ export const useLoadSave = (userId: string | undefined) => {
           baseData = { teams, schedule };
       }
 
-      // 3. Fetch Transactions (for Roster Moves)
+      // 3. Fetch Transactions
       const { data: transactions } = await supabase
           .from('user_transactions')
           .select('*')
           .eq('user_id', userId);
 
-      // 4. Fetch Game Results (for Stats & Records)
-      // [Update] Select extended columns (team_ids, is_playoff, series_id) to reconstruct dynamic games
+      // 4. Fetch Game Results
       const { data: gameResults } = await supabase
           .from('user_game_results')
-          .select('game_id, home_score, away_score, box_score, date, home_team_id, away_team_id, is_playoff, series_id')
+          .select('game_id, home_score, away_score, box_score, date, home_team_id, away_team_id, is_playoff, series_id, tactics')
           .eq('user_id', userId);
 
       // 5. Reconstruct State
@@ -317,10 +319,27 @@ export const useLoadSave = (userId: string | undefined) => {
               id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
           })),
           gameResults || [],
-          saveMeta.playoff_series, // Pass saved playoff series state
-          saveMeta.sim_date        // Pass saved date
+          saveMeta.playoff_series,
+          saveMeta.sim_date
       );
       console.timeEnd("ReconstructState");
+
+      // [Tactics History Restoration]
+      // Check if _persistedHistory exists in the saved tactics JSON
+      // This is a robust fallback if user_game_results lacks tactic data
+      let tacticsToLoad = saveMeta.tactics || null;
+      if (tacticsToLoad && tacticsToLoad._persistedHistory) {
+          const historySnapshot = tacticsToLoad._persistedHistory;
+          const myTeam = reconstructedTeams.find(t => t.id === saveMeta.team_id);
+          if (myTeam) {
+              // Apply persisted history (snapshot overrides empty/partial reconstruction)
+              myTeam.tacticHistory = historySnapshot;
+              console.log("✅ Restored Tactic History from Snapshot");
+          }
+          // Remove the internal history field before passing to app state
+          const { _persistedHistory, ...cleanTactics } = tacticsToLoad;
+          tacticsToLoad = cleanTactics;
+      }
 
       // 6. Return formatted game data
       return {
@@ -328,9 +347,9 @@ export const useLoadSave = (userId: string | undefined) => {
           game_data: {
               teams: reconstructedTeams,
               schedule: reconstructedSchedule,
-              currentSimDate: saveMeta.sim_date, // Direct use of DB Date
-              tactics: saveMeta.tactics || null, // Load Tactics from DB
-              playoffSeries: saveMeta.playoff_series || [], // Load Playoff Series from DB
+              currentSimDate: saveMeta.sim_date,
+              tactics: tacticsToLoad, // Cleaned tactics object
+              playoffSeries: saveMeta.playoff_series || [],
               transactions: (transactions || []).map((t: any) => ({
                 id: t.id, date: t.date, type: t.type, teamId: t.team_id, description: t.description, details: t.details
               })),
@@ -350,24 +369,30 @@ export const useSaveGame = () => {
     mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
       if (!userId || !teamId) throw new Error("Missing UserID or TeamID");
 
-      console.log("💾 Updating Save Metadata (Date, Tactics, Playoff Series)...");
+      console.log("💾 Updating Save Metadata...");
 
-      // Now we save Tactics and Playoff Series along with Date
+      // [Tactics Persistence Strategy]
+      // We embed the aggregated tacticHistory into the 'tactics' JSONB column.
+      // This ensures statistics survive even if game logs are incomplete or missing columns.
+      const tacticsPayload = gameData.tactics ? {
+          ...gameData.tactics,
+          _persistedHistory: gameData.tacticHistory // Inject history snapshot
+      } : null;
+
       const savePayload = {
         user_id: userId,
         team_id: teamId,
         sim_date: gameData.currentSimDate,
-        tactics: gameData.tactics, // Save Tactics
-        playoff_series: gameData.playoffSeries, // Save Playoff Series
+        tactics: tacticsPayload, 
+        playoff_series: gameData.playoffSeries,
         updated_at: new Date().toISOString()
       };
 
       const { error } = await supabase.from('saves').upsert(savePayload, { onConflict: 'user_id' });
 
       if (error) {
-          // [Enhanced Logging] Identify missing column errors
-          if (error.code === '42703') { // PostgreSQL Undefined Column error code
-             console.error("❌ Save Failed: Database schema mismatch. Please add 'tactics' and 'playoff_series' columns to 'saves' table.");
+          if (error.code === '42703') {
+             console.error("❌ Save Failed: Schema mismatch.");
           } else {
              console.error("❌ Save Update Failed:", error);
           }
@@ -382,7 +407,6 @@ export const useSaveGame = () => {
 
 export const saveGameResults = async (results: any[]) => {
     if (results.length === 0) return;
-    // user_game_results table must have: user_id, game_id, home_score, away_score, box_score (jsonb), date
     try {
         const { error } = await supabase
             .from('user_game_results')

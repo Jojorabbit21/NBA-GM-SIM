@@ -1,5 +1,5 @@
 
-import { Team, Player, OffenseTactic, DefenseTactic, GameTactics } from '../types';
+import { Team, Player, OffenseTactic, DefenseTactic, GameTactics, TacticStatRecord, PlayerBoxScore, TacticalSnapshot } from '../types';
 
 export const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
   'Balance': { label: '밸런스 오펜스', desc: '모든 공격 루트의 조화 및 체급 위주' },
@@ -366,4 +366,94 @@ export const calculateTacticScore = (
     }
 
     return Math.min(99, Math.max(35, Math.round(finalScore)));
+};
+
+/**
+ * Updates the team's tactical history based on match results.
+ * This is used for both live simulation updates and state reconstruction from DB logs.
+ */
+export const updateTeamTacticHistory = (
+    team: Team, 
+    myBox: PlayerBoxScore[], 
+    oppBox: PlayerBoxScore[], 
+    tactics: TacticalSnapshot, 
+    isWin: boolean
+) => {
+    const history = { ...(team.tacticHistory || { offense: {}, defense: {} }) };
+
+    // Helper to update a specific record type (offense or defense)
+    const updateRecord = (record: Record<string, TacticStatRecord>, key: string) => {
+        if (!record[key]) {
+            record[key] = { 
+                games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0, 
+                fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, 
+                aceImpact: 0 
+            };
+        }
+        const r = record[key];
+        
+        // Aggregate my team stats for this game
+        const totals = myBox.reduce((acc, p) => ({ 
+            pts: acc.pts + p.pts, 
+            fgm: acc.fgm + p.fgm, 
+            fga: acc.fga + p.fga, 
+            p3m: acc.p3m + p.p3m, 
+            p3a: acc.p3a + p.p3a, 
+            rimM: acc.rimM + (p.rimM || 0), 
+            rimA: acc.rimA + (p.rimA || 0), 
+            midM: acc.midM + (p.midM || 0), 
+            midA: acc.midA + (p.midA || 0) 
+        }), { pts: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 });
+        
+        r.games++;
+        if (isWin) r.wins++;
+        
+        r.ptsFor += totals.pts;
+        // Points against comes from opponent box score
+        r.ptsAgainst += oppBox.reduce((sum, p) => sum + p.pts, 0);
+        
+        r.fgm += totals.fgm;
+        r.fga += totals.fga;
+        r.p3m += totals.p3m;
+        r.p3a += totals.p3a;
+        r.rimM += totals.rimM;
+        r.rimA += totals.rimA;
+        r.midM += totals.midM;
+        r.midA += totals.midA;
+    };
+
+    if (tactics.offense) updateRecord(history.offense, tactics.offense);
+    if (tactics.defense) updateRecord(history.defense, tactics.defense);
+
+    // Special handling for Ace Stopper stats
+    if (tactics.stopperId) {
+        if (!history.defense['AceStopper']) {
+            history.defense['AceStopper'] = { 
+                games: 0, wins: 0, ptsFor: 0, ptsAgainst: 0, 
+                fgm: 0, fga: 0, p3m: 0, p3a: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, 
+                aceImpact: 0 
+            };
+        }
+        const r = history.defense['AceStopper'];
+        
+        // Find the opponent's ace target in their box score
+        const targetAceBox = oppBox.find(b => b.isAceTarget);
+        
+        if (targetAceBox) {
+            r.games++;
+            if (isWin) r.wins++;
+            
+            // For Ace Stopper, we track the OPPOONENT'S ACE stats as "ptsAgainst", etc.
+            r.ptsAgainst += targetAceBox.pts;
+            r.fgm += targetAceBox.fgm;
+            r.fga += targetAceBox.fga;
+            r.p3m += targetAceBox.p3m;
+            r.p3a += targetAceBox.p3a;
+            
+            // Accumulate the specific matchup effect impact
+            r.aceImpact = (r.aceImpact || 0) + (targetAceBox.matchupEffect || 0);
+        }
+    }
+
+    return history;
 };
