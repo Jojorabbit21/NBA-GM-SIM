@@ -18,8 +18,8 @@ export const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: s
 
 export const getEfficiencyStyles = (score: number) => {
     if (score >= 96) return { bar: 'bg-fuchsia-500', text: 'text-fuchsia-400', border: 'border-fuchsia-400/50' };
-    if (score >= 91) return { bar: 'bg-indigo-500', text: 'text-indigo-400', border: 'border-indigo-400/50' };
-    if (score >= 86) return { bar: 'bg-blue-500', text: 'text-blue-400', border: 'border-blue-400/50' };
+    if (score >= 91) return { bar: 'bg-purple-500', text: 'text-purple-400', border: 'border-purple-400/50' };
+    if (score >= 86) return { bar: 'bg-violet-500', text: 'text-violet-400', border: 'border-violet-400/50' };
     if (score >= 81) return { bar: 'bg-emerald-500', text: 'text-emerald-400', border: 'border-emerald-400/50' };
     if (score >= 76) return { bar: 'bg-amber-400', text: 'text-amber-300', border: 'border-amber-400/50' };
     if (score >= 71) return { bar: 'bg-orange-500', text: 'text-orange-400', border: 'border-orange-500/50' };
