@@ -336,7 +336,7 @@ export const calculateTacticScore = (
         case 'AceStopper': {
             // Find the best stopper based on the specific formula:
             // (PDEF * 0.3) + (STL * 0.2) + (PASS PERC * 0.15) + (DEF CONS * 0.1) + (STA * 0.1) + (SPD * 0.1) + (AGI * 0.05)
-            const getScore = (p: Player) => 
+            const getStopperScore = (p: Player) => 
                 (p.perDef * 0.30) +
                 (p.steal * 0.20) +
                 (p.passPerc * 0.15) +
@@ -345,12 +345,17 @@ export const calculateTacticScore = (
                 (p.speed * 0.10) +
                 (p.agility * 0.05);
 
-            // Calculate score for all healthy players and pick the max to represent tactic potential
-            const bestStopperScore = team.roster
-                .filter(p => p.health !== 'Injured')
-                .reduce((max, p) => Math.max(max, getScore(p)), 0);
+            // [Update] Use selected stopper if available
+            const stopperId = tactics.stopperId;
+            const stopper = stopperId ? team.roster.find(p => p.id === stopperId) : null;
 
-            baseScore = bestStopperScore > 0 ? bestStopperScore : 60;
+            if (stopper && stopper.health !== 'Injured') {
+                baseScore = getStopperScore(stopper);
+            } else {
+                // If no stopper selected or injured, return a low/default score to indicate ineffective tactic
+                // or fallback to 50 if user hasn't selected one yet.
+                baseScore = 50; 
+            }
             break;
         }
     }

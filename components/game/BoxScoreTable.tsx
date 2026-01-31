@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { Team, PlayerBoxScore } from '../../types';
@@ -72,7 +73,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                        const ovr = playerInfo?.ovr || 0;
                        
                        // Matchup Effect Logic
-                       const effect = p.matchupEffect || 0;
+                       const effect = Math.round(p.matchupEffect || 0);
                        const isDebuff = effect < 0;
                        const isBuff = effect > 0;
                        
