@@ -1,9 +1,9 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Loader2, Wifi, WifiOff, Trophy, ChevronRight } from 'lucide-react';
+import { Loader2, Wifi, WifiOff } from 'lucide-react';
 import { Team } from '../types';
 import { isSupabaseConfigured } from '../services/supabaseClient';
-import { logEvent } from '../services/analytics';
+import { logEvent } from '../services/analytics'; // Analytics Import
 
 interface TeamSelectViewProps {
   teams: Team[];
@@ -14,71 +14,49 @@ interface TeamSelectViewProps {
 }
 
 const LOADING_MESSAGES = [
-    "라커룸을 청소하는 중...", "농구공에 바람 넣는 중...", "림에 새 그물을 다는 중...", "전술 보드를 닦는 중...",
-    "선수들 유니폼 다림질 중...", "스카우팅 리포트 인쇄 중...", "경기장 조명 예열 중...", "마스코트 춤 연습 시키는 중...",
-    "치어리더 대형 맞추는 중...", "단장님 명패 닦는 중..."
+    "라커룸을 청소하는 중...",
+    "농구공에 바람 넣는 중...",
+    "림에 새 그물을 다는 중...",
+    "전술 보드를 닦는 중...",
+    "선수들 유니폼 다림질 중...",
+    "스카우팅 리포트 인쇄 중...",
+    "경기장 조명 예열 중...",
+    "마스코트 춤 연습 시키는 중...",
+    "치어리더 대형 맞추는 중...",
+    "단장님 명패 닦는 중..."
 ];
 
-// Team Primary Colors
-const TEAM_BG_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#1D1160', 'chi': '#CE1141',
-  'cle': '#860038', 'dal': '#00538C', 'den': '#0E2240', 'det': '#C8102E', 'gsw': '#1D428A',
-  'hou': '#CE1141', 'ind': '#002D62', 'lac': '#C8102E', 'lal': '#552583', 'mem': '#5D76A9',
-  'mia': '#98002E', 'mil': '#00471B', 'min': '#0C2340', 'nop': '#0A2240', 'nyk': '#006BB6',
-  'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160', 'por': '#E03A3E',
-  'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
-};
-
-const TeamGridCell: React.FC<{ team: Team; onSelect: (id: string) => void }> = ({ team, onSelect }) => {
-  const bgColor = TEAM_BG_COLORS[team.id] || '#1f2937';
-
-  return (
-    <button
-      onClick={() => {
-        logEvent('Team Selection', 'Select', team.name);
+const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: string) => void }> = ({ team, colorClass, onSelect }) => (
+  <button 
+    onClick={() => {
+        logEvent('Team Selection', 'Select', team.name); // Analytics Event
         onSelect(team.id);
-      }}
-      className="relative w-full h-full group overflow-hidden border-r border-b border-black/10 focus:outline-none focus:z-10 focus:ring-4 focus:ring-indigo-500"
-      style={{ backgroundColor: bgColor }}
-    >
-      {/* Dark Overlay (Default: Visible, Hover: Invisible) */}
-      <div className="absolute inset-0 bg-slate-950/60 group-hover:bg-slate-950/0 transition-colors duration-300 ease-out" />
-      
-      {/* Glossy Effect on Hover */}
-      <div className="absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity duration-500 bg-gradient-to-tr from-white/0 via-white/40 to-white/0" />
+    }} 
+    className={`group relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 xl:w-20 xl:h-20 2xl:w-24 2xl:h-24 rounded-full bg-slate-900/40 border-2 border-slate-800 transition-all duration-300 hover:scale-125 hover:bg-slate-900 hover:z-50 hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] ${colorClass}`}
+    title={`${team.city} ${team.name}`}
+  >
+    <img src={team.logo} className="w-9 h-9 lg:w-10 lg:h-10 xl:w-12 xl:h-12 2xl:w-16 2xl:h-16 object-contain drop-shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" alt={team.name} />
+  </button>
+);
 
-      {/* Content */}
-      <div className="absolute inset-0 flex flex-col items-center justify-center z-10 p-2">
-        <img 
-          src={team.logo} 
-          className="w-12 h-12 sm:w-16 sm:h-16 lg:w-20 lg:h-20 object-contain drop-shadow-xl transform transition-transform duration-300 ease-out group-hover:scale-125 group-hover:-translate-y-2" 
-          alt={team.name} 
-        />
-        
-        {/* Text Container (Reveals on Hover) */}
-        <div className="absolute bottom-2 left-0 right-0 text-center opacity-0 group-hover:opacity-100 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 ease-out">
-            <span className="block text-[8px] sm:text-[10px] font-bold text-white/80 uppercase tracking-widest leading-none mb-0.5">{team.city}</span>
-            <span className="block text-xs sm:text-sm lg:text-base font-black text-white uppercase tracking-tight leading-none oswald text-shadow-md">{team.name}</span>
-        </div>
-      </div>
-    </button>
-  );
-};
-
-export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitializing, onSelectTeam }) => {
+export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitializing, onSelectTeam, onReload, dataSource = 'DB' }) => {
   const eastTeams = useMemo(() => teams.filter(t => t.conference === 'East'), [teams]);
   const westTeams = useMemo(() => teams.filter(t => t.conference === 'West'), [teams]);
   const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
 
   useEffect(() => {
     if (isInitializing) {
+        // 초기 메시지도 랜덤으로 설정
         setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
+
         const interval = setInterval(() => {
             setLoadingText(prev => {
                 let nextIndex;
+                // 이전 메시지와 다른 메시지가 나올 때까지 랜덤 선택 (연속 중복 방지)
                 do {
                     nextIndex = Math.floor(Math.random() * LOADING_MESSAGES.length);
                 } while (LOADING_MESSAGES[nextIndex] === prev && LOADING_MESSAGES.length > 1);
+                
                 return LOADING_MESSAGES[nextIndex];
             });
         }, 800);
@@ -87,83 +65,75 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
   }, [isInitializing]);
 
   return (
-    <div className="h-screen w-screen bg-slate-950 flex flex-col relative overflow-hidden ko-normal pretendard">
+    <div className="h-screen w-full bg-slate-950 flex flex-col overflow-hidden relative ko-normal pretendard selection:bg-indigo-500/30">
       
-      {/* 1. Header Section */}
-      <header className="flex-shrink-0 h-20 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 lg:px-10 z-20 shadow-lg relative">
-          <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-500/20 transform rotate-3">
-                  <Trophy className="text-white" size={24} />
-              </div>
-              <div>
-                  <h1 className="text-2xl lg:text-3xl font-black text-white uppercase italic tracking-tighter leading-none">
-                      NBA GM <span className="text-indigo-500">Simulator</span>
-                  </h1>
-                  <p className="text-xs text-slate-500 font-bold tracking-[0.2em] mt-1">2025-26 Season</p>
-              </div>
-          </div>
-
-          <div className="flex items-center gap-4 lg:gap-8">
-              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border ${isSupabaseConfigured ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400' : 'bg-red-950/30 border-red-500/30 text-red-400'}`}>
-                  {isSupabaseConfigured ? <Wifi size={14} /> : <WifiOff size={14} />}
-                  <span className="text-[10px] font-black uppercase tracking-wider">{isSupabaseConfigured ? 'Online' : 'Offline'}</span>
-              </div>
-              <div className="text-right hidden sm:block">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Select Your Team</div>
-                  <div className="text-sm font-black text-white">Choose a Franchise to Manage</div>
-              </div>
-          </div>
-      </header>
-
-      {/* 2. Loading Overlay */}
+      {/* Loading Overlay */}
       {isInitializing && (
-        <div className="absolute inset-0 bg-slate-950/90 z-[100] flex flex-col items-center justify-center backdrop-blur-xl animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-slate-950/90 z-[100] flex flex-col items-center justify-center backdrop-blur-xl animate-in fade-in duration-300">
            <div className="text-center space-y-8">
-             <Loader2 size={60} className="text-indigo-500 animate-spin mx-auto opacity-80" />
-             <p className="text-2xl font-black pretendard text-white tracking-tight animate-pulse leading-relaxed px-4">
+             <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto opacity-50" />
+             <div className="space-y-3">
+               <p className="text-3xl md:text-4xl font-black pretendard text-white tracking-tight animate-pulse leading-relaxed">
                  {loadingText}
-             </p>
+               </p>
+             </div>
            </div>
         </div>
       )}
 
-      {/* 3. Main Content Area (Split Grid) */}
-      <div className="flex-1 flex overflow-hidden">
+      {/* Enhanced Header */}
+      <header className="flex-shrink-0 h-32 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-md flex items-center justify-center relative z-20">
+        <div className="flex items-center gap-8">
+          <img src="https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg" className="h-16 opacity-90 drop-shadow-2xl" alt="NBA" />
+          <div className="h-12 w-[2px] bg-slate-700/50"></div>
+          <div>
+            <h1 className="text-5xl font-black bebas text-white tracking-widest leading-none drop-shadow-lg">
+              NBA GM SIM <span className="text-indigo-500">2026</span>
+            </h1>
+            <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] leading-none mt-2 text-shadow-sm">
+              Select Your Franchise
+            </p>
+          </div>
+        </div>
+      </header>
+
+      {/* Split Main Content */}
+      <div className="flex-1 flex relative min-h-0">
+        <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-gradient-to-b from-slate-800 via-slate-700 to-slate-800 z-10 hidden lg:block"></div>
         
-        {/* Left: Western Conference */}
-        <div className="w-1/2 flex flex-col border-r border-slate-800 relative group/west">
-            {/* Conference Header Overlay */}
-            <div className="absolute top-0 left-0 w-full py-2 bg-gradient-to-b from-black/90 to-transparent z-20 pointer-events-none flex items-center justify-center">
-                <span className="text-red-500 font-black text-sm lg:text-xl uppercase tracking-[0.3em] drop-shadow-md flex items-center gap-3">
-                   Western Conference
-                </span>
+        {/* Eastern Conference (Left) */}
+        <div className="flex-1 relative flex flex-col p-4 lg:p-8 border-r border-slate-800/50 min-h-0">
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-900/10 via-transparent to-transparent pointer-events-none"></div>
+          <div className="relative z-10 flex flex-col h-full items-center justify-center gap-8">
+            <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-blue-100 flex items-center gap-3">동부 컨퍼런스</h2>
+            <div className="grid grid-cols-5 gap-3 lg:gap-5 xl:gap-8 content-center">
+              {eastTeams.map(t => (
+                <LogoTeamButton key={t.id} team={t} colorClass="hover:border-blue-400" onSelect={onSelectTeam} />
+              ))}
             </div>
-            
-            {/* Grid */}
-            <div className="flex-1 grid grid-cols-3 grid-rows-5 w-full h-full bg-slate-900">
-                {westTeams.map(t => (
-                    <TeamGridCell key={t.id} team={t} onSelect={onSelectTeam} />
-                ))}
-            </div>
+          </div>
         </div>
 
-        {/* Right: Eastern Conference */}
-        <div className="w-1/2 flex flex-col relative group/east">
-             {/* Conference Header Overlay */}
-             <div className="absolute top-0 left-0 w-full py-2 bg-gradient-to-b from-black/90 to-transparent z-20 pointer-events-none flex items-center justify-center">
-                <span className="text-blue-500 font-black text-sm lg:text-xl uppercase tracking-[0.3em] drop-shadow-md flex items-center gap-3">
-                   Eastern Conference
-                </span>
+        {/* Western Conference (Right) */}
+        <div className="flex-1 relative flex flex-col p-4 lg:p-8 min-h-0">
+          <div className="absolute inset-0 bg-gradient-to-bl from-red-900/10 via-transparent to-transparent pointer-events-none"></div>
+          <div className="relative z-10 flex flex-col h-full items-center justify-center gap-8">
+            <h2 className="text-3xl font-extrabold uppercase tracking-tighter text-red-100 flex items-center gap-3">서부 컨퍼런스</h2>
+            <div className="grid grid-cols-5 gap-3 lg:gap-5 xl:gap-8 content-center">
+              {westTeams.map(t => (
+                <LogoTeamButton key={t.id} team={t} colorClass="hover:border-red-400" onSelect={onSelectTeam} />
+              ))}
             </div>
-
-            {/* Grid */}
-            <div className="flex-1 grid grid-cols-3 grid-rows-5 w-full h-full bg-slate-900">
-                {eastTeams.map(t => (
-                    <TeamGridCell key={t.id} team={t} onSelect={onSelectTeam} />
-                ))}
-            </div>
+          </div>
         </div>
-
+      </div>
+      
+      <div className="flex-shrink-0 h-8 bg-slate-950 border-t border-slate-900 flex items-center justify-between px-6 text-[10px] font-bold text-slate-600 uppercase tracking-widest z-20 relative">
+        <span>Season 2025-26 &bull; Korean Translation Database Active</span>
+        <div className={`flex items-center gap-2 ${isSupabaseConfigured ? 'text-emerald-500' : 'text-red-500'}`}>
+            {isSupabaseConfigured ? <Wifi size={12} /> : <WifiOff size={12} />}
+            <span>{isSupabaseConfigured ? 'SERVER CONNECTED' : 'SERVER DISCONNECTED'}</span>
+        </div>
       </div>
     </div>
   );
