@@ -34,8 +34,8 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   if (imageError) {
       return (
         <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-600`}>
-           {/* OVR Badge (Top-Left) - Larger Size */}
-           <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-xl`}>
+           {/* OVR Badge (Top-Left) - Larger Size, No Padding */}
+           <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(player.ovr)} !w-14 !h-14 !text-3xl !rounded-tl-none !rounded-br-xl`}>
              {player.ovr}
            </div>
 
@@ -60,8 +60,8 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   return (
     <div className={`${containerClass} shadow-xl`}>
        
-       {/* OVR Badge (Top-Left) - Larger Size */}
-       <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-xl`}>
+       {/* OVR Badge (Top-Left) - Larger Size, No Padding */}
+       <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(player.ovr)} !w-14 !h-14 !text-3xl !rounded-tl-none !rounded-br-xl`}>
           {player.ovr}
        </div>
 
