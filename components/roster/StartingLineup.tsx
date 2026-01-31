@@ -15,12 +15,13 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   const [imageError, setImageError] = useState(false);
 
   // Shared container class for aspect ratio and basic styling
-  const containerClass = "relative w-full aspect-[2/3] rounded-xl overflow-hidden border border-slate-800 bg-slate-900";
+  // Removed border border-slate-800 to eliminate outline on filled cards
+  const containerClass = "relative w-full aspect-[2/3] rounded-xl overflow-hidden bg-slate-900";
 
   // 1. 플레이어가 할당되지 않은 경우 (빈 슬롯)
   if (!player) {
     return (
-      <div className={`${containerClass} bg-slate-900/30 border-dashed border-slate-700 flex flex-col items-center justify-center gap-2 cursor-default`}>
+      <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-700 flex flex-col items-center justify-center gap-2 cursor-default`}>
         <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">{positionLabel}</span>
         <User size={32} className="text-slate-700" />
         <span className="text-xs font-bold text-slate-600 uppercase">EMPTY</span>
@@ -32,7 +33,7 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   // Consistently use Global OVR Badge style even in error state for uniformity
   if (imageError) {
       return (
-        <div className={`${containerClass} bg-slate-900/30 border-dashed border-slate-600`}>
+        <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-600`}>
            {/* OVR Badge (Top-Left) - Larger Size */}
            <div className={`absolute top-2 left-2 z-20 ${getOvrBadgeStyle(player.ovr)} !w-10 !h-10 !text-lg`}>
              {player.ovr}
@@ -65,10 +66,11 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
        </div>
 
        {/* Image Loader */}
+       {/* Changed object-cover to object-contain to prevent cropping */}
        <img 
           src={cardImageUrl}
           alt={player.name}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
           loading="lazy"
           onError={() => setImageError(true)} // 이미지 로드 실패 시 Fallback UI로 전환
        />
