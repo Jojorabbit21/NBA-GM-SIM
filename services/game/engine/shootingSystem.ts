@@ -2,6 +2,7 @@
 import { Player } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { ShootingResult, OpponentDefensiveMetrics, PerfModifiers } from './types';
+import { calculateAceStopperImpact } from './aceStopperSystem'; // Import the new module
 
 export function calculateShootingStats(
     p: Player,
@@ -117,35 +118,32 @@ export function calculateShootingStats(
     let matchupEffect = 0;
 
     if (isAceTarget && stopperPlayer) {
-        const perDef = stopperPlayer.perDef || 50;
+        // [New Logic] Use advanced Ace Stopper System
+        // Returns percentage modifier (e.g., -20 for 20% drop in efficiency)
+        const advancedImpact = calculateAceStopperImpact(p, stopperPlayer, stopperMP);
         
-        // [Balance Update] Wider Range Calculation (-50% ~ +50%)
-        // Formula: 40 - (Defense * 0.9)
-        // If Def=100 -> 40 - 90 = -50 (Max Suppression)
-        // If Def=40  -> 40 - 36 = +4 (Minor Advantage for Ace)
-        let rawImpact = 40 - (perDef * 0.9); 
-        
-        // Calculate Overlap Factor
+        // Calculate Overlap Factor (If Ace plays 40m but Stopper plays 20m, effect is halved)
         let overlapRatio = stopperMP >= mp ? 1.0 : (stopperMP / mp);
         
-        // [Balance Update] Freedom Bonus (Dynamic)
-        // If Ace plays without Stopper, bonus increases significantly
+        // Dynamic Freedom Bonus: If Ace plays meaningful minutes without stopper, they heat up
         let freedomBonus = 0;
         const minutesWithoutStopper = Math.max(0, mp - stopperMP);
-        
-        if (minutesWithoutStopper > 0) {
-            // +1.2% bonus per minute played without stopper, capped at +35%
-            freedomBonus = Math.min(35, minutesWithoutStopper * 1.2); 
+        if (minutesWithoutStopper > 5) {
+             // Ace gets confidence when Stopper sits
+             freedomBonus = Math.min(15, (minutesWithoutStopper - 5) * 0.8);
         }
 
-        let adjustedImpact = (rawImpact * overlapRatio) + freedomBonus;
-        
-        // Cap the total impact between -50% and +50%
-        adjustedImpact = Math.max(-50, Math.min(50, adjustedImpact)); 
+        // Final Effect Calculation
+        // advancedImpact is usually negative (good defense). Freedom bonus is positive.
+        // E.g. Impact -30 (Great defense) * 0.8 (Overlap) = -24. Freedom +5. Result = -19%.
+        let adjustedImpact = (advancedImpact * overlapRatio) + freedomBonus;
         
         matchupEffect = Math.round(adjustedImpact);
         
+        // Apply to Shooting Percentages
+        // Example: If effect is -15, factor is 0.85
         const factor = (1.0 + (matchupEffect / 100));
+        
         rimM = Math.round(rimM * factor);
         midM = Math.round(midM * factor);
         p3m = Math.round(p3m * factor);
