@@ -1,7 +1,7 @@
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient } from '@tanstack/query-core';
 import { injectSpeedInsights } from '@vercel/speed-insights';
 import './index.css'; // Tailwind CSS Import
 import App from './App';

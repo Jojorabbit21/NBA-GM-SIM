@@ -37,9 +37,15 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
     // Update GameData Ref for Save
     useEffect(() => {
+        // [FIX] Extract current team's tactic history to ensure it persists even if logs are missing
+        const myTeam = teams.find(t => t.id === myTeamId);
+        const tacticHistorySnapshot = myTeam?.tacticHistory || null;
+
         gameDataRef.current = {
             myTeamId, teams, schedule, currentSimDate, 
-            tactics: userTactics, playoffSeries, transactions, prospects
+            tactics: userTactics, 
+            tacticHistory: tacticHistorySnapshot, // Explicitly pass history snapshot
+            playoffSeries, transactions, prospects
         };
         // Mark dirty when state changes (if game is active)
         if (myTeamId && session?.user && !isGuestMode) {
