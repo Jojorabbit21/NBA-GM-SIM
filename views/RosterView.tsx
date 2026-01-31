@@ -327,8 +327,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                     let valStr = '-';
                                     const g = statsTotals.teamGames;
                                     
-                                    if (col.key === 'g') valStr = String(g);
-                                    else if (col.key === 'gs') valStr = '-';
+                                    if (col.key === 'g' || col.key === 'gs' || col.key === 'mp') {
+                                        valStr = '-';
+                                    }
                                     else if (col.key.includes('%')) {
                                         let n = 0, d = 0;
                                         if (col.key === 'fg%') { n = statsTotals.fgm; d = statsTotals.fga; }
@@ -338,7 +339,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                         valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
                                     } else {
                                         const keyMap: any = {
-                                            'mp': 'mp', 'pts': 'pts', 'reb': 'reb', 'offReb': 'offReb', 'defReb': 'defReb',
+                                            'pts': 'pts', 'reb': 'reb', 'offReb': 'offReb', 'defReb': 'defReb',
                                             'ast': 'ast', 'stl': 'stl', 'blk': 'blk', 'tov': 'tov'
                                         };
                                         const statKey = keyMap[col.key];
