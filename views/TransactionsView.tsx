@@ -89,6 +89,27 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
     return transactions.filter(t => t.teamId === team.id || t.details?.partnerTeamId === team.id);
   }, [transactions, historyFilter, team.id]);
 
+  // [Helper] Hydrate Player from Partial Data
+  // The Trade API returns stripped player objects (no stats, no detailed attributes) to save bandwidth.
+  // We must look up the FULL player object from the client 'teams' state before showing the detail modal.
+  const handleViewPlayer = (partialPlayer: Player) => {
+      let fullPlayer: Player | undefined;
+      
+      // Search in all teams
+      for (const t of teams) {
+          fullPlayer = t.roster.find(p => p.id === partialPlayer.id);
+          if (fullPlayer) break;
+      }
+
+      if (fullPlayer) {
+          setViewPlayer(fullPlayer);
+      } else {
+          console.warn("Could not find full player data for:", partialPlayer.name);
+          // Fallback to partial player if absolutely necessary (though stats will be missing)
+          setViewPlayer(partialPlayer); 
+      }
+  };
+
   const executeTrade = async () => {
     if (!pendingTrade || !team || isExecutingTrade) return;
     const { userAssets, targetAssets, targetTeam } = pendingTrade;
@@ -123,11 +144,21 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
         setTeams(prevTeams => prevTeams.map(t => {
             if (t.id === team.id) {
                 const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
-                return { ...t, roster: [...remaining, ...targetAssets] };
+                // We need to hydrate the targetAssets from the source team to ensure they have stats
+                // The trade engine might return stripped objects
+                const hydratedTargetAssets = targetAssets.map(tp => {
+                    const sourceTeam = prevTeams.find(pt => pt.id === targetTeam.id);
+                    return sourceTeam?.roster.find(sp => sp.id === tp.id) || tp;
+                });
+                return { ...t, roster: [...remaining, ...hydratedTargetAssets] };
             }
             if (targetTeam && t.id === targetTeam.id) {
                 const remaining = t.roster.filter(p => !targetAssets.some(x => x.id === p.id));
-                return { ...t, roster: [...remaining, ...userAssets] };
+                const hydratedUserAssets = userAssets.map(up => {
+                    const sourceTeam = prevTeams.find(pt => pt.id === team.id);
+                    return sourceTeam?.roster.find(sp => sp.id === up.id) || up;
+                });
+                return { ...t, roster: [...remaining, ...hydratedUserAssets] };
             }
             return t;
         }));
@@ -360,7 +391,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                             <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={20} className="text-white" strokeWidth={3} />}</div>
                                             <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                                             <div className="text-left flex-1 min-w-0">
-                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
+                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
                                                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
                                             </div>
                                         </div>
@@ -380,7 +411,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                             <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={20} className="text-white" strokeWidth={3} />}</div>
                                             <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
                                             <div className="text-left flex-1 min-w-0">
-                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); setViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
+                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
                                                 <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
                                             </div>
                                         </div>
@@ -415,7 +446,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                 <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Valid Offers</p><p className="text-xs font-bold text-slate-600">제시한 선수들의 가치나 샐러리가 맞는 오퍼가 없습니다.</p></div>
                                 ) : (
                                 <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2">
-                                <Handshake size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">Best Offers from the League</h4></div>{blockOffers.map((offer, idx) => (<OfferCard key={idx} offer={offer} teams={teams} onAccept={() => setPendingTrade({ userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)), targetAssets: offer.players, targetTeam: teams.find(t => t.id === offer.teamId)! })} onPlayerClick={setViewPlayer} />))}</div>
+                                <Handshake size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">Best Offers from the League</h4></div>{blockOffers.map((offer, idx) => (<OfferCard key={idx} offer={offer} teams={teams} onAccept={() => setPendingTrade({ userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)), targetAssets: offer.players, targetTeam: teams.find(t => t.id === offer.teamId)! })} onPlayerClick={handleViewPlayer} />))}</div>
                                 )
                             ) : (
                                 proposalSelectedIds.size === 0 ? (
@@ -428,7 +459,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
                                 <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Matching Trade</p><p className="text-xs font-bold text-slate-600">상대 팀이 만족할 만한 가치나 샐러리 구조를 맞출 수 없습니다.</p></div>
                                 ) : (
                                 <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2">
-                                <Target size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">AI Counter Proposals</h4></div>{proposalRequirements.map((offer, idx) => (<RequirementCard key={idx} requirement={offer} targetPlayers={teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || []} onAccept={() => setPendingTrade({ userAssets: offer.players, targetAssets: teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || [], targetTeam: teams.find(t => t.id === proposalTargetTeamId)! })} onPlayerClick={setViewPlayer} />))}</div>
+                                <Target size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">AI Counter Proposals</h4></div>{proposalRequirements.map((offer, idx) => (<RequirementCard key={idx} requirement={offer} targetPlayers={teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || []} onAccept={() => setPendingTrade({ userAssets: offer.players, targetAssets: teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || [], targetTeam: teams.find(t => t.id === proposalTargetTeamId)! })} onPlayerClick={handleViewPlayer} />))}</div>
                                 )
                             )}
                         </div>
