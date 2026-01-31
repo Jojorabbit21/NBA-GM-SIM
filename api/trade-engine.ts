@@ -261,9 +261,116 @@ export default async function handler(req: any, res: any) {
             return res.status(200).json({ offers: offers.sort((a: TradeOffer, b: TradeOffer) => b.diffValue - a.diffValue).slice(0, 5) });
         }
         
-        // Placeholder for other actions
         if (action === 'generate-counter-offers') {
-             return res.status(200).json({ offers: [] });
+            const { myTeamId, targetTeamId, leagueState, targetPlayers } = payload;
+            const myTeam = leagueState.find((t: Team) => t.id === myTeamId);
+            const targetTeam = leagueState.find((t: Team) => t.id === targetTeamId);
+
+            if (!myTeam || !targetTeam) {
+                return res.status(404).json({ message: 'Teams not found', offers: [] });
+            }
+
+            // Calculate value of what user wants (Target -> User)
+            const targetValue = targetPlayers.reduce((sum: number, p: Player) => sum + getPlayerTradeValue(p), 0);
+            
+            // Analyze Target Team's situation to see what THEY want from ME (User)
+            const needs = analyzeTeamSituation(targetTeam);
+
+            // Filter my tradeable assets (simple: not injured)
+            const myAssets = myTeam.roster.filter((p: Player) => p.health !== 'Injured');
+
+            // Score my assets based on Target Team's interest
+            const scoredAssets = myAssets.map((p: Player) => {
+                let score = 0;
+                const reasons: string[] = [];
+                
+                if (needs.weakPositions.some(pos => p.position.includes(pos))) {
+                    score += 2;
+                    reasons.push(`✅ ${p.name}: 상대팀 약점 포지션(${p.position}) 보강`);
+                }
+                if (needs.statNeeds.includes('DEF') && p.def > 75) {
+                    score += 1;
+                    reasons.push(`✅ ${p.name}: 수비력 필요`);
+                }
+                if (needs.statNeeds.includes('3PT') && p.out > 75) {
+                    score += 1;
+                    reasons.push(`✅ ${p.name}: 슈팅 능력 필요`);
+                }
+                if (needs.statNeeds.includes('REB') && p.reb > 75) {
+                    score += 1;
+                    reasons.push(`✅ ${p.name}: 리바운드 필요`);
+                }
+                if (needs.isSeller && p.age <= 24) {
+                    score += 2;
+                    reasons.push(`✅ ${p.name}: 리빌딩 코어 (유망주)`);
+                }
+                if (needs.isContender && p.ovr >= 80) {
+                    score += 2;
+                    reasons.push(`✅ ${p.name}: 윈나우 조각 (즉시전력)`);
+                }
+                
+                // Add base value factor (0~5 points)
+                score += (getPlayerTradeValue(p) / 1000); 
+
+                return { player: p, score, reasons };
+            }).sort((a: any, b: any) => b.score - a.score);
+
+            const offers: TradeOffer[] = [];
+
+            // Attempt to build valid packages using a greedy approach
+            // We iterate through top scoring assets and try to combine them to match value
+            const generatePackage = (availableAssets: typeof scoredAssets, valueMultiplier: number) => {
+                let currentVal = 0;
+                const pkg: Player[] = [];
+                const reasons: string[] = [];
+                
+                for (const asset of availableAssets) {
+                    if (pkg.includes(asset.player)) continue;
+                    
+                    // Don't create huge packages (max 4 players)
+                    if (pkg.length >= 4) break;
+
+                    // Don't massively overpay (cap at 130% value)
+                    if (currentVal + getPlayerTradeValue(asset.player) > targetValue * 1.3) continue;
+
+                    pkg.push(asset.player);
+                    currentVal += getPlayerTradeValue(asset.player);
+                    reasons.push(...asset.reasons);
+
+                    // If value matched, stop
+                    if (currentVal >= targetValue * valueMultiplier) break;
+                }
+                return { players: pkg, value: currentVal, reasons: [...new Set(reasons)] };
+            };
+
+            // Package 1: Best Fit (Greedy)
+            const p1 = generatePackage(scoredAssets, 0.9);
+            if (p1.players.length > 0 && p1.value >= targetValue * 0.8) {
+                offers.push({
+                    teamId: targetTeam.id,
+                    teamName: targetTeam.name,
+                    players: p1.players,
+                    diffValue: p1.value - targetValue,
+                    analysis: [`AI Counter Proposal (Best Fit)`, ...p1.reasons.slice(0, 3)]
+                });
+            }
+
+            // Package 2: Alternative (Skip the best player from P1 to find another combo)
+            if (p1.players.length > 0) {
+                const altAssets = scoredAssets.filter((a: any) => a.player.id !== p1.players[0].id);
+                const p2 = generatePackage(altAssets, 0.95);
+                if (p2.players.length > 0 && p2.value >= targetValue * 0.85) {
+                    offers.push({
+                        teamId: targetTeam.id,
+                        teamName: targetTeam.name,
+                        players: p2.players,
+                        diffValue: p2.value - targetValue,
+                        analysis: [`AI Counter Proposal (Alternative)`, ...p2.reasons.slice(0, 3)]
+                    });
+                }
+            }
+
+            return res.status(200).json({ offers });
         }
 
         if (action === 'simulate-cpu-trades') {
