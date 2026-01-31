@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 
 // --- Types ---
@@ -187,13 +188,40 @@ export default async function handler(req: any, res: any) {
                 if (otherTeam.id === myTeamId) continue;
                 const needs = analyzeTeamSituation(otherTeam);
                 
-                // Basic matching logic
+                // Detailed Matching Logic
                 let interestScore = 0;
+                const interestReasons: string[] = [];
+
                 tradingPlayers.forEach((p: Player) => {
-                    if (needs.weakPositions.some(pos => p.position.includes(pos))) interestScore += 2;
-                    if (needs.statNeeds.includes('DEF') && p.def > 75) interestScore += 1;
-                    if (needs.isSeller && p.age < 25) interestScore += 2;
-                    if (needs.isContender && p.ovr > 80) interestScore += 2;
+                    // 1. Weak Position Check
+                    if (needs.weakPositions.some(pos => p.position.includes(pos))) {
+                        interestScore += 2;
+                        interestReasons.push(`✅ ${p.name}: 약점 포지션(${p.position}) 보강`);
+                    }
+                    
+                    // 2. Stat Needs Check
+                    if (needs.statNeeds.includes('DEF') && p.def > 75) {
+                        interestScore += 1;
+                        if (!interestReasons.some(r => r.includes('수비'))) interestReasons.push(`✅ ${p.name}: 수비력 보강`);
+                    }
+                    if (needs.statNeeds.includes('3PT') && p.out > 75) {
+                        interestScore += 1;
+                        if (!interestReasons.some(r => r.includes('슈팅'))) interestReasons.push(`✅ ${p.name}: 외곽 슈팅 보강`);
+                    }
+                    if (needs.statNeeds.includes('REB') && p.reb > 75) {
+                        interestScore += 1;
+                        if (!interestReasons.some(r => r.includes('리바운드'))) interestReasons.push(`✅ ${p.name}: 리바운드 보강`);
+                    }
+
+                    // 3. Team Timeline Fit
+                    if (needs.isSeller && p.age <= 24) {
+                        interestScore += 2;
+                        interestReasons.push(`✅ ${p.name}: 리빌딩 코어 (유망주)`);
+                    }
+                    if (needs.isContender && p.ovr >= 80) {
+                        interestScore += 2;
+                        interestReasons.push(`✅ ${p.name}: 윈나우 조각 (즉시전력)`);
+                    }
                 });
 
                 if (interestScore > 0) {
@@ -204,25 +232,33 @@ export default async function handler(req: any, res: any) {
                     let packageVal = 0;
                     const pkg: Player[] = [];
                     for (const p of tradeable) {
-                        if (packageVal < outgoingValue * 1.1 && pkg.length < 3) {
+                        // Accept slightly unbalanced trades if interest is high
+                        const maxVal = outgoingValue * (1.1 + (interestScore * 0.05));
+                        if (packageVal < maxVal && pkg.length < 4) {
                             pkg.push(p);
                             packageVal += getPlayerTradeValue(p);
                         }
                     }
                     
                     if (pkg.length > 0 && packageVal >= outgoingValue * 0.8) {
+                        // Deduplicate reasons for clean UI
+                        const uniqueReasons = [...new Set(interestReasons)];
+                        
                         offers.push({
                             teamId: otherTeam.id,
                             teamName: otherTeam.name,
                             players: pkg,
                             diffValue: packageVal - outgoingValue,
-                            analysis: [`Interest Score: ${interestScore}`]
+                            analysis: [
+                                `AI Interest Score: ${interestScore} / 10`,
+                                ...uniqueReasons.slice(0, 3) // Show top 3 reasons
+                            ]
                         });
                     }
                 }
             }
             
-            return res.status(200).json({ offers: offers.slice(0, 5) });
+            return res.status(200).json({ offers: offers.sort((a: TradeOffer, b: TradeOffer) => b.diffValue - a.diffValue).slice(0, 5) });
         }
         
         // Placeholder for other actions
