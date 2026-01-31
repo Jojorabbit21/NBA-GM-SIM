@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { Briefcase, X, Info, AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Briefcase, X, Info, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { Player, Team } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 
@@ -10,8 +10,8 @@ const SECOND_APRON = 189;
 
 const getCapStatus = (cap: number) => {
   if (cap >= SECOND_APRON) return { 
-      label: '2차 에이프런 초과', 
-      msg: '로스터 구성 및 트레이드에 강력한 제약이 발생합니다.', 
+      label: '2차 에이프런 초과 (Second Apron)', 
+      msg: '가장 강력한 제재가 적용됩니다. 샐러리 집계(Aggregation) 불가, 현금 트레이드 불가, 100% 샐러리 매칭 필수.', 
       color: 'text-red-500', 
       bg: 'bg-red-500/10', 
       border: 'border-red-500/50',
@@ -19,8 +19,8 @@ const getCapStatus = (cap: number) => {
       iconBg: 'bg-red-500/20'
   };
   if (cap >= FIRST_APRON) return { 
-      label: '1차 에이프런 초과', 
-      msg: '샐러리 유동성이 감소하며 영입 제약이 적용됩니다.', 
+      label: '1차 에이프런 초과 (First Apron)', 
+      msg: '들어오는 연봉이 나가는 연봉보다 클 수 없습니다 (100% 매칭 제한). 바이아웃 시장 영입 제한.', 
       color: 'text-orange-500', 
       bg: 'bg-orange-500/10', 
       border: 'border-orange-500/50',
@@ -28,8 +28,8 @@ const getCapStatus = (cap: number) => {
       iconBg: 'bg-orange-500/20'
   };
   if (cap >= TAX_LEVEL) return { 
-      label: '사치세 납부 대상', 
-      msg: '사치세 구간입니다. 구단 운영 비용이 증가할 수 있습니다.', 
+      label: '사치세 납부 대상 (Luxury Tax)', 
+      msg: '사치세 구간입니다. 트레이드 시 110% 샐러리 매칭 룰이 적용됩니다.', 
       color: 'text-amber-400', 
       bg: 'bg-amber-400/10', 
       border: 'border-amber-400/50',
@@ -37,8 +37,8 @@ const getCapStatus = (cap: number) => {
       iconBg: 'bg-amber-400/20'
   };
   return { 
-      label: '샐러리캡 여유', 
-      msg: '구단 샐러리가 건강하며 추가적인 전력 보강이 가능합니다.', 
+      label: '샐러리캡 여유 (Healthy)', 
+      msg: '재정 상태가 건전합니다. 트레이드 시 125% 샐러리 매칭 룰이 적용됩니다.', 
       color: 'text-emerald-400', 
       bg: 'bg-emerald-500/10', 
       border: 'border-emerald-400/50',
@@ -72,8 +72,53 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
   const currentTotalCap = (userTeam?.roster || []).reduce((sum, p) => sum + p.salary, 0);
   const postTradeTotalCap = currentTotalCap - userSalaryOut + userSalaryIn;
   
-  const status = getCapStatus(postTradeTotalCap);
+  const status = getCapStatus(currentTotalCap); // Check status based on PRE-TRADE salary
   const visualWidth = getVisualPercentage(postTradeTotalCap);
+
+  // --- Trade Validation Logic (CBA Rules) ---
+  const validationResult = useMemo(() => {
+      // 1. Second Apron Rules
+      if (currentTotalCap >= SECOND_APRON) {
+          // Rule A: Aggregation Ban (Cannot package multiple players to get one)
+          // Simplified: If sending > 1 player and receiving 1 player, it's aggregation.
+          // (Technically aggregation applies if combining salaries to match a larger salary)
+          if (userAssets.length > 1 && targetAssets.length === 1) {
+              return { valid: false, reason: "2차 에이프런 초과 팀은 샐러리 집계(Aggregation) 트레이드가 금지됩니다. (다수 선수를 묶어 1명 영입 불가)" };
+          }
+          // Rule B: Cannot take back more salary than sent out (100% Match)
+          if (userSalaryIn > userSalaryOut) {
+              return { valid: false, reason: `2차 에이프런 초과 팀은 나가는 연봉($${userSalaryOut.toFixed(1)}M)보다 더 많은 연봉($${userSalaryIn.toFixed(1)}M)을 받을 수 없습니다.` };
+          }
+      }
+      
+      // 2. First Apron Rules
+      else if (currentTotalCap >= FIRST_APRON) {
+          // Rule: Cannot take back more salary than sent out (100% Match)
+          if (userSalaryIn > userSalaryOut) {
+              return { valid: false, reason: `1차 에이프런 초과 팀은 나가는 연봉($${userSalaryOut.toFixed(1)}M)보다 더 많은 연봉($${userSalaryIn.toFixed(1)}M)을 받을 수 없습니다.` };
+          }
+      }
+
+      // 3. Taxpayer Rules
+      else if (currentTotalCap >= TAX_LEVEL) {
+          // Rule: 110% Matching
+          const limit = userSalaryOut * 1.10; // Simplified
+          if (userSalaryIn > limit) {
+              return { valid: false, reason: `사치세 납부 팀은 나가는 연봉의 110%($${limit.toFixed(1)}M)까지만 받을 수 있습니다.` };
+          }
+      }
+
+      // 4. Non-Taxpayer Rules
+      else {
+          // Rule: 125% Matching (Standard)
+          const limit = (userSalaryOut * 1.25) + 0.25; // +250k simplified
+          if (userSalaryIn > limit) {
+              return { valid: false, reason: `샐러리 매칭 실패: 나가는 연봉의 125%($${limit.toFixed(1)}M)를 초과하여 받을 수 없습니다.` };
+          }
+      }
+
+      return { valid: true, reason: null };
+  }, [currentTotalCap, userAssets, targetAssets, userSalaryIn, userSalaryOut]);
 
   return (
     <div className="fixed inset-0 bg-slate-950/95 z-[200] flex items-center justify-center p-4 animate-in fade-in zoom-in duration-300 backdrop-blur-md">
@@ -135,6 +180,20 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                 <div className="flex items-center gap-2 text-slate-400 uppercase font-black text-[10px] tracking-widest">
                     <AlertCircle size={14} /> 샐러리 캡 예측 및 상태 분석
                 </div>
+                
+                {/* Validation Error Message */}
+                {!validationResult.valid && (
+                    <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-5 flex items-start gap-4 animate-in slide-in-from-top-2 duration-300">
+                        <ShieldAlert className="text-red-500 flex-shrink-0 mt-0.5" size={24} />
+                        <div>
+                            <h4 className="text-sm font-black text-red-400 uppercase tracking-tight mb-1">CBA Rule Violation (트레이드 불가)</h4>
+                            <p className="text-xs font-bold text-slate-300 leading-relaxed">
+                                {validationResult.reason}
+                            </p>
+                        </div>
+                    </div>
+                )}
+
                 <div className="space-y-2">
                     <div className="relative h-4 w-full bg-slate-800/50 rounded-full overflow-hidden border border-slate-700/50">
                         <div className={`h-full transition-all duration-1000 ease-out shadow-[0_0_20px_rgba(0,0,0,0.5)] ${status.bar}`} style={{ width: `${visualWidth}%` }} />
@@ -172,8 +231,16 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
 
         <div className="p-8 flex justify-end gap-6 bg-slate-900 border-t border-slate-800">
           <button onClick={onCancel} className="px-10 py-4 rounded-2xl font-black text-slate-400 hover:bg-slate-800 uppercase text-xs tracking-widest transition-all">협상 취소</button>
-          <button onClick={onConfirm} className="px-12 py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase tracking-[0.2em] shadow-[0_10px_40px_rgba(79,70,229,0.4)] transition-all active:scale-95 flex items-center gap-4 text-lg">
-             <CheckCircle2 size={24} /> 트레이드 실행
+          <button 
+            onClick={onConfirm} 
+            disabled={!validationResult.valid}
+            className={`px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] flex items-center gap-4 text-lg transition-all ${
+                validationResult.valid 
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_10px_40px_rgba(79,70,229,0.4)] active:scale-95' 
+                : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+            }`}
+          >
+             <CheckCircle2 size={24} /> {validationResult.valid ? '트레이드 실행' : '규정 위반'}
           </button>
         </div>
       </div>
