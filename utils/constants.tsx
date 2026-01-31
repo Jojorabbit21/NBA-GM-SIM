@@ -12,11 +12,11 @@ export const INITIAL_STATS = (): SeasonStats => ({
 });
 
 export const getTeamLogoUrl = (id: string): string => {
-  const ESPN_LOGO_ID_MAP: Record<string, string> = {
-    'nop': 'no', 'uta': 'utah', 'sas': 'sa', 'gsw': 'gs', 'nyk': 'ny', 'lal': 'lal', 'lac': 'lac', 'phx': 'phx', 'was': 'wsh'
-  };
-  const espnId = ESPN_LOGO_ID_MAP[id] || id;
-  return `https://a.espncdn.com/i/teamlogos/nba/500/${espnId}.png`;
+  // 1. 커스텀 팀이나 외부 URL인 경우 (http로 시작하면 그대로 반환)
+  if (id.startsWith('http')) return id;
+
+  // 2. 기본 NBA 팀인 경우 (public 폴더 참조)
+  return `/logos/${id}.svg`;
 };
 
 export const TEAM_OWNERS: Record<string, string> = {
