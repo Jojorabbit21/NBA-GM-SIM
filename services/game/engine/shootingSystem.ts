@@ -130,7 +130,8 @@ export function calculateShootingStats(
         const minutesWithoutStopper = Math.max(0, mp - stopperMP);
         if (minutesWithoutStopper > 5) {
              // Ace gets confidence when Stopper sits
-             freedomBonus = Math.min(15, (minutesWithoutStopper - 5) * 0.8);
+             // [Balance Update] Cap reduced to 10% to prevent overriding defensive stats too easily
+             freedomBonus = Math.min(10, (minutesWithoutStopper - 5) * 0.8);
         }
 
         // Final Effect Calculation
