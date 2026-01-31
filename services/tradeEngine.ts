@@ -37,9 +37,16 @@ const serializeLeagueState = (teams: Team[]) => {
 
 async function callTradeApi(action: string, payload: any) {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s Timeout
+    const timeoutId = setTimeout(() => controller.abort(), 20000); // Increased to 20s Timeout
 
     try {
+        console.log(`🚀 [TradeAPI] Sending Request: ${action}`);
+        console.log(`📦 [TradeAPI] Payload Summary:`, {
+            myTeamId: payload.myTeamId,
+            items: payload.tradingPlayers?.length || payload.targetPlayers?.length,
+            leagueSize: payload.leagueState?.length
+        });
+
         const response = await fetch('/api/trade-engine', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -51,11 +58,14 @@ async function callTradeApi(action: string, payload: any) {
 
         if (!response.ok) {
             const errText = await response.text();
+            console.error(`❌ [TradeAPI] Server Error (${response.status}):`, errText);
             throw new Error(`Trade Engine API Failed: ${response.status} - ${errText}`);
         }
 
         const data = await response.json();
         
+        console.log(`✅ [TradeAPI] Response Received:`, data);
+
         // Debug Log from Server
         if (data.logs) {
             console.groupCollapsed(`[TradeEngine] Server Logs (${action})`);
@@ -65,7 +75,7 @@ async function callTradeApi(action: string, payload: any) {
 
         return data;
     } catch (e: any) {
-        console.error(`Trade API Error (${action}):`, e.message);
+        console.error(`❌ [TradeAPI] Network/Logic Error (${action}):`, e.message);
         return null;
     }
 }
