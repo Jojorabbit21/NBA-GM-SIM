@@ -24,6 +24,7 @@ const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode
 
 export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [loading, setLoading] = useState(false);
+  const [bgLoaded, setBgLoaded] = useState(false); // 배경 이미지 로딩 상태
   const [email, setEmail] = useState(''); 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
@@ -139,12 +140,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
       
       {/* Background Ambience & Image */}
-      <div className="absolute inset-0 w-full h-full pointer-events-none overflow-hidden">
+      {/* bgLoaded가 true일 때만 opacity가 1이 되어 서서히 나타남 */}
+      <div className={`absolute inset-0 w-full h-full pointer-events-none overflow-hidden transition-opacity duration-1000 ease-in-out ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}>
         {/* Main Background Image - Applied Blur & Scale to hide edges */}
         <img 
-            src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background2.png" 
+            src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background3.png" 
             alt="Background" 
-            className="w-full h-full object-cover opacity-30 blur-sm scale-110 transform-gpu" 
+            className="w-full h-full object-cover opacity-30 blur-sm scale-110 transform-gpu"
+            onLoad={() => setBgLoaded(true)}
         />
         
         {/* Gradient Overlay to blend with slate-950 */}
@@ -155,7 +158,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         <div className="absolute bottom-[-10%] left-[-5%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-3xl opacity-30 mix-blend-screen"></div>
       </div>
 
-      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 animate-in fade-in zoom-in duration-300">
+      {/* Auth Modal Container */}
+      {/* 배경과 동일하게 bgLoaded 상태에 따라 페이드인 처리 */}
+      <div className={`w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 transition-all duration-1000 ease-in-out transform ${bgLoaded ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}`}>
         <div className="text-center mb-10">
           <h1 className="text-4xl font-black text-white leading-tight oswald tracking-tighter uppercase italic">
             Courtside GM
