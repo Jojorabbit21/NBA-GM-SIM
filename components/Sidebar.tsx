@@ -124,11 +124,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         className="p-8 border-b border-slate-800 relative overflow-hidden transition-colors duration-700"
         style={{ backgroundColor: infoBgColor }}
       >
-        {/* Gradient Overlay for Depth & Text Readability */}
-        <div className="absolute inset-0 bg-gradient-to-br from-black/5 via-black/10 to-black/40 pointer-events-none"></div>
-        {/* Decorative Orb */}
-        <div className="absolute -right-6 -bottom-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none mix-blend-overlay"></div>
-
         <div className="flex items-center gap-5 relative z-10">
           {/* Logo */}
           <img 
