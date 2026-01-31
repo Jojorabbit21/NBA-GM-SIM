@@ -62,9 +62,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                     <div className="flex flex-col">
                         {/* Starting Lineup Visualizer */}
                         <div className="p-8 pb-4 bg-slate-900/30 border-b border-white/5">
-                            <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6 flex items-center gap-2">
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span> Starting Five
-                            </h4>
                             <StartingLineup team={team} tactics={tactics} roster={team.roster} />
                         </div>
 
