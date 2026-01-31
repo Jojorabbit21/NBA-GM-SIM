@@ -139,6 +139,32 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     return { salary: totalSalary, age: (totalAge / count).toFixed(1), ovr: Math.round(totalOvr / count), getAvg };
   }, [selectedTeam]);
 
+  const statsTotals = useMemo(() => {
+    if (!selectedTeam) return null;
+    const teamGames = Math.max(1, (selectedTeam.wins || 0) + (selectedTeam.losses || 0));
+    const t = selectedTeam.roster.reduce((acc, p) => {
+        const s = p.stats;
+        return {
+            mp: acc.mp + s.mp,
+            pts: acc.pts + s.pts,
+            reb: acc.reb + s.reb,
+            offReb: acc.offReb + s.offReb,
+            defReb: acc.defReb + s.defReb,
+            ast: acc.ast + s.ast,
+            stl: acc.stl + s.stl,
+            blk: acc.blk + s.blk,
+            tov: acc.tov + s.tov,
+            fgm: acc.fgm + s.fgm,
+            fga: acc.fga + s.fga,
+            p3m: acc.p3m + s.p3m,
+            p3a: acc.p3a + s.p3a,
+            ftm: acc.ftm + s.ftm,
+            fta: acc.fta + s.fta,
+        };
+    }, { mp:0, pts:0, reb:0, offReb:0, defReb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0 });
+    return { ...t, teamGames };
+  }, [selectedTeam]);
+
   const SortHeader: React.FC<{ label: string, sortKey: string, align?: 'left' | 'center' | 'right', width?: string, className?: string, tooltip?: string }> = ({ label, sortKey, align = 'center', width, className, tooltip }) => (
     <th className={`px-1 py-4 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-white/5 transition-colors group select-none relative ${className}`} style={{ width, textAlign: align }} onClick={() => handleSort(sortKey)}>
         <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
@@ -277,19 +303,54 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                           </tr>
                       ))}
                    </tbody>
+                   {/* Footer for Roster Tab */}
                    {teamStats && tab === 'roster' && (
                        <tfoot className="bg-slate-800/40 border-t-2 border-slate-700/50">
                            <tr>
                                <td className="pl-8 px-6 py-4 text-xs font-black text-indigo-400 uppercase">TEAM TOTAL</td>
                                <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
                                <td className="px-2 py-4 text-center text-sm font-bold text-white">{teamStats.age}</td>
-                               <td className="px-2 py-4 text-center font-mono font-black text-white text-sm">${teamStats.salary.toFixed(1)}M</td>
+                               <td className="px-2 py-4 text-center text-sm font-bold text-white">${teamStats.salary.toFixed(1)}M</td>
                                <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div></td>
                                {ROSTER_COLUMNS[rosterCategory].map(col => (
                                    <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}><div className={getRankStyle(teamStats.getAvg(col.key as keyof Player)) + " !mx-auto"}>{teamStats.getAvg(col.key as keyof Player)}</div></td>
                                ))}
                            </tr>
                        </tfoot>
+                   )}
+                   {/* Footer for Stats Tab */}
+                   {statsTotals && tab === 'stats' && (
+                        <tfoot className="bg-slate-800/40 border-t-2 border-slate-700/50">
+                            <tr>
+                                <td className="pl-8 px-6 py-4 text-xs font-black text-indigo-400 uppercase">TEAM</td>
+                                {STATS_COLUMNS.map(col => {
+                                    let valStr = '-';
+                                    const g = statsTotals.teamGames;
+                                    
+                                    if (col.key === 'g') valStr = String(g);
+                                    else if (col.key === 'gs') valStr = '-';
+                                    else if (col.key.includes('%')) {
+                                        let n = 0, d = 0;
+                                        if (col.key === 'fg%') { n = statsTotals.fgm; d = statsTotals.fga; }
+                                        else if (col.key === '3p%') { n = statsTotals.p3m; d = statsTotals.p3a; }
+                                        else if (col.key === 'ft%') { n = statsTotals.ftm; d = statsTotals.fta; }
+                                        else if (col.key === 'ts%') { n = statsTotals.pts; d = 2 * (statsTotals.fga + 0.44 * statsTotals.fta); }
+                                        valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                    } else {
+                                        const keyMap: any = {
+                                            'mp': 'mp', 'pts': 'pts', 'reb': 'reb', 'offReb': 'offReb', 'defReb': 'defReb',
+                                            'ast': 'ast', 'stl': 'stl', 'blk': 'blk', 'tov': 'tov'
+                                        };
+                                        const statKey = keyMap[col.key];
+                                        if (statKey) {
+                                            valStr = (statsTotals[statKey as keyof typeof statsTotals] / g).toFixed(1);
+                                        }
+                                    }
+                                    
+                                    return <td key={col.key} className="px-1 py-4 align-middle text-right pr-3 font-bold text-white text-sm tabular-nums">{valStr}</td>
+                                })}
+                            </tr>
+                        </tfoot>
                    )}
                 </table>
              </div>
