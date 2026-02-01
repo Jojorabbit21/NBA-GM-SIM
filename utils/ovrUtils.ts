@@ -4,8 +4,6 @@ import { POSITION_WEIGHTS, PositionType } from './overallWeights';
 /**
  * Calculates the Overall Rating (OVR) dynamically based on attributes.
  * This is a Pure Function - it does not rely on stored state.
- * 
- * Logic separated from weights definition to prevent accidental overwrites.
  */
 export const calculateOvr = (attributes: any, position: string): number => {
     // 1. Position Resolution
@@ -52,7 +50,6 @@ export const calculateOvr = (attributes: any, position: string): number => {
         let val = calcAttrs[key];
         
         // Fallback for missing specific stats using category averages
-        // This ensures compatibility with partial data or older saves
         if (val === undefined || val === null || isNaN(val)) {
              if (['closeShot','midRange','threeAvg','ft','shotIq','offConsist'].includes(key)) val = out;
              else if (['layup','dunk','postPlay','drawFoul','hands'].includes(key)) val = ins;
