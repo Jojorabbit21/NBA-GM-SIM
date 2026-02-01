@@ -1,8 +1,9 @@
+
 import React, { useState, useMemo } from 'react';
 import { Users, Loader2, X, Clock, Search, Lock, Activity, Handshake, Target, Trash2, ListFilter, Send, History, ArrowLeftRight } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
 import { PlayerDetailModal } from '../components/SharedComponents';
-import { getTeamLogoUrl, TRADE_DEADLINE } from '../utils/constants';
+import { getTeamLogoUrl, TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
 
 // New Components & Hooks
 import { TradeConfirmModal } from '../components/transactions/TradeConfirmModal';
@@ -66,10 +67,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
       setViewPlayer(fullPlayer || partialPlayer);
   };
 
-  const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => b.ovr - a.ovr), [team?.roster]);
+  // [Fix] Sort using calculatePlayerOvr to ensure consistency with weights
+  const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [team?.roster]);
+  
   const targetTeamRoster = useMemo(() => {
     const targetTeam = teams.find(t => t.id === proposalTargetTeamId);
-    return targetTeam ? [...targetTeam.roster].sort((a,b) => b.ovr - a.ovr) : [];
+    return targetTeam ? [...targetTeam.roster].sort((a,b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)) : [];
   }, [teams, proposalTargetTeamId]);
 
   const allOtherTeamsSorted = useMemo(() => {
@@ -84,7 +87,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
-       {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
+       {/* [Fix] Pass calculated OVR to PlayerDetailModal */}
+       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
        {pendingTrade && (
          <div className="relative z-[200]">
              {isExecutingTrade && (

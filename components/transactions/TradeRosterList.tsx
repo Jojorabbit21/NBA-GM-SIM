@@ -3,6 +3,7 @@ import React from 'react';
 import { Users, Info, ArrowLeftRight, Check, MinusCircle, CheckCircle2 } from 'lucide-react';
 import { Player } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
+import { calculatePlayerOvr } from '../../utils/constants';
 
 interface TradeRosterListProps {
   roster: Player[];
@@ -41,6 +42,9 @@ export const TradeRosterList: React.FC<TradeRosterListProps> = ({
                 ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' 
                 : 'bg-slate-900/40 border-slate-800 hover:border-slate-700';
             const disabledClass = isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : '';
+            
+            // [Fix] Real-time OVR
+            const displayOvr = calculatePlayerOvr(p);
 
             return (
                 <div key={p.id} className={`${baseClass} ${disabledClass || activeClass}`}>
@@ -49,7 +53,7 @@ export const TradeRosterList: React.FC<TradeRosterListProps> = ({
                             {isSelected && <Check size={20} className="text-white" strokeWidth={3} />}
                         </div>
                         <div className="flex-shrink-0">
-                            <div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div>
+                            <div className={getOvrBadgeStyle(displayOvr) + " !mx-0 !w-10 !h-10 !text-xl"}>{displayOvr}</div>
                         </div>
                         <div className="text-left flex-1 min-w-0">
                             <div className="flex items-center gap-2">

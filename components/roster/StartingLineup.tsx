@@ -4,6 +4,7 @@ import { Player, Team, GameTactics } from '../../types';
 import { User } from 'lucide-react';
 import { supabaseUrl } from '../../services/supabaseClient';
 import { getOvrBadgeStyle } from '../SharedComponents';
+import { calculatePlayerOvr } from '../../utils/constants';
 
 interface StartingLineupProps {
   team: Team;
@@ -29,14 +30,17 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
     );
   }
 
+  // [Fix] Calculate Dynamic OVR
+  const displayOvr = calculatePlayerOvr(player);
+
   // 2. 이미지가 로드되지 않았을 때 (요청사항: 어두운 점선, 아바타, 이름)
   // Consistently use Global OVR Badge style even in error state for uniformity
   if (imageError) {
       return (
         <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-600`}>
            {/* OVR Badge (Top-Left) - Larger Size, No Padding */}
-           <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(player.ovr)} !w-14 !h-14 !text-3xl !rounded-tl-none !rounded-br-xl`}>
-             {player.ovr}
+           <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(displayOvr)} !w-14 !h-14 !text-3xl !rounded-tl-none !rounded-br-xl`}>
+             {displayOvr}
            </div>
 
            {/* Center Content */}
@@ -61,8 +65,8 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
     <div className={`${containerClass} shadow-xl`}>
        
        {/* OVR Badge (Top-Left) - Larger Size, No Padding */}
-       <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(player.ovr)} !w-14 !h-14 !text-3xl !rounded-tl-none !rounded-br-xl`}>
-          {player.ovr}
+       <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(displayOvr)} !w-14 !h-14 !text-3xl !rounded-tl-none !rounded-br-xl`}>
+          {displayOvr}
        </div>
 
        {/* Image Loader */}

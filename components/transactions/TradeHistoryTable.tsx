@@ -3,7 +3,7 @@ import React from 'react';
 import { Transaction, Team } from '../../types';
 import { History } from 'lucide-react';
 import { getOvrBadgeStyle } from '../SharedComponents';
-import { getTeamLogoUrl } from '../../utils/constants';
+import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
 
 interface TradeHistoryTableProps {
   transactions: Transaction[];
@@ -17,11 +17,17 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
     
     // Helper to get partial snapshot
     const getSnapshot = (id: string, savedOvr?: number, savedPos?: string) => {
-      if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
+      // Find current player state first
       for (const t of teams) {
           const p = t.roster.find(rp => rp.id === id);
-          if (p) return { ovr: p.ovr, pos: p.position };
+          if (p) {
+              // [Fix] Use real-time OVR if player exists
+              return { ovr: calculatePlayerOvr(p), pos: p.position };
+          }
       }
+      // Fallback to historical data if player retired or removed (though unlikely in this sim)
+      if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
+      
       return { ovr: 0, pos: '-' };
     };
 
