@@ -14,11 +14,12 @@ export const useSimulation = (
     schedule: Game[], setSchedule: React.Dispatch<React.SetStateAction<Game[]>>,
     myTeamId: string | null,
     currentSimDate: string, 
-    onDateChange: (newDate: string, overrides?: any) => void, // [Updated Type]
+    onDateChange: (newDate: string, overrides?: any) => void,
     playoffSeries: any[], setPlayoffSeries: React.Dispatch<React.SetStateAction<any[]>>,
     setTransactions: React.Dispatch<React.SetStateAction<any[]>>,
     setNews: React.Dispatch<React.SetStateAction<any[]>>,
     setToastMessage: (msg: string | null) => void,
+    triggerSave: (overrides?: any) => void, // [Added] Event-Driven Save
     session: any,
     isGuestMode: boolean
 ) => {
@@ -40,6 +41,8 @@ export const useSimulation = (
         if (newSeriesList.length > currentSeries.length) {
             setPlayoffSeries(newSeriesList);
             setToastMessage("🏆 플레이오프가 시작되었습니다!");
+            // [Critical Save] Playoff Initialization
+            triggerSave({ playoffSeries: newSeriesList }); 
             return;
         }
 
@@ -47,9 +50,11 @@ export const useSimulation = (
         if (newGames.length > 0) {
             setSchedule(prev => [...prev, ...newGames]);
             console.log("📅 Playoff Games Scheduled:", newGames.length);
+            // [Critical Save] Playoff Schedule Update
+            triggerSave({ schedule: [...schedule, ...newGames] });
         }
 
-    }, [currentSimDate, schedule, playoffSeries, teams, setSchedule, setPlayoffSeries, setToastMessage]);
+    }, [currentSimDate, schedule, playoffSeries, teams, setSchedule, setPlayoffSeries, setToastMessage, triggerSave]);
 
 
     const advanceDate = useCallback(async () => {
@@ -129,7 +134,7 @@ export const useSimulation = (
         
         setTeams(newTeams);
         
-        // [CRITICAL FIX] Pass the new teams data to the callback so it can be saved immediately
+        // [Critical Save] Date Advance (This is the most common save point)
         onDateChange(nextDate, { teams: newTeams, currentSimDate: nextDate });
         
         setLastGameResult(null);
@@ -244,7 +249,7 @@ export const useSimulation = (
                         box_score: { home: result.homeBox, away: result.awayBox },
                         is_playoff: game.isPlayoff, 
                         series_id: game.seriesId,
-                        tactics: { home: result.homeTactics, away: result.awayTactics } // [FIX] Save tactics to DB
+                        tactics: { home: result.homeTactics, away: result.awayTactics } 
                     });
                 }
                 allPlayedToday.push(updatedGame);
@@ -262,13 +267,13 @@ export const useSimulation = (
                 const recap = await generateGameRecapNews(userGameResultOutput);
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
                 
-                // [CRITICAL FIX] Ensure save occurs with the newly calculated stats (before next date logic might confuse refs)
-                // We pass the new state to forceSave if needed via a callback mechanism if implemented, or rely on normal state update
-                // Since this block doesn't call advanceDate immediately (user clicks next), the regular debounced save will likely catch it.
-                // But for robust safety, we could force save here too. However, since user must interact, risk is lower than advanceDate.
+                // [Critical Save] User Game Finished - Save stats and schedule immediately
+                // We save the updated state without advancing date yet
+                triggerSave({ teams: updatedTeams, schedule: updatedSchedule, playoffSeries: updatedSeries });
             } else { 
                 setIsSimulating(false); 
-                await advanceDate(); // This will trigger the secure save with overrides
+                // Auto-advance if user didn't play (Sim All) - advanceDate calls its own save
+                await advanceDate(); 
             }
         };
         

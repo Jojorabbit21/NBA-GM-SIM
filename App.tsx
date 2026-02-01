@@ -85,6 +85,8 @@ const App: React.FC = () => {
         gameData.setTransactions,
         gameData.setNews,
         setToastMessage,
+        // [New] Pass forceSave for Event-Driven Saves (Playoff Init, Game Finish)
+        gameData.forceSave,
         session, isGuestMode
     );
 
@@ -130,7 +132,15 @@ const App: React.FC = () => {
         setView('Onboarding');
     };
 
-    const handleLogoutWrapper = () => {
+    // [Critical Save] Updated Logout Handler
+    const handleLogoutWrapper = async () => {
+        // 1. Force save current data before logging out
+        if (session && !isGuestMode && gameData.myTeamId) {
+            setToastMessage("로그아웃 전 데이터를 저장하고 있습니다...");
+            await gameData.forceSave();
+        }
+        
+        // 2. Proceed with logout
         handleLogout(() => {
             gameData.cleanupData();
             setView('TeamSelect');

@@ -25,7 +25,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [news, setNews] = useState<any[]>([]);
 
     // Refs for persistence logic
-    const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const gameDataRef = useRef<any>({});
     const isResettingRef = useRef(false);
     const hasInitialLoadRef = useRef(false);
@@ -49,8 +48,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             tacticHistory: tacticHistorySnapshot,
             playoffSeries, transactions, prospects
         };
-        // Mark dirty when state changes (if game is active and not just loaded)
-        if (myTeamId && session?.user && !isGuestMode && hasInitialLoadRef.current) {
+        // Mark dirty when state changes (if game is active and not just loaded, and not resetting)
+        if (myTeamId && session?.user && !isGuestMode && hasInitialLoadRef.current && !isResettingRef.current) {
             isDirtyRef.current = true;
         }
     }, [myTeamId, teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects, session, isGuestMode]);
@@ -98,39 +97,54 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     }, [baseData, teams.length]);
 
-    // Auto Save Logic (Debounced)
-    const triggerSave = useCallback(() => {
-        if (isResettingRef.current || !session?.user || isGuestMode) return;
-        
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        
-        saveTimeoutRef.current = setTimeout(() => {
-            if (!isDirtyRef.current) return;
-            const currentData = gameDataRef.current;
-            if (!currentData.myTeamId) return;
-
-            // Double check data validity before save
-            if (!currentData.teams || currentData.teams.length === 0) {
-                console.warn("⚠️ Attempted to save empty teams. Aborting.");
-                return;
-            }
-
-            console.log("💾 Auto-Saving Game...");
-            isDirtyRef.current = false;
-            saveGameMutation.mutate({ userId: session.user.id, teamId: currentData.myTeamId, gameData: currentData });
-        }, 30000); // 30s debounce
-    }, [session, isGuestMode, saveGameMutation]);
-
-    // Trigger save on change
+    // [Fix] Robust Auto-Save Interval
+    // Instead of debouncing every change (which resets the timer and prevents saving during rapid updates),
+    // we use a fixed interval that checks the `isDirty` flag.
     useEffect(() => {
-        if (myTeamId && hasInitialLoadRef.current) triggerSave();
-    }, [teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, myTeamId, triggerSave]);
+        if (!session?.user || isGuestMode) return;
 
-    // Force Save
+        const SAVE_INTERVAL = 10000; // Check every 10 seconds
+
+        const intervalId = setInterval(() => {
+            // Check conditions: Dirty, Initial Load Done, Team Selected, Not Resetting, Not Currently Saving
+            if (isDirtyRef.current && hasInitialLoadRef.current && myTeamId && !isResettingRef.current && !saveGameMutation.isPending) {
+                console.log("💾 Auto-Saving Game (Interval)...");
+                
+                const currentData = { ...gameDataRef.current };
+                
+                // Optimistically mark as clean to prevent double-saves in next tick
+                isDirtyRef.current = false;
+
+                saveGameMutation.mutate({ 
+                    userId: session.user.id, 
+                    teamId: myTeamId, 
+                    gameData: currentData 
+                });
+            }
+        }, SAVE_INTERVAL);
+
+        return () => clearInterval(intervalId);
+    }, [session, isGuestMode, myTeamId, saveGameMutation]);
+
+    // [New] Prevent Tab Close if Dirty
+    useEffect(() => {
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            // If dirty and authenticated, warn user
+            if (isDirtyRef.current && session?.user && !isGuestMode) {
+                e.preventDefault();
+                e.returnValue = ''; // Standard for modern browsers
+                return ''; // Legacy support
+            }
+        };
+
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [session, isGuestMode]);
+
+    // Force Save (Manual or Critical Events)
     const forceSave = useCallback(async (overrides?: Partial<typeof gameDataRef.current>) => {
         if (isResettingRef.current || !session?.user || isGuestMode || !myTeamId) return;
 
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         isDirtyRef.current = false; 
 
         const dataToSave = { ...gameDataRef.current, ...overrides };
@@ -150,6 +164,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             });
         } catch (e) {
             console.error("Failed to force save:", e);
+            // Restore dirty flag if save failed
+            isDirtyRef.current = true;
         }
     }, [session, isGuestMode, myTeamId, saveGameMutation]);
 
@@ -159,8 +175,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         console.log(`🏀 Team Selected: ${teamId}`);
         setMyTeamId(teamId);
         
-        // [Fix] Clear trade ops counters on new team selection
-        // Iterate all keys and remove only trade_ops related ones to be safe
+        // Clear trade ops counters on new team selection
         Object.keys(localStorage).forEach(key => {
             if (key.startsWith('trade_ops_')) {
                 localStorage.removeItem(key);
@@ -213,7 +228,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 queryClient.setQueryData(['fullGameState', userId], null);
             }
             
-            // [Fix] Clear local storage for trade ops counters on reset
+            // Clear local storage for trade ops counters on reset
             Object.keys(localStorage).forEach(key => {
                 if (key.startsWith('trade_ops_')) {
                     localStorage.removeItem(key);
