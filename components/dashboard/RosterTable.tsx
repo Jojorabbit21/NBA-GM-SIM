@@ -258,7 +258,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 </div>
                             </div>
                         )}
-                    </tbody>
+                    </div>
                 )}
             </div>
         </div>
