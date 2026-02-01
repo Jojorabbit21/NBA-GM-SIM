@@ -1,7 +1,7 @@
 
 import { Game, Player, Team } from '../types';
 
-export const SEASON_START_DATE = '2025-10-22';
+export const SEASON_START_DATE = '2025-10-20'; // Adjusted to match generic start
 export const TRADE_DEADLINE = '2026-02-06';
 
 export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {};
@@ -61,7 +61,7 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
     // Convert to string and clean up
     const input = String(nameOrId).toLowerCase().trim();
     
-    // Check known IDs first
+    // Check known IDs first (Exact match)
     const knownIds = ['atl', 'bos', 'bkn', 'cha', 'chi', 'cle', 'dal', 'den', 'det', 'gsw', 'hou', 'ind', 'lac', 'lal', 'mem', 'mia', 'mil', 'min', 'nop', 'nyk', 'okc', 'orl', 'phi', 'phx', 'por', 'sac', 'sas', 'tor', 'uta', 'was'];
     if (knownIds.includes(input)) return input;
 
@@ -139,81 +139,86 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
     return input.substring(0, 3);
 };
 
-// [Fix] Use local public assets instead of remote storage
 export const getTeamLogoUrl = (teamId: string): string => {
     const id = resolveTeamId(teamId);
     return `/logos/${id}.svg`;
 };
 
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
-    // Simplified OVR calculation if not provided by backend
     return p.ovr;
 };
 
-export const normalizeName = (name: string): string => {
-    return name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-};
-
 export const generateSeasonSchedule = (myTeamId: string): Game[] => {
-    // Placeholder generator logic or empty array if DB schedule is preferred
     return [];
 };
 
+// --- Smart Schedule Mapper ---
 export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
+    // Helper to extract property regardless of case
+    const getVal = (obj: any, keys: string[]) => {
+        for (const k of keys) {
+            if (obj[k] !== undefined) return obj[k];
+        }
+        return undefined;
+    };
+
     return rows.map(r => {
-        // Safe access for home_team_id / away_team_id
-        const rowHomeId = r.home_team_id || r.home_team || r.HomeTeam || '';
-        const rowAwayId = r.away_team_id || r.away_team || r.AwayTeam || '';
+        // 1. Try to get Date
+        let dateStr = getVal(r, ['Date', 'date', 'game_date', 'Start', 'start']) || '2025-10-20';
+        // Handle "Tue Oct 22 2025" or similar formats
+        try {
+            // Remove time part if "Start" is "Tue, Oct 22, 2025 7:30p"
+            if (dateStr.includes(',')) {
+                // If standard CSV format "Fri, Oct 24, 2025", JS Date handles it well usually
+            }
+            const d = new Date(dateStr);
+            if (!isNaN(d.getTime())) {
+                dateStr = d.toISOString().split('T')[0];
+            }
+        } catch(e) {}
 
-        // Priority 1: Direct ID Match from DB
-        if (rowHomeId && rowAwayId) {
-             const homeTeamId = resolveTeamId(rowHomeId);
-             const awayTeamId = resolveTeamId(rowAwayId);
-
-             return {
-                 id: r.id || `g_${homeTeamId}_${awayTeamId}_${r.game_date}`,
-                 homeTeamId: homeTeamId,
-                 awayTeamId: awayTeamId,
-                 date: r.game_date || r.date,
-                 homeScore: r.home_score ?? undefined,
-                 awayScore: r.away_score ?? undefined,
-                 played: !!r.played || (r.home_score !== undefined && r.home_score !== null),
-                 isPlayoff: r.is_playoff || false,
-                 seriesId: r.series_id || undefined
-             };
-        }
-
-        // Priority 2: Fallback for Name-based or CSV-like structures
-        let dateStr = r.date || r.Date;
-        if (dateStr && dateStr.includes(' ')) {
-            try {
-                const d = new Date(dateStr);
-                if (!isNaN(d.getTime())) {
-                    dateStr = d.toISOString().split('T')[0];
-                }
-            } catch(e) {}
-        }
-
-        const site = r.site || r.Site;
-        const rowTeam = r.team || r.Team || '';
-        const rowOpp = r.opponent || r.Opponent || '';
+        // 2. Identify Home/Away
+        // Case A: Explicit Home/Away columns
+        const homeCol = getVal(r, ['Home', 'home', 'HomeTeam', 'home_team_id']);
+        const awayCol = getVal(r, ['Away', 'away', 'Visitor', 'visitor', 'AwayTeam', 'away_team_id']);
         
-        const homeName = (site === '홈' || site === 'Home') ? rowTeam : rowOpp;
-        const awayName = (site === '홈' || site === 'Home') ? rowOpp : rowTeam;
+        let homeTeamId = 'unknown';
+        let awayTeamId = 'unknown';
 
-        const homeTeamId = resolveTeamId(homeName);
-        const awayTeamId = resolveTeamId(awayName);
+        if (homeCol && awayCol) {
+            homeTeamId = resolveTeamId(homeCol);
+            awayTeamId = resolveTeamId(awayCol);
+        } 
+        // Case B: "Visitor/Neutral" and "Home/Neutral" (Basketball Reference style)
+        else {
+             const visNeut = getVal(r, ['Visitor/Neutral', 'visitor_neutral']);
+             const homeNeut = getVal(r, ['Home/Neutral', 'home_neutral']);
+             if (visNeut && homeNeut) {
+                 homeTeamId = resolveTeamId(homeNeut);
+                 awayTeamId = resolveTeamId(visNeut);
+             }
+        }
+
+        // 3. Game ID
+        const gid = getVal(r, ['id', 'game_id']) || `g_${homeTeamId}_${awayTeamId}_${dateStr}`;
+
+        // 4. Scores (if played)
+        const homePts = getVal(r, ['PTS.1', 'home_pts', 'home_score']);
+        const awayPts = getVal(r, ['PTS', 'away_pts', 'away_score']);
+        
+        const isPlayed = (homePts !== undefined && homePts !== null && homePts !== "") && 
+                         (awayPts !== undefined && awayPts !== null && awayPts !== "");
 
         return {
-            id: r.id || `g_${homeTeamId}_${awayTeamId}_${dateStr}`,
+            id: String(gid),
             homeTeamId,
             awayTeamId,
             date: dateStr,
-            homeScore: r.tmscore || r.home_score || undefined,
-            awayScore: r.oppscore || r.away_score || undefined,
-            played: !!(r.tmscore || r.home_score),
-            isPlayoff: r.isplayoff || false,
-            seriesId: r.seriesid || undefined
+            homeScore: isPlayed ? Number(homePts) : undefined,
+            awayScore: isPlayed ? Number(awayPts) : undefined,
+            played: isPlayed,
+            isPlayoff: false,
+            seriesId: undefined
         };
-    });
+    }).filter(g => g.homeTeamId !== 'unknown' && g.awayTeamId !== 'unknown');
 };

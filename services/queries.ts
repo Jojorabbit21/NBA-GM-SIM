@@ -5,65 +5,160 @@ import { Team, Game, Player, Transaction } from '../types';
 import { resolveTeamId, mapDatabaseScheduleToRuntimeGame, FALLBACK_TEAMS, getTeamLogoUrl } from '../utils/constants';
 import { generateScoutingReport } from './geminiService';
 
+// --- Helper: Flexible Column Getter ---
+const getCol = (item: any, keys: string[]) => {
+    for (const k of keys) {
+        if (item[k] !== undefined && item[k] !== null) return item[k];
+    }
+    return undefined;
+};
+
 // --- Fetch Base Data (Teams & Schedule) ---
 export const useBaseData = () => {
     return useQuery({
         queryKey: ['baseData'],
         queryFn: async () => {
-            // 1. Fetch Raw Data from DB (Allow fail gracefully)
-            const { data: playersData } = await supabase.from('players').select('*');
-            const { data: scheduleData } = await supabase.from('schedule').select('*');
+            console.log("🔄 Fetching Base Data from Supabase...");
             
-            // NOTE: We do NOT fetch 'teams' from DB for display names to ensure Korean names (FALLBACK_TEAMS) are used.
-            // We only use DB for Players and Schedule.
+            // 1. Fetch Players (Try 'meta_players' first, then 'players')
+            let playersData = [];
+            const { data: metaPlayers, error: metaError } = await supabase.from('meta_players').select('*');
+            
+            if (!metaError && metaPlayers && metaPlayers.length > 0) {
+                console.log(`✅ Loaded ${metaPlayers.length} players from 'meta_players'`);
+                playersData = metaPlayers;
+            } else {
+                console.warn("⚠️ 'meta_players' not found or empty, trying 'players'...", metaError);
+                const { data: backupPlayers } = await supabase.from('players').select('*');
+                if (backupPlayers) playersData = backupPlayers;
+            }
 
-            // 2. Base Teams Logic: Use FALLBACK_TEAMS as the Master Source of Truth for Metadata (Korean Names)
-            // This guarantees UI is always in Korean regardless of DB content.
+            // 2. Fetch Schedule (Try 'meta_schedule' first, then 'schedule')
+            let scheduleData = [];
+            const { data: metaSchedule, error: schError } = await supabase.from('meta_schedule').select('*');
+            
+            if (!schError && metaSchedule && metaSchedule.length > 0) {
+                 console.log(`✅ Loaded ${metaSchedule.length} games from 'meta_schedule'`);
+                 scheduleData = metaSchedule;
+            } else {
+                 console.warn("⚠️ 'meta_schedule' not found or empty, trying 'schedule'...", schError);
+                 const { data: backupSchedule } = await supabase.from('schedule').select('*');
+                 if (backupSchedule) scheduleData = backupSchedule;
+            }
+
+            // 3. Base Teams Logic: Use FALLBACK_TEAMS as Master Metadata
             const baseTeams = FALLBACK_TEAMS;
 
-            // 3. Map Players to Teams (Fuzzy Match)
+            // 4. Map Players to Teams (Robust Mapping)
             const teams: Team[] = baseTeams.map((t) => {
                 const teamId = t.id; // e.g., 'atl'
                 
-                // Find roster in playersData using fuzzy matching on team_id
-                // DB might have 'ATL', 'Atlanta', 'Hawks' -> resolveTeamId handles all.
-                const roster = (playersData || [])
+                // Filter roster using fuzzy team ID matching
+                const roster = playersData
                     .filter((p: any) => {
-                        const playerTeamCode = resolveTeamId(p.team_id || p.Team);
-                        return playerTeamCode === teamId;
+                        // Support various column names for Team ID
+                        const rawTeamId = getCol(p, ['team_id', 'Team', 'team', 'TeamID', 'Tm']);
+                        return resolveTeamId(rawTeamId) === teamId;
                     })
-                    .map((p: any) => ({
-                        ...p,
-                        // Ensure numeric types
-                        ovr: Number(p.ovr),
-                        age: Number(p.age),
-                        salary: Number(p.salary),
-                        // Initialize Runtime Stats if missing
-                        stats: p.stats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
-                        playoffStats: p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
-                    }));
+                    .map((p: any) => {
+                        // Support various column names for Player Attributes
+                        return {
+                            id: getCol(p, ['id', 'player_id', 'PlayerID']) || `p_${Math.random().toString(36).substr(2, 9)}`,
+                            name: getCol(p, ['name', 'Player', 'Name', 'player_name']) || "Unknown Player",
+                            position: getCol(p, ['position', 'Pos', 'Position', 'POS']) || "G",
+                            age: Number(getCol(p, ['age', 'Age']) || 20),
+                            height: Number(getCol(p, ['height', 'Height', 'Ht']) || 200),
+                            weight: Number(getCol(p, ['weight', 'Weight', 'Wt']) || 100),
+                            salary: Number(getCol(p, ['salary', 'Salary']) || 5),
+                            contractYears: Number(getCol(p, ['contractYears', 'ContractYears']) || 1),
+                            
+                            // Game Attributes (Default to 70 if missing)
+                            ovr: Number(getCol(p, ['ovr', 'OVR', 'Overall']) || 70),
+                            potential: Number(getCol(p, ['potential', 'POT', 'Potential']) || 75),
+                            revealedPotential: Number(getCol(p, ['potential', 'POT', 'Potential']) || 75),
+                            
+                            health: 'Healthy' as const,
+                            condition: 100,
+
+                            // Detailed Stats (Map or Default)
+                            ins: Number(getCol(p, ['ins', 'INS']) || 70),
+                            out: Number(getCol(p, ['out', 'OUT']) || 70),
+                            ath: Number(getCol(p, ['ath', 'ATH']) || 70),
+                            plm: Number(getCol(p, ['plm', 'PLM']) || 70),
+                            def: Number(getCol(p, ['def', 'DEF']) || 70),
+                            reb: Number(getCol(p, ['reb', 'REB']) || 70),
+
+                            // Sub-attributes (Derived or Direct)
+                            // If DB doesn't have detailed sub-stats, use the main category value
+                            closeShot: Number(getCol(p, ['closeShot']) || getCol(p, ['ins']) || 70),
+                            midRange: Number(getCol(p, ['midRange']) || getCol(p, ['out']) || 70),
+                            threeCorner: Number(getCol(p, ['threeCorner', 'threePoint']) || getCol(p, ['out']) || 70),
+                            three45: Number(getCol(p, ['three45']) || getCol(p, ['out']) || 70),
+                            threeTop: Number(getCol(p, ['threeTop']) || getCol(p, ['out']) || 70),
+                            ft: Number(getCol(p, ['ft', 'FT']) || 75),
+                            shotIq: Number(getCol(p, ['shotIq']) || 75),
+                            offConsist: Number(getCol(p, ['offConsist']) || 70),
+                            
+                            layup: Number(getCol(p, ['layup']) || getCol(p, ['ins']) || 70),
+                            dunk: Number(getCol(p, ['dunk']) || getCol(p, ['ins']) || 70),
+                            postPlay: Number(getCol(p, ['postPlay']) || getCol(p, ['ins']) || 70),
+                            drawFoul: Number(getCol(p, ['drawFoul']) || 70),
+                            hands: Number(getCol(p, ['hands']) || 70),
+
+                            passAcc: Number(getCol(p, ['passAcc']) || getCol(p, ['plm']) || 70),
+                            handling: Number(getCol(p, ['handling']) || getCol(p, ['plm']) || 70),
+                            spdBall: Number(getCol(p, ['spdBall']) || getCol(p, ['plm']) || 70),
+                            passIq: Number(getCol(p, ['passIq']) || getCol(p, ['plm']) || 70),
+                            passVision: Number(getCol(p, ['passVision']) || getCol(p, ['plm']) || 70),
+
+                            intDef: Number(getCol(p, ['intDef']) || getCol(p, ['def']) || 70),
+                            perDef: Number(getCol(p, ['perDef']) || getCol(p, ['def']) || 70),
+                            steal: Number(getCol(p, ['steal', 'STL']) || getCol(p, ['def']) || 70),
+                            blk: Number(getCol(p, ['blk', 'BLK']) || getCol(p, ['def']) || 70),
+                            helpDefIq: Number(getCol(p, ['helpDefIq']) || 70),
+                            passPerc: Number(getCol(p, ['passPerc']) || 70),
+                            defConsist: Number(getCol(p, ['defConsist']) || 70),
+
+                            offReb: Number(getCol(p, ['offReb', 'ORB']) || getCol(p, ['reb']) || 70),
+                            defReb: Number(getCol(p, ['defReb', 'DRB']) || getCol(p, ['reb']) || 70),
+
+                            speed: Number(getCol(p, ['speed', 'SPD']) || getCol(p, ['ath']) || 70),
+                            agility: Number(getCol(p, ['agility', 'AGI']) || getCol(p, ['ath']) || 70),
+                            strength: Number(getCol(p, ['strength', 'STR']) || getCol(p, ['ath']) || 70),
+                            vertical: Number(getCol(p, ['vertical', 'JMP']) || getCol(p, ['ath']) || 70),
+                            stamina: Number(getCol(p, ['stamina', 'STA']) || getCol(p, ['ath']) || 80),
+                            hustle: Number(getCol(p, ['hustle']) || 75),
+                            durability: Number(getCol(p, ['durability']) || 80),
+                            intangibles: Number(getCol(p, ['intangibles']) || 70),
+
+                            // Runtime Stats Containers
+                            stats: p.stats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
+                            playoffStats: p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
+                        };
+                    });
 
                 return {
                     id: teamId,
-                    name: t.name, // Korean Name from Constant
-                    city: t.city, // Korean City from Constant
+                    name: t.name, // Korean Name
+                    city: t.city, // Korean City
                     logo: getTeamLogoUrl(teamId),
                     conference: t.conference as 'East' | 'West',
                     division: t.division as 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest',
                     wins: 0,
                     losses: 0,
-                    budget: 150, // Default
-                    salaryCap: 140, // Default
-                    luxuryTaxLine: 170, // Default
+                    budget: 150,
+                    salaryCap: 140,
+                    luxuryTaxLine: 170,
                     roster: roster
                 };
             });
 
-            // 4. Map Schedule
+            // 5. Map Schedule
             let schedule: Game[] = [];
             if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
             }
+            console.log("✅ Data Processing Complete. Total Teams:", teams.length, "Total Games:", schedule.length);
 
             return { teams, schedule };
         },
@@ -77,7 +172,6 @@ export const useSaveGame = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-            // Simplified Save: Upsert to 'saves' table
             const { error } = await supabase
                 .from('saves')
                 .upsert({ 
@@ -120,7 +214,6 @@ export const useMonthlySchedule = (userId: string | undefined, year: number, mon
         queryFn: async () => {
             if (!userId) return [];
             
-            // Calculate start and end date for the month
             const startDate = new Date(year, month, 1).toISOString().split('T')[0];
             const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
 
