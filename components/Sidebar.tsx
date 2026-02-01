@@ -17,40 +17,44 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
+/* DO NOT CHANGE: This logic is fixed for specific requirement */
 // 1. Team Info Section Background Colors
 const TEAM_INFO_BG_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#00778B', 'chi': '#CE1141', 'cle': '#6F263D',
-  'dal': '#0050B5', 'den': '#0C2340', 'det': '#1d42ba', 'gsw': '#1D428A', 'hou': '#BA0C2F', 'ind': '#FFCD00',
-  'lac': '#C8102E', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#862633', 'mil': '#2C5234', 'min': '#236192',
-  'nop': '#C8102E', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0050B5', 'phi': '#006BB6', 'phx': '#1D1160',
-  'por': '#C8102E', 'sac': '#5A2D81', 'sas': '#9EA2A2', 'tor': '#CE1141', 'uta': '#010101', 'was': '#0C2340'
+  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#00778B', 'chi': '#BA0C2F', 'cle': '#6F263D',
+  'dal': '#0050B5', 'den': '#1D4289', 'det': '#1d42ba', 'gsw': '#1D428A', 'hou': '#BA0C2F', 'ind': '#FFCD00',
+  'lac': '#C8102E', 'lal': '#330072', 'mem': '#5D76A9', 'mia': '#862633', 'mil': '#2C5234', 'min': '#236192',
+  'nop': '#C8102E', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0050B5', 'phi': '#1D4289', 'phx': '#1D1160',
+  'por': '#C8102E', 'sac': '#5A2D81', 'sas': '#010101', 'tor': '#010101', 'uta': '#010101', 'was': '#0C2340'
 };
 
+/* DO NOT CHANGE: This logic is fixed for specific requirement */
 // 2. Team Info Section Text Colors (New)
 const TEAM_INFO_TEXT_COLORS: Record<string, string> = {
-  'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#000000', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
-  'dal': '#FFFFFF', 'den': '#FFFFFF', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#FFFFFF',
-  'lac': '#FFFFFF', 'lal': '#FFFFFF', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
+  'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#FFFFFF', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
+  'dal': '#FFFFFF', 'den': '#FFC72C', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#0C2340',
+  'lac': '#FFFFFF', 'lal': '#FFC72C', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
   'nop': '#FFFFFF', 'nyk': '#FFFFFF', 'okc': '#FFFFFF', 'orl': '#FFFFFF', 'phi': '#FFFFFF', 'phx': '#FFFFFF',
   'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#FFFFFF', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
 };
 
+/* DO NOT CHANGE: This logic is fixed for specific requirement */
 // 3. Navigation Active State Background Colors
 const TEAM_NAV_ACTIVE_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#00778B', 'chi': '#CE1141', 'cle': '#6F263D',
-  'dal': '#0050B5', 'den': '#0C2340', 'det': '#1d42ba', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FFCD00',
-  'lac': '#C8102E', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#862633', 'mil': '#2C5234', 'min': '#236192',
-  'nop': '#C8102E', 'nyk': '#006bb6', 'okc': '#007AC1', 'orl': '#0050B5', 'phi': '#006BB6', 'phx': '#1D1160',
-  'por': '#C8102E', 'sac': '#5A2D81', 'sas': '#9EA2A2', 'tor': '#CE1141', 'uta': '#330072', 'was': '#0C2340'
+  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#00778B', 'chi': '#BA0C2F', 'cle': '#6F263D',
+  'dal': '#0050B5', 'den': '#1D4289', 'det': '#1d42ba', 'gsw': '#1D428A', 'hou': '#BA0C2F', 'ind': '#FFCD00',
+  'lac': '#C8102E', 'lal': '#330072', 'mem': '#5D76A9', 'mia': '#862633', 'mil': '#2C5234', 'min': '#236192',
+  'nop': '#C8102E', 'nyk': '#006bb6', 'okc': '#F9423A', 'orl': '#0050B5', 'phi': '#C8102E', 'phx': '#1D1160',
+  'por': '#C8102E', 'sac': '#5A2D81', 'sas': '#9EA2A2', 'tor': '#BA0C2F', 'uta': '#330072', 'was': '#0C2340'
 };
 
+/* DO NOT CHANGE: This logic is fixed for specific requirement */
 // 4. Navigation Active State Text Colors (New)
 const TEAM_NAV_TEXT_COLORS: Record<string, string> = {
   'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#000000', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
-  'dal': '#FFFFFF', 'den': '#FFFFFF', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#FFFFFF',
-  'lac': '#FFFFFF', 'lal': '#330072', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
+  'dal': '#FFFFFF', 'den': '#FFC72C', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#0C2340',
+  'lac': '#FFFFFF', 'lal': '#FFC72C', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
   'nop': '#FFFFFF', 'nyk': '#FFFFFF', 'okc': '#FFFFFF', 'orl': '#FFFFFF', 'phi': '#FFFFFF', 'phx': '#FFFFFF',
-  'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#FFFFFF', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
+  'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#010101', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
 };
 
 const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string }> = ({ active, icon, label, onClick, color, textColor }) => {

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Trophy, ArrowRight, Crown, BarChart3, Zap, CalendarClock, Loader2 } from 'lucide-react';
+import { Trophy, ArrowRight, Crown, BarChart3, CalendarClock, Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 
@@ -127,9 +127,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     <button 
                         onClick={onSimClick} 
                         disabled={isSimulating} 
-                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-xl transition-all hover:scale-[1.05] active:scale-95 border border-indigo-400/40 group ring-4 ring-indigo-600/10 min-w-[280px]"
+                        className="bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 shadow-[0_0_30px_rgba(16,185,129,0.6)] transition-all hover:scale-[1.05] active:scale-95 border border-emerald-400/50 group ring-4 ring-emerald-500/20 min-w-[280px] animate-pulse"
                     >
-                        {isSimulating ? <Loader2 size={22} className="animate-spin" /> : <Zap size={22} className="group-hover:animate-pulse text-yellow-400 fill-yellow-400" />}
+                        {isSimulating ? <Loader2 size={22} className="animate-spin" /> : <span className="text-2xl filter drop-shadow-md group-hover:scale-110 transition-transform">🏀</span>}
                         <span className="text-xl oswald uppercase tracking-widest text-white ko-tight">{isSimulating ? '진행 중...' : '경기 시작'}</span>
                     </button>
                 ) : (
