@@ -56,13 +56,14 @@ export const INITIAL_STATS = () => ({
     rimM: 0, rimA: 0, midM: 0, midA: 0
 });
 
-export const resolveTeamId = (nameOrId: string): string => {
+export const resolveTeamId = (nameOrId: string | null | undefined): string => {
     if (!nameOrId) return 'unknown';
-    const lower = nameOrId.toLowerCase().trim();
+    // Convert to string and clean up
+    const input = String(nameOrId).toLowerCase().trim();
     
     // Check known IDs first
     const knownIds = ['atl', 'bos', 'bkn', 'cha', 'chi', 'cle', 'dal', 'den', 'det', 'gsw', 'hou', 'ind', 'lac', 'lal', 'mem', 'mia', 'mil', 'min', 'nop', 'nyk', 'okc', 'orl', 'phi', 'phx', 'por', 'sac', 'sas', 'tor', 'uta', 'was'];
-    if (knownIds.includes(lower)) return lower;
+    if (knownIds.includes(input)) return input;
 
     // Map common names/cities (English & Korean)
     const map: Record<string, string> = {
@@ -80,7 +81,7 @@ export const resolveTeamId = (nameOrId: string): string => {
         'houston': 'hou', 'rockets': 'hou',
         'indiana': 'ind', 'pacers': 'ind',
         'la clippers': 'lac', 'clippers': 'lac',
-        'la lakers': 'lal', 'lakers': 'lal',
+        'la lakers': 'lal', 'lakers': 'lal', 'los angeles lakers': 'lal', 'los angeles clippers': 'lac',
         'memphis': 'mem', 'grizzlies': 'mem',
         'miami': 'mia', 'heat': 'mia',
         'milwaukee': 'mil', 'bucks': 'mil',
@@ -130,7 +131,12 @@ export const resolveTeamId = (nameOrId: string): string => {
         '워싱턴': 'was', '위저즈': 'was'
     };
 
-    return map[lower] || lower.substring(0, 3);
+    // Partial match fallback
+    for (const key in map) {
+        if (input.includes(key)) return map[key];
+    }
+
+    return input.substring(0, 3);
 };
 
 // [Fix] Use local public assets instead of remote storage

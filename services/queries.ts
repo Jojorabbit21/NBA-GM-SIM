@@ -10,65 +10,46 @@ export const useBaseData = () => {
     return useQuery({
         queryKey: ['baseData'],
         queryFn: async () => {
-            // 1. Fetch Teams
-            const { data: teamsData, error: teamsError } = await supabase
-                .from('teams')
-                .select('*');
+            // 1. Fetch Raw Data from DB (Allow fail gracefully)
+            const { data: playersData } = await supabase.from('players').select('*');
+            const { data: scheduleData } = await supabase.from('schedule').select('*');
             
-            // 2. Fetch Players
-            const { data: playersData, error: playersError } = await supabase
-                .from('players')
-                .select('*');
+            // NOTE: We do NOT fetch 'teams' from DB for display names to ensure Korean names (FALLBACK_TEAMS) are used.
+            // We only use DB for Players and Schedule.
 
-            // 3. Fetch Schedule
-            const { data: scheduleData, error: scheduleError } = await supabase
-                .from('schedule')
-                .select('*');
-            
-            // Data Validation: If key tables are missing, fallback to hardcoded data
-            // But prefer DB data if available, even if partial.
-            const useFallback = teamsError || !teamsData || teamsData.length === 0;
-            
-            const rawTeams = useFallback ? FALLBACK_TEAMS : teamsData;
+            // 2. Base Teams Logic: Use FALLBACK_TEAMS as the Master Source of Truth for Metadata (Korean Names)
+            // This guarantees UI is always in Korean regardless of DB content.
+            const baseTeams = FALLBACK_TEAMS;
 
-            // Map Players to Teams
-            const teams: Team[] = rawTeams.map((t: any) => {
-                // Determine ID: DB uses 'id' (uuid or string), Fallback uses 'id' (string)
-                const teamId = t.id; 
+            // 3. Map Players to Teams (Fuzzy Match)
+            const teams: Team[] = baseTeams.map((t) => {
+                const teamId = t.id; // e.g., 'atl'
                 
-                // Determine Name/City: Prefer DB columns, fallback to t.* props
-                // If using FALLBACK_TEAMS, t.name is already Korean.
-                // If using DB teamsData, we expect columns like 'city', 'name', 'conference'.
-                // If DB data is English, we might need a mapping here, but assuming DB is source of truth or matches.
-                
-                // Robust Conference Mapping
-                let conf = t.conference || t.Conference || 'East';
-                if (typeof conf === 'string') {
-                    if (conf.toLowerCase().includes('east')) conf = 'East';
-                    else if (conf.toLowerCase().includes('west')) conf = 'West';
-                }
-
-                const logoUrl = getTeamLogoUrl(teamId);
-
-                // Find roster in playersData
-                // [Critical Fix]: Ensure ID types match. DB might use UUID for team_id.
-                // If using FALLBACK_TEAMS, we rely on 'team_id' column in players table matching 'atl', 'bos' etc.
-                // If DB teams table is used, we match t.id with p.team_id.
+                // Find roster in playersData using fuzzy matching on team_id
+                // DB might have 'ATL', 'Atlanta', 'Hawks' -> resolveTeamId handles all.
                 const roster = (playersData || [])
-                    .filter((p: any) => p.team_id == teamId) // Loose equality for string/number match
+                    .filter((p: any) => {
+                        const playerTeamCode = resolveTeamId(p.team_id || p.Team);
+                        return playerTeamCode === teamId;
+                    })
                     .map((p: any) => ({
                         ...p,
-                        stats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
-                        playoffStats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
+                        // Ensure numeric types
+                        ovr: Number(p.ovr),
+                        age: Number(p.age),
+                        salary: Number(p.salary),
+                        // Initialize Runtime Stats if missing
+                        stats: p.stats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
+                        playoffStats: p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
                     }));
 
                 return {
                     id: teamId,
-                    name: t.name,
-                    city: t.city,
-                    logo: logoUrl,
-                    conference: conf as 'East' | 'West',
-                    division: t.division,
+                    name: t.name, // Korean Name from Constant
+                    city: t.city, // Korean City from Constant
+                    logo: getTeamLogoUrl(teamId),
+                    conference: t.conference as 'East' | 'West',
+                    division: t.division as 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest',
                     wins: 0,
                     losses: 0,
                     budget: 150, // Default
@@ -78,7 +59,7 @@ export const useBaseData = () => {
                 };
             });
 
-            // Map Schedule
+            // 4. Map Schedule
             let schedule: Game[] = [];
             if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
@@ -86,7 +67,8 @@ export const useBaseData = () => {
 
             return { teams, schedule };
         },
-        staleTime: Infinity
+        staleTime: Infinity,
+        retry: 2
     });
 };
 
