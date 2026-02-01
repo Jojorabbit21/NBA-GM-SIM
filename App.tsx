@@ -69,6 +69,7 @@ const App: React.FC = () => {
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
     const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
+    const [isLoggingOut, setIsLoggingOut] = useState(false); // [New] Logout State
 
     // 4. Simulation Hook (Game Engine Logic)
     const sim = useSimulation(
@@ -112,7 +113,7 @@ const App: React.FC = () => {
 
     // Loading Message Cycler
     useEffect(() => {
-        const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading);
+        const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading) || isLoggingOut;
         if (isDataLoading) {
             setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
             const interval = setInterval(() => {
@@ -125,25 +126,36 @@ const App: React.FC = () => {
             }, 1000);
             return () => clearInterval(interval);
         }
-    }, [gameData.isBaseDataLoading, session, gameData.isSaveLoading]);
+    }, [gameData.isBaseDataLoading, session, gameData.isSaveLoading, isLoggingOut]);
 
     const handleSelectTeamWrapper = async (id: string) => {
         await gameData.handleSelectTeam(id);
         setView('Onboarding');
     };
 
-    // [Critical Save] Updated Logout Handler
+    // [Critical Save] Updated Logout Handler - Blocking UI Pattern
     const handleLogoutWrapper = async () => {
-        // 1. Force save current data before logging out
-        if (session && !isGuestMode && gameData.myTeamId) {
-            setToastMessage("로그아웃 전 데이터를 저장하고 있습니다...");
-            await gameData.forceSave();
-        }
+        // 1. Immediately block UI
+        setIsLoggingOut(true);
+        setLoadingText("데이터 저장 및 로그아웃 중...");
         
-        // 2. Proceed with logout
+        try {
+            // 2. Force Save Sync (Wait for network)
+            if (session && !isGuestMode && gameData.myTeamId) {
+                console.log("🔒 Logout sequence started: Saving data...");
+                await gameData.forceSave();
+                console.log("🔒 Logout sequence: Save confirmed.");
+            }
+        } catch (e) {
+            console.error("⚠️ Logout save warning (data might be unsaved):", e);
+            // We proceed to logout anyway to not trap the user
+        }
+
+        // 3. Clean up and Logout
         handleLogout(() => {
             gameData.cleanupData();
             setView('TeamSelect');
+            setIsLoggingOut(false);
         });
     };
 
@@ -170,6 +182,17 @@ const App: React.FC = () => {
             <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">
                 <Loader2 className="w-12 h-12 text-indigo-500 animate-spin mb-6" />
                 <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-2">Initializing...</p>
+            </div>
+        );
+    }
+
+    // [New] Blocking Logout Screen
+    if (isLoggingOut) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200 z-[9999]">
+                <Loader2 className="w-16 h-16 text-red-500 animate-spin mb-6" />
+                <p className="text-xl font-black uppercase tracking-tight text-white oswald animate-pulse">{loadingText}</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-slate-500 mt-2">잠시만 기다려주세요...</p>
             </div>
         );
     }
