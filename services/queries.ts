@@ -2,7 +2,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { Team, Game, Player, Transaction } from '../types';
-import { resolveTeamId, mapDatabaseScheduleToRuntimeGame } from '../utils/constants';
+import { resolveTeamId, mapDatabaseScheduleToRuntimeGame, FALLBACK_TEAMS, getTeamLogoUrl } from '../utils/constants';
 import { generateScoutingReport } from './geminiService';
 
 // --- Fetch Base Data (Teams & Schedule) ---
@@ -10,26 +10,43 @@ export const useBaseData = () => {
     return useQuery({
         queryKey: ['baseData'],
         queryFn: async () => {
-            // 1. Fetch Teams
-            const { data: teamsData, error: teamsError } = await supabase
-                .from('teams')
-                .select('*');
-            if (teamsError) throw teamsError;
+            // 1. Fetch Teams (with Fail-Safe)
+            let teamsData = [];
+            try {
+                const { data, error } = await supabase.from('teams').select('*');
+                if (error) {
+                    console.error("Teams fetch error:", error);
+                    // Fallback will be used if data is empty
+                } else {
+                    teamsData = data || [];
+                }
+            } catch (e) {
+                console.error("Teams fetch failed:", e);
+            }
 
-            // 2. Fetch Players
-            const { data: playersData, error: playersError } = await supabase
-                .from('players')
-                .select('*');
-            if (playersError) throw playersError;
+            // If DB returns no teams, use FALLBACK
+            const rawTeams = (teamsData.length > 0) ? teamsData : FALLBACK_TEAMS;
 
-            // 3. Fetch Schedule
-            const { data: scheduleData, error: scheduleError } = await supabase
-                .from('schedule')
-                .select('*');
-            if (scheduleError) throw scheduleError;
+            // 2. Fetch Players (Non-blocking)
+            let playersData: any[] = [];
+            try {
+                const { data, error } = await supabase.from('players').select('*');
+                if (!error && data) playersData = data;
+            } catch (e) {
+                console.error("Players fetch failed:", e);
+            }
+
+            // 3. Fetch Schedule (Non-blocking)
+            let scheduleData: any[] = [];
+            try {
+                const { data, error } = await supabase.from('schedule').select('*');
+                if (!error && data) scheduleData = data;
+            } catch (e) {
+                console.error("Schedule fetch failed:", e);
+            }
 
             // Map Players to Teams
-            const teams: Team[] = (teamsData || []).map((t: any) => {
+            const teams: Team[] = rawTeams.map((t: any) => {
                 // [Fix] Robust Conference Mapping: Handle 'Eastern', 'Western', or missing fields
                 let conf = t.conference || t.Conference || 'East';
                 if (typeof conf === 'string') {
@@ -38,7 +55,7 @@ export const useBaseData = () => {
                 }
 
                 // [Fix] Robust Logo Mapping
-                const logoUrl = t.logo_url || t.logo || t.Logo || '';
+                const logoUrl = t.logo_url || t.logo || t.Logo || getTeamLogoUrl(t.id);
 
                 return {
                     id: t.id,
@@ -52,7 +69,7 @@ export const useBaseData = () => {
                     budget: 150, // Default
                     salaryCap: 140, // Default
                     luxuryTaxLine: 170, // Default
-                    roster: (playersData || [])
+                    roster: playersData
                         .filter((p: any) => p.team_id === t.id)
                         .map((p: any) => ({
                             ...p,
@@ -62,16 +79,10 @@ export const useBaseData = () => {
                 };
             });
 
-            // [Fix] Safe Schedule Mapping: Prevent entire query failure if schedule map fails
+            // [Fix] Safe Schedule Mapping
             let schedule: Game[] = [];
-            try {
-                if (scheduleData && scheduleData.length > 0) {
-                    schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
-                }
-            } catch (e) {
-                console.error("Schedule mapping failed:", e);
-                // Fallback: Empty schedule is better than app crash
-                schedule = [];
+            if (scheduleData.length > 0) {
+                schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
             }
 
             return { teams, schedule };

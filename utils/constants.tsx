@@ -1,3 +1,4 @@
+
 import { Game, Player, Team } from '../types';
 
 export const SEASON_START_DATE = '2025-10-22';
@@ -15,6 +16,39 @@ export const TEAM_OWNERS: Record<string, string> = {
     'por': 'Jody Allen', 'sac': 'Vivek Ranadivé', 'sas': 'Peter J. Holt', 'tor': 'Larry Tanenbaum',
     'uta': 'Ryan Smith', 'was': 'Ted Leonsis'
 };
+
+export const FALLBACK_TEAMS = [
+    { id: 'atl', city: 'Atlanta', name: 'Hawks', conference: 'East', division: 'Southeast' },
+    { id: 'bos', city: 'Boston', name: 'Celtics', conference: 'East', division: 'Atlantic' },
+    { id: 'bkn', city: 'Brooklyn', name: 'Nets', conference: 'East', division: 'Atlantic' },
+    { id: 'cha', city: 'Charlotte', name: 'Hornets', conference: 'East', division: 'Southeast' },
+    { id: 'chi', city: 'Chicago', name: 'Bulls', conference: 'East', division: 'Central' },
+    { id: 'cle', city: 'Cleveland', name: 'Cavaliers', conference: 'East', division: 'Central' },
+    { id: 'dal', city: 'Dallas', name: 'Mavericks', conference: 'West', division: 'Southwest' },
+    { id: 'den', city: 'Denver', name: 'Nuggets', conference: 'West', division: 'Northwest' },
+    { id: 'det', city: 'Detroit', name: 'Pistons', conference: 'East', division: 'Central' },
+    { id: 'gsw', city: 'Golden State', name: 'Warriors', conference: 'West', division: 'Pacific' },
+    { id: 'hou', city: 'Houston', name: 'Rockets', conference: 'West', division: 'Southwest' },
+    { id: 'ind', city: 'Indiana', name: 'Pacers', conference: 'East', division: 'Central' },
+    { id: 'lac', city: 'LA', name: 'Clippers', conference: 'West', division: 'Pacific' },
+    { id: 'lal', city: 'Los Angeles', name: 'Lakers', conference: 'West', division: 'Pacific' },
+    { id: 'mem', city: 'Memphis', name: 'Grizzlies', conference: 'West', division: 'Southwest' },
+    { id: 'mia', city: 'Miami', name: 'Heat', conference: 'East', division: 'Southeast' },
+    { id: 'mil', city: 'Milwaukee', name: 'Bucks', conference: 'East', division: 'Central' },
+    { id: 'min', city: 'Minnesota', name: 'Timberwolves', conference: 'West', division: 'Northwest' },
+    { id: 'nop', city: 'New Orleans', name: 'Pelicans', conference: 'West', division: 'Southwest' },
+    { id: 'nyk', city: 'New York', name: 'Knicks', conference: 'East', division: 'Atlantic' },
+    { id: 'okc', city: 'Oklahoma City', name: 'Thunder', conference: 'West', division: 'Northwest' },
+    { id: 'orl', city: 'Orlando', name: 'Magic', conference: 'East', division: 'Southeast' },
+    { id: 'phi', city: 'Philadelphia', name: '76ers', conference: 'East', division: 'Atlantic' },
+    { id: 'phx', city: 'Phoenix', name: 'Suns', conference: 'West', division: 'Pacific' },
+    { id: 'por', city: 'Portland', name: 'Trail Blazers', conference: 'West', division: 'Northwest' },
+    { id: 'sac', city: 'Sacramento', name: 'Kings', conference: 'West', division: 'Pacific' },
+    { id: 'sas', city: 'San Antonio', name: 'Spurs', conference: 'West', division: 'Southwest' },
+    { id: 'tor', city: 'Toronto', name: 'Raptors', conference: 'East', division: 'Atlantic' },
+    { id: 'uta', city: 'Utah', name: 'Jazz', conference: 'West', division: 'Northwest' },
+    { id: 'was', city: 'Washington', name: 'Wizards', conference: 'East', division: 'Southeast' }
+];
 
 export const INITIAL_STATS = () => ({
     g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
@@ -67,9 +101,10 @@ export const resolveTeamId = (nameOrId: string): string => {
     return map[lower] || lower.substring(0, 3);
 };
 
+// [Fix] Use local public assets instead of remote storage
 export const getTeamLogoUrl = (teamId: string): string => {
     const id = resolveTeamId(teamId);
-    return `https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/logos/${id}.png`;
+    return `/logos/${id}.svg`;
 };
 
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
