@@ -66,6 +66,12 @@ export const useSimulation = (
         currentDateObj.setDate(currentDateObj.getDate() + 1);
         const nextDate = currentDateObj.toISOString().split('T')[0];
         
+        // [Trade Limit Reset] Clear potential leftover data for the next date to ensure fresh start
+        if (myTeamId) {
+            const nextDayKey = `trade_ops_${myTeamId}_${nextDate}`;
+            localStorage.removeItem(nextDayKey);
+        }
+        
         // [Trade Logic]
         const deadline = new Date(TRADE_DEADLINE);
         const start = new Date(SEASON_START_DATE);
