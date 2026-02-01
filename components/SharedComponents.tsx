@@ -5,29 +5,62 @@ import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database, Lock, S
 import { Team, Player } from '../types';
 import { getTeamLogoUrl } from '../utils/constants';
 
+/* 
+  [Deprecated] Old CSS-based Badge Style 
+  주석 처리된 기존 디자인입니다. 롤백이 필요할 경우 이 주석을 해제하고 OvrBadge 컴포넌트 대신 이 함수를 사용하세요.
+*/
 export const getOvrBadgeStyle = (ovr: number) => {
-  const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
+  // const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
   
-  // 95+ - Pink Diamond (Bright Magenta + Outline + Glow)
-  if (ovr >= 95) return baseClass + 'bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-fuchsia-700 text-white shadow-[0_0_25px_rgba(232,121,249,0.9)] border-2 border-white/80 ring-2 ring-fuchsia-500/50';
+  // // 95+ - Pink Diamond (Bright Magenta + Outline + Glow)
+  // if (ovr >= 95) return baseClass + 'bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-fuchsia-700 text-white shadow-[0_0_25px_rgba(232,121,249,0.9)] border-2 border-white/80 ring-2 ring-fuchsia-500/50';
   
-  // 90-94 - Red (Elite)
-  if (ovr >= 90) return baseClass + 'bg-gradient-to-br from-red-500 via-red-600 to-rose-700 text-white shadow-red-500/40 border border-red-400';
+  // // 90-94 - Red (Elite)
+  // if (ovr >= 90) return baseClass + 'bg-gradient-to-br from-red-500 via-red-600 to-rose-700 text-white shadow-red-500/40 border border-red-400';
   
-  // 85-89 - Blue (All-Star)
-  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white shadow-blue-500/40 border border-blue-400';
+  // // 85-89 - Blue (All-Star)
+  // if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 text-white shadow-blue-500/40 border border-blue-400';
   
-  // 80-84 - Green (Starter)
-  if (ovr >= 80) return baseClass + 'bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 text-white shadow-emerald-500/40 border border-emerald-400';
+  // // 80-84 - Green (Starter)
+  // if (ovr >= 80) return baseClass + 'bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-700 text-white shadow-emerald-500/40 border border-emerald-400';
   
-  // 75-79 - Gold (Solid)
-  if (ovr >= 75) return baseClass + 'bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600 text-white shadow-amber-500/40 border border-amber-300';
+  // // 75-79 - Gold (Solid)
+  // if (ovr >= 75) return baseClass + 'bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-600 text-white shadow-amber-500/40 border border-amber-300';
   
-  // 70-74 - Silver (Brightened)
-  if (ovr >= 70) return baseClass + 'bg-gradient-to-br from-slate-300 via-slate-400 to-zinc-600 text-white shadow-slate-500/30 border border-slate-200';
+  // // 70-74 - Silver (Brightened)
+  // if (ovr >= 70) return baseClass + 'bg-gradient-to-br from-slate-300 via-slate-400 to-zinc-600 text-white shadow-slate-500/30 border border-slate-200';
   
-  // < 70 - Bronze (Brightened & High Contrast)
-  return baseClass + 'bg-gradient-to-br from-amber-600 via-amber-800 to-stone-900 text-amber-100 shadow-orange-900/40 border border-amber-500/50';
+  // // < 70 - Bronze (Brightened & High Contrast)
+  // return baseClass + 'bg-gradient-to-br from-amber-600 via-amber-800 to-stone-900 text-amber-100 shadow-orange-900/40 border border-amber-500/50';
+  return ""; // Placeholder for deprecated function
+};
+
+// [New] Image-based OvrBadge Component
+export const OvrBadge: React.FC<{ ovr: number, className?: string }> = ({ ovr, className = "" }) => {
+  let tier = 8;
+  if (ovr >= 95) tier = 1;
+  else if (ovr >= 93) tier = 2;
+  else if (ovr >= 90) tier = 3;
+  else if (ovr >= 86) tier = 4;
+  else if (ovr >= 80) tier = 5;
+  else if (ovr >= 75) tier = 6;
+  else if (ovr >= 70) tier = 7;
+  else tier = 8;
+
+  const imgUrl = `https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/badges/${tier}.png`;
+
+  return (
+    <div className={`relative flex items-center justify-center select-none ${className}`} title={`OVR: ${ovr}`}>
+      <img 
+        src={imgUrl} 
+        alt={`Tier ${tier}`} 
+        className="absolute inset-0 w-full h-full object-contain pointer-events-none drop-shadow-md" 
+      />
+      <span className="relative z-10 font-black text-white oswald tracking-tight drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)] leading-none" style={{ textShadow: "0px 1px 3px rgba(0,0,0,0.8)" }}>
+        {ovr}
+      </span>
+    </div>
+  );
 };
 
 export const getRankStyle = (val: number) => {
@@ -396,7 +429,7 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
            <div className="flex items-center gap-8">
               <div className="flex gap-4">
                   <div className="flex flex-col items-center gap-1">
-                     <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl ring-4 ring-white/5"}>{player.ovr}</div>
+                     <OvrBadge ovr={player.ovr} className="!w-16 !h-16 !text-3xl" />
                      <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OVR</span>
                   </div>
               </div>

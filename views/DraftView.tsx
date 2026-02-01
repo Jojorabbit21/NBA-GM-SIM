@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Search, Info, UserPlus, FileText, Zap, HelpCircle, ArrowRight, Loader2, Sparkles, Trophy } from 'lucide-react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle, getRankStyle } from '../components/SharedComponents';
+import { OvrBadge, getRankStyle } from '../components/SharedComponents';
 import { useScoutingReport } from '../services/queries';
 
 interface DraftViewProps {
@@ -78,7 +78,9 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                 onClick={() => setSelectedId(p.id)}
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all ${selectedId === p.id ? 'bg-indigo-600 border-indigo-400 shadow-lg' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}
               >
-                <div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div>
+                <div className="!mx-0 !w-10 !h-10 !text-xl">
+                   <OvrBadge ovr={p.ovr} className="w-full h-full" />
+                </div>
                 <div className="text-left flex-1 min-w-0">
                   <div className={`font-black text-sm truncate ${selectedId === p.id ? 'text-white' : 'text-slate-200'}`}>{p.name}</div>
                   <div className={`text-[10px] font-black uppercase tracking-tighter ${selectedId === p.id ? 'text-indigo-200' : 'text-slate-500'}`}>
@@ -98,7 +100,9 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
             <div className="flex-1 flex flex-col min-h-0">
               <div className="p-8 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
                 <div className="flex items-center gap-6">
-                  <div className={getOvrBadgeStyle(selectedProspect.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl"}>{selectedProspect.ovr}</div>
+                  <div className="!w-16 !h-16 !text-3xl !rounded-2xl">
+                    <OvrBadge ovr={selectedProspect.ovr} className="w-full h-full" />
+                  </div>
                   <div>
                     <h3 className="text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{selectedProspect.name}</h3>
                     <div className="mt-2 flex gap-3">
