@@ -202,6 +202,17 @@ const ShotLabel: React.FC<{ makes: number, attempts: number, pct: number, league
 };
 
 const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
+    // Safety check for players without stats (e.g. trade snapshots)
+    if (!player.stats) {
+        return (
+            <div className="flex flex-col items-center justify-center h-full w-full text-slate-500">
+                <BarChart3 size={48} className="opacity-20 mb-4" />
+                <p className="font-bold text-lg">No Shooting Data Available</p>
+                <p className="text-xs">This player has no recorded stats for the season.</p>
+            </div>
+        );
+    }
+
     const s = player.stats;
     const g = s.g || 1;
     
@@ -308,67 +319,72 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
 
   const teamLogo = teamId ? getTeamLogoUrl(teamId) : null;
 
+  // Helper to fallback to category score if specific attr is missing
+  const getAttr = (val: number | undefined, fallback: number | undefined) => {
+      return val ?? fallback ?? 70; // Default to 70 if completely missing
+  };
+
   const attrGroups = [
     {
       label: "내곽 득점 (INS)",
       attrs: [
-        { label: "LAYUP", val: player.layup },
-        { label: "DUNK", val: player.dunk },
-        { label: "POST PLAY", val: player.postPlay },
-        { label: "DRAW FOUL", val: player.drawFoul },
-        { label: "HANDS", val: player.hands },
+        { label: "LAYUP", val: getAttr(player.layup, player.ins) },
+        { label: "DUNK", val: getAttr(player.dunk, player.ins) },
+        { label: "POST PLAY", val: getAttr(player.postPlay, player.ins) },
+        { label: "DRAW FOUL", val: getAttr(player.drawFoul, player.ins) },
+        { label: "HANDS", val: getAttr(player.hands, player.ins) },
       ]
     },
     {
       label: "외곽 득점 (OUT)",
       attrs: [
-        { label: "CLOSE", val: player.closeShot },
-        { label: "MIDRANGE", val: player.midRange },
-        { label: "3PT", val: Math.round((player.threeCorner + player.three45 + player.threeTop)/3) },
-        { label: "FT", val: player.ft },
-        { label: "SHOT IQ", val: player.shotIq },
-        { label: "OFF CONSISTENCY", val: player.offConsist },
+        { label: "CLOSE", val: getAttr(player.closeShot, player.out) },
+        { label: "MIDRANGE", val: getAttr(player.midRange, player.out) },
+        { label: "3PT", val: Math.round(((player.threeCorner ?? player.out) + (player.three45 ?? player.out) + (player.threeTop ?? player.out))/3) },
+        { label: "FT", val: getAttr(player.ft, player.out) },
+        { label: "SHOT IQ", val: getAttr(player.shotIq, player.out) },
+        { label: "OFF CONSISTENCY", val: getAttr(player.offConsist, player.out) },
       ]
     },
     {
       label: "운동능력 (ATH)",
       attrs: [
-        { label: "SPEED", val: player.speed },
-        { label: "AGILITY", val: player.agility },
-        { label: "STRENGTH", val: player.strength },
-        { label: "VERTICAL", val: player.vertical },
-        { label: "STAMINA", val: player.stamina },
-        { label: "HUSTLE", val: player.hustle },
-        { label: "DURABILITY", val: player.durability },
+        { label: "SPEED", val: getAttr(player.speed, player.ath) },
+        { label: "AGILITY", val: getAttr(player.agility, player.ath) },
+        { label: "STRENGTH", val: getAttr(player.strength, player.ath) },
+        { label: "VERTICAL", val: getAttr(player.vertical, player.ath) },
+        { label: "STAMINA", val: getAttr(player.stamina, player.ath) },
+        { label: "HUSTLE", val: getAttr(player.hustle, player.ath) },
+        { label: "DURABILITY", val: getAttr(player.durability, player.ath) },
       ]
     },
     {
       label: "플레이메이킹 (PLM)",
       attrs: [
-        { label: "ACCURACY", val: player.passAcc },
-        { label: "PASS VISION", val: player.passVision },
-        { label: "PASS IQ", val: player.passIq },
-        { label: "HANDLE", val: player.handling },
-        { label: "SPD BALL", val: player.spdBall },
+        { label: "ACCURACY", val: getAttr(player.passAcc, player.plm) },
+        { label: "PASS VISION", val: getAttr(player.passVision, player.plm) },
+        { label: "PASS IQ", val: getAttr(player.passIq, player.plm) },
+        { label: "HANDLE", val: getAttr(player.handling, player.plm) },
+        { label: "SPD BALL", val: getAttr(player.spdBall, player.plm) },
       ]
     },
     {
       label: "수비 (DEF)",
       attrs: [
-        { label: "PERIMETER", val: player.perDef },
-        { label: "INTERIOR", val: player.intDef },
-        { label: "STEAL", val: player.steal },
-        { label: "BLOCK", val: player.blk },
-        { label: "HELP DEFENSE IQ", val: player.helpDefIq },
-        { label: "PASS PERCEPTION", val: player.passPerc },
-        { label: "DEF CONSISTENCY", val: player.defConsist },
+        { label: "PERIMETER", val: getAttr(player.perDef, player.def) },
+        { label: "INTERIOR", val: getAttr(player.intDef, player.def) },
+        { label: "STEAL", val: getAttr(player.steal, player.def) },
+        { label: "BLOCK", val: getAttr(player.blk, player.def) },
+        { label: "HELP DEFENSE IQ", val: getAttr(player.helpDefIq, player.def) },
+        { label: "PASS PERCEPTION", val: getAttr(player.passPerc, player.def) },
+        { label: "DEF CONSISTENCY", val: getAttr(player.defConsist, player.def) },
       ]
     },
     {
       label: "리바운드 (REB)",
       attrs: [
-        { label: "OFF REB", val: player.offReb },
-        { label: "DEF REB", val: player.defReb },
+        { label: "OFF REB", val: getAttr(player.offReb, player.reb) },
+        { label: "DEF REB", val: getAttr(player.defReb, player.reb) },
       ]
     }
   ];
