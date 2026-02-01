@@ -197,6 +197,13 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 queryClient.removeQueries({ queryKey: ['fullGameState', userId] });
                 queryClient.setQueryData(['fullGameState', userId], null);
             }
+            
+            // [Fix] Clear local storage for trade ops counters
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('trade_ops_')) {
+                    localStorage.removeItem(key);
+                }
+            });
 
             setMyTeamId(null);
             setPlayoffSeries([]);
