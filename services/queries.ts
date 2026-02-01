@@ -61,19 +61,38 @@ export const useSaveGame = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-            const { error } = await supabase
+            // [Debug] Check payload size to ensure data exists
+            const payloadSize = JSON.stringify(gameData).length;
+            console.log(`💾 [Supabase] Attempting Save... User: ${userId}, Team: ${teamId}, Size: ${payloadSize} bytes`);
+
+            if (payloadSize < 100) {
+                console.error("❌ [Supabase] Save Aborted: Payload appears empty!");
+                throw new Error("Save payload is empty");
+            }
+
+            const { data, error } = await supabase
                 .from('saves')
                 .upsert({ 
                     user_id: userId, 
                     team_id: teamId, 
                     game_data: gameData,
                     updated_at: new Date().toISOString()
-                }, { onConflict: 'user_id' });
+                }, { onConflict: 'user_id' })
+                .select(); // Select to confirm return
             
-            if (error) throw error;
+            if (error) {
+                console.error("❌ [Supabase] Save Failed:", error.message, error.details);
+                throw error;
+            }
+            
+            console.log("✅ [Supabase] Save Successful!");
+            return data;
         },
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['saveData', variables.userId] });
+        },
+        onError: (error) => {
+            console.error("❌ [Mutation Error] Save Game Failed:", error);
         }
     });
 };

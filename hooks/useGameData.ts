@@ -98,8 +98,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     }, [baseData, teams.length]);
 
     // [Fix] Robust Auto-Save Interval
-    // Instead of debouncing every change (which resets the timer and prevents saving during rapid updates),
-    // we use a fixed interval that checks the `isDirty` flag.
     useEffect(() => {
         if (!session?.user || isGuestMode) return;
 
@@ -110,7 +108,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             if (isDirtyRef.current && hasInitialLoadRef.current && myTeamId && !isResettingRef.current && !saveGameMutation.isPending) {
                 console.log("💾 Auto-Saving Game (Interval)...");
                 
-                const currentData = { ...gameDataRef.current };
+                // Deep copy current state to prevent reference issues
+                const currentData = JSON.parse(JSON.stringify(gameDataRef.current));
                 
                 // Optimistically mark as clean to prevent double-saves in next tick
                 isDirtyRef.current = false;
@@ -141,31 +140,40 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [session, isGuestMode]);
 
-    // Force Save (Manual or Critical Events)
+    // Force Save (Manual or Critical Events) - [CRITICAL FIX FOR LOGOUT]
     const forceSave = useCallback(async (overrides?: Partial<typeof gameDataRef.current>) => {
-        if (isResettingRef.current || !session?.user || isGuestMode || !myTeamId) return;
+        if (isResettingRef.current || !session?.user || isGuestMode || !myTeamId) {
+             console.warn("⚠️ Force Save Skipped: Conditions not met (Guest/No Session/Resetting)");
+             return;
+        }
 
-        isDirtyRef.current = false; 
-
+        console.log(`💾 Force Save Triggered. Preparing payload...`);
+        
+        // 1. Capture Data Synchronously immediately
         const dataToSave = { ...gameDataRef.current, ...overrides };
         
-        // Safety Check
+        // 2. Validate Payload
         if (!dataToSave.teams || dataToSave.teams.length === 0) {
-            console.error("❌ Force Save Aborted: No teams data.");
+            console.error("❌ Force Save Aborted: No teams data to save.");
             return;
         }
 
-        console.log(`💾 Force Save Triggered`);
+        // 3. Mark as clean locally
+        isDirtyRef.current = false;
+
         try {
+            // 4. Send to Supabase and WAIT for completion
             await saveGameMutation.mutateAsync({ 
                 userId: session.user.id, 
                 teamId: myTeamId, 
                 gameData: dataToSave 
             });
+            console.log("✅ Force Save Completed Successfully");
         } catch (e) {
-            console.error("Failed to force save:", e);
-            // Restore dirty flag if save failed
+            console.error("❌ Force Save Failed:", e);
+            // Restore dirty flag if save failed so user knows
             isDirtyRef.current = true;
+            throw e; // Re-throw so caller (logout) knows it failed
         }
     }, [session, isGuestMode, myTeamId, saveGameMutation]);
 
