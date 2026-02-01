@@ -3,7 +3,7 @@ import React from 'react';
 import { Target, ChevronRight } from 'lucide-react';
 import { Player, TradeOffer } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
-import { getTeamLogoUrl } from '../../utils/constants';
+import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
 
 interface RequirementCardProps {
   requirement: TradeOffer;
@@ -40,10 +40,13 @@ export const RequirementCard: React.FC<RequirementCardProps> = ({ requirement, t
                 <div className="text-[10px] font-mono font-black text-slate-500">합계: ${requirement.players.reduce((s,p)=>s+p.salary,0).toFixed(1)}M</div>
              </div>
              <div className="flex flex-col gap-2">
-                {requirement.players.map(p => (
+                {requirement.players.map(p => {
+                  // [Fix] Real-time OVR
+                  const displayOvr = calculatePlayerOvr(p);
+                  return (
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-900/60 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
+                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(displayOvr) + " !mx-0 !w-10 !h-10 !text-xl"}>{displayOvr}</div></div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>
                          <div className="flex items-center gap-2">
                             <div className="font-bold text-sm text-slate-100 truncate hover:text-indigo-400 hover:underline">{p.name}</div>
@@ -61,7 +64,8 @@ export const RequirementCard: React.FC<RequirementCardProps> = ({ requirement, t
                      </div>
                      <div className="ml-4 text-sm font-mono font-black text-slate-300 flex-shrink-0">${p.salary.toFixed(1)}M</div>
                   </div>
-                ))}
+                  );
+                })}
              </div>
           </div>
        </div>
