@@ -61,16 +61,16 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
     // Convert to string and clean up
     const input = String(nameOrId).toLowerCase().trim();
     
-    // Check known IDs first (Exact match)
+    // Exact match for known IDs
     const knownIds = ['atl', 'bos', 'bkn', 'cha', 'chi', 'cle', 'dal', 'den', 'det', 'gsw', 'hou', 'ind', 'lac', 'lal', 'mem', 'mia', 'mil', 'min', 'nop', 'nyk', 'okc', 'orl', 'phi', 'phx', 'por', 'sac', 'sas', 'tor', 'uta', 'was'];
     if (knownIds.includes(input)) return input;
 
-    // Map common names/cities (English & Korean)
+    // Comprehensive Map
     const map: Record<string, string> = {
         // English
         'atlanta': 'atl', 'hawks': 'atl',
         'boston': 'bos', 'celtics': 'bos',
-        'brooklyn': 'bkn', 'nets': 'bkn',
+        'brooklyn': 'bkn', 'nets': 'bkn', 'bKN': 'bkn',
         'charlotte': 'cha', 'hornets': 'cha',
         'chicago': 'chi', 'bulls': 'chi',
         'cleveland': 'cle', 'cavaliers': 'cle', 'cavs': 'cle',
@@ -80,24 +80,24 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
         'golden state': 'gsw', 'warriors': 'gsw',
         'houston': 'hou', 'rockets': 'hou',
         'indiana': 'ind', 'pacers': 'ind',
-        'la clippers': 'lac', 'clippers': 'lac',
+        'la clippers': 'lac', 'clippers': 'lac', 'lac': 'lac',
         'la lakers': 'lal', 'lakers': 'lal', 'los angeles lakers': 'lal', 'los angeles clippers': 'lac',
         'memphis': 'mem', 'grizzlies': 'mem',
         'miami': 'mia', 'heat': 'mia',
         'milwaukee': 'mil', 'bucks': 'mil',
         'minnesota': 'min', 'timberwolves': 'min', 'wolves': 'min',
-        'new orleans': 'nop', 'pelicans': 'nop',
-        'new york': 'nyk', 'knicks': 'nyk',
-        'oklahoma city': 'okc', 'thunder': 'okc',
+        'new orleans': 'nop', 'pelicans': 'nop', 'n.o.': 'nop', 'nop': 'nop',
+        'new york': 'nyk', 'knicks': 'nyk', 'n.y.': 'nyk', 'nyk': 'nyk',
+        'oklahoma city': 'okc', 'thunder': 'okc', 'okc': 'okc',
         'orlando': 'orl', 'magic': 'orl',
-        'philadelphia': 'phi', '76ers': 'phi', 'sixers': 'phi',
-        'phoenix': 'phx', 'suns': 'phx',
+        'philadelphia': 'phi', '76ers': 'phi', 'sixers': 'phi', 'phi': 'phi',
+        'phoenix': 'phx', 'suns': 'phx', 'pho': 'phx',
         'portland': 'por', 'trail blazers': 'por', 'blazers': 'por',
         'sacramento': 'sac', 'kings': 'sac',
-        'san antonio': 'sas', 'spurs': 'sas',
+        'san antonio': 'sas', 'spurs': 'sas', 'sas': 'sas',
         'toronto': 'tor', 'raptors': 'tor',
         'utah': 'uta', 'jazz': 'uta',
-        'washington': 'was', 'wizards': 'was',
+        'washington': 'was', 'wizards': 'was', 'wsh': 'was',
         // Korean (For compatibility)
         '애틀랜타': 'atl', '호크스': 'atl',
         '보스턴': 'bos', '셀틱스': 'bos',
@@ -131,12 +131,15 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
         '워싱턴': 'was', '위저즈': 'was'
     };
 
+    // Direct Check
+    if (map[input]) return map[input];
+
     // Partial match fallback
     for (const key in map) {
         if (input.includes(key)) return map[key];
     }
 
-    return input.substring(0, 3);
+    return 'unknown';
 };
 
 export const getTeamLogoUrl = (teamId: string): string => {

@@ -52,13 +52,28 @@ export const useBaseData = () => {
             // 4. Map Players to Teams (Robust Mapping)
             const teams: Team[] = baseTeams.map((t) => {
                 const teamId = t.id; // e.g., 'atl'
-                
-                // Filter roster using fuzzy team ID matching
+                const teamCity = t.city.toLowerCase();
+                const teamName = t.name.toLowerCase();
+
+                // Filter roster using fuzzy team ID matching + City/Name fallback
                 const roster = playersData
                     .filter((p: any) => {
                         // Support various column names for Team ID
                         const rawTeamId = getCol(p, ['team_id', 'Team', 'team', 'TeamID', 'Tm']);
-                        return resolveTeamId(rawTeamId) === teamId;
+                        
+                        if (!rawTeamId) return false;
+
+                        // 1. Try resolving ID directly
+                        const resolvedId = resolveTeamId(rawTeamId);
+                        if (resolvedId === teamId) return true;
+
+                        // 2. Fallback: Check if raw data contains City or Name (e.g. "Boston" in "Boston Celtics")
+                        const rawString = String(rawTeamId).toLowerCase();
+                        if (rawString.includes(teamCity) || rawString.includes(teamName)) {
+                            return true;
+                        }
+
+                        return false;
                     })
                     .map((p: any) => {
                         // Support various column names for Player Attributes
