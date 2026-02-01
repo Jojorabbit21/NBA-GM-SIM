@@ -2,9 +2,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
-import { useBaseData, useLoadSave, useSaveGame } from '../services/queries';
-import { generateSeasonSchedule } from '../utils/constants';
+import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, PlayerBoxScore } from '../types';
+import { useBaseData, useLoadSave, useSaveGame, useUserHistory } from '../services/queries';
+import { generateSeasonSchedule, INITIAL_STATS } from '../utils/constants';
 import { generateOwnerWelcome } from '../services/geminiService';
 
 export const INITIAL_DATE = '2025-10-20';
@@ -12,7 +12,7 @@ export const INITIAL_DATE = '2025-10-20';
 export const useGameData = (session: any, isGuestMode: boolean) => {
     const queryClient = useQueryClient();
 
-    // Game Data State
+    // --- State ---
     const [myTeamId, setMyTeamId] = useState<string | null>(null);
     const [teams, setTeams] = useState<Team[]>([]);
     const [schedule, setSchedule] = useState<Game[]>([]);
@@ -23,204 +23,262 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [userTactics, setUserTactics] = useState<GameTactics | null>(null);
     const [news, setNews] = useState<any[]>([]);
 
-    // Refs for persistence (Snapshot System)
-    const gameDataRef = useRef<any>({});
+    // --- Status Flags ---
     const isResettingRef = useRef(false);
-    const hasInitialLoadRef = useRef(false); // 로컬에 데이터가 로드되었는지 여부
-    const isSaveLoadedRef = useRef(false);   // DB에서 세이브 파일 로드를 완료했는지 여부
+    const hasInitialLoadRef = useRef(false);
+    const [isReconstructing, setIsReconstructing] = useState(false);
 
-    // Queries & Mutations
+    // --- Queries ---
     const saveGameMutation = useSaveGame();
-    const { data: baseData, isLoading: isBaseDataLoading, refetch: refetchBaseData } = useBaseData();
-    const { data: saveData, isLoading: isSaveLoading } = useLoadSave(session?.user?.id);
+    const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
+    const { data: saveMeta, isLoading: isSaveMetaLoading } = useLoadSave(session?.user?.id);
+    const { data: userHistory, isLoading: isHistoryLoading } = useUserHistory(session?.user?.id);
 
-    // [Preserved] Snapshot Sync - Update Ref whenever state changes
+    // ------------------------------------------------------------------
+    //  CORE LOGIC: State Reconstruction from History (Replay)
+    // ------------------------------------------------------------------
     useEffect(() => {
-        // Build the snapshot object
-        gameDataRef.current = {
-            myTeamId, 
-            teams, 
-            schedule, 
-            currentSimDate, 
-            tactics: userTactics, 
-            playoffSeries, 
-            transactions, 
-            prospects
-        };
-    }, [myTeamId, teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, prospects]);
+        // 1. Wait for all data sources to be ready
+        if (isBaseDataLoading || isSaveMetaLoading || isHistoryLoading || !baseData) return;
+        if (isResettingRef.current || hasInitialLoadRef.current) return;
 
-    // [Logic 1] Initial Data Loading (One-Shot)
-    // DB에서 데이터를 가져와서 State에 넣는 작업은 "단 한 번"만 실행
-    useEffect(() => {
-        if (isResettingRef.current || isGuestMode || isSaveLoadedRef.current) return;
-        
-        // 1. Load User Save (Priority)
-        if (session?.user && !isSaveLoading && saveData && saveData.game_data) {
-            console.log("💾 [Init] Save Data Found! Restoring Snapshot...");
-            const gd = saveData.game_data;
-            
-            // Batch State Updates
-            if (gd.myTeamId) setMyTeamId(gd.myTeamId);
-            else setMyTeamId(saveData.team_id); // Fallback for old saves
-
-            if (gd.teams && gd.teams.length > 0) setTeams(gd.teams);
-            if (gd.schedule && gd.schedule.length > 0) setSchedule(gd.schedule);
-            if (gd.currentSimDate) setCurrentSimDate(gd.currentSimDate);
-            if (gd.tactics) setUserTactics(gd.tactics);
-            if (gd.playoffSeries) setPlayoffSeries(gd.playoffSeries);
-            if (gd.transactions) setTransactions(gd.transactions);
-            if (gd.prospects) setProspects(gd.prospects);
-            
-            // Latch: Prevent future DB reads from overwriting local state
-            isSaveLoadedRef.current = true;
+        // Guest Mode: Just load base data
+        if (isGuestMode) {
+            setTeams(JSON.parse(JSON.stringify(baseData.teams)));
+            setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
             hasInitialLoadRef.current = true;
             return;
         }
 
-        // 2. Load Base Data (If no save exists)
-        if (!isSaveLoadedRef.current && baseData && !isBaseDataLoading) {
-            if (teams.length === 0) {
-                console.log("🆕 [Init] No Save Found. Initializing Base Roster...");
-                setTeams(baseData.teams);
-                setSchedule(baseData.schedule);
-            }
-        }
-    }, [saveData, isSaveLoading, baseData, isBaseDataLoading, session, isGuestMode, teams.length]);
+        // 2. Check if user has a save file (Team ID)
+        if (saveMeta && saveMeta.team_id) {
+            console.log(`📂 [Reconstruction] Found Save for Team: ${saveMeta.team_id}. Replaying history...`);
+            setIsReconstructing(true);
 
-    // [Logic 2] Force Save / Manual Save
-    const forceSave = useCallback(async (overrides?: Partial<typeof gameDataRef.current>) => {
-        if (isResettingRef.current || !session?.user || isGuestMode) return;
+            // A. Deep Copy Base Data (Starting Point)
+            const reconstructedTeams: Team[] = JSON.parse(JSON.stringify(baseData.teams));
+            let reconstructedSchedule: Game[] = JSON.parse(JSON.stringify(baseData.schedule));
+            let lastDate = INITIAL_DATE;
 
-        // Merge current ref with any overrides
-        const dataToSave = { ...gameDataRef.current, ...overrides };
-        const targetTeamId = dataToSave.myTeamId || myTeamId;
+            // B. Replay Transactions (Trade/Sign)
+            const txHistory = userHistory?.transactions || [];
+            
+            txHistory.forEach((tx: any) => {
+                // Apply Trade Logic
+                if (tx.type === 'Trade' && tx.details) {
+                    const { acquired, traded, partnerTeamId } = tx.details;
+                    const myTeamIdx = reconstructedTeams.findIndex(t => t.id === tx.team_id);
+                    const partnerIdx = reconstructedTeams.findIndex(t => t.id === partnerTeamId);
 
-        // Validation
-        if (!targetTeamId) {
-            console.warn("⚠️ Cannot save: No Team ID selected.");
-            return;
-        }
-        if (!dataToSave.teams || dataToSave.teams.length === 0) {
-            console.warn("⚠️ Cannot save: Roster data is empty.");
-            return;
-        }
-
-        console.log(`💾 [Force Save] Triggered for Team: ${targetTeamId}`);
-        
-        try {
-            await saveGameMutation.mutateAsync({ 
-                userId: session.user.id, 
-                teamId: targetTeamId, 
-                gameData: dataToSave 
+                    if (myTeamIdx !== -1 && partnerIdx !== -1) {
+                        // Move Traded Players (My Team -> Partner)
+                        traded.forEach((p: any) => {
+                            const pIndex = reconstructedTeams[myTeamIdx].roster.findIndex(rp => rp.id === p.id);
+                            if (pIndex !== -1) {
+                                const [playerObj] = reconstructedTeams[myTeamIdx].roster.splice(pIndex, 1);
+                                reconstructedTeams[partnerIdx].roster.push(playerObj);
+                            }
+                        });
+                        // Move Acquired Players (Partner -> My Team)
+                        acquired.forEach((p: any) => {
+                            const pIndex = reconstructedTeams[partnerIdx].roster.findIndex(rp => rp.id === p.id);
+                            if (pIndex !== -1) {
+                                const [playerObj] = reconstructedTeams[partnerIdx].roster.splice(pIndex, 1);
+                                reconstructedTeams[myTeamIdx].roster.push(playerObj);
+                            }
+                        });
+                    }
+                }
+                // Update Date if TX is newer
+                if (tx.date > lastDate) lastDate = tx.date;
             });
-            console.log("✅ [Force Save] Completed.");
+
+            // C. Replay Game Results (Stats Accumulation & Schedule Update)
+            const gameResults = userHistory?.games || [];
+            
+            // Map for quick team lookup
+            const teamMap = new Map<string, Team>();
+            reconstructedTeams.forEach(t => teamMap.set(t.id, t));
+
+            gameResults.forEach((res: any) => {
+                // 1. Mark Schedule as Played
+                const gameIdx = reconstructedSchedule.findIndex(g => g.id === res.game_id);
+                if (gameIdx !== -1) {
+                    reconstructedSchedule[gameIdx].played = true;
+                    reconstructedSchedule[gameIdx].homeScore = res.home_score;
+                    reconstructedSchedule[gameIdx].awayScore = res.away_score;
+                } else {
+                    // If playoff game (not in base schedule), add it
+                    if (res.is_playoff) {
+                        reconstructedSchedule.push({
+                            id: res.game_id,
+                            homeTeamId: res.home_team_id,
+                            awayTeamId: res.away_team_id,
+                            date: res.date,
+                            homeScore: res.home_score,
+                            awayScore: res.away_score,
+                            played: true,
+                            isPlayoff: true,
+                            seriesId: res.series_id
+                        });
+                    }
+                }
+
+                // 2. Update Team Wins/Losses
+                const homeTeam = teamMap.get(res.home_team_id);
+                const awayTeam = teamMap.get(res.away_team_id);
+                if (homeTeam && awayTeam) {
+                    if (res.home_score > res.away_score) {
+                        homeTeam.wins++;
+                        awayTeam.losses++;
+                    } else {
+                        homeTeam.losses++;
+                        awayTeam.wins++;
+                    }
+                }
+
+                // 3. Aggregate Player Stats
+                if (res.box_score) {
+                    const processBox = (box: PlayerBoxScore[], teamId: string) => {
+                        const team = teamMap.get(teamId);
+                        if (!team) return;
+                        
+                        box.forEach(statLine => {
+                            const player = team.roster.find(p => p.id === statLine.playerId);
+                            if (player) {
+                                // Initialize if null
+                                if (!player.stats) player.stats = INITIAL_STATS();
+                                
+                                // Accumulate
+                                player.stats.g += 1;
+                                player.stats.gs += statLine.gs || 0;
+                                player.stats.mp += statLine.mp || 0;
+                                player.stats.pts += statLine.pts || 0;
+                                player.stats.reb += statLine.reb || 0;
+                                player.stats.ast += statLine.ast || 0;
+                                player.stats.stl += statLine.stl || 0;
+                                player.stats.blk += statLine.blk || 0;
+                                player.stats.tov += statLine.tov || 0;
+                                player.stats.fgm += statLine.fgm || 0;
+                                player.stats.fga += statLine.fga || 0;
+                                player.stats.p3m += statLine.p3m || 0;
+                                player.stats.p3a += statLine.p3a || 0;
+                                player.stats.ftm += statLine.ftm || 0;
+                                player.stats.fta += statLine.fta || 0;
+                            }
+                        });
+                    };
+
+                    // Use 'home' and 'away' keys from JSONB
+                    if (res.box_score.home) processBox(res.box_score.home, res.home_team_id);
+                    if (res.box_score.away) processBox(res.box_score.away, res.away_team_id);
+                }
+
+                // Update Date
+                if (res.date > lastDate) lastDate = res.date;
+            });
+
+            // D. Apply Final State
+            setMyTeamId(saveMeta.team_id);
+            setTeams(reconstructedTeams);
+            setSchedule(reconstructedSchedule);
+            setCurrentSimDate(lastDate);
+            
+            // Map raw transactions to Transaction type for UI
+            const uiTransactions: Transaction[] = txHistory.map((tx: any) => ({
+                id: tx.transaction_id,
+                date: tx.date,
+                type: tx.type,
+                teamId: tx.team_id,
+                description: tx.description,
+                details: tx.details
+            })).reverse(); // Newest first
+            setTransactions(uiTransactions);
+
+            console.log(`✅ [Reconstruction] Complete. Date: ${lastDate}, Games Played: ${gameResults.length}`);
+            hasInitialLoadRef.current = true;
+            setIsReconstructing(false);
+
+        } else {
+            // No Save - Initialize Base Data for New Game
+            console.log("🆕 [Init] No Save Found. Ready for Team Selection.");
+            setTeams(JSON.parse(JSON.stringify(baseData.teams)));
+            setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
+            // Don't set hasInitialLoadRef yet, wait for team selection
+        }
+
+    }, [baseData, saveMeta, userHistory, isBaseDataLoading, isSaveMetaLoading, isHistoryLoading, session, isGuestMode]);
+
+
+    // --- Actions ---
+
+    // 1. Save (Checkpoint)
+    // We only need to update the 'saves' table's updated_at.
+    // The actual game data is already saved in `user_game_results` via useSimulation.
+    const forceSave = useCallback(async (overrides?: any) => {
+        if (!session?.user || isGuestMode || !myTeamId) return;
+
+        // Optionally, if we passed 'teams' override, we might want to do something,
+        // but in this architecture, roster changes are event-driven (transactions).
+        // So this function basically just "pings" the save file.
+
+        try {
+            await saveGameMutation.mutateAsync({
+                userId: session.user.id,
+                teamId: myTeamId
+            });
+            console.log("💾 [Checkpoint] Save timestamp updated.");
         } catch (e) {
-            console.error("❌ [Force Save] Failed:", e);
+            console.error("Save failed", e);
         }
     }, [session, isGuestMode, myTeamId, saveGameMutation]);
 
-    // [Logic 3] Auto-Save Interval (Preserved from original)
-    // Saves every 30 seconds if a team is selected
-    useEffect(() => {
-        if (!session?.user || isGuestMode) return;
-        const SAVE_INTERVAL = 30000; // 30 seconds
-
-        const intervalId = setInterval(() => {
-            // Check if we have a valid game state to save
-            if (myTeamId && hasInitialLoadRef.current && !isResettingRef.current && !saveGameMutation.isPending) {
-                console.log("💾 [Auto-Save] Saving Snapshot...");
-                // Snapshot is already in gameDataRef.current
-                saveGameMutation.mutate({ 
-                    userId: session.user.id, 
-                    teamId: myTeamId, 
-                    gameData: gameDataRef.current 
-                });
-            }
-        }, SAVE_INTERVAL);
-
-        return () => clearInterval(intervalId);
-    }, [session, isGuestMode, myTeamId, saveGameMutation]);
-
-    // [Logic 4] Team Selection Action
+    // 2. Select Team
     const handleSelectTeam = useCallback(async (teamId: string) => {
         console.log(`🏀 User Selected Team: ${teamId}`);
-        
-        // 1. Prepare Initial State
-        const initialTeams = baseData?.teams || teams;
-        const initialSchedule = (baseData?.schedule && baseData.schedule.length > 0) 
-            ? baseData.schedule 
-            : generateSeasonSchedule(teamId);
-        
-        // 2. Set Local State
         setMyTeamId(teamId);
-        setTeams(initialTeams);
-        setSchedule(initialSchedule);
-        setCurrentSimDate(INITIAL_DATE);
         
-        // 3. Welcome Message
-        const teamData = initialTeams.find(t => t.id === teamId);
+        // Initial Save to create the record
+        await forceSave();
+        
+        // Welcome News
+        const teamData = teams.find(t => t.id === teamId);
         if (teamData) {
             const welcome = await generateOwnerWelcome(`${teamData.city} ${teamData.name}`);
             setNews([{ type: 'text', content: welcome }]);
         }
-        
-        // 4. Update Flags
+
         hasInitialLoadRef.current = true;
-        isSaveLoadedRef.current = true; // Mark as "loaded" so DB read doesn't overwrite this
-
-        // 5. Trigger INITIAL SAVE immediately (Create row in 'saves' table)
-        // We pass the data explicitly to ensure we save what we just set
-        const initialSnapshot = {
-            myTeamId: teamId,
-            teams: initialTeams,
-            schedule: initialSchedule,
-            currentSimDate: INITIAL_DATE,
-            tactics: null,
-            playoffSeries: [],
-            transactions: [],
-            prospects: []
-        };
-        
-        await forceSave(initialSnapshot);
-
         return true;
-    }, [baseData, teams, forceSave]);
+    }, [teams, forceSave]);
 
-    // Cleanup / Reset
+    // 3. Reset
     const handleResetData = async () => {
-        console.log("🛠️ [RESET] Starting Data Reset...");
+        if (!session?.user) return { success: false };
         isResettingRef.current = true;
         try {
-            if (session?.user) {
-                const userId = session.user.id;
-                await Promise.all([
-                    supabase.from('saves').delete().eq('user_id', userId),
-                    supabase.from('user_game_results').delete().eq('user_id', userId),
-                    supabase.from('user_transactions').delete().eq('user_id', userId)
-                ]);
-                queryClient.removeQueries({ queryKey: ['saveData', userId] });
+            const userId = session.user.id;
+            await Promise.all([
+                supabase.from('saves').delete().eq('user_id', userId),
+                supabase.from('user_game_results').delete().eq('user_id', userId),
+                supabase.from('user_transactions').delete().eq('user_id', userId)
+            ]);
+            
+            queryClient.removeQueries();
+            
+            // Reload Base Data
+            if (baseData) {
+                setTeams(JSON.parse(JSON.stringify(baseData.teams)));
+                setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
             }
-            
-            // Reset Local State
             setMyTeamId(null);
-            setPlayoffSeries([]);
-            setTransactions([]);
             setCurrentSimDate(INITIAL_DATE);
-            setUserTactics(null);
-            
-            // Reset Flags
-            isSaveLoadedRef.current = false;
+            setTransactions([]);
             hasInitialLoadRef.current = false;
             
-            // Reload Base
-            const res = await refetchBaseData();
-            if (res.data) {
-                setTeams(res.data.teams);
-                setSchedule(res.data.schedule);
-            }
             return { success: true };
         } catch (e) {
-            console.error("❌ [RESET] Critical Error:", e);
+            console.error(e);
             return { success: false, error: e };
         } finally {
             isResettingRef.current = false;
@@ -230,7 +288,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const cleanupData = () => {
          setMyTeamId(null);
          hasInitialLoadRef.current = false;
-         isSaveLoadedRef.current = false;
     };
 
     return {
@@ -241,16 +298,20 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         transactions, setTransactions,
         prospects, setProspects,
         currentSimDate, setCurrentSimDate,
-        forceSave, 
         userTactics, setUserTactics,
         news, setNews,
+        
+        // Loading States
         isBaseDataLoading,
-        hasInitialLoadRef,
-        isSaveLoading,
+        isSaveLoading: isSaveMetaLoading || isHistoryLoading || isReconstructing, // Combine all loading states
         isSaving: saveGameMutation.isPending,
+        
         handleSelectTeam,
         handleResetData,
-        isResetting: isResettingRef.current,
-        cleanupData
+        forceSave,
+        cleanupData,
+        
+        hasInitialLoadRef,
+        isResetting: isResettingRef.current
     };
 };

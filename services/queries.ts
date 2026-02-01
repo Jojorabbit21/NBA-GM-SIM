@@ -5,7 +5,7 @@ import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
 import { mapPlayersToTeams, mapDatabaseScheduleToRuntimeGame } from './dataMapper';
 
-// --- Fetch Base Data (Teams & Schedule) ---
+// --- Fetch Base Data (Static Initial State) ---
 export const useBaseData = () => {
     return useQuery({
         queryKey: ['baseData'],
@@ -50,35 +50,26 @@ export const useBaseData = () => {
     });
 };
 
-// --- Save/Load System ---
+// --- Save System (Metadata Only) ---
 export const useSaveGame = () => {
     const queryClient = useQueryClient();
     return useMutation({
-        mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-            const payloadSize = JSON.stringify(gameData).length;
-            console.log(`💾 [Supabase] Upserting Save... User: ${userId}, Size: ${payloadSize} bytes`);
-
-            // 방어 코드: 데이터가 비어있으면 저장하지 않음
-            if (payloadSize < 100) {
-                console.error("❌ [Supabase] Save Aborted: Payload too small/empty!");
-                throw new Error("Save payload is empty");
-            }
-
+        mutationFn: async ({ userId, teamId }: { userId: string, teamId: string }) => {
+            // saves 테이블에는 오직 현재 플레이 중인 팀 정보와 시간만 남김
+            // 실제 데이터는 user_game_results와 user_transactions에 쌓임
             const { data, error } = await supabase
                 .from('saves')
                 .upsert({ 
                     user_id: userId, 
                     team_id: teamId, 
-                    game_data: gameData,
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'user_id' })
                 .select();
             
             if (error) {
-                console.error("❌ [Supabase] DB Error:", error);
+                console.error("❌ [Supabase] Save Meta Failed:", error);
                 throw error;
             }
-            
             return data;
         },
         onSuccess: (_, variables) => {
@@ -87,6 +78,9 @@ export const useSaveGame = () => {
     });
 };
 
+// --- Load System (Reconstruction Source) ---
+
+// 1. Load Metadata (Which team am I playing?)
 export const useLoadSave = (userId?: string) => {
     return useQuery({
         queryKey: ['saveData', userId],
@@ -95,53 +89,97 @@ export const useLoadSave = (userId?: string) => {
             
             const { data, error } = await supabase
                 .from('saves')
-                .select('*')
+                .select('team_id, updated_at')
                 .eq('user_id', userId)
                 .maybeSingle();
             
             if (error) {
-                console.error("❌ [Supabase] Load Error:", error);
+                console.error("❌ [Supabase] Load Meta Error:", error);
                 throw error;
             }
-            return data;
+            return data; // returns { team_id, updated_at }
         },
         enabled: !!userId,
         retry: false 
     });
 };
 
-// --- Game Results & Schedule ---
-export const useMonthlySchedule = (userId: string | undefined, year: number, month: number) => {
+// 2. Load Full History (Games & Transactions) for State Reconstruction
+export const useUserHistory = (userId?: string) => {
+    return useQuery({
+        queryKey: ['userHistory', userId],
+        queryFn: async () => {
+            if (!userId) return { games: [], transactions: [] };
+
+            // A. Fetch All Game Results
+            const { data: games, error: gamesError } = await supabase
+                .from('user_game_results')
+                .select('*')
+                .eq('user_id', userId)
+                .order('date', { ascending: true }); // 날짜 순 정렬 필수
+
+            if (gamesError) console.error("❌ Failed to fetch game history:", gamesError);
+
+            // B. Fetch All Transactions
+            const { data: transactions, error: txError } = await supabase
+                .from('user_transactions')
+                .select('*')
+                .eq('user_id', userId)
+                .order('date', { ascending: true }); // 날짜 순 정렬 필수
+
+            if (txError) console.error("❌ Failed to fetch transaction history:", txError);
+
+            return {
+                games: games || [],
+                transactions: transactions || []
+            };
+        },
+        enabled: !!userId,
+        refetchOnWindowFocus: false
+    });
+};
+
+// 3. Load Monthly Schedule (For Schedule View Pagination)
+export const useMonthlySchedule = (userId?: string, year?: number, month?: number) => {
     return useQuery({
         queryKey: ['monthlySchedule', userId, year, month],
         queryFn: async () => {
-            if (!userId) return [];
-            
-            const startDate = new Date(year, month, 1).toISOString().split('T')[0];
-            const endDate = new Date(year, month + 1, 0).toISOString().split('T')[0];
+            if (!userId || year === undefined || month === undefined) return [];
+
+            // Construct string date range for the month (YYYY-MM-DD)
+            // Month is 0-indexed
+            const startStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+            const lastDay = new Date(year, month + 1, 0).getDate();
+            const endStr = `${year}-${String(month + 1).padStart(2, '0')}-${lastDay}`;
 
             const { data, error } = await supabase
                 .from('user_game_results')
                 .select('*')
                 .eq('user_id', userId)
-                .gte('date', startDate)
-                .lte('date', endDate);
+                .gte('date', startStr)
+                .lte('date', endStr);
 
-            if (error) throw error;
-            return data;
+            if (error) {
+                console.error("❌ Failed to fetch monthly schedule:", error);
+                return [];
+            }
+            return data || [];
         },
-        enabled: !!userId
+        enabled: !!userId && year !== undefined && month !== undefined,
+        staleTime: 60 * 1000 // 1 minute
     });
 };
+
+// --- Transaction Writers ---
 
 export const saveGameResults = async (results: any[]) => {
     const { error } = await supabase
         .from('user_game_results')
         .insert(results);
-    if (error) console.error("Error saving game results:", error);
+    if (error) console.error("❌ Error saving game results:", error);
+    else console.log(`✅ Saved ${results.length} game results to DB.`);
 };
 
-// --- Transactions ---
 export const saveUserTransaction = async (userId: string, transaction: Transaction) => {
     const { error } = await supabase
         .from('user_transactions')
@@ -152,9 +190,10 @@ export const saveUserTransaction = async (userId: string, transaction: Transacti
             type: transaction.type,
             team_id: transaction.teamId,
             description: transaction.description,
-            details: transaction.details
+            details: transaction.details // JSONB
         });
-    if (error) console.error("Error saving transaction:", error);
+    if (error) console.error("❌ Error saving transaction:", error);
+    else console.log("✅ Transaction saved to DB.");
 };
 
 // --- Scouting ---
