@@ -55,6 +55,14 @@ export const mapPlayersToTeams = (playersData: any[]): Team[] => {
  * 개별 선수 데이터 변환 (Raw DB Object -> Player Object)
  */
 const mapRawPlayerToRuntimePlayer = (p: any): Player => {
+    // 1. 기본 능력치 (Base Stats)
+    const ins = Number(getCol(p, ['ins', 'INS', 'Inside']) || 70);
+    const out = Number(getCol(p, ['out', 'OUT', 'Outside']) || 70);
+    const ath = Number(getCol(p, ['ath', 'ATH', 'Athleticism']) || 70);
+    const plm = Number(getCol(p, ['plm', 'PLM', 'Playmaking']) || 70);
+    const def = Number(getCol(p, ['def', 'DEF', 'Defense']) || 70);
+    const reb = Number(getCol(p, ['reb', 'REB', 'Rebound']) || 70);
+
     return {
         id: getCol(p, ['id', 'player_id', 'PlayerID']) || `p_${Math.random().toString(36).substr(2, 9)}`,
         name: getCol(p, ['name', 'Player', 'Name', 'player_name']) || "Unknown Player",
@@ -74,54 +82,55 @@ const mapRawPlayerToRuntimePlayer = (p: any): Player => {
         condition: 100,
 
         // Detailed Stats (Map or Default)
-        ins: Number(getCol(p, ['ins', 'INS']) || 70),
-        out: Number(getCol(p, ['out', 'OUT']) || 70),
-        ath: Number(getCol(p, ['ath', 'ATH']) || 70),
-        plm: Number(getCol(p, ['plm', 'PLM']) || 70),
-        def: Number(getCol(p, ['def', 'DEF']) || 70),
-        reb: Number(getCol(p, ['reb', 'REB']) || 70),
+        ins, out, ath, plm, def, reb,
 
-        // Sub-attributes (Derived or Direct)
-        closeShot: Number(getCol(p, ['closeShot']) || getCol(p, ['ins']) || 70),
-        midRange: Number(getCol(p, ['midRange']) || getCol(p, ['out']) || 70),
-        threeCorner: Number(getCol(p, ['threeCorner', 'threePoint']) || getCol(p, ['out']) || 70),
-        three45: Number(getCol(p, ['three45']) || getCol(p, ['out']) || 70),
-        threeTop: Number(getCol(p, ['threeTop']) || getCol(p, ['out']) || 70),
-        ft: Number(getCol(p, ['ft', 'FT']) || 75),
-        shotIq: Number(getCol(p, ['shotIq']) || 75),
-        offConsist: Number(getCol(p, ['offConsist']) || 70),
+        // Sub-attributes (Checking capitalized and lowercase variations)
+        // Offensive
+        closeShot: Number(getCol(p, ['closeShot', 'CloseShot', 'Close']) || ins),
+        midRange: Number(getCol(p, ['midRange', 'MidRange', 'Mid']) || out),
+        threeCorner: Number(getCol(p, ['threeCorner', 'ThreeCorner', '3PtCorner']) || out),
+        three45: Number(getCol(p, ['three45', 'Three45', '3Pt45']) || out),
+        threeTop: Number(getCol(p, ['threeTop', 'ThreeTop', '3PtTop']) || out),
+        ft: Number(getCol(p, ['ft', 'FT', 'FreeThrow']) || 75),
+        shotIq: Number(getCol(p, ['shotIq', 'ShotIQ', 'IQ']) || 75),
+        offConsist: Number(getCol(p, ['offConsist', 'OffConsist', 'Consistency']) || 70),
         
-        layup: Number(getCol(p, ['layup']) || getCol(p, ['ins']) || 70),
-        dunk: Number(getCol(p, ['dunk']) || getCol(p, ['ins']) || 70),
-        postPlay: Number(getCol(p, ['postPlay']) || getCol(p, ['ins']) || 70),
-        drawFoul: Number(getCol(p, ['drawFoul']) || 70),
-        hands: Number(getCol(p, ['hands']) || 70),
+        // Inside
+        layup: Number(getCol(p, ['layup', 'Layup']) || ins),
+        dunk: Number(getCol(p, ['dunk', 'Dunk']) || ins),
+        postPlay: Number(getCol(p, ['postPlay', 'PostPlay', 'Post']) || ins),
+        drawFoul: Number(getCol(p, ['drawFoul', 'DrawFoul']) || 70),
+        hands: Number(getCol(p, ['hands', 'Hands']) || 70),
 
-        passAcc: Number(getCol(p, ['passAcc']) || getCol(p, ['plm']) || 70),
-        handling: Number(getCol(p, ['handling']) || getCol(p, ['plm']) || 70),
-        spdBall: Number(getCol(p, ['spdBall']) || getCol(p, ['plm']) || 70),
-        passIq: Number(getCol(p, ['passIq']) || getCol(p, ['plm']) || 70),
-        passVision: Number(getCol(p, ['passVision']) || getCol(p, ['plm']) || 70),
+        // Playmaking
+        passAcc: Number(getCol(p, ['passAcc', 'PassAcc', 'Passing']) || plm),
+        handling: Number(getCol(p, ['handling', 'Handling', 'Handle']) || plm),
+        spdBall: Number(getCol(p, ['spdBall', 'SpdBall', 'SpeedWithBall']) || plm),
+        passIq: Number(getCol(p, ['passIq', 'PassIQ']) || plm),
+        passVision: Number(getCol(p, ['passVision', 'PassVision', 'Vision']) || plm),
 
-        intDef: Number(getCol(p, ['intDef']) || getCol(p, ['def']) || 70),
-        perDef: Number(getCol(p, ['perDef']) || getCol(p, ['def']) || 70),
-        steal: Number(getCol(p, ['steal', 'STL']) || getCol(p, ['def']) || 70),
-        blk: Number(getCol(p, ['blk', 'BLK']) || getCol(p, ['def']) || 70),
-        helpDefIq: Number(getCol(p, ['helpDefIq']) || 70),
-        passPerc: Number(getCol(p, ['passPerc']) || 70),
-        defConsist: Number(getCol(p, ['defConsist']) || 70),
+        // Defense
+        intDef: Number(getCol(p, ['intDef', 'IntDef', 'InteriorDef']) || def),
+        perDef: Number(getCol(p, ['perDef', 'PerDef', 'PerimeterDef']) || def),
+        steal: Number(getCol(p, ['steal', 'Steal', 'STL']) || def),
+        blk: Number(getCol(p, ['blk', 'Blk', 'Block', 'BLK']) || def),
+        helpDefIq: Number(getCol(p, ['helpDefIq', 'HelpDefIQ']) || 70),
+        passPerc: Number(getCol(p, ['passPerc', 'PassPerc', 'PassPerception']) || 70),
+        defConsist: Number(getCol(p, ['defConsist', 'DefConsist']) || 70),
 
-        offReb: Number(getCol(p, ['offReb', 'ORB']) || getCol(p, ['reb']) || 70),
-        defReb: Number(getCol(p, ['defReb', 'DRB']) || getCol(p, ['reb']) || 70),
+        // Rebound
+        offReb: Number(getCol(p, ['offReb', 'OffReb', 'ORB']) || reb),
+        defReb: Number(getCol(p, ['defReb', 'DefReb', 'DRB']) || reb),
 
-        speed: Number(getCol(p, ['speed', 'SPD']) || getCol(p, ['ath']) || 70),
-        agility: Number(getCol(p, ['agility', 'AGI']) || getCol(p, ['ath']) || 70),
-        strength: Number(getCol(p, ['strength', 'STR']) || getCol(p, ['ath']) || 70),
-        vertical: Number(getCol(p, ['vertical', 'JMP']) || getCol(p, ['ath']) || 70),
-        stamina: Number(getCol(p, ['stamina', 'STA']) || getCol(p, ['ath']) || 80),
-        hustle: Number(getCol(p, ['hustle']) || 75),
-        durability: Number(getCol(p, ['durability']) || 80),
-        intangibles: Number(getCol(p, ['intangibles']) || 70),
+        // Athleticism
+        speed: Number(getCol(p, ['speed', 'Speed', 'SPD']) || ath),
+        agility: Number(getCol(p, ['agility', 'Agility', 'AGI']) || ath),
+        strength: Number(getCol(p, ['strength', 'Strength', 'STR']) || ath),
+        vertical: Number(getCol(p, ['vertical', 'Vertical', 'JMP']) || ath),
+        stamina: Number(getCol(p, ['stamina', 'Stamina', 'STA']) || 80),
+        hustle: Number(getCol(p, ['hustle', 'Hustle']) || 75),
+        durability: Number(getCol(p, ['durability', 'Durability']) || 80),
+        intangibles: Number(getCol(p, ['intangibles', 'Intangibles']) || 70),
 
         // Runtime Stats Containers
         stats: p.stats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
