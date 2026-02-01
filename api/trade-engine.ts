@@ -59,13 +59,15 @@ interface TeamNeeds {
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        VALUE_EXPONENT: 3.0, 
-        SUPERSTAR_PREMIUM_THRESHOLD: 94,
-        SUPERSTAR_MULTIPLIER: 1.5 
+        // [Difficulty Update] Value Exponent Increased (3.0 -> 3.8)
+        // Makes high OVR players exponentially more valuable than mid-tier players.
+        VALUE_EXPONENT: 3.8, 
+        SUPERSTAR_PREMIUM_THRESHOLD: 90,
+        SUPERSTAR_MULTIPLIER: 1.8 
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
-        BAD_CONTRACT_PENALTY: 0.7, 
+        BAD_CONTRACT_PENALTY: 0.6, // Penalize bad contracts more heavily
     },
     NEEDS: { 
         POSITION_BONUS: 0.25,
@@ -84,7 +86,11 @@ const TRADE_CONFIG = {
     },
     DEPTH: {
         MAX_CORE_ASSETS_IN_DEAL: 2, 
-        MIN_ROSTER_SIZE: 13
+        MIN_ROSTER_SIZE: 13,
+        // [Difficulty Update] Diminishing Returns for Quantity
+        // 1st player: 100% value, 2nd: 80%, 3rd: 20%, 4th+: 5%
+        // Prevents "5 trash players for 1 star" exploits.
+        PACKAGE_WEIGHTS: [1.0, 0.8, 0.2, 0.05, 0.05]
     }
 };
 
@@ -123,7 +129,7 @@ function checkTradeLegality(team: Team, incoming: Player[], outgoing: Player[]):
     return true;
 }
 
-// 1. Calculate Base Trade Value
+// 1. Calculate Base Trade Value (Individual)
 function getPlayerTradeValue(p: Player): number {
     const C = TRADE_CONFIG;
     const safeOvr = typeof p.ovr === 'number' ? p.ovr : 70;
@@ -131,18 +137,22 @@ function getPlayerTradeValue(p: Player): number {
     
     let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
+    // [Update] Sharper curve for stars
     if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
-    else if (safeOvr >= 88) baseValue *= 1.15; 
+    else if (safeOvr >= 85) baseValue *= 1.2; 
 
+    // Young Talent Premium
     if (p.age <= 23 && p.potential > safeOvr) {
         const potDiff = p.potential - safeOvr;
-        baseValue *= (1.0 + (potDiff * 0.05));
+        baseValue *= (1.0 + (potDiff * 0.08)); // Increased from 0.05
     } else if (p.age >= 32) {
-        baseValue *= Math.max(0.1, 1.0 - ((p.age - 31) * 0.1));
+        baseValue *= Math.max(0.1, 1.0 - ((p.age - 31) * 0.15)); // Steeper decline value
     }
 
-    if (safeOvr < 80 && p.salary > 20) baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
+    // Contract Context
+    if (safeOvr < 78 && p.salary > 15) baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
 
+    // Injury Context
     if (p.health === 'Injured') {
         baseValue *= C.INJURY.INJURED_PENALTY;
     } else if (p.health === 'Day-to-Day') {
@@ -152,7 +162,24 @@ function getPlayerTradeValue(p: Player): number {
     return Math.max(1, Math.floor(baseValue));
 }
 
-// 2. Analyze Team Needs
+// 2. [New] Calculate Total Package Value with Diminishing Returns
+function calculatePackageTrueValue(players: Player[]): number {
+    // Sort by value desc (Best players first)
+    const sorted = [...players].sort((a, b) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
+    
+    let totalValue = 0;
+    const weights = TRADE_CONFIG.DEPTH.PACKAGE_WEIGHTS;
+
+    sorted.forEach((p, idx) => {
+        const val = getPlayerTradeValue(p);
+        const weight = idx < weights.length ? weights[idx] : 0.05; // 5% for deep bench fillers
+        totalValue += (val * weight);
+    });
+
+    return totalValue;
+}
+
+// 3. Analyze Team Needs
 function analyzeTeamSituation(team: Team): TeamNeeds {
     const roster = team.roster;
     const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
@@ -212,7 +239,8 @@ export default async function handler(req: any, res: any) {
             const myTeam = leagueState.find((t: Team) => t.id === myTeamId);
             
             const offers: TradeOffer[] = [];
-            const outgoingValue = tradingPlayers.reduce((sum: number, p: Player) => sum + getPlayerTradeValue(p), 0);
+            // [Difficulty Update] Use weighted package value instead of sum
+            const outgoingValue = calculatePackageTrueValue(tradingPlayers);
             
             for (const otherTeam of leagueState) {
                 if (otherTeam.id === myTeamId) continue;
@@ -256,13 +284,13 @@ export default async function handler(req: any, res: any) {
 
                 if (interestScore > 0) {
                     const tradeable = otherTeam.roster
-                        .filter((p: Player) => p.ovr < 90) // Simplified untouchable logic
+                        .filter((p: Player) => p.ovr < 94) // Harder to get superstars
                         .sort((a: Player, b: Player) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
                     
-                    let packageVal = 0;
                     const pkg: Player[] = [];
                     for (const p of tradeable) {
-                        const maxVal = outgoingValue * (1.1 + (interestScore * 0.05));
+                        const currentPkgVal = calculatePackageTrueValue([...pkg, p]);
+                        const maxVal = outgoingValue * (1.0 + (interestScore * 0.05)); // Tighter margin
                         
                         // Proposed Check: Will adding this player break rules?
                         const potentialPkg = [...pkg, p];
@@ -273,20 +301,22 @@ export default async function handler(req: any, res: any) {
                         // Check if My Team (User) allows receiving this package
                         if (!checkTradeLegality(myTeam, potentialPkg, tradingPlayers)) continue;
 
-                        if (packageVal < maxVal && pkg.length < 4) {
+                        if (currentPkgVal < maxVal && pkg.length < 3) { // Smaller AI packages (Quality over Quantity)
                             pkg.push(p);
-                            packageVal += getPlayerTradeValue(p);
                         }
                     }
                     
-                    if (pkg.length > 0 && packageVal >= outgoingValue * 0.8) {
+                    const pkgValue = calculatePackageTrueValue(pkg);
+                    
+                    // [Difficulty Update] Minimum Value Threshold increased
+                    if (pkg.length > 0 && pkgValue >= outgoingValue * 0.95) {
                         const uniqueReasons = [...new Set(interestReasons)];
                         
                         offers.push({
                             teamId: otherTeam.id,
                             teamName: otherTeam.name,
                             players: pkg,
-                            diffValue: packageVal - outgoingValue,
+                            diffValue: pkgValue - outgoingValue,
                             analysis: [
                                 `AI Interest Score: ${interestScore} / 10`,
                                 ...uniqueReasons.slice(0, 3) 
@@ -308,9 +338,15 @@ export default async function handler(req: any, res: any) {
                 return res.status(404).json({ message: 'Teams not found', offers: [] });
             }
 
-            const targetValue = targetPlayers.reduce((sum: number, p: Player) => sum + getPlayerTradeValue(p), 0);
+            // [Difficulty Update] Use weighted package value
+            const targetValue = calculatePackageTrueValue(targetPlayers);
             const needs = analyzeTeamSituation(targetTeam);
             const myAssets = myTeam.roster.filter((p: Player) => p.health !== 'Injured');
+
+            // [Difficulty Update] Star Protection Logic
+            // If user is asking for a Star (OVR 88+), they MUST send a Star (OVR 82+) or High Potential
+            const targetBestOvr = Math.max(...targetPlayers.map((p: Player) => p.ovr));
+            const requirePremiumAsset = targetBestOvr >= 88;
 
             const scoredAssets = myAssets.map((p: Player) => {
                 let score = 0;
@@ -323,6 +359,11 @@ export default async function handler(req: any, res: any) {
                 if (needs.isSeller && p.age <= 24) { score += 2; reasons.push(`✅ ${p.name}: 리빌딩 코어 (유망주)`); }
                 if (needs.isContender && p.ovr >= 80) { score += 2; reasons.push(`✅ ${p.name}: 윈나우 조각 (즉시전력)`); }
                 
+                // Penalize if we need a premium asset but this player isn't one
+                if (requirePremiumAsset && p.ovr < 82 && p.potential < 88) {
+                    score -= 5;
+                }
+
                 score += (getPlayerTradeValue(p) / 1000); 
                 return { player: p, score, reasons };
             }).sort((a: any, b: any) => b.score - a.score);
@@ -334,6 +375,8 @@ export default async function handler(req: any, res: any) {
                 const pkg: Player[] = [];
                 const reasons: string[] = [];
                 
+                let hasPremiumAsset = false;
+
                 for (const asset of availableAssets) {
                     if (pkg.includes(asset.player)) continue;
                     
@@ -344,33 +387,48 @@ export default async function handler(req: any, res: any) {
                     // Check if AI allows receiving this package (Target Team)
                     if (!checkTradeLegality(targetTeam, potentialPkg, targetPlayers)) continue;
 
-                    if (pkg.length >= 4) break;
-                    if (currentVal + getPlayerTradeValue(asset.player) > targetValue * 1.3) continue;
+                    // [Difficulty Update] AI hates giving up stars for 4+ players
+                    if (pkg.length >= 4) break; 
+                    
+                    // Don't wildly overpay
+                    const potentialVal = calculatePackageTrueValue(potentialPkg);
+                    if (potentialVal > targetValue * 1.3) continue;
+
+                    // Star Protection Check
+                    if (requirePremiumAsset) {
+                        if (asset.player.ovr >= 82 || asset.player.potential >= 88) hasPremiumAsset = true;
+                    }
 
                     pkg.push(asset.player);
-                    currentVal += getPlayerTradeValue(asset.player);
+                    currentVal = potentialVal;
                     reasons.push(...asset.reasons);
 
                     if (currentVal >= targetValue * valueMultiplier) break;
                 }
+
+                // If asking for a star but giving trash, reject
+                if (requirePremiumAsset && !hasPremiumAsset) return { players: [], value: 0, reasons: [] };
+
                 return { players: pkg, value: currentVal, reasons: [...new Set(reasons)] };
             };
 
-            const p1 = generatePackage(scoredAssets, 0.9);
-            if (p1.players.length > 0 && p1.value >= targetValue * 0.8) {
+            // [Difficulty Update] AI Demands 100% Value Match or more for direct proposals
+            const p1 = generatePackage(scoredAssets, 1.05);
+            if (p1.players.length > 0 && p1.value >= targetValue) {
                 offers.push({
                     teamId: targetTeam.id,
                     teamName: targetTeam.name,
                     players: p1.players,
                     diffValue: p1.value - targetValue,
-                    analysis: [`AI Counter Proposal (Best Fit)`, ...p1.reasons.slice(0, 3)]
+                    analysis: [`AI Counter Proposal (Balanced)`, ...p1.reasons.slice(0, 3)]
                 });
             }
 
             if (p1.players.length > 0) {
                 const altAssets = scoredAssets.filter((a: any) => a.player.id !== p1.players[0].id);
-                const p2 = generatePackage(altAssets, 0.95);
-                if (p2.players.length > 0 && p2.value >= targetValue * 0.85) {
+                // Alternative package demands even more value (since it's not their first choice)
+                const p2 = generatePackage(altAssets, 1.15); 
+                if (p2.players.length > 0 && p2.value >= targetValue) {
                     offers.push({
                         teamId: targetTeam.id,
                         teamName: targetTeam.name,
