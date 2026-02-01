@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { Trophy, ArrowLeft, CalendarDays, BarChart3, Users, Crown, Medal, Star, Activity } from 'lucide-react';
 import { Team, PlayoffSeries, Game } from '../types';
-import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { OvrBadge } from '../components/SharedComponents';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 
 interface PlayoffReviewViewProps {
@@ -375,7 +375,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                       <tr key={p.id} className={`group hover:bg-white/5 transition-colors ${isMvp ? 'bg-amber-900/10' : ''}`}>
                                           <td className="py-3 px-6 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">
                                               <div className="flex items-center gap-3">
-                                                  <div className={getOvrBadgeStyle(p.ovr) + " !w-8 !h-8 !text-xs !mx-0 flex-shrink-0"}>{p.ovr}</div>
+                                                  <OvrBadge ovr={p.ovr} className="!w-8 !h-8 !text-xs !mx-0 flex-shrink-0" />
                                                   <div>
                                                       <div className="flex items-center gap-1.5">
                                                           <span className={`font-bold text-sm ${isMvp ? 'text-amber-100' : 'text-slate-200'} group-hover:text-white`}>{p.name}</span>

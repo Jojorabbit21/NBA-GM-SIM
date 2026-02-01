@@ -1,8 +1,7 @@
-
 import React from 'react';
 import { Trophy, ArrowRight, Crown, BarChart3, CalendarClock, Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
-import { getOvrBadgeStyle } from '../SharedComponents';
+import { OvrBadge } from '../SharedComponents';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -19,6 +18,81 @@ interface DashboardHeaderProps {
   hasPlayoffHistory: boolean;
   currentSeries?: PlayoffSeries; 
 }
+
+// [Added] DashboardReviewBanners Component to fix Error 1
+interface DashboardReviewBannersProps {
+  onShowSeasonReview: () => void;
+  onShowPlayoffReview: () => void;
+  hasPlayoffHistory: boolean;
+  showSeasonBanner: boolean;
+  showPlayoffBanner: boolean;
+}
+
+export const DashboardReviewBanners: React.FC<DashboardReviewBannersProps> = ({
+  onShowSeasonReview,
+  onShowPlayoffReview,
+  hasPlayoffHistory,
+  showSeasonBanner,
+  showPlayoffBanner,
+}) => {
+  if (!showSeasonBanner && !showPlayoffBanner && !hasPlayoffHistory) return null;
+
+  return (
+    <div className="w-full max-w-[1900px] flex flex-col gap-4 mb-6 animate-in slide-in-from-top-4 duration-500">
+      {showSeasonBanner && (
+        <div className="bg-gradient-to-r from-orange-600/90 to-amber-600/90 rounded-2xl p-6 shadow-lg border border-orange-400/30 flex justify-between items-center backdrop-blur-sm">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/20 rounded-full">
+              <Trophy size={24} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white uppercase tracking-tight leading-none">Regular Season Complete</h3>
+              <p className="text-sm text-orange-100 font-bold mt-1">2025-26 정규시즌이 종료되었습니다. 시즌 리포트를 확인하세요.</p>
+            </div>
+          </div>
+          <button
+            onClick={onShowSeasonReview}
+            className="px-6 py-3 bg-white text-orange-600 rounded-xl font-black uppercase text-sm tracking-widest shadow-xl hover:bg-orange-50 transition-all flex items-center gap-2"
+          >
+            Review Season <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
+
+      {showPlayoffBanner && (
+        <div className="bg-gradient-to-r from-indigo-600/90 to-blue-600/90 rounded-2xl p-6 shadow-lg border border-indigo-400/30 flex justify-between items-center backdrop-blur-sm">
+          <div className="flex items-center gap-4">
+            <div className="p-3 bg-white/20 rounded-full">
+              <Crown size={24} className="text-white" />
+            </div>
+            <div>
+              <h3 className="text-xl font-black text-white uppercase tracking-tight leading-none">The Championship Conclusion</h3>
+              <p className="text-sm text-indigo-100 font-bold mt-1">대망의 2026 플레이오프가 막을 내렸습니다.</p>
+            </div>
+          </div>
+          <button
+            onClick={onShowPlayoffReview}
+            className="px-6 py-3 bg-white text-indigo-600 rounded-xl font-black uppercase text-sm tracking-widest shadow-xl hover:bg-indigo-50 transition-all flex items-center gap-2"
+          >
+            Playoff Report <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* History Button (Small) if banners are hidden but history exists */}
+      {!showSeasonBanner && !showPlayoffBanner && hasPlayoffHistory && (
+        <div className="flex justify-end">
+           <button
+            onClick={onShowPlayoffReview}
+            className="px-4 py-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all border border-slate-700"
+          >
+            <BarChart3 size={14} /> 지난 시즌/플레이오프 기록 보기
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, currentSeries
@@ -75,7 +149,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                                 </div>
                                 <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mt-1.5">{awayTeam.wins}W - {awayTeam.losses}L</span>
                             </div>
-                            <div className={getOvrBadgeStyle(awayOvr) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{awayOvr || '??'}</div>
+                            <OvrBadge ovr={awayOvr || 70} className="!w-11 !h-11 !text-2xl" />
                         </>
                     ) : (
                         <div className="flex items-center gap-4 text-slate-500 opacity-50">
@@ -104,7 +178,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 <div className="flex items-center gap-6">
                     {homeTeam ? (
                         <>
-                            <div className={getOvrBadgeStyle(homeOvr) + " !w-11 !h-11 !text-2xl !mx-0 ring-2 ring-white/10"}>{homeOvr || '??'}</div>
+                            <OvrBadge ovr={homeOvr || 70} className="!w-11 !h-11 !text-2xl" />
                             <div className="flex flex-col items-end">
                                 <div className="flex items-center gap-2">
                                     <span className="text-2xl font-black text-white oswald uppercase tracking-tighter leading-none">{homeTeam.name}</span>
@@ -153,64 +227,4 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         </div>
     </div>
   );
-};
-
-export const DashboardReviewBanners: React.FC<{
-  onShowSeasonReview: () => void;
-  onShowPlayoffReview: () => void;
-  hasPlayoffHistory: boolean;
-  showSeasonBanner: boolean;
-  showPlayoffBanner: boolean;
-}> = ({ onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory, showSeasonBanner, showPlayoffBanner }) => {
-    if (!showSeasonBanner && !showPlayoffBanner) return null;
-
-    return (
-      <div className="w-full max-w-[1900px] flex flex-col md:flex-row gap-6 animate-in slide-in-from-top-4 duration-500 mb-6">
-          {showSeasonBanner && (
-              <div className="flex-1 bg-gradient-to-br from-orange-600 to-red-600 rounded-3xl p-1 shadow-lg border border-orange-400/50 relative overflow-hidden group">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none group-hover:bg-white/20 transition-colors"></div>
-                  <div className="bg-orange-950/40 backdrop-blur-md rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
-                      <div className="flex items-center gap-5">
-                          <div className="p-3 bg-white/20 rounded-2xl border border-white/20 shadow-inner">
-                              <BarChart3 size={28} className="text-white" />
-                          </div>
-                          <div>
-                              <h3 className="text-xl font-black text-white uppercase tracking-wider oswald">Regular Season</h3>
-                              <p className="text-xs font-bold text-orange-100 mt-1">2025-26 정규리그 기록 및 분석</p>
-                          </div>
-                      </div>
-                      <button 
-                          onClick={onShowSeasonReview}
-                          className="px-8 py-3 bg-white text-orange-600 hover:bg-orange-50 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-lg active:scale-95 flex items-center gap-3 border border-white/50 group/btn w-full md:w-auto justify-center"
-                      >
-                          시즌 리뷰 <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
-                      </button>
-                  </div>
-              </div>
-          )}
-          
-          {showPlayoffBanner && (
-              <div className="flex-1 bg-gradient-to-r from-indigo-600 to-violet-600 rounded-3xl p-1 shadow-lg border border-indigo-400/50 relative overflow-hidden group animate-in slide-in-from-right-4 duration-500">
-                  <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl pointer-events-none group-hover:bg-white/20 transition-colors"></div>
-                  <div className="bg-indigo-950/40 backdrop-blur-md rounded-[1.3rem] px-8 py-6 flex flex-col md:flex-row items-center justify-between gap-6 relative z-10 h-full">
-                      <div className="flex items-center gap-5">
-                          <div className="p-3 bg-white/20 rounded-2xl border border-white/20 shadow-inner animate-pulse-subtle">
-                              <Trophy size={28} className="text-white fill-white" />
-                          </div>
-                          <div>
-                              <h3 className="text-xl font-black text-white uppercase tracking-wider oswald">Playoff Results</h3>
-                              <p className="text-xs font-bold text-indigo-100/80 mt-1">2026 포스트시즌 최종 결산</p>
-                          </div>
-                      </div>
-                      <button 
-                          onClick={onShowPlayoffReview}
-                          className="px-8 py-3 bg-white text-indigo-700 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-50 transition-all shadow-xl active:scale-95 flex items-center gap-3 w-full md:w-auto justify-center"
-                      >
-                          플레이오프 리뷰 <Crown size={14} className="fill-indigo-700" />
-                      </button>
-                  </div>
-              </div>
-          )}
-      </div>
-    );
 };

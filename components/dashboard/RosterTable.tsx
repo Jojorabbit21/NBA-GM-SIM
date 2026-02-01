@@ -2,7 +2,7 @@
 import React from 'react';
 import { Users, Eye, ShieldAlert, Lock } from 'lucide-react';
 import { Player, Team, GameTactics } from '../../types';
-import { getOvrBadgeStyle, getRankStyle } from '../SharedComponents';
+import { OvrBadge, getRankStyle } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { StartingLineup } from '../roster/StartingLineup';
 
@@ -115,7 +115,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                             </td>
                                             <td className="py-3 px-4 text-center">
                                                 <div className="flex items-center justify-center h-10 gap-1.5">
-                                                <div className={getOvrBadgeStyle(displayOvr) + " !w-10 !h-10 !text-xl !mx-0"}>{displayOvr}</div>
+                                                    <OvrBadge ovr={displayOvr} className="!w-10 !h-10 !text-xl" />
                                                 </div>
                                             </td>
                                             <td className="py-3 px-1">
@@ -179,7 +179,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                         <span className="font-black text-base text-slate-400 group-hover:text-red-400">{p.name}</span>
                                                     </td>
                                                     <td className="py-4 px-4 text-center">
-                                                        <div className={getOvrBadgeStyle(ovr) + " !w-9 !h-9 !text-lg !mx-auto grayscale opacity-70"}>{ovr}</div>
+                                                        <OvrBadge ovr={ovr} className="!w-9 !h-9 !text-lg grayscale opacity-70" />
                                                     </td>
                                                     <td className="py-4 px-4 text-center">
                                                         <span className="text-xs font-black text-slate-600 px-2 py-1 rounded-md border border-slate-800 uppercase tracking-tighter">{p.position}</span>
@@ -235,7 +235,11 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                         <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{ovr}</div></div></td>
+                                                <td className="py-3 px-4 text-center">
+                                                    <div className="flex items-center justify-center h-10">
+                                                        <OvrBadge ovr={ovr} className="!w-10 !h-10 !text-xl" />
+                                                    </div>
+                                                </td>
                                                 <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
                                                 <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.out)}`}>{p.out}</div></div></td>
                                                 <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ins)}`}>{p.ins}</div></div></td>

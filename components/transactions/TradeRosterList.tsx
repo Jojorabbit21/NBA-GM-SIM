@@ -2,7 +2,7 @@
 import React from 'react';
 import { Users, Info, ArrowLeftRight, Check, MinusCircle, CheckCircle2 } from 'lucide-react';
 import { Player } from '../../types';
-import { getOvrBadgeStyle } from '../SharedComponents';
+import { OvrBadge } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
 
 interface TradeRosterListProps {
@@ -53,7 +53,7 @@ export const TradeRosterList: React.FC<TradeRosterListProps> = ({
                             {isSelected && <Check size={20} className="text-white" strokeWidth={3} />}
                         </div>
                         <div className="flex-shrink-0">
-                            <div className={getOvrBadgeStyle(displayOvr) + " !mx-0 !w-10 !h-10 !text-xl"}>{displayOvr}</div>
+                            <OvrBadge ovr={displayOvr} className="!w-10 !h-10 !text-xl !mx-0" />
                         </div>
                         <div className="text-left flex-1 min-w-0">
                             <div className="flex items-center gap-2">

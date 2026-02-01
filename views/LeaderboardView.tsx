@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { OvrBadge, PlayerDetailModal } from '../components/SharedComponents';
 import { ChevronDown, BarChart3 } from 'lucide-react';
 
 interface LeaderboardViewProps {
@@ -175,7 +175,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                                       </td>
                                       <td className="py-4 px-6 cursor-pointer align-middle" onClick={() => setViewPlayer(p)}>
                                           <div className="flex items-center gap-4">
-                                              <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-0"}>{p.ovr}</div>
+                                              <OvrBadge ovr={p.ovr} className="!w-9 !h-9 !text-lg !mx-0" />
                                               <span className={`font-black text-base truncate max-w-[240px] group-hover:underline underline-offset-4 ${isTop3 ? 'text-white' : 'text-slate-200 group-hover:text-indigo-400'}`}>{p.name}</span>
                                           </div>
                                       </td>
