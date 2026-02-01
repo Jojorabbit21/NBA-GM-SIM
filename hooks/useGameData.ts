@@ -29,7 +29,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const isResettingRef = useRef(false);
     const hasInitialLoadRef = useRef(false);
     const isDirtyRef = useRef(false);
-    const isSaveLoadedRef = useRef(false); // New Ref to track if save was loaded
+    const isSaveLoadedRef = useRef(false);
 
     // Queries & Mutations
     const saveGameMutation = useSaveGame();
@@ -38,7 +38,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
     // Update GameData Ref for Save
     useEffect(() => {
-        // Extract current team's tactic history to ensure it persists
         const myTeam = teams.find(t => t.id === myTeamId);
         const tacticHistorySnapshot = myTeam?.tacticHistory || null;
 
@@ -48,7 +47,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             tacticHistory: tacticHistorySnapshot,
             playoffSeries, transactions, prospects
         };
-        // Mark dirty when state changes (if game is active and not just loaded, and not resetting)
+        
         if (myTeamId && session?.user && !isGuestMode && hasInitialLoadRef.current && !isResettingRef.current) {
             isDirtyRef.current = true;
         }
@@ -64,11 +63,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             
             setMyTeamId(saveData.team_id);
             
-            if (gd.teams && gd.teams.length > 0) {
-                // Just load the raw data. OVR will be calculated on display.
-                setTeams(gd.teams);
-            }
-
+            if (gd.teams && gd.teams.length > 0) setTeams(gd.teams);
             if (gd.schedule && gd.schedule.length > 0) setSchedule(gd.schedule);
             if (gd.currentSimDate) setCurrentSimDate(gd.currentSimDate);
             if (gd.tactics) setUserTactics(gd.tactics);
@@ -82,38 +77,28 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     }, [saveData, isSaveLoading, session, isGuestMode]);
 
-    // 2. Initialize Base Data (Priority 2 - Only if no save loaded)
+    // 2. Initialize Base Data (Priority 2)
     useEffect(() => {
-        // Skip if save already loaded or base data missing
         if (isSaveLoadedRef.current) return;
         if (!baseData) return;
 
-        // If no teams yet (fresh start or guest mode), load base
         if (teams.length === 0) {
             console.log("🆕 Initializing Base Data...");
-            // Base data is already mapped with correct OVR in dataMapper.ts
             setTeams(baseData.teams);
             setSchedule(baseData.schedule);
         }
     }, [baseData, teams.length]);
 
-    // [Fix] Robust Auto-Save Interval
+    // Auto-Save Interval
     useEffect(() => {
         if (!session?.user || isGuestMode) return;
-
-        const SAVE_INTERVAL = 10000; // Check every 10 seconds
+        const SAVE_INTERVAL = 10000; 
 
         const intervalId = setInterval(() => {
-            // Check conditions: Dirty, Initial Load Done, Team Selected, Not Resetting, Not Currently Saving
             if (isDirtyRef.current && hasInitialLoadRef.current && myTeamId && !isResettingRef.current && !saveGameMutation.isPending) {
                 console.log("💾 Auto-Saving Game (Interval)...");
-                
-                // Deep copy current state to prevent reference issues
                 const currentData = JSON.parse(JSON.stringify(gameDataRef.current));
-                
-                // Optimistically mark as clean to prevent double-saves in next tick
                 isDirtyRef.current = false;
-
                 saveGameMutation.mutate({ 
                     userId: session.user.id, 
                     teamId: myTeamId, 
@@ -121,108 +106,114 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 });
             }
         }, SAVE_INTERVAL);
-
         return () => clearInterval(intervalId);
     }, [session, isGuestMode, myTeamId, saveGameMutation]);
 
-    // [New] Prevent Tab Close if Dirty
+    // Prevent Tab Close if Dirty
     useEffect(() => {
         const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-            // If dirty and authenticated, warn user
             if (isDirtyRef.current && session?.user && !isGuestMode) {
                 e.preventDefault();
-                e.returnValue = ''; // Standard for modern browsers
-                return ''; // Legacy support
+                e.returnValue = ''; 
+                return ''; 
             }
         };
-
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, [session, isGuestMode]);
 
-    // Force Save (Manual or Critical Events) - [CRITICAL FIX FOR LOGOUT]
+    // Force Save
     const forceSave = useCallback(async (overrides?: Partial<typeof gameDataRef.current>) => {
-        if (isResettingRef.current || !session?.user || isGuestMode || !myTeamId) {
-             console.warn("⚠️ Force Save Skipped: Conditions not met (Guest/No Session/Resetting)");
+        if (isResettingRef.current || !session?.user || isGuestMode) {
+             console.warn("⚠️ Force Save Skipped: Conditions not met.");
              return;
         }
 
-        console.log(`💾 Force Save Triggered. Preparing payload...`);
-        
-        // 1. Capture Data Synchronously immediately
+        // Merge current ref with overrides.
+        // Overrides allow saving NEW data (like from Team Select) before the Ref has updated via useEffect.
         const dataToSave = { ...gameDataRef.current, ...overrides };
-        
-        // 2. Validate Payload
-        if (!dataToSave.teams || dataToSave.teams.length === 0) {
-            console.error("❌ Force Save Aborted: No teams data to save.");
+        const targetTeamId = dataToSave.myTeamId || myTeamId;
+
+        if (!targetTeamId || !dataToSave.teams || dataToSave.teams.length === 0) {
+            console.error("❌ Force Save Aborted: Missing Team ID or Roster Data.");
             return;
         }
 
-        // 3. Mark as clean locally
+        console.log(`💾 Force Save Triggered for ${targetTeamId}.`);
         isDirtyRef.current = false;
 
         try {
-            // 4. Send to Supabase and WAIT for completion
             await saveGameMutation.mutateAsync({ 
                 userId: session.user.id, 
-                teamId: myTeamId, 
+                teamId: targetTeamId, 
                 gameData: dataToSave 
             });
             console.log("✅ Force Save Completed Successfully");
         } catch (e) {
             console.error("❌ Force Save Failed:", e);
-            // Restore dirty flag if save failed so user knows
             isDirtyRef.current = true;
-            throw e; // Re-throw so caller (logout) knows it failed
+            throw e; 
         }
     }, [session, isGuestMode, myTeamId, saveGameMutation]);
 
     // Actions
     const handleSelectTeam = useCallback(async (teamId: string) => {
-        if (myTeamId) return;
-        console.log(`🏀 Team Selected: ${teamId}`);
+        if (myTeamId) return; // Prevent double select
+        console.log(`🏀 Selecting Team: ${teamId}`);
+        
+        // 1. Prepare Initial Data Synchronously
+        const initialTeams = baseData?.teams || teams;
+        const initialSchedule = (baseData?.schedule && baseData.schedule.length > 0) 
+            ? baseData.schedule 
+            : generateSeasonSchedule(teamId);
+        
+        // 2. Setup State
         setMyTeamId(teamId);
-        
-        // Clear trade ops counters on new team selection
-        Object.keys(localStorage).forEach(key => {
-            if (key.startsWith('trade_ops_')) {
-                localStorage.removeItem(key);
-            }
-        });
-        
-        // Ensure base data is fully populated if not already
-        if (teams.length === 0 && baseData) {
-            setTeams(baseData.teams);
-            setSchedule(baseData.schedule);
-        }
-        
-        if (schedule.length === 0 && baseData?.schedule) {
-             setSchedule(baseData.schedule);
-        } else if (schedule.length === 0) {
-             // Absolute Fallback
-             setSchedule(generateSeasonSchedule(teamId));
-        }
-
+        setTeams(initialTeams);
+        setSchedule(initialSchedule);
         setCurrentSimDate(INITIAL_DATE);
         
-        // Setup initial news
-        const teamData = (teams.length > 0 ? teams : baseData?.teams || []).find(t => t.id === teamId);
+        // 3. Clear temp storage
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('trade_ops_')) localStorage.removeItem(key);
+        });
+        
+        // 4. News
+        const teamData = initialTeams.find(t => t.id === teamId);
         if (teamData) {
             const welcome = await generateOwnerWelcome(`${teamData.city} ${teamData.name}`);
             setNews([{ type: 'text', content: welcome }]);
         }
         
         hasInitialLoadRef.current = true;
-        // Immediate Save to establish session
-        setTimeout(() => forceSave(), 500);
+        
+        // 5. [CRITICAL] Immediate Save with Explicit Payload
+        // We pass the data directly to forceSave via 'overrides' instead of waiting for useEffect to update gameDataRef
+        const initialSavePayload = {
+            myTeamId: teamId,
+            teams: initialTeams,
+            schedule: initialSchedule,
+            currentSimDate: INITIAL_DATE,
+            tactics: null,
+            tacticHistory: null,
+            playoffSeries: [],
+            transactions: [],
+            prospects: []
+        };
+
+        try {
+            await forceSave(initialSavePayload);
+            console.log(`✅ Initial Team Save Complete for ${teamId}`);
+        } catch (e) {
+            console.error("❌ Initial Team Save Failed:", e);
+        }
 
         return true;
-    }, [baseData, myTeamId, teams, schedule, forceSave]);
+    }, [baseData, teams, forceSave, myTeamId]);
 
     const handleResetData = async () => {
         console.log("🛠️ [RESET] Starting Data Reset Process...");
         isResettingRef.current = true;
-        
         try {
             if (session?.user) {
                 const userId = session.user.id;
@@ -236,11 +227,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 queryClient.setQueryData(['fullGameState', userId], null);
             }
             
-            // Clear local storage for trade ops counters on reset
             Object.keys(localStorage).forEach(key => {
-                if (key.startsWith('trade_ops_')) {
-                    localStorage.removeItem(key);
-                }
+                if (key.startsWith('trade_ops_')) localStorage.removeItem(key);
             });
 
             setMyTeamId(null);
@@ -253,13 +241,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             hasInitialLoadRef.current = false;
             isDirtyRef.current = false;
             
-            // Reload Base Data
             const res = await refetchBaseData();
             if (res.data) {
                 setTeams(res.data.teams);
                 setSchedule(res.data.schedule);
             }
-            
             return { success: true };
         } catch (e) {
             console.error("❌ [RESET] Critical Error during reset:", e);
