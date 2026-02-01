@@ -7,47 +7,47 @@ export const TRADE_DEADLINE = '2026-02-06';
 export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {};
 
 export const TEAM_OWNERS: Record<string, string> = {
-    'atl': 'Tony Ressler', 'bos': 'Wyc Grousbeck', 'bkn': 'Joseph Tsai', 'cha': 'Rick Schnall & Gabe Plotkin',
-    'chi': 'Michael Reinsdorf', 'cle': 'Dan Gilbert', 'dal': 'Miriam Adelson', 'den': 'Ann Walton Kroenke',
-    'det': 'Tom Gores', 'gsw': 'Joe Lacob', 'hou': 'Tilman Fertitta', 'ind': 'Herb Simon',
-    'lac': 'Steve Ballmer', 'lal': 'Jeanie Buss', 'mem': 'Robert Pera', 'mia': 'Micky Arison',
-    'mil': 'Wes Edens', 'min': 'Glen Taylor', 'nop': 'Gayle Benson', 'nyk': 'James Dolan',
-    'okc': 'Clay Bennett', 'orl': 'Dan DeVos', 'phi': 'Josh Harris', 'phx': 'Mat Ishbia',
-    'por': 'Jody Allen', 'sac': 'Vivek Ranadivé', 'sas': 'Peter J. Holt', 'tor': 'Larry Tanenbaum',
-    'uta': 'Ryan Smith', 'was': 'Ted Leonsis'
+    'atl': '토니 레슬러', 'bos': '윅 그로스벡', 'bkn': '조 차이', 'cha': '릭 슈널 & 게이브 플로킨',
+    'chi': '마이클 라인스도프', 'cle': '댄 길버트', 'dal': '미리암 아델슨', 'den': '스탠 크론키',
+    'det': '톰 고어스', 'gsw': '조 레이콥', 'hou': '틸먼 페르티타', 'ind': '허브 사이먼',
+    'lac': '스티브 발머', 'lal': '지니 버스', 'mem': '로버트 페라', 'mia': '미키 애리슨',
+    'mil': '웨스 에든스', 'min': '글렌 테일러', 'nop': '게일 벤슨', 'nyk': '제임스 돌란',
+    'okc': '클레이 베넷', 'orl': '댄 디보스', 'phi': '조쉬 해리스', 'phx': '맷 이시비아',
+    'por': '조디 앨런', 'sac': '비벡 라나디베', 'sas': '피터 J. 홀트', 'tor': '래리 타넨바움',
+    'uta': '라이언 스미스', 'was': '테드 레온시스'
 };
 
 export const FALLBACK_TEAMS = [
-    { id: 'atl', city: 'Atlanta', name: 'Hawks', conference: 'East', division: 'Southeast' },
-    { id: 'bos', city: 'Boston', name: 'Celtics', conference: 'East', division: 'Atlantic' },
-    { id: 'bkn', city: 'Brooklyn', name: 'Nets', conference: 'East', division: 'Atlantic' },
-    { id: 'cha', city: 'Charlotte', name: 'Hornets', conference: 'East', division: 'Southeast' },
-    { id: 'chi', city: 'Chicago', name: 'Bulls', conference: 'East', division: 'Central' },
-    { id: 'cle', city: 'Cleveland', name: 'Cavaliers', conference: 'East', division: 'Central' },
-    { id: 'dal', city: 'Dallas', name: 'Mavericks', conference: 'West', division: 'Southwest' },
-    { id: 'den', city: 'Denver', name: 'Nuggets', conference: 'West', division: 'Northwest' },
-    { id: 'det', city: 'Detroit', name: 'Pistons', conference: 'East', division: 'Central' },
-    { id: 'gsw', city: 'Golden State', name: 'Warriors', conference: 'West', division: 'Pacific' },
-    { id: 'hou', city: 'Houston', name: 'Rockets', conference: 'West', division: 'Southwest' },
-    { id: 'ind', city: 'Indiana', name: 'Pacers', conference: 'East', division: 'Central' },
-    { id: 'lac', city: 'LA', name: 'Clippers', conference: 'West', division: 'Pacific' },
-    { id: 'lal', city: 'Los Angeles', name: 'Lakers', conference: 'West', division: 'Pacific' },
-    { id: 'mem', city: 'Memphis', name: 'Grizzlies', conference: 'West', division: 'Southwest' },
-    { id: 'mia', city: 'Miami', name: 'Heat', conference: 'East', division: 'Southeast' },
-    { id: 'mil', city: 'Milwaukee', name: 'Bucks', conference: 'East', division: 'Central' },
-    { id: 'min', city: 'Minnesota', name: 'Timberwolves', conference: 'West', division: 'Northwest' },
-    { id: 'nop', city: 'New Orleans', name: 'Pelicans', conference: 'West', division: 'Southwest' },
-    { id: 'nyk', city: 'New York', name: 'Knicks', conference: 'East', division: 'Atlantic' },
-    { id: 'okc', city: 'Oklahoma City', name: 'Thunder', conference: 'West', division: 'Northwest' },
-    { id: 'orl', city: 'Orlando', name: 'Magic', conference: 'East', division: 'Southeast' },
-    { id: 'phi', city: 'Philadelphia', name: '76ers', conference: 'East', division: 'Atlantic' },
-    { id: 'phx', city: 'Phoenix', name: 'Suns', conference: 'West', division: 'Pacific' },
-    { id: 'por', city: 'Portland', name: 'Trail Blazers', conference: 'West', division: 'Northwest' },
-    { id: 'sac', city: 'Sacramento', name: 'Kings', conference: 'West', division: 'Pacific' },
-    { id: 'sas', city: 'San Antonio', name: 'Spurs', conference: 'West', division: 'Southwest' },
-    { id: 'tor', city: 'Toronto', name: 'Raptors', conference: 'East', division: 'Atlantic' },
-    { id: 'uta', city: 'Utah', name: 'Jazz', conference: 'West', division: 'Northwest' },
-    { id: 'was', city: 'Washington', name: 'Wizards', conference: 'East', division: 'Southeast' }
+    { id: 'atl', city: '애틀랜타', name: '호크스', conference: 'East', division: 'Southeast' },
+    { id: 'bos', city: '보스턴', name: '셀틱스', conference: 'East', division: 'Atlantic' },
+    { id: 'bkn', city: '브루클린', name: '네츠', conference: 'East', division: 'Atlantic' },
+    { id: 'cha', city: '샬럿', name: '호네츠', conference: 'East', division: 'Southeast' },
+    { id: 'chi', city: '시카고', name: '불스', conference: 'East', division: 'Central' },
+    { id: 'cle', city: '클리블랜드', name: '캐벌리어스', conference: 'East', division: 'Central' },
+    { id: 'dal', city: '댈러스', name: '매버릭스', conference: 'West', division: 'Southwest' },
+    { id: 'den', city: '덴버', name: '너게츠', conference: 'West', division: 'Northwest' },
+    { id: 'det', city: '디트로이트', name: '피스톤스', conference: 'East', division: 'Central' },
+    { id: 'gsw', city: '골든스테이트', name: '워리어스', conference: 'West', division: 'Pacific' },
+    { id: 'hou', city: '휴스턴', name: '로케츠', conference: 'West', division: 'Southwest' },
+    { id: 'ind', city: '인디애나', name: '페이서스', conference: 'East', division: 'Central' },
+    { id: 'lac', city: 'LA', name: '클리퍼스', conference: 'West', division: 'Pacific' },
+    { id: 'lal', city: 'LA', name: '레이커스', conference: 'West', division: 'Pacific' },
+    { id: 'mem', city: '멤피스', name: '그리즈리스', conference: 'West', division: 'Southwest' },
+    { id: 'mia', city: '마이애미', name: '히트', conference: 'East', division: 'Southeast' },
+    { id: 'mil', city: '밀워키', name: '벅스', conference: 'East', division: 'Central' },
+    { id: 'min', city: '미네소타', name: '팀버울브스', conference: 'West', division: 'Northwest' },
+    { id: 'nop', city: '뉴올리언스', name: '펠리컨스', conference: 'West', division: 'Southwest' },
+    { id: 'nyk', city: '뉴욕', name: '닉스', conference: 'East', division: 'Atlantic' },
+    { id: 'okc', city: '오클라호마시티', name: '썬더', conference: 'West', division: 'Northwest' },
+    { id: 'orl', city: '올랜도', name: '매직', conference: 'East', division: 'Southeast' },
+    { id: 'phi', city: '필라델피아', name: '세븐티식서스', conference: 'East', division: 'Atlantic' },
+    { id: 'phx', city: '피닉스', name: '선즈', conference: 'West', division: 'Pacific' },
+    { id: 'por', city: '포틀랜드', name: '트레일 블레이저스', conference: 'West', division: 'Northwest' },
+    { id: 'sac', city: '새크라멘토', name: '킹스', conference: 'West', division: 'Pacific' },
+    { id: 'sas', city: '샌안토니오', name: '스퍼스', conference: 'West', division: 'Southwest' },
+    { id: 'tor', city: '토론토', name: '랩터스', conference: 'East', division: 'Atlantic' },
+    { id: 'uta', city: '유타', name: '재즈', conference: 'West', division: 'Northwest' },
+    { id: 'was', city: '워싱턴', name: '위저즈', conference: 'East', division: 'Southeast' }
 ];
 
 export const INITIAL_STATS = () => ({
@@ -64,8 +64,9 @@ export const resolveTeamId = (nameOrId: string): string => {
     const knownIds = ['atl', 'bos', 'bkn', 'cha', 'chi', 'cle', 'dal', 'den', 'det', 'gsw', 'hou', 'ind', 'lac', 'lal', 'mem', 'mia', 'mil', 'min', 'nop', 'nyk', 'okc', 'orl', 'phi', 'phx', 'por', 'sac', 'sas', 'tor', 'uta', 'was'];
     if (knownIds.includes(lower)) return lower;
 
-    // Map common names/cities
+    // Map common names/cities (English & Korean)
     const map: Record<string, string> = {
+        // English
         'atlanta': 'atl', 'hawks': 'atl',
         'boston': 'bos', 'celtics': 'bos',
         'brooklyn': 'bkn', 'nets': 'bkn',
@@ -95,7 +96,38 @@ export const resolveTeamId = (nameOrId: string): string => {
         'san antonio': 'sas', 'spurs': 'sas',
         'toronto': 'tor', 'raptors': 'tor',
         'utah': 'uta', 'jazz': 'uta',
-        'washington': 'was', 'wizards': 'was'
+        'washington': 'was', 'wizards': 'was',
+        // Korean (For compatibility)
+        '애틀랜타': 'atl', '호크스': 'atl',
+        '보스턴': 'bos', '셀틱스': 'bos',
+        '브루클린': 'bkn', '네츠': 'bkn',
+        '샬럿': 'cha', '호네츠': 'cha',
+        '시카고': 'chi', '불스': 'chi',
+        '클리블랜드': 'cle', '캐벌리어스': 'cle',
+        '댈러스': 'dal', '매버릭스': 'dal',
+        '덴버': 'den', '너게츠': 'den',
+        '디트로이트': 'det', '피스톤스': 'det',
+        '골든스테이트': 'gsw', '워리어스': 'gsw',
+        '휴스턴': 'hou', '로케츠': 'hou',
+        '인디애나': 'ind', '페이서스': 'ind',
+        '클리퍼스': 'lac',
+        '레이커스': 'lal',
+        '멤피스': 'mem', '그리즈리스': 'mem',
+        '마이애미': 'mia', '히트': 'mia',
+        '밀워키': 'mil', '벅스': 'mil',
+        '미네소타': 'min', '팀버울브스': 'min',
+        '뉴올리언스': 'nop', '펠리컨스': 'nop',
+        '뉴욕': 'nyk', '닉스': 'nyk',
+        '오클라호마시티': 'okc', '썬더': 'okc',
+        '올랜도': 'orl', '매직': 'orl',
+        '필라델피아': 'phi', '세븐티식서스': 'phi',
+        '피닉스': 'phx', '선즈': 'phx',
+        '포틀랜드': 'por', '트레일블레이저스': 'por',
+        '새크라멘토': 'sac', '킹스': 'sac',
+        '샌안토니오': 'sas', '스퍼스': 'sas',
+        '토론토': 'tor', '랩터스': 'tor',
+        '유타': 'uta', '재즈': 'uta',
+        '워싱턴': 'was', '위저즈': 'was'
     };
 
     return map[lower] || lower.substring(0, 3);
@@ -127,6 +159,7 @@ export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
         const rowHomeId = r.home_team_id || r.home_team || r.HomeTeam || '';
         const rowAwayId = r.away_team_id || r.away_team || r.AwayTeam || '';
 
+        // Priority 1: Direct ID Match from DB
         if (rowHomeId && rowAwayId) {
              const homeTeamId = resolveTeamId(rowHomeId);
              const awayTeamId = resolveTeamId(rowAwayId);
@@ -144,7 +177,7 @@ export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
              };
         }
 
-        // Fallback for CSV-like structures
+        // Priority 2: Fallback for Name-based or CSV-like structures
         let dateStr = r.date || r.Date;
         if (dateStr && dateStr.includes(' ')) {
             try {

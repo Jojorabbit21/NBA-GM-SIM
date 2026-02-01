@@ -103,8 +103,9 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         if (myTeamId) triggerSave();
     }, [teams, schedule, currentSimDate, userTactics, playoffSeries, transactions, myTeamId, triggerSave]);
 
-    // [Update] Force Save for Critical Events (Trades, Date Change)
-    const forceSave = useCallback(async () => {
+    // [Critical Update] Force Save with Optional Data Override
+    // Allows immediate saving of new state before the Ref has updated (preventing race conditions)
+    const forceSave = useCallback(async (overrides?: Partial<typeof gameDataRef.current>) => {
         // 1. Validate Env
         if (isResettingRef.current || !session?.user || isGuestMode || !myTeamId) return;
 
@@ -112,13 +113,16 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         isDirtyRef.current = false; 
 
+        // 3. Merge overrides with current Ref data
+        const dataToSave = { ...gameDataRef.current, ...overrides };
+
         console.log(`💾 Force Save Triggered`);
         
         try {
             await saveGameMutation.mutateAsync({ 
                 userId: session.user.id, 
                 teamId: myTeamId, 
-                gameData: gameDataRef.current 
+                gameData: dataToSave 
             });
         } catch (e) {
             console.error("Failed to force save:", e);
