@@ -76,7 +76,11 @@ const App: React.FC = () => {
         gameData.schedule, gameData.setSchedule,
         gameData.myTeamId,
         gameData.currentSimDate, 
-        (newDate) => { gameData.setCurrentSimDate(newDate); gameData.forceSave(); }, // Use forceSave for date changes
+        // [Critical Update] Pass overrides to forceSave to prevent race conditions during date advance
+        (newDate, overrides) => { 
+            gameData.setCurrentSimDate(newDate); 
+            gameData.forceSave(overrides); 
+        },
         gameData.playoffSeries, gameData.setPlayoffSeries,
         gameData.setTransactions,
         gameData.setNews,

@@ -10,55 +10,60 @@ export const useBaseData = () => {
     return useQuery({
         queryKey: ['baseData'],
         queryFn: async () => {
-            // 1. Fetch Teams (with Fail-Safe)
-            let teamsData = [];
-            try {
-                const { data, error } = await supabase.from('teams').select('*');
-                if (error) {
-                    console.error("Teams fetch error:", error);
-                    // Fallback will be used if data is empty
-                } else {
-                    teamsData = data || [];
-                }
-            } catch (e) {
-                console.error("Teams fetch failed:", e);
-            }
+            // 1. Fetch Teams
+            const { data: teamsData, error: teamsError } = await supabase
+                .from('teams')
+                .select('*');
+            
+            // 2. Fetch Players
+            const { data: playersData, error: playersError } = await supabase
+                .from('players')
+                .select('*');
 
-            // If DB returns no teams, use FALLBACK
-            const rawTeams = (teamsData.length > 0) ? teamsData : FALLBACK_TEAMS;
-
-            // 2. Fetch Players (Non-blocking)
-            let playersData: any[] = [];
-            try {
-                const { data, error } = await supabase.from('players').select('*');
-                if (!error && data) playersData = data;
-            } catch (e) {
-                console.error("Players fetch failed:", e);
-            }
-
-            // 3. Fetch Schedule (Non-blocking)
-            let scheduleData: any[] = [];
-            try {
-                const { data, error } = await supabase.from('schedule').select('*');
-                if (!error && data) scheduleData = data;
-            } catch (e) {
-                console.error("Schedule fetch failed:", e);
-            }
+            // 3. Fetch Schedule
+            const { data: scheduleData, error: scheduleError } = await supabase
+                .from('schedule')
+                .select('*');
+            
+            // Data Validation: If key tables are missing, fallback to hardcoded data
+            // But prefer DB data if available, even if partial.
+            const useFallback = teamsError || !teamsData || teamsData.length === 0;
+            
+            const rawTeams = useFallback ? FALLBACK_TEAMS : teamsData;
 
             // Map Players to Teams
             const teams: Team[] = rawTeams.map((t: any) => {
-                // [Fix] Robust Conference Mapping: Handle 'Eastern', 'Western', or missing fields
+                // Determine ID: DB uses 'id' (uuid or string), Fallback uses 'id' (string)
+                const teamId = t.id; 
+                
+                // Determine Name/City: Prefer DB columns, fallback to t.* props
+                // If using FALLBACK_TEAMS, t.name is already Korean.
+                // If using DB teamsData, we expect columns like 'city', 'name', 'conference'.
+                // If DB data is English, we might need a mapping here, but assuming DB is source of truth or matches.
+                
+                // Robust Conference Mapping
                 let conf = t.conference || t.Conference || 'East';
                 if (typeof conf === 'string') {
                     if (conf.toLowerCase().includes('east')) conf = 'East';
                     else if (conf.toLowerCase().includes('west')) conf = 'West';
                 }
 
-                // [Fix] Robust Logo Mapping
-                const logoUrl = t.logo_url || t.logo || t.Logo || getTeamLogoUrl(t.id);
+                const logoUrl = getTeamLogoUrl(teamId);
+
+                // Find roster in playersData
+                // [Critical Fix]: Ensure ID types match. DB might use UUID for team_id.
+                // If using FALLBACK_TEAMS, we rely on 'team_id' column in players table matching 'atl', 'bos' etc.
+                // If DB teams table is used, we match t.id with p.team_id.
+                const roster = (playersData || [])
+                    .filter((p: any) => p.team_id == teamId) // Loose equality for string/number match
+                    .map((p: any) => ({
+                        ...p,
+                        stats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
+                        playoffStats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
+                    }));
 
                 return {
-                    id: t.id,
+                    id: teamId,
                     name: t.name,
                     city: t.city,
                     logo: logoUrl,
@@ -69,19 +74,13 @@ export const useBaseData = () => {
                     budget: 150, // Default
                     salaryCap: 140, // Default
                     luxuryTaxLine: 170, // Default
-                    roster: playersData
-                        .filter((p: any) => p.team_id === t.id)
-                        .map((p: any) => ({
-                            ...p,
-                            stats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
-                            playoffStats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
-                        }))
+                    roster: roster
                 };
             });
 
-            // [Fix] Safe Schedule Mapping
+            // Map Schedule
             let schedule: Game[] = [];
-            if (scheduleData.length > 0) {
+            if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
             }
 

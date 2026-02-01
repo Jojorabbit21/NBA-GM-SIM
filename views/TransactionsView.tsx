@@ -24,7 +24,7 @@ interface TransactionsViewProps {
   currentSimDate: string;
   transactions?: Transaction[];
   onAddTransaction?: (t: Transaction) => void;
-  onForceSave?: () => Promise<void>; // Added onForceSave prop
+  onForceSave?: (overrides?: any) => Promise<void>; // Updated Type
 }
 
 const MAX_DAILY_TRADES = 5;
@@ -141,13 +141,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
             await saveUserTransaction(userData.user.id, newTransaction);
         }
 
-        setTeams(prevTeams => prevTeams.map(t => {
+        // [CRITICAL FIX] Calculate new teams state first to ensure consistency
+        const nextTeams = teams.map(t => {
             if (t.id === team.id) {
                 const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
-                // We need to hydrate the targetAssets from the source team to ensure they have stats
-                // The trade engine might return stripped objects
                 const hydratedTargetAssets = targetAssets.map(tp => {
-                    const sourceTeam = prevTeams.find(pt => pt.id === targetTeam.id);
+                    const sourceTeam = teams.find(pt => pt.id === targetTeam.id);
                     return sourceTeam?.roster.find(sp => sp.id === tp.id) || tp;
                 });
                 return { ...t, roster: [...remaining, ...hydratedTargetAssets] };
@@ -155,17 +154,19 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
             if (targetTeam && t.id === targetTeam.id) {
                 const remaining = t.roster.filter(p => !targetAssets.some(x => x.id === p.id));
                 const hydratedUserAssets = userAssets.map(up => {
-                    const sourceTeam = prevTeams.find(pt => pt.id === team.id);
+                    const sourceTeam = teams.find(pt => pt.id === team.id);
                     return sourceTeam?.roster.find(sp => sp.id === up.id) || up;
                 });
                 return { ...t, roster: [...remaining, ...hydratedUserAssets] };
             }
             return t;
-        }));
+        });
 
-        // [Critical] Force Save Game State immediately to ensure sync
+        setTeams(nextTeams);
+
+        // [CRITICAL FIX] Pass the *new* state directly to forceSave to avoid Ref race condition
         if (onForceSave) {
-            await onForceSave();
+            await onForceSave({ teams: nextTeams });
         }
 
         onShowToast(`트레이드 성사! 총 ${targetAssets.length}명의 선수가 합류했습니다.`);

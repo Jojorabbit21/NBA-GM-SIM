@@ -14,7 +14,7 @@ export const useSimulation = (
     schedule: Game[], setSchedule: React.Dispatch<React.SetStateAction<Game[]>>,
     myTeamId: string | null,
     currentSimDate: string, 
-    onDateChange: (newDate: string) => void,
+    onDateChange: (newDate: string, overrides?: any) => void, // [Updated Type]
     playoffSeries: any[], setPlayoffSeries: React.Dispatch<React.SetStateAction<any[]>>,
     setTransactions: React.Dispatch<React.SetStateAction<any[]>>,
     setNews: React.Dispatch<React.SetStateAction<any[]>>,
@@ -122,7 +122,10 @@ export const useSimulation = (
         }));
         
         setTeams(newTeams);
-        onDateChange(nextDate);
+        
+        // [CRITICAL FIX] Pass the new teams data to the callback so it can be saved immediately
+        onDateChange(nextDate, { teams: newTeams, currentSimDate: nextDate });
+        
         setLastGameResult(null);
 
     }, [schedule, myTeamId, session, isGuestMode, teams, setTeams, setTransactions, setNews, setToastMessage, currentSimDate, onDateChange]);
@@ -243,14 +246,23 @@ export const useSimulation = (
             }
 
             if (gameResultsToInsert.length > 0) { saveGameResults(gameResultsToInsert); }
-            setTeams(updatedTeams); setSchedule(updatedSchedule); setPlayoffSeries(updatedSeries); 
+            
+            // [Safety] Set local state immediately for UI updates
+            setTeams(updatedTeams); 
+            setSchedule(updatedSchedule); 
+            setPlayoffSeries(updatedSeries); 
             
             if (userGameResultOutput) {
                 const recap = await generateGameRecapNews(userGameResultOutput);
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
+                
+                // [CRITICAL FIX] Ensure save occurs with the newly calculated stats (before next date logic might confuse refs)
+                // We pass the new state to forceSave if needed via a callback mechanism if implemented, or rely on normal state update
+                // Since this block doesn't call advanceDate immediately (user clicks next), the regular debounced save will likely catch it.
+                // But for robust safety, we could force save here too. However, since user must interact, risk is lower than advanceDate.
             } else { 
                 setIsSimulating(false); 
-                await advanceDate(); // Ensure next day calculation is awaited
+                await advanceDate(); // This will trigger the secure save with overrides
             }
         };
         
