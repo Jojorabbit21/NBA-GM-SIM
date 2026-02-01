@@ -1,5 +1,5 @@
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
@@ -50,104 +50,13 @@ export const useBaseData = () => {
     });
 };
 
-// --- Save System (Metadata Only) ---
-export const useSaveGame = () => {
-    const queryClient = useQueryClient();
-    return useMutation({
-        mutationFn: async ({ userId, teamId }: { userId: string, teamId: string }) => {
-            // saves 테이블에는 오직 현재 플레이 중인 팀 정보와 시간만 남김
-            // 실제 데이터는 user_game_results와 user_transactions에 쌓임
-            const { data, error } = await supabase
-                .from('saves')
-                .upsert({ 
-                    user_id: userId, 
-                    team_id: teamId, 
-                    updated_at: new Date().toISOString()
-                }, { onConflict: 'user_id' })
-                .select();
-            
-            if (error) {
-                console.error("❌ [Supabase] Save Meta Failed:", error);
-                throw error;
-            }
-            return data;
-        },
-        onSuccess: (_, variables) => {
-            queryClient.invalidateQueries({ queryKey: ['saveData', variables.userId] });
-        }
-    });
-};
-
-// --- Load System (Reconstruction Source) ---
-
-// 1. Load Metadata (Which team am I playing?)
-export const useLoadSave = (userId?: string) => {
-    return useQuery({
-        queryKey: ['saveData', userId],
-        queryFn: async () => {
-            if (!userId) return null;
-            
-            const { data, error } = await supabase
-                .from('saves')
-                .select('team_id, updated_at')
-                .eq('user_id', userId)
-                .maybeSingle();
-            
-            if (error) {
-                console.error("❌ [Supabase] Load Meta Error:", error);
-                throw error;
-            }
-            return data; // returns { team_id, updated_at }
-        },
-        enabled: !!userId,
-        retry: false 
-    });
-};
-
-// 2. Load Full History (Games & Transactions) for State Reconstruction
-export const useUserHistory = (userId?: string) => {
-    return useQuery({
-        queryKey: ['userHistory', userId],
-        queryFn: async () => {
-            if (!userId) return { games: [], transactions: [] };
-
-            // A. Fetch All Game Results
-            const { data: games, error: gamesError } = await supabase
-                .from('user_game_results')
-                .select('*')
-                .eq('user_id', userId)
-                .order('date', { ascending: true }); // 날짜 순 정렬 필수
-
-            if (gamesError) console.error("❌ Failed to fetch game history:", gamesError);
-
-            // B. Fetch All Transactions
-            const { data: transactions, error: txError } = await supabase
-                .from('user_transactions')
-                .select('*')
-                .eq('user_id', userId)
-                .order('date', { ascending: true }); // 날짜 순 정렬 필수
-
-            if (txError) console.error("❌ Failed to fetch transaction history:", txError);
-
-            return {
-                games: games || [],
-                transactions: transactions || []
-            };
-        },
-        enabled: !!userId,
-        refetchOnWindowFocus: false
-    });
-};
-
-// 3. Load Monthly Schedule (For Schedule View Pagination)
+// --- Monthly Schedule for Calendar View ---
 export const useMonthlySchedule = (userId?: string, year?: number, month?: number) => {
     return useQuery({
         queryKey: ['monthlySchedule', userId, year, month],
         queryFn: async () => {
             if (!userId || year === undefined || month === undefined) return [];
 
-            // Construct string date range for the month (YYYY-MM-DD)
-            // Month is 0-indexed
             const startStr = `${year}-${String(month + 1).padStart(2, '0')}-01`;
             const lastDay = new Date(year, month + 1, 0).getDate();
             const endStr = `${year}-${String(month + 1).padStart(2, '0')}-${lastDay}`;
@@ -170,32 +79,6 @@ export const useMonthlySchedule = (userId?: string, year?: number, month?: numbe
     });
 };
 
-// --- Transaction Writers ---
-
-export const saveGameResults = async (results: any[]) => {
-    const { error } = await supabase
-        .from('user_game_results')
-        .insert(results);
-    if (error) console.error("❌ Error saving game results:", error);
-    else console.log(`✅ Saved ${results.length} game results to DB.`);
-};
-
-export const saveUserTransaction = async (userId: string, transaction: Transaction) => {
-    const { error } = await supabase
-        .from('user_transactions')
-        .insert({
-            user_id: userId,
-            transaction_id: transaction.id,
-            date: transaction.date,
-            type: transaction.type,
-            team_id: transaction.teamId,
-            description: transaction.description,
-            details: transaction.details // JSONB
-        });
-    if (error) console.error("❌ Error saving transaction:", error);
-    else console.log("✅ Transaction saved to DB.");
-};
-
 // --- Scouting ---
 export const useScoutingReport = (player: Player | null) => {
     return useQuery({
@@ -207,4 +90,25 @@ export const useScoutingReport = (player: Player | null) => {
         enabled: !!player,
         staleTime: Infinity
     });
+};
+
+// --- Mutations ---
+
+export const saveGameResults = async (results: any[]) => {
+    if (!results || results.length === 0) return;
+    const { error } = await supabase.from('user_game_results').insert(results);
+    if (error) console.error("❌ Save Game Results Error:", error);
+};
+
+export const saveUserTransaction = async (userId: string, tx: Transaction) => {
+    const { error } = await supabase.from('user_transactions').insert({
+        user_id: userId,
+        transaction_id: tx.id,
+        date: tx.date,
+        type: tx.type,
+        team_id: tx.teamId,
+        description: tx.description,
+        details: tx.details
+    });
+    if (error) console.error("❌ Save Transaction Error:", error);
 };
