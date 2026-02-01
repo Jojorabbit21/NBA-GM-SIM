@@ -110,7 +110,7 @@ const App: React.FC = () => {
 
     // Loading Message Cycler
     useEffect(() => {
-        const isDataLoading = gameData.isBaseDataLoading || (session && !gameData.hasInitialLoadRef.current);
+        const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading);
         if (isDataLoading) {
             setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
             const interval = setInterval(() => {
@@ -123,7 +123,7 @@ const App: React.FC = () => {
             }, 1000);
             return () => clearInterval(interval);
         }
-    }, [gameData.isBaseDataLoading, session, gameData.hasInitialLoadRef.current]);
+    }, [gameData.isBaseDataLoading, session, gameData.isSaveLoading]);
 
     const handleSelectTeamWrapper = async (id: string) => {
         await gameData.handleSelectTeam(id);
@@ -166,7 +166,10 @@ const App: React.FC = () => {
 
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
 
-    const isDataLoading = gameData.isBaseDataLoading || (session && !gameData.hasInitialLoadRef.current);
+    // [FIX] Update loading condition to rely on isSaveLoading instead of hasInitialLoadRef
+    // This allows 'TeamSelect' to show up if no save exists.
+    const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading);
+    
     if (isDataLoading) {
         return (
             <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200">

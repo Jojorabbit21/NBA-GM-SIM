@@ -194,16 +194,18 @@ export const useLoadSave = (userId?: string) => {
         queryKey: ['saveData', userId],
         queryFn: async () => {
             if (!userId) return null;
+            // Use maybeSingle() instead of single() to handle 0 rows gracefully without error
             const { data, error } = await supabase
                 .from('saves')
                 .select('*')
                 .eq('user_id', userId)
-                .single();
+                .maybeSingle();
             
-            if (error && error.code !== 'PGRST116') throw error; // Ignore no rows found
+            if (error) throw error;
             return data;
         },
-        enabled: !!userId
+        enabled: !!userId,
+        retry: false // Do not retry on 406 or 404
     });
 };
 
