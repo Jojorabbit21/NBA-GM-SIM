@@ -12,43 +12,37 @@ export const useBaseData = () => {
         queryFn: async () => {
             console.log("🔄 Fetching Base Data from Supabase...");
             
-            // 1. Fetch Players (Try 'meta_players' first, then 'players')
+            // 1. Fetch Players
             let playersData = [];
             const { data: metaPlayers, error: metaError } = await supabase.from('meta_players').select('*');
             
             if (!metaError && metaPlayers && metaPlayers.length > 0) {
-                console.log(`✅ Loaded ${metaPlayers.length} players from 'meta_players'`);
                 playersData = metaPlayers;
             } else {
-                console.warn("⚠️ 'meta_players' not found or empty, trying 'players'...", metaError);
+                console.warn("⚠️ 'meta_players' empty/error, trying fallback...", metaError);
                 const { data: backupPlayers } = await supabase.from('players').select('*');
                 if (backupPlayers) playersData = backupPlayers;
             }
 
-            // 2. Fetch Schedule (Try 'meta_schedule' first, then 'schedule')
+            // 2. Fetch Schedule
             let scheduleData = [];
             const { data: metaSchedule, error: schError } = await supabase.from('meta_schedule').select('*');
             
             if (!schError && metaSchedule && metaSchedule.length > 0) {
-                 console.log(`✅ Loaded ${metaSchedule.length} games from 'meta_schedule'`);
                  scheduleData = metaSchedule;
             } else {
-                 console.warn("⚠️ 'meta_schedule' not found or empty, trying 'schedule'...", schError);
+                 console.warn("⚠️ 'meta_schedule' empty/error, trying fallback...", schError);
                  const { data: backupSchedule } = await supabase.from('schedule').select('*');
                  if (backupSchedule) scheduleData = backupSchedule;
             }
 
-            // 3. Map Data using Modular Mapper
-            // This isolates the mapping logic from the fetching logic
+            // 3. Map Data
             const teams: Team[] = mapPlayersToTeams(playersData);
-
             let schedule: Game[] = [];
             if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
             }
             
-            console.log("✅ Data Processing Complete via Mapper. Total Teams:", teams.length, "Total Games:", schedule.length);
-
             return { teams, schedule };
         },
         staleTime: Infinity,
@@ -61,12 +55,12 @@ export const useSaveGame = () => {
     const queryClient = useQueryClient();
     return useMutation({
         mutationFn: async ({ userId, teamId, gameData }: { userId: string, teamId: string, gameData: any }) => {
-            // [Debug] Check payload size to ensure data exists
             const payloadSize = JSON.stringify(gameData).length;
-            console.log(`💾 [Supabase] Attempting Save... User: ${userId}, Team: ${teamId}, Size: ${payloadSize} bytes`);
+            console.log(`💾 [Supabase] Upserting Save... User: ${userId}, Size: ${payloadSize} bytes`);
 
+            // 방어 코드: 데이터가 비어있으면 저장하지 않음
             if (payloadSize < 100) {
-                console.error("❌ [Supabase] Save Aborted: Payload appears empty!");
+                console.error("❌ [Supabase] Save Aborted: Payload too small/empty!");
                 throw new Error("Save payload is empty");
             }
 
@@ -78,21 +72,17 @@ export const useSaveGame = () => {
                     game_data: gameData,
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'user_id' })
-                .select(); // Select to confirm return
+                .select();
             
             if (error) {
-                console.error("❌ [Supabase] Save Failed:", error.message, error.details);
+                console.error("❌ [Supabase] DB Error:", error);
                 throw error;
             }
             
-            console.log("✅ [Supabase] Save Successful!");
             return data;
         },
         onSuccess: (_, variables) => {
             queryClient.invalidateQueries({ queryKey: ['saveData', variables.userId] });
-        },
-        onError: (error) => {
-            console.error("❌ [Mutation Error] Save Game Failed:", error);
         }
     });
 };
@@ -102,18 +92,21 @@ export const useLoadSave = (userId?: string) => {
         queryKey: ['saveData', userId],
         queryFn: async () => {
             if (!userId) return null;
-            // Use maybeSingle() instead of single() to handle 0 rows gracefully without error
+            
             const { data, error } = await supabase
                 .from('saves')
                 .select('*')
                 .eq('user_id', userId)
                 .maybeSingle();
             
-            if (error) throw error;
+            if (error) {
+                console.error("❌ [Supabase] Load Error:", error);
+                throw error;
+            }
             return data;
         },
         enabled: !!userId,
-        retry: false // Do not retry on 406 or 404
+        retry: false 
     });
 };
 
