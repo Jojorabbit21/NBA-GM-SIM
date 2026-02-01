@@ -6,6 +6,7 @@ import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../
 import { useBaseData, useLoadSave, useSaveGame } from '../services/queries';
 import { generateSeasonSchedule } from '../utils/constants';
 import { generateOwnerWelcome } from '../services/geminiService';
+import { calculateOvr } from '../utils/ovrUtils';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -63,7 +64,12 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             const gd = saveData.game_data;
             
             setMyTeamId(saveData.team_id);
-            if (gd.teams && gd.teams.length > 0) setTeams(gd.teams);
+            
+            if (gd.teams && gd.teams.length > 0) {
+                // Just load the raw data. OVR will be calculated on display.
+                setTeams(gd.teams);
+            }
+
             if (gd.schedule && gd.schedule.length > 0) setSchedule(gd.schedule);
             if (gd.currentSimDate) setCurrentSimDate(gd.currentSimDate);
             if (gd.tactics) setUserTactics(gd.tactics);
@@ -86,6 +92,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         // If no teams yet (fresh start or guest mode), load base
         if (teams.length === 0) {
             console.log("🆕 Initializing Base Data...");
+            // Base data is already mapped with correct OVR in dataMapper.ts
             setTeams(baseData.teams);
             setSchedule(baseData.schedule);
         }

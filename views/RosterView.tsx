@@ -3,6 +3,7 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { calculatePlayerOvr } from '../utils/constants';
 
 // New Sub-Components
 import { RosterHeader } from '../components/roster/RosterHeader';
@@ -83,7 +84,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     if (key === 'salary') return p.salary;
     if (key === 'contractYears') return p.contractYears;
     if (key === 'totalValue') return p.salary * p.contractYears;
-    if (key === 'ovr') return p.ovr;
+    
+    // [Fix] OVR must be calculated dynamically for sort to be correct
+    if (key === 'ovr') return calculatePlayerOvr(p);
+    
     if (key === 'potential') return p.potential;
     if (key === 'age') return p.age;
     if (key === 'position') {
@@ -133,7 +137,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     const count = roster.length;
     const totalSalary = roster.reduce((sum, p) => sum + p.salary, 0);
     const totalAge = roster.reduce((sum, p) => sum + p.age, 0);
-    const totalOvr = roster.reduce((sum, p) => sum + p.ovr, 0);
+    
+    // [Fix] Calculate Team Average OVR dynamically
+    const totalOvr = roster.reduce((sum, p) => sum + calculatePlayerOvr(p), 0);
+    
     const getAvg = (key: keyof Player) => Math.round(roster.reduce((sum, p) => sum + (p[key] as number), 0) / count);
     
     return { salary: totalSalary, age: (totalAge / count).toFixed(1), ovr: Math.round(totalOvr / count), getAvg };
@@ -188,7 +195,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   return (
     <div className="space-y-6 flex flex-col animate-in fade-in duration-500 pb-10">
-      {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} />}
+      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} />}
       
       <RosterHeader 
         selectedTeam={selectedTeam} myTeamId={myTeamId} isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen}
@@ -245,7 +252,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                       </tr>
                    </thead>
                    <tbody className="divide-y divide-slate-800/40">
-                      {sortedRoster.map(p => (
+                      {sortedRoster.map(p => {
+                          // [Fix] Calculate real-time OVR for display
+                          const displayOvr = calculatePlayerOvr(p);
+                          
+                          return (
                           <tr key={p.id} className="hover:bg-slate-800/30 transition-all group">
                               <td className="pl-8 px-6 py-3 cursor-pointer" onClick={() => setViewPlayer(p)}>
                                   <div className="flex items-center gap-3">
@@ -268,7 +279,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                 <><td className="px-2 py-3 text-center"><span className="text-sm font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase">{p.position}</span></td>
                                 <td className="px-2 py-3 text-center text-sm font-bold text-white">{p.age}</td>
                                 <td className="px-2 py-3 text-center text-sm font-bold text-white">${p.salary.toFixed(1)}M</td>
-                                <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{p.ovr}</div></td></>
+                                <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(displayOvr) + " !w-9 !h-9 !text-lg !mx-auto"}>{displayOvr}</div></td></>
                               )}
                               {tab === 'roster' ? (
                                   ROSTER_COLUMNS[rosterCategory].map(col => (
@@ -293,7 +304,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               ) : (
                                   SALARY_COLUMNS.map(col => {
                                       let valStr = String(p[col.key as keyof Player] || '');
-                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(p.ovr) + " !w-8 !h-8 !text-sm !mx-0"}>{p.ovr}</div></div></td>;
+                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(displayOvr) + " !w-8 !h-8 !text-sm !mx-0"}>{displayOvr}</div></div></td>;
                                       if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
                                       else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
                                       else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
@@ -301,7 +312,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                   })
                               )}
                           </tr>
-                      ))}
+                      );
+                      })}
                    </tbody>
                    {/* Footer for Roster Tab */}
                    {teamStats && tab === 'roster' && (

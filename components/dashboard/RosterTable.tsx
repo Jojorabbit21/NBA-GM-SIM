@@ -84,7 +84,9 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                     const isStarter = !!assignedSlot;
                                     const isSelectedStopper = stopperId === p.id;
                                     const cond = Math.round(p.condition || 100); 
-                                    const displayOvr = assignedSlot ? calculatePlayerOvr(p, assignedSlot) : p.ovr;
+                                    // [Fix] Calculate OVR dynamically
+                                    const displayOvr = calculatePlayerOvr(p, assignedSlot || p.position);
+                                    
                                     let condColor = 'bg-emerald-500';
                                     if (cond < 60) condColor = 'bg-red-500';
                                     else if (cond < 80) condColor = 'bg-amber-500';
@@ -168,29 +170,33 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-800/50">
-                                        {injuredSorted.map(p => (
-                                            <tr key={p.id} className="hover:bg-red-500/5 transition-all group">
-                                                <td className="py-4 px-8 cursor-pointer" onClick={() => onViewPlayer(p)}>
-                                                    <span className="font-black text-base text-slate-400 group-hover:text-red-400">{p.name}</span>
-                                                </td>
-                                                <td className="py-4 px-4 text-center">
-                                                    <div className={getOvrBadgeStyle(p.ovr) + " !w-9 !h-9 !text-lg !mx-auto grayscale opacity-70"}>{p.ovr}</div>
-                                                </td>
-                                                <td className="py-4 px-4 text-center">
-                                                    <span className="text-xs font-black text-slate-600 px-2 py-1 rounded-md border border-slate-800 uppercase tracking-tighter">{p.position}</span>
-                                                </td>
-                                                <td className="py-4 px-4 text-left">
-                                                    <span className="pretendard text-sm font-bold text-red-500 whitespace-nowrap">
-                                                        {p.injuryType || 'Unknown Injury'}
-                                                    </span>
-                                                </td>
-                                                <td className="py-4 px-8 text-left">
-                                                    <span className="pretendard text-sm font-black text-slate-400 tracking-tight">
-                                                        {p.returnDate || 'TBD'}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {injuredSorted.map(p => {
+                                            // [Fix] Dynamic OVR
+                                            const ovr = calculatePlayerOvr(p);
+                                            return (
+                                                <tr key={p.id} className="hover:bg-red-500/5 transition-all group">
+                                                    <td className="py-4 px-8 cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                                        <span className="font-black text-base text-slate-400 group-hover:text-red-400">{p.name}</span>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <div className={getOvrBadgeStyle(ovr) + " !w-9 !h-9 !text-lg !mx-auto grayscale opacity-70"}>{ovr}</div>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-center">
+                                                        <span className="text-xs font-black text-slate-600 px-2 py-1 rounded-md border border-slate-800 uppercase tracking-tighter">{p.position}</span>
+                                                    </td>
+                                                    <td className="py-4 px-4 text-left">
+                                                        <span className="pretendard text-sm font-bold text-red-500 whitespace-nowrap">
+                                                            {p.injuryType || 'Unknown Injury'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-4 px-8 text-left">
+                                                        <span className="pretendard text-sm font-black text-slate-400 tracking-tight">
+                                                            {p.returnDate || 'TBD'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -215,6 +221,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
                                     {oppHealthySorted.map((p) => {
+                                        // [Fix] Dynamic OVR
+                                        const ovr = calculatePlayerOvr(p);
                                         return (
                                             <tr key={p.id} className="hover:bg-white/5 transition-all">
                                                 <td className="py-3 px-8 cursor-pointer" onClick={() => onViewPlayer(p)}>
@@ -227,7 +235,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                         <span className="text-xs font-black text-white px-2 py-1 rounded-md border border-white/10 uppercase tracking-tighter">{p.position}</span>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.ovr}</div></div></td>
+                                                <td className="py-3 px-4 text-center"><div className="flex items-center justify-center h-10"><div className={getOvrBadgeStyle(ovr) + " !w-10 !h-10 !text-xl !mx-0"}>{ovr}</div></div></td>
                                                 <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ath)}`}>{p.ath}</div></div></td>
                                                 <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.out)}`}>{p.out}</div></div></td>
                                                 <td className="py-3 px-2 text-center"><div className="flex items-center justify-center h-10"><div className={`mx-auto !w-10 !h-10 !text-sm ${getRankStyle(p.ins)}`}>{p.ins}</div></div></td>
@@ -250,7 +258,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 </div>
                             </div>
                         )}
-                    </div>
+                    </tbody>
                 )}
             </div>
         </div>

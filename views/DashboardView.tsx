@@ -100,8 +100,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
   }, [team?.roster, currentSimDate]);
 
-  const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [effectiveRoster]);
-  const injuredSorted = useMemo(() => effectiveRoster.filter(p => p.health === 'Injured').sort((a, b) => b.ovr - a.ovr), [effectiveRoster]);
+  // [Fix] Calculate Sort OVR dynamically
+  const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
+  const injuredSorted = useMemo(() => effectiveRoster.filter(p => p.health === 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
   
   // Also apply to opponent for consistency
   const effectiveOppRoster = useMemo(() => {
@@ -118,7 +119,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       });
   }, [opponent?.roster, currentSimDate]);
 
-  const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr), [effectiveOppRoster]);
+  // [Fix] Calculate Sort OVR dynamically
+  const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
   
   // Auto-Fill Starters if Empty (checking against healthy players only)
   useEffect(() => {
@@ -136,12 +138,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const myOvr = useMemo(() => {
     if (!effectiveRoster.length) return 0;
-    return Math.round(effectiveRoster.reduce((s, p) => s + p.ovr, 0) / effectiveRoster.length);
+    // [Fix] Calculate Team OVR dynamically
+    return Math.round(effectiveRoster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / effectiveRoster.length);
   }, [effectiveRoster]);
 
   const opponentOvrValue = useMemo(() => {
     if (!effectiveOppRoster.length) return 0;
-    return Math.round(effectiveOppRoster.reduce((s, p) => s + p.ovr, 0) / effectiveOppRoster.length);
+    // [Fix] Calculate Team OVR dynamically
+    return Math.round(effectiveOppRoster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / effectiveOppRoster.length);
   }, [effectiveOppRoster]);
 
   const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
@@ -164,7 +168,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-10">
-      {viewPlayer && <PlayerDetailModal player={viewPlayer} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
+      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
       
       {/* Review Banners */}
       <DashboardReviewBanners 
