@@ -1,10 +1,9 @@
 
 import React, { useMemo } from 'react';
-import { 
-  Trophy, ArrowLeft, Users, Crown, Quote, BarChart3, Medal, Star, Activity, CalendarDays
-} from 'lucide-react';
+import { Trophy, ArrowLeft, CalendarDays, BarChart3, Users, Crown, Medal, Star, Activity } from 'lucide-react';
 import { Team, PlayoffSeries, Game } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 
 interface PlayoffReviewViewProps {
   team: Team;
@@ -94,13 +93,12 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
       }
   }
 
-  // 2. Playoff Stats Calculation (using playoffStats)
+  // 2. Playoff Stats Calculation
   const getPlayoffAggregates = () => {
-      // Calculate Games Played from stats directly
       let totalGames = 0;
       const totals = team.roster.reduce((acc, p) => {
           const s = p.playoffStats || { g: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, p3a: 0, p3m: 0 };
-          if (s.g > totalGames) totalGames = s.g; // Estimate team games from max player games
+          if (s.g > totalGames) totalGames = s.g; 
           return {
               pts: acc.pts + s.pts,
               reb: acc.reb + s.reb,
@@ -117,7 +115,6 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
           };
       }, { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
 
-      // Fallback if no games played yet
       if (totalGames === 0) totalGames = 1;
 
       const tsa = totals.fga + 0.44 * totals.fta;
@@ -164,25 +161,8 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
   const winPct = (totalWins + totalLosses) > 0 ? totalWins / (totalWins + totalLosses) : 0;
   const winPctStr = winPct.toFixed(3).replace(/^0/, '');
 
-  // Stat Item Component (Updated to match SeasonReviewView style)
-  const StatBox = ({ label, value, isPercent = false, inverse = false }: { label: string, value: number, isPercent?: boolean, inverse?: boolean }) => {
-      return (
-          <div className="bg-slate-900/80 border border-slate-800 p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden group hover:border-indigo-500/50 transition-colors">
-              <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 z-10">{label}</span>
-              <div className="flex items-baseline gap-2 z-10">
-                  <span className="text-2xl font-black oswald text-white">
-                      {isPercent ? (value * 100).toFixed(1) + '%' : value.toFixed(1)}
-                  </span>
-              </div>
-              {/* Optional: Add decorative blur like Season Review */}
-              <div className="absolute top-0 right-0 w-8 h-8 bg-indigo-500/10 blur-xl rounded-full"></div>
-          </div>
-      );
-  };
-
   // 4. Series Game Logs Logic
   const seriesLogs = useMemo(() => {
-      // Sort series by round ascending (R1 -> R2 -> ...) for display
       const sortedSeries = [...mySeries].sort((a, b) => a.round - b.round);
       
       return sortedSeries.map(s => {
@@ -226,7 +206,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
 
       <div className="max-w-6xl mx-auto p-6 md:p-10 space-y-12">
           
-          {/* Section 1: Compact Playoff Summary (Redesigned) */}
+          {/* Section 1: Compact Playoff Summary */}
           <div className="animate-in slide-in-from-bottom-4 duration-700">
               <div className={`relative px-8 py-6 rounded-3xl border ${playoffStatus.border} ${playoffStatus.bg} shadow-2xl overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6`}>
                   
@@ -265,7 +245,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
               </div>
           </div>
 
-          {/* Section 2: Series Game Log (Moved UP) */}
+          {/* Section 2: Series Game Log */}
           <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 delay-100">
               <div className="flex items-center gap-3 border-b border-indigo-500/20 pb-3">
                   <CalendarDays className="text-indigo-500" size={24} />
@@ -279,7 +259,6 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                   ) : (
                       seriesLogs.map((log, idx) => (
                           <div key={idx} className="bg-slate-900/80 border border-slate-800 rounded-3xl overflow-hidden shadow-lg">
-                              {/* Series Header */}
                               <div className="px-6 py-4 bg-slate-950/50 border-b border-slate-800 flex justify-between items-center">
                                   <div className="flex items-center gap-4">
                                       <span className="text-xs font-black text-slate-400 uppercase tracking-wider bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">{log.roundName}</span>
@@ -292,7 +271,6 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                       <span className="text-2xl font-black text-white oswald">{log.score}</span>
                                   </div>
                               </div>
-                              {/* Games List */}
                               <div className="divide-y divide-slate-800/50">
                                   {log.games.map((g, gIdx) => {
                                       const isHome = g.homeTeamId === team.id;
@@ -324,7 +302,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
               </div>
           </div>
 
-          {/* Section 3: Team Stats Grid (Moved DOWN, expanded to match SeasonReview) */}
+          {/* Section 3: Team Stats Grid - Using Shared Component */}
           <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-700 delay-200">
               <div className="flex items-center gap-3 border-b border-indigo-500/20 pb-3">
                   <BarChart3 className="text-indigo-500" size={24} />
@@ -332,17 +310,17 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  <StatBox label="Points" value={teamStats.pts} />
-                  <StatBox label="Rebounds" value={teamStats.reb} />
-                  <StatBox label="Assists" value={teamStats.ast} />
-                  <StatBox label="Steals" value={teamStats.stl} />
-                  <StatBox label="Blocks" value={teamStats.blk} />
+                  <ReviewStatBox label="Points" value={teamStats.pts} />
+                  <ReviewStatBox label="Rebounds" value={teamStats.reb} />
+                  <ReviewStatBox label="Assists" value={teamStats.ast} />
+                  <ReviewStatBox label="Steals" value={teamStats.stl} />
+                  <ReviewStatBox label="Blocks" value={teamStats.blk} />
                   
-                  <StatBox label="Turnovers" value={teamStats.tov} inverse />
-                  <StatBox label="FG%" value={teamStats.fgPct} isPercent />
-                  <StatBox label="3P%" value={teamStats.p3Pct} isPercent />
-                  <StatBox label="FT%" value={teamStats.ftPct} isPercent />
-                  <StatBox label="True Shooting" value={teamStats.tsPct} isPercent />
+                  <ReviewStatBox label="Turnovers" value={teamStats.tov} inverse />
+                  <ReviewStatBox label="FG%" value={teamStats.fgPct} isPercent />
+                  <ReviewStatBox label="3P%" value={teamStats.p3Pct} isPercent />
+                  <ReviewStatBox label="FT%" value={teamStats.ftPct} isPercent />
+                  <ReviewStatBox label="True Shooting" value={teamStats.tsPct} isPercent />
               </div>
           </div>
 
@@ -416,19 +394,15 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                           <td className={statClass}>{(s.stl/g).toFixed(1)}</td>
                                           <td className={statClass}>{(s.blk/g).toFixed(1)}</td>
                                           <td className={statClass}>{(s.tov/g).toFixed(1)}</td>
-                                          
                                           <td className={statClass}>{(s.p3m/g).toFixed(1)}</td>
                                           <td className={statClass}>{(s.p3a/g).toFixed(1)}</td>
                                           <td className={statClass}>{s.p3a > 0 ? ((s.p3m/s.p3a)*100).toFixed(1) : '0.0'}%</td>
-                                          
                                           <td className={statClass}>{(s.fgm/g).toFixed(1)}</td>
                                           <td className={statClass}>{(s.fga/g).toFixed(1)}</td>
                                           <td className={statClass}>{s.fga > 0 ? ((s.fgm/s.fga)*100).toFixed(1) : '0.0'}%</td>
-                                          
                                           <td className={statClass}>{(s.ftm/g).toFixed(1)}</td>
                                           <td className={statClass}>{(s.fta/g).toFixed(1)}</td>
                                           <td className={statClass}>{s.fta > 0 ? ((s.ftm/s.fta)*100).toFixed(1) : '0.0'}%</td>
-                                          
                                           <td className={`${statClass} pr-6`}>{tsPct.toFixed(1)}%</td>
                                       </tr>
                                   );
@@ -439,33 +413,14 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
               </div>
           </div>
 
-          {/* Section 5: Owner's Message */}
+          {/* Section 5: Owner's Message - Using Shared Component */}
           <div className="animate-in slide-in-from-bottom-4 duration-700 delay-300 pb-8">
-              <div className={`relative p-8 rounded-3xl border border-slate-700 bg-slate-900 flex flex-col md:flex-row gap-8 items-start shadow-xl`}>
-                  <div className="flex-shrink-0">
-                      <div className="w-16 h-16 bg-slate-900 rounded-2xl border border-slate-700 flex items-center justify-center shadow-lg">
-                          <Quote size={32} className="text-slate-400" />
-                      </div>
-                  </div>
-                  
-                  <div className="space-y-4 flex-1">
-                      <div>
-                          <h4 className={`text-xs font-black uppercase tracking-[0.2em] mb-1 text-slate-400`}>From the Desk of the Owner</h4>
-                          <h3 className="text-2xl font-black text-white">Season Debrief</h3>
-                      </div>
-                      <div className="relative">
-                          <p className="text-slate-300 leading-relaxed font-medium text-lg relative z-10">
-                              "수고 많았습니다. 이번 플레이오프는 우리 팀에게 많은 것을 시사했습니다. 결과를 겸허히 받아들이고, 내년에는 더 높은 곳을 향해 나아갑시다."
-                          </p>
-                      </div>
-                      <div className="pt-4 flex justify-end">
-                          <div className="text-right">
-                              <div className="h-px w-32 bg-slate-700 mb-2 ml-auto"></div>
-                              <p className="text-xs font-black text-slate-500 uppercase tracking-widest">Authorized Signature</p>
-                          </div>
-                      </div>
-                  </div>
-              </div>
+              <ReviewOwnerMessage 
+                  ownerName={"The Ownership Group"}
+                  title="Season Debrief"
+                  msg="수고 많았습니다. 이번 플레이오프는 우리 팀에게 많은 것을 시사했습니다. 결과를 겸허히 받아들이고, 내년에는 더 높은 곳을 향해 나아갑시다."
+                  mood={{ color: "text-slate-400", borderColor: "border-slate-700", bg: "bg-slate-900" }}
+              />
           </div>
 
       </div>

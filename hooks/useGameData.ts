@@ -152,6 +152,14 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         console.log(`🏀 Team Selected: ${teamId}`);
         setMyTeamId(teamId);
         
+        // [Fix] Clear trade ops counters on new team selection
+        // Iterate all keys and remove only trade_ops related ones to be safe
+        Object.keys(localStorage).forEach(key => {
+            if (key.startsWith('trade_ops_')) {
+                localStorage.removeItem(key);
+            }
+        });
+        
         // Ensure base data is fully populated if not already
         if (teams.length === 0 && baseData) {
             setTeams(baseData.teams);
@@ -198,7 +206,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 queryClient.setQueryData(['fullGameState', userId], null);
             }
             
-            // [Fix] Clear local storage for trade ops counters
+            // [Fix] Clear local storage for trade ops counters on reset
             Object.keys(localStorage).forEach(key => {
                 if (key.startsWith('trade_ops_')) {
                     localStorage.removeItem(key);

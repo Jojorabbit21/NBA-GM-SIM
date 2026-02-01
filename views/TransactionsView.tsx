@@ -1,19 +1,17 @@
-
-import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Users, ArrowLeftRight, Loader2, X, Briefcase, CheckCircle2, MinusCircle, Trash2, Send, ListFilter, ChevronRight, History, Clock, Search, Lock, Activity, Handshake, Target, Filter, Check } from 'lucide-react';
-import { Team, Player, TradeOffer, Transaction } from '../types';
-import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
-import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
+import React, { useState, useMemo } from 'react';
+import { Users, Loader2, X, Clock, Search, Lock, Activity, Handshake, Target, Trash2, ListFilter, Send, History, ArrowLeftRight } from 'lucide-react';
+import { Team, Player, Transaction } from '../types';
+import { PlayerDetailModal } from '../components/SharedComponents';
 import { getTeamLogoUrl, TRADE_DEADLINE } from '../utils/constants';
-import { logEvent } from '../services/analytics'; 
-import { saveUserTransaction } from '../services/queries';
-import { supabase } from '../services/supabaseClient';
 
-// New Components
+// New Components & Hooks
 import { TradeConfirmModal } from '../components/transactions/TradeConfirmModal';
 import { OfferCard } from '../components/transactions/OfferCard';
 import { RequirementCard } from '../components/transactions/RequirementCard';
 import { PositionFilter } from '../components/transactions/PositionFilter';
+import { TradeRosterList } from '../components/transactions/TradeRosterList';
+import { TradeHistoryTable } from '../components/transactions/TradeHistoryTable';
+import { useTradeSystem } from '../hooks/useTradeSystem';
 
 interface TransactionsViewProps {
   team: Team;
@@ -24,51 +22,25 @@ interface TransactionsViewProps {
   currentSimDate: string;
   transactions?: Transaction[];
   onAddTransaction?: (t: Transaction) => void;
-  onForceSave?: (overrides?: any) => Promise<void>; // Updated Type
+  onForceSave?: (overrides?: any) => Promise<void>;
 }
-
-const MAX_DAILY_TRADES = 5;
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction, onForceSave }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'mine'>('all');
-  const [blockSelectedIds, setBlockSelectedIds] = useState<Set<string>>(new Set());
-  const [blockOffers, setBlockOffers] = useState<TradeOffer[]>([]);
-  const [blockIsProcessing, setBlockIsProcessing] = useState(false);
-  const [blockSearchPerformed, setBlockSearchPerformed] = useState(false);
-  const [targetPositions, setTargetPositions] = useState<string[]>([]);
-
-  const [proposalTargetTeamId, setProposalTargetTeamId] = useState<string>('');
-  const [proposalSelectedIds, setProposalSelectedIds] = useState<Set<string>>(new Set());
-  const [proposalRequirements, setProposalRequirements] = useState<TradeOffer[]>([]);
-  const [proposalIsProcessing, setProposalIsProcessing] = useState(false);
-  const [proposalSearchPerformed, setProposalSearchPerformed] = useState(false);
-  
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
-  const [isExecutingTrade, setIsExecutingTrade] = useState(false); // Added execution state
 
-  const [pendingTrade, setPendingTrade] = useState<{
-    userAssets: Player[],
-    targetAssets: Player[],
-    targetTeam: Team
-  } | null>(null);
+  // Use Custom Hook for Business Logic
+  const tradeSystem = useTradeSystem(team, teams, setTeams, currentSimDate, onAddTransaction, onForceSave, onShowToast);
 
-  // [Trade Limit Logic]
-  const [dailyTradeAttempts, setDailyTradeAttempts] = useState(0);
-
-  useEffect(() => {
-      const key = `trade_ops_${team.id}_${currentSimDate}`;
-      const saved = localStorage.getItem(key);
-      setDailyTradeAttempts(saved ? parseInt(saved, 10) : 0);
-  }, [currentSimDate, team.id]);
-
-  const incrementTradeAttempts = () => {
-      const newVal = dailyTradeAttempts + 1;
-      setDailyTradeAttempts(newVal);
-      localStorage.setItem(`trade_ops_${team.id}_${currentSimDate}`, newVal.toString());
-  };
-
-  const isTradeLimitReached = dailyTradeAttempts >= MAX_DAILY_TRADES;
+  const {
+      blockSelectedIds, setBlockSelectedIds, blockOffers, blockIsProcessing, blockSearchPerformed,
+      targetPositions, toggleTargetPosition, handleSearchBlockOffers, toggleBlockPlayer,
+      proposalTargetTeamId, setProposalTargetTeamId, proposalSelectedIds, setProposalSelectedIds, proposalRequirements, setProposalRequirements,
+      proposalIsProcessing, proposalSearchPerformed, setProposalSearchPerformed, toggleProposalPlayer, handleRequestRequirements,
+      pendingTrade, setPendingTrade, isExecutingTrade, executeTrade,
+      dailyTradeAttempts, isTradeLimitReached, isTradeDeadlinePassed, MAX_DAILY_TRADES
+  } = tradeSystem;
 
   const TradeLimitChip = () => (
       <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 mr-2 transition-colors ${isTradeLimitReached ? 'bg-red-950/30 border-red-500/50 text-red-400' : 'bg-slate-950/50 border-slate-700 text-slate-400'}`} title="일일 트레이드 업무 제한">
@@ -79,197 +51,19 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
       </div>
   );
 
-  const isTradeDeadlinePassed = useMemo(() => {
-    return new Date(currentSimDate) > new Date(TRADE_DEADLINE);
-  }, [currentSimDate]);
-
   const filteredHistory = useMemo(() => {
     if (!transactions) return [];
     if (historyFilter === 'all') return transactions;
     return transactions.filter(t => t.teamId === team.id || t.details?.partnerTeamId === team.id);
   }, [transactions, historyFilter, team.id]);
 
-  // [Helper] Hydrate Player from Partial Data
-  // The Trade API returns stripped player objects (no stats, no detailed attributes) to save bandwidth.
-  // We must look up the FULL player object from the client 'teams' state before showing the detail modal.
   const handleViewPlayer = (partialPlayer: Player) => {
       let fullPlayer: Player | undefined;
-      
-      // Search in all teams
       for (const t of teams) {
           fullPlayer = t.roster.find(p => p.id === partialPlayer.id);
           if (fullPlayer) break;
       }
-
-      if (fullPlayer) {
-          setViewPlayer(fullPlayer);
-      } else {
-          console.warn("Could not find full player data for:", partialPlayer.name);
-          // Fallback to partial player if absolutely necessary (though stats will be missing)
-          setViewPlayer(partialPlayer); 
-      }
-  };
-
-  const executeTrade = async () => {
-    if (!pendingTrade || !team || isExecutingTrade) return;
-    const { userAssets, targetAssets, targetTeam } = pendingTrade;
-    
-    setIsExecutingTrade(true);
-    logEvent('Trade', 'Executed', `${team.name} <-> ${targetTeam.name} (${userAssets.length} for ${targetAssets.length})`);
-
-    try {
-        const newTransaction: Transaction = {
-            id: `tr_${Date.now()}`,
-            date: currentSimDate,
-            type: 'Trade',
-            teamId: team.id,
-            description: `${targetTeam.name}와의 트레이드 합의`,
-            details: {
-                acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-                traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-                partnerTeamId: targetTeam.id,
-                partnerTeamName: targetTeam.name
-            }
-        };
-
-        if (onAddTransaction) {
-            onAddTransaction(newTransaction);
-        }
-
-        const { data: userData } = await (supabase.auth as any).getUser();
-        if (userData?.user) {
-            await saveUserTransaction(userData.user.id, newTransaction);
-        }
-
-        // [CRITICAL FIX] Calculate new teams state first to ensure consistency
-        const nextTeams = teams.map(t => {
-            if (t.id === team.id) {
-                const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
-                const hydratedTargetAssets = targetAssets.map(tp => {
-                    const sourceTeam = teams.find(pt => pt.id === targetTeam.id);
-                    return sourceTeam?.roster.find(sp => sp.id === tp.id) || tp;
-                });
-                return { ...t, roster: [...remaining, ...hydratedTargetAssets] };
-            }
-            if (targetTeam && t.id === targetTeam.id) {
-                const remaining = t.roster.filter(p => !targetAssets.some(x => x.id === p.id));
-                const hydratedUserAssets = userAssets.map(up => {
-                    const sourceTeam = teams.find(pt => pt.id === team.id);
-                    return sourceTeam?.roster.find(sp => sp.id === up.id) || up;
-                });
-                return { ...t, roster: [...remaining, ...hydratedUserAssets] };
-            }
-            return t;
-        });
-
-        setTeams(nextTeams);
-
-        // [CRITICAL FIX] Pass the *new* state directly to forceSave to avoid Ref race condition
-        if (onForceSave) {
-            await onForceSave({ teams: nextTeams });
-        }
-
-        onShowToast(`트레이드 성사! 총 ${targetAssets.length}명의 선수가 합류했습니다.`);
-    } catch (e) {
-        console.error("Trade Execution Failed:", e);
-        onShowToast("트레이드 처리 중 오류가 발생했습니다.");
-    } finally {
-        setIsExecutingTrade(false);
-        setPendingTrade(null);
-        setBlockSelectedIds(new Set()); setBlockOffers([]); setBlockSearchPerformed(false);
-        setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false);
-    }
-  };
-
-  const toggleBlockPlayer = (id: string) => {
-    const next = new Set(blockSelectedIds);
-    if (next.has(id)) next.delete(id);
-    else if (next.size < 5) next.add(id);
-    else onShowToast("최대 5명까지만 선택 가능합니다.");
-    setBlockSelectedIds(next); setBlockOffers([]); setBlockSearchPerformed(false);
-  };
-
-  const toggleTargetPosition = (pos: string) => {
-      setTargetPositions(prev => {
-          if (prev.includes(pos)) return prev.filter(p => p !== pos);
-          return [...prev, pos];
-      });
-      setBlockOffers([]);
-      setBlockSearchPerformed(false);
-  };
-
-  const handleSearchBlockOffers = async () => {
-    if (blockSelectedIds.size === 0 || isTradeDeadlinePassed) return;
-    
-    if (isTradeLimitReached) {
-        onShowToast(`금일 트레이드 업무 한도(${MAX_DAILY_TRADES}회)를 초과했습니다.`);
-        return;
-    }
-
-    logEvent('Trade', 'Search Offers', `Assets: ${blockSelectedIds.size}, Targets: ${targetPositions.join(',')}`); 
-
-    setBlockIsProcessing(true); setBlockSearchPerformed(true);
-    incrementTradeAttempts(); // Count usage
-    
-    try {
-        const targetPlayers = (team?.roster || []).filter(p => blockSelectedIds.has(p.id));
-        const generatedOffers = await generateTradeOffers(targetPlayers, team, teams, targetPositions);
-        setBlockOffers(generatedOffers);
-    } catch (e) {
-        console.error(e);
-        onShowToast("오퍼 검색 중 오류가 발생했습니다.");
-        setBlockOffers([]);
-    } finally {
-        setBlockIsProcessing(false);
-    }
-  };
-
-  const toggleProposalPlayer = (id: string) => {
-    const next = new Set(proposalSelectedIds);
-    if (next.has(id)) next.delete(id);
-    else if (next.size < 5) next.add(id);
-    else onShowToast("최대 5명까지만 선택 가능합니다.");
-    setProposalSelectedIds(next); setProposalRequirements([]); setProposalSearchPerformed(false);
-  };
-
-  const handleRequestRequirements = async () => {
-    if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) return;
-
-    if (isTradeLimitReached) {
-        onShowToast(`금일 트레이드 업무 한도(${MAX_DAILY_TRADES}회)를 초과했습니다.`);
-        return;
-    }
-
-    logEvent('Trade', 'Request Proposal', `Target: ${proposalTargetTeamId}, Assets: ${proposalSelectedIds.size}`);
-
-    setProposalIsProcessing(true); setProposalSearchPerformed(true);
-    incrementTradeAttempts(); // Count usage
-    
-    try {
-        const targetTeam = teams.find(t => t.id === proposalTargetTeamId);
-        if (!targetTeam) {
-            setProposalIsProcessing(false);
-            return;
-        }
-        const requestedPlayers = targetTeam.roster.filter(p => proposalSelectedIds.has(p.id));
-        // [Fix] Pass 'teams' as 4th argument to satisfy updated signature and inject state
-        const generatedRequirements = await generateCounterOffers(requestedPlayers, targetTeam, team, teams);
-        setProposalRequirements(generatedRequirements);
-    } catch (e) {
-        console.error(e);
-        onShowToast("제안 분석 중 오류가 발생했습니다.");
-    } finally {
-        setProposalIsProcessing(false);
-    }
-  };
-
-  const getSnapshot = (id: string, savedOvr?: number, savedPos?: string) => {
-      if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
-      for (const t of teams) {
-          const p = t.roster.find(rp => rp.id === id);
-          if (p) return { ovr: p.ovr, pos: p.position };
-      }
-      return { ovr: 0, pos: '-' };
+      setViewPlayer(fullPlayer || partialPlayer);
   };
 
   const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => b.ovr - a.ovr), [team?.roster]);
@@ -310,9 +104,8 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
              />
          </div>
        )}
-       {/* ... rest of the component (header, tabs, roster list) remains same ... */}
+       
        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
-           {/* ... Header Content ... */}
            <div>
                <div className="flex items-center gap-4">
                    <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">트레이드 센터</h2>
@@ -382,47 +175,30 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
             {activeTab !== 'History' ? (
                 <>
                     <div className="lg:col-span-5 border-r border-slate-800 flex flex-col overflow-hidden">
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-2 bg-slate-950/20">
-                            {activeTab === 'Block' ? (
-                                sortedUserRoster.map(p => {
-                                const isSelected = blockSelectedIds.has(p.id);
-                                return (
-                                    <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
-                                        <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleBlockPlayer(p.id)}>
-                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={20} className="text-white" strokeWidth={3} />}</div>
-                                            <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !mx-0 !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
-                                            <div className="text-left flex-1 min-w-0">
-                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
-                                                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
-                                            </div>
-                                        </div>
-                                        {isSelected && <MinusCircle size={18} className="text-red-500 animate-in zoom-in duration-300 cursor-pointer" onClick={() => toggleBlockPlayer(p.id)} />}
-                                    </div>
-                                );
-                                })
+                        {activeTab === 'Block' ? (
+                            <TradeRosterList 
+                                roster={sortedUserRoster} 
+                                selectedIds={blockSelectedIds} 
+                                onToggle={toggleBlockPlayer} 
+                                onViewPlayer={handleViewPlayer} 
+                                isTradeDeadlinePassed={isTradeDeadlinePassed}
+                                mode="Block"
+                                emptyMessage={{ title: "Market is Idle", desc: "트레이드할 선수가 없습니다.", icon: <ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /> }}
+                            />
+                        ) : (
+                            !proposalTargetTeamId ? (
+                                <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center px-12 space-y-4"><div className="p-8 bg-slate-800/20 rounded-full"><Users size={48} className="opacity-20" /></div><p className="text-sm font-bold uppercase tracking-widest oswald italic">Please select a team from the header to view roster</p></div>
                             ) : (
-                                !proposalTargetTeamId ? (
-                                    <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center px-12 space-y-4"><div className="p-8 bg-slate-800/20 rounded-full"><Users size={48} className="opacity-20" /></div><p className="text-sm font-bold uppercase tracking-widest oswald italic">Please select a team from the header to view roster</p></div>
-                                ) : (
-                                    targetTeamRoster.map(p => {
-                                    const isSelected = proposalSelectedIds.has(p.id);
-                                    return (
-                                        <div key={p.id} className={`w-full flex items-center justify-between p-4 rounded-2xl border transition-all duration-300 ${isTradeDeadlinePassed ? 'opacity-50 cursor-not-allowed border-slate-800 bg-slate-900' : isSelected ? 'bg-indigo-600/20 border-indigo-500 shadow-[inset_0_0_20px_rgba(79,70,229,0.1)] ring-1 ring-indigo-500/50' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}>
-                                        <div className="flex items-center gap-4 flex-1 cursor-pointer" onClick={() => !isTradeDeadlinePassed && toggleProposalPlayer(p.id)}>
-                                            <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'border-slate-700 bg-slate-900'}`}>{isSelected && <Check size={20} className="text-white" strokeWidth={3} />}</div>
-                                            <div className="flex-shrink-0"><div className={getOvrBadgeStyle(p.ovr) + " !w-10 !h-10 !text-xl"}>{p.ovr}</div></div>
-                                            <div className="text-left flex-1 min-w-0">
-                                                <div className="flex items-center gap-2"><div className="font-black text-white text-sm ko-tight truncate hover:text-indigo-400 hover:underline" onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}>{p.name}</div>{p.health !== 'Healthy' && (<span className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black uppercase ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>{p.health === 'Injured' ? 'OUT' : 'DTD'}</span>)}</div>
-                                                <div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{p.position} | {p.age}세 | ${p.salary}M</div>
-                                            </div>
-                                        </div>
-                                        {isSelected && <CheckCircle2 size={18} className="text-emerald-500 animate-in zoom-in duration-300 cursor-pointer" onClick={() => toggleProposalPlayer(p.id)} />}
-                                        </div>
-                                    );
-                                    })
-                                )
-                            )}
-                        </div>
+                                <TradeRosterList 
+                                    roster={targetTeamRoster} 
+                                    selectedIds={proposalSelectedIds} 
+                                    onToggle={toggleProposalPlayer} 
+                                    onViewPlayer={handleViewPlayer} 
+                                    isTradeDeadlinePassed={isTradeDeadlinePassed}
+                                    mode="Proposal"
+                                />
+                            )
+                        )}
                     </div>
                     <div className="lg:col-span-7 flex flex-col overflow-hidden bg-slate-950/40 relative">
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-8 z-10 relative">
@@ -469,82 +245,13 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams,
             ) : (
                 <div className="col-span-12 flex flex-col h-full overflow-hidden p-8">
                     <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/40 rounded-3xl border border-slate-800 p-6">
-                        {filteredHistory.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
-                                <div className="p-6 bg-slate-900 rounded-full border border-slate-800"><History size={48} className="opacity-30" /></div>
-                                <div className="text-center">
-                                    <p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">No Transactions</p>
-                                    <p className="text-xs font-bold text-slate-600">{historyFilter === 'mine' ? '내 팀의 트레이드 기록이 없습니다.' : '아직 진행된 트레이드가 없습니다.'}</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                        <th className="py-4 px-4 w-32">일자</th>
-                                        <th className="py-4 px-4 w-60">참여 구단</th>
-                                        <th className="py-4 px-4">IN Assets</th>
-                                        <th className="py-4 px-4">OUT Assets</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/50">
-                                    {filteredHistory.map(t => {
-                                        const isMyInitiator = t.teamId === team.id;
-                                        const initiator = teams.find(it => it.id === t.teamId);
-                                        const partner = teams.find(pt => pt.id === t.details?.partnerTeamId);
-                                        
-                                        return (
-                                        <tr key={t.id} className="hover:bg-white/5 transition-colors">
-                                            <td className="py-4 px-4 align-middle">
-                                                <div className="text-xs font-bold text-slate-400">{t.date === 'TODAY' ? currentSimDate : t.date}</div>
-                                                <div className="text-[10px] text-slate-600 font-mono mt-1">{t.id.slice(-6)}</div>
-                                            </td>
-                                            <td className="py-4 px-4 align-middle">
-                                                <div className="flex flex-col gap-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <img src={getTeamLogoUrl(initiator?.id || '')} className="w-6 h-6 object-contain" alt="" />
-                                                        <span className={`text-xs font-black uppercase ${initiator?.id === team.id ? 'text-indigo-400' : 'text-white'}`}>{initiator?.name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <img src={getTeamLogoUrl(partner?.id || '')} className="w-6 h-6 object-contain" alt="" />
-                                                        <span className={`text-xs font-black uppercase ${partner?.id === team.id ? 'text-indigo-400' : 'text-white'}`}>{partner?.name}</span>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-4 align-middle">
-                                                <div className="flex flex-col gap-2">
-                                                    {(t.details?.acquired || []).map((p, i) => {
-                                                        const snap = getSnapshot(p.id, p.ovr, p.position);
-                                                        return (
-                                                            <div key={i} className="flex items-center gap-3">
-                                                                <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
-                                                                <span className="text-sm font-bold text-emerald-300">{p.name}</span>
-                                                                <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </td>
-                                            <td className="py-4 px-4 align-middle">
-                                                <div className="flex flex-col gap-2">
-                                                    {(t.details?.traded || []).map((p, i) => {
-                                                        const snap = getSnapshot(p.id, p.ovr, p.position);
-                                                        return (
-                                                            <div key={i} className="flex items-center gap-3">
-                                                                <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
-                                                                <span className="text-sm font-bold text-red-300/80">{p.name}</span>
-                                                                <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
+                        <TradeHistoryTable 
+                            transactions={filteredHistory} 
+                            historyFilter={historyFilter} 
+                            teamId={team.id} 
+                            teams={teams}
+                            currentSimDate={currentSimDate}
+                        />
                     </div>
                 </div>
             )}
