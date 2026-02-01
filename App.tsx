@@ -113,7 +113,10 @@ const App: React.FC = () => {
 
     // Loading Message Cycler
     useEffect(() => {
-        const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading) || isLoggingOut;
+        // 로그아웃 중일 때는 랜덤 메시지 순환을 멈추고 고정 메시지를 유지합니다.
+        if (isLoggingOut) return;
+
+        const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading);
         if (isDataLoading) {
             setLoadingText(LOADING_MESSAGES[Math.floor(Math.random() * LOADING_MESSAGES.length)]);
             const interval = setInterval(() => {
@@ -137,7 +140,7 @@ const App: React.FC = () => {
     const handleLogoutWrapper = async () => {
         // 1. Immediately block UI
         setIsLoggingOut(true);
-        setLoadingText("데이터 저장 및 로그아웃 중...");
+        setLoadingText("로그아웃 중...");
         
         try {
             // 2. Force Save Sync (Wait for network)
