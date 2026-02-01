@@ -1,3 +1,4 @@
+
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { Team, Game, Player, Transaction } from '../types';
@@ -28,26 +29,50 @@ export const useBaseData = () => {
             if (scheduleError) throw scheduleError;
 
             // Map Players to Teams
-            const teams: Team[] = teamsData.map((t: any) => ({
-                id: t.id,
-                name: t.name,
-                city: t.city,
-                logo: t.logo_url,
-                conference: t.conference,
-                division: t.division,
-                wins: 0,
-                losses: 0,
-                budget: 150, // Default
-                salaryCap: 140, // Default
-                luxuryTaxLine: 170, // Default
-                roster: playersData.filter((p: any) => p.team_id === t.id).map((p: any) => ({
-                    ...p,
-                    stats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
-                    playoffStats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
-                }))
-            }));
+            const teams: Team[] = (teamsData || []).map((t: any) => {
+                // [Fix] Robust Conference Mapping: Handle 'Eastern', 'Western', or missing fields
+                let conf = t.conference || t.Conference || 'East';
+                if (typeof conf === 'string') {
+                    if (conf.toLowerCase().includes('east')) conf = 'East';
+                    else if (conf.toLowerCase().includes('west')) conf = 'West';
+                }
 
-            const schedule = mapDatabaseScheduleToRuntimeGame(scheduleData || []);
+                // [Fix] Robust Logo Mapping
+                const logoUrl = t.logo_url || t.logo || t.Logo || '';
+
+                return {
+                    id: t.id,
+                    name: t.name,
+                    city: t.city,
+                    logo: logoUrl,
+                    conference: conf as 'East' | 'West',
+                    division: t.division,
+                    wins: 0,
+                    losses: 0,
+                    budget: 150, // Default
+                    salaryCap: 140, // Default
+                    luxuryTaxLine: 170, // Default
+                    roster: (playersData || [])
+                        .filter((p: any) => p.team_id === t.id)
+                        .map((p: any) => ({
+                            ...p,
+                            stats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 },
+                            playoffStats: { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0 }
+                        }))
+                };
+            });
+
+            // [Fix] Safe Schedule Mapping: Prevent entire query failure if schedule map fails
+            let schedule: Game[] = [];
+            try {
+                if (scheduleData && scheduleData.length > 0) {
+                    schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
+                }
+            } catch (e) {
+                console.error("Schedule mapping failed:", e);
+                // Fallback: Empty schedule is better than app crash
+                schedule = [];
+            }
 
             return { teams, schedule };
         },
