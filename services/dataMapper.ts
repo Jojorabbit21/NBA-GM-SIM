@@ -1,7 +1,7 @@
 
 import { Team, Player, Game } from '../types';
 import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
-import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
+import { calculateOvr } from '../utils/ovrUtils';
 
 // --- Helper: Flexible Column Getter ---
 const getCol = (item: any, keys: string[]) => {
@@ -9,56 +9,6 @@ const getCol = (item: any, keys: string[]) => {
         if (item[k] !== undefined && item[k] !== null) return item[k];
     }
     return undefined;
-};
-
-// --- Helper: OVR Calculator ---
-const calculateOvrFromStats = (stats: any, position: string): number => {
-    // 1. Position Resolution
-    let posKey = position as PositionType;
-    if (!POSITION_WEIGHTS[posKey]) {
-        if (position.includes('PG')) posKey = 'PG';
-        else if (position.includes('SG')) posKey = 'SG';
-        else if (position.includes('SF')) posKey = 'SF';
-        else if (position.includes('PF')) posKey = 'PF';
-        else if (position.includes('C')) posKey = 'C';
-        else posKey = 'SF'; // Default fallback
-    }
-
-    const weights = POSITION_WEIGHTS[posKey];
-    let totalScore = 0;
-    let totalWeight = 0;
-
-    // 2. Derive Average 3PT for calculation if needed
-    const tC = stats.threeCorner ?? 70;
-    const t45 = stats.three45 ?? 70;
-    const tT = stats.threeTop ?? 70;
-    const threeAvg = Math.round((tC + t45 + tT) / 3);
-    
-    // 3. Prepare calculation object with all possible keys
-    const calcAttrs: Record<string, number> = { ...stats, threeAvg };
-
-    // 4. Weighted Sum
-    for (const [key, weight] of Object.entries(weights)) {
-        let val = calcAttrs[key];
-        
-        // Fallback for missing specific stats using category averages (if category averages are valid)
-        // If the specific stat is missing (undefined/null/NaN), try to use the category score.
-        // The category scores (ins, out, etc.) default to 70 in the mapper if completely missing.
-        if (val === undefined || val === null || isNaN(val)) {
-             if (['closeShot','midRange','threeAvg','ft','shotIq','offConsist'].includes(key)) val = stats.out;
-             else if (['layup','dunk','postPlay','drawFoul','hands'].includes(key)) val = stats.ins;
-             else if (['intDef','perDef','steal','blk','helpDefIq','passPerc','defConsist'].includes(key)) val = stats.def;
-             else if (['speed','agility','strength','vertical','stamina','hustle','durability'].includes(key)) val = stats.ath;
-             else if (['passAcc','handling','spdBall','passVision','passIq'].includes(key)) val = stats.plm;
-             else if (['offReb','defReb'].includes(key)) val = stats.reb;
-             else val = 70; // Hard fallback if everything fails
-        }
-        
-        totalScore += val * weight;
-        totalWeight += weight;
-    }
-
-    return totalWeight > 0 ? Math.round(totalScore / totalWeight) : 70;
 };
 
 /**
@@ -173,8 +123,8 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const position = getCol(p, ['position', 'Pos', 'Position', 'POS']) || "G";
     
     // 3. Determine OVR (ALWAYS CALCULATE FROM STATS)
-    // meta_players에는 ovr 컬럼이 없으므로, 항상 재계산합니다.
-    const ovr = calculateOvrFromStats(statsObj, position);
+    // Always use the centralized calculator to ensure OVR reflects current weights
+    const ovr = calculateOvr(statsObj, position);
     
     // Determine Potential
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
