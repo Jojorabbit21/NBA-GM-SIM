@@ -104,9 +104,10 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                         console.log("🏆 Playoff State Restored.");
                     }
 
-                    // Map Transactions for UI
+                    // Map Transactions for UI (Fix: Support 'id', 'Id', 'transaction_id')
                     setTransactions(history.transactions.map((tx: any) => ({
-                        id: tx.transaction_id,
+                        // Fallback order: id (std), Id (user claim), transaction_id (legacy), generated
+                        id: tx.id || tx.Id || tx.transaction_id || `tx_${Math.random()}`, 
                         date: tx.date,
                         type: tx.type,
                         teamId: tx.team_id,

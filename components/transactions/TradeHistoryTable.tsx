@@ -55,24 +55,30 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
             </thead>
             <tbody className="divide-y divide-slate-800/50">
                 {transactions.map(t => {
+                    // [Safety] Ensure transaction object exists
+                    if (!t) return null;
+                    
                     const initiator = teams.find(it => it.id === t.teamId);
                     const partner = teams.find(pt => pt.id === t.details?.partnerTeamId);
                     
+                    // [Safety] Ultra-defensive ID Access to prevent "reading 'slice' of undefined"
+                    const txId = (t.id && typeof t.id === 'string') ? t.id.slice(-6) : '??????';
+                    
                     return (
-                    <tr key={t.id} className="hover:bg-white/5 transition-colors">
+                    <tr key={t.id || Math.random()} className="hover:bg-white/5 transition-colors">
                         <td className="py-4 px-4 align-middle">
                             <div className="text-xs font-bold text-slate-400">{t.date === 'TODAY' ? currentSimDate : t.date}</div>
-                            <div className="text-[10px] text-slate-600 font-mono mt-1">{t.id.slice(-6)}</div>
+                            <div className="text-[10px] text-slate-600 font-mono mt-1">{txId}</div>
                         </td>
                         <td className="py-4 px-4 align-middle">
                             <div className="flex flex-col gap-2">
                                 <div className="flex items-center gap-2">
                                     <img src={getTeamLogoUrl(initiator?.id || '')} className="w-6 h-6 object-contain" alt="" />
-                                    <span className={`text-xs font-black uppercase ${initiator?.id === teamId ? 'text-indigo-400' : 'text-white'}`}>{initiator?.name}</span>
+                                    <span className={`text-xs font-black uppercase ${initiator?.id === teamId ? 'text-indigo-400' : 'text-white'}`}>{initiator?.name || 'Unknown'}</span>
                                 </div>
                                 <div className="flex items-center gap-2">
                                     <img src={getTeamLogoUrl(partner?.id || '')} className="w-6 h-6 object-contain" alt="" />
-                                    <span className={`text-xs font-black uppercase ${partner?.id === teamId ? 'text-indigo-400' : 'text-white'}`}>{partner?.name}</span>
+                                    <span className={`text-xs font-black uppercase ${partner?.id === teamId ? 'text-indigo-400' : 'text-white'}`}>{partner?.name || 'Unknown'}</span>
                                 </div>
                             </div>
                         </td>
