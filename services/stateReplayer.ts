@@ -129,6 +129,8 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.mp += statLine.mp || 0;
             player.stats.pts += statLine.pts || 0;
             player.stats.reb += statLine.reb || 0;
+            player.stats.offReb += statLine.offReb || 0;
+            player.stats.defReb += statLine.defReb || 0;
             player.stats.ast += statLine.ast || 0;
             player.stats.stl += statLine.stl || 0;
             player.stats.blk += statLine.blk || 0;
@@ -139,6 +141,13 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.p3a += statLine.p3a || 0;
             player.stats.ftm += statLine.ftm || 0;
             player.stats.fta += statLine.fta || 0;
+
+            // [FIX] Add Missing Detailed Shooting Stats & Fouls
+            player.stats.rimM += statLine.rimM || 0;
+            player.stats.rimA += statLine.rimA || 0;
+            player.stats.midM += statLine.midM || 0;
+            player.stats.midA += statLine.midA || 0;
+            player.stats.pf += statLine.pf || 0;
         }
     });
 }
