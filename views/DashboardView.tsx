@@ -80,45 +80,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   
   const { starters } = tactics;
   
-  // [CRITICAL FIX] Apply Health Status Check based on Current Date
-  // If player has a known injury and ReturnDate > CurrentDate -> Force Injured
-  // If ReturnDate <= CurrentDate -> Force Healthy (Recovery)
-  const effectiveRoster = useMemo(() => {
-      if (!team?.roster) return [];
-      const today = new Date(currentSimDate || new Date());
-
-      return team.roster.map(p => {
-          // If player is marked injured (either by DB or constants.tsx override)
-          if (p.health === 'Injured' && p.returnDate) {
-              const returnDate = new Date(p.returnDate);
-              // If we passed the return date, heal them
-              if (today >= returnDate) {
-                  return { ...p, health: 'Healthy' as const, injuryType: undefined, returnDate: undefined };
-              }
-          }
-          return p;
-      });
-  }, [team?.roster, currentSimDate]);
+  // [CLEANUP] effectiveRoster Logic Removed
+  // The injury recovery is now handled persistently in useSimulation.ts (advanceDate).
+  // We can trust team.roster directly.
+  const effectiveRoster = team?.roster || [];
+  const effectiveOppRoster = opponent?.roster || [];
 
   // [Fix] Calculate Sort OVR dynamically
   const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
   const injuredSorted = useMemo(() => effectiveRoster.filter(p => p.health === 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
   
-  // Also apply to opponent for consistency
-  const effectiveOppRoster = useMemo(() => {
-      if (!opponent?.roster) return [];
-      const today = new Date(currentSimDate || new Date());
-      return opponent.roster.map(p => {
-          if (p.health === 'Injured' && p.returnDate) {
-              const returnDate = new Date(p.returnDate);
-              if (today >= returnDate) {
-                  return { ...p, health: 'Healthy' as const, injuryType: undefined, returnDate: undefined };
-              }
-          }
-          return p;
-      });
-  }, [opponent?.roster, currentSimDate]);
-
   // [Fix] Calculate Sort OVR dynamically
   const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
   
@@ -149,7 +120,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [effectiveOppRoster]);
 
   const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
-      // Pass the effective (health-adjusted) roster to tactic calc
+      // Pass the effective roster to tactic calc
       return calculateTacticScore(type, { ...team, roster: effectiveRoster }, tactics);
   };
 

@@ -117,7 +117,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                <td className={`${statCellClass} text-right ${p.stl === leaders.stl && p.stl > 0 ? highlightClass : 'text-slate-400'}`}>{p.stl}</td>
                                <td className={`${statCellClass} text-right ${p.blk === leaders.blk && p.blk > 0 ? highlightClass : 'text-slate-400'}`}>{p.blk}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.tov}</td>
-                               <td className={`${statCellClass} text-right text-red-400`}>{p.pf || 0}</td>
+                               <td className={`${statCellClass} text-right text-slate-400`}>{p.pf || 0}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.fgm}/{p.fga}</td>
                                <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.fgm, p.fga)}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.p3m}/{p.p3a}</td>
@@ -139,7 +139,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.stl}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.blk}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.tov}</td>
-                        <td className={`${statCellClass} text-right text-red-400`}>{teamTotals.pf}</td>
+                        <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.pf}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.fgm}/{teamTotals.fga}</td>
                         <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.fgm, teamTotals.fga)}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.p3m}/{teamTotals.p3a}</td>

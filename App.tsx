@@ -15,6 +15,7 @@ import { LiveScoreTicker } from './components/LiveScoreTicker';
 import { Toast } from './components/SharedComponents';
 import { Sidebar } from './components/Sidebar';
 import { ResetDataModal } from './components/ResetDataModal';
+import { fetchUnreadMessageCount } from './services/messageService'; // Added
 
 // Views - Static Imports
 import { AuthView } from './views/AuthView';
@@ -36,6 +37,7 @@ const HelpView = lazy(() => import('./views/HelpView').then(m => ({ default: m.H
 const OvrCalculatorView = lazy(() => import('./views/OvrCalculatorView').then(m => ({ default: m.OvrCalculatorView })));
 const GameSimulatingView = lazy(() => import('./views/GameSimulationView').then(m => ({ default: m.GameSimulatingView })));
 const GameResultView = lazy(() => import('./views/GameResultView').then(m => ({ default: m.GameResultView })));
+const InboxView = lazy(() => import('./views/InboxView').then(m => ({ default: m.InboxView }))); // Added
 
 const LOADING_MESSAGES = [
     "라커룸을 청소하는 중...", "농구공에 바람 넣는 중...", "림에 새 그물을 다는 중...", "전술 보드를 닦는 중...",
@@ -65,11 +67,19 @@ const App: React.FC = () => {
     const gameData = useGameData(session, isGuestMode);
     
     // 3. UI State
-    const [view, setView] = useState<'TeamSelect' | 'Onboarding' | 'GameSim' | 'GameResult' | 'Dashboard' | string>('TeamSelect');
+    const [view, setView] = useState<'TeamSelect' | 'Onboarding' | 'GameSim' | 'GameResult' | 'Dashboard' | 'Inbox' | string>('TeamSelect');
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [showResetConfirm, setShowResetConfirm] = useState(false);
     const [loadingText, setLoadingText] = useState(LOADING_MESSAGES[0]);
-    const [isLoggingOut, setIsLoggingOut] = useState(false); // [New] Logout State
+    const [isLoggingOut, setIsLoggingOut] = useState(false); 
+    const [unreadMessagesCount, setUnreadMessagesCount] = useState(0); // Added State
+
+    const refreshUnreadCount = async () => {
+        if (session?.user && gameData.myTeamId && !isGuestMode) {
+            const count = await fetchUnreadMessageCount(session.user.id, gameData.myTeamId);
+            setUnreadMessagesCount(count);
+        }
+    };
 
     // 4. Simulation Hook (Game Engine Logic)
     const sim = useSimulation(
@@ -88,11 +98,19 @@ const App: React.FC = () => {
         setToastMessage,
         // [New] Pass forceSave for Event-Driven Saves (Playoff Init, Game Finish)
         gameData.forceSave,
-        session, isGuestMode
+        session, isGuestMode,
+        refreshUnreadCount // Passed to update badge
     );
 
     // Initialize GA
     useEffect(() => { initGA(); }, []);
+    
+    // Check Messages on Load
+    useEffect(() => {
+        if (gameData.myTeamId && !isGuestMode) {
+            refreshUnreadCount();
+        }
+    }, [gameData.myTeamId, isGuestMode]);
 
     // Initial View Routing
     useEffect(() => {
@@ -113,7 +131,6 @@ const App: React.FC = () => {
 
     // Loading Message Cycler
     useEffect(() => {
-        // 로그아웃 중일 때는 랜덤 메시지 순환을 멈추고 고정 메시지를 유지합니다.
         if (isLoggingOut) return;
 
         const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading);
@@ -138,12 +155,9 @@ const App: React.FC = () => {
 
     // [Critical Save] Updated Logout Handler - Blocking UI Pattern
     const handleLogoutWrapper = async () => {
-        // 1. Immediately block UI
         setIsLoggingOut(true);
         setLoadingText("로그아웃 중...");
-        
         try {
-            // 2. Force Save Sync (Wait for network)
             if (session && !isGuestMode && gameData.myTeamId) {
                 console.log("🔒 Logout sequence started: Saving data...");
                 await gameData.forceSave();
@@ -151,10 +165,7 @@ const App: React.FC = () => {
             }
         } catch (e) {
             console.error("⚠️ Logout save warning (data might be unsaved):", e);
-            // We proceed to logout anyway to not trap the user
         }
-
-        // 3. Clean up and Logout
         handleLogout(() => {
             gameData.cleanupData();
             setView('TeamSelect');
@@ -171,7 +182,6 @@ const App: React.FC = () => {
             const game = gameData.schedule[i]; 
             if (game.played && game.date < gameData.currentSimDate) { 
                 const pastGames = gameData.schedule.filter(g => g.date === game.date && g.played);
-                // Return 'Latest Results' instead of specific date for cleaner UI, or use date if preferred
                 return { games: pastGames, label: "Latest Results" }; 
             }
         }
@@ -189,7 +199,6 @@ const App: React.FC = () => {
         );
     }
 
-    // [New] Blocking Logout Screen
     if (isLoggingOut) {
         return (
             <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-200 z-[9999]">
@@ -202,8 +211,6 @@ const App: React.FC = () => {
 
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
 
-    // [FIX] Update loading condition to rely on isSaveLoading instead of hasInitialLoadRef
-    // This allows 'TeamSelect' to show up if no save exists.
     const isDataLoading = gameData.isBaseDataLoading || (session && gameData.isSaveLoading);
     
     if (isDataLoading) {
@@ -250,6 +257,7 @@ const App: React.FC = () => {
                     currentSimDate={gameData.currentSimDate}
                     currentView={view as any}
                     isGuestMode={isGuestMode}
+                    unreadMessagesCount={unreadMessagesCount}
                     onNavigate={(v) => setView(v)}
                     onResetClick={() => setShowResetConfirm(true)}
                     onLogout={handleLogoutWrapper}
@@ -282,6 +290,7 @@ const App: React.FC = () => {
                     <div className="flex-1 p-8 lg:p-12">
                         <Suspense fallback={<ViewLoader />}>
                             {view === 'Dashboard' && gameData.myTeamId && <DashboardView team={gameData.teams.find(t => t.id === gameData.myTeamId)!} teams={gameData.teams} schedule={gameData.schedule} onSim={sim.handleExecuteSim} tactics={gameData.userTactics || generateAutoTactics(gameData.teams.find(t => t.id === gameData.myTeamId)!)} onUpdateTactics={gameData.setUserTactics} currentSimDate={gameData.currentSimDate} isSimulating={sim.isSimulating} onShowSeasonReview={() => setView('SeasonReview')} onShowPlayoffReview={() => setView('PlayoffReview')} hasPlayoffHistory={gameData.playoffSeries.length > 0} playoffSeries={gameData.playoffSeries} />}
+                            {view === 'Inbox' && gameData.myTeamId && <InboxView myTeamId={gameData.myTeamId} userId={session?.user?.id} teams={gameData.teams} onUpdateUnreadCount={refreshUnreadCount} />}
                             {view === 'Roster' && <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} />}
                             {view === 'Standings' && <StandingsView teams={gameData.teams} onTeamClick={id => console.log(id)} />}
                             {view === 'Leaderboard' && <LeaderboardView teams={gameData.teams} />}

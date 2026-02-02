@@ -3,7 +3,7 @@ import React from 'react';
 import { 
   LayoutDashboard, Users, Trophy, BarChart3, Swords, 
   Calendar as CalendarIcon, ArrowLeftRight, Clock, 
-  RotateCcw, LogOut, FlaskConical 
+  RotateCcw, LogOut, FlaskConical, Mail 
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 
@@ -12,6 +12,7 @@ interface SidebarProps {
   currentSimDate: string;
   currentView: AppView;
   isGuestMode: boolean;
+  unreadMessagesCount: number; // Added Prop
   onNavigate: (view: AppView) => void;
   onResetClick: () => void;
   onLogout: () => void;
@@ -57,7 +58,7 @@ const TEAM_NAV_TEXT_COLORS: Record<string, string> = {
   'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#010101', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
 };
 
-const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string }> = ({ active, icon, label, onClick, color, textColor }) => {
+const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string, badge?: number }> = ({ active, icon, label, onClick, color, textColor, badge }) => {
   // Convert Hex to RGB for opacity handling in shadows/hovers
   const hexToRgb = (hex: string) => {
     const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -68,9 +69,9 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
   return (
     <button 
       onClick={onClick} 
-      className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
+      className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
         active 
-          ? 'shadow-lg ring-1' // Removed 'text-white' to allow dynamic color
+          ? 'shadow-lg ring-1' 
           : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
       }`}
       style={active ? {
@@ -80,21 +81,29 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
         borderColor: `rgba(${rgb}, 0.3)`
       } : {}}
     >
-      {/* Hover Effect for Inactive State - Text Color Change */}
-      <span 
-        className="transition-colors relative z-10"
-        style={!active ? { color: 'inherit' } : {}}
-      >
-        {React.cloneElement(icon as React.ReactElement<any>, {
-           color: active ? textColor : undefined, // Apply Dynamic Icon Color
-           className: !active ? `transition-colors duration-300 group-hover:text-[${color}]` : ''
-        })}
-      </span>
-      
-      {/* Label */}
-      <span className="text-sm font-bold ko-tight tracking-tight relative z-10">
-        {label}
-      </span>
+      <div className="flex items-center gap-4 relative z-10">
+          {/* Hover Effect for Inactive State - Text Color Change */}
+          <span 
+            className="transition-colors"
+            style={!active ? { color: 'inherit' } : {}}
+          >
+            {React.cloneElement(icon as React.ReactElement<any>, {
+               color: active ? textColor : undefined, // Apply Dynamic Icon Color
+               className: !active ? `transition-colors duration-300 group-hover:text-[${color}]` : ''
+            })}
+          </span>
+          
+          {/* Label */}
+          <span className="text-sm font-bold ko-tight tracking-tight">
+            {label}
+          </span>
+      </div>
+
+      {badge !== undefined && badge > 0 && (
+          <span className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-slate-900 animate-in zoom-in duration-300">
+             {badge > 9 ? '9+' : badge}
+          </span>
+      )}
 
       {/* Subtle shine effect for active items */}
       {active && (
@@ -109,6 +118,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentSimDate, 
   currentView, 
   isGuestMode, 
+  unreadMessagesCount,
   onNavigate, 
   onResetClick, 
   onLogout 
@@ -123,19 +133,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500">
       
-      {/* Team Profile Section - Redesigned */}
+      {/* Team Profile Section */}
       <div 
         className="p-8 border-b border-slate-800 relative overflow-hidden transition-colors duration-700"
         style={{ backgroundColor: infoBgColor }}
       >
         <div className="flex items-center gap-5 relative z-10">
-          {/* Logo */}
           <img 
             src={team?.logo} 
             className="w-16 h-16 object-contain drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300" 
             alt="" 
           />
-          
           <div className="min-w-0">
             <h2 
                 className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md"
@@ -143,8 +151,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               {team?.name || 'NBA GM'}
             </h2>
-            
-            {/* Stats */}
             <span 
                 className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-90"
                 style={{ color: infoTextColor }}
@@ -158,11 +164,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Date Ticker */}
       <div className="px-8 py-5 border-b border-slate-800 bg-slate-800/20 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          {/* Fixed Slate Color for Icon */}
           <Clock size={16} className="text-slate-400" />
           <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
         </div>
-        {/* Fixed Green Color for Dot */}
         <div className="w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)] bg-emerald-500"></div>
       </div>
 
@@ -175,6 +179,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onClick={() => onNavigate('Dashboard')} 
           color={navActiveColor}
           textColor={navTextColor}
+        />
+        {/* Inbox Added */}
+        <NavItem 
+          active={currentView === 'Inbox'} 
+          icon={<Mail size={20}/>} 
+          label="받은 메세지" 
+          onClick={() => onNavigate('Inbox')} 
+          color={navActiveColor}
+          textColor={navTextColor}
+          badge={unreadMessagesCount}
         />
         <NavItem 
           active={currentView === 'Roster'} 
