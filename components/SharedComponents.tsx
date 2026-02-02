@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { CheckCircle2, X, User, Activity, Shield, Zap, Target, Database, Lock, ShieldAlert, BarChart3, PieChart, Info, RefreshCw } from 'lucide-react';
-import { Team, Player } from '../types';
+import { Team, Player, PlayerStats } from '../types';
 import { getTeamLogoUrl } from '../utils/constants';
 
 export const getOvrBadgeStyle = (ovr: number) => {
@@ -133,164 +133,167 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-const ShotZonePath: React.FC<{ path: string, pct: number, leagueAvg: number, hasData: boolean }> = ({ path, pct, leagueAvg, hasData }) => {
-    let fillColor = 'rgba(30, 41, 59, 0.1)'; 
-    let strokeColor = '#334155';
-    let strokeOpacity = 0.2; 
-    
-    if (hasData) {
-        if (pct >= leagueAvg + 0.05) {
-            fillColor = 'rgba(16, 185, 129, 0.5)'; 
-            strokeColor = '#34d399';
-            strokeOpacity = 0.5;
-        } else if (pct <= leagueAvg - 0.05) {
-            fillColor = 'rgba(239, 68, 68, 0.2)'; 
-            strokeColor = '#f87171';
-            strokeOpacity = 0.5;
-        } else {
-            fillColor = 'rgba(234, 179, 8, 0.2)'; 
-            strokeColor = '#facc15';
-            strokeOpacity = 0.5;
-        }
-    }
-
-    return (
-        <path d={path} fill={fillColor} stroke={strokeColor} strokeOpacity={strokeOpacity} strokeWidth="1.5" className="transition-all duration-300" />
-    );
+// Simplified Paths for Robust Rendering (Approximation of 11 Zones)
+// 500 x 470 Canvas
+const ZONE_PATHS = {
+    // 1. Rim
+    RIM: "M 250 47.5 m -40 0 a 40 40 0 1 0 80 0 a 40 40 0 1 0 -80 0", 
+    // 2. Paint Left
+    PAINT_L: "M 170 0 L 250 0 L 250 190 L 170 190 Z",
+    // 3. Paint Right
+    PAINT_R: "M 250 0 L 330 0 L 330 190 L 250 190 Z",
+    // 4. Mid Left
+    MID_L: "M 30 0 L 170 0 L 170 140 L 30 140 Z",
+    // 5. Mid Center (Top Key)
+    MID_C: "M 170 140 L 330 140 L 330 190 L 170 190 Z",
+    // 6. Mid Right
+    MID_R: "M 330 0 L 470 0 L 470 140 L 330 140 Z",
+    // 7. Corner 3 Left
+    C3_L: "M 0 0 L 30 0 L 30 140 L 0 140 Z",
+    // 8. Corner 3 Right
+    C3_R: "M 470 0 L 500 0 L 500 140 L 470 140 Z",
+    // 9. ATB 3 Left
+    ATB3_L: "M 0 140 L 170 140 L 170 470 L 0 470 Z",
+    // 10. ATB 3 Center
+    ATB3_C: "M 170 190 L 330 190 L 330 470 L 170 470 Z",
+    // 11. ATB 3 Right
+    ATB3_R: "M 330 140 L 500 140 L 500 470 L 330 470 Z"
 };
 
-const ShotLabel: React.FC<{ makes: number, attempts: number, pct: number, leagueAvg: number, x: number, y: number }> = ({ makes, attempts, pct, leagueAvg, x, y }) => {
-    const hasData = attempts > 0;
-    let statusColor = '#334155';
-    let textColor = '#94a3b8'; 
-
-    if (hasData) {
-        if (pct >= leagueAvg + 0.05) {
-            statusColor = '#34d399';
-            textColor = '#4ade80'; 
-        } else if (pct <= leagueAvg - 0.05) {
-            statusColor = '#f87171';
-            textColor = '#f87171'; 
-        } else {
-            statusColor = '#facc15';
-            textColor = '#facc15'; 
-        }
-    }
-
-    const width = 110;
-    const height = 60;
-
-    return (
-        <g className="pointer-events-none">
-            <rect x={x - width/2} y={y - height/2} width={width} height={height} rx="10" fill="rgba(15, 23, 42, 0.95)" stroke={statusColor} strokeWidth="2" />
-            {hasData ? (
-                <>
-                    <text x={x} y={y - 5} textAnchor="middle" fill="#fff" fontSize="22" fontWeight="900" fontFamily="sans-serif">
-                        {makes}/{attempts}
-                    </text>
-                    <text x={x} y={y + 18} textAnchor="middle" fill={textColor} fontSize="18" fontWeight="bold" fontFamily="sans-serif">
-                        {(pct * 100).toFixed(1)}%
-                    </text>
-                </>
-            ) : (
-                <text x={x} y={y + 5} textAnchor="middle" fill="#475569" fontSize="16" fontWeight="bold" className="select-none opacity-50">
-                    No Data
-                </text>
-            )}
-        </g>
-    );
+const getZoneColor = (makes: number, attempts: number, leagueAvg: number) => {
+    if (attempts === 0) return { fill: 'rgba(30, 41, 59, 0.3)', stroke: '#334155', opacity: 0.3 };
+    
+    const pct = makes / attempts;
+    if (pct >= leagueAvg + 0.05) return { fill: 'rgba(239, 68, 68, 0.6)', stroke: '#f87171', opacity: 0.8 }; // Hot (Red)
+    if (pct <= leagueAvg - 0.05) return { fill: 'rgba(59, 130, 246, 0.6)', stroke: '#60a5fa', opacity: 0.8 }; // Cold (Blue)
+    return { fill: 'rgba(234, 179, 8, 0.5)', stroke: '#facc15', opacity: 0.8 }; // Avg (Yellow)
 };
 
 const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
-    // Safety check for players without stats (e.g. trade snapshots)
-    if (!player.stats) {
-        return (
-            <div className="flex flex-col items-center justify-center h-full w-full text-slate-500">
-                <BarChart3 size={48} className="opacity-20 mb-4" />
-                <p className="font-bold text-lg">No Shooting Data Available</p>
-                <p className="text-xs">This player has no recorded stats for the season.</p>
-            </div>
-        );
-    }
-
     const s = player.stats;
-    const g = s.g || 1;
-    
-    const pathMidRange = `M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0 Z`;
-    const pathPaint = `M 170 0 L 170 190 L 330 190 L 330 0 Z`;
-    const path3PT = "M 0 0 h 500 v 470 h -500 Z";
+    if (!s) return null;
 
-    const p3Pct = s.p3a > 0 ? s.p3m / s.p3a : 0;
-    const midPct = s.midA > 0 ? s.midM / s.midA : 0;
-    const rimPct = s.rimA > 0 ? s.rimM / s.rimA : 0;
+    // Helper to safe get stats or 0 (Defensive against undefined)
+    const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
+
+    const zData = {
+        rim: getZ(s.zone_rim_m, s.zone_rim_a),
+        paintL: getZ(s.zone_paint_l_m, s.zone_paint_l_a),
+        paintR: getZ(s.zone_paint_r_m, s.zone_paint_r_a),
+        midL: getZ(s.zone_mid_l_m, s.zone_mid_l_a),
+        midC: getZ(s.zone_mid_c_m, s.zone_mid_c_a),
+        midR: getZ(s.zone_mid_r_m, s.zone_mid_r_a),
+        c3L: getZ(s.zone_c3_l_m, s.zone_c3_l_a),
+        c3R: getZ(s.zone_c3_r_m, s.zone_c3_r_a),
+        atb3L: getZ(s.zone_atb3_l_m, s.zone_atb3_l_a),
+        atb3C: getZ(s.zone_atb3_c_m, s.zone_atb3_c_a),
+        atb3R: getZ(s.zone_atb3_r_m, s.zone_atb3_r_a),
+    };
+
+    // League Averages (Approx)
+    const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
+
+    const zones = [
+        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "RIM" },
+        { path: ZONE_PATHS.PAINT_L, data: zData.paintL, avg: AVG.paint, label: "PAINT L" },
+        { path: ZONE_PATHS.PAINT_R, data: zData.paintR, avg: AVG.paint, label: "PAINT R" },
+        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "MID L" },
+        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "MID C" },
+        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "MID R" },
+        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "C3 L" },
+        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "C3 R" },
+        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "3PT L" },
+        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "3PT TOP" },
+        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "3PT R" },
+    ];
 
     const row1 = [
-        { l: 'GP', v: s.g }, { l: 'GS', v: s.gs }, { l: 'MIN', v: (s.mp / g).toFixed(1) },
-        { l: 'PTS', v: (s.pts / g).toFixed(1) }, { l: 'REB', v: (s.reb / g).toFixed(1) },
-        { l: 'OREB', v: (s.offReb / g).toFixed(1) }, { l: 'AST', v: (s.ast / g).toFixed(1) },
-        { l: 'STL', v: (s.stl / g).toFixed(1) }, { l: 'BLK', v: (s.blk / g).toFixed(1) },
-        { l: 'TOV', v: (s.tov / g).toFixed(1) }, { l: 'PF', v: ((s.pf || 0) / g).toFixed(1) }
-    ];
-
-    const row2 = [
-        { l: 'FGM', v: (s.fgm / g).toFixed(1) }, { l: 'FGA', v: (s.fga / g).toFixed(1) },
-        { l: 'FG%', v: s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '-' },
-        { l: '3PM', v: (s.p3m / g).toFixed(1) }, { l: '3PA', v: (s.p3a / g).toFixed(1) },
-        { l: '3P%', v: s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '-' },
-        { l: 'FTM', v: (s.ftm / g).toFixed(1) }, { l: 'FTA', v: (s.fta / g).toFixed(1) },
-        { l: 'FT%', v: s.fta > 0 ? ((s.ftm / s.fta) * 100).toFixed(1) + '%' : '-' },
-    ];
-
-    const row3 = [
-        { l: 'INSM', v: s.rimM }, { l: 'INSA', v: s.rimA },
-        { l: 'INS%', v: s.rimA > 0 ? ((s.rimM / s.rimA) * 100).toFixed(1) + '%' : '-' },
-        { l: 'MIDM', v: s.midM }, { l: 'MIDA', v: s.midA },
-        { l: 'MID%', v: s.midA > 0 ? ((s.midM / s.midA) * 100).toFixed(1) + '%' : '-' },
-        { l: '3PM', v: s.p3m }, { l: '3PA', v: s.p3a },
-        { l: '3P%', v: s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '-' },
+        { l: 'GP', v: s.g }, { l: 'GS', v: s.gs }, { l: 'MIN', v: (s.g > 0 ? (s.mp / s.g).toFixed(1) : 0) },
+        { l: 'PTS', v: (s.g > 0 ? (s.pts / s.g).toFixed(1) : 0) }, { l: 'REB', v: (s.g > 0 ? (s.reb / s.g).toFixed(1) : 0) },
+        { l: 'AST', v: (s.g > 0 ? (s.ast / s.g).toFixed(1) : 0) }, { l: 'STL', v: (s.g > 0 ? (s.stl / s.g).toFixed(1) : 0) },
+        { l: 'BLK', v: (s.g > 0 ? (s.blk / s.g).toFixed(1) : 0) }
     ];
 
     return (
         <div className="flex flex-col lg:flex-row items-center gap-8 w-full animate-in fade-in slide-in-from-bottom-2 duration-500 h-full">
-            <div className="w-full lg:w-[70%] flex flex-col gap-4 h-full justify-center">
+            <div className="w-full lg:w-[60%] flex flex-col gap-4 h-full justify-center">
                 <div className="flex flex-col gap-1">
-                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Traditional</h5>
-                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-11 gap-2">
+                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Season Stats</h5>
+                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-4 md:grid-cols-8 gap-2">
                         {row1.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
                     </div>
                 </div>
-                <div className="flex flex-col gap-1">
-                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Shooting</h5>
-                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-9 gap-2">
-                        {row2.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
-                    </div>
-                </div>
-                <div className="flex flex-col gap-1">
-                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Efficiency by Zone</h5>
-                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-9 gap-2">
-                        {row3.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
-                    </div>
+                
+                <div className="flex flex-col gap-1 mt-2">
+                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">11-Zone Efficiency</h5>
+                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {zones.map((z, i) => {
+                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(1) : '-';
+                             return (
+                                 <div key={i} className="flex justify-between items-center bg-slate-900/40 p-2 rounded border border-slate-800/50">
+                                     <span className="text-[10px] font-bold text-slate-500">{z.label}</span>
+                                     <div className="flex gap-2">
+                                         <span className="text-xs font-mono text-slate-300">{z.data.m}/{z.data.a}</span>
+                                         <span className={`text-xs font-black w-10 text-right ${pct !== '-' && Number(pct) > z.avg*100 ? 'text-red-400' : 'text-slate-500'}`}>{pct}%</span>
+                                     </div>
+                                 </div>
+                             )
+                        })}
+                     </div>
                 </div>
             </div>
-            <div className="w-full lg:w-[30%] flex flex-col items-center justify-center">
+
+            <div className="w-full lg:w-[40%] flex flex-col items-center justify-center">
                 <div className="flex flex-col gap-1 w-full max-w-[350px]">
-                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">SHOT ZONE</h5>
+                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
+                        <span>SHOT CHART</span>
+                        <div className="flex gap-2 text-[9px]">
+                            <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500/50 rounded-sm"></div> HOT</span>
+                            <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500/50 rounded-sm"></div> AVG</span>
+                            <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500/50 rounded-sm"></div> COLD</span>
+                        </div>
+                    </h5>
                     <div className="relative w-full aspect-[500/470] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
-                        <svg viewBox="0 0 500 470" className="w-full h-full">
+                        <svg viewBox="0 0 500 470" className="w-full h-full transform rotate-180 scale-x-[-1]"> {/* Rotate to match Basketball court orientation (Hoop at top or bottom depending on preference, usually hoop at bottom for charts) -> actually standard charts have hoop at top (0,0) or bottom. My coords assume 0,0 top-left. Let's flip it so 0,0 is baseline. */}
+                            {/* Background Court Lines */}
                             <rect x="0" y="0" width="500" height="470" fill="#0f172a" />
-                            <ShotZonePath path={path3PT} pct={p3Pct} leagueAvg={0.36} hasData={s.p3a > 0} />
-                            <ShotZonePath path={pathMidRange} pct={midPct} leagueAvg={0.42} hasData={s.midA > 0} />
-                            <ShotZonePath path={pathPaint} pct={rimPct} leagueAvg={0.62} hasData={s.rimA > 0} />
-                            <g fill="none" stroke="#334155" strokeWidth="2" className="pointer-events-none">
+                            
+                            {/* Zones */}
+                            {zones.map((z, i) => {
+                                const style = getZoneColor(z.data.m, z.data.a, z.avg);
+                                return (
+                                    <path 
+                                        key={i} 
+                                        d={z.path} 
+                                        fill={style.fill} 
+                                        stroke={style.stroke} 
+                                        strokeWidth="1"
+                                        strokeOpacity="0.5"
+                                        className="transition-all duration-300 hover:opacity-100"
+                                    >
+                                        <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
+                                    </path>
+                                );
+                            })}
+                            
+                            {/* Court Markings Overlay (Hoop, 3pt line visual guide) */}
+                            <g fill="none" stroke="#e2e8f0" strokeWidth="2" strokeOpacity="0.1" pointerEvents="none">
+                                {/* Hoop */}
+                                <circle cx="250" cy="52.5" r="7.5" stroke="orange" strokeOpacity="0.5" /> 
+                                {/* Backboard */}
+                                <line x1="220" y1="40" x2="280" y2="40" stroke="white" strokeOpacity="0.3" />
+                                {/* Key */}
                                 <rect x="170" y="0" width="160" height="190" />
                                 <circle cx="250" cy="190" r="60" />
+                                {/* 3PT Line (Approx) */}
                                 <path d="M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0" />
-                                <path d="M 190 470 A 60 60 0 0 1 310 470" strokeOpacity="0.5" />
                             </g>
-                            <ShotLabel makes={s.p3m} attempts={s.p3a} pct={p3Pct} leagueAvg={0.36} x={250} y={380} />
-                            <ShotLabel makes={s.midM} attempts={s.midA} pct={midPct} leagueAvg={0.42} x={250} y={240} />
-                            <ShotLabel makes={s.rimM} attempts={s.rimA} pct={rimPct} leagueAvg={0.62} x={250} y={85} />
                         </svg>
+                        
+                        {/* Overlay Text (optional, maybe too cluttered) */}
+                        <div className="absolute top-2 left-2 text-[9px] text-slate-600 font-mono pointer-events-none">
+                            11-Zone System
+                        </div>
                     </div>
                 </div>
             </div>
@@ -299,180 +302,129 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
 };
 
 export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, teamId?: string, onClose: () => void }> = ({ player, teamName, teamId, onClose }) => {
-  const modalRef = useRef<HTMLDivElement>(null);
-  const [activeTab, setActiveTab] = useState<'attributes' | 'zones'>('attributes');
+    // Prevent background scrolling
+    useEffect(() => {
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = 'unset'; };
+    }, []);
 
-  useEffect(() => {
-    const originalStyle = window.getComputedStyle(document.body).overflow;
-    document.body.style.overflow = 'hidden';
-    const handleClickOutside = (event: MouseEvent) => {
-      if (modalRef.current && !modalRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.body.style.overflow = originalStyle;
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [onClose]);
-
-  const teamLogo = teamId ? getTeamLogoUrl(teamId) : null;
-
-  // Helper to fallback to category score if specific attr is missing
-  const getAttr = (val: number | undefined, fallback: number | undefined) => {
-      return val ?? fallback ?? 70; // Default to 70 if completely missing
-  };
-
-  const attrGroups = [
-    {
-      label: "내곽 득점 (INS)",
-      attrs: [
-        { label: "LAYUP", val: getAttr(player.layup, player.ins) },
-        { label: "DUNK", val: getAttr(player.dunk, player.ins) },
-        { label: "POST PLAY", val: getAttr(player.postPlay, player.ins) },
-        { label: "DRAW FOUL", val: getAttr(player.drawFoul, player.ins) },
-        { label: "HANDS", val: getAttr(player.hands, player.ins) },
-      ]
-    },
-    {
-      label: "외곽 득점 (OUT)",
-      attrs: [
-        { label: "CLOSE", val: getAttr(player.closeShot, player.out) },
-        { label: "MIDRANGE", val: getAttr(player.midRange, player.out) },
-        { label: "3PT", val: Math.round(((player.threeCorner ?? player.out) + (player.three45 ?? player.out) + (player.threeTop ?? player.out))/3) },
-        { label: "FT", val: getAttr(player.ft, player.out) },
-        { label: "SHOT IQ", val: getAttr(player.shotIq, player.out) },
-        { label: "OFF CONSISTENCY", val: getAttr(player.offConsist, player.out) },
-      ]
-    },
-    {
-      label: "운동능력 (ATH)",
-      attrs: [
-        { label: "SPEED", val: getAttr(player.speed, player.ath) },
-        { label: "AGILITY", val: getAttr(player.agility, player.ath) },
-        { label: "STRENGTH", val: getAttr(player.strength, player.ath) },
-        { label: "VERTICAL", val: getAttr(player.vertical, player.ath) },
-        { label: "STAMINA", val: getAttr(player.stamina, player.ath) },
-        { label: "HUSTLE", val: getAttr(player.hustle, player.ath) },
-        { label: "DURABILITY", val: getAttr(player.durability, player.ath) },
-      ]
-    },
-    {
-      label: "플레이메이킹 (PLM)",
-      attrs: [
-        { label: "ACCURACY", val: getAttr(player.passAcc, player.plm) },
-        { label: "PASS VISION", val: getAttr(player.passVision, player.plm) },
-        { label: "PASS IQ", val: getAttr(player.passIq, player.plm) },
-        { label: "HANDLE", val: getAttr(player.handling, player.plm) },
-        { label: "SPD BALL", val: getAttr(player.spdBall, player.plm) },
-      ]
-    },
-    {
-      label: "수비 (DEF)",
-      attrs: [
-        { label: "PERIMETER", val: getAttr(player.perDef, player.def) },
-        { label: "INTERIOR", val: getAttr(player.intDef, player.def) },
-        { label: "STEAL", val: getAttr(player.steal, player.def) },
-        { label: "BLOCK", val: getAttr(player.blk, player.def) },
-        { label: "HELP DEFENSE IQ", val: getAttr(player.helpDefIq, player.def) },
-        { label: "PASS PERCEPTION", val: getAttr(player.passPerc, player.def) },
-        { label: "DEF CONSISTENCY", val: getAttr(player.defConsist, player.def) },
-      ]
-    },
-    {
-      label: "리바운드 (REB)",
-      attrs: [
-        { label: "OFF REB", val: getAttr(player.offReb, player.reb) },
-        { label: "DEF REB", val: getAttr(player.defReb, player.reb) },
-      ]
-    }
-  ];
-
-  return createPortal(
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-sm animate-in fade-in duration-200">
-      <div ref={modalRef} className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-6xl shadow-2xl flex flex-col overflow-hidden max-h-[95vh] mx-4 relative animate-in zoom-in-95 duration-200">
-        <div className="bg-slate-950 px-8 py-6 border-b border-slate-800 flex justify-between items-center flex-shrink-0">
-           <div className="flex items-center gap-8">
-              <div className="flex gap-4">
-                  <div className="flex flex-col items-center gap-1">
-                     <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl ring-4 ring-white/5"}>{player.ovr}</div>
-                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">OVR</span>
-                  </div>
-              </div>
-              <div className="flex flex-col">
-                 <h2 className="text-3xl font-black text-white uppercase pretendard tracking-tight leading-none mb-2">{player.name}</h2>
-                 <div className="flex items-center gap-4 text-sm font-bold text-slate-400 bg-slate-900/50 px-4 py-2 rounded-xl border border-slate-800">
-                    <div className="flex items-center gap-2">
-                        {teamLogo && <img src={teamLogo} className="w-6 h-6 object-contain" alt={teamName} />}
-                        <span className="text-indigo-400 uppercase tracking-wide">{teamName || "Free Agent"}</span>
-                    </div>
-                    <div className="w-[1px] h-4 bg-slate-700"></div>
-                    <span className="text-slate-200">{player.position}</span>
-                    <div className="w-[1px] h-4 bg-slate-700"></div>
-                    <span>{player.age}세</span>
-                    <div className="w-[1px] h-4 bg-slate-700"></div>
-                    <span>{player.height}cm / {player.weight}kg</span>
-                    <div className="w-[1px] h-4 bg-slate-700"></div>
-                    <span className="text-slate-200 pretendard">Salary: ${player.salary}M</span>
-                 </div>
-              </div>
-           </div>
-           
-           <div className="flex items-center gap-4">
-                <div className="flex bg-slate-800 p-1 rounded-xl">
-                    <button 
-                        onClick={() => setActiveTab('attributes')}
-                        className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center gap-2 ${activeTab === 'attributes' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        <Activity size={14} /> 능력치
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('zones')}
-                        className={`px-4 py-2 rounded-lg text-xs font-black uppercase transition-all flex items-center gap-2 ${activeTab === 'zones' ? 'bg-slate-700 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'}`}
-                    >
-                        <Target size={14} /> 기록
-                    </button>
-                </div>
-                <button onClick={onClose} className="p-3 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-2xl transition-colors shadow-lg border border-slate-700">
-                    <X size={24} />
-                </button>
-           </div>
+    const AttributeRow = ({ label, value, max=99 }: { label: string, value: number, max?: number }) => (
+        <div className="flex items-center justify-between py-1 border-b border-slate-800/50 last:border-0">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-tight">{label}</span>
+            <span className={`text-sm font-black font-mono ${value >= 90 ? 'text-fuchsia-400' : value >= 80 ? 'text-emerald-400' : value >= 70 ? 'text-amber-400' : 'text-slate-500'}`}>{value}</span>
         </div>
+    );
 
-        <div className="flex-1 overflow-y-auto p-8 bg-slate-900/50 custom-scrollbar">
-           {activeTab === 'attributes' ? (
-               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {attrGroups.map((group, idx) => {
-                     // Calculate Group Average
-                     const avg = Math.round(group.attrs.reduce((sum, a) => sum + a.val, 0) / group.attrs.length);
-                     
-                     return (
-                        <div key={idx} className="bg-slate-950/60 rounded-2xl border border-slate-800 p-5 flex flex-col gap-4 shadow-sm">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-800/50 h-10 px-2">
-                                <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">{group.label}</h4>
-                                <div className={`!w-8 !h-7 !text-xs !rounded-md ${getRankStyle(avg)}`}>{avg}</div>
-                            </div>
-                            <div className="space-y-1.5">
-                                {group.attrs.map((attr, aIdx) => (
-                                    <div key={aIdx} className="flex justify-between items-center h-8 px-2 rounded-lg hover:bg-slate-800/50 transition-colors">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{attr.label}</span>
-                                        <div className={`!w-8 !h-7 !text-xs !rounded-md ${getRankStyle(Math.round(attr.val))}`}>{Math.round(attr.val)}</div>
-                                    </div>
-                                ))}
+    return createPortal(
+        <div className="fixed inset-0 z-[500] flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in duration-300" onClick={onClose}>
+            <div className="bg-slate-900 border border-slate-700 rounded-[2rem] w-full max-w-5xl max-h-[90vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-300 overflow-hidden relative" onClick={e => e.stopPropagation()}>
+                
+                {/* Header */}
+                <div className="px-8 py-6 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+                    <div className="flex items-center gap-6">
+                        <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl shadow-lg"}>{player.ovr}</div>
+                        <div>
+                            <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
+                            <div className="flex items-center gap-3 mt-2">
+                                {teamId && <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain" alt="" />}
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">{teamName || 'Free Agent'}</span>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest px-2 py-0.5 border border-slate-700 rounded">{player.position}</span>
+                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{player.height}cm / {player.weight}kg</span>
                             </div>
                         </div>
-                     );
-                  })}
-               </div>
-           ) : (
-               <div className="flex flex-col items-center h-full justify-center">
-                   <VisualShotChart player={player} />
-               </div>
-           )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
+                    </div>
+                    <button onClick={onClose} className="p-3 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
+                        <X size={24} />
+                    </button>
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/50">
+                    <div className="p-8">
+                        {/* Shot Chart & Basic Stats */}
+                        <div className="mb-10">
+                            <VisualShotChart player={player} />
+                        </div>
+
+                        {/* Detailed Attributes Grid */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            
+                            {/* Scoring */}
+                            <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                    <Target size={16} className="text-orange-400" />
+                                    <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Scoring</h4>
+                                </div>
+                                <div className="space-y-1">
+                                    <AttributeRow label="Inside" value={player.ins} />
+                                    <AttributeRow label="Close Shot" value={player.closeShot} />
+                                    <AttributeRow label="Layup" value={player.layup} />
+                                    <AttributeRow label="Dunk" value={player.dunk} />
+                                    <AttributeRow label="Mid-Range" value={player.midRange} />
+                                    <AttributeRow label="3PT Shooting" value={player.threeCorner} /> 
+                                    <AttributeRow label="Free Throw" value={player.ft} />
+                                    <AttributeRow label="Shot IQ" value={player.shotIq} />
+                                </div>
+                            </div>
+
+                            {/* Playmaking & Mental */}
+                            <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                    <Zap size={16} className="text-yellow-400" />
+                                    <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Playmaking</h4>
+                                </div>
+                                <div className="space-y-1">
+                                    <AttributeRow label="Pass Accuracy" value={player.passAcc} />
+                                    <AttributeRow label="Ball Handle" value={player.handling} />
+                                    <AttributeRow label="Speed w/ Ball" value={player.spdBall} />
+                                    <AttributeRow label="Vision" value={player.passVision} />
+                                    <AttributeRow label="Pass IQ" value={player.passIq} />
+                                    <AttributeRow label="Hands" value={player.hands} />
+                                    <AttributeRow label="Off. Consistency" value={player.offConsist} />
+                                </div>
+                            </div>
+
+                            {/* Defense */}
+                            <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                    <Shield size={16} className="text-blue-400" />
+                                    <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Defense</h4>
+                                </div>
+                                <div className="space-y-1">
+                                    <AttributeRow label="Interior Def" value={player.intDef} />
+                                    <AttributeRow label="Perimeter Def" value={player.perDef} />
+                                    <AttributeRow label="Steal" value={player.steal} />
+                                    <AttributeRow label="Block" value={player.blk} />
+                                    <AttributeRow label="Help Def IQ" value={player.helpDefIq} />
+                                    <AttributeRow label="Def. Consistency" value={player.defConsist} />
+                                    <AttributeRow label="Off. Rebound" value={player.offReb} />
+                                    <AttributeRow label="Def. Rebound" value={player.defReb} />
+                                </div>
+                            </div>
+
+                            {/* Athleticism */}
+                            <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                                <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                    <Activity size={16} className="text-emerald-400" />
+                                    <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Athleticism</h4>
+                                </div>
+                                <div className="space-y-1">
+                                    <AttributeRow label="Speed" value={player.speed} />
+                                    <AttributeRow label="Agility" value={player.agility} />
+                                    <AttributeRow label="Strength" value={player.strength} />
+                                    <AttributeRow label="Vertical" value={player.vertical} />
+                                    <AttributeRow label="Stamina" value={player.stamina} />
+                                    <AttributeRow label="Hustle" value={player.hustle} />
+                                    <AttributeRow label="Durability" value={player.durability} />
+                                    <AttributeRow label="Potential" value={player.potential} />
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
 };

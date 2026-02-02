@@ -39,10 +39,33 @@ export interface PlayerStats {
   p3a: number;
   ftm: number;
   fta: number;
-  rimM: number;
-  rimA: number;
-  midM: number;
-  midA: number;
+  
+  // Legacy Aggregates (Compatibility)
+  rimM: number; rimA: number;
+  midM: number; midA: number;
+  
+  // --- New 11-Zone Shooting Data ---
+  // Zone 1: Restricted Area (Rim)
+  zone_rim_m: number; zone_rim_a: number;
+  
+  // Zone 2-3: Paint (Non-RA)
+  zone_paint_l_m: number; zone_paint_l_a: number;
+  zone_paint_r_m: number; zone_paint_r_a: number;
+  
+  // Zone 4-6: Mid-Range
+  zone_mid_l_m: number; zone_mid_l_a: number;
+  zone_mid_c_m: number; zone_mid_c_a: number;
+  zone_mid_r_m: number; zone_mid_r_a: number;
+  
+  // Zone 7-8: Corner 3
+  zone_c3_l_m: number; zone_c3_l_a: number;
+  zone_c3_r_m: number; zone_c3_r_a: number;
+  
+  // Zone 9-11: Above the Break 3
+  zone_atb3_l_m: number; zone_atb3_l_a: number;
+  zone_atb3_c_m: number; zone_atb3_c_a: number;
+  zone_atb3_r_m: number; zone_atb3_r_a: number;
+
   pf: number;
 }
 
