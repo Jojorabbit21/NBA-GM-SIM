@@ -5,8 +5,6 @@ import { calculateOvr } from './ovrUtils';
 export const SEASON_START_DATE = '2025-10-20'; // Adjusted to match generic start
 export const TRADE_DEADLINE = '2026-02-06';
 
-export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }> = {};
-
 export const TEAM_OWNERS: Record<string, string> = {
     'atl': '토니 레슬러', 'bos': '윅 그로스벡', 'bkn': '조 차이', 'cha': '릭 슈널 & 게이브 플로킨',
     'chi': '마이클 라인스도프', 'cle': '댄 길버트', 'dal': '미리암 아델슨', 'den': '스탠 크론키',
@@ -149,9 +147,8 @@ export const getTeamLogoUrl = (teamId: string): string => {
     return `/logos/${id}.svg`;
 };
 
-// [Critical Change] Always calculate OVR on the fly.
-// We DO NOT use p.ovr from the database/state directly for logic or display.
-// This ensures that when weights change, the app reflects it immediately.
+// [Critical] Import OVR calc from logic file to ensure consistency
+// This replaces the old static p.ovr return.
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
     return calculateOvr(p, position || p.position);
 };
