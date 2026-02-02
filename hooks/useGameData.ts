@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
 import { useBaseData } from '../services/queries';
+import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
 import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
@@ -71,15 +72,23 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 if (checkpoint && checkpoint.team_id) {
                     console.log(`📂 Found Save: ${checkpoint.team_id} @ ${checkpoint.sim_date}`);
                     
-                    // Load Logs
+                    // Load Regular Season History
                     const history = await loadUserHistory(userId);
                     
+                    // Load Playoff State (If any)
+                    const playoffState = await loadPlayoffState(userId, checkpoint.team_id);
+                    const playoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
+
+                    // Combine Games (Regular + Playoff) for Replay
+                    // Playoff results format needs to be compatible or handled in replay
+                    const allGameResults = [...history.games, ...playoffResults];
+
                     // Replay Logic (Pure Function)
                     const replayedState = replayGameState(
                         baseData.teams,
                         baseData.schedule,
                         history.transactions,
-                        history.games,
+                        allGameResults,
                         checkpoint.sim_date
                     );
 
@@ -89,6 +98,12 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     setSchedule(replayedState.schedule);
                     setCurrentSimDate(replayedState.currentSimDate);
                     
+                    // Restore Playoff Series State if exists
+                    if (playoffState && playoffState.bracket_data) {
+                        setPlayoffSeries(playoffState.bracket_data.series);
+                        console.log("🏆 Playoff State Restored.");
+                    }
+
                     // Map Transactions for UI
                     setTransactions(history.transactions.map((tx: any) => ({
                         id: tx.transaction_id,
@@ -133,7 +148,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
             if (teamId && date) {
                 await saveCheckpoint(session.user.id, teamId, date);
-                console.log("💾 Checkpoint Saved:", date);
+                // Note: Playoff state is saved inside useSimulation via savePlayoffState
             }
         } catch (e) {
             console.error("Save Failed:", e);
@@ -169,7 +184,9 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             await Promise.all([
                 supabase.from('saves').delete().eq('user_id', userId),
                 supabase.from('user_game_results').delete().eq('user_id', userId),
-                supabase.from('user_transactions').delete().eq('user_id', userId)
+                supabase.from('user_transactions').delete().eq('user_id', userId),
+                supabase.from('user_playoffs').delete().eq('user_id', userId),
+                supabase.from('user_playoffs_results').delete().eq('user_id', userId)
             ]);
             
             // Clear React Query Cache
@@ -183,6 +200,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setMyTeamId(null);
             setCurrentSimDate(INITIAL_DATE);
             setTransactions([]);
+            setPlayoffSeries([]);
             hasInitialLoadRef.current = false; // Allow re-init
             
             return { success: true };

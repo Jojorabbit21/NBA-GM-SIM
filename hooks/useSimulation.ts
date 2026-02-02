@@ -1,12 +1,13 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Game, Team, PlayerBoxScore, TacticStatRecord, TacticalSnapshot, GameTactics, SimulationResult } from '../types';
+import { Game, Team, PlayerBoxScore, TacticStatRecord, TacticalSnapshot, GameTactics, SimulationResult, PlayoffGameResultDB } from '../types';
 import { simulateGame } from '../services/gameEngine';
 import { generateGameRecapNews, generateCPUTradeNews } from '../services/geminiService';
 import { simulateCPUTrades } from '../services/tradeEngine';
 import { INITIAL_STATS, TRADE_DEADLINE, SEASON_START_DATE } from '../utils/constants';
 import { saveGameResults, saveUserTransaction } from '../services/queries';
-import { checkAndInitPlayoffs, generateNextPlayoffGames } from '../utils/playoffLogic';
+import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
+import { checkAndInitPlayoffs, generateNextPlayoffGames, advancePlayoffState } from '../utils/playoffLogic';
 import { updateTeamTacticHistory } from '../utils/tacticUtils';
 
 export const useSimulation = (
@@ -19,7 +20,7 @@ export const useSimulation = (
     setTransactions: React.Dispatch<React.SetStateAction<any[]>>,
     setNews: React.Dispatch<React.SetStateAction<any[]>>,
     setToastMessage: (msg: string | null) => void,
-    triggerSave: (overrides?: any) => void, // [Added] Event-Driven Save
+    triggerSave: (overrides?: any) => void,
     session: any,
     isGuestMode: boolean
 ) => {
@@ -31,30 +32,50 @@ export const useSimulation = (
     const updatedTeamsRef = useRef(teams);
     useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
 
-    // [Playoff Hook] Generate Schedule Automatically
+    // [Playoff Hook] Generate Schedule & Advance Rounds Automatically
     useEffect(() => {
         if (!teams || teams.length === 0 || !schedule || schedule.length === 0) return;
 
-        const currentSeries = playoffSeries;
+        let currentSeries = [...playoffSeries];
+        let stateChanged = false;
         
-        const newSeriesList = checkAndInitPlayoffs(teams, schedule, currentSeries, currentSimDate);
-        if (newSeriesList.length > currentSeries.length) {
-            setPlayoffSeries(newSeriesList);
-            setToastMessage("🏆 플레이오프가 시작되었습니다!");
-            // [Critical Save] Playoff Initialization
-            triggerSave({ playoffSeries: newSeriesList }); 
-            return;
+        // 1. Check for Init (Regular Season End)
+        const initializedSeries = checkAndInitPlayoffs(teams, schedule, currentSeries, currentSimDate);
+        if (initializedSeries.length > currentSeries.length) {
+            currentSeries = initializedSeries;
+            stateChanged = true;
+            setToastMessage("🏆 플레이-인 토너먼트가 시작되었습니다!");
         }
 
-        const { newGames } = generateNextPlayoffGames(schedule, currentSeries, currentSimDate);
+        // 2. Advance State (Check wins, promote to next round)
+        // Pass 'teams' so R1 seeding can happen if Play-In finishes
+        const advancedSeries = advancePlayoffState(currentSeries, teams);
+        if (JSON.stringify(advancedSeries) !== JSON.stringify(currentSeries)) {
+            currentSeries = advancedSeries;
+            stateChanged = true;
+        }
+
+        // 3. Generate Games for Active Series
+        const { newGames, updatedSeries } = generateNextPlayoffGames(schedule, currentSeries, currentSimDate);
+        
         if (newGames.length > 0) {
             setSchedule(prev => [...prev, ...newGames]);
             console.log("📅 Playoff Games Scheduled:", newGames.length);
-            // [Critical Save] Playoff Schedule Update
+            // Save Schedule Update
             triggerSave({ schedule: [...schedule, ...newGames] });
         }
 
-    }, [currentSimDate, schedule, playoffSeries, teams, setSchedule, setPlayoffSeries, setToastMessage, triggerSave]);
+        if (stateChanged || JSON.stringify(updatedSeries) !== JSON.stringify(playoffSeries)) {
+             setPlayoffSeries(updatedSeries);
+             stateChanged = true;
+        }
+
+        // Save Playoff State if structure changed
+        if (stateChanged && session?.user && !isGuestMode && myTeamId) {
+            savePlayoffState(session.user.id, myTeamId, updatedSeries);
+        }
+
+    }, [currentSimDate, schedule, playoffSeries, teams, setSchedule, setPlayoffSeries, setToastMessage, triggerSave, session, isGuestMode, myTeamId]);
 
 
     const advanceDate = useCallback(async () => {
@@ -71,7 +92,6 @@ export const useSimulation = (
         currentDateObj.setDate(currentDateObj.getDate() + 1);
         const nextDate = currentDateObj.toISOString().split('T')[0];
         
-        // [Trade Limit Reset] Clear potential leftover data for the next date to ensure fresh start
         if (myTeamId) {
             const nextDayKey = `trade_ops_${myTeamId}_${nextDate}`;
             localStorage.removeItem(nextDayKey);
@@ -82,7 +102,7 @@ export const useSimulation = (
         const start = new Date(SEASON_START_DATE);
         const current = new Date(nextDate);
 
-        let newTeams = [...teams]; // Work with local copy first
+        let newTeams = [...teams];
 
         if (current <= deadline) {
             const totalDuration = deadline.getTime() - start.getTime();
@@ -94,11 +114,10 @@ export const useSimulation = (
             const isTradeTriggered = Math.random() < tradeChance;
 
             if (isTradeTriggered) {
-                // Async call to server
                 const tradeResult = await simulateCPUTrades(newTeams, myTeamId);
                 if (tradeResult) {
                     const { updatedTeams, transaction } = tradeResult;
-                    newTeams = updatedTeams; // Update local copy
+                    newTeams = updatedTeams;
                     if (transaction) {
                         setTransactions(prev => [transaction, ...prev]);
                         if (session?.user && !isGuestMode) {
@@ -117,13 +136,11 @@ export const useSimulation = (
         newTeams = newTeams.map(t => ({
             ...t,
             roster: t.roster.map(p => {
-                // Calculate Base Recovery Amount
                 const baseRec = 10; 
                 const staBonus = (p.stamina || 75) * 0.1; 
                 const durBonus = (p.durability || 75) * 0.05;
                 let totalRecovery = baseRec + staBonus + durBonus;
 
-                // [Update] If team played today, recover only 50% of the normal amount
                 if (teamsPlayedToday.has(t.id)) {
                     totalRecovery *= 0.5;
                 }
@@ -134,7 +151,6 @@ export const useSimulation = (
         
         setTeams(newTeams);
         
-        // [Critical Save] Date Advance (This is the most common save point)
         onDateChange(nextDate, { teams: newTeams, currentSimDate: nextDate });
         
         setLastGameResult(null);
@@ -157,7 +173,6 @@ export const useSimulation = (
 
         if (unplayedGamesToday.length === 0) {
             setIsSimulating(true);
-            // Wait for async advanceDate
             setTimeout(async () => { 
                 await advanceDate(); 
                 setIsSimulating(false); 
@@ -173,7 +188,9 @@ export const useSimulation = (
             let updatedSeries = [...playoffSeries];
             let userGameResultOutput = null;
             let allPlayedToday: Game[] = [];
-            const gameResultsToInsert: any[] = [];
+            const regularGameResultsToInsert: any[] = [];
+            const playoffGameResultsToInsert: PlayoffGameResultDB[] = [];
+            
             const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
 
             for (const game of unplayedGamesToday) {
@@ -212,6 +229,7 @@ export const useSimulation = (
                         if (box) { 
                             targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
                             targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0); targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
+                            targetStats.pf = (targetStats.pf || 0) + (box.pf || 0);
                         }
                         const returnObj = { ...p, condition: update?.condition !== undefined ? Math.round(update.condition) : p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
                         if (game.isPlayoff) returnObj.playoffStats = targetStats; else returnObj.stats = targetStats;
@@ -223,6 +241,7 @@ export const useSimulation = (
                 const updatedGame: Game = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, tactics: { home: result.homeTactics, away: result.awayTactics } };
                 const schIdx = updatedSchedule.findIndex(g => g.id === game.id); if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
                 
+                // Playoff Series Update Logic
                 if (game.isPlayoff && game.seriesId) {
                     const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
                     if (sIdx !== -1) {
@@ -234,11 +253,30 @@ export const useSimulation = (
                         const target = series.targetWins || 4; 
                         const finished = newH >= target || newL >= target;
                         updatedSeries[sIdx] = { ...series, higherSeedWins: newH, lowerSeedWins: newL, finished, winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined };
+
+                        // If user is logged in, queue separate Playoff Game Result Save
+                        if (session?.user && !isGuestMode) {
+                            playoffGameResultsToInsert.push({
+                                user_id: session.user.id,
+                                game_id: game.id,
+                                date: game.date,
+                                series_id: game.seriesId,
+                                round_number: series.round,
+                                game_number: newH + newL, // Approximate
+                                home_team_id: game.homeTeamId,
+                                away_team_id: game.awayTeamId,
+                                home_score: result.homeScore,
+                                away_score: result.awayScore,
+                                box_score: { home: result.homeBox, away: result.awayBox },
+                                tactics: { home: result.homeTactics, away: result.awayTactics }
+                            });
+                        }
                     }
                 }
 
-                if (session?.user && !isGuestMode) {
-                    gameResultsToInsert.push({ 
+                // Regular Season Save Queue
+                if (session?.user && !isGuestMode && !game.isPlayoff) {
+                    regularGameResultsToInsert.push({ 
                         user_id: session.user.id, 
                         game_id: game.id, 
                         date: game.date, 
@@ -247,8 +285,8 @@ export const useSimulation = (
                         home_score: result.homeScore, 
                         away_score: result.awayScore, 
                         box_score: { home: result.homeBox, away: result.awayBox },
-                        is_playoff: game.isPlayoff, 
-                        series_id: game.seriesId,
+                        is_playoff: false, 
+                        series_id: undefined,
                         tactics: { home: result.homeTactics, away: result.awayTactics } 
                     });
                 }
@@ -256,9 +294,21 @@ export const useSimulation = (
                 if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
             }
 
-            if (gameResultsToInsert.length > 0) { saveGameResults(gameResultsToInsert); }
+            // Batch Save Regular Season Results
+            if (regularGameResultsToInsert.length > 0) { saveGameResults(regularGameResultsToInsert); }
             
-            // [Safety] Set local state immediately for UI updates
+            // Save Playoff Results (Individual or Batch depending on implementation)
+            if (playoffGameResultsToInsert.length > 0) {
+                for (const res of playoffGameResultsToInsert) {
+                    await savePlayoffGameResult(res);
+                }
+                // Update bracket state immediately in DB
+                if (updatedSeries.length > 0 && session?.user && !isGuestMode) {
+                     savePlayoffState(session.user.id, myTeamId, updatedSeries);
+                }
+            }
+
+            // Local State Update
             setTeams(updatedTeams); 
             setSchedule(updatedSchedule); 
             setPlayoffSeries(updatedSeries); 
@@ -267,12 +317,10 @@ export const useSimulation = (
                 const recap = await generateGameRecapNews(userGameResultOutput);
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
                 
-                // [Critical Save] User Game Finished - Save stats and schedule immediately
-                // We save the updated state without advancing date yet
+                // Critical Save
                 triggerSave({ teams: updatedTeams, schedule: updatedSchedule, playoffSeries: updatedSeries });
             } else { 
                 setIsSimulating(false); 
-                // Auto-advance if user didn't play (Sim All) - advanceDate calls its own save
                 await advanceDate(); 
             }
         };
