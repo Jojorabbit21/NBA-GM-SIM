@@ -1,5 +1,5 @@
 
-import { Player, DefenseTactic, OffenseTactic } from '../../../types';
+import { Player, DefenseTactic, OffenseTactic, TacticalSliders } from '../../../types';
 
 // ==========================================================================================
 //  🛑 FOUL SYSTEM CONFIGURATION & TUNING
@@ -39,14 +39,22 @@ export const FOUL_CONFIG = {
         OFF_MISMATCH: 1.03    // Offensive schemes targeting specific weaknesses increase fouls by 3%
     },
 
-    // 5. Randomness
+    // 5. Slider Multipliers (New)
+    // Adjust foul rates based on intensity sliders (1-10, Default 5)
+    SLIDERS: {
+        DEF_INTENSITY_IMPACT: 0.12, // Each point above 5 adds 12% foul rate
+        PRESS_IMPACT: 0.08,         // Each point above 5 adds 8% foul rate (Guards/Wings)
+        REB_IMPACT: 0.05            // Each point above 5 adds 5% foul rate (Loose ball fouls)
+    },
+
+    // 6. Randomness
     // To ensure games aren't deterministic.
     VARIANCE: {
         MIN: 0.8, // -20% luck
         MAX: 1.3  // +30% luck (Bad day for refs)
     },
 
-    // 6. Ejection Rules
+    // 7. Ejection Rules
     FOUL_LIMIT: 6,
     // Minimum minutes a player must play even if they foul out rapidly (simulation artifact prevention)
     MIN_MINUTES_FLOOR: 12 
@@ -68,6 +76,7 @@ export const FOUL_CONFIG = {
  * 3. **Contextual Modifiers**:
  *    - **Matchup**: Adds penalty if opponent has high `Draw Foul` attribute.
  *    - **Tactics**: Increases probability based on team's defensive aggression or opponent's offensive targeting.
+ *    - **Sliders**: Increases probability based on Intensity, Press, and Rebounding aggression.
  * 
  * 4. **Simulation**:
  *    - Scales propensity to actual `minutesPlanned` (extrapolated from Per 36).
@@ -82,6 +91,7 @@ export function calculateFoulStats(
     minutesPlanned: number,
     defTactics: { defense: DefenseTactic[] },
     oppOffTactics: { offense: OffenseTactic[] },
+    sliders: TacticalSliders,
     matchupOpponent?: Player
 ): { pf: number, adjustedMinutes: number } {
     if (minutesPlanned <= 0) return { pf: 0, adjustedMinutes: 0 };
@@ -146,10 +156,10 @@ export function calculateFoulStats(
     }
 
     // ==================================================================
-    // STEP 4: Apply Tactical Modifiers
+    // STEP 4: Apply Tactical & Slider Modifiers
     // ==================================================================
 
-    // 4-A. Defensive Tactics
+    // 4-A. Defensive Tactics (Static Tactic Bonus)
     if (defTactics.defense.includes('ManToManPerimeter')) {
         // Aggressive perimeter defense leads to reach-ins for guards/wings
         if (['PG', 'SG', 'SF', 'G', 'F'].includes(pos)) foulPropensity *= C.TACTICS.DEF_AGGRESSIVE;
@@ -172,6 +182,26 @@ export function calculateFoulStats(
     if (oppTacticsList.includes('PerimeterFocus')) {
         // Opponent PnR heavy -> Guards foul more fighting screens
         if (['PG', 'G'].includes(pos)) foulPropensity *= C.TACTICS.OFF_MISMATCH;
+    }
+
+    // 4-C. Slider Adjustments (Dynamic Intensity)
+    // Defensive Intensity (Global)
+    if (sliders.defIntensity > 5) {
+        const intensityMult = 1.0 + ((sliders.defIntensity - 5) * C.SLIDERS.DEF_INTENSITY_IMPACT);
+        foulPropensity *= intensityMult;
+    }
+
+    // Full Court Press (Guards/Wings)
+    if (sliders.fullCourtPress > 5 && ['PG', 'SG', 'SF', 'G', 'F'].includes(pos)) {
+        const pressMult = 1.0 + ((sliders.fullCourtPress - 5) * C.SLIDERS.PRESS_IMPACT);
+        foulPropensity *= pressMult;
+    }
+
+    // Rebound Aggression (Bigs - Loose ball fouls)
+    const rebAggression = Math.max(sliders.offReb, sliders.defReb);
+    if (rebAggression > 5 && ['PF', 'C'].includes(pos)) {
+        const rebMult = 1.0 + ((rebAggression - 5) * C.SLIDERS.REB_IMPACT);
+        foulPropensity *= rebMult;
     }
 
     // ==================================================================
