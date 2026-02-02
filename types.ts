@@ -1,5 +1,4 @@
 
-
 export interface Transaction {
   id: string;
   date: string;
@@ -100,6 +99,12 @@ export interface GameTactics {
   starters: { PG: string; SG: string; SF: string; PF: string; C: string };
   minutesLimits: Record<string, number>;
   stopperId?: string;
+}
+
+export interface TacticPreset {
+  slot: number;
+  name: string;
+  data: Partial<GameTactics>; // Contains sliders, offenseTactics, defenseTactics only
 }
 
 export interface TacticStatRecord {

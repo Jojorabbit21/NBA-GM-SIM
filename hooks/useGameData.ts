@@ -197,7 +197,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 supabase.from('user_transactions').delete().eq('user_id', userId),
                 supabase.from('user_playoffs').delete().eq('user_id', userId),
                 supabase.from('user_playoffs_results').delete().eq('user_id', userId),
-                supabase.from('user_messages').delete().eq('user_id', userId)
+                supabase.from('user_messages').delete().eq('user_id', userId),
+                supabase.from('user_tactics').delete().eq('user_id', userId) // [Added] Delete tactics presets
             ]);
             
             // Clear React Query Cache

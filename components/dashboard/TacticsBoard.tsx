@@ -1,8 +1,11 @@
 
-import React from 'react';
-import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle } from 'lucide-react';
-import { OffenseTactic, DefenseTactic, Team, GameTactics } from '../../types';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, Save, ChevronDown, Edit3, Trash2, Check, Download, Plus } from 'lucide-react';
+import { OffenseTactic, DefenseTactic, Team, GameTactics, TacticPreset } from '../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO, getEfficiencyStyles } from '../../utils/tacticUtils';
+import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
+import { supabase } from '../../services/supabaseClient';
 
 interface TacticsBoardProps {
   tactics: GameTactics;
@@ -11,6 +14,7 @@ interface TacticsBoardProps {
   calculateTacticScore: (type: OffenseTactic | DefenseTactic) => number;
 }
 
+// Slider Control Component (Preserved)
 const SliderControl: React.FC<{ label: string, value: number, onChange: (val: number) => void, min?: number, max?: number, leftLabel?: string, rightLabel?: string, tooltip?: string }> = ({ label, value, onChange, min=1, max=10, leftLabel, rightLabel, tooltip }) => (
   <div className="space-y-2 group/slider">
     <div className="flex justify-between items-end">
@@ -45,8 +49,150 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
   </div>
 );
 
+// Rename Modal Component
+const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: (name: string) => void; initialName: string }> = ({ isOpen, onClose, onConfirm, initialName }) => {
+    const [name, setName] = useState(initialName);
+    
+    useEffect(() => { setName(initialName); }, [initialName, isOpen]);
+
+    if (!isOpen) return null;
+
+    return createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95">
+                <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">프리셋 이름 변경</h3>
+                <input 
+                    type="text" 
+                    value={name} 
+                    onChange={(e) => setName(e.target.value)} 
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold focus:outline-none focus:border-indigo-500 transition-colors mb-6"
+                    placeholder="전술 이름을 입력하세요"
+                    autoFocus
+                />
+                <div className="flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">취소</button>
+                    <button onClick={() => { if(name.trim()) onConfirm(name.trim()); onClose(); }} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all">확인</button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
 export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTactics, onAutoSet, calculateTacticScore }) => {
     const { offenseTactics: offTactics, defenseTactics: defTactics, sliders } = tactics;
+    
+    // Preset State
+    const [userId, setUserId] = useState<string | null>(null);
+    const [teamId, setTeamId] = useState<string | null>(null); // To store context
+    const [presets, setPresets] = useState<Record<number, TacticPreset>>({});
+    const [activeSlot, setActiveSlot] = useState<number>(1);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+    const [renameModalOpen, setRenameModalOpen] = useState(false);
+    const [targetRenameSlot, setTargetRenameSlot] = useState<number | null>(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    // Initial Load & User Context
+    useEffect(() => {
+        const init = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                setUserId(user.id);
+                // Try to get teamId from URL or implicit context (assuming user only manages one team in current view context)
+                // For safety, we need to pass teamId down or fetch from checkpoint.
+                // However, since TacticsBoard is inside Dashboard which has team prop, we might need to adjust props.
+                // But for now, let's fetch the latest checkpoint to get current teamId as a fallback
+                const { data: save } = await supabase.from('saves').select('team_id').eq('user_id', user.id).maybeSingle();
+                if (save) {
+                    setTeamId(save.team_id);
+                    loadPresetsFromDB(user.id, save.team_id);
+                }
+            }
+        };
+        init();
+
+        const handleClickOutside = (e: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsDropdownOpen(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const loadPresetsFromDB = async (uid: string, tid: string) => {
+        const loaded = await fetchPresets(uid, tid);
+        const map: Record<number, TacticPreset> = {};
+        loaded.forEach(p => map[p.slot] = p);
+        setPresets(map);
+    };
+
+    // Actions
+    const handleSlotSelect = (slot: number) => {
+        setActiveSlot(slot);
+        
+        // Auto-Load if preset exists
+        if (presets[slot]) {
+            const presetData = presets[slot].data;
+            const newTactics = {
+                ...tactics,
+                ...presetData,
+                // Ensure we don't lose starters or stopper if preset data is partial
+                starters: tactics.starters,
+                minutesLimits: tactics.minutesLimits,
+                stopperId: tactics.stopperId
+            };
+            onUpdateTactics(newTactics as GameTactics);
+        }
+        setIsDropdownOpen(false);
+    };
+
+    const handleSaveCurrent = async () => {
+        if (!userId || !teamId) return;
+        setIsProcessing(true);
+        
+        const currentName = presets[activeSlot]?.name || `Custom Tactic ${activeSlot}`;
+        
+        const success = await savePreset(userId, teamId, activeSlot, currentName, tactics);
+        if (success) {
+            await loadPresetsFromDB(userId, teamId);
+        }
+        setIsProcessing(false);
+    };
+
+    const handleDeletePreset = async (e: React.MouseEvent, slot: number) => {
+        e.stopPropagation();
+        if (!userId || !teamId) return;
+        if (!confirm("정말 이 프리셋을 삭제하시겠습니까?")) return;
+
+        await deletePreset(userId, teamId, slot);
+        await loadPresetsFromDB(userId, teamId);
+    };
+
+    const openRenameModal = (e: React.MouseEvent, slot: number) => {
+        e.stopPropagation();
+        setTargetRenameSlot(slot);
+        setRenameModalOpen(true);
+        setIsDropdownOpen(false);
+    };
+
+    const handleRenameConfirm = async (newName: string) => {
+        if (!userId || !teamId || targetRenameSlot === null) return;
+        
+        // If preset exists, update name. If not, create empty shell? No, just rename logic typically applies to existing.
+        // But if slot is empty, we might want to just set the name for future save?
+        // Let's assume we are renaming an EXISTING preset.
+        if (presets[targetRenameSlot]) {
+             await renamePreset(userId, teamId, targetRenameSlot, newName);
+             await loadPresetsFromDB(userId, teamId);
+        } else {
+             // Saving a placeholder name for a new save?
+             // Actually, let's just save the CURRENT tactics to that slot with the NEW name.
+             await savePreset(userId, teamId, targetRenameSlot, newName, tactics);
+             await loadPresetsFromDB(userId, teamId);
+             setActiveSlot(targetRenameSlot);
+        }
+    };
+
 
     const handleTacticToggle = (t: OffenseTactic) => {
         const newTactics = offTactics.includes(t) ? (offTactics.length === 1 ? offTactics : offTactics.filter(i => i !== t)) : [...offTactics, t].slice(-1);
@@ -60,6 +206,14 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
 
     return (
         <div className="lg:col-span-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar bg-slate-900/40 rounded-br-3xl">
+            
+            <RenameModal 
+                isOpen={renameModalOpen} 
+                onClose={() => setRenameModalOpen(false)} 
+                onConfirm={handleRenameConfirm} 
+                initialName={targetRenameSlot ? (presets[targetRenameSlot]?.name || `Preset ${targetRenameSlot}`) : ""}
+            />
+
             <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-[88px] flex-shrink-0">
                 <div className="flex items-center gap-4">
                     <Activity size={24} className="text-indigo-400" />
@@ -68,14 +222,104 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
                 <div className="flex gap-2">
                     <button 
                         onClick={onAutoSet}
-                        className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-900/40 flex items-center gap-2 transition-all active:scale-95"
+                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center gap-2 transition-all active:scale-95 border border-white/5"
                     >
-                        <Wand2 size={16} className="text-violet-200" />
-                        <span className="text-[10px] font-black uppercase tracking-wider">감독에게 위임</span>
+                        <Wand2 size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-wider">AI 추천</span>
                     </button>
                 </div>
             </div>
+            
             <div className="p-8 space-y-10">
+                
+                {/* Preset Manager Section */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-indigo-400 px-2">
+                        <Save size={20} />
+                        <span className="font-black text-sm uppercase tracking-widest ko-tight">전술 프리셋 관리</span>
+                    </div>
+                    
+                    <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-2 flex gap-2">
+                        {/* Dropdown Selector */}
+                        <div className="relative flex-1" ref={dropdownRef}>
+                            <button 
+                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                className="w-full flex items-center justify-between bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-4 py-3 rounded-xl transition-all shadow-sm group"
+                            >
+                                <div className="flex flex-col items-start">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">SELECTED SLOT</span>
+                                    <span className="text-sm font-bold truncate">
+                                        {presets[activeSlot] ? presets[activeSlot].name : `Slot ${activeSlot} (Empty)`}
+                                    </span>
+                                </div>
+                                <ChevronDown size={16} className={`text-slate-500 transition-transform group-hover:text-indigo-400 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {isDropdownOpen && (
+                                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    {[1, 2, 3].map(slot => {
+                                        const hasData = !!presets[slot];
+                                        return (
+                                            <div key={slot} className="flex items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/50 transition-colors">
+                                                <button 
+                                                    onClick={() => handleSlotSelect(slot)}
+                                                    className="flex-1 flex items-center gap-3 px-4 py-3 text-left min-w-0"
+                                                >
+                                                    <div className={`w-2 h-2 rounded-full ${activeSlot === slot ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]' : 'bg-slate-700'}`}></div>
+                                                    <div className="flex flex-col min-w-0">
+                                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">SLOT {slot}</span>
+                                                        <span className={`text-sm font-bold truncate ${activeSlot === slot ? 'text-white' : 'text-slate-400'}`}>
+                                                            {hasData ? presets[slot].name : '(Empty)'}
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                                
+                                                <div className="flex items-center gap-1 pr-3">
+                                                    {/* Rename Button - Available for empty slots too (to create new) */}
+                                                    <button 
+                                                        onClick={(e) => openRenameModal(e, slot)}
+                                                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
+                                                        title="이름 변경"
+                                                    >
+                                                        <Edit3 size={14} />
+                                                    </button>
+                                                    {/* Delete Button - Only if data exists */}
+                                                    {hasData && (
+                                                        <button 
+                                                            onClick={(e) => handleDeletePreset(e, slot)}
+                                                            className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                                                            title="삭제"
+                                                        >
+                                                            <Trash2 size={14} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Save Button */}
+                        <button 
+                            onClick={handleSaveCurrent}
+                            disabled={isProcessing || !teamId}
+                            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-5 rounded-xl font-black uppercase text-xs tracking-wide shadow-lg shadow-indigo-900/20 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 min-w-[80px]"
+                        >
+                            {isProcessing ? (
+                                <Activity size={18} className="animate-spin" />
+                            ) : (
+                                <>
+                                    <Download size={18} />
+                                    <span>저장</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                </div>
+
                 <div className="space-y-4">
                     <div className="flex items-center gap-3 text-indigo-400 px-2"><Target size={20} /><span className="font-black text-sm uppercase tracking-widest ko-tight">공격 전술</span></div>
                     <div className="grid grid-cols-1 gap-3">
