@@ -7,14 +7,13 @@ import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
 
 interface OfferCardProps {
   offer: TradeOffer;
-  teams: Team[];
+  // teams: Team[]; // [Removed] No longer needed for lookup
   onAccept: () => void;
   onPlayerClick: (p: Player) => void;
 }
 
-export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, onPlayerClick }) => {
-  const fullTeam = teams.find(t => t.id === offer.teamId);
-  const fullTeamName = fullTeam ? `${fullTeam.city} ${fullTeam.name}` : offer.teamName;
+export const OfferCard: React.FC<OfferCardProps> = ({ offer, onAccept, onPlayerClick }) => {
+  const fullTeamName = offer.teamName; // API returns correct name
   const analysis = offer.analysis || [];
 
   return (
@@ -45,8 +44,9 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, on
              </div>
              <div className="flex flex-col gap-2">
                 {offer.players.map(p => {
-                  // [Fix] Real-time OVR
+                  // [Updated] No lookup needed. p is now full object from API
                   const displayOvr = calculatePlayerOvr(p);
+                  
                   return (
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-950/80 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">

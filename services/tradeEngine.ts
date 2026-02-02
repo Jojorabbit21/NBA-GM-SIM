@@ -8,7 +8,7 @@ import { Team, Player, TradeOffer, Transaction } from '../types';
 // ==========================================================================================
 
 // Helper to minimize payload size (Network Optimization)
-// We only send attributes strictly needed for trade valuation logic.
+// [Corrected] Send FULL attributes to ensure OVR calculation matches on client side.
 const serializeLeagueState = (teams: Team[]) => {
     return teams.map(t => ({
         id: t.id,
@@ -17,21 +17,8 @@ const serializeLeagueState = (teams: Team[]) => {
         luxuryTaxLine: t.luxuryTaxLine,
         wins: t.wins,
         losses: t.losses,
-        roster: t.roster.map(p => ({
-            id: p.id,
-            name: p.name,
-            position: p.position,
-            age: p.age,
-            salary: p.salary,
-            contractYears: p.contractYears,
-            ovr: p.ovr,
-            potential: p.potential,
-            health: p.health,
-            // Core attributes for valuation only (Reduced payload)
-            def: p.def, out: p.out, reb: p.reb, plm: p.plm, ins: p.ins, ath: p.ath,
-            // Stats used for fit analysis
-            height: p.height
-        }))
+        // Send FULL roster data to avoid OVR mismatch
+        roster: t.roster
     }));
 };
 
@@ -92,11 +79,8 @@ export async function generateTradeOffers(
     const data = await callTradeApi('generate-offers', {
         myTeamId: myTeam.id,
         leagueState, // Pass current state
-        tradingPlayers: tradingPlayers.map(p => ({
-            id: p.id, name: p.name, salary: p.salary, position: p.position,
-            age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears,
-            health: p.health
-        })),
+        // Pass FULL player objects to ensure consistency
+        tradingPlayers: tradingPlayers,
         desiredPositions
     });
     return data?.offers || [];
@@ -115,11 +99,8 @@ export async function generateCounterOffers(
         myTeamId: myTeam.id,
         targetTeamId: targetTeam.id,
         leagueState: partialState,
-        targetPlayers: targetPlayers.map(p => ({
-            id: p.id, name: p.name, salary: p.salary, position: p.position,
-            age: p.age, ovr: p.ovr, potential: p.potential, contractYears: p.contractYears,
-            health: p.health 
-        }))
+        // Pass FULL player objects
+        targetPlayers: targetPlayers
     });
     return data?.offers || [];
 }
