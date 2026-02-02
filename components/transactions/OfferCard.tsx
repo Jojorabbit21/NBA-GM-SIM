@@ -2,7 +2,7 @@
 import React from 'react';
 import { Handshake, ChevronRight, FileText } from 'lucide-react';
 import { Player, TradeOffer, Team } from '../../types';
-import { OvrBadge } from '../SharedComponents';
+import { getOvrBadgeStyle } from '../SharedComponents';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
 
 interface OfferCardProps {
@@ -50,9 +50,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({ offer, teams, onAccept, on
                   return (
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-950/80 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
-                       <div className="flex-shrink-0">
-                         <OvrBadge ovr={displayOvr} className="!w-10 !h-10 !text-xl !mx-0" />
-                       </div>
+                       <div className="flex-shrink-0"><div className={getOvrBadgeStyle(displayOvr) + " !mx-0 !w-10 !h-10 !text-xl"}>{displayOvr}</div></div>
                        <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onPlayerClick(p)}>
                          <div className="flex items-center gap-2">
                             <div className="font-bold text-sm text-slate-100 truncate hover:text-indigo-400 hover:underline">{p.name}</div>

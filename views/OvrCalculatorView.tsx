@@ -1,7 +1,8 @@
+
 import React, { useState, useMemo } from 'react';
 import { Settings2, User, ChevronRight, RefreshCw, FlaskConical, Info, ArrowUp, ArrowDown, Target, Zap, Shield, Activity, Share2, Brain } from 'lucide-react';
 import { Team, Player } from '../types';
-import { OvrBadge } from '../components/SharedComponents';
+import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
 
 interface OvrCalculatorViewProps {
@@ -54,174 +55,182 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
         intangibles: p.intangibles, potential: p.potential, height: p.height
     };
 
-    let totalScore = 0;
+    let totalVal = 0;
     let totalWeight = 0;
 
-    for (const [key, weight] of Object.entries(currentWeights)) {
-        let val = attrs[key];
-        // Fallback same as ovrUtils
-        if (val === undefined || val === null || isNaN(val)) val = 70;
-        totalScore += val * weight;
-        totalWeight += weight;
-    }
+    Object.keys(currentWeights).forEach(key => {
+        const w = currentWeights[key];
+        const val = attrs[key] ?? 0;
+        totalVal += val * w;
+        totalWeight += w;
+    });
 
-    return totalWeight > 0 ? Math.max(40, Math.round(totalScore / totalWeight)) : 70;
+    const rawAvg = totalWeight > 0 ? totalVal / totalWeight : 50;
+    return Math.min(99, Math.max(40, Math.round(rawAvg)));
   };
 
-  const calculatedPlayers = useMemo(() => {
-      return players.map(p => {
-          const oldOvr = p.ovr;
-          const newOvr = calculateNewOvr(p, weights);
-          return { ...p, oldOvr, newOvr, delta: newOvr - oldOvr };
-      }).sort((a, b) => {
-          const valA = a[sortConfig.key];
-          const valB = b[sortConfig.key];
-          return sortConfig.dir === 'asc' ? valA - valB : valB - valA;
-      });
+  const tableData = useMemo(() => {
+    const data = players.map(p => {
+        const newOvr = calculateNewOvr(p, weights);
+        return {
+            id: p.id,
+            name: p.name,
+            oldOvr: p.ovr,
+            newOvr,
+            delta: newOvr - p.ovr
+        };
+    });
+
+    return data.sort((a, b) => {
+        const factor = sortConfig.dir === 'desc' ? 1 : -1;
+        if (sortConfig.key === 'delta') return (a.delta - b.delta) * factor;
+        if (sortConfig.key === 'newOvr') return (a.newOvr - b.newOvr) * factor;
+        if (sortConfig.key === 'oldOvr') return (a.oldOvr - b.oldOvr) * factor;
+        return 0;
+    });
   }, [players, weights, sortConfig]);
 
-  const handleWeightChange = (key: string, val: number) => {
-      setWeights(prev => ({ ...prev, [key]: val }));
-  };
-
-  const handlePosChange = (pos: PositionType) => {
-      setSelectedPos(pos);
-      setWeights(POSITION_WEIGHTS[pos]);
+  const handleWeightChange = (key: string, val: string) => {
+    const num = parseInt(val) || 0;
+    setWeights(prev => ({ ...prev, [key]: num }));
   };
 
   const resetWeights = () => {
-      setWeights(POSITION_WEIGHTS[selectedPos]);
+    setWeights(POSITION_WEIGHTS[selectedPos]);
+  };
+
+  const handlePosChange = (pos: PositionType) => {
+    setSelectedPos(pos);
+    setWeights(POSITION_WEIGHTS[pos]);
+  };
+
+  const toggleSort = (key: 'newOvr' | 'oldOvr' | 'delta') => {
+      setSortConfig(prev => ({
+          key,
+          dir: prev.key === key && prev.dir === 'desc' ? 'asc' : 'desc'
+      }));
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] gap-6 animate-in fade-in duration-500 ko-normal">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
-            <div>
-                <h2 className="text-4xl font-black ko-tight text-slate-100 uppercase tracking-tight flex items-center gap-3">
-                    <FlaskConical className="text-indigo-500" size={32} />
-                    OVR Simulator
-                </h2>
-                <p className="text-slate-500 text-sm font-bold mt-1">포지션별 가중치 조정을 통한 오버롤 시뮬레이션</p>
-            </div>
-            <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6 overflow-hidden">
+      <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
+        <div>
+          <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight flex items-center gap-4">
+            <FlaskConical className="text-indigo-500" size={40} /> OVR 실험실
+          </h2>
+        </div>
+        <div className="flex gap-4">
+            <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 shadow-lg">
                 {(['PG', 'SG', 'SF', 'PF', 'C'] as PositionType[]).map(pos => (
                     <button 
-                        key={pos}
+                        key={pos} 
                         onClick={() => handlePosChange(pos)}
-                        className={`px-6 py-2 rounded-lg text-xs font-black transition-all ${selectedPos === pos ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                        className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${selectedPos === pos ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
                         {pos}
                     </button>
                 ))}
             </div>
+            <button onClick={resetWeights} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 border border-slate-700 transition-all active:scale-95">
+                <RefreshCw size={14} /> 기본값 복원
+            </button>
         </div>
+      </div>
 
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-hidden">
-            {/* Control Panel */}
-            <div className="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
-                <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <Settings2 size={18} className="text-slate-400" />
-                        <span className="text-xs font-black uppercase text-slate-400 tracking-widest">Weight Configuration</span>
-                    </div>
-                    <button onClick={resetWeights} className="p-2 hover:bg-slate-800 rounded-full text-slate-500 hover:text-indigo-400 transition-colors" title="Reset to Defaults">
-                        <RefreshCw size={16} />
-                    </button>
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
+        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
+        <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
+                <div className="flex items-center gap-2 text-indigo-400">
+                    <Settings2 size={18} />
+                    <span className="text-xs font-black uppercase tracking-widest">Weight Settings for {selectedPos}</span>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-8">
-                    {WEIGHT_GROUPS.map((group, idx) => (
-                        <div key={idx} className="space-y-3">
-                            <div className={`flex items-center gap-2 text-xs font-black uppercase tracking-wider ${group.color}`}>
-                                {group.icon} {group.label}
-                            </div>
-                            <div className="grid grid-cols-1 gap-3">
-                                {group.keys.map(key => (
-                                    <div key={key} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-xl border border-slate-800/50">
-                                        <span className="text-[11px] font-bold text-slate-400 w-24">{WEIGHT_LABELS[key] || key}</span>
-                                        <div className="flex items-center gap-3 flex-1">
-                                            <input 
-                                                type="range" 
-                                                min="0" max="50" 
-                                                value={weights[key] || 0} 
-                                                onChange={(e) => handleWeightChange(key, parseInt(e.target.value))}
-                                                className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400"
-                                            />
-                                            <span className="text-xs font-mono font-black text-white w-6 text-right">{weights[key] || 0}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-950/20 space-y-8">
+                {WEIGHT_GROUPS.map((group) => (
+                    <div key={group.label} className="space-y-4">
+                        <div className="flex items-center gap-2 border-l-2 border-indigo-500/50 pl-3">
+                            <span className={group.color}>{group.icon}</span>
+                            <h4 className={`text-xs font-black uppercase tracking-wider ${group.color}`}>{group.label}</h4>
                         </div>
-                    ))}
-                </div>
-            </div>
-
-            {/* Results Panel */}
-            <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
-                <div className="p-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                        <User size={18} className="text-slate-400" />
-                        <span className="text-xs font-black uppercase text-slate-400 tracking-widest">Calculated Roster ({calculatedPlayers.length})</span>
-                    </div>
-                    <div className="flex gap-2">
-                        {(['newOvr', 'oldOvr', 'delta'] as const).map(key => (
-                            <button 
-                                key={key}
-                                onClick={() => setSortConfig({ key, dir: sortConfig.key === key && sortConfig.dir === 'desc' ? 'asc' : 'desc' })}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase border transition-all ${sortConfig.key === key ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50' : 'bg-slate-950 text-slate-500 border-slate-800'}`}
-                            >
-                                {key === 'newOvr' ? 'New OVR' : key === 'oldOvr' ? 'Current OVR' : 'Diff'}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 bg-slate-950/95 z-10 shadow-sm">
-                            <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                                <th className="py-4 px-6 pl-8 w-16 text-center">Rank</th>
-                                <th className="py-4 px-4">Player</th>
-                                <th className="py-4 px-4 text-center">POS</th>
-                                <th className="py-4 px-4 text-center">Current</th>
-                                <th className="py-4 px-4 text-center">Simulated</th>
-                                <th className="py-4 px-6 text-right pr-8">Diff</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/50">
-                            {calculatedPlayers.map((p, i) => (
-                                <tr key={p.id} className="hover:bg-white/5 transition-colors group">
-                                    <td className="py-3 px-6 pl-8 text-center text-sm font-bold text-slate-600">{i + 1}</td>
-                                    <td className="py-3 px-4">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-black text-slate-200 group-hover:text-white">{p.name}</span>
-                                            {/* We don't have team info here easily without joining, keeping it simple */}
-                                        </div>
-                                    </td>
-                                    <td className="py-3 px-4 text-center text-xs font-bold text-slate-500">{p.position}</td>
-                                    <td className="py-3 px-4 text-center">
-                                        <div className="flex justify-center">
-                                            <OvrBadge ovr={p.oldOvr} className="!w-8 !h-8 !text-sm grayscale opacity-60" />
-                                        </div>
-                                    </td>
-                                    <td className="py-3 px-4 text-center">
-                                        <div className="flex justify-center">
-                                            <OvrBadge ovr={p.newOvr} className="!w-9 !h-9 !text-base" />
-                                        </div>
-                                    </td>
-                                    <td className="py-3 px-6 pr-8 text-right">
-                                        <div className={`flex items-center justify-end gap-1 font-black ${p.delta > 0 ? 'text-emerald-400' : p.delta < 0 ? 'text-red-400' : 'text-slate-600'}`}>
-                                            {p.delta > 0 ? <ArrowUp size={14} /> : p.delta < 0 ? <ArrowDown size={14} /> : null}
-                                            {p.delta > 0 ? '+' : ''}{p.delta}
-                                        </div>
-                                    </td>
-                                </tr>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-5 px-1">
+                            {group.keys.map(key => (
+                                weights[key] !== undefined && (
+                                    <div key={key} className="space-y-1.5">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-tighter block truncate" title={key}>
+                                            {WEIGHT_LABELS[key] || key}
+                                        </label>
+                                        <input 
+                                            type="number" 
+                                            value={weights[key]} 
+                                            onChange={e => handleWeightChange(key, e.target.value)}
+                                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-sm font-black text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                                        />
+                                    </div>
+                                )
                             ))}
-                        </tbody>
-                    </table>
+                        </div>
+                    </div>
+                ))}
+
+                <div className="mt-4 p-6 bg-indigo-500/5 border border-indigo-500/20 rounded-3xl flex items-start gap-4">
+                    <span className="text-indigo-400 mt-0.5 flex-shrink-0"><Info size={20} /></span>
+                    <p className="text-[11px] font-medium text-slate-400 leading-relaxed">
+                        가중치는 상대적인 값입니다. 모든 가중치의 합을 100으로 맞출 필요는 없습니다. 
+                        특정 포지션에서 중요하게 생각하는 스탯의 숫자를 높여보세요. 
+                        결과는 <span className="text-white font-bold">New OVR = Σ(스탯 * 가중치) / Σ가중치</span>로 산출됩니다.
+                    </p>
                 </div>
             </div>
         </div>
+
+        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
+        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                    <User size={18} className="text-slate-400" />
+                    <span className="text-xs font-black uppercase text-slate-400 tracking-widest">{selectedPos} Players ({players.length})</span>
+                </div>
+            </div>
+            <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/10">
+                <table className="w-full text-left border-collapse">
+                    <thead className="sticky top-0 bg-slate-900 z-10 shadow-md">
+                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
+                            <th className="py-4 px-8">Player Name</th>
+                            <th className="py-4 px-4 text-center cursor-pointer hover:text-white" onClick={() => toggleSort('oldOvr')}>Base OVR</th>
+                            <th className="py-4 px-4 text-center cursor-pointer hover:text-white bg-indigo-600/10" onClick={() => toggleSort('newOvr')}>New OVR</th>
+                            <th className="py-4 px-8 text-center cursor-pointer hover:text-white" onClick={() => toggleSort('delta')}>Change</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/50">
+                        {tableData.map(p => (
+                            <tr key={p.id} className="hover:bg-white/5 transition-colors group">
+                                <td className="py-4 px-8">
+                                    <span className="text-base font-black text-slate-200 group-hover:text-indigo-400 transition-colors">{p.name}</span>
+                                </td>
+                                <td className="py-4 px-4 text-center">
+                                    <div className="flex justify-center items-center gap-2">
+                                        <div className={getOvrBadgeStyle(p.oldOvr) + " !w-9 !h-9 !text-lg !mx-0 opacity-60"}>{p.oldOvr}</div>
+                                    </div>
+                                </td>
+                                <td className="py-4 px-4 text-center bg-indigo-600/5">
+                                    <div className="flex justify-center items-center gap-2">
+                                        <div className={getOvrBadgeStyle(p.newOvr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.newOvr}</div>
+                                    </div>
+                                </td>
+                                <td className="py-4 px-8 text-center">
+                                    <div className={`flex items-center justify-center gap-1.5 font-black text-sm ${p.newOvr > p.oldOvr ? 'text-emerald-400' : p.newOvr < p.oldOvr ? 'text-red-400' : 'text-slate-500'}`}>
+                                        {p.newOvr > p.oldOvr ? <ArrowUp size={14} /> : p.newOvr < p.oldOvr ? <ArrowDown size={14} /> : null}
+                                        {Math.abs(p.newOvr - p.oldOvr)}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      </div>
     </div>
   );
 };
