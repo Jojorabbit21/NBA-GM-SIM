@@ -1,7 +1,7 @@
 
 import { Team, Player, Game } from '../types';
 import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
-import { KNOWN_INJURIES } from '../utils/injuries';
+import { KNOWN_INJURIES } from '../utils/injuries'; // Import from dedicated file
 import { calculateOvr } from '../utils/ovrUtils';
 
 // --- Helper: Flexible Column Getter ---
@@ -142,15 +142,32 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
-    // [Fix] Handle Known Injuries from Independent File (Using Name)
+    // [Fix] Handle Known Injuries - Enhanced Matching Logic
     let health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
     let injuryType = undefined;
     let returnDate = undefined;
 
+    // 1. Try Exact Match
     if (KNOWN_INJURIES[name]) {
         health = 'Injured';
         injuryType = KNOWN_INJURIES[name].type;
         returnDate = KNOWN_INJURIES[name].returnDate;
+    } else {
+        // 2. Try Partial Match (for cases like "Dereck Lively II" vs "Dereck Lively")
+        // Loop through keys and see if one includes the other
+        const nameLower = name.toLowerCase().trim();
+        for (const key in KNOWN_INJURIES) {
+             const keyLower = key.toLowerCase().trim();
+             // Check if the DB name contains the Key OR the Key contains the DB name
+             // e.g. "Dereck Lively II" contains "Dereck Lively"
+             if (nameLower.includes(keyLower) || keyLower.includes(nameLower)) {
+                 health = 'Injured';
+                 injuryType = KNOWN_INJURIES[key].type;
+                 returnDate = KNOWN_INJURIES[key].returnDate;
+                 // console.log(`[Injury Matched] ${name} matched with key: ${key}`);
+                 break;
+             }
+        }
     }
 
     // [Fix] Use DB ID if available, otherwise generate stable ID

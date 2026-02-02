@@ -101,7 +101,8 @@ export const saveGameResults = async (results: any[]) => {
 };
 
 export const saveUserTransaction = async (userId: string, tx: Transaction) => {
-    const { error } = await supabase.from('user_transactions').insert({
+    console.log("💾 Saving Transaction:", { userId, tx }); // Debug log
+    const { data, error } = await supabase.from('user_transactions').insert({
         user_id: userId,
         transaction_id: tx.id,
         date: tx.date,
@@ -109,6 +110,12 @@ export const saveUserTransaction = async (userId: string, tx: Transaction) => {
         team_id: tx.teamId,
         description: tx.description,
         details: tx.details
-    });
-    if (error) console.error("❌ Save Transaction Error:", error);
+    }).select(); // Add select to see returned data
+    
+    if (error) {
+        console.error("❌ Save Transaction Error DETAILS:", error);
+        console.error("❌ Failed TX Payload:", tx);
+    } else {
+        console.log("✅ Transaction Saved Successfully:", data);
+    }
 };
