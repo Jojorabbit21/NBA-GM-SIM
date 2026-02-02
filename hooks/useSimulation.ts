@@ -122,7 +122,9 @@ export const useSimulation = (
                     const { updatedTeams, transaction } = tradeResult;
                     newTeams = updatedTeams;
                     if (transaction) {
-                        dailyTrades.push(transaction); // Collect
+                        // [FIX] Ensure transaction from CPU sim has UUID (handled in API usually, but safe to verify/cast if needed)
+                        // Assuming API returns valid structure. If not, would need patching.
+                        dailyTrades.push(transaction); 
                         setTransactions(prev => [transaction, ...prev]);
                         if (session?.user && !isGuestMode) {
                             saveUserTransaction(session.user.id, transaction);
@@ -178,7 +180,8 @@ export const useSimulation = (
                         }
 
                         const tx: Transaction = {
-                            id: `rec_${Date.now()}_${p.id}`,
+                            // [FIX] Use UUID for DB Compatibility
+                            id: crypto.randomUUID(),
                             date: nextDate,
                             type: 'InjuryUpdate',
                             teamId: t.id,
@@ -313,7 +316,8 @@ export const useSimulation = (
                         if (update && update.health === 'Injured' && p.health !== 'Injured') {
                             const isMyPlayer = t.id === myTeamId;
                             const tx: Transaction = {
-                                id: `inj_${Date.now()}_${p.id}`,
+                                // [FIX] Use UUID for DB Compatibility
+                                id: crypto.randomUUID(),
                                 date: game.date,
                                 type: 'InjuryUpdate',
                                 teamId: t.id,

@@ -242,7 +242,6 @@ const App: React.FC = () => {
                 onConfirm={async () => {
                     const res = await gameData.handleResetData();
                     if (res.success) {
-                        setToastMessage("구단 데이터가 완전히 초기화되었습니다.");
                         setShowResetConfirm(false);
                         setView('TeamSelect');
                     } else {

@@ -148,7 +148,8 @@ export const useTradeSystem = (
 
         try {
             const newTransaction: Transaction = {
-                id: `tr_${Date.now()}`,
+                // [FIX] Use Standard UUID for DB Compatibility
+                id: crypto.randomUUID(), 
                 date: currentSimDate,
                 type: 'Trade',
                 teamId: team.id,
@@ -165,7 +166,6 @@ export const useTradeSystem = (
             if (onAddTransaction) onAddTransaction(newTransaction);
 
             // DB Save (User Transactions)
-            // [Fix] Ensure userId is present and await the save
             if (userId) {
                 await saveUserTransaction(userId, newTransaction);
                 
@@ -191,7 +191,6 @@ export const useTradeSystem = (
                     tradeContent
                 );
 
-                // [Fix] Refresh Badge Immediately
                 if (refreshUnreadCount) refreshUnreadCount();
             } else {
                 console.warn("⚠️ Trade executed without UserID (Guest Mode or Error) - Transaction not saved to DB.");
@@ -223,7 +222,6 @@ export const useTradeSystem = (
             // [Persistence] Save Checkpoint (Roster State)
             if (onForceSave) await onForceSave({ teams: nextTeams });
 
-            onShowToast?.(`트레이드 성사! 총 ${targetAssets.length}명의 선수가 합류했습니다.`);
         } catch (e) {
             console.error("Trade Execution Failed:", e);
             onShowToast?.("트레이드 처리 중 오류가 발생했습니다.");

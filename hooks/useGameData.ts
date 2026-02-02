@@ -187,12 +187,18 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 supabase.from('user_transactions').delete().eq('user_id', userId),
                 supabase.from('user_playoffs').delete().eq('user_id', userId),
                 supabase.from('user_playoffs_results').delete().eq('user_id', userId),
-                // [Added] Clear messages on reset
                 supabase.from('user_messages').delete().eq('user_id', userId)
             ]);
             
             // Clear React Query Cache
             queryClient.removeQueries();
+            
+            // [Fix] Clear LocalStorage for Trade Ops to reset daily limits
+            Object.keys(localStorage).forEach((key) => {
+                if (key.startsWith('trade_ops_')) {
+                    localStorage.removeItem(key);
+                }
+            });
             
             // Reset Local State
             if (baseData) {
