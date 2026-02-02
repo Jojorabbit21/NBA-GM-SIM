@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { ArrowLeft, Users, Crown, TrendingUp, AlertTriangle, Hash, ArrowRightLeft } from 'lucide-react';
 import { Team, Transaction, Player } from '../types';
-import { OvrBadge } from '../components/SharedComponents';
+import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { getTeamLogoUrl, TEAM_OWNERS } from '../utils/constants';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 
@@ -260,7 +260,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                       
                       <div className="relative z-10 flex flex-col items-center">
                            <div className="w-24 h-24 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center shadow-2xl mb-3">
-                               <OvrBadge ovr={mvp.ovr} className="!w-12 !h-12 !text-2xl" />
+                               <div className={getOvrBadgeStyle(mvp.ovr) + " !w-12 !h-12 !text-2xl"}>{mvp.ovr}</div>
                            </div>
                            <div className="px-3 py-1 bg-amber-500/20 border border-amber-500/50 rounded-full flex items-center gap-2">
                                <Crown size={12} className="text-amber-400 fill-amber-400" />
@@ -327,7 +327,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                               {t.details?.acquired.map((p, i) => (
                                                   <div key={i} className="flex items-center justify-between">
                                                       <span className="text-xs font-bold text-white">{p.name}</span>
-                                                      <OvrBadge ovr={getSnapshot(p.id, p.ovr, p.position).ovr} className="!w-5 !h-5 !text-[10px] !mx-0" />
+                                                      <div className={getOvrBadgeStyle(getSnapshot(p.id, p.ovr, p.position).ovr) + " !w-5 !h-5 !text-[10px] !mx-0"}>{getSnapshot(p.id, p.ovr, p.position).ovr}</div>
                                                   </div>
                                               ))}
                                           </div>
@@ -338,9 +338,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                               {t.details?.traded.map((p, i) => (
                                                   <div key={i} className="flex items-center justify-between">
                                                       <span className="text-xs font-bold text-slate-400">{p.name}</span>
-                                                      <div className="grayscale opacity-50">
-                                                          <OvrBadge ovr={getSnapshot(p.id, p.ovr, p.position).ovr} className="!w-5 !h-5 !text-[10px] !mx-0" />
-                                                      </div>
+                                                      <div className={getOvrBadgeStyle(getSnapshot(p.id, p.ovr, p.position).ovr) + " !w-5 !h-5 !text-[10px] !mx-0 grayscale opacity-50"}>{getSnapshot(p.id, p.ovr, p.position).ovr}</div>
                                                   </div>
                                               ))}
                                           </div>

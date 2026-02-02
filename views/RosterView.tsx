@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock } from 'lucide-react';
 import { Team, Player } from '../types';
-import { OvrBadge, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // New Sub-Components
@@ -279,11 +279,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                 <><td className="px-2 py-3 text-center"><span className="text-sm font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase">{p.position}</span></td>
                                 <td className="px-2 py-3 text-center text-sm font-bold text-white">{p.age}</td>
                                 <td className="px-2 py-3 text-center text-sm font-bold text-white">${p.salary.toFixed(1)}M</td>
-                                <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2">
-                                  <div className="flex justify-center">
-                                     <OvrBadge ovr={displayOvr} className="!w-9 !h-9 !text-lg" />
-                                  </div>
-                                </td></>
+                                <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(displayOvr) + " !w-9 !h-9 !text-lg !mx-auto"}>{displayOvr}</div></td></>
                               )}
                               {tab === 'roster' ? (
                                   ROSTER_COLUMNS[rosterCategory].map(col => (
@@ -308,7 +304,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               ) : (
                                   SALARY_COLUMNS.map(col => {
                                       let valStr = String(p[col.key as keyof Player] || '');
-                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><OvrBadge ovr={displayOvr} className="!w-8 !h-8 !text-sm !mx-0" /></div></td>;
+                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(displayOvr) + " !w-8 !h-8 !text-sm !mx-0"}>{displayOvr}</div></div></td>;
                                       if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
                                       else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
                                       else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
@@ -327,11 +323,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
                                <td className="px-2 py-4 text-center text-sm font-bold text-white">{teamStats.age}</td>
                                <td className="px-2 py-4 text-center text-sm font-bold text-white">${teamStats.salary.toFixed(1)}M</td>
-                               <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2">
-                                  <div className="flex justify-center">
-                                    <OvrBadge ovr={teamStats.ovr} className="!w-9 !h-9 !text-lg" />
-                                  </div>
-                               </td>
+                               <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div></td>
                                {ROSTER_COLUMNS[rosterCategory].map(col => (
                                    <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}><div className={getRankStyle(teamStats.getAvg(col.key as keyof Player)) + " !mx-auto"}>{teamStats.getAvg(col.key as keyof Player)}</div></td>
                                ))}
