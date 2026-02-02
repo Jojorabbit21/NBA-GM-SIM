@@ -1,10 +1,12 @@
+
 import { useState, useEffect } from 'react';
-import { Team, Player, TradeOffer, Transaction } from '../types';
+import { Team, Player, TradeOffer, Transaction, TradeAlertContent } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { TRADE_DEADLINE } from '../utils/constants';
 import { logEvent } from '../services/analytics';
 import { saveUserTransaction } from '../services/queries';
 import { supabase } from '../services/supabaseClient';
+import { sendMessage } from '../services/messageService'; // Imported
 
 const MAX_DAILY_TRADES = 5;
 
@@ -163,6 +165,28 @@ export const useTradeSystem = (
             const { data: userData } = await (supabase.auth as any).getUser();
             if (userData?.user) {
                 await saveUserTransaction(userData.user.id, newTransaction);
+                
+                // [Notification] Send Message for User Trade
+                const tradeContent: TradeAlertContent = {
+                    summary: `${targetTeam.name}와의 트레이드가 공식 승인되었습니다.`,
+                    trades: [{
+                        team1Id: team.id,
+                        team1Name: team.name,
+                        team2Id: targetTeam.id,
+                        team2Name: targetTeam.name,
+                        team1Acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr })),
+                        team2Acquired: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr }))
+                    }]
+                };
+                
+                await sendMessage(
+                    userData.user.id,
+                    team.id,
+                    currentSimDate,
+                    'TRADE_ALERT',
+                    `[오피셜] ${targetTeam.name} 트레이드 완료`,
+                    tradeContent
+                );
             }
 
             // State Update
