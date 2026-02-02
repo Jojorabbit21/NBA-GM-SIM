@@ -479,6 +479,7 @@ export const useSimulation = (
                             name: mvp.playerName,
                             stats: `${mvp.pts} PTS, ${mvp.reb} REB, ${mvp.ast} AST`
                         },
+                        // Send FULL user team box score (Removed slice)
                         userBoxScore: isHome ? userGameResultOutput.homeBox : userGameResultOutput.awayBox
                     }
                 );
