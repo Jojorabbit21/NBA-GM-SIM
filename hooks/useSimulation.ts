@@ -464,7 +464,7 @@ export const useSimulation = (
                 await sendMessage(
                     session.user.id,
                     myTeamId,
-                    userGameResultOutput.homeBox[0]?.g ? 'PLAYOFF' : targetSimDate,
+                    targetSimDate,
                     'GAME_RECAP',
                     `[경기보고서] ${targetSimDate} vs ${oppName}`,
                     {
