@@ -20,12 +20,18 @@ export const replayGameState = (
     // Determine the latest date from history or save
     let calculatedDate = savedSimDate || '2025-10-20';
 
-    // 2. Replay Transactions (Trades)
-    transactions.forEach((tx) => {
+    // 2. Replay Transactions (Trades & Injuries)
+    // Sort transactions by date ensures correct order of injury/recovery
+    const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    sortedTransactions.forEach((tx) => {
         if (tx.type === 'Trade' && tx.details) {
             applyTrade(teams, tx);
+        } else if (tx.type === 'InjuryUpdate' && tx.details) {
+            applyInjuryUpdate(teams, tx);
         }
-        // Update date if transaction is newer
+        
+        // Update date if transaction is newer (Optional, usually guided by save file)
         if (tx.date > calculatedDate) calculatedDate = tx.date;
     });
 
@@ -111,6 +117,27 @@ function applyTrade(teams: Team[], tx: any) {
                 teams[myTeamIdx].roster.push(playerObj);
             }
         });
+    }
+}
+
+function applyInjuryUpdate(teams: Team[], tx: any) {
+    const { playerId, health, injuryType, returnDate } = tx.details;
+    
+    // Find player across all teams (since they might have been traded)
+    for (const team of teams) {
+        const player = team.roster.find(p => p.id === playerId);
+        if (player) {
+            player.health = health;
+            // Only update details if Injured, otherwise clear them
+            if (health === 'Injured' || health === 'Day-to-Day') {
+                player.injuryType = injuryType;
+                player.returnDate = returnDate;
+            } else {
+                player.injuryType = undefined;
+                player.returnDate = undefined;
+            }
+            return; // Stop searching once found
+        }
     }
 }
 

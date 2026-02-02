@@ -92,7 +92,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     if (key === 'age') return p.age;
     if (key === 'position') {
         const posOrder = { 'PG': 1, 'SG': 2, 'SF': 3, 'PF': 4, 'C': 5 };
-        return posOrder[p.position] || 0;
+        return posOrder[p.position as keyof typeof posOrder] || 0;
     }
     if (tab === 'roster') return (p[key as keyof Player] as number) || 0;
     if (tab === 'salary') return (p[key as keyof Player] as number) || 0;
@@ -243,7 +243,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                          )}
                          {tab === 'roster' ? (
                             ROSTER_COLUMNS[rosterCategory].map(col => (
-                                <SortHeader key={col.key} label={col.label} sortKey={col.key as string} width="50px" tooltip={ATTRIBUTE_TOOLTIPS[col.label]} className={col.label === 'OUT' || col.label === 'REB' ? "border-l-2 border-slate-700/60 pl-2" : ""} />
+                                <SortHeader key={String(col.key)} label={col.label} sortKey={col.key as string} width="50px" tooltip={ATTRIBUTE_TOOLTIPS[col.label]} className={col.label === 'OUT' || col.label === 'REB' ? "border-l-2 border-slate-700/60 pl-2" : ""} />
                             ))
                          ) : tab === 'stats' ? (
                             STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />)
@@ -284,7 +284,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               )}
                               {tab === 'roster' ? (
                                   ROSTER_COLUMNS[rosterCategory].map(col => (
-                                      <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60' : ''}`}><div className={getRankStyle(p[col.key as keyof Player] as number) + " !mx-auto"}>{p[col.key as keyof Player] as number}</div></td>
+                                      <td key={String(col.key)} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60' : ''}`}><div className={getRankStyle(p[col.key as keyof Player] as number) + " !mx-auto"}>{p[col.key as keyof Player] as number}</div></td>
                                   ))
                               ) : tab === 'stats' ? (
                                   STATS_COLUMNS.map(col => {
@@ -328,7 +328,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                <td className="px-2 py-4 text-center text-sm font-bold text-white">${teamStats.salary.toFixed(1)}M</td>
                                <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div></td>
                                {ROSTER_COLUMNS[rosterCategory].map(col => (
-                                   <td key={col.key} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}><div className={getRankStyle(teamStats.getAvg(col.key as keyof Player)) + " !mx-auto"}>{teamStats.getAvg(col.key as keyof Player)}</div></td>
+                                   <td key={String(col.key)} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}><div className={getRankStyle(teamStats.getAvg(col.key as keyof Player)) + " !mx-auto"}>{teamStats.getAvg(col.key as keyof Player)}</div></td>
                                ))}
                            </tr>
                        </tfoot>
