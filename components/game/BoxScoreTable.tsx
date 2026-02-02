@@ -26,10 +26,10 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
   const teamTotals = useMemo(() => {
     return box.reduce((acc, p) => ({
       mp: acc.mp + p.mp, pts: acc.pts + p.pts, reb: acc.reb + p.reb, offReb: acc.offReb + (p.offReb || 0), defReb: acc.defReb + (p.defReb || 0), ast: acc.ast + p.ast,
-      stl: acc.stl + p.stl, blk: acc.blk + p.blk, tov: acc.tov + p.tov,
+      stl: acc.stl + p.stl, blk: acc.blk + p.blk, tov: acc.tov + p.tov, pf: acc.pf! + (p.pf || 0),
       fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
       p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a, ftm: acc.ftm + p.ftm, fta: acc.fta + p.fta,
-    }), { mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+    }), { mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
   }, [box]);
 
   const highlightClass = "text-yellow-400 font-medium pretendard drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]";
@@ -58,6 +58,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                       <th className="py-3 px-2 text-right w-14">STL</th>
                       <th className="py-3 px-2 text-right w-14">BLK</th>
                       <th className="py-3 px-2 text-right w-14">TOV</th>
+                      <th className="py-3 px-2 text-right w-14">PF</th>
                       <th className="py-3 px-2 text-right w-14">FG</th>
                       <th className="py-3 px-2 text-right w-14">FG%</th>
                       <th className="py-3 px-2 text-right w-14">3P</th>
@@ -116,6 +117,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                <td className={`${statCellClass} text-right ${p.stl === leaders.stl && p.stl > 0 ? highlightClass : 'text-slate-400'}`}>{p.stl}</td>
                                <td className={`${statCellClass} text-right ${p.blk === leaders.blk && p.blk > 0 ? highlightClass : 'text-slate-400'}`}>{p.blk}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.tov}</td>
+                               <td className={`${statCellClass} text-right text-red-400`}>{p.pf || 0}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.fgm}/{p.fga}</td>
                                <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.fgm, p.fga)}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.p3m}/{p.p3a}</td>
@@ -137,6 +139,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.stl}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.blk}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.tov}</td>
+                        <td className={`${statCellClass} text-right text-red-400`}>{teamTotals.pf}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.fgm}/{teamTotals.fga}</td>
                         <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.fgm, teamTotals.fga)}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.p3m}/{teamTotals.p3a}</td>
