@@ -40,7 +40,7 @@ const ROSTER_COLUMNS: Record<string, { key: keyof Player | string, label: string
 };
 
 const STATS_COLUMNS = [
-  { key: 'g', label: 'GP' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' }, { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'offReb', label: 'ORB' }, { key: 'defReb', label: 'DRB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' }, { key: 'ts%', label: 'TS%' },
+  { key: 'g', label: 'GP' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' }, { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'offReb', label: 'ORB' }, { key: 'defReb', label: 'DRB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' }, { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' }, { key: 'ts%', label: 'TS%' },
 ];
 
 const SALARY_COLUMNS = [
@@ -161,6 +161,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
             stl: acc.stl + s.stl,
             blk: acc.blk + s.blk,
             tov: acc.tov + s.tov,
+            pf: acc.pf + (s.pf || 0),
             fgm: acc.fgm + s.fgm,
             fga: acc.fga + s.fga,
             p3m: acc.p3m + s.p3m,
@@ -168,7 +169,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
             ftm: acc.ftm + s.ftm,
             fta: acc.fta + s.fta,
         };
-    }, { mp:0, pts:0, reb:0, offReb:0, defReb:0, ast:0, stl:0, blk:0, tov:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0 });
+    }, { mp:0, pts:0, reb:0, offReb:0, defReb:0, ast:0, stl:0, blk:0, tov:0, pf:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0 });
     return { ...t, teamGames };
   }, [selectedTeam]);
 
@@ -298,6 +299,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                           else if (col.key === 'ft%') { n = s.ftm; d = s.fta; }
                                           else if (col.key === 'ts%') { n = s.pts; d = 2 * (s.fga + 0.44 * s.fta); }
                                           valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                      } else if (col.key === 'pf') {
+                                          valStr = ((s.pf || 0) / g).toFixed(1);
                                       }
                                       return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-medium text-slate-300 text-sm tabular-nums">{valStr}</td>;
                                   })
@@ -352,7 +355,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                     } else {
                                         const keyMap: any = {
                                             'pts': 'pts', 'reb': 'reb', 'offReb': 'offReb', 'defReb': 'defReb',
-                                            'ast': 'ast', 'stl': 'stl', 'blk': 'blk', 'tov': 'tov'
+                                            'ast': 'ast', 'stl': 'stl', 'blk': 'blk', 'tov': 'tov', 'pf': 'pf'
                                         };
                                         const statKey = keyMap[col.key];
                                         if (statKey) {

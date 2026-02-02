@@ -129,7 +129,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                 © {currentYear} NBA GM Simulator. All rights reserved.
             </p>
             <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
-                Version 1.0.6 (Beta)
+                Version 1.0.7 (Beta)
             </p>
             </div>
         </div>

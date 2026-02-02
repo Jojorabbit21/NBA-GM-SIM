@@ -229,7 +229,7 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
         { l: 'PTS', v: (s.pts / g).toFixed(1) }, { l: 'REB', v: (s.reb / g).toFixed(1) },
         { l: 'OREB', v: (s.offReb / g).toFixed(1) }, { l: 'AST', v: (s.ast / g).toFixed(1) },
         { l: 'STL', v: (s.stl / g).toFixed(1) }, { l: 'BLK', v: (s.blk / g).toFixed(1) },
-        { l: 'TOV', v: (s.tov / g).toFixed(1) }
+        { l: 'TOV', v: (s.tov / g).toFixed(1) }, { l: 'PF', v: ((s.pf || 0) / g).toFixed(1) }
     ];
 
     const row2 = [
@@ -255,7 +255,7 @@ const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
             <div className="w-full lg:w-[70%] flex flex-col gap-4 h-full justify-center">
                 <div className="flex flex-col gap-1">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Traditional</h5>
-                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-10 gap-2">
+                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-5 md:grid-cols-11 gap-2">
                         {row1.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
                     </div>
                 </div>

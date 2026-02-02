@@ -9,6 +9,7 @@ import { calculateFatigueAndInjury } from './game/engine/fatigueSystem';
 import { getOpponentDefensiveMetrics, calculateDefenseStats } from './game/engine/defenseSystem';
 import { calculatePlaymakingStats } from './game/engine/playmakingSystem';
 import { calculateShootingStats } from './game/engine/shootingSystem';
+import { calculateFoulStats } from './game/engine/foulSystem';
 
 // ==========================================================================================
 //  🏀 NBA GM SIMULATOR - GAME ENGINE (CORE)
@@ -95,10 +96,8 @@ function simulateTeamPerformance(
     const starterIds = Object.values(starterIdsMap);
     const isStarter = healthyPlayers.map(p => starterIds.includes(p.id));
     const finalMinutesList = distributeMinutes(healthyPlayers, isStarter, teamTactics.minutesLimits, sliders);
-    const minutesMap: Record<string, number> = {};
-    healthyPlayers.forEach((p, i) => { minutesMap[p.id] = finalMinutesList[i]; });
     
-    // 2. Setup Opponent Metrics
+    // 2. Setup Opponent Metrics (for Matchup logic)
     const oppSliders = oppTactics.sliders;
     const oppSorted = oppTeam.roster.filter(p => p.health !== 'Injured').sort(stableSort);
     const oppStarterIds = Object.values(oppTactics.starters);
@@ -140,9 +139,9 @@ function simulateTeamPerformance(
     // Identify Ace Player for Stopper Logic
     const acePlayer = healthyPlayers.reduce((prev, current) => (prev.ovr > current.ovr) ? prev : current, healthyPlayers[0] || { ovr: 0, id: 'dummy' });
 
-    // Calculate Usage Weights
-    const totalUsageWeight = healthyPlayers.reduce((sum, p) => {
-        const mp = minutesMap[p.id] || 0;
+    // 4. Calculate Usage Weights (Initial)
+    const totalUsageWeight = healthyPlayers.reduce((sum, p, i) => {
+        const mp = finalMinutesList[i];
         let w = Math.pow(p.ovr, 2.75) * (p.offConsist / 50) * mp; 
         if (teamTactics?.offenseTactics.includes('PostFocus')) {
              if (p.position === 'C' || p.position === 'PF') w *= 1.4;
@@ -155,12 +154,26 @@ function simulateTeamPerformance(
 
     const boxScores: PlayerBoxScore[] = [];
 
-    // 4. Player Loop
-    team.roster.forEach(p => {
-      const mp = minutesMap[p.id] || 0;
+    // 5. Player Loop
+    healthyPlayers.forEach((p, i) => {
+      let mp = finalMinutesList[i];
       const isStopper = teamTactics?.defenseTactics.includes('AceStopper') && teamTactics.stopperId === p.id;
       
-      // 4-1. Fatigue System
+      // 5-0. Foul System Calculation
+      // Find a matchup proxy from opponent starters based on position
+      const matchupProxy = oppSorted.find(op => op.position === p.position && oppMinutesMap[op.id] > 10) || oppSorted[0];
+      
+      const { pf, adjustedMinutes } = calculateFoulStats(
+          p, mp, 
+          { defense: teamTactics.defenseTactics }, 
+          { offense: oppTactics.offenseTactics },
+          matchupProxy
+      );
+      
+      // If fouled out, reduce minutes played for subsequent stat calculations
+      mp = adjustedMinutes;
+
+      // 5-1. Fatigue System
       const fatigueResult = calculateFatigueAndInjury(p, mp, sliders, tacticDrainMult, isB2B, isStopper);
       rosterUpdates[p.id] = {
           condition: fatigueResult.newCondition,
@@ -169,9 +182,14 @@ function simulateTeamPerformance(
           returnDate: fatigueResult.returnDate
       };
 
-      if (mp <= 0) return;
+      if (mp <= 0) {
+          boxScores.push({
+            playerId: p.id, playerName: p.name, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, mp: 0, g: 1, gs: 0, pf: 0
+          });
+          return;
+      }
 
-      // 4-2. Calculate Contextual Performance Drop
+      // 5-2. Calculate Contextual Performance Drop
       // Position Mismatch Penalty
       let positionPenalty = 0;
       const assignedSlot = Object.entries(starterIdsMap).find(([slot, id]) => id === p.id)?.[0];
@@ -190,7 +208,7 @@ function simulateTeamPerformance(
       const effectivePerfDrop = Math.min(1.0, (fatigueResult.fatiguePerfPenalty + fatigueResult.inGameFatiguePenalty + positionPenalty) * (1 - (mentalFortitude * 0.5)));
       const mentalClutchBonus = Math.max(0, (p.intangibles - 75) * 0.001); 
 
-      // 4-3. Usage & FGA Calculation
+      // 5-3. Usage & FGA Calculation (Adjusted by minutes)
       let pUsage = (Math.pow(p.ovr, 2.75) * (p.offConsist / 50) * mp * (p.shotIq / 75));
       if (teamTactics?.offenseTactics.includes('PostFocus')) {
           if (p.position === 'C' || p.position === 'PF') pUsage *= 1.4;
@@ -198,15 +216,17 @@ function simulateTeamPerformance(
       } 
       if (teamTactics?.offenseTactics.includes('PerimeterFocus') && (p.position === 'PG' || p.position === 'SG')) pUsage *= 1.4;
       
+      // Re-normalize target based on actual minutes played ratio vs expected team total
+      // Simulating "If I play less, I shoot less"
       const fga = Math.round(teamFgaTarget * (pUsage / totalUsageWeight));
 
-      // 4-4. Prepare Opponent Stopper Info
+      // 5-4. Prepare Opponent Stopper Info
       const oppHasStopper = oppTactics?.defenseTactics.includes('AceStopper');
       const oppStopperId = oppTactics?.stopperId;
       const oppStopper = oppStopperId ? oppTeam.roster.find(d => d.id === oppStopperId) : undefined;
       const oppStopperMP = oppStopperId ? (oppMinutesMap[oppStopperId] || 0) : 0;
 
-      // 4-5. Shooting System
+      // 5-5. Shooting System
       const shootingRes = calculateShootingStats(
           p, mp, fga, 
           { offense: teamTactics.offenseTactics },
@@ -216,10 +236,10 @@ function simulateTeamPerformance(
           oppStopper, oppStopperMP
       );
 
-      // 4-6. Defense System
+      // 5-6. Defense System
       const defRes = calculateDefenseStats(p, mp, sliders, effectivePerfDrop);
 
-      // 4-7. Playmaking System
+      // 5-7. Playmaking System
       const plmRes = calculatePlaymakingStats(
           p, mp, fga, 
           { offense: teamTactics.offenseTactics }, 
@@ -244,6 +264,7 @@ function simulateTeamPerformance(
           rimM: shootingRes.rimM, rimA: shootingRes.rimA, 
           midM: shootingRes.midM, midA: shootingRes.midA, 
           mp, g: 1, gs: starterIds.includes(p.id) ? 1 : 0,
+          pf: pf, // Added PF
           isStopper,
           isAceTarget: shootingRes.isAceTarget,
           matchupEffect: shootingRes.matchupEffect
