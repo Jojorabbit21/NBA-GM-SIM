@@ -9,77 +9,225 @@ export const PLAYOFF_ROUNDS = {
     FINALS: 4
 };
 
-const SEED_MATCHUPS_R1 = [
-    { h: 1, l: 8 }, { h: 4, l: 5 }, // Bracket Top
-    { h: 3, l: 6 }, { h: 2, l: 7 }  // Bracket Bottom
+// Play-In Seed Configs
+const SEED_MATCHUPS_PI = [
+    { h: 7, l: 8, id: '7v8' },
+    { h: 9, l: 10, id: '9v10' }
+];
+
+// Round 1 Fixed Matchups (1v8, 2v7, 3v6, 4v5)
+// Matchup IDs are crucial for tree progression
+const R1_MAPPINGS = [
+    { id: 'M1', h: 1, l: 8, next: 'S1', slot: 'h' }, // Winner goes to Semis 1 (High Seed Slot)
+    { id: 'M2', h: 4, l: 5, next: 'S1', slot: 'l' }, // Winner goes to Semis 1 (Low Seed Slot)
+    { id: 'M3', h: 3, l: 6, next: 'S2', slot: 'h' }, // Winner goes to Semis 2
+    { id: 'M4', h: 2, l: 7, next: 'S2', slot: 'l' }  // Winner goes to Semis 2
 ];
 
 /**
- * 정규 시즌이 종료되었는지 확인하고, 초기 대진표(Play-in or Round 1)를 생성합니다.
+ * Initializes the Post-Season.
  */
 export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSeries: PlayoffSeries[], currentDate: string): PlayoffSeries[] {
-    // 0. Safety Check: Data integrity
-    if (!teams || teams.length < 30 || !schedule || schedule.length === 0) {
-        return currentSeries;
-    }
+    // 0. Integrity Check
+    if (!teams || teams.length < 30 || !schedule || schedule.length === 0) return currentSeries;
 
     // 1. Check if Regular Season is done
     const regularSeasonGames = schedule.filter(g => !g.isPlayoff);
     const unplayedRegular = regularSeasonGames.filter(g => !g.played);
 
-    // 아직 정규시즌이 끝나지 않았거나, 이미 플레이오프 시리즈가 존재하면 스킵
-    // *Important*: If schedule is empty (loading), unplayedRegular is 0, which might trigger this. 
-    // The safety check at step 0 handles this.
     if (unplayedRegular.length > 0 || currentSeries.length > 0) return currentSeries;
 
-    // 2. Generate Seeds
-    const getSeeds = (conf: 'East' | 'West') => 
+    console.log("🏆 Regular Season Complete. Initializing Post-Season...");
+
+    // 2. Rank Teams
+    const getRanked = (conf: 'East' | 'West') => 
         teams.filter(t => t.conference === conf)
              .sort((a, b) => (b.wins / (b.wins + b.losses || 1)) - (a.wins / (a.wins + a.losses || 1)));
 
-    const eastSeeds = getSeeds('East');
-    const westSeeds = getSeeds('West');
+    const eastRanked = getRanked('East');
+    const westRanked = getRanked('West');
 
-    // Double check we have enough teams seeded
-    if (eastSeeds.length < 8 || westSeeds.length < 8) return currentSeries;
-
-    // *Simpler Logic for V1: Skip Play-in, go straight to Round 1 for stability*
+    // 3. Generate Play-In Bracket (Round 0)
     const newSeries: PlayoffSeries[] = [];
-    
-    // Helper to create series
-    const createSeries = (conf: 'East' | 'West', seeds: Team[], r: number) => {
-        SEED_MATCHUPS_R1.forEach(m => {
-            const high = seeds[m.h - 1];
-            const low = seeds[m.l - 1];
-            
-            // Safety guard against undefined teams
-            if (!high || !low) return;
 
-            newSeries.push({
-                id: `${conf}_R1_${high.id}_vs_${low.id}`,
-                round: 1,
-                conference: conf,
-                higherSeedId: high.id,
-                lowerSeedId: low.id,
-                higherSeedWins: 0,
-                lowerSeedWins: 0,
-                finished: false,
-                targetWins: 4
-            });
+    const createPlayIn = (conf: 'East' | 'West', rankedTeams: Team[]) => {
+        newSeries.push({
+            id: `${conf}_PI_7v8`,
+            round: 0,
+            conference: conf,
+            higherSeedId: rankedTeams[6].id,
+            lowerSeedId: rankedTeams[7].id,
+            higherSeedWins: 0,
+            lowerSeedWins: 0,
+            finished: false,
+            targetWins: 1
+        });
+        newSeries.push({
+            id: `${conf}_PI_9v10`,
+            round: 0,
+            conference: conf,
+            higherSeedId: rankedTeams[8].id,
+            lowerSeedId: rankedTeams[9].id,
+            higherSeedWins: 0,
+            lowerSeedWins: 0,
+            finished: false,
+            targetWins: 1
+        });
+        newSeries.push({
+            id: `${conf}_PI_8th_Decider`,
+            round: 0,
+            conference: conf,
+            higherSeedId: 'TBD_7v8_LOSER', 
+            lowerSeedId: 'TBD_9v10_WINNER',
+            higherSeedWins: 0,
+            lowerSeedWins: 0,
+            finished: false,
+            targetWins: 1
         });
     };
 
-    createSeries('East', eastSeeds, 1);
-    createSeries('West', westSeeds, 1);
+    createPlayIn('East', eastRanked);
+    createPlayIn('West', westRanked);
 
-    if (newSeries.length > 0) {
-        console.log("🏆 Playoffs Initialized: Round 1 Started");
-    }
     return newSeries;
 }
 
 /**
- * 현재 시리즈 상태를 기반으로 '다음 경기'가 스케줄에 있는지 확인하고, 없으면 생성합니다.
+ * Evaluates game results and advances the bracket state.
+ * Handles Play-In -> R1 -> Semis -> Conf Finals -> Finals progression.
+ */
+export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[]): PlayoffSeries[] {
+    let updated = [...seriesList];
+    let changed = false;
+
+    // --- Phase 1: Play-In Advancement ---
+    ['East', 'West'].forEach(conf => {
+        const pi7v8 = updated.find(s => s.id === `${conf}_PI_7v8`);
+        const pi9v10 = updated.find(s => s.id === `${conf}_PI_9v10`);
+        const piDecider = updated.find(s => s.id === `${conf}_PI_8th_Decider`);
+
+        if (pi7v8?.finished && piDecider?.higherSeedId === 'TBD_7v8_LOSER') {
+            const loserId = pi7v8.winnerId === pi7v8.higherSeedId ? pi7v8.lowerSeedId : pi7v8.higherSeedId;
+            piDecider.higherSeedId = loserId;
+            changed = true;
+        }
+
+        if (pi9v10?.finished && piDecider?.lowerSeedId === 'TBD_9v10_WINNER') {
+            piDecider.lowerSeedId = pi9v10.winnerId!;
+            changed = true;
+        }
+    });
+
+    // --- Phase 2: Start Round 1 (If Play-In Done) ---
+    const playInGames = updated.filter(s => s.round === 0);
+    const round1Games = updated.filter(s => s.round === 1);
+    
+    if (playInGames.length > 0 && playInGames.every(s => s.finished) && round1Games.length === 0) {
+        // Generate Round 1
+        const getSeeded = (conf: 'East' | 'West') => {
+            const ranked = teams.filter(t => t.conference === conf)
+                .sort((a, b) => (b.wins / (b.wins + b.losses || 1)) - (a.wins / (a.wins + a.losses || 1)));
+            
+            const pi7v8 = updated.find(s => s.id === `${conf}_PI_7v8`);
+            const piDecider = updated.find(s => s.id === `${conf}_PI_8th_Decider`);
+            
+            // Safety check: if play-in logic failed, fallback to rank
+            const seed7 = teams.find(t => t.id === pi7v8?.winnerId) || ranked[6];
+            const seed8 = teams.find(t => t.id === piDecider?.winnerId) || ranked[7];
+            
+            return [...ranked.slice(0, 6), seed7, seed8];
+        };
+
+        const eastSeeds = getSeeded('East');
+        const westSeeds = getSeeded('West');
+
+        const createR1 = (conf: 'East' | 'West', seeds: Team[]) => {
+            R1_MAPPINGS.forEach((m) => {
+                updated.push({
+                    id: `${conf}_R1_${m.id}`,
+                    round: 1,
+                    conference: conf as any,
+                    higherSeedId: seeds[m.h - 1].id,
+                    lowerSeedId: seeds[m.l - 1].id,
+                    higherSeedWins: 0,
+                    lowerSeedWins: 0,
+                    finished: false,
+                    targetWins: 4
+                });
+            });
+        };
+
+        createR1('East', eastSeeds);
+        createR1('West', westSeeds);
+        changed = true;
+    }
+
+    // --- Phase 3: Recursive Tree Advancement (R1 -> Semis -> Conf -> Finals) ---
+    // Helper to find or create next round series
+    const ensureNextSeries = (id: string, round: number, conf: 'East'|'West'|'NBA', highId: string, lowId: string) => {
+        let s = updated.find(x => x.id === id);
+        if (!s) {
+            s = {
+                id, round: round as any, conference: conf,
+                higherSeedId: highId || 'TBD', lowerSeedId: lowId || 'TBD',
+                higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 4
+            };
+            updated.push(s);
+            changed = true;
+        }
+        return s;
+    };
+
+    // 3a. Advance R1 to Semis
+    ['East', 'West'].forEach(conf => {
+        const r1s = updated.filter(s => s.round === 1 && s.conference === conf);
+        if (r1s.length === 0) return;
+
+        // Semis 1 (Winner of M1 vs Winner of M2)
+        const m1 = r1s.find(s => s.id.includes('M1'));
+        const m2 = r1s.find(s => s.id.includes('M2'));
+        const s1 = ensureNextSeries(`${conf}_SEMIS_S1`, 2, conf as any, m1?.winnerId || 'TBD', m2?.winnerId || 'TBD');
+        
+        if (m1?.winnerId && s1.higherSeedId === 'TBD') { s1.higherSeedId = m1.winnerId; changed = true; }
+        if (m2?.winnerId && s1.lowerSeedId === 'TBD') { s1.lowerSeedId = m2.winnerId; changed = true; }
+
+        // Semis 2 (Winner of M3 vs Winner of M4)
+        const m3 = r1s.find(s => s.id.includes('M3'));
+        const m4 = r1s.find(s => s.id.includes('M4'));
+        const s2 = ensureNextSeries(`${conf}_SEMIS_S2`, 2, conf as any, m3?.winnerId || 'TBD', m4?.winnerId || 'TBD');
+
+        if (m3?.winnerId && s2.higherSeedId === 'TBD') { s2.higherSeedId = m3.winnerId; changed = true; }
+        if (m4?.winnerId && s2.lowerSeedId === 'TBD') { s2.lowerSeedId = m4.winnerId; changed = true; }
+    });
+
+    // 3b. Advance Semis to Conf Finals
+    ['East', 'West'].forEach(conf => {
+        const semis = updated.filter(s => s.round === 2 && s.conference === conf);
+        if (semis.length === 0) return;
+
+        const s1 = semis.find(s => s.id.includes('S1'));
+        const s2 = semis.find(s => s.id.includes('S2'));
+        const cf = ensureNextSeries(`${conf}_FINALS`, 3, conf as any, s1?.winnerId || 'TBD', s2?.winnerId || 'TBD');
+
+        if (s1?.winnerId && cf.higherSeedId === 'TBD') { cf.higherSeedId = s1.winnerId; changed = true; }
+        if (s2?.winnerId && cf.lowerSeedId === 'TBD') { cf.lowerSeedId = s2.winnerId; changed = true; }
+    });
+
+    // 3c. Advance Conf Finals to NBA Finals
+    const eastCF = updated.find(s => s.round === 3 && s.conference === 'East');
+    const westCF = updated.find(s => s.round === 3 && s.conference === 'West');
+    
+    if (eastCF || westCF) {
+        const finals = ensureNextSeries(`NBA_FINALS`, 4, 'NBA', eastCF?.winnerId || 'TBD', westCF?.winnerId || 'TBD');
+        if (eastCF?.winnerId && finals.higherSeedId === 'TBD') { finals.higherSeedId = eastCF.winnerId; changed = true; }
+        if (westCF?.winnerId && finals.lowerSeedId === 'TBD') { finals.lowerSeedId = westCF.winnerId; changed = true; }
+    }
+
+    return changed ? updated : seriesList;
+}
+
+/**
+ * Generates schedule for active series.
  */
 export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSeries[], currentDate: string): { newGames: Game[], updatedSeries: PlayoffSeries[] } {
     const newGames: Game[] = [];
@@ -87,39 +235,52 @@ export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSe
     
     if (!seriesList || seriesList.length === 0) return { newGames, updatedSeries };
 
-    // 1. Check each active series
+    // 1. Advance the bracket state first (check for round completions)
+    // Note: We need 'teams' for R1 seeding, but assuming 'advancePlayoffState' handles logic with existing data if teams param is empty/optional in future. 
+    // Ideally, pass teams. For now, rely on existing TBD resolution.
+    // *Correction*: advancePlayoffState needs teams for R1 generation. 
+    // In useSimulation, we pass the teams. Here we assume seriesList is somewhat up to date or we skip R1 gen if teams missing.
+    
+    // Iterate active series to schedule next game
     updatedSeries.forEach(series => {
-        if (series.finished) return;
+        // Skip if finished or teams not ready
+        if (series.finished || series.higherSeedId.includes('TBD') || series.lowerSeedId.includes('TBD')) return;
 
-        // Check if there is an unplayed game for this series in the schedule
+        // Check if active game exists for this series
         const activeGame = schedule.find(g => g.seriesId === series.id && !g.played);
         
         if (!activeGame) {
-            // No active game -> Create next game
             const gameNum = series.higherSeedWins + series.lowerSeedWins + 1;
             
             // Format: 2-2-1-1-1 (Home court for Higher Seed: 1,2,5,7)
             const isHigherHome = [1, 2, 5, 7].includes(gameNum);
             
-            // Scheduling: If first game, use currentDate + 2 days. Otherwise, last game date + 2 days.
+            // Play-In is always Home for Higher Seed
+            const finalHome = series.round === 0 ? series.higherSeedId : (isHigherHome ? series.higherSeedId : series.lowerSeedId);
+            const finalAway = series.round === 0 ? series.lowerSeedId : (isHigherHome ? series.lowerSeedId : series.higherSeedId);
+
+            // Scheduling Logic
+            // Play-In: Day 1 (7v8, 9v10), Day 3 (Decider)
+            // Playoffs: Every 2 days
+            let dateOffset = 2;
+            if (series.round === 0 && series.id.includes('Decider')) dateOffset = 2; 
+            
             const seriesGames = schedule.filter(g => g.seriesId === series.id).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
             const lastGameDate = seriesGames.length > 0 ? new Date(seriesGames[seriesGames.length - 1].date) : new Date(currentDate);
             
-            // Add 2 days gap
             const nextDate = new Date(lastGameDate);
-            nextDate.setDate(nextDate.getDate() + 2);
-            // Ensure next game isn't in the past relative to sim date
+            nextDate.setDate(nextDate.getDate() + dateOffset);
+            
+            // Sync with current simulation date (ensure we don't schedule in past)
             const simDateObj = new Date(currentDate);
-            if (nextDate <= simDateObj) {
-                nextDate.setDate(simDateObj.getDate() + 1);
-            }
+            if (nextDate <= simDateObj) nextDate.setDate(simDateObj.getDate() + 1);
 
             const nextDateStr = nextDate.toISOString().split('T')[0];
 
             newGames.push({
                 id: `po_${series.id}_g${gameNum}`,
-                homeTeamId: isHigherHome ? series.higherSeedId : series.lowerSeedId,
-                awayTeamId: isHigherHome ? series.lowerSeedId : series.higherSeedId,
+                homeTeamId: finalHome,
+                awayTeamId: finalAway,
                 date: nextDateStr,
                 played: false,
                 isPlayoff: true,
@@ -129,12 +290,4 @@ export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSe
     });
 
     return { newGames, updatedSeries };
-}
-
-/**
- * 시리즈 승자 결정 및 라운드 종료 처리
- */
-export function advancePlayoffRound(seriesList: PlayoffSeries[], teams: Team[]): PlayoffSeries[] {
-    // Placeholder for future round logic
-    return [...seriesList];
 }

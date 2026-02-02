@@ -23,6 +23,9 @@ export interface SeasonStats {
   rimA: number; // Rim Attempts
   midM: number; // Mid-Range Makes
   midA: number; // Mid-Range Attempts
+
+  // [New] Personal Fouls
+  pf?: number;
 }
 
 export interface Player {
@@ -107,6 +110,7 @@ export interface PlayerBoxScore extends SeasonStats {
   isStopper?: boolean;
   isAceTarget?: boolean;
   matchupEffect?: number;
+  pf?: number; // Personal Fouls
 }
 
 export interface TacticStatRecord {
@@ -173,17 +177,48 @@ export interface Game {
   };
 }
 
+// UI & Logic Interface for Series
 export interface PlayoffSeries {
   id: string;
   round: 0 | 1 | 2 | 3 | 4; // 0: Play-In, 1: Round 1, 2: Semis, 3: Finals, 4: NBA Finals
   conference: 'East' | 'West' | 'NBA';
-  higherSeedId: string;
+  higherSeedId: string; // The team with home court advantage (better record)
   lowerSeedId: string;
   higherSeedWins: number;
   lowerSeedWins: number;
   finished: boolean;
   winnerId?: string;
   targetWins?: number; // Default 4 for playoffs, 1 for play-in
+}
+
+// DB Interface for 'user_playoffs'
+export interface PlayoffStateDB {
+  id: string;
+  user_id: string;
+  team_id: string;
+  season: string;
+  current_round: number;
+  bracket_data: { series: PlayoffSeries[] }; // Wrapped JSONB
+  is_finished: boolean;
+  champion_id?: string;
+  final_mvp_id?: string;
+  updated_at?: string;
+}
+
+// DB Interface for 'user_playoffs_results'
+export interface PlayoffGameResultDB {
+  user_id: string;
+  game_id: string;
+  date: string;
+  series_id: string;
+  round_number: number;
+  game_number: number;
+  home_team_id: string;
+  away_team_id: string;
+  home_score: number;
+  away_score: number;
+  box_score: { home: PlayerBoxScore[]; away: PlayerBoxScore[] };
+  tactics: any;
 }
 
 export interface Transaction {
