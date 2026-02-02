@@ -31,9 +31,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
     
-    // Refs to access latest state in async callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate });
-    useEffect(() => { gameStateRef.current = { myTeamId, currentSimDate }; }, [myTeamId, currentSimDate]);
+    // Refs to access latest state in async callbacks (Added userTactics)
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics });
+    useEffect(() => { 
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics }; 
+    }, [myTeamId, currentSimDate, userTactics]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -98,6 +100,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     setSchedule(replayedState.schedule);
                     setCurrentSimDate(replayedState.currentSimDate);
                     
+                    // [Fix] Restore User Tactics if available in checkpoint
+                    if (checkpoint.tactics) {
+                        setUserTactics(checkpoint.tactics);
+                    }
+                    
                     // Restore Playoff Series State if exists
                     if (playoffState && playoffState.bracket_data) {
                         setPlayoffSeries(playoffState.bracket_data.series);
@@ -146,9 +153,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             // Priority: Override > Ref > State
             const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
             const date = overrides?.currentSimDate || gameStateRef.current.currentSimDate;
+            // [Fix] Include tactics in save
+            const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
 
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date);
+                await saveCheckpoint(session.user.id, teamId, date, tactics);
                 // Note: Playoff state is saved inside useSimulation via savePlayoffState
             }
         } catch (e) {
@@ -210,6 +219,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setCurrentSimDate(INITIAL_DATE);
             setTransactions([]);
             setPlayoffSeries([]);
+            setUserTactics(null); // Reset Tactics
             hasInitialLoadRef.current = false; // Allow re-init
             
             return { success: true };

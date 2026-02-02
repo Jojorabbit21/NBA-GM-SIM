@@ -1,22 +1,30 @@
 
 import { supabase } from './supabaseClient';
-import { Transaction } from '../types';
+import { Transaction, GameTactics } from '../types';
 
 // 1. Save Metadata (Pointer to current progress)
-export const saveCheckpoint = async (userId: string, teamId: string, simDate: string) => {
+// [Update] Added tactics parameter to save user strategy
+export const saveCheckpoint = async (userId: string, teamId: string, simDate: string, tactics?: GameTactics | null) => {
     if (!userId || !teamId || !simDate) {
         console.error("❌ [Persistence] Invalid Checkpoint Data:", { userId, teamId, simDate });
         return null;
     }
 
+    const payload: any = { 
+        user_id: userId, 
+        team_id: teamId,
+        sim_date: simDate,
+        updated_at: new Date().toISOString()
+    };
+
+    // Only add tactics if it exists to avoid overwriting with null if unintentional
+    if (tactics) {
+        payload.tactics = tactics;
+    }
+
     const { data, error } = await supabase
         .from('saves')
-        .upsert({ 
-            user_id: userId, 
-            team_id: teamId,
-            sim_date: simDate,
-            updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' })
+        .upsert(payload, { onConflict: 'user_id' })
         .select();
     
     if (error) {
@@ -27,10 +35,11 @@ export const saveCheckpoint = async (userId: string, teamId: string, simDate: st
 };
 
 // 2. Load Metadata
+// [Update] Select tactics column
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, updated_at')
+        .select('team_id, sim_date, tactics, updated_at') // Added tactics
         .eq('user_id', userId)
         .maybeSingle();
 
