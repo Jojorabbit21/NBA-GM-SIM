@@ -101,16 +101,17 @@ export const saveGameResults = async (results: any[]) => {
 };
 
 export const saveUserTransaction = async (userId: string, tx: Transaction) => {
-    console.log("💾 Saving Transaction:", { userId, tx }); // Debug log
+    console.log("💾 Saving Transaction:", { userId, tx }); 
+    // [Fix] 'transaction_id' -> 'id' (DB Column Name Mismatch Fix)
     const { data, error } = await supabase.from('user_transactions').insert({
+        id: tx.id,              // Corrected column name
         user_id: userId,
-        transaction_id: tx.id,
         date: tx.date,
         type: tx.type,
         team_id: tx.teamId,
         description: tx.description,
         details: tx.details
-    }).select(); // Add select to see returned data
+    }).select(); 
     
     if (error) {
         console.error("❌ Save Transaction Error DETAILS:", error);
