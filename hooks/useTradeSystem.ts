@@ -5,8 +5,7 @@ import { generateTradeOffers, generateCounterOffers } from '../services/tradeEng
 import { TRADE_DEADLINE } from '../utils/constants';
 import { logEvent } from '../services/analytics';
 import { saveUserTransaction } from '../services/queries';
-import { supabase } from '../services/supabaseClient';
-import { sendMessage } from '../services/messageService'; // Imported
+import { sendMessage } from '../services/messageService';
 
 const MAX_DAILY_TRADES = 5;
 
@@ -15,9 +14,11 @@ export const useTradeSystem = (
     teams: Team[], 
     setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
     currentSimDate: string,
+    userId?: string, // [Added] Explicit UserId
     onAddTransaction?: (t: Transaction) => void,
     onForceSave?: (overrides?: any) => Promise<void>,
-    onShowToast?: (msg: string) => void
+    onShowToast?: (msg: string) => void,
+    refreshUnreadCount?: () => void // [Added] Callback for badge update
 ) => {
     // Local State
     const [blockSelectedIds, setBlockSelectedIds] = useState<Set<string>>(new Set());
@@ -160,36 +161,43 @@ export const useTradeSystem = (
                 }
             };
 
+            // Local State Update (Optimistic)
             if (onAddTransaction) onAddTransaction(newTransaction);
 
-            const { data: userData } = await (supabase.auth as any).getUser();
-            if (userData?.user) {
-                await saveUserTransaction(userData.user.id, newTransaction);
+            // DB Save (User Transactions)
+            // [Fix] Ensure userId is present and await the save
+            if (userId) {
+                await saveUserTransaction(userId, newTransaction);
                 
                 // [Notification] Send Message for User Trade
                 const tradeContent: TradeAlertContent = {
-                    summary: ``, // Removed summary
+                    summary: ``, 
                     trades: [{
                         team1Id: team.id,
                         team1Name: team.name,
                         team2Id: targetTeam.id,
                         team2Name: targetTeam.name,
-                        team1Acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr })),
-                        team2Acquired: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr }))
+                        team1Acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 70 })),
+                        team2Acquired: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 70 }))
                     }]
                 };
                 
                 await sendMessage(
-                    userData.user.id,
+                    userId,
                     team.id,
                     currentSimDate,
                     'TRADE_ALERT',
                     `[오피셜] ${targetTeam.name}와 트레이드 합의`,
                     tradeContent
                 );
+
+                // [Fix] Refresh Badge Immediately
+                if (refreshUnreadCount) refreshUnreadCount();
+            } else {
+                console.warn("⚠️ Trade executed without UserID (Guest Mode or Error) - Transaction not saved to DB.");
             }
 
-            // State Update
+            // Roster Update
             const nextTeams = teams.map(t => {
                 if (t.id === team.id) {
                     const remaining = t.roster.filter(p => !userAssets.some(u => u.id === p.id));
@@ -212,6 +220,7 @@ export const useTradeSystem = (
 
             setTeams(nextTeams);
 
+            // [Persistence] Save Checkpoint (Roster State)
             if (onForceSave) await onForceSave({ teams: nextTeams });
 
             onShowToast?.(`트레이드 성사! 총 ${targetAssets.length}명의 선수가 합류했습니다.`);

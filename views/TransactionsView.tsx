@@ -24,15 +24,26 @@ interface TransactionsViewProps {
   transactions?: Transaction[];
   onAddTransaction?: (t: Transaction) => void;
   onForceSave?: (overrides?: any) => Promise<void>;
+  userId?: string; // [Added]
+  refreshUnreadCount?: () => void; // [Added]
 }
 
-export const TransactionsView: React.FC<TransactionsViewProps> = ({ team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, onAddTransaction, onForceSave }) => {
+export const TransactionsView: React.FC<TransactionsViewProps> = ({ 
+    team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, 
+    onAddTransaction, onForceSave, userId, refreshUnreadCount 
+}) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'mine'>('all');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
 
   // Use Custom Hook for Business Logic
-  const tradeSystem = useTradeSystem(team, teams, setTeams, currentSimDate, onAddTransaction, onForceSave, onShowToast);
+  // [Fix] Pass userId and refreshUnreadCount to ensure DB save and badge update
+  const tradeSystem = useTradeSystem(
+      team, teams, setTeams, currentSimDate, 
+      userId, 
+      onAddTransaction, onForceSave, onShowToast, 
+      refreshUnreadCount
+  );
 
   const {
       blockSelectedIds, setBlockSelectedIds, blockOffers, blockIsProcessing, blockSearchPerformed,
