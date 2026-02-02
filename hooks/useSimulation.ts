@@ -135,7 +135,7 @@ export const useSimulation = (
         // [Inbox] Create Daily Trade Report (Added)
         if (dailyTrades.length > 0 && session?.user && !isGuestMode && myTeamId) {
             const tradeContent: TradeAlertContent = {
-                summary: `${dailyTrades.length}건의 새로운 트레이드가 성사되었습니다.`,
+                summary: ``, // Removing summary as requested
                 trades: dailyTrades.map(t => {
                     const team1 = newTeams.find(tm => tm.id === t.teamId);
                     return {
@@ -466,7 +466,7 @@ export const useSimulation = (
                     myTeamId,
                     userGameResultOutput.homeBox[0]?.g ? 'PLAYOFF' : targetSimDate,
                     'GAME_RECAP',
-                    userWon ? `[승리] vs ${oppName} (${userScore}:${oppScore})` : `[패배] vs ${oppName} (${userScore}:${oppScore})`,
+                    `[경기보고서] ${targetSimDate} vs ${oppName}`,
                     {
                         gameId: activeGame?.id || `g_${targetSimDate}`,
                         homeTeamId: userGameResultOutput.home.id,

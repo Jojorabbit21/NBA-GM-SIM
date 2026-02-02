@@ -168,7 +168,7 @@ export const useTradeSystem = (
                 
                 // [Notification] Send Message for User Trade
                 const tradeContent: TradeAlertContent = {
-                    summary: `${targetTeam.name}와의 트레이드가 공식 승인되었습니다.`,
+                    summary: ``, // Removed summary
                     trades: [{
                         team1Id: team.id,
                         team1Name: team.name,
@@ -184,7 +184,7 @@ export const useTradeSystem = (
                     team.id,
                     currentSimDate,
                     'TRADE_ALERT',
-                    `[오피셜] ${targetTeam.name} 트레이드 완료`,
+                    `[오피셜] ${targetTeam.name}와 트레이드 합의`,
                     tradeContent
                 );
             }
