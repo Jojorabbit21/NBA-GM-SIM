@@ -109,12 +109,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             await ensureProfileExists(data.user.id, data.user.email);
             
             // Log login event
-            await supabase.from('login_logs').insert({
+            const { error: logError } = await supabase.from('login_logs').insert({
                 user_id: data.user.id,
                 type: 'login',
                 user_agent: navigator.userAgent,
                 timestamp: new Date().toISOString()
-            }).catch(e => console.warn("Login log failed", e));
+            });
+            
+            if (logError) {
+                console.warn("Login log failed", logError);
+            }
         }
       }
     } catch (error: any) {

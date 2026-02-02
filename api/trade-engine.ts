@@ -315,6 +315,7 @@ export default async function handler(req: any, res: any) {
                         offers.push({
                             teamId: otherTeam.id,
                             teamName: otherTeam.name,
+                            // [FIX] Return FULL player objects including stats
                             players: pkg,
                             diffValue: pkgValue - outgoingValue,
                             analysis: [
@@ -418,6 +419,7 @@ export default async function handler(req: any, res: any) {
                 offers.push({
                     teamId: targetTeam.id,
                     teamName: targetTeam.name,
+                    // [FIX] Return FULL player objects
                     players: p1.players,
                     diffValue: p1.value - targetValue,
                     analysis: [`AI Counter Proposal (Balanced)`, ...p1.reasons.slice(0, 3)]
@@ -432,6 +434,7 @@ export default async function handler(req: any, res: any) {
                     offers.push({
                         teamId: targetTeam.id,
                         teamName: targetTeam.name,
+                        // [FIX] Return FULL player objects
                         players: p2.players,
                         diffValue: p2.value - targetValue,
                         analysis: [`AI Counter Proposal (Alternative)`, ...p2.reasons.slice(0, 3)]

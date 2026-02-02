@@ -1,18 +1,20 @@
 
 import React from 'react';
 import { Target, ChevronRight } from 'lucide-react';
-import { Player, TradeOffer } from '../../types';
+import { Player, TradeOffer, Team } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
 
 interface RequirementCardProps {
   requirement: TradeOffer;
   targetPlayers: Player[];
+  // teams: Team[]; // [Removed] No longer needed for lookup
   onAccept: () => void;
   onPlayerClick: (p: Player) => void;
 }
 
 export const RequirementCard: React.FC<RequirementCardProps> = ({ requirement, targetPlayers, onAccept, onPlayerClick }) => {
+  
   return (
     // [Optimization] bg-slate-900/60 -> bg-slate-900 (Solid background to prevent expensive blur calculation during scroll)
     <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 hover:border-emerald-500/70 transition-all group relative overflow-hidden shadow-xl">
@@ -41,8 +43,9 @@ export const RequirementCard: React.FC<RequirementCardProps> = ({ requirement, t
              </div>
              <div className="flex flex-col gap-2">
                 {requirement.players.map(p => {
-                  // [Fix] Real-time OVR
+                  // [Updated] No lookup needed. p is now full object from API
                   const displayOvr = calculatePlayerOvr(p);
+                  
                   return (
                   <div key={p.id} className="flex items-center justify-between bg-slate-950/40 p-3 rounded-2xl border border-slate-800/50 hover:bg-slate-900/60 transition-colors">
                      <div className="flex items-center gap-4 flex-1 min-w-0">
