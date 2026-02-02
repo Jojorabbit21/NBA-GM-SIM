@@ -167,6 +167,7 @@ function simulateTeamPerformance(
           p, mp, 
           { defense: teamTactics.defenseTactics }, 
           { offense: oppTactics.offenseTactics },
+          sliders, // Pass sliders to foul system
           matchupProxy
       );
       
