@@ -1,6 +1,7 @@
 
 import { Team, Player, Game } from '../types';
 import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
+import { KNOWN_INJURIES } from '../utils/injuries';
 import { calculateOvr } from '../utils/ovrUtils';
 
 // --- Helper: Flexible Column Getter ---
@@ -9,6 +10,13 @@ const getCol = (item: any, keys: string[]) => {
         if (item[k] !== undefined && item[k] !== null) return item[k];
     }
     return undefined;
+};
+
+// --- Helper: Generate Stable ID ---
+// DB에 ID가 없는 경우에만 이름과 팀 기반으로 ID 생성 (Fallback)
+const generateStableId = (name: string, teamId: string): string => {
+    const cleanName = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
+    return `${teamId}_${cleanName}`;
 };
 
 /**
@@ -121,19 +129,37 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     };
 
     const position = getCol(p, ['position', 'Pos', 'Position', 'POS']) || "G";
+    const name = getCol(p, ['name', 'Player', 'Name', 'player_name']) || "Unknown Player";
+    
+    // Resolve Team ID for stable ID generation fallback
+    const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']) || 'fa';
+    const teamId = resolveTeamId(rawTeamId);
     
     // 3. Determine OVR (ALWAYS CALCULATE FROM STATS)
-    // Always use the centralized calculator to ensure OVR reflects current weights
     const ovr = calculateOvr(statsObj, position);
     
     // Determine Potential
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
-    // If potential is missing or less than OVR (data error), set it to at least OVR
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
+    // [Fix] Handle Known Injuries from Independent File (Using Name)
+    let health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
+    let injuryType = undefined;
+    let returnDate = undefined;
+
+    if (KNOWN_INJURIES[name]) {
+        health = 'Injured';
+        injuryType = KNOWN_INJURIES[name].type;
+        returnDate = KNOWN_INJURIES[name].returnDate;
+    }
+
+    // [Fix] Use DB ID if available, otherwise generate stable ID
+    const dbId = getCol(p, ['id', 'player_id', 'PlayerID']);
+    const id = dbId ? String(dbId) : generateStableId(name, teamId);
+
     return {
-        id: getCol(p, ['id', 'player_id', 'PlayerID']) || `p_${Math.random().toString(36).substr(2, 9)}`,
-        name: getCol(p, ['name', 'Player', 'Name', 'player_name']) || "Unknown Player",
+        id,
+        name,
         position,
         age: Number(getCol(p, ['age', 'Age']) || 20),
         height: statsObj.height,
@@ -143,9 +169,11 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         
         ovr,
         potential,
-        revealedPotential: potential, // For now, revealed is same as actual
+        revealedPotential: potential,
         
-        health: (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day',
+        health,
+        injuryType,
+        returnDate,
         condition: 100,
 
         ...statsObj,
