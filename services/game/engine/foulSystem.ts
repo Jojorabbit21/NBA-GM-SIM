@@ -21,17 +21,22 @@ export const FOUL_CONFIG = {
         }
     },
 
-    // 2. Base Scale
-    // How to convert Discipline Rating (0-100) to Fouls per 36 mins.
-    // Logic: (100 - Rating) / BASE_SCALE
-    // Example: Rating 80 -> Gap 20 -> 20 / 20 = 1.0 Base Fouls
-    // Example: Rating 40 -> Gap 60 -> 60 / 20 = 3.0 Base Fouls
-    PROPENSITY_SCALE: 20, 
+    // 2. Base Scale & Floor (TUNED for NBA Realistic Stats ~20 PF/Team)
+    // Previous Scale: 20 (Resulted in ~10 PF/Team)
+    // New Logic: Base Floor + (Skill Gap / Scale)
+    
+    // Constant foul rate per 36m that applies to everyone (Game flow fouls, screens, loose balls)
+    BASE_FOUL_RATE: 1.3, 
+
+    // How to convert Discipline Rating (0-100) to EXTRA Fouls.
+    // Lower scale = Higher fouls for bad defenders.
+    // Rating 75 (Avg) -> Gap 25 -> 25 / 13 = ~1.9 + 1.3 = 3.2 Fouls/36m
+    PROPENSITY_SCALE: 13, 
 
     // 3. Matchup Modifier
     // How much the opponent's 'Draw Foul' attribute affects the defender.
     // Factor: (OppDrawFoul - 50) * DRAW_FOUL_FACTOR
-    DRAW_FOUL_FACTOR: 0.005, 
+    DRAW_FOUL_FACTOR: 0.006, 
 
     // 4. Tactical Multipliers (Percentage Increase)
     TACTICS: {
@@ -47,17 +52,17 @@ export const FOUL_CONFIG = {
         REB_IMPACT: 0.05            // Each point above 5 adds 5% foul rate (Loose ball fouls)
     },
 
-    // 6. Randomness
-    // To ensure games aren't deterministic.
+    // 6. Randomness (Referees)
+    // Shifted range slightly higher to prevent abnormally clean games
     VARIANCE: {
-        MIN: 0.8, // -20% luck
-        MAX: 1.3  // +30% luck (Bad day for refs)
+        MIN: 0.90, // -10% luck (Strict refs)
+        MAX: 1.45  // +45% luck (Whistle happy refs)
     },
 
     // 7. Ejection Rules
     FOUL_LIMIT: 6,
     // Minimum minutes a player must play even if they foul out rapidly (simulation artifact prevention)
-    MIN_MINUTES_FLOOR: 12 
+    MIN_MINUTES_FLOOR: 10 
 };
 
 /**
@@ -71,7 +76,7 @@ export const FOUL_CONFIG = {
  * 
  * 2. **Propensity Conversion**:
  *    - Converts Discipline Rating to a raw `foulPropensity` score.
- *    - Inverse relationship: Lower IQ/Defense = Higher Foul Rate.
+ *    - Adds `BASE_FOUL_RATE` to ensure minimum realistic foul counts.
  * 
  * 3. **Contextual Modifiers**:
  *    - **Matchup**: Adds penalty if opponent has high `Draw Foul` attribute.
@@ -92,7 +97,8 @@ export function calculateFoulStats(
     defTactics: { defense: DefenseTactic[] },
     oppOffTactics: { offense: OffenseTactic[] },
     sliders: TacticalSliders,
-    matchupOpponent?: Player
+    matchupOpponent?: Player,
+    isStopper: boolean = false
 ): { pf: number, adjustedMinutes: number } {
     if (minutesPlanned <= 0) return { pf: 0, adjustedMinutes: 0 };
 
@@ -141,8 +147,8 @@ export function calculateFoulStats(
     // ==================================================================
     
     // Base foul rate per 36 mins.
-    // Example: (100 - 60) / 20 = 2.0 fouls per 36m.
-    let foulPropensity = (100 - disciplineRating) / C.PROPENSITY_SCALE; 
+    // Logic: Base Floor + (Skill Gap / Scale)
+    let foulPropensity = C.BASE_FOUL_RATE + ((100 - disciplineRating) / C.PROPENSITY_SCALE);
 
     // ==================================================================
     // STEP 3: Apply Matchup Modifiers
@@ -167,6 +173,32 @@ export function calculateFoulStats(
     if (defTactics.defense.includes('ZoneDefense')) {
         // Zone defense exposes bigs to more contest situations
         if (['PF', 'C'].includes(pos)) foulPropensity *= C.TACTICS.DEF_AGGRESSIVE;
+    }
+    
+    // 4-A-2. Ace Stopper Dynamic Logic
+    // Compare Stopper Ability vs Ace Threat
+    if (isStopper && matchupOpponent) {
+        // Stopper Defensive Power: Perimeter Def (40%), Consistency (30%), Agility (20%), Strength (10%)
+        const stopperRating = (defender.perDef * 0.4) + 
+                              (defender.defConsist * 0.3) + 
+                              (defender.agility * 0.2) + 
+                              (defender.strength * 0.1);
+        
+        // Ace Offensive Threat: OVR (50%), Ball Handling (30%), Speed (20%)
+        const aceRating = (matchupOpponent.ovr * 0.5) + 
+                          (matchupOpponent.handling * 0.3) + 
+                          (matchupOpponent.speed * 0.2);
+
+        const diff = aceRating - stopperRating;
+        
+        // Only increase fouls if Stopper is worse than Ace
+        if (diff > 0) {
+             // Max penalty 25% if diff is >= 25 points.
+             // 1 point diff = 1% increase in fouls
+             const penalty = Math.min(0.25, diff * 0.01);
+             foulPropensity *= (1.0 + penalty);
+        }
+        // If Stopper is better (diff <= 0), no penalty applied (neutral)
     }
 
     // 4-B. Opponent Offensive Tactics (Pressure Points)
@@ -237,7 +269,7 @@ export function calculateFoulStats(
         const foulOutRatio = C.FOUL_LIMIT / Math.max(6.1, finalEstimate);
         adjustedMinutes = Math.floor(minutesPlanned * foulOutRatio);
         
-        // Ensure a logical floor (rarely foul out in < 12 mins unless extreme)
+        // Ensure a logical floor (rarely foul out in < 10 mins unless extreme)
         adjustedMinutes = Math.max(C.MIN_MINUTES_FLOOR, adjustedMinutes);
     }
 

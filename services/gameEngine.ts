@@ -161,14 +161,22 @@ function simulateTeamPerformance(
       
       // 5-0. Foul System Calculation
       // Find a matchup proxy from opponent starters based on position
-      const matchupProxy = oppSorted.find(op => op.position === p.position && oppMinutesMap[op.id] > 10) || oppSorted[0];
+      // OR if Ace Stopper, find the actual opponent Ace
+      let matchupTarget = oppSorted.find(op => op.position === p.position && oppMinutesMap[op.id] > 10) || oppSorted[0];
+      
+      if (isStopper) {
+          // If this player is the Ace Stopper, they are matched up against the Opponent's Ace (highest OVR)
+          // Regardless of position mismatch
+          matchupTarget = oppSorted.reduce((prev, curr) => (prev.ovr > curr.ovr) ? prev : curr, oppSorted[0]);
+      }
       
       const { pf, adjustedMinutes } = calculateFoulStats(
           p, mp, 
           { defense: teamTactics.defenseTactics }, 
           { offense: oppTactics.offenseTactics },
           sliders, // Pass sliders to foul system
-          matchupProxy
+          matchupTarget,
+          isStopper // Pass isStopper flag
       );
       
       // If fouled out, reduce minutes played for subsequent stat calculations
