@@ -21,17 +21,17 @@ export const FOUL_CONFIG = {
         }
     },
 
-    // 2. Base Scale & Floor (TUNED for NBA Realistic Stats ~20 PF/Team)
-    // Previous Scale: 20 (Resulted in ~10 PF/Team)
-    // New Logic: Base Floor + (Skill Gap / Scale)
+    // 2. Base Scale & Floor (TUNED for NBA Realistic Stats ~21 PF/Team)
+    // Previous Settings Resulted in ~32 PF/Team (Too High)
+    // Adjustment: Lower Base & Reduce Sensitivity
     
-    // Constant foul rate per 36m that applies to everyone (Game flow fouls, screens, loose balls)
-    BASE_FOUL_RATE: 1.3, 
+    // Constant foul rate per 36m that applies to everyone
+    BASE_FOUL_RATE: 0.8, 
 
     // How to convert Discipline Rating (0-100) to EXTRA Fouls.
-    // Lower scale = Higher fouls for bad defenders.
-    // Rating 75 (Avg) -> Gap 25 -> 25 / 13 = ~1.9 + 1.3 = 3.2 Fouls/36m
-    PROPENSITY_SCALE: 13, 
+    // Higher scale = Less extra fouls for bad defenders.
+    // Rating 75 (Avg) -> Gap 25 -> 25 / 17 = ~1.47 + 0.8 = 2.27 Fouls/36m
+    PROPENSITY_SCALE: 17, 
 
     // 3. Matchup Modifier
     // How much the opponent's 'Draw Foul' attribute affects the defender.
@@ -53,10 +53,10 @@ export const FOUL_CONFIG = {
     },
 
     // 6. Randomness (Referees)
-    // Shifted range slightly higher to prevent abnormally clean games
+    // Reduced ceiling to prevent outlier games with excessive fouls
     VARIANCE: {
-        MIN: 0.90, // -10% luck (Strict refs)
-        MAX: 1.45  // +45% luck (Whistle happy refs)
+        MIN: 0.85, // -15% luck (Strict refs)
+        MAX: 1.25  // +25% luck (Whistle happy refs)
     },
 
     // 7. Ejection Rules
