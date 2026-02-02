@@ -69,6 +69,25 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   
   const getPlayerTeam = (p: Player) => teams.find(t => t.roster.some(rp => rp.id === p.id));
   const playerTeam = viewPlayer ? getPlayerTeam(viewPlayer) : null;
+  
+  const getDisplayDate = (msg: Message) => {
+      if (msg.type === 'GAME_RECAP' && msg.date === 'PLAYOFF') {
+          // Attempt to fallback to date from title or content
+          const dateMatch = msg.title.match(/\d{4}-\d{2}-\d{2}/);
+          if (dateMatch) return dateMatch[0];
+          // Or extract from gameId inside content if available
+          const content = msg.content as GameRecapContent;
+          if (content && content.gameId) {
+             const parts = content.gameId.split('_');
+             // Typical gameId: g_YYYY-MM-DD
+             // Sometimes: po_series_id_gNum -> might not have date easily
+             if (parts.length > 1 && parts[1].match(/^\d{4}-\d{2}-\d{2}$/)) {
+                 return parts[1];
+             }
+          }
+      }
+      return msg.date;
+  };
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-4">
@@ -152,7 +171,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                        <div className="flex justify-between items-start border-b border-slate-800 pb-6 mb-8">
                            <h1 className="text-2xl font-black text-white leading-tight flex-1 mr-8">{selectedMessage.title}</h1>
                            <div className="flex flex-col items-end">
-                               <span className="text-sm font-bold text-slate-400">{selectedMessage.date}</span>
+                               <span className="text-sm font-bold text-slate-400">{getDisplayDate(selectedMessage)}</span>
                            </div>
                        </div>
                        
