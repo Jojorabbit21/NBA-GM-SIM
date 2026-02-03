@@ -310,6 +310,33 @@ export const useSimulation = (
                             targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
                             targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0); targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
                             targetStats.pf = (targetStats.pf || 0) + (box.pf || 0);
+
+                            // [FIX] Accumulate 10-Zone Data for Shot Chart
+                            if (box.zoneData) {
+                                targetStats.zone_rim_m = (targetStats.zone_rim_m || 0) + (box.zoneData.zone_rim_m || 0);
+                                targetStats.zone_rim_a = (targetStats.zone_rim_a || 0) + (box.zoneData.zone_rim_a || 0);
+                                targetStats.zone_paint_m = (targetStats.zone_paint_m || 0) + (box.zoneData.zone_paint_m || 0);
+                                targetStats.zone_paint_a = (targetStats.zone_paint_a || 0) + (box.zoneData.zone_paint_a || 0);
+                                
+                                targetStats.zone_mid_l_m = (targetStats.zone_mid_l_m || 0) + (box.zoneData.zone_mid_l_m || 0);
+                                targetStats.zone_mid_l_a = (targetStats.zone_mid_l_a || 0) + (box.zoneData.zone_mid_l_a || 0);
+                                targetStats.zone_mid_c_m = (targetStats.zone_mid_c_m || 0) + (box.zoneData.zone_mid_c_m || 0);
+                                targetStats.zone_mid_c_a = (targetStats.zone_mid_c_a || 0) + (box.zoneData.zone_mid_c_a || 0);
+                                targetStats.zone_mid_r_m = (targetStats.zone_mid_r_m || 0) + (box.zoneData.zone_mid_r_m || 0);
+                                targetStats.zone_mid_r_a = (targetStats.zone_mid_r_a || 0) + (box.zoneData.zone_mid_r_a || 0);
+                                
+                                targetStats.zone_c3_l_m = (targetStats.zone_c3_l_m || 0) + (box.zoneData.zone_c3_l_m || 0);
+                                targetStats.zone_c3_l_a = (targetStats.zone_c3_l_a || 0) + (box.zoneData.zone_c3_l_a || 0);
+                                targetStats.zone_c3_r_m = (targetStats.zone_c3_r_m || 0) + (box.zoneData.zone_c3_r_m || 0);
+                                targetStats.zone_c3_r_a = (targetStats.zone_c3_r_a || 0) + (box.zoneData.zone_c3_r_a || 0);
+                                
+                                targetStats.zone_atb3_l_m = (targetStats.zone_atb3_l_m || 0) + (box.zoneData.zone_atb3_l_m || 0);
+                                targetStats.zone_atb3_l_a = (targetStats.zone_atb3_l_a || 0) + (box.zoneData.zone_atb3_l_a || 0);
+                                targetStats.zone_atb3_c_m = (targetStats.zone_atb3_c_m || 0) + (box.zoneData.zone_atb3_c_m || 0);
+                                targetStats.zone_atb3_c_a = (targetStats.zone_atb3_c_a || 0) + (box.zoneData.zone_atb3_c_a || 0);
+                                targetStats.zone_atb3_r_m = (targetStats.zone_atb3_r_m || 0) + (box.zoneData.zone_atb3_r_m || 0);
+                                targetStats.zone_atb3_r_a = (targetStats.zone_atb3_r_a || 0) + (box.zoneData.zone_atb3_r_a || 0);
+                            }
                         }
 
                         // Check for NEW injuries (Preserved + Messaging)
