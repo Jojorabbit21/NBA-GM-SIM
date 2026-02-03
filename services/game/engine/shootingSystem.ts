@@ -24,29 +24,55 @@ export function calculateShootingStats(
     
     // Ensure tendencies
     const tendencies = p.tendencies || generateHiddenTendencies(p);
-    const { lateralBias } = tendencies;
+    const { lateralBias, archetype } = tendencies;
 
     // --- Step 1: Determine Volume (Attempts) by Range ---
+    // [Update] Boosted Base Tendencies for Modern NBA (2025-26)
     const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
     let base3PTendency = 0;
-    if (threeAvg >= 90) base3PTendency = 0.38;
-    else if (threeAvg >= 85) base3PTendency = 0.32;
-    else if (threeAvg >= 80) base3PTendency = 0.25;
-    else if (threeAvg >= 75) base3PTendency = 0.18;
-    else if (threeAvg >= 70) base3PTendency = 0.10; 
-    else base3PTendency = 0.04;                     
 
-    if (['C', 'PF'].includes(p.position)) base3PTendency *= 0.65;
-    if (p.ins > threeAvg + 15) base3PTendency *= 0.5; 
+    if (threeAvg >= 90) base3PTendency = 0.55;       // Elite (Curry range)
+    else if (threeAvg >= 85) base3PTendency = 0.48;  // Great
+    else if (threeAvg >= 80) base3PTendency = 0.40;  // Good
+    else if (threeAvg >= 75) base3PTendency = 0.32;  // Average (League avg is high now)
+    else if (threeAvg >= 70) base3PTendency = 0.15;  // Occasional
+    else base3PTendency = 0.05;                      // Non-shooter
 
+    // [Update] Positional Penalty relaxed for Stretch Bigs
+    if (['C', 'PF'].includes(p.position)) {
+        // Only penalize if they are primarily post players or poor shooters
+        if (archetype === 'Elbow Operator' || threeAvg < 75) {
+            base3PTendency *= 0.80; 
+        }
+        // Stretch bigs (Archtypes 'Balanced' or 'Top Initiator' with high 3PT) get no penalty
+    }
+
+    // [Update] Slasher Penalty relaxed (Many slashers now shoot 3s)
+    // Old: if (p.ins > threeAvg + 15) base3PTendency *= 0.5;
+    if (p.ins > threeAvg + 20) {
+        base3PTendency *= 0.85; // Only slight reduction
+    }
+
+    // [Update] Tactical Multipliers Boosted
     let tacticMult = 1.0;
-    if (tactics.offense.includes('PaceAndSpace') || tactics.offense.includes('SevenSeconds')) tacticMult = 1.15;
-    if (tactics.offense.includes('PerimeterFocus')) tacticMult = (threeAvg > 80) ? 1.12 : 0.8;
+    if (tactics.offense.includes('SevenSeconds')) tacticMult = 1.35; // Significant boost
+    else if (tactics.offense.includes('PaceAndSpace')) tacticMult = 1.25;
+    else if (tactics.offense.includes('PerimeterFocus')) tacticMult = (threeAvg > 75) ? 1.20 : 0.9;
+    else if (tactics.offense.includes('PostFocus')) tacticMult = 0.85; // Reduce 3s for post focus
+    else if (tactics.offense.includes('Grind')) tacticMult = 0.90;
 
+    // Calculate Raw Attempts
     let p3a = Math.round(fga * base3PTendency * tacticMult);
-    if (p3a > 10) p3a = 10 + (p3a - 10) * 0.3; // Diminishing returns cap
-    if (threeAvg < 65) p3a = Math.min(p3a, 1);
-    if (threeAvg < 75) p3a = Math.min(p3a, 6); 
+
+    // [Update] Relaxed Hard Caps for High Volume
+    // Diminishing returns starts at 14 attempts now (was 10)
+    if (p3a > 14) p3a = 14 + (p3a - 14) * 0.4; 
+    
+    // Low rating hard caps
+    if (threeAvg < 60) p3a = Math.min(p3a, 1);       // Can't shoot
+    else if (threeAvg < 70) p3a = Math.min(p3a, 4);  // Bad shooter max 4
+    
+    // Safety clamp
     if (p3a > fga) p3a = fga;
 
     const twoPa = fga - p3a;
