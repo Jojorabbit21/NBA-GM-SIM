@@ -34,16 +34,20 @@ export interface ShootingResult {
 }
 
 export interface DefenseResult {
-    reb: number;
-    offReb: number;
-    defReb: number;
+    // Stat events calculated immediately
     stl: number;
     blk: number;
+    
+    // Weighted potentials for post-simulation distribution
+    defRebWeight: number; // 수비 리바운드 장악력
+    offRebWeight: number; // 공격 리바운드 장악력
 }
 
 export interface PlaymakingResult {
-    ast: number;
     tov: number;
+    
+    // Weighted potential for post-simulation distribution
+    assistWeight: number; // 어시스트 창출력 (패스 능력 * 볼 소유)
 }
 
 export interface FatigueResult {
@@ -53,4 +57,24 @@ export interface FatigueResult {
     returnDate?: string;
     fatiguePerfPenalty: number; // Penalty based on pre-game condition
     inGameFatiguePenalty: number; // Penalty based on minutes played
+}
+
+// Intermediate type for holding simulation data before final aggregation
+export interface PlayerSimContext {
+    playerId: string;
+    stats: ShootingResult & DefenseResult & PlaymakingResult & { 
+        mp: number; 
+        gs: number; 
+        pf: number;
+        isStopper: boolean;
+        
+        // Added missing properties needed for box score and distribution logic
+        playerName: string;
+        reb: number;
+        offReb: number;
+        defReb: number;
+        ast: number;
+        passIq: number;
+    };
+    updates: any;
 }
