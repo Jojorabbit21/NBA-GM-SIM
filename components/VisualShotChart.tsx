@@ -28,7 +28,7 @@ const COURT_LINES = [
 ];
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
-    <div className="flex flex-col items-center justify-center">
+    <div className="flex flex-col items-center justify-center p-2">
         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{label}</span>
         <span className="text-sm font-bold text-white tabular-nums">{value}</span>
     </div>
@@ -63,75 +63,110 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     const projected = isScoutingMode ? getProjectedZoneDensity(player) : null;
 
     // Helper to determine style
+    // Opacity logic: Data Mode gets slightly clearer opacity, Scouting is more ghostly
     const getZoneStyle = (key: string, makes: number, attempts: number, avg: number) => {
         if (isScoutingMode && projected) {
             // Scouting Mode: Show predicted hot zones in grayscale/slate
             const density = projected[key as keyof typeof projected];
-            // Opacity proportional to density, min 0.1, max 0.8
-            return { fill: '#94a3b8', opacity: 0.1 + (density * 0.7), isHot: false, isCold: false }; 
+            return { fill: '#94a3b8', opacity: 0.1 + (density * 0.5), isHot: false, isCold: false }; 
         }
 
         // Data Mode: Show actual efficiency
-        if (attempts === 0) return { fill: '#1e293b', opacity: 0.3, isHot: false, isCold: false }; // Slate-800
+        // No stroke, just fill with opacity
+        if (attempts === 0) return { fill: '#1e293b', opacity: 0.2, isHot: false, isCold: false }; // Slate-800
         
         const pct = makes / attempts;
-        if (pct >= avg + 0.05) return { fill: '#ef4444', opacity: 0.9, isHot: true, isCold: false }; // Hot
-        if (pct <= avg - 0.05) return { fill: '#3b82f6', opacity: 0.9, isHot: false, isCold: true }; // Cold
-        return { fill: '#eab308', opacity: 0.9, isHot: false, isCold: false }; // Avg
+        if (pct >= avg + 0.05) return { fill: '#ef4444', opacity: 0.7, isHot: true, isCold: false }; // Hot (Red)
+        if (pct <= avg - 0.05) return { fill: '#3b82f6', opacity: 0.7, isHot: false, isCold: true }; // Cold (Blue)
+        return { fill: '#eab308', opacity: 0.6, isHot: false, isCold: false }; // Avg (Yellow)
     };
 
+    // Updated Zone Config with Centroids for Text Labels (Approximate based on SVG paths)
     const zones = [
-        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint", key: 'paint' },
-        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area", key: 'rim' },
-        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left", key: 'midL' },
-        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center", key: 'midC' },
-        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right", key: 'midR' },
-        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L", key: 'c3L' },
-        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L", key: 'atb3L' },
-        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3", key: 'atb3C' },
-        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R", key: 'atb3R' },
-        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R", key: 'c3R' },
+        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint", key: 'paint', cx: 217, cy: 320 },
+        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area", key: 'rim', cx: 217, cy: 375 },
+        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left", key: 'midL', cx: 80, cy: 280 },
+        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center", key: 'midC', cx: 217, cy: 200 },
+        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right", key: 'midR', cx: 355, cy: 280 },
+        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L", key: 'c3L', cx: 15, cy: 350 },
+        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L", key: 'atb3L', cx: 60, cy: 110 },
+        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3", key: 'atb3C', cx: 217, cy: 80 },
+        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R", key: 'atb3R', cx: 375, cy: 110 },
+        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R", key: 'c3R', cx: 420, cy: 350 },
     ];
 
+    // Stats Grid Calculation
+    const fgPct = s.fga > 0 ? (s.fgm / s.fga * 100).toFixed(1) + '%' : '0%';
+    const p3Pct = s.p3a > 0 ? (s.p3m / s.p3a * 100).toFixed(1) + '%' : '0%';
+    const ftPct = s.fta > 0 ? (s.ftm / s.fta * 100).toFixed(1) + '%' : '0%';
+
     const row1 = [
-        { l: 'GP', v: s.g }, { l: 'GS', v: s.gs }, { l: 'MIN', v: (s.g > 0 ? (s.mp / s.g).toFixed(1) : 0) },
-        { l: 'PTS', v: (s.g > 0 ? (s.pts / s.g).toFixed(1) : 0) }, { l: 'REB', v: (s.g > 0 ? (s.reb / s.g).toFixed(1) : 0) },
-        { l: 'AST', v: (s.g > 0 ? (s.ast / s.g).toFixed(1) : 0) }, { l: 'STL', v: (s.g > 0 ? (s.stl / s.g).toFixed(1) : 0) },
-        { l: 'BLK', v: (s.g > 0 ? (s.blk / s.g).toFixed(1) : 0) }
+        { l: 'GP', v: s.g }, 
+        { l: 'GS', v: s.gs }, 
+        { l: 'MIN', v: (s.g > 0 ? (s.mp / s.g).toFixed(1) : 0) },
+        { l: 'PTS', v: (s.g > 0 ? (s.pts / s.g).toFixed(1) : 0) }, 
+        { l: 'OREB', v: (s.g > 0 ? (s.offReb / s.g).toFixed(1) : 0) },
+        { l: 'DREB', v: (s.g > 0 ? (s.defReb / s.g).toFixed(1) : 0) },
+        { l: 'AST', v: (s.g > 0 ? (s.ast / s.g).toFixed(1) : 0) }, 
+        { l: 'STL', v: (s.g > 0 ? (s.stl / s.g).toFixed(1) : 0) },
+        { l: 'BLK', v: (s.g > 0 ? (s.blk / s.g).toFixed(1) : 0) },
+        { l: 'TOV', v: (s.g > 0 ? (s.tov / s.g).toFixed(1) : 0) }
+    ];
+
+    const row2 = [
+        { l: 'FGM', v: (s.g > 0 ? (s.fgm / s.g).toFixed(1) : 0) },
+        { l: 'FGA', v: (s.g > 0 ? (s.fga / s.g).toFixed(1) : 0) },
+        { l: 'FG%', v: fgPct },
+        { l: '3PM', v: (s.g > 0 ? (s.p3m / s.g).toFixed(1) : 0) },
+        { l: '3PA', v: (s.g > 0 ? (s.p3a / s.g).toFixed(1) : 0) },
+        { l: '3P%', v: p3Pct },
+        { l: 'FTM', v: (s.g > 0 ? (s.ftm / s.g).toFixed(1) : 0) },
+        { l: 'FTA', v: (s.g > 0 ? (s.fta / s.g).toFixed(1) : 0) },
+        { l: 'FT%', v: ftPct },
     ];
 
     return (
-        <div className="flex flex-col lg:flex-row items-center gap-8 w-full animate-in fade-in slide-in-from-bottom-2 duration-500 h-full">
-            <div className="w-full lg:w-[60%] flex flex-col gap-4 h-full justify-center">
-                <div className="flex flex-col gap-1">
-                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">Season Stats</h5>
-                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm grid grid-cols-4 md:grid-cols-8 gap-2">
-                        {row1.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
+        <div className="flex flex-col lg:flex-row items-start gap-8 w-full animate-in fade-in slide-in-from-bottom-2 duration-500 h-full">
+            
+            {/* Left Column: Stats & Zone List */}
+            <div className="w-full lg:w-[55%] flex flex-col gap-6 h-full">
+                {/* 1. Season Stats (2 Rows) */}
+                <div className="flex flex-col gap-2">
+                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">시즌 스탯</h5>
+                    <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm flex flex-col gap-3">
+                        <div className="grid grid-cols-5 md:grid-cols-10 gap-y-2">
+                             {row1.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
+                        </div>
+                        <div className="w-full h-px bg-slate-800/50"></div>
+                        <div className="grid grid-cols-5 md:grid-cols-9 gap-y-2">
+                             {row2.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
+                        </div>
                     </div>
                 </div>
                 
-                <div className="flex flex-col gap-1 mt-2">
+                {/* 2. Zone Efficiency List */}
+                <div className="flex flex-col gap-2 mt-2">
                      <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
-                         <span>10-Zone Efficiency</span>
+                         <span>구역별 야투 효율</span>
                          {isScoutingMode && <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SCOUTING REPORT MODE</span>}
                      </h5>
                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         {zones.map((z, i) => {
                              const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
-                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(1) : '-';
+                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
                              
                              let colorClass = 'text-slate-500';
                              if (!isScoutingMode) {
                                  if (style.isHot) colorClass = 'text-red-400';
                                  else if (style.isCold) colorClass = 'text-blue-400';
-                                 else if (pct !== '-') colorClass = 'text-yellow-400';
+                                 else if (z.data.a > 0) colorClass = 'text-yellow-400';
                              }
 
                              return (
-                                 <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-14">
-                                     <span className="text-[9px] font-bold text-slate-500 truncate w-full">{z.label}</span>
-                                     <span className={`text-sm font-black ${colorClass}`}>{pct === '-' ? 'N/A' : `${pct}%`}</span>
-                                     <span className="text-[9px] font-mono text-slate-600">{z.data.m}/{z.data.a}</span>
+                                 <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-16 min-w-0">
+                                     <span className="text-[10px] font-bold text-slate-400 truncate w-full px-1 mb-1" title={z.label}>{z.label}</span>
+                                     <span className={`text-base font-black ${colorClass}`}>{pct}%</span>
+                                     <span className="text-[11px] font-mono text-slate-500">{z.data.m}/{z.data.a}</span>
                                  </div>
                              )
                         })}
@@ -139,20 +174,22 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                 </div>
             </div>
 
-            <div className="w-full lg:w-[40%] flex flex-col items-center justify-center">
-                <div className="flex flex-col gap-1 w-full max-w-[350px]">
-                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
+            {/* Right Column: Shot Chart */}
+            <div className="w-full lg:w-[45%] flex flex-col items-center justify-start pt-2">
+                <div className="flex flex-col gap-2 w-full max-w-[400px]">
+                    <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between items-center">
                         <span>SHOT CHART</span>
                         {!isScoutingMode ? (
-                            <div className="flex gap-2 text-[9px]">
-                                <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm"></div> HOT</span>
-                                <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500 rounded-sm"></div> AVG</span>
-                                <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500 rounded-sm"></div> COLD</span>
+                            <div className="flex gap-3 text-[10px]">
+                                <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> HOT</span>
+                                <span className="text-yellow-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-yellow-500 rounded-sm"></div> AVG</span>
+                                <span className="text-blue-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-blue-500 rounded-sm"></div> COLD</span>
                             </div>
                         ) : (
-                            <span className="text-[9px] text-slate-400 flex items-center gap-1">PROJECTED ZONES</span>
+                            <span className="text-[10px] text-slate-400 flex items-center gap-1">PROJECTED ZONES</span>
                         )}
                     </h5>
+                    
                     <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
                         <svg viewBox="0 0 435 403" className="w-full h-full">
                             {/* Layer 0: Background */}
@@ -168,9 +205,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                                             d={z.path} 
                                             fill={style.fill} 
                                             fillOpacity={style.opacity}
-                                            stroke="#0f172a"
-                                            strokeWidth="1"
-                                            className="transition-all duration-300 hover:fill-opacity-100 cursor-help"
+                                            stroke="none" // Removed Stroke
+                                            className="transition-all duration-300 cursor-help"
                                         >
                                             <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
                                         </path>
@@ -184,6 +220,46 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                                     <path key={i} d={d} />
                                 ))}
                             </g>
+
+                             {/* Layer 3: Data Labels Overlay (Only in Data Mode) */}
+                             {!isScoutingMode && (
+                                 <g className="data-labels" pointerEvents="none">
+                                     {zones.map((z, i) => {
+                                        const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                                        const label = `${z.data.m}/${z.data.a}`;
+                                        
+                                        // Skip drawing text for rim/paint if it gets too crowded, or adjust font size
+                                        const isSmallZone = ['c3L', 'c3R'].includes(z.key); 
+                                        const fontSizePct = isSmallZone ? "10px" : "12px";
+                                        const fontSizeLabel = "8px";
+
+                                        return (
+                                            <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                <text 
+                                                    textAnchor="middle" 
+                                                    y="-2" 
+                                                    fill="white" 
+                                                    fontSize={fontSizePct} 
+                                                    fontWeight="900" 
+                                                    style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}
+                                                >
+                                                    {pct}%
+                                                </text>
+                                                <text 
+                                                    textAnchor="middle" 
+                                                    y="10" 
+                                                    fill="#cbd5e1" 
+                                                    fontSize={fontSizeLabel} 
+                                                    fontWeight="700"
+                                                    style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}
+                                                >
+                                                    {label}
+                                                </text>
+                                            </g>
+                                        );
+                                     })}
+                                 </g>
+                             )}
                         </svg>
                     </div>
                 </div>

@@ -94,7 +94,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                         <AttributeRow label="포스트 플레이" value={player.postPlay} />
                                         <AttributeRow label="파울 유도" value={player.drawFoul} />
                                         <AttributeRow label="손끝 감각" value={player.hands} />
-                                        <AttributeRow label="INS GRADE" value={player.ins} isGrade />
+                                        <AttributeRow label="내곽 득점력" value={player.ins} isGrade />
                                     </div>
                                     
                                     {/* Outside Subgroup */}
@@ -105,7 +105,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                         <AttributeRow label="자유투" value={player.ft} />
                                         <AttributeRow label="슈팅 IQ" value={player.shotIq} />
                                         <AttributeRow label="공격 일관성" value={player.offConsist} />
-                                        <AttributeRow label="OUT GRADE" value={player.out} isGrade />
+                                        <AttributeRow label="외곽 득점력" value={player.out} isGrade />
                                     </div>
                                 </div>
 
@@ -121,7 +121,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                         <AttributeRow label="드리블 속도" value={player.spdBall} />
                                         <AttributeRow label="시야" value={player.passVision} />
                                         <AttributeRow label="패스 지능" value={player.passIq} />
-                                        <AttributeRow label="PLM GRADE" value={player.plm} isGrade />
+                                        <AttributeRow label="플레이메이킹" value={player.plm} isGrade />
                                     </div>
                                 </div>
 
@@ -141,14 +141,14 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                         <AttributeRow label="도움 수비 IQ" value={player.helpDefIq} />
                                         <AttributeRow label="패스 예측" value={player.passPerc} />
                                         <AttributeRow label="수비 일관성" value={player.defConsist} />
-                                        <AttributeRow label="DEF GRADE" value={player.def} isGrade />
+                                        <AttributeRow label="수비 능력" value={player.def} isGrade />
                                     </div>
 
                                     {/* Rebound */}
                                     <div className="space-y-1">
                                         <AttributeRow label="공격 리바운드" value={player.offReb} />
                                         <AttributeRow label="수비 리바운드" value={player.defReb} />
-                                        <AttributeRow label="REB GRADE" value={player.reb} isGrade />
+                                        <AttributeRow label="리바운드 능력" value={player.reb} isGrade />
                                     </div>
                                 </div>
 
@@ -166,7 +166,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                         <AttributeRow label="지구력" value={player.stamina} />
                                         <AttributeRow label="허슬" value={player.hustle} />
                                         <AttributeRow label="내구도" value={player.durability} />
-                                        <AttributeRow label="ATH GRADE" value={player.ath} isGrade />
+                                        <AttributeRow label="운동 능력" value={player.ath} isGrade />
                                     </div>
                                 </div>
                             </div>
