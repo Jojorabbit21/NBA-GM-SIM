@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
+import { loadCheckpoint, loadUserHistory, saveCheckpoint, registerDeviceId } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 
@@ -30,6 +30,10 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [isSaving, setIsSaving] = useState(false);
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
+    
+    // [Anti-Cheat] Session Identity
+    // Generated once per app load/refresh. Used to kill duplicate tabs/windows.
+    const deviceIdRef = useRef<string>(crypto.randomUUID()); 
     
     // Refs to access latest state in async callbacks (Added userTactics)
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics });
@@ -68,6 +72,9 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     setIsSaveLoading(false);
                     return;
                 }
+
+                // [Anti-Cheat] Register this instance as the ONLY valid one
+                await registerDeviceId(userId, deviceIdRef.current);
 
                 const checkpoint = await loadCheckpoint(userId);
 
@@ -157,10 +164,17 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
 
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics);
+                // Pass deviceIdRef.current to enforce single session check
+                await saveCheckpoint(session.user.id, teamId, date, tactics, deviceIdRef.current);
                 // Note: Playoff state is saved inside useSimulation via savePlayoffState
             }
-        } catch (e) {
+        } catch (e: any) {
+            // [Anti-Cheat] Handle Duplicate Login
+            if (e.message === 'DUPLICATE_LOGIN') {
+                alert("중복 로그인이 감지되었습니다. 다른 기기나 탭에서 접속하여 현재 세션이 종료됩니다.\n(데이터 보호를 위해 페이지를 새로고침합니다.)");
+                window.location.reload(); // Brute force logout/refresh
+                return;
+            }
             console.error("Save Failed:", e);
         } finally {
             setIsSaving(false);
@@ -223,6 +237,9 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setUserTactics(null); // Reset Tactics
             hasInitialLoadRef.current = false; // Allow re-init
             
+            // Re-register device ID to keep session valid after reset
+            await registerDeviceId(userId, deviceIdRef.current);
+
             return { success: true };
         } catch (e) {
             return { success: false, error: e };

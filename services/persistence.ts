@@ -2,12 +2,48 @@
 import { supabase } from './supabaseClient';
 import { Transaction, GameTactics } from '../types';
 
+// 0. Register Device ID (Enforce Single Session)
+export const registerDeviceId = async (userId: string, deviceId: string) => {
+    const { error } = await supabase
+        .from('profiles')
+        .update({ active_device_id: deviceId })
+        .eq('id', userId);
+    
+    if (error) {
+        console.error("❌ [Persistence] Failed to register device ID:", error);
+    } else {
+        console.log("🔒 [Security] Session Locked to Device:", deviceId);
+    }
+};
+
 // 1. Save Metadata (Pointer to current progress)
-// [Update] Added tactics parameter to save user strategy
-export const saveCheckpoint = async (userId: string, teamId: string, simDate: string, tactics?: GameTactics | null) => {
+// [Update] Added deviceId verification for Anti-Cheat
+export const saveCheckpoint = async (
+    userId: string, 
+    teamId: string, 
+    simDate: string, 
+    tactics?: GameTactics | null,
+    currentDeviceId?: string // New Param
+) => {
     if (!userId || !teamId || !simDate) {
         console.error("❌ [Persistence] Invalid Checkpoint Data:", { userId, teamId, simDate });
         return null;
+    }
+
+    // [Anti-Cheat] Verify Session Integrity
+    if (currentDeviceId) {
+        const { data: profile, error: profileError } = await supabase
+            .from('profiles')
+            .select('active_device_id')
+            .eq('id', userId)
+            .single();
+
+        if (!profileError && profile) {
+            if (profile.active_device_id !== currentDeviceId) {
+                console.error("⛔ [Security] Duplicate Login Detected. Access Denied.");
+                throw new Error("DUPLICATE_LOGIN");
+            }
+        }
     }
 
     const payload: any = { 
