@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { checkSessionLock, acquireSessionLock, releaseSessionLock } from '../services/persistence'; // New imports
+import { checkSessionLock, releaseSessionLock } from '../services/persistence'; // Removed acquireSessionLock
 import { LogIn, UserPlus, Loader2, AlertCircle, Lock } from 'lucide-react';
 import { AuthInput } from '../components/auth/AuthInput';
 
@@ -101,17 +101,17 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        // 1. Authenticate first
+        // 1. Authenticate first to get User ID
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
 
-        // 2. CHECK LOCK (The "First-Come" Logic)
+        // 2. CHECK LOCK (Do NOT acquire here, just check)
         if (data.user) {
             await ensureProfileExists(data.user.id, data.user.email);
             
             const activeDevice = await checkSessionLock(data.user.id);
             
-            // If active_device_id is present (and not null), BLOCK ENTRY.
+            // If active_device_id is present, BLOCK ENTRY.
             if (activeDevice) {
                 console.warn("⛔ Session Blocked: User is already active on device", activeDevice);
                 
@@ -135,16 +135,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
                 return; // STOP HERE
             }
 
-            // 3. ACQUIRE LOCK (I am now the owner)
-            // We use a random UUID for this session (simulated device ID)
-            const myDeviceId = crypto.randomUUID();
-            await acquireSessionLock(data.user.id, myDeviceId);
-            
-            // [Critical Update] Store this device ID in sessionStorage (Tab-specific)
-            // This ensures useGameData.ts knows "I am the owner" when it loads.
-            sessionStorage.setItem('nbagm_tab_id', myDeviceId);
-
-            // Proceed to App (State change in App.tsx will catch the session)
+            // 3. PROCEED
+            // We DO NOT acquire lock or set sessionStorage here.
+            // That is the responsibility of useGameData.ts upon initialization.
+            // This prevents ID mismatch race conditions.
         }
       }
     } catch (error: any) {
