@@ -154,11 +154,14 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
                         <div className={getOvrBadgeStyle(player.ovr) + " !w-16 !h-16 !text-3xl !rounded-2xl shadow-lg"}>{player.ovr}</div>
                         <div>
                             <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
-                            <div className="flex items-center gap-3 mt-2">
-                                {teamId && <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain" alt="" />}
-                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest bg-slate-800 px-2 py-0.5 rounded">{teamName || 'Free Agent'}</span>
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest px-2 py-0.5 border border-slate-700 rounded">{player.position}</span>
-                                <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{player.height}cm / {player.weight}kg</span>
+                            <div className="flex items-center gap-4 mt-2 text-sm font-bold text-slate-400">
+                                {teamId && <div className="flex items-center gap-2"><img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" /> <span>{teamName || 'Free Agent'}</span></div>}
+                                <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
+                                <span>{player.position}</span>
+                                <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
+                                <span>{player.height}cm / {player.weight}kg</span>
+                                <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
+                                <span>{player.age}세</span>
                             </div>
                         </div>
                     </div>
@@ -190,66 +193,94 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
                         {/* Tab 1: Attributes Grid */}
                         {activeTab === 'attributes' && (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-300">
-                                {/* Scoring */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                {/* Scoring - Split Inside/Outside */}
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
                                         <Target size={16} className="text-orange-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Scoring</h4>
                                     </div>
-                                    <div className="space-y-1">
-                                        <AttributeRow label="Inside" value={player.ins} />
-                                        <AttributeRow label="Close Shot" value={player.closeShot} />
-                                        <AttributeRow label="Layup" value={player.layup} />
-                                        <AttributeRow label="Dunk" value={player.dunk} />
-                                        <AttributeRow label="Mid-Range" value={player.midRange} />
-                                        <AttributeRow label="3PT Shooting" value={player.threeCorner} /> 
-                                        <AttributeRow label="Free Throw" value={player.ft} />
-                                        <AttributeRow label="Shot IQ" value={player.shotIq} />
+                                    
+                                    <div>
+                                        <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-1">Inside</h5>
+                                        <div className="space-y-1">
+                                            <AttributeRow label="INS Grade" value={player.ins} />
+                                            <AttributeRow label="Layup" value={player.layup} />
+                                            <AttributeRow label="Dunk" value={player.dunk} />
+                                            <AttributeRow label="Close Shot" value={player.closeShot} />
+                                            <AttributeRow label="Post Play" value={player.postPlay} />
+                                            <AttributeRow label="Draw Foul" value={player.drawFoul} />
+                                        </div>
+                                    </div>
+                                    
+                                    <div>
+                                        <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-1">Outside</h5>
+                                        <div className="space-y-1">
+                                            <AttributeRow label="OUT Grade" value={player.out} />
+                                            <AttributeRow label="Mid-Range" value={player.midRange} />
+                                            <AttributeRow label="3PT Shot" value={player.threeCorner} /> 
+                                            <AttributeRow label="Free Throw" value={player.ft} />
+                                            <AttributeRow label="Shot IQ" value={player.shotIq} />
+                                            <AttributeRow label="Consistency" value={player.offConsist} />
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* Playmaking & Mental */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                                {/* Playmaking */}
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 h-fit">
                                     <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
                                         <Zap size={16} className="text-yellow-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Playmaking</h4>
                                     </div>
                                     <div className="space-y-1">
+                                        <AttributeRow label="PLM Grade" value={player.plm} />
                                         <AttributeRow label="Pass Accuracy" value={player.passAcc} />
                                         <AttributeRow label="Ball Handle" value={player.handling} />
                                         <AttributeRow label="Speed w/ Ball" value={player.spdBall} />
                                         <AttributeRow label="Vision" value={player.passVision} />
                                         <AttributeRow label="Pass IQ" value={player.passIq} />
                                         <AttributeRow label="Hands" value={player.hands} />
-                                        <AttributeRow label="Off. Consistency" value={player.offConsist} />
                                     </div>
                                 </div>
 
-                                {/* Defense */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                {/* Defense & Rebound - Split */}
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
                                         <Shield size={16} className="text-blue-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Defense</h4>
                                     </div>
-                                    <div className="space-y-1">
-                                        <AttributeRow label="Interior Def" value={player.intDef} />
-                                        <AttributeRow label="Perimeter Def" value={player.perDef} />
-                                        <AttributeRow label="Steal" value={player.steal} />
-                                        <AttributeRow label="Block" value={player.blk} />
-                                        <AttributeRow label="Help Def IQ" value={player.helpDefIq} />
-                                        <AttributeRow label="Def. Consistency" value={player.defConsist} />
-                                        <AttributeRow label="Off. Rebound" value={player.offReb} />
-                                        <AttributeRow label="Def. Rebound" value={player.defReb} />
+                                    
+                                    <div>
+                                        <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-1">General</h5>
+                                        <div className="space-y-1">
+                                            <AttributeRow label="DEF Grade" value={player.def} />
+                                            <AttributeRow label="Interior Def" value={player.intDef} />
+                                            <AttributeRow label="Perimeter Def" value={player.perDef} />
+                                            <AttributeRow label="Steal" value={player.steal} />
+                                            <AttributeRow label="Block" value={player.blk} />
+                                            <AttributeRow label="Help IQ" value={player.helpDefIq} />
+                                            <AttributeRow label="Pass Perc" value={player.passPerc} />
+                                            <AttributeRow label="Consistency" value={player.defConsist} />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h5 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 pl-1">Rebound</h5>
+                                        <div className="space-y-1">
+                                            <AttributeRow label="REB Grade" value={player.reb} />
+                                            <AttributeRow label="Off. Rebound" value={player.offReb} />
+                                            <AttributeRow label="Def. Rebound" value={player.defReb} />
+                                        </div>
                                     </div>
                                 </div>
 
-                                {/* Athleticism */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800">
+                                {/* Athleticism - Removed Potential */}
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 h-fit">
                                     <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
                                         <Activity size={16} className="text-emerald-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">Athleticism</h4>
                                     </div>
                                     <div className="space-y-1">
+                                        <AttributeRow label="ATH Grade" value={player.ath} />
                                         <AttributeRow label="Speed" value={player.speed} />
                                         <AttributeRow label="Agility" value={player.agility} />
                                         <AttributeRow label="Strength" value={player.strength} />
@@ -257,7 +288,6 @@ export const PlayerDetailModal: React.FC<{ player: Player, teamName?: string, te
                                         <AttributeRow label="Stamina" value={player.stamina} />
                                         <AttributeRow label="Hustle" value={player.hustle} />
                                         <AttributeRow label="Durability" value={player.durability} />
-                                        <AttributeRow label="Potential" value={player.potential} />
                                     </div>
                                 </div>
                             </div>
