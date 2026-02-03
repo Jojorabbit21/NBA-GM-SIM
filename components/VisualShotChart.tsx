@@ -70,12 +70,10 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     // Helper to safe get stats or 0 (Defensive against undefined)
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
-    const paintM = (s.zone_paint_l_m || 0) + (s.zone_paint_r_m || 0);
-    const paintA = (s.zone_paint_l_a || 0) + (s.zone_paint_r_a || 0);
-
     const zData = {
         rim: getZ(s.zone_rim_m, s.zone_rim_a),
-        paint: { m: paintM, a: paintA },
+        // Use single paint zone from type definition
+        paint: getZ(s.zone_paint_m, s.zone_paint_a),
         midL: getZ(s.zone_mid_l_m, s.zone_mid_l_a),
         midC: getZ(s.zone_mid_c_m, s.zone_mid_c_a),
         midR: getZ(s.zone_mid_r_m, s.zone_mid_r_a),
@@ -180,8 +178,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                                 })}
                             </g>
 
-                            {/* Layer 2: Court Lines Overlay (Static White Lines) */}
-                            <g className="court-lines" fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeOpacity="0.8" pointerEvents="none">
+                            {/* Layer 2: Court Lines Overlay (Static Dark Slate Lines for Dark Theme) */}
+                            <g className="court-lines" fill="none" stroke="#475569" strokeWidth="1.5" strokeOpacity="0.8" pointerEvents="none">
                                 {COURT_LINES.map((d, i) => (
                                     <path key={i} d={d} />
                                 ))}

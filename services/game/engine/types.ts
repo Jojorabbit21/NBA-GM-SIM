@@ -1,5 +1,5 @@
 
-import { Player } from '../../../types';
+import { Player, PlayerStats } from '../../../types';
 
 export interface OpponentDefensiveMetrics {
     intDef: number;
@@ -30,6 +30,7 @@ export interface ShootingResult {
     midA: number;
     matchupEffect: number;
     isAceTarget: boolean;
+    zoneData?: Partial<PlayerStats>;
 }
 
 export interface DefenseResult {

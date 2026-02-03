@@ -55,10 +55,9 @@ export const INITIAL_STATS = () => ({
     rimM: 0, rimA: 0, midM: 0, midA: 0,
     pf: 0,
     
-    // --- New 11-Zone Shooting Data (Initialized to 0 to prevent NaN) ---
+    // --- New 10-Zone Shooting Data ---
     zone_rim_m: 0, zone_rim_a: 0,
-    zone_paint_l_m: 0, zone_paint_l_a: 0,
-    zone_paint_r_m: 0, zone_paint_r_a: 0,
+    zone_paint_m: 0, zone_paint_a: 0, // Merged Paint
     zone_mid_l_m: 0, zone_mid_l_a: 0,
     zone_mid_c_m: 0, zone_mid_c_a: 0,
     zone_mid_r_m: 0, zone_mid_r_a: 0,

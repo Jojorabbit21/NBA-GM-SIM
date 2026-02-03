@@ -276,7 +276,8 @@ function simulateTeamPerformance(
           pf: pf, // Added PF
           isStopper,
           isAceTarget: shootingRes.isAceTarget,
-          matchupEffect: shootingRes.matchupEffect
+          matchupEffect: shootingRes.matchupEffect,
+          zoneData: shootingRes.zoneData // Pass detailed zone stats to box score
       });
     });
 

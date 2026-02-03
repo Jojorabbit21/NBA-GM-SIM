@@ -44,29 +44,35 @@ export interface PlayerStats {
   rimM: number; rimA: number;
   midM: number; midA: number;
   
-  // --- New 11-Zone Shooting Data ---
+  // --- Standard 10-Zone Shooting Data ---
   // Zone 1: Restricted Area (Rim)
   zone_rim_m: number; zone_rim_a: number;
   
-  // Zone 2-3: Paint (Non-RA)
-  zone_paint_l_m: number; zone_paint_l_a: number;
-  zone_paint_r_m: number; zone_paint_r_a: number;
+  // Zone 2: Paint (Non-RA) - Merged
+  zone_paint_m: number; zone_paint_a: number;
   
-  // Zone 4-6: Mid-Range
+  // Zone 3-5: Mid-Range
   zone_mid_l_m: number; zone_mid_l_a: number;
   zone_mid_c_m: number; zone_mid_c_a: number;
   zone_mid_r_m: number; zone_mid_r_a: number;
   
-  // Zone 7-8: Corner 3
+  // Zone 6-7: Corner 3
   zone_c3_l_m: number; zone_c3_l_a: number;
   zone_c3_r_m: number; zone_c3_r_a: number;
   
-  // Zone 9-11: Above the Break 3
+  // Zone 8-10: Above the Break 3
   zone_atb3_l_m: number; zone_atb3_l_a: number;
   zone_atb3_c_m: number; zone_atb3_c_a: number;
   zone_atb3_r_m: number; zone_atb3_r_a: number;
 
   pf: number;
+}
+
+// New: Hidden Tendencies (Generated at runtime, not stored in DB)
+export interface HiddenTendencies {
+    hand: 'Right' | 'Left';
+    lateralBias: number; // -1.0 (Left) to 1.0 (Right)
+    archetype: 'Corner Sitter' | 'Elbow Operator' | 'Top Initiator' | 'Balanced';
 }
 
 export interface Player {
@@ -100,6 +106,9 @@ export interface Player {
   playoffStats?: PlayerStats;
   
   revealedPotential?: number; // Optional
+  
+  // Runtime Only
+  tendencies?: HiddenTendencies; 
 }
 
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
@@ -206,6 +215,10 @@ export interface PlayerBoxScore {
   ast: number; stl: number; blk: number; tov: number;
   fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number;
   rimM: number; rimA: number; midM: number; midA: number;
+  
+  // Detailed Zone Stats for Box Score Accumulation
+  zoneData?: Partial<PlayerStats>; 
+
   mp: number; g: number; gs: number; pf: number;
   isStopper?: boolean;
   isAceTarget?: boolean;

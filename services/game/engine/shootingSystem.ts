@@ -2,7 +2,8 @@
 import { Player } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { ShootingResult, OpponentDefensiveMetrics, PerfModifiers } from './types';
-import { calculateAceStopperImpact } from './aceStopperSystem'; // Import the new module
+import { calculateAceStopperImpact } from './aceStopperSystem';
+import { distributeShotsToZones } from './shotDistribution'; // New import
 
 export function calculateShootingStats(
     p: Player,
@@ -83,7 +84,6 @@ export function calculateShootingStats(
     let midA = twoPa - rimA;
 
     // 3. Calculate Rim Makes
-    // Tactic Bonus Handling
     const tacticInteriorBonus = tactics.offense.includes('PostFocus') ? 1.08 : 1.0;
     const tacticPerimeterBonus = tactics.offense.includes('PerimeterFocus') ? 1.06 : 
                                  (tactics.offense.includes('PaceAndSpace') ? 1.08 : 
@@ -113,36 +113,22 @@ export function calculateShootingStats(
     let midM = Math.round(midA * midSuccessRate);
 
     // 5. Stopper Effect
-    // Only set as target if stopper actually played (> 0 min)
     const isAceTarget = !!(oppHasStopper && p.id === acePlayerId && stopperId && stopperMP > 0);
     let matchupEffect = 0;
 
     if (isAceTarget && stopperPlayer) {
-        // [New Logic] Use advanced Ace Stopper System
-        // Returns percentage modifier (e.g., -20 for 20% drop in efficiency)
         const advancedImpact = calculateAceStopperImpact(p, stopperPlayer, stopperMP);
-        
-        // Calculate Overlap Factor (If Ace plays 40m but Stopper plays 20m, effect is halved)
         let overlapRatio = stopperMP >= mp ? 1.0 : (stopperMP / mp);
         
-        // Dynamic Freedom Bonus: If Ace plays meaningful minutes without stopper, they heat up
         let freedomBonus = 0;
         const minutesWithoutStopper = Math.max(0, mp - stopperMP);
         if (minutesWithoutStopper > 5) {
-             // Ace gets confidence when Stopper sits
-             // [Balance Update] Cap reduced to 10% to prevent overriding defensive stats too easily
              freedomBonus = Math.min(10, (minutesWithoutStopper - 5) * 0.8);
         }
 
-        // Final Effect Calculation
-        // advancedImpact is usually negative (good defense). Freedom bonus is positive.
-        // E.g. Impact -30 (Great defense) * 0.8 (Overlap) = -24. Freedom +5. Result = -19%.
         let adjustedImpact = (advancedImpact * overlapRatio) + freedomBonus;
-        
         matchupEffect = Math.round(adjustedImpact);
         
-        // Apply to Shooting Percentages
-        // Example: If effect is -15, factor is 0.85
         const factor = (1.0 + (matchupEffect / 100));
         
         rimM = Math.round(rimM * factor);
@@ -158,14 +144,23 @@ export function calculateShootingStats(
 
     // 7. Free Throws
     const drawFoulRate = (p.drawFoul * 0.6 + p.agility * 0.2 + rimBias * 20) / 400;
-    const fta = Math.round(fga * drawFoulRate * (1.0)); // Removed redundant defIntensity coupling for now
+    const fta = Math.round(fga * drawFoulRate * (1.0)); 
     
     const ftHca = homeAdvantage > 0 ? 0.02 : -0.01; 
     const ftm = Math.round(fta * ((p.ft / 100) + mentalClutchBonus + ftHca));
     const pts = (fgm - p3m) * 2 + p3m * 3 + ftm;
 
+    // --- NEW: 10-Zone Distribution ---
+    // Distribute broad categories into specific zones based on hidden tendencies
+    const zoneData = distributeShotsToZones(p, {
+        rimM, rimA,
+        midM, midA,
+        p3m, p3a
+    });
+
     return { 
         pts, fgm, fga, p3m, p3a, ftm, fta, rimM, rimA, midM, midA, 
-        matchupEffect, isAceTarget 
+        matchupEffect, isAceTarget,
+        zoneData // Return granular data for accumulation
     };
 }
