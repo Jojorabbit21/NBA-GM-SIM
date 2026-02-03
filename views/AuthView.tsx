@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import { AuthInput } from '../components/auth/AuthInput';
+import { getDeviceId } from '../utils/device';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
@@ -12,18 +13,10 @@ interface AuthViewProps {
 }
 
 const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => {
-    let style = "";
-    let icon = <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />;
-    
-    if (type === 'error') {
-        style = 'bg-red-500/10 text-red-400 border-red-500/20';
-    } else if (type === 'success') {
-        style = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
-    }
-
+    let style = type === 'error' ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     return (
       <div className={`p-4 rounded-xl flex items-start gap-3 text-sm pretendard font-medium animate-in zoom-in-95 duration-200 mb-6 border ${style}`}>
-        {icon}
+        <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
         <div className="flex-1 overflow-hidden">{children}</div>
       </div>
     );
@@ -50,15 +43,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     );
   }, [email, password, confirmPassword]);
 
+  // 프로필 생성/확인 시 Device ID도 함께 기록
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
+    const deviceId = getDeviceId();
     const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
     if (!data) {
         await supabase.from('profiles').insert({
             id: userId,
             email: userEmail,
             nickname: userEmail ? userEmail.split('@')[0] : 'GM',
+            active_device_id: deviceId,
             created_at: new Date().toISOString()
         });
+    } else {
+        // 이미 존재하면 Device ID 갱신
+        await supabase.from('profiles').update({ active_device_id: deviceId }).eq('id', userId);
     }
   };
 
@@ -83,14 +82,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         setPassword('');
         setConfirmPassword('');
       } else {
-        // 1. Authenticate
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
-
-        // 2. Just ensure profile exists (Removed Lock Logic)
-        if (data.user) {
-            await ensureProfileExists(data.user.id, data.user.email);
-        }
+        if (data.user) await ensureProfileExists(data.user.id, data.user.email);
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
@@ -143,6 +137,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         <div className="mt-8 text-center border-t border-slate-800 pt-6">
           <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
             {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
+          </button>
+          <button onClick={onGuestLogin} className="block w-full mt-4 text-slate-500 hover:text-white pretendard font-medium text-sm transition-all">
+            게스트로 체험하기 (저장 불가)
           </button>
         </div>
       </div>
