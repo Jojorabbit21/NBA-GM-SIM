@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { LogIn, UserPlus, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
+import { checkSessionLock, acquireSessionLock, releaseSessionLock } from '../services/persistence'; // New imports
+import { LogIn, UserPlus, Loader2, AlertCircle, Lock } from 'lucide-react';
 import { AuthInput } from '../components/auth/AuthInput';
 
-// Validation Regex Patterns
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
 
@@ -22,7 +22,7 @@ const AuthAlert: React.FC<{ type: 'error' | 'success' | 'warning'; children: Rea
         style = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
     } else if (type === 'warning') {
         style = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
-        icon = <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />;
+        icon = <Lock size={18} className="flex-shrink-0 mt-0.5" />;
     }
 
     return (
@@ -40,8 +40,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState(''); 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
+  const [message, setMessage] = useState<{ type: 'error' | 'success' | 'warning', text: string | React.ReactNode } | null>(null);
   
+  // New State: If blocked, hide login form
+  const [isSessionBlocked, setIsSessionBlocked] = useState(false);
+  const [blockedUserId, setBlockedUserId] = useState<string | null>(null);
+
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
   const isPasswordValid = useMemo(() => password === '' || PASSWORD_REGEX.test(password), [password]);
   const isConfirmValid = useMemo(() => confirmPassword === '' || password === confirmPassword, [password, confirmPassword]);
@@ -54,33 +58,26 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     );
   }, [email, password, confirmPassword]);
 
-  // [CRITICAL FIX] Ensure Profile Exists BEFORE entering the game
+  // Ensure Profile Exists helper
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
-    try {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('id', userId)
-            .maybeSingle();
-
-        if (!data) {
-            console.log("⚠️ Profile missing, creating now for:", userId);
-            const { error: insertError } = await supabase.from('profiles').insert({
-                id: userId,
-                email: userEmail,
-                nickname: userEmail ? userEmail.split('@')[0] : 'GM',
-                created_at: new Date().toISOString()
-            });
-
-            if (insertError) {
-                console.error("❌ Failed to create profile:", insertError);
-            } else {
-                console.log("✅ Profile created successfully.");
-            }
-        }
-    } catch (e) {
-        console.error("Profile check failed:", e);
+    const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
+    if (!data) {
+        await supabase.from('profiles').insert({
+            id: userId,
+            email: userEmail,
+            nickname: userEmail ? userEmail.split('@')[0] : 'GM',
+            created_at: new Date().toISOString()
+        });
     }
+  };
+
+  const handleForceUnlock = async () => {
+      if (!blockedUserId) return;
+      setLoading(true);
+      await releaseSessionLock(blockedUserId);
+      setIsSessionBlocked(false);
+      setMessage({ type: 'success', text: '잠금이 해제되었습니다. 다시 로그인해주세요.' });
+      setLoading(false);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -96,42 +93,62 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     try {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
-
         const { data, error } = await (supabase.auth as any).signUp({ email, password });
         if (error) throw error;
-        
-        if (data.user) {
-            await ensureProfileExists(data.user.id, data.user.email);
-        }
-
+        if (data.user) await ensureProfileExists(data.user.id, data.user.email);
         setMessage({ type: 'success', text: '회원가입 성공! 로그인해주세요.' });
         setMode('login');
         setPassword('');
         setConfirmPassword('');
       } else {
+        // 1. Authenticate first
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
-        
+
+        // 2. CHECK LOCK (The "First-Come" Logic)
         if (data.user) {
             await ensureProfileExists(data.user.id, data.user.email);
             
-            const { error: logError } = await supabase.from('login_logs').insert({
-                user_id: data.user.id,
-                type: 'login',
-                user_agent: navigator.userAgent,
-                timestamp: new Date().toISOString()
-            });
+            const activeDevice = await checkSessionLock(data.user.id);
             
-            if (logError) {
-                console.warn("Login log failed", logError);
+            // If active_device_id is present (and not null), BLOCK ENTRY.
+            if (activeDevice) {
+                console.warn("⛔ Session Blocked: User is already active on device", activeDevice);
+                
+                // Immediately sign out so App.tsx doesn't route to Dashboard
+                await (supabase.auth as any).signOut();
+                
+                setIsSessionBlocked(true);
+                setBlockedUserId(data.user.id);
+                setMessage({ 
+                    type: 'warning', 
+                    text: (
+                        <span>
+                            <strong>중복 로그인 감지!</strong><br/>
+                            현재 다른 브라우저나 기기에서 플레이 중입니다.<br/>
+                            데이터 보호를 위해 동시 접속이 차단되었습니다.<br/><br/>
+                            * 기존 탭으로 돌아가거나, 기존 탭을 종료했다면 아래 버튼으로 잠금을 해제하세요.
+                        </span>
+                    )
+                });
+                setLoading(false);
+                return; // STOP HERE
             }
+
+            // 3. ACQUIRE LOCK (I am now the owner)
+            // We use a random UUID for this session (simulated device ID)
+            const myDeviceId = crypto.randomUUID();
+            await acquireSessionLock(data.user.id, myDeviceId);
+            
+            // Store this device ID in localStorage to identify "me" later if needed (optional but good practice)
+            localStorage.setItem('nbagm_device_id', myDeviceId);
+
+            // Proceed to App (State change in App.tsx will catch the session)
         }
       }
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
-      if (errorMsg.includes("Invalid login credentials")) {
-          errorMsg = "이메일 또는 비밀번호가 올바르지 않습니다.";
-      }
+      if (errorMsg.includes("Invalid login credentials")) errorMsg = "이메일 또는 비밀번호가 올바르지 않습니다.";
       setMessage({ type: 'error', text: errorMsg });
     } finally {
       setLoading(false);
@@ -157,44 +174,54 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
           </h1>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-0">
-          <AuthInput label="이메일" type="email" placeholder="이메일 주소" value={email} onChange={setEmail} isValid={isEmailValid} errorMsg="올바른 이메일 형식이 아닙니다." showError={email !== ''} />
-          <AuthInput label="비밀번호" type="password" placeholder="비밀번호" value={password} onChange={setPassword} isValid={mode === 'login' ? true : isPasswordValid} errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수" showError={mode === 'signup' && password !== ''} />
-          {mode === 'signup' && (
-            <AuthInput label="비밀번호 확인" type="password" placeholder="비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} isValid={isConfirmValid} errorMsg="비밀번호가 일치하지 않습니다." showError={confirmPassword !== ''} />
-          )}
+        {isSessionBlocked ? (
+            // BLOCKED STATE UI
+            <div className="animate-in fade-in zoom-in duration-300">
+                {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
+                <button
+                    onClick={handleForceUnlock}
+                    disabled={loading}
+                    className="w-full mt-4 bg-red-600 hover:bg-red-500 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-red-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
+                >
+                    {loading ? <Loader2 className="animate-spin" /> : <span className="pretendard font-medium">강제 잠금 해제 (로그아웃 처리)</span>}
+                </button>
+                <button 
+                    onClick={() => { setIsSessionBlocked(false); setMessage(null); setPassword(''); }}
+                    className="w-full mt-3 text-slate-500 hover:text-white text-sm font-medium py-2"
+                >
+                    돌아가기
+                </button>
+            </div>
+        ) : (
+            // NORMAL LOGIN FORM
+            <form onSubmit={handleAuth} className="space-y-0">
+              <AuthInput label="이메일" type="email" placeholder="이메일 주소" value={email} onChange={setEmail} isValid={isEmailValid} errorMsg="올바른 이메일 형식이 아닙니다." showError={email !== ''} />
+              <AuthInput label="비밀번호" type="password" placeholder="비밀번호" value={password} onChange={setPassword} isValid={mode === 'login' ? true : isPasswordValid} errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수" showError={mode === 'signup' && password !== ''} />
+              {mode === 'signup' && (
+                <AuthInput label="비밀번호 확인" type="password" placeholder="비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} isValid={isConfirmValid} errorMsg="비밀번호가 일치하지 않습니다." showError={confirmPassword !== ''} />
+              )}
+    
+              {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
+    
+              <div className="space-y-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
+                >
+                  {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span className="pretendard font-medium">로그인</span></> : <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>)}
+                </button>
+              </div>
+            </form>
+        )}
 
-          {message && (
-            <AuthAlert type={message.type}>
-              {message.text}
-            </AuthAlert>
-          )}
-
-          {/* Session Warning for Login Mode */}
-          {mode === 'login' && (
-              <AuthAlert type="warning">
-                  <strong>동시 접속 불가 안내:</strong><br/>
-                  로그인 시 다른 기기/탭의 접속이 즉시 종료되며, 저장하지 않은 데이터는 소실될 수 있습니다. 
-                  <span className="block mt-1 text-xs opacity-80">* 기존 접속 종료를 원치 않으시면 로그인을 취소하세요.</span>
-              </AuthAlert>
-          )}
-
-          <div className="space-y-3 pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
-            >
-              {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span className="pretendard font-medium">로그인</span></> : <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>)}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-8 text-center border-t border-slate-800 pt-6">
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
-            {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
-          </button>
-        </div>
+        {!isSessionBlocked && (
+            <div className="mt-8 text-center border-t border-slate-800 pt-6">
+              <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
+                {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
+              </button>
+            </div>
+        )}
       </div>
     </div>
   );

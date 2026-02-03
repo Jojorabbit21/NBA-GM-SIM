@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, saveCheckpoint, registerDeviceId } from '../services/persistence';
+import { loadCheckpoint, loadUserHistory, saveCheckpoint, releaseSessionLock } from '../services/persistence'; // releaseSessionLock added
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 
@@ -31,11 +31,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
     
-    // [Anti-Cheat] Session Identity
-    const deviceIdRef = useRef<string>(crypto.randomUUID());
-    const isKickedRef = useRef(false); // If true, disable ALL saves immediately
-    
-    // Refs to access latest state in async callbacks
+    // Refs
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics });
     useEffect(() => { 
         gameStateRef.current = { myTeamId, currentSimDate, userTactics }; 
@@ -68,9 +64,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     return;
                 }
 
-                // [Anti-Cheat] Register this instance
-                await registerDeviceId(userId, deviceIdRef.current);
-                isKickedRef.current = false; // Reset kick status on init
+                // *No lock acquisition here*. Lock is acquired in AuthView.tsx BEFORE entry.
+                // Here we just load the data.
 
                 const checkpoint = await loadCheckpoint(userId);
 
@@ -129,58 +124,39 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     }, [baseData, isBaseDataLoading, isGuestMode, session]);
 
     // ------------------------------------------------------------------
-    //  [Anti-Cheat] Realtime Subscription (Push instead of Pull)
+    //  LOCK CLEANUP (On Window Close/Refresh)
+    //  This is a best-effort attempt to unlock the session if the user closes the tab.
     // ------------------------------------------------------------------
     useEffect(() => {
         if (isGuestMode || !session?.user) return;
 
-        // 1. Subscribe to changes on my profile row
-        // Note: 'profiles' table must have Replication enabled in Supabase Dashboard.
-        const channel = supabase
-            .channel(`session_check_${session.user.id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'profiles',
-                    filter: `id=eq.${session.user.id}`,
-                },
-                (payload) => {
-                    const newDeviceId = payload.new.active_device_id;
-                    
-                    // If the DB says the active device ID is different from mine, I am kicked.
-                    if (newDeviceId && newDeviceId !== deviceIdRef.current) {
-                        console.warn("⛔ Realtime: Session Invalidated by another login.");
-                        isKickedRef.current = true;
-                        
-                        // Small delay to ensure UI renders if needed, then alert
-                        setTimeout(() => {
-                            alert("다른 기기나 탭에서 새로운 로그인이 감지되었습니다.\n데이터 보호를 위해 현재 창의 접속을 종료합니다.");
-                            window.location.reload();
-                        }, 100);
-                    }
-                }
-            )
-            .subscribe();
-
-        // 2. Safety Fallback: Check ONCE on window focus (in case Realtime socket disconnected)
-        const onFocusCheck = async () => {
-            if (document.visibilityState === 'visible' && !isKickedRef.current) {
-                 const { data } = await supabase.from('profiles').select('active_device_id').eq('id', session.user.id).single();
-                 if (data && data.active_device_id !== deviceIdRef.current) {
-                     isKickedRef.current = true;
-                     alert("다른 기기나 탭에서 새로운 로그인이 감지되었습니다.\n데이터 보호를 위해 현재 창의 접속을 종료합니다.");
-                     window.location.reload();
-                 }
+        const handleUnload = () => {
+            // Using sendBeacon for reliable transmission on close
+            const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/profiles?id=eq.${session.user.id}`;
+            const headers = {
+                'Authorization': `Bearer ${session.access_token}`,
+                'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=minimal'
+            };
+            const body = JSON.stringify({ active_device_id: null });
+            
+            if (navigator.sendBeacon) {
+                const blob = new Blob([body], { type: 'application/json' });
+                // Note: sendBeacon doesn't support PATCH directly in some setups, but Supabase REST supports PATCH.
+                // Since sendBeacon is POST, we might need a custom RPC or just rely on fetch with keepalive.
+                // Trying fetch with keepalive as it's standard for this now.
+                fetch(url, {
+                    method: 'PATCH',
+                    headers: headers,
+                    body: body,
+                    keepalive: true
+                }).catch(e => console.error("Lock release failed", e));
             }
         };
-        window.addEventListener('focus', onFocusCheck);
 
-        return () => {
-            supabase.removeChannel(channel);
-            window.removeEventListener('focus', onFocusCheck);
-        };
+        window.addEventListener('beforeunload', handleUnload);
+        return () => window.removeEventListener('beforeunload', handleUnload);
     }, [session, isGuestMode]);
 
 
@@ -191,13 +167,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const forceSave = useCallback(async (overrides?: any) => {
         if (!session?.user || isGuestMode) return;
         
-        // [Anti-Cheat] KILL SWITCH
-        // If we are kicked, we must NOT save, to prevent overwriting the new session's data.
-        if (isKickedRef.current) {
-            console.warn("⛔ Save aborted: Session is invalid (Kicked).");
-            return;
-        }
-        
         setIsSaving(true);
         try {
             const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
@@ -205,17 +174,9 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
 
             if (teamId && date) {
-                // Pass deviceIdRef.current to enforce single session check at DB level too
-                await saveCheckpoint(session.user.id, teamId, date, tactics, deviceIdRef.current);
+                await saveCheckpoint(session.user.id, teamId, date, tactics);
             }
         } catch (e: any) {
-            // Double protection
-            if (e.message === 'DUPLICATE_LOGIN') {
-                isKickedRef.current = true;
-                alert("중복 로그인이 감지되어 저장이 차단되었습니다. 페이지를 새로고침합니다.");
-                window.location.reload();
-                return;
-            }
             console.error("Save Failed:", e);
         } finally {
             setIsSaving(false);
@@ -273,7 +234,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setUserTactics(null);
             hasInitialLoadRef.current = false;
             
-            await registerDeviceId(userId, deviceIdRef.current);
+            // Re-acquire lock logic is implicitly handled because we don't clear it on reset, just data.
 
             return { success: true };
         } catch (e) {
