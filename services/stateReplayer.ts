@@ -1,6 +1,7 @@
 
 import { Team, Game, Transaction, PlayerBoxScore } from '../types';
 import { INITIAL_STATS } from '../utils/constants';
+import { updateTeamTacticHistory } from '../utils/tacticUtils';
 
 /**
  * Replays history to reconstruct the current game state.
@@ -62,17 +63,24 @@ export const replayGameState = (
             });
         }
 
-        // B. Update Standings (Wins/Losses)
         const homeTeam = teamMap.get(res.home_team_id);
         const awayTeam = teamMap.get(res.away_team_id);
         
+        // B. Update Standings & Tactics History
         if (homeTeam && awayTeam) {
-            if (res.home_score > res.away_score) {
+            const homeWon = res.home_score > res.away_score;
+            if (homeWon) {
                 homeTeam.wins++;
                 awayTeam.losses++;
             } else {
                 homeTeam.losses++;
                 awayTeam.wins++;
+            }
+
+            // [FIX] Update Tactic History if data available
+            if (res.tactics && res.box_score) {
+                 homeTeam.tacticHistory = updateTeamTacticHistory(homeTeam, res.box_score.home, res.box_score.away, res.tactics.home || {}, homeWon);
+                 awayTeam.tacticHistory = updateTeamTacticHistory(awayTeam, res.box_score.away, res.box_score.home, res.tactics.away || {}, !homeWon);
             }
         }
 
@@ -175,6 +183,34 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.midM += statLine.midM || 0;
             player.stats.midA += statLine.midA || 0;
             player.stats.pf += statLine.pf || 0;
+
+            // [FIX] Add Missing 10-Zone Shooting Stats
+            if (statLine.zoneData) {
+                // Manually map to avoid TS errors or missing keys
+                player.stats.zone_rim_m = (player.stats.zone_rim_m || 0) + (statLine.zoneData.zone_rim_m || 0);
+                player.stats.zone_rim_a = (player.stats.zone_rim_a || 0) + (statLine.zoneData.zone_rim_a || 0);
+                player.stats.zone_paint_m = (player.stats.zone_paint_m || 0) + (statLine.zoneData.zone_paint_m || 0);
+                player.stats.zone_paint_a = (player.stats.zone_paint_a || 0) + (statLine.zoneData.zone_paint_a || 0);
+                
+                player.stats.zone_mid_l_m = (player.stats.zone_mid_l_m || 0) + (statLine.zoneData.zone_mid_l_m || 0);
+                player.stats.zone_mid_l_a = (player.stats.zone_mid_l_a || 0) + (statLine.zoneData.zone_mid_l_a || 0);
+                player.stats.zone_mid_c_m = (player.stats.zone_mid_c_m || 0) + (statLine.zoneData.zone_mid_c_m || 0);
+                player.stats.zone_mid_c_a = (player.stats.zone_mid_c_a || 0) + (statLine.zoneData.zone_mid_c_a || 0);
+                player.stats.zone_mid_r_m = (player.stats.zone_mid_r_m || 0) + (statLine.zoneData.zone_mid_r_m || 0);
+                player.stats.zone_mid_r_a = (player.stats.zone_mid_r_a || 0) + (statLine.zoneData.zone_mid_r_a || 0);
+                
+                player.stats.zone_c3_l_m = (player.stats.zone_c3_l_m || 0) + (statLine.zoneData.zone_c3_l_m || 0);
+                player.stats.zone_c3_l_a = (player.stats.zone_c3_l_a || 0) + (statLine.zoneData.zone_c3_l_a || 0);
+                player.stats.zone_c3_r_m = (player.stats.zone_c3_r_m || 0) + (statLine.zoneData.zone_c3_r_m || 0);
+                player.stats.zone_c3_r_a = (player.stats.zone_c3_r_a || 0) + (statLine.zoneData.zone_c3_r_a || 0);
+                
+                player.stats.zone_atb3_l_m = (player.stats.zone_atb3_l_m || 0) + (statLine.zoneData.zone_atb3_l_m || 0);
+                player.stats.zone_atb3_l_a = (player.stats.zone_atb3_l_a || 0) + (statLine.zoneData.zone_atb3_l_a || 0);
+                player.stats.zone_atb3_c_m = (player.stats.zone_atb3_c_m || 0) + (statLine.zoneData.zone_atb3_c_m || 0);
+                player.stats.zone_atb3_c_a = (player.stats.zone_atb3_c_a || 0) + (statLine.zoneData.zone_atb3_c_a || 0);
+                player.stats.zone_atb3_r_m = (player.stats.zone_atb3_r_m || 0) + (statLine.zoneData.zone_atb3_r_m || 0);
+                player.stats.zone_atb3_r_a = (player.stats.zone_atb3_r_a || 0) + (statLine.zoneData.zone_atb3_r_a || 0);
+            }
         }
     });
 }
