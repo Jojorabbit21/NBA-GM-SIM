@@ -8,6 +8,7 @@ import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffSer
 import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
+import { getDeviceId } from '../utils/device';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -40,8 +41,45 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
 
+    // --- REALTIME SESSION WATCHDOG (CCTV) ---
+    useEffect(() => {
+        if (!session?.user || isGuestMode) return;
+
+        // 1. 내 기기 ID 확인
+        const myDeviceId = getDeviceId();
+        const userId = session.user.id;
+
+        // 2. Realtime 구독: profiles 테이블의 내 행(Row)이 바뀌는지 감시
+        const channel = supabase.channel(`user_watch_${userId}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: `id=eq.${userId}`
+                },
+                (payload) => {
+                    // 3. DB에 기록된 active_device_id가 내 것과 다르면?
+                    const newActiveDevice = payload.new.active_device_id;
+                    if (newActiveDevice && newActiveDevice !== myDeviceId) {
+                        console.warn("🚨 중복 로그인 감지! 세션이 종료됩니다.");
+                        // 4. 강제 새로고침 -> 로그아웃 유도 (또는 UI에서 알림 후 종료)
+                        alert("다른 기기에서 접속하여 현재 세션이 종료됩니다.");
+                        window.location.reload(); 
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [session, isGuestMode]);
+
+
     // ------------------------------------------------------------------
-    //  INIT LOGIC (Simple Load)
+    //  INIT LOGIC
     // ------------------------------------------------------------------
     useEffect(() => {
         if (hasInitialLoadRef.current || isResettingRef.current) return;
@@ -64,7 +102,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     return;
                 }
 
-                // [Simplified] Load Data Directly (No Locks)
+                // Load Data
                 const checkpoint = await loadCheckpoint(userId);
 
                 if (checkpoint && checkpoint.team_id) {
@@ -178,7 +216,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             
             queryClient.removeQueries();
             
-            // Clean up old trade counters
             Object.keys(localStorage).forEach((key) => {
                 if (key.startsWith('trade_ops_')) {
                     localStorage.removeItem(key);
