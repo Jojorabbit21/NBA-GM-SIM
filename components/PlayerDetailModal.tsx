@@ -81,7 +81,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-300">
                                 
                                 {/* Scoring (INSIDE + OUTSIDE) */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-6">
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4 h-fit">
                                     <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
                                         <Target size={16} className="text-orange-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">스코어링</h4>
@@ -110,8 +110,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                 </div>
 
                                 {/* Playmaking */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 h-fit">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4 h-fit">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
                                         <Zap size={16} className="text-yellow-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">플레이메이킹</h4>
                                     </div>
@@ -126,7 +126,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                 </div>
 
                                 {/* Defense (GENERAL + REBOUND) */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-6">
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4 h-fit">
                                     <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
                                         <Shield size={16} className="text-blue-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">수비</h4>
@@ -153,8 +153,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                 </div>
 
                                 {/* Athleticism */}
-                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 h-fit">
-                                    <div className="flex items-center gap-2 mb-4 pb-2 border-b border-slate-800">
+                                <div className="bg-slate-950/60 p-5 rounded-2xl border border-slate-800 flex flex-col gap-4 h-fit">
+                                    <div className="flex items-center gap-2 pb-2 border-b border-slate-800">
                                         <Activity size={16} className="text-emerald-400" />
                                         <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest">운동능력</h4>
                                     </div>
