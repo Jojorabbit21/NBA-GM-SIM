@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Users, Loader2, X, Clock, Search, Lock, Activity, Handshake, Target, Trash2, ListFilter, Send, History, ArrowLeftRight } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
-import { PlayerDetailModal } from '../components/SharedComponents';
+import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { getTeamLogoUrl, TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
 
 // New Components & Hooks
