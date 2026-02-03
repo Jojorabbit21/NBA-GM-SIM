@@ -169,7 +169,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                  const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
                                  const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
                                  
-                                 let colorClass = 'text-slate-500';
+                                 let colorClass = 'text-slate-400';
                                  if (!isScoutingMode) {
                                      if (style.isHot) colorClass = 'text-emerald-400';
                                      else if (style.isCold) colorClass = 'text-red-400';
@@ -178,9 +178,9 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
 
                                  return (
                                      <div key={i} className="flex flex-col items-center justify-center p-1.5 text-center min-w-0">
-                                         <span className="text-[10px] font-bold text-slate-500 w-full px-1 mb-0.5 leading-tight truncate" title={z.label}>{z.label}</span>
+                                         <span className="text-[10px] font-bold text-white w-full px-1 mb-0.5 leading-tight truncate" title={z.label}>{z.label}</span>
                                          <span className={`text-sm font-black ${colorClass} tabular-nums`}>{pct}%</span>
-                                         <span className="text-[9px] font-medium text-slate-600 tabular-nums">{z.data.m}/{z.data.a}</span>
+                                         <span className="text-xs font-bold text-slate-400 tabular-nums">{z.data.m}/{z.data.a}</span>
                                      </div>
                                  )
                             })}
@@ -229,8 +229,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                 })}
                             </g>
 
-                            {/* Layer 2: Court Lines Overlay (Static Dark Slate Lines for Dark Theme) */}
-                            <g className="court-lines" fill="none" stroke="#475569" strokeWidth="1.5" strokeOpacity="0.8" pointerEvents="none">
+                            {/* Layer 2: Court Lines Overlay (Darker than background: Pure Black) */}
+                            <g className="court-lines" fill="none" stroke="#000000" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
                                 {COURT_LINES.map((d, i) => (
                                     <path key={i} d={d} />
                                 ))}
