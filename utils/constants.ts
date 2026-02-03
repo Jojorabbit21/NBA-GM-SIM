@@ -156,6 +156,11 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
 
 export const getTeamLogoUrl = (teamId: string): string => {
     const id = resolveTeamId(teamId);
+    
+    // [Optimization] Chicago Bulls logo (chi.svg) contains a massive base64 string
+    // causing performance issues. Use PNG version instead.
+    if (id === 'chi') return '/logos/chi.png';
+    
     return `/logos/${id}.svg`;
 };
 
