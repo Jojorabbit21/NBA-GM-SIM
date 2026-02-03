@@ -1,4 +1,3 @@
-
 import React, { useMemo } from 'react';
 import { Player } from '../types';
 import { getProjectedZoneDensity } from '../services/game/engine/shotDistribution';
@@ -89,11 +88,11 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
         { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "좌측 미드레인지", key: 'midL', cx: 80, cy: 300 }, 
         { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "중앙 미드레인지", key: 'midC', cx: 217, cy: 200 },
         { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "우측 미드레인지", key: 'midR', cx: 355, cy: 300 }, 
-        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "좌측 코너", key: 'c3L', cx: 15, cy: 350 },
+        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "좌측 코너", key: 'c3L', cx: 35, cy: 350 }, // Shifted from 15 to 35
         { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "좌측 45도", key: 'atb3L', cx: 40, cy: 140 }, 
         { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "탑 오브 더 키", key: 'atb3C', cx: 217, cy: 80 },
         { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "우측 45도", key: 'atb3R', cx: 395, cy: 140 }, 
-        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "우측 코너", key: 'c3R', cx: 420, cy: 350 },
+        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "우측 코너", key: 'c3R', cx: 400, cy: 350 }, // Shifted from 420 to 400
     ], [zData, AVG]);
 
     // Stats Grid Calculation
@@ -266,9 +265,10 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                             borderStroke = '#d97706'; // orange-600
                                         }
 
-                                        // Increased Padding (+2px total width/height for 1px padding on all sides)
-                                        const width = 38; // Increased width for readability
-                                        const height = 26; // Increased height for two lines
+                                        // Dynamic Width Calculation based on text content (Fix for 100% bug)
+                                        const isWide = pct.length >= 4; // e.g. "100%"
+                                        const width = isWide ? 48 : 38; // Increased from 38 if text is long
+                                        const height = 26; 
 
                                         return (
                                             <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -296,8 +296,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                                 <text 
                                                     textAnchor="middle" 
                                                     y={9} 
-                                                    fill={isScoutingMode ? '#64748b' : '#94a3b8'} // slate-500/400
-                                                    fontSize="9px" 
+                                                    fill={'#ffffff'} // Changed from slate-400 to white
+                                                    fontSize="10px" // Increased from 9px to 10px
                                                     fontWeight="600" 
                                                 >
                                                     {z.data.m}/{z.data.a}
