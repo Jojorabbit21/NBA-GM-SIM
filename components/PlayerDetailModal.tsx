@@ -62,13 +62,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                         onClick={() => setActiveTab('attributes')}
                         className={`py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'attributes' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 border-transparent hover:text-white'}`}
                     >
-                        능력치 (Attributes)
+                        능력치
                     </button>
                     <button 
                         onClick={() => setActiveTab('stats')}
                         className={`py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2 ${activeTab === 'stats' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 border-transparent hover:text-white'}`}
                     >
-                        시즌 기록 (Stats)
+                        시즌 기록
                     </button>
                 </div>
 
