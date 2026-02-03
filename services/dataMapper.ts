@@ -1,242 +1,199 @@
-
 import { Team, Player, Game } from '../types';
-import { FALLBACK_TEAMS, resolveTeamId, getTeamLogoUrl } from '../utils/constants';
-import { KNOWN_INJURIES } from '../utils/injuries'; // Import from dedicated file
 import { calculateOvr } from '../utils/ovrUtils';
+import { resolveTeamId, FALLBACK_TEAMS } from '../utils/constants';
+import { KNOWN_INJURIES } from '../utils/injuries';
 
-// --- Helper: Flexible Column Getter ---
-const getCol = (item: any, keys: string[]) => {
-    for (const k of keys) {
-        if (item[k] !== undefined && item[k] !== null) return item[k];
+// Helper to get value from multiple possible column names (case-insensitive handling)
+const getCol = (obj: any, keys: string[]) => {
+    for (const key of keys) {
+        if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') return obj[key];
+        const lowerKey = key.toLowerCase();
+        const foundKey = Object.keys(obj).find(k => k.toLowerCase() === lowerKey);
+        if (foundKey && obj[foundKey] !== undefined && obj[foundKey] !== null && obj[foundKey] !== '') return obj[foundKey];
     }
     return undefined;
 };
 
-// --- Helper: Generate Stable ID ---
-// DB에 ID가 없는 경우에만 이름과 팀 기반으로 ID 생성 (Fallback)
-const generateStableId = (name: string, teamId: string): string => {
-    const cleanName = String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
-    return `${teamId}_${cleanName}`;
+// Generate a stable ID if missing (based on name and team)
+const generateStableId = (name: string, teamId: string) => {
+    return `${teamId}_${name.replace(/\s+/g, '_').toLowerCase()}_${Math.floor(Math.random() * 1000)}`;
 };
 
-/**
- * Supabase에서 불러온 Raw Player 데이터를 앱 내 Team[] 구조로 변환
- */
 export const mapPlayersToTeams = (playersData: any[]): Team[] => {
-    return FALLBACK_TEAMS.map((t) => {
-        const teamId = t.id;
-        
-        const roster = playersData
-            .filter((p: any) => {
-                const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']);
-                if (!rawTeamId) return false;
-                const resolved = resolveTeamId(rawTeamId);
-                return resolved === teamId;
-            })
-            .map((p: any) => mapRawPlayerToRuntimePlayer(p));
+    const teamsMap: Record<string, Team> = {};
 
-        return {
-            id: teamId,
-            name: t.name,
-            city: t.city,
-            logo: getTeamLogoUrl(teamId),
-            conference: t.conference as 'East' | 'West',
-            division: t.division as 'Atlantic' | 'Central' | 'Southeast' | 'Northwest' | 'Pacific' | 'Southwest',
+    // Initialize empty teams from FALLBACK_TEAMS to ensure all 30 teams exist
+    FALLBACK_TEAMS.forEach(t => {
+        teamsMap[t.id] = {
+            ...t,
             wins: 0,
             losses: 0,
-            budget: 150,
-            salaryCap: 140,
-            luxuryTaxLine: 170,
-            roster: roster
+            budget: 150, // Default
+            salaryCap: 140, // Default
+            luxuryTaxLine: 170, // Default
+            roster: []
         };
     });
-};
 
-/**
- * 개별 선수 데이터 변환 (Raw DB Object -> Player Object)
- */
-const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
-    // DB의 base_attributes 컬럼 파싱 (JSON or Object)
-    const baseAttrs = typeof raw.base_attributes === 'string' 
-        ? JSON.parse(raw.base_attributes) 
-        : (raw.base_attributes || {});
-        
-    // raw 데이터와 baseAttrs 병합 (baseAttrs가 우선순위 높음)
-    const p = { ...raw, ...baseAttrs };
-
-    // 1. Categories (Defaults to 70 if missing to allow OVR calc to function)
-    const ins = Number(getCol(p, ['ins', 'INS', 'Inside']) || 70);
-    const out = Number(getCol(p, ['out', 'OUT', 'Outside']) || 70);
-    const ath = Number(getCol(p, ['ath', 'ATH', 'Athleticism']) || 70);
-    const plm = Number(getCol(p, ['plm', 'PLM', 'Playmaking']) || 70);
-    const def = Number(getCol(p, ['def', 'DEF', 'Defense']) || 70);
-    const reb = Number(getCol(p, ['reb', 'REB', 'Rebound']) || 70);
-
-    // 2. Specific Stats Mapping (Checking all known variations)
-    const statsObj = {
-        // Offensive
-        closeShot: Number(getCol(p, ['close', 'closeShot', 'CloseShot', 'Close']) || ins),
-        midRange: Number(getCol(p, ['mid', 'midRange', 'MidRange', 'Mid']) || out),
-        threeCorner: Number(getCol(p, ['3c', 'threeCorner', 'ThreeCorner', '3PtCorner']) || out),
-        three45: Number(getCol(p, ['3_45', 'three45', 'Three45', '3Pt45']) || out),
-        threeTop: Number(getCol(p, ['3t', 'threeTop', 'ThreeTop', '3PtTop']) || out),
-        ft: Number(getCol(p, ['ft', 'FT', 'FreeThrow']) || 75),
-        shotIq: Number(getCol(p, ['siq', 'shotIq', 'ShotIQ', 'IQ']) || 75),
-        offConsist: Number(getCol(p, ['ocon', 'offConsist', 'OffConsist', 'Consistency']) || 70),
-        
-        // Inside
-        layup: Number(getCol(p, ['lay', 'layup', 'Layup']) || ins),
-        dunk: Number(getCol(p, ['dnk', 'dunk', 'Dunk']) || ins),
-        postPlay: Number(getCol(p, ['post', 'postPlay', 'PostPlay', 'Post']) || ins),
-        drawFoul: Number(getCol(p, ['draw', 'drawFoul', 'DrawFoul']) || 70),
-        hands: Number(getCol(p, ['hands', 'Hands']) || 70),
-
-        // Playmaking
-        passAcc: Number(getCol(p, ['pacc', 'passAcc', 'PassAcc', 'Passing']) || plm),
-        handling: Number(getCol(p, ['handl', 'handling', 'Handling', 'Handle']) || plm),
-        spdBall: Number(getCol(p, ['spwb', 'spdBall', 'SpdBall', 'SpeedWithBall']) || plm),
-        passIq: Number(getCol(p, ['piq', 'passIq', 'PassIQ']) || plm),
-        passVision: Number(getCol(p, ['pvis', 'passVision', 'PassVision', 'Vision']) || plm),
-
-        // Defense
-        intDef: Number(getCol(p, ['idef', 'intDef', 'IntDef', 'InteriorDef']) || def),
-        perDef: Number(getCol(p, ['pdef', 'perDef', 'PerDef', 'PerimeterDef', 'lock']) || def),
-        steal: Number(getCol(p, ['stl', 'steal', 'Steal', 'STL']) || def),
-        blk: Number(getCol(p, ['blk', 'Blk', 'Block', 'BLK']) || def),
-        helpDefIq: Number(getCol(p, ['hdef', 'helpDefIq', 'HelpDefIQ']) || 70),
-        passPerc: Number(getCol(p, ['pper', 'passPerc', 'PassPerc', 'PassPerception']) || 70),
-        defConsist: Number(getCol(p, ['dcon', 'defConsist', 'DefConsist']) || 70),
-
-        // Rebound
-        offReb: Number(getCol(p, ['oreb', 'offReb', 'OffReb', 'ORB']) || reb),
-        defReb: Number(getCol(p, ['dreb', 'defReb', 'DefReb', 'DRB']) || reb),
-
-        // Athleticism
-        speed: Number(getCol(p, ['spd', 'speed', 'Speed', 'SPD']) || ath),
-        agility: Number(getCol(p, ['agi', 'agility', 'Agility', 'AGI']) || ath),
-        strength: Number(getCol(p, ['str', 'strength', 'Strength', 'STR']) || ath),
-        vertical: Number(getCol(p, ['vert', 'vertical', 'Vertical', 'JMP']) || ath),
-        stamina: Number(getCol(p, ['sta', 'stamina', 'Stamina', 'STA']) || 80),
-        hustle: Number(getCol(p, ['hus', 'hustle', 'Hustle']) || 75),
-        durability: Number(getCol(p, ['dur', 'durability', 'Durability']) || 80),
-        
-        // Misc
-        intangibles: Number(getCol(p, ['intangibles', 'Intangibles']) || 70),
-        height: Number(getCol(p, ['height', 'Height', 'Ht']) || 200),
-
-        // Fallbacks for Category Averages (Used by OVR calculator if specifics missing)
-        ins, out, ath, plm, def, reb
-    };
-
-    const position = getCol(p, ['position', 'Pos', 'Position', 'POS']) || "G";
-    const name = getCol(p, ['name', 'Player', 'Name', 'player_name']) || "Unknown Player";
-    
-    // Resolve Team ID for stable ID generation fallback
-    const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']) || 'fa';
-    const teamId = resolveTeamId(rawTeamId);
-    
-    // 3. Determine OVR (ALWAYS CALCULATE FROM STATS)
-    const ovr = calculateOvr(statsObj, position);
-    
-    // Determine Potential
-    const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
-    const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
-
-    // [Fix] Handle Known Injuries - Enhanced Matching Logic
-    let health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
-    let injuryType = undefined;
-    let returnDate = undefined;
-
-    // 1. Try Exact Match
-    if (KNOWN_INJURIES[name]) {
-        health = 'Injured';
-        injuryType = KNOWN_INJURIES[name].type;
-        returnDate = KNOWN_INJURIES[name].returnDate;
-    } else {
-        // 2. Try Partial Match (for cases like "Dereck Lively II" vs "Dereck Lively")
-        // Loop through keys and see if one includes the other
-        const nameLower = name.toLowerCase().trim();
-        for (const key in KNOWN_INJURIES) {
-             const keyLower = key.toLowerCase().trim();
-             // Check if the DB name contains the Key OR the Key contains the DB name
-             // e.g. "Dereck Lively II" contains "Dereck Lively"
-             if (nameLower.includes(keyLower) || keyLower.includes(nameLower)) {
-                 health = 'Injured';
-                 injuryType = KNOWN_INJURIES[key].type;
-                 returnDate = KNOWN_INJURIES[key].returnDate;
-                 // console.log(`[Injury Matched] ${name} matched with key: ${key}`);
-                 break;
-             }
-        }
-    }
-
-    // [Fix] Use DB ID if available, otherwise generate stable ID
-    const dbId = getCol(p, ['id', 'player_id', 'PlayerID']);
-    const id = dbId ? String(dbId) : generateStableId(name, teamId);
-
-    return {
-        id,
-        name,
-        position,
-        age: Number(getCol(p, ['age', 'Age']) || 20),
-        height: statsObj.height,
-        weight: Number(getCol(p, ['weight', 'Weight', 'Wt']) || 100),
-        salary: Number(getCol(p, ['salary', 'Salary']) || 5),
-        contractYears: Number(getCol(p, ['contractyears', 'contractYears', 'ContractYears']) || 1),
-        
-        ovr,
-        potential,
-        revealedPotential: potential,
-        
-        health,
-        injuryType,
-        returnDate,
-        condition: 100,
-
-        ...statsObj,
-
-        stats: p.stats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0 },
-        playoffStats: p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0 }
-    };
-};
-
-/**
- * 스케줄 데이터 변환 (Raw DB Schedule -> Game[])
- */
-export const mapDatabaseScheduleToRuntimeGame = (rows: any[]): Game[] => {
-    return rows.map(r => {
-        let dateStr = getCol(r, ['Date', 'date', 'game_date', 'Start', 'start']) || '2025-10-20';
-        try {
-            const d = new Date(dateStr);
-            if (!isNaN(d.getTime())) {
-                dateStr = d.toISOString().split('T')[0];
-            }
-        } catch(e) {}
-
-        const homeCol = getCol(r, ['Home', 'home', 'HomeTeam', 'home_team_id', 'Home/Neutral', 'home_neutral']);
-        const awayCol = getCol(r, ['Away', 'away', 'Visitor', 'visitor', 'AwayTeam', 'away_team_id', 'Visitor/Neutral', 'visitor_neutral']);
-        
-        let homeTeamId = resolveTeamId(homeCol);
-        let awayTeamId = resolveTeamId(awayCol);
-
-        const gid = getCol(r, ['id', 'game_id']) || `g_${homeTeamId}_${awayTeamId}_${dateStr}`;
-
-        const homePts = getCol(r, ['PTS.1', 'home_pts', 'home_score']);
-        const awayPts = getCol(r, ['PTS', 'away_pts', 'away_score']);
-        
-        const isPlayed = (homePts !== undefined && homePts !== null && homePts !== "") && 
-                         (awayPts !== undefined && awayPts !== null && awayPts !== "");
-
-        return {
-            id: String(gid),
-            homeTeamId,
-            awayTeamId,
-            date: dateStr,
-            homeScore: isPlayed ? Number(homePts) : undefined,
-            awayScore: isPlayed ? Number(awayPts) : undefined,
-            played: isPlayed,
-            isPlayoff: false,
-            seriesId: undefined
+    playersData.forEach(p => {
+        // Map Stats with fallbacks
+        const statsObj: any = {
+            closeShot: Number(getCol(p, ['closeShot', 'close_shot', 'inside', 'INS']) || 70),
+            midRange: Number(getCol(p, ['midRange', 'mid_range', 'mid', 'MID']) || 70),
+            threeCorner: Number(getCol(p, ['threeCorner', 'three_corner', '3pt', '3PT']) || 70),
+            three45: Number(getCol(p, ['three45', 'three_45']) || 70),
+            threeTop: Number(getCol(p, ['threeTop', 'three_top']) || 70),
+            ft: Number(getCol(p, ['ft', 'free_throw', 'FT']) || 70),
+            shotIq: Number(getCol(p, ['shotIq', 'shot_iq', 'iq', 'IQ']) || 70),
+            offConsist: Number(getCol(p, ['offConsist', 'off_consist', 'consistency']) || 70),
+            
+            layup: Number(getCol(p, ['layup', 'Layup']) || 70),
+            dunk: Number(getCol(p, ['dunk', 'Dunk']) || 70),
+            postPlay: Number(getCol(p, ['postPlay', 'post_play', 'post']) || 70),
+            drawFoul: Number(getCol(p, ['drawFoul', 'draw_foul']) || 70),
+            hands: Number(getCol(p, ['hands', 'Hands']) || 70),
+            
+            passAcc: Number(getCol(p, ['passAcc', 'pass_acc', 'pass']) || 70),
+            handling: Number(getCol(p, ['handling', 'ball_handling', 'handle']) || 70),
+            spdBall: Number(getCol(p, ['spdBall', 'speed_ball']) || 70),
+            passVision: Number(getCol(p, ['passVision', 'vision']) || 70),
+            passIq: Number(getCol(p, ['passIq', 'pass_iq']) || 70),
+            
+            intDef: Number(getCol(p, ['intDef', 'interior_defense', 'int_def']) || 70),
+            perDef: Number(getCol(p, ['perDef', 'perimeter_defense', 'per_def']) || 70),
+            steal: Number(getCol(p, ['steal', 'Steal']) || 70),
+            blk: Number(getCol(p, ['blk', 'block', 'BLK']) || 70),
+            helpDefIq: Number(getCol(p, ['helpDefIq', 'help_def']) || 70),
+            passPerc: Number(getCol(p, ['passPerc', 'pass_perception']) || 70),
+            defConsist: Number(getCol(p, ['defConsist', 'def_consist']) || 70),
+            
+            offReb: Number(getCol(p, ['offReb', 'oreb', 'ORB']) || 70),
+            defReb: Number(getCol(p, ['defReb', 'dreb', 'DRB']) || 70),
+            
+            speed: Number(getCol(p, ['speed', 'SPD']) || 70),
+            agility: Number(getCol(p, ['agility', 'AGI']) || 70),
+            strength: Number(getCol(p, ['strength', 'STR']) || 70),
+            vertical: Number(getCol(p, ['vertical', 'JMP']) || 70),
+            stamina: Number(getCol(p, ['stamina', 'STA']) || 70),
+            hustle: Number(getCol(p, ['hustle', 'HUS']) || 70),
+            durability: Number(getCol(p, ['durability', 'DUR']) || 70),
+            
+            intangibles: Number(getCol(p, ['intangibles', 'INT']) || 70),
+            height: Number(getCol(p, ['height', 'hgt', 'HT']) || 200),
+            
+            // Fallbacks for Category Averages (Used by OVR calculator if specifics missing)
+            ins: Number(getCol(p, ['ins', 'INS']) || 70), 
+            out: Number(getCol(p, ['out', 'OUT']) || 70),
+            ath: Number(getCol(p, ['ath', 'ATH']) || 70),
+            plm: Number(getCol(p, ['plm', 'PLM']) || 70),
+            def: Number(getCol(p, ['def', 'DEF']) || 70),
+            reb: Number(getCol(p, ['reb', 'REB']) || 70)
         };
-    }).filter(g => g.homeTeamId !== 'unknown' && g.awayTeamId !== 'unknown');
+
+        const position = getCol(p, ['position', 'Pos', 'Position', 'POS']) || "G";
+        const name = getCol(p, ['name', 'Player', 'Name', 'player_name']) || "Unknown Player";
+        
+        // Resolve Team ID for stable ID generation fallback
+        const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']) || 'fa';
+        const teamId = resolveTeamId(rawTeamId);
+        
+        // 3. Determine OVR (ALWAYS CALCULATE FROM STATS)
+        const ovr = calculateOvr(statsObj, position);
+
+        // [Fix] Calculate Category Averages dynamically from detailed stats
+        // This ensures the UI displays correct averages even if DB columns for categories are 70 (default)
+        const avg3pt = Math.round((statsObj.threeCorner + statsObj.three45 + statsObj.threeTop) / 3);
+        
+        const calculatedIns = Math.round((statsObj.layup + statsObj.dunk + statsObj.postPlay + statsObj.drawFoul + statsObj.hands) / 5);
+        const calculatedOut = Math.round((statsObj.closeShot + statsObj.midRange + avg3pt + statsObj.ft + statsObj.shotIq + statsObj.offConsist) / 6);
+        const calculatedPlm = Math.round((statsObj.passAcc + statsObj.handling + statsObj.spdBall + statsObj.passIq + statsObj.passVision) / 5);
+        const calculatedDef = Math.round((statsObj.intDef + statsObj.perDef + statsObj.steal + statsObj.blk + statsObj.helpDefIq + statsObj.passPerc + statsObj.defConsist) / 7);
+        const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb) / 2);
+        const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
+        
+        // Determine Potential
+        const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
+        const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
+
+        // [Fix] Handle Known Injuries - Enhanced Matching Logic
+        let health: 'Healthy' | 'Injured' | 'Day-to-Day' = (getCol(p, ['health']) || 'Healthy') as any;
+        let injuryType = undefined;
+        let returnDate = undefined;
+
+        // 1. Try Exact Match
+        if (KNOWN_INJURIES[name]) {
+            health = 'Injured';
+            injuryType = KNOWN_INJURIES[name].type;
+            returnDate = KNOWN_INJURIES[name].returnDate;
+        } else {
+            // 2. Try Partial Match (for cases like "Dereck Lively II" vs "Dereck Lively")
+            // Loop through keys and see if one includes the other
+            const nameLower = name.toLowerCase().trim();
+            for (const key in KNOWN_INJURIES) {
+                 const keyLower = key.toLowerCase().trim();
+                 // Check if the DB name contains the Key OR the Key contains the DB name
+                 // e.g. "Dereck Lively II" contains "Dereck Lively"
+                 if (nameLower.includes(keyLower) || keyLower.includes(nameLower)) {
+                     health = 'Injured';
+                     injuryType = KNOWN_INJURIES[key].type;
+                     returnDate = KNOWN_INJURIES[key].returnDate;
+                     break;
+                 }
+            }
+        }
+
+        // [Fix] Use DB ID if available, otherwise generate stable ID
+        const dbId = getCol(p, ['id', 'player_id', 'PlayerID']);
+        const id = dbId ? String(dbId) : generateStableId(name, teamId);
+
+        const player: Player = {
+            id,
+            name,
+            position,
+            age: Number(getCol(p, ['age', 'Age']) || 20),
+            height: statsObj.height,
+            weight: Number(getCol(p, ['weight', 'Weight', 'Wt']) || 100),
+            salary: Number(getCol(p, ['salary', 'Salary']) || 5),
+            contractYears: Number(getCol(p, ['contractyears', 'contractYears', 'ContractYears']) || 1),
+            
+            ovr,
+            potential,
+            revealedPotential: potential,
+            
+            health,
+            injuryType,
+            returnDate,
+            condition: 100,
+
+            ...statsObj,
+
+            // Use calculated averages for display instead of raw DB values
+            ins: calculatedIns, 
+            out: calculatedOut, 
+            ath: calculatedAth, 
+            plm: calculatedPlm, 
+            def: calculatedDef, 
+            reb: calculatedReb,
+
+            stats: p.stats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0, zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0, zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0, zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0, zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0 },
+            playoffStats: p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0, zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0, zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0, zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0, zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0 }
+        };
+
+        if (teamsMap[teamId]) {
+            teamsMap[teamId].roster.push(player);
+        }
+    });
+
+    return Object.values(teamsMap);
+};
+
+export const mapDatabaseScheduleToRuntimeGame = (dbSchedule: any[]): Game[] => {
+    return dbSchedule.map(g => ({
+        id: String(g.id),
+        homeTeamId: resolveTeamId(g.home_team),
+        awayTeamId: resolveTeamId(g.away_team),
+        date: g.date,
+        played: false,
+        isPlayoff: false
+    }));
 };
