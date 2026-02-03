@@ -2,7 +2,8 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock } from 'lucide-react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle, getRankStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { getOvrBadgeStyle, getRankStyle } from '../components/SharedComponents';
+import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // New Sub-Components

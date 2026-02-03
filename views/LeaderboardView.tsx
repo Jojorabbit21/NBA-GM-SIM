@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle, PlayerDetailModal } from '../components/SharedComponents';
+import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { ChevronDown, BarChart3 } from 'lucide-react';
 
 interface LeaderboardViewProps {

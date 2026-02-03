@@ -5,7 +5,7 @@ import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReport
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
-import { PlayerDetailModal } from '../components/SharedComponents';
+import { PlayerDetailModal } from '../components/PlayerDetailModal';
 
 interface InboxViewProps {
   myTeamId: string;
