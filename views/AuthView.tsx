@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { LogIn, UserPlus, Loader2, AlertCircle } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { AuthInput } from '../components/auth/AuthInput';
 
 // Validation Regex Patterns
@@ -12,14 +12,26 @@ interface AuthViewProps {
   onGuestLogin: () => void;
 }
 
-const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode }> = ({ type, children }) => (
-  <div className={`p-4 rounded-xl flex items-start gap-3 text-sm pretendard font-medium animate-in zoom-in-95 duration-200 mb-6 ${
-    type === 'error' ? 'bg-red-500/10 text-red-400 border border-red-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-  }`}>
-    <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />
-    <div className="flex-1 overflow-hidden">{children}</div>
-  </div>
-);
+const AuthAlert: React.FC<{ type: 'error' | 'success' | 'warning'; children: React.ReactNode }> = ({ type, children }) => {
+    let style = "";
+    let icon = <AlertCircle size={18} className="flex-shrink-0 mt-0.5" />;
+    
+    if (type === 'error') {
+        style = 'bg-red-500/10 text-red-400 border-red-500/20';
+    } else if (type === 'success') {
+        style = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
+    } else if (type === 'warning') {
+        style = 'bg-amber-500/10 text-amber-400 border-amber-500/20';
+        icon = <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />;
+    }
+
+    return (
+      <div className={`p-4 rounded-xl flex items-start gap-3 text-sm pretendard font-medium animate-in zoom-in-95 duration-200 mb-6 border ${style}`}>
+        {icon}
+        <div className="flex-1 overflow-hidden">{children}</div>
+      </div>
+    );
+};
 
 export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   const [loading, setLoading] = useState(false);
@@ -43,10 +55,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
   }, [email, password, confirmPassword]);
 
   // [CRITICAL FIX] Ensure Profile Exists BEFORE entering the game
-  // This prevents Foreign Key errors when saving game data
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
     try {
-        // 1. Check if profile exists
         const { data, error } = await supabase
             .from('profiles')
             .select('id')
@@ -55,7 +65,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
         if (!data) {
             console.log("⚠️ Profile missing, creating now for:", userId);
-            // 2. Create if missing
             const { error: insertError } = await supabase.from('profiles').insert({
                 id: userId,
                 email: userEmail,
@@ -91,7 +100,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         const { data, error } = await (supabase.auth as any).signUp({ email, password });
         if (error) throw error;
         
-        // Ensure profile immediately after signup
         if (data.user) {
             await ensureProfileExists(data.user.id, data.user.email);
         }
@@ -104,11 +112,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
         
-        // Ensure profile exists after login (in case it was deleted or bugged)
         if (data.user) {
             await ensureProfileExists(data.user.id, data.user.email);
             
-            // Log login event
             const { error: logError } = await supabase.from('login_logs').insert({
                 user_id: data.user.id,
                 type: 'login',
@@ -164,7 +170,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             </AuthAlert>
           )}
 
-          <div className="space-y-3 pt-4">
+          {/* Session Warning for Login Mode */}
+          {mode === 'login' && (
+              <AuthAlert type="warning">
+                  <strong>동시 접속 불가 안내:</strong><br/>
+                  로그인 시 다른 기기/탭의 접속이 즉시 종료되며, 저장하지 않은 데이터는 소실될 수 있습니다. 
+                  <span className="block mt-1 text-xs opacity-80">* 기존 접속 종료를 원치 않으시면 로그인을 취소하세요.</span>
+              </AuthAlert>
+          )}
+
+          <div className="space-y-3 pt-2">
             <button
               type="submit"
               disabled={loading}
