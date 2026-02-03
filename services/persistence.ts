@@ -2,46 +2,12 @@
 import { supabase } from './supabaseClient';
 import { Transaction, GameTactics } from '../types';
 
-// [Simple Lock] 1. Check if anyone is playing
-export const checkSessionLock = async (userId: string): Promise<string | null> => {
-    const { data, error } = await supabase
-        .from('profiles')
-        .select('active_device_id')
-        .eq('id', userId)
-        .single();
-    
-    if (error || !data) return null;
-    return data.active_device_id; // Returns ID if locked, null if free
-};
-
-// [Simple Lock] 2. Lock the session for ME
-export const acquireSessionLock = async (userId: string, deviceId: string) => {
-    const { error } = await supabase
-        .from('profiles')
-        .update({ active_device_id: deviceId })
-        .eq('id', userId);
-    
-    if (error) console.error("❌ Failed to acquire lock:", error);
-};
-
-// [Simple Lock] 3. Release the lock (Logout/Close)
-export const releaseSessionLock = async (userId: string) => {
-    const { error } = await supabase
-        .from('profiles')
-        .update({ active_device_id: null })
-        .eq('id', userId);
-
-    if (error) console.error("❌ Failed to release lock:", error);
-    else console.log("🔓 Session Lock Released.");
-};
-
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
     userId: string, 
     teamId: string, 
     simDate: string, 
-    tactics?: GameTactics | null,
-    currentDeviceId?: string // Not strictly needed for blocking, but good for verify
+    tactics?: GameTactics | null
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
