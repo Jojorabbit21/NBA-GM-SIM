@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, saveCheckpoint, releaseSessionLock } from '../services/persistence'; // releaseSessionLock added
+import { loadCheckpoint, loadUserHistory, saveCheckpoint, releaseSessionLock, checkSessionLock, acquireSessionLock } from '../services/persistence'; // Added checks
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 
@@ -41,7 +41,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
 
     // ------------------------------------------------------------------
-    //  INIT LOGIC: Load & Replay
+    //  INIT LOGIC: Load & Replay (Auto-Login Handling)
     // ------------------------------------------------------------------
     useEffect(() => {
         if (hasInitialLoadRef.current || isResettingRef.current) return;
@@ -64,8 +64,36 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     return;
                 }
 
-                // *No lock acquisition here*. Lock is acquired in AuthView.tsx BEFORE entry.
-                // Here we just load the data.
+                // [Auto-Login Lock Check]
+                // 1. Get or Create Tab-specific Session ID (persisted in sessionStorage for refresh)
+                let myTabId = sessionStorage.getItem('nbagm_tab_id');
+                if (!myTabId) {
+                    myTabId = crypto.randomUUID();
+                    sessionStorage.setItem('nbagm_tab_id', myTabId);
+                }
+
+                // 2. Check DB Lock status
+                const activeDevice = await checkSessionLock(userId);
+                
+                // 3. Logic:
+                // - If DB has ID and it's NOT mine -> Someone else is playing. Block.
+                // - If DB is NULL -> Tab was closed/released. Acquire lock.
+                // - If DB has ID and it IS mine -> Refresh page. OK.
+                
+                if (activeDevice && activeDevice !== myTabId) {
+                     console.warn("⛔ Auto-login Blocked: Another session active.");
+                     alert("다른 기기나 탭에서 이미 접속 중입니다. \n(기존 탭을 닫았다면 잠시 후 다시 시도하거나 로그아웃 후 재접속하세요.)");
+                     await (supabase.auth as any).signOut(); // Force logout to clear stale state
+                     window.location.reload();
+                     return;
+                }
+
+                if (!activeDevice || activeDevice !== myTabId) {
+                     console.log("🔒 Acquiring Session Lock for Auto-login...");
+                     await acquireSessionLock(userId, myTabId);
+                }
+
+                // --- Proceed with Data Load ---
 
                 const checkpoint = await loadCheckpoint(userId);
 

@@ -140,8 +140,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
             const myDeviceId = crypto.randomUUID();
             await acquireSessionLock(data.user.id, myDeviceId);
             
-            // Store this device ID in localStorage to identify "me" later if needed (optional but good practice)
-            localStorage.setItem('nbagm_device_id', myDeviceId);
+            // [Critical Update] Store this device ID in sessionStorage (Tab-specific)
+            // This ensures useGameData.ts knows "I am the owner" when it loads.
+            sessionStorage.setItem('nbagm_tab_id', myDeviceId);
 
             // Proceed to App (State change in App.tsx will catch the session)
         }
