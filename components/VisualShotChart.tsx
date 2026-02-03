@@ -229,8 +229,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                 })}
                             </g>
 
-                            {/* Layer 2: Court Lines Overlay (Darker than background: Pure Black) */}
-                            <g className="court-lines" fill="none" stroke="#000000" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
+                            {/* Layer 2: Court Lines Overlay (Darker than background: Slate-700) */}
+                            <g className="court-lines" fill="none" stroke="#334155" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
                                 {COURT_LINES.map((d, i) => (
                                     <path key={i} d={d} />
                                 ))}
