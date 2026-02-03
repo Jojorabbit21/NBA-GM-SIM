@@ -32,10 +32,10 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const isResettingRef = useRef(false);
     
     // [Anti-Cheat] Session Identity
-    // Generated once per app load/refresh. Used to kill duplicate tabs/windows.
-    const deviceIdRef = useRef<string>(crypto.randomUUID()); 
+    const deviceIdRef = useRef<string>(crypto.randomUUID());
+    const isKickedRef = useRef(false); // If true, disable ALL saves immediately
     
-    // Refs to access latest state in async callbacks (Added userTactics)
+    // Refs to access latest state in async callbacks
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics });
     useEffect(() => { 
         gameStateRef.current = { myTeamId, currentSimDate, userTactics }; 
@@ -48,16 +48,12 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     //  INIT LOGIC: Load & Replay
     // ------------------------------------------------------------------
     useEffect(() => {
-        // Prevent double loading or loading during reset
         if (hasInitialLoadRef.current || isResettingRef.current) return;
-        
-        // Wait for Base Data
         if (isBaseDataLoading || !baseData) return;
 
         const initializeGame = async () => {
             setIsSaveLoading(true);
             try {
-                // 1. Guest Mode
                 if (isGuestMode) {
                     setTeams(JSON.parse(JSON.stringify(baseData.teams)));
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
@@ -66,33 +62,25 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     return;
                 }
 
-                // 2. User Mode: Load Checkpoint & History
                 const userId = session?.user?.id;
                 if (!userId) {
                     setIsSaveLoading(false);
                     return;
                 }
 
-                // [Anti-Cheat] Register this instance as the ONLY valid one
+                // [Anti-Cheat] Register this instance
                 await registerDeviceId(userId, deviceIdRef.current);
+                isKickedRef.current = false; // Reset kick status on init
 
                 const checkpoint = await loadCheckpoint(userId);
 
                 if (checkpoint && checkpoint.team_id) {
                     console.log(`📂 Found Save: ${checkpoint.team_id} @ ${checkpoint.sim_date}`);
-                    
-                    // Load Regular Season History
                     const history = await loadUserHistory(userId);
-                    
-                    // Load Playoff State (If any)
                     const playoffState = await loadPlayoffState(userId, checkpoint.team_id);
                     const playoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
-
-                    // Combine Games (Regular + Playoff) for Replay
-                    // Playoff results format needs to be compatible or handled in replay
                     const allGameResults = [...history.games, ...playoffResults];
 
-                    // Replay Logic (Pure Function)
                     const replayedState = replayGameState(
                         baseData.teams,
                         baseData.schedule,
@@ -101,26 +89,20 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                         checkpoint.sim_date
                     );
 
-                    // Apply State
                     setMyTeamId(checkpoint.team_id);
                     setTeams(replayedState.teams);
                     setSchedule(replayedState.schedule);
                     setCurrentSimDate(replayedState.currentSimDate);
                     
-                    // [Fix] Restore User Tactics if available in checkpoint
                     if (checkpoint.tactics) {
                         setUserTactics(checkpoint.tactics);
                     }
                     
-                    // Restore Playoff Series State if exists
                     if (playoffState && playoffState.bracket_data) {
                         setPlayoffSeries(playoffState.bracket_data.series);
-                        console.log("🏆 Playoff State Restored.");
                     }
 
-                    // Map Transactions for UI (Fix: Support 'id', 'Id', 'transaction_id')
                     setTransactions(history.transactions.map((tx: any) => ({
-                        // Fallback order: id (std), Id (user claim), transaction_id (legacy), generated
                         id: tx.id || tx.Id || tx.transaction_id || `tx_${Math.random()}`, 
                         date: tx.date,
                         type: tx.type,
@@ -131,7 +113,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
                     hasInitialLoadRef.current = true;
                 } else {
-                    // New Game
                     console.log("🆕 New Game Started");
                     setTeams(JSON.parse(JSON.stringify(baseData.teams)));
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
@@ -147,6 +128,61 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         initializeGame();
     }, [baseData, isBaseDataLoading, isGuestMode, session]);
 
+    // ------------------------------------------------------------------
+    //  [Anti-Cheat] Realtime Subscription (Push instead of Pull)
+    // ------------------------------------------------------------------
+    useEffect(() => {
+        if (isGuestMode || !session?.user) return;
+
+        // 1. Subscribe to changes on my profile row
+        // Note: 'profiles' table must have Replication enabled in Supabase Dashboard.
+        const channel = supabase
+            .channel(`session_check_${session.user.id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: `id=eq.${session.user.id}`,
+                },
+                (payload) => {
+                    const newDeviceId = payload.new.active_device_id;
+                    
+                    // If the DB says the active device ID is different from mine, I am kicked.
+                    if (newDeviceId && newDeviceId !== deviceIdRef.current) {
+                        console.warn("⛔ Realtime: Session Invalidated by another login.");
+                        isKickedRef.current = true;
+                        
+                        // Small delay to ensure UI renders if needed, then alert
+                        setTimeout(() => {
+                            alert("다른 기기나 탭에서 새로운 로그인이 감지되었습니다.\n데이터 보호를 위해 현재 창의 접속을 종료합니다.");
+                            window.location.reload();
+                        }, 100);
+                    }
+                }
+            )
+            .subscribe();
+
+        // 2. Safety Fallback: Check ONCE on window focus (in case Realtime socket disconnected)
+        const onFocusCheck = async () => {
+            if (document.visibilityState === 'visible' && !isKickedRef.current) {
+                 const { data } = await supabase.from('profiles').select('active_device_id').eq('id', session.user.id).single();
+                 if (data && data.active_device_id !== deviceIdRef.current) {
+                     isKickedRef.current = true;
+                     alert("다른 기기나 탭에서 새로운 로그인이 감지되었습니다.\n데이터 보호를 위해 현재 창의 접속을 종료합니다.");
+                     window.location.reload();
+                 }
+            }
+        };
+        window.addEventListener('focus', onFocusCheck);
+
+        return () => {
+            supabase.removeChannel(channel);
+            window.removeEventListener('focus', onFocusCheck);
+        };
+    }, [session, isGuestMode]);
+
 
     // ------------------------------------------------------------------
     //  ACTIONS: Save, Select Team, Reset
@@ -155,24 +191,29 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const forceSave = useCallback(async (overrides?: any) => {
         if (!session?.user || isGuestMode) return;
         
+        // [Anti-Cheat] KILL SWITCH
+        // If we are kicked, we must NOT save, to prevent overwriting the new session's data.
+        if (isKickedRef.current) {
+            console.warn("⛔ Save aborted: Session is invalid (Kicked).");
+            return;
+        }
+        
         setIsSaving(true);
         try {
-            // Priority: Override > Ref > State
             const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
             const date = overrides?.currentSimDate || gameStateRef.current.currentSimDate;
-            // [Fix] Include tactics in save
             const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
 
             if (teamId && date) {
-                // Pass deviceIdRef.current to enforce single session check
+                // Pass deviceIdRef.current to enforce single session check at DB level too
                 await saveCheckpoint(session.user.id, teamId, date, tactics, deviceIdRef.current);
-                // Note: Playoff state is saved inside useSimulation via savePlayoffState
             }
         } catch (e: any) {
-            // [Anti-Cheat] Handle Duplicate Login
+            // Double protection
             if (e.message === 'DUPLICATE_LOGIN') {
-                alert("중복 로그인이 감지되었습니다. 다른 기기나 탭에서 접속하여 현재 세션이 종료됩니다.\n(데이터 보호를 위해 페이지를 새로고침합니다.)");
-                window.location.reload(); // Brute force logout/refresh
+                isKickedRef.current = true;
+                alert("중복 로그인이 감지되어 저장이 차단되었습니다. 페이지를 새로고침합니다.");
+                window.location.reload();
                 return;
             }
             console.error("Save Failed:", e);
@@ -186,10 +227,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
-        // Initial Save
         await forceSave({ myTeamId: teamId, currentSimDate: INITIAL_DATE });
 
-        // Welcome Msg
         const teamData = teams.find(t => t.id === teamId);
         if (teamData) {
             const welcome = await generateOwnerWelcome(`${teamData.city} ${teamData.name}`);
@@ -212,20 +251,17 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 supabase.from('user_playoffs').delete().eq('user_id', userId),
                 supabase.from('user_playoffs_results').delete().eq('user_id', userId),
                 supabase.from('user_messages').delete().eq('user_id', userId),
-                supabase.from('user_tactics').delete().eq('user_id', userId) // [Added] Delete tactics presets
+                supabase.from('user_tactics').delete().eq('user_id', userId)
             ]);
             
-            // Clear React Query Cache
             queryClient.removeQueries();
             
-            // [Fix] Clear LocalStorage for Trade Ops to reset daily limits
             Object.keys(localStorage).forEach((key) => {
                 if (key.startsWith('trade_ops_')) {
                     localStorage.removeItem(key);
                 }
             });
             
-            // Reset Local State
             if (baseData) {
                 setTeams(JSON.parse(JSON.stringify(baseData.teams)));
                 setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
@@ -234,10 +270,9 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setCurrentSimDate(INITIAL_DATE);
             setTransactions([]);
             setPlayoffSeries([]);
-            setUserTactics(null); // Reset Tactics
-            hasInitialLoadRef.current = false; // Allow re-init
+            setUserTactics(null);
+            hasInitialLoadRef.current = false;
             
-            // Re-register device ID to keep session valid after reset
             await registerDeviceId(userId, deviceIdRef.current);
 
             return { success: true };
