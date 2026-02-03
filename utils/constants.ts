@@ -156,13 +156,6 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
 
 export const getTeamLogoUrl = (teamId: string): string => {
     const id = resolveTeamId(teamId);
-    
-    // [Critical Fix] Force PNG for Chicago Bulls
-    // Use cache busting parameter (?v=fix) to ensure browser fetches new file
-    if (id === 'chi') {
-        return '/logos/chi.png?v=fix';
-    }
-    
     return `/logos/${id}.svg`;
 };
 
