@@ -3,11 +3,12 @@ import React from 'react';
 import { Player } from '../types';
 
 // 500 x 470 Canvas Coordinate System
+// Layer 1: Shot Zones (Heatmap Areas)
 const ZONE_PATHS = {
-    // 1. Restricted Area (Goal)
+    // 1. Restricted Area
     RIM: "M 210 0 L 210 47.5 A 40 40 0 1 0 290 47.5 L 290 0 Z",
     
-    // 2. Paint (Non-RA) - Merged Left/Right
+    // 2. Paint (Non-RA)
     PAINT: "M 170 0 L 170 190 L 330 190 L 330 0 L 290 0 L 290 47.5 A 40 40 0 1 1 210 47.5 L 210 0 Z",
     
     // 3. Mid-Range Left
@@ -35,13 +36,34 @@ const ZONE_PATHS = {
     C3_R: "M 470 0 L 500 0 L 500 140 L 470 140 Z",
 };
 
+// Layer 2: Court Lines (Static Overlay)
+const COURT_LINES = {
+    // Outer Boundary (Optional, mainly for stroke)
+    BOUNDARY: "M 0 0 L 500 0 L 500 470 L 0 470 Z",
+    // 3-Point Line (Corner + Arc)
+    THREE_POINT: "M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0",
+    // Paint Area (Key)
+    KEY: "M 170 0 L 170 190 L 330 190 L 330 0",
+    // Free Throw Circle (Top Semi-Circle)
+    FT_CIRCLE_TOP: "M 330 190 A 80 80 0 0 0 170 190",
+    // Free Throw Circle (Bottom Semi-Circle - Dashed usually, but solid for simplicity here)
+    FT_CIRCLE_BOTTOM: "M 170 190 A 80 80 0 0 0 330 190",
+    // Restricted Area Arc
+    RESTRICTED: "M 210 0 L 210 47.5 A 40 40 0 1 0 290 47.5 L 290 0",
+    // Backboard (Approx)
+    BACKBOARD: "M 220 40 L 280 40",
+    // Hoop
+    HOOP: "M 250 47.5 A 7.5 7.5 0 1 0 250 47.6", // Small circle
+};
+
 const getZoneColor = (makes: number, attempts: number, leagueAvg: number) => {
-    if (attempts === 0) return { fill: 'rgba(30, 41, 59, 0.3)', stroke: '#334155', opacity: 0.3 };
+    if (attempts === 0) return { fill: 'rgba(15, 23, 42, 0.4)', stroke: 'none', opacity: 1 }; // Slate-900 (Background-ish)
     
     const pct = makes / attempts;
-    if (pct >= leagueAvg + 0.05) return { fill: 'rgba(239, 68, 68, 0.6)', stroke: '#f87171', opacity: 0.8 }; // Hot (Red)
-    if (pct <= leagueAvg - 0.05) return { fill: 'rgba(59, 130, 246, 0.6)', stroke: '#60a5fa', opacity: 0.8 }; // Cold (Blue)
-    return { fill: 'rgba(234, 179, 8, 0.5)', stroke: '#facc15', opacity: 0.8 }; // Avg (Yellow)
+    // Using slightly more opaque colors for better visibility under the white lines
+    if (pct >= leagueAvg + 0.05) return { fill: '#ef4444', stroke: 'none', opacity: 0.8 }; // Hot (Red-500)
+    if (pct <= leagueAvg - 0.05) return { fill: '#3b82f6', stroke: 'none', opacity: 0.8 }; // Cold (Blue-500)
+    return { fill: '#eab308', stroke: 'none', opacity: 0.8 }; // Avg (Yellow-500)
 };
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -58,7 +80,6 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     // Helper to safe get stats or 0 (Defensive against undefined)
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
-    // Combine Left and Right Paint for the new 1-zone Paint
     const paintM = (s.zone_paint_l_m || 0) + (s.zone_paint_r_m || 0);
     const paintA = (s.zone_paint_l_a || 0) + (s.zone_paint_r_a || 0);
 
@@ -75,18 +96,15 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
         atb3R: getZ(s.zone_atb3_r_m, s.zone_atb3_r_a),
     };
 
-    // League Averages (Approx)
+    // League Averages
     const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
 
     const zones = [
-        // Inside
         { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area" },
         { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint" },
-        // Mid-Range
         { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left" },
         { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center" },
         { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right" },
-        // 3-Pointers
         { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L" },
         { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L" },
         { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3" },
@@ -116,10 +134,18 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         {zones.map((z, i) => {
                              const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(1) : '-';
+                             const isHot = pct !== '-' && Number(pct) > z.avg*100 + 5;
+                             const isCold = pct !== '-' && Number(pct) < z.avg*100 - 5;
+                             
+                             let colorClass = 'text-slate-300';
+                             if (isHot) colorClass = 'text-red-400';
+                             if (isCold) colorClass = 'text-blue-400';
+                             if (pct !== '-' && !isHot && !isCold) colorClass = 'text-yellow-400';
+
                              return (
                                  <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-14">
                                      <span className="text-[9px] font-bold text-slate-500 truncate w-full">{z.label}</span>
-                                     <span className={`text-sm font-black ${pct !== '-' && Number(pct) > z.avg*100 ? 'text-red-400' : 'text-slate-300'}`}>{pct}%</span>
+                                     <span className={`text-sm font-black ${colorClass}`}>{pct}%</span>
                                      <span className="text-[9px] font-mono text-slate-600">{z.data.m}/{z.data.a}</span>
                                  </div>
                              )
@@ -133,40 +159,43 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
                         <span>SHOT CHART</span>
                         <div className="flex gap-2 text-[9px]">
-                            <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500/50 rounded-sm"></div> HOT</span>
-                            <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500/50 rounded-sm"></div> AVG</span>
-                            <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500/50 rounded-sm"></div> COLD</span>
+                            <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm"></div> HOT</span>
+                            <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500 rounded-sm"></div> AVG</span>
+                            <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500 rounded-sm"></div> COLD</span>
                         </div>
                     </h5>
                     <div className="relative w-full aspect-[500/470] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
                         <svg viewBox="0 0 500 470" className="w-full h-full transform rotate-180 scale-x-[-1]">
-                            {/* Background Court Lines */}
+                            {/* Layer 0: Background */}
                             <rect x="0" y="0" width="500" height="470" fill="#0f172a" />
                             
-                            {/* Zones */}
-                            {zones.map((z, i) => {
-                                const style = getZoneColor(z.data.m, z.data.a, z.avg);
-                                return (
-                                    <path 
-                                        key={i} 
-                                        d={z.path} 
-                                        fill={style.fill} 
-                                        stroke={style.stroke} 
-                                        strokeWidth="2"
-                                        strokeOpacity="0.8"
-                                        className="transition-all duration-300 hover:opacity-100 cursor-help"
-                                    >
-                                        <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
-                                    </path>
-                                );
-                            })}
-                            
-                            {/* Minimalist Court Markings Overlay (3PT Line & Key only for reference) */}
-                            <g fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeOpacity="0.1" pointerEvents="none">
-                                {/* Key Box */}
-                                <rect x="170" y="0" width="160" height="190" />
-                                {/* 3PT Line Approximation */}
-                                <path d="M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0" />
+                            {/* Layer 1: Shot Zones (Heatmap) */}
+                            <g className="zones">
+                                {zones.map((z, i) => {
+                                    const style = getZoneColor(z.data.m, z.data.a, z.avg);
+                                    return (
+                                        <path 
+                                            key={i} 
+                                            d={z.path} 
+                                            fill={style.fill} 
+                                            fillOpacity={style.opacity}
+                                            stroke={style.stroke}
+                                            className="transition-all duration-300 hover:fill-opacity-100 cursor-help"
+                                        >
+                                            <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
+                                        </path>
+                                    );
+                                })}
+                            </g>
+
+                            {/* Layer 2: Court Lines Overlay (Static White Lines) */}
+                            <g className="court-lines" fill="none" stroke="#e2e8f0" strokeWidth="2" strokeOpacity="0.8" pointerEvents="none">
+                                <path d={COURT_LINES.THREE_POINT} />
+                                <path d={COURT_LINES.KEY} />
+                                <path d={COURT_LINES.FT_CIRCLE_TOP} />
+                                <path d={COURT_LINES.RESTRICTED} />
+                                <path d={COURT_LINES.BACKBOARD} strokeWidth="3" />
+                                <path d={COURT_LINES.HOOP} strokeWidth="2" stroke="#f97316" />
                             </g>
                         </svg>
                     </div>
