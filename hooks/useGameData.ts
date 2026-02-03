@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, saveCheckpoint, releaseSessionLock, checkSessionLock, acquireSessionLock } from '../services/persistence'; // Added checks
+import { loadCheckpoint, loadUserHistory, saveCheckpoint, checkSessionLock, acquireSessionLock } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 
@@ -41,7 +41,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
 
     // ------------------------------------------------------------------
-    //  INIT LOGIC: Load & Replay (Auto-Login Handling)
+    //  INIT LOGIC: Load & Session Lock (Loop Fix: Takeover Mode)
     // ------------------------------------------------------------------
     useEffect(() => {
         if (hasInitialLoadRef.current || isResettingRef.current) return;
@@ -64,37 +64,30 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     return;
                 }
 
-                // [Auto-Login Lock Check]
-                // 1. Get or Create Tab-specific Session ID (persisted in sessionStorage for refresh)
-                let myTabId = sessionStorage.getItem('nbagm_tab_id');
-                if (!myTabId) {
-                    myTabId = crypto.randomUUID();
-                    sessionStorage.setItem('nbagm_tab_id', myTabId);
+                // [Session Locking: Single Source of Truth]
+                // 1. Get Stable Device ID from LocalStorage (Persists across tabs/refreshes)
+                let myDeviceId = localStorage.getItem('nbagm_device_id');
+                if (!myDeviceId) {
+                    myDeviceId = crypto.randomUUID();
+                    localStorage.setItem('nbagm_device_id', myDeviceId);
                 }
 
-                // 2. Check DB Lock status
+                // 2. Check DB Status
                 const activeDevice = await checkSessionLock(userId);
+
+                // 3. Logic: "I Am The Captain Now"
+                // Even if DB has a different ID, if we just logged in (which triggers this load),
+                // we assume the old session is stale or invalid. We overwrite it.
+                // This breaks the infinite loop where the client waits for a lock it can never clear.
                 
-                // 3. Logic:
-                // - If DB has ID and it's NOT mine -> Someone else is playing. Block.
-                // - If DB is NULL -> Tab was closed/released. Acquire lock.
-                // - If DB has ID and it IS mine -> Refresh page. OK.
+                if (activeDevice && activeDevice !== myDeviceId) {
+                    console.log("⚠️ Found stale session lock. Overwriting with current session.");
+                }
                 
-                if (activeDevice && activeDevice !== myTabId) {
-                     console.warn("⛔ Auto-login Blocked: Another session active.");
-                     alert("다른 기기나 탭에서 이미 접속 중입니다. \n(기존 탭을 닫았다면 잠시 후 다시 시도하거나 로그아웃 후 재접속하세요.)");
-                     await (supabase.auth as any).signOut(); // Force logout to clear stale state
-                     window.location.reload();
-                     return;
-                }
+                // Always acquire/refresh lock on load
+                await acquireSessionLock(userId, myDeviceId);
 
-                if (!activeDevice || activeDevice !== myTabId) {
-                     console.log("🔒 Acquiring Session Lock for Auto-login...");
-                     await acquireSessionLock(userId, myTabId);
-                }
-
-                // --- Proceed with Data Load ---
-
+                // 4. Data Load
                 const checkpoint = await loadCheckpoint(userId);
 
                 if (checkpoint && checkpoint.team_id) {
@@ -152,41 +145,44 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     }, [baseData, isBaseDataLoading, isGuestMode, session]);
 
     // ------------------------------------------------------------------
-    //  LOCK CLEANUP (On Window Close/Refresh)
-    //  This is a best-effort attempt to unlock the session if the user closes the tab.
+    //  SESSION WATCHDOG (Realtime Conflict Detection)
+    //  If another device takes the lock *after* we loaded, we should leave.
     // ------------------------------------------------------------------
     useEffect(() => {
-        if (isGuestMode || !session?.user) return;
+        if (!session?.user?.id || isGuestMode) return;
 
-        const handleUnload = () => {
-            // Using sendBeacon for reliable transmission on close
-            const url = `${process.env.REACT_APP_SUPABASE_URL}/rest/v1/profiles?id=eq.${session.user.id}`;
-            const headers = {
-                'Authorization': `Bearer ${session.access_token}`,
-                'apikey': process.env.REACT_APP_SUPABASE_ANON_KEY!,
-                'Content-Type': 'application/json',
-                'Prefer': 'return=minimal'
-            };
-            const body = JSON.stringify({ active_device_id: null });
-            
-            if (navigator.sendBeacon) {
-                const blob = new Blob([body], { type: 'application/json' });
-                // Note: sendBeacon doesn't support PATCH directly in some setups, but Supabase REST supports PATCH.
-                // Since sendBeacon is POST, we might need a custom RPC or just rely on fetch with keepalive.
-                // Trying fetch with keepalive as it's standard for this now.
-                fetch(url, {
-                    method: 'PATCH',
-                    headers: headers,
-                    body: body,
-                    keepalive: true
-                }).catch(e => console.error("Lock release failed", e));
-            }
+        const myDeviceId = localStorage.getItem('nbagm_device_id');
+        if (!myDeviceId) return;
+
+        // Subscribe to changes on my profile
+        const channel = supabase
+            .channel('profile_lock_watch')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'profiles',
+                    filter: `id=eq.${session.user.id}`
+                },
+                (payload) => {
+                    const newLock = payload.new.active_device_id;
+                    // If lock changes to something that is NOT me, and IS NOT null (null = logout)
+                    if (newLock && newLock !== myDeviceId) {
+                        console.warn("⛔ Session Conflict: Another device took the lock.");
+                        alert("다른 기기에서 접속하여 현재 세션이 종료됩니다.");
+                        // Perform local cleanup and refresh to login screen
+                        // Don't call signOut() API to avoid killing the other session
+                        window.location.reload(); 
+                    }
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
         };
-
-        window.addEventListener('beforeunload', handleUnload);
-        return () => window.removeEventListener('beforeunload', handleUnload);
     }, [session, isGuestMode]);
-
 
     // ------------------------------------------------------------------
     //  ACTIONS: Save, Select Team, Reset
@@ -261,8 +257,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setPlayoffSeries([]);
             setUserTactics(null);
             hasInitialLoadRef.current = false;
-            
-            // Re-acquire lock logic is implicitly handled because we don't clear it on reset, just data.
 
             return { success: true };
         } catch (e) {
