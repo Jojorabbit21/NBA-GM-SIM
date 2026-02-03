@@ -1,42 +1,22 @@
 
 import React from 'react';
 import { Player } from '../types';
+import { getProjectedZoneDensity } from '../services/game/engine/shotDistribution';
 
 // 435 x 403 Canvas Coordinate System (Derived from provided SVG)
-// Layer 1: Shot Zones (Heatmap Areas)
 const ZONE_PATHS = {
-    // 10. 3PT Center (Top)
     ATB3_C: "M.8,64.3V.6h433v63.7l-114.1,114.1-.3-.2c-30.9-17.8-66.2-27.2-102-27.2s-71.2,9.4-102,27.2l-.3.2L.8,64.3Z",
-    
-    // 4. Mid Center
     MID_C: "M81.9,202.6l.4-.4c37.2-32.8,85.1-50.8,135-50.8s97.8,18,135,50.8l.4.4-66.8,66.8v-32h-137.2v32l-66.8-66.8Z",
-    
-    // 9. 3PT Right Wing
     ATB3_R: "M407.1,278.7l-.2-.3c-15.3-37.3-40.9-68.9-74.1-91.7-4.3-3-8.8-5.8-13.4-8.4l-.6-.3,115-115v215.8h-26.7Z",
-    
-    // 5. Mid Right
     MID_R: "M285.9,401.6v-133.6l66.1-66.1.4.3c23.4,20.6,42.1,47,54.1,76.1h0v123.2h-120.5Z",
-    
-    // 7. 3PT Left Wing
     ATB3_L: "M.8,278.7V62.9l115,115-.6.3c-4.6,2.6-9.1,5.5-13.4,8.4-33.3,22.8-58.9,54.4-74.1,91.6v.2c-.1,0-.3.2-.3.2H.8Z",
-    
-    // 3. Mid Left
     MID_L: "M28.2,401.6v-123.1h0c11.9-29.2,30.6-55.6,54.1-76.2l.4-.3,66.1,66.1v133.6H28.2Z",
-    
-    // 10. 3PT Right Corner (Rect)
     C3_R: "M406.9,277.7h26.9v123.9h-26.9Z",
-    
-    // 2. Paint (Non-RA) (Rect) - Note: Visually covers Rim, drawn first
     PAINT: "M149.1,237.9h136.4v163.7h-136.4Z",
-    
-    // 1. Rim (Rect)
     RIM: "M149.1,318.5h136.4v83.1h-136.4Z",
-    
-    // 6. 3PT Left Corner (Rect)
     C3_L: "M.8,277.7h26.9v123.9h-26.9Z",
 };
 
-// Layer 2: Court Lines (Static Overlay - Goal removed)
 const COURT_LINES = [
   "M1.3,1.5h432v399.6H1.3V1.5M-.1,0v402.5h434.9V0H-.1Z", // Outline
   "M149.6,238.4h135.4v162.7h-135.4v-162.7M148.2,236.9v165.6h138.2v-165.6h-138.2Z", // Key
@@ -46,15 +26,6 @@ const COURT_LINES = [
   "M252.9,355.9v10.7h-1.4v-10.7c0-18.9-15.3-34.2-34.2-34.2s-34.2,15.3-34.2,34.2v10.7h-1.4v-10.7c0-19.6,16-35.6,35.6-35.6s35.6,16,35.6,35.6Z", // Restricted Area Arc
   "M407.4,278.3v122.8h-1.4v-122.5c-31.5-76.9-105.5-126.6-188.6-126.6S60.2,201.7,28.7,278.6v122.5h-1.4v-122.9h0c15.2-37.4,40.9-69.1,74.3-91.9,34.2-23.4,74.2-35.7,115.7-35.7s81.6,12.4,115.7,35.7c33.4,22.8,59,54.6,74.3,91.9h0Z" // 3PT Arc
 ];
-
-const getZoneColor = (makes: number, attempts: number, leagueAvg: number) => {
-    if (attempts === 0) return { fill: '#1e293b', opacity: 0.3 }; // Slate-800
-    
-    const pct = makes / attempts;
-    if (pct >= leagueAvg + 0.05) return { fill: '#ef4444', opacity: 0.9 }; // Hot (Red-500)
-    if (pct <= leagueAvg - 0.05) return { fill: '#3b82f6', opacity: 0.9 }; // Cold (Blue-500)
-    return { fill: '#eab308', opacity: 0.9 }; // Avg (Yellow-500)
-};
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
     <div className="flex flex-col items-center justify-center">
@@ -67,12 +38,14 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     const s = player.stats;
     if (!s) return null;
 
-    // Helper to safe get stats or 0 (Defensive against undefined)
+    // Use total FGA to determine mode: Scouting (Low sample) vs Data (High sample)
+    const totalFGA = s.fga;
+    const isScoutingMode = totalFGA < 20; // Show projections if less than 20 shots
+
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
     const zData = {
         rim: getZ(s.zone_rim_m, s.zone_rim_a),
-        // Use single paint zone from type definition
         paint: getZ(s.zone_paint_m, s.zone_paint_a),
         midL: getZ(s.zone_mid_l_m, s.zone_mid_l_a),
         midC: getZ(s.zone_mid_c_m, s.zone_mid_c_a),
@@ -84,21 +57,40 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
         atb3R: getZ(s.zone_atb3_r_m, s.zone_atb3_r_a),
     };
 
-    // League Averages
     const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
 
+    // Get projected densities for Scouting Mode
+    const projected = isScoutingMode ? getProjectedZoneDensity(player) : null;
+
+    // Helper to determine style
+    const getZoneStyle = (key: string, makes: number, attempts: number, avg: number) => {
+        if (isScoutingMode && projected) {
+            // Scouting Mode: Show predicted hot zones in grayscale/slate
+            const density = projected[key as keyof typeof projected];
+            // Opacity proportional to density, min 0.1, max 0.8
+            return { fill: '#94a3b8', opacity: 0.1 + (density * 0.7), isHot: false, isCold: false }; 
+        }
+
+        // Data Mode: Show actual efficiency
+        if (attempts === 0) return { fill: '#1e293b', opacity: 0.3, isHot: false, isCold: false }; // Slate-800
+        
+        const pct = makes / attempts;
+        if (pct >= avg + 0.05) return { fill: '#ef4444', opacity: 0.9, isHot: true, isCold: false }; // Hot
+        if (pct <= avg - 0.05) return { fill: '#3b82f6', opacity: 0.9, isHot: false, isCold: true }; // Cold
+        return { fill: '#eab308', opacity: 0.9, isHot: false, isCold: false }; // Avg
+    };
+
     const zones = [
-        // Order matters for layering! Paint first, then Rim.
-        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint" },
-        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area" },
-        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left" },
-        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center" },
-        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right" },
-        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L" },
-        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L" },
-        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3" },
-        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R" },
-        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R" },
+        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint", key: 'paint' },
+        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area", key: 'rim' },
+        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left", key: 'midL' },
+        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center", key: 'midC' },
+        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right", key: 'midR' },
+        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L", key: 'c3L' },
+        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L", key: 'atb3L' },
+        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3", key: 'atb3C' },
+        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R", key: 'atb3R' },
+        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R", key: 'c3R' },
     ];
 
     const row1 = [
@@ -119,22 +111,26 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                 </div>
                 
                 <div className="flex flex-col gap-1 mt-2">
-                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">10-Zone Efficiency</h5>
+                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
+                         <span>10-Zone Efficiency</span>
+                         {isScoutingMode && <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SCOUTING REPORT MODE</span>}
+                     </h5>
                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         {zones.map((z, i) => {
+                             const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
                              const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(1) : '-';
-                             const isHot = pct !== '-' && Number(pct) > z.avg*100 + 5;
-                             const isCold = pct !== '-' && Number(pct) < z.avg*100 - 5;
                              
-                             let colorClass = 'text-slate-300';
-                             if (isHot) colorClass = 'text-red-400';
-                             if (isCold) colorClass = 'text-blue-400';
-                             if (pct !== '-' && !isHot && !isCold) colorClass = 'text-yellow-400';
+                             let colorClass = 'text-slate-500';
+                             if (!isScoutingMode) {
+                                 if (style.isHot) colorClass = 'text-red-400';
+                                 else if (style.isCold) colorClass = 'text-blue-400';
+                                 else if (pct !== '-') colorClass = 'text-yellow-400';
+                             }
 
                              return (
                                  <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-14">
                                      <span className="text-[9px] font-bold text-slate-500 truncate w-full">{z.label}</span>
-                                     <span className={`text-sm font-black ${colorClass}`}>{pct}%</span>
+                                     <span className={`text-sm font-black ${colorClass}`}>{pct === '-' ? 'N/A' : `${pct}%`}</span>
                                      <span className="text-[9px] font-mono text-slate-600">{z.data.m}/{z.data.a}</span>
                                  </div>
                              )
@@ -147,11 +143,15 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                 <div className="flex flex-col gap-1 w-full max-w-[350px]">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
                         <span>SHOT CHART</span>
-                        <div className="flex gap-2 text-[9px]">
-                            <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm"></div> HOT</span>
-                            <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500 rounded-sm"></div> AVG</span>
-                            <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500 rounded-sm"></div> COLD</span>
-                        </div>
+                        {!isScoutingMode ? (
+                            <div className="flex gap-2 text-[9px]">
+                                <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm"></div> HOT</span>
+                                <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500 rounded-sm"></div> AVG</span>
+                                <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500 rounded-sm"></div> COLD</span>
+                            </div>
+                        ) : (
+                            <span className="text-[9px] text-slate-400 flex items-center gap-1">PROJECTED ZONES</span>
+                        )}
                     </h5>
                     <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
                         <svg viewBox="0 0 435 403" className="w-full h-full">
@@ -161,7 +161,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                             {/* Layer 1: Shot Zones (Heatmap) */}
                             <g className="zones">
                                 {zones.map((z, i) => {
-                                    const style = getZoneColor(z.data.m, z.data.a, z.avg);
+                                    const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
                                     return (
                                         <path 
                                             key={i} 
