@@ -2,31 +2,37 @@
 import React from 'react';
 import { Player } from '../types';
 
-// Simplified Paths for Robust Rendering (Approximation of 11 Zones)
-// 500 x 470 Canvas
+// 500 x 470 Canvas Coordinate System
 const ZONE_PATHS = {
-    // 1. Rim
-    RIM: "M 250 47.5 m -40 0 a 40 40 0 1 0 80 0 a 40 40 0 1 0 -80 0", 
-    // 2. Paint Left
-    PAINT_L: "M 170 0 L 250 0 L 250 190 L 170 190 Z",
-    // 3. Paint Right
-    PAINT_R: "M 250 0 L 330 0 L 330 190 L 250 190 Z",
-    // 4. Mid Left
-    MID_L: "M 30 0 L 170 0 L 170 140 L 30 140 Z",
-    // 5. Mid Center (Top Key)
-    MID_C: "M 170 140 L 330 140 L 330 190 L 170 190 Z",
-    // 6. Mid Right
-    MID_R: "M 330 0 L 470 0 L 470 140 L 330 140 Z",
-    // 7. Corner 3 Left
+    // 1. Restricted Area (Goal)
+    RIM: "M 210 0 L 210 47.5 A 40 40 0 1 0 290 47.5 L 290 0 Z",
+    
+    // 2. Paint (Non-RA) - Merged Left/Right
+    PAINT: "M 170 0 L 170 190 L 330 190 L 330 0 L 290 0 L 290 47.5 A 40 40 0 1 1 210 47.5 L 210 0 Z",
+    
+    // 3. Mid-Range Left
+    MID_L: "M 30 0 L 170 0 L 170 190 L 138 190 L 30 140 Z",
+    
+    // 4. Mid-Range Center
+    MID_C: "M 138 190 L 170 190 L 330 190 L 362 190 L 320 280 A 100 100 0 0 1 180 280 Z",
+    
+    // 5. Mid-Range Right
+    MID_R: "M 330 0 L 470 0 L 470 140 L 362 190 L 330 190 Z",
+    
+    // 6. 3PT Left Corner
     C3_L: "M 0 0 L 30 0 L 30 140 L 0 140 Z",
-    // 8. Corner 3 Right
+    
+    // 7. 3PT Left Wing
+    ATB3_L: "M 0 140 L 30 140 L 138 190 L 180 280 L 100 470 L 0 470 Z",
+    
+    // 8. 3PT Center
+    ATB3_C: "M 180 280 A 100 100 0 0 0 320 280 L 400 470 L 100 470 Z",
+    
+    // 9. 3PT Right Wing
+    ATB3_R: "M 470 140 L 500 140 L 500 470 L 400 470 L 320 280 L 362 190 Z",
+
+    // 10. 3PT Right Corner
     C3_R: "M 470 0 L 500 0 L 500 140 L 470 140 Z",
-    // 9. ATB 3 Left
-    ATB3_L: "M 0 140 L 170 140 L 170 470 L 0 470 Z",
-    // 10. ATB 3 Center
-    ATB3_C: "M 170 190 L 330 190 L 330 470 L 170 470 Z",
-    // 11. ATB 3 Right
-    ATB3_R: "M 330 140 L 500 140 L 500 470 L 330 470 Z"
 };
 
 const getZoneColor = (makes: number, attempts: number, leagueAvg: number) => {
@@ -52,10 +58,13 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     // Helper to safe get stats or 0 (Defensive against undefined)
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
+    // Combine Left and Right Paint for the new 1-zone Paint
+    const paintM = (s.zone_paint_l_m || 0) + (s.zone_paint_r_m || 0);
+    const paintA = (s.zone_paint_l_a || 0) + (s.zone_paint_r_a || 0);
+
     const zData = {
         rim: getZ(s.zone_rim_m, s.zone_rim_a),
-        paintL: getZ(s.zone_paint_l_m, s.zone_paint_l_a),
-        paintR: getZ(s.zone_paint_r_m, s.zone_paint_r_a),
+        paint: { m: paintM, a: paintA },
         midL: getZ(s.zone_mid_l_m, s.zone_mid_l_a),
         midC: getZ(s.zone_mid_c_m, s.zone_mid_c_a),
         midR: getZ(s.zone_mid_r_m, s.zone_mid_r_a),
@@ -70,17 +79,19 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
 
     const zones = [
-        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "RIM" },
-        { path: ZONE_PATHS.PAINT_L, data: zData.paintL, avg: AVG.paint, label: "PAINT L" },
-        { path: ZONE_PATHS.PAINT_R, data: zData.paintR, avg: AVG.paint, label: "PAINT R" },
-        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "MID L" },
-        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "MID C" },
-        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "MID R" },
-        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "C3 L" },
-        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "C3 R" },
-        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "3PT L" },
-        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "3PT TOP" },
-        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "3PT R" },
+        // Inside
+        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area" },
+        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint" },
+        // Mid-Range
+        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left" },
+        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center" },
+        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right" },
+        // 3-Pointers
+        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L" },
+        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L" },
+        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3" },
+        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R" },
+        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R" },
     ];
 
     const row1 = [
@@ -101,17 +112,15 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                 </div>
                 
                 <div className="flex flex-col gap-1 mt-2">
-                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">11-Zone Efficiency</h5>
-                     <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">10-Zone Efficiency</h5>
+                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                         {zones.map((z, i) => {
                              const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(1) : '-';
                              return (
-                                 <div key={i} className="flex justify-between items-center bg-slate-900/40 p-2 rounded border border-slate-800/50">
-                                     <span className="text-[10px] font-bold text-slate-500">{z.label}</span>
-                                     <div className="flex gap-2">
-                                         <span className="text-xs font-mono text-slate-300">{z.data.m}/{z.data.a}</span>
-                                         <span className={`text-xs font-black w-10 text-right ${pct !== '-' && Number(pct) > z.avg*100 ? 'text-red-400' : 'text-slate-500'}`}>{pct}%</span>
-                                     </div>
+                                 <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-14">
+                                     <span className="text-[9px] font-bold text-slate-500 truncate w-full">{z.label}</span>
+                                     <span className={`text-sm font-black ${pct !== '-' && Number(pct) > z.avg*100 ? 'text-red-400' : 'text-slate-300'}`}>{pct}%</span>
+                                     <span className="text-[9px] font-mono text-slate-600">{z.data.m}/{z.data.a}</span>
                                  </div>
                              )
                         })}
@@ -130,7 +139,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                         </div>
                     </h5>
                     <div className="relative w-full aspect-[500/470] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
-                        <svg viewBox="0 0 500 470" className="w-full h-full transform rotate-180 scale-x-[-1]"> {/* Rotate to match Basketball court orientation (Hoop at top or bottom depending on preference, usually hoop at bottom for charts) -> actually standard charts have hoop at top (0,0) or bottom. My coords assume 0,0 top-left. Let's flip it so 0,0 is baseline. */}
+                        <svg viewBox="0 0 500 470" className="w-full h-full transform rotate-180 scale-x-[-1]">
                             {/* Background Court Lines */}
                             <rect x="0" y="0" width="500" height="470" fill="#0f172a" />
                             
@@ -143,33 +152,23 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                                         d={z.path} 
                                         fill={style.fill} 
                                         stroke={style.stroke} 
-                                        strokeWidth="1"
-                                        strokeOpacity="0.5"
-                                        className="transition-all duration-300 hover:opacity-100"
+                                        strokeWidth="2"
+                                        strokeOpacity="0.8"
+                                        className="transition-all duration-300 hover:opacity-100 cursor-help"
                                     >
                                         <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
                                     </path>
                                 );
                             })}
                             
-                            {/* Court Markings Overlay (Hoop, 3pt line visual guide) */}
-                            <g fill="none" stroke="#e2e8f0" strokeWidth="2" strokeOpacity="0.1" pointerEvents="none">
-                                {/* Hoop */}
-                                <circle cx="250" cy="52.5" r="7.5" stroke="orange" strokeOpacity="0.5" /> 
-                                {/* Backboard */}
-                                <line x1="220" y1="40" x2="280" y2="40" stroke="white" strokeOpacity="0.3" />
-                                {/* Key */}
+                            {/* Minimalist Court Markings Overlay (3PT Line & Key only for reference) */}
+                            <g fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeOpacity="0.1" pointerEvents="none">
+                                {/* Key Box */}
                                 <rect x="170" y="0" width="160" height="190" />
-                                <circle cx="250" cy="190" r="60" />
-                                {/* 3PT Line (Approx) */}
+                                {/* 3PT Line Approximation */}
                                 <path d="M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0" />
                             </g>
                         </svg>
-                        
-                        {/* Overlay Text (optional, maybe too cluttered) */}
-                        <div className="absolute top-2 left-2 text-[9px] text-slate-600 font-mono pointer-events-none">
-                            11-Zone System
-                        </div>
                     </div>
                 </div>
             </div>
