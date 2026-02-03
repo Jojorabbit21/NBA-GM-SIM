@@ -73,8 +73,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
         }
 
         // Data Mode: Show actual efficiency
-        // No stroke, just fill with opacity
-        if (attempts === 0) return { fill: '#1e293b', opacity: 0.2, isHot: false, isCold: false }; // Slate-800
+        // [Visual Update] Treat 0 attempts as Cold (Red) instead of Slate
+        if (attempts === 0) return { fill: '#ef4444', opacity: 0.35, isHot: false, isCold: true }; 
         
         const pct = makes / attempts;
         if (pct >= avg + 0.05) return { fill: '#10b981', opacity: 0.35, isHot: true, isCold: false }; // Hot (Green/Emerald)
@@ -207,8 +207,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                     
                     <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
                         <svg viewBox="0 0 435 403" className="w-full h-full">
-                            {/* Layer 0: Background */}
-                            <rect x="0" y="0" width="435" height="403" fill="#0f172a" />
+                            {/* Layer 0: Background (Slate-950) to contrast with Slate-900 lines */}
+                            <rect x="0" y="0" width="435" height="403" fill="#020617" />
                             
                             {/* Layer 1: Shot Zones (Heatmap) */}
                             <g className="zones">
@@ -229,8 +229,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                 })}
                             </g>
 
-                            {/* Layer 2: Court Lines Overlay (Darker than background: Slate-700) */}
-                            <g className="court-lines" fill="none" stroke="#334155" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
+                            {/* Layer 2: Court Lines Overlay (Slate-900) */}
+                            <g className="court-lines" fill="none" stroke="#0f172a" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
                                 {COURT_LINES.map((d, i) => (
                                     <path key={i} d={d} />
                                 ))}
@@ -249,24 +249,25 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                         let textFill = '#94a3b8'; // slate-400
                                         let borderStroke = '#334155'; // slate-700
 
-                                        if (z.data.a > 0) {
-                                            if (style.isHot) {
-                                                pillFill = '#064e3b'; // emerald-900
-                                                textFill = '#34d399'; // emerald-400
-                                                borderStroke = '#059669'; // emerald-600
-                                            } else if (style.isCold) {
-                                                pillFill = '#7f1d1d'; // red-900
-                                                textFill = '#f87171'; // red-400
-                                                borderStroke = '#dc2626'; // red-600
-                                            } else {
-                                                pillFill = '#431407'; // orange-950/brown
-                                                textFill = '#fb923c'; // orange-400
-                                                borderStroke = '#d97706'; // orange-600
-                                            }
+                                        if (style.isHot) {
+                                            pillFill = '#064e3b'; // emerald-900
+                                            textFill = '#34d399'; // emerald-400
+                                            borderStroke = '#059669'; // emerald-600
+                                        } else if (style.isCold) {
+                                            // Handle Cold / No Data (Red)
+                                            pillFill = '#7f1d1d'; // red-900
+                                            textFill = '#f87171'; // red-400
+                                            borderStroke = '#dc2626'; // red-600
+                                        } else if (z.data.a > 0) {
+                                            // Avg (Orange)
+                                            pillFill = '#431407'; // orange-950/brown
+                                            textFill = '#fb923c'; // orange-400
+                                            borderStroke = '#d97706'; // orange-600
                                         }
 
-                                        const width = 24;
-                                        const height = 14;
+                                        // Increased Padding (+2px total width/height for 1px padding on all sides)
+                                        const width = 26; 
+                                        const height = 16; 
 
                                         return (
                                             <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -285,7 +286,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                                     textAnchor="middle" 
                                                     y={3.5} 
                                                     fill={textFill} 
-                                                    fontSize="10px" 
+                                                    fontSize="11px" // Increased Font Size
                                                     fontWeight="700" 
                                                 >
                                                     {pct}%
