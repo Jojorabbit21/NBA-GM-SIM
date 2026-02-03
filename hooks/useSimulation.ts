@@ -7,7 +7,7 @@ import { simulateCPUTrades } from '../services/tradeEngine';
 import { INITIAL_STATS, TRADE_DEADLINE, SEASON_START_DATE } from '../utils/constants';
 import { saveGameResults, saveUserTransaction } from '../services/queries';
 import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
-import { sendMessage } from '../services/messageService'; // Added
+import { sendMessage } from '../services/messageService';
 import { checkAndInitPlayoffs, generateNextPlayoffGames, advancePlayoffState } from '../utils/playoffLogic';
 import { updateTeamTacticHistory } from '../utils/tacticUtils';
 
@@ -24,7 +24,7 @@ export const useSimulation = (
     triggerSave: (overrides?: any) => void,
     session: any,
     isGuestMode: boolean,
-    refreshUnreadCount: () => void // Added: Callback to refresh sidebar badge
+    refreshUnreadCount: () => void
 ) => {
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
@@ -34,7 +34,7 @@ export const useSimulation = (
     const updatedTeamsRef = useRef(teams);
     useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
 
-    // [Playoff Hook] Generate Schedule & Advance Rounds Automatically (Preserved)
+    // [Playoff Hook] Generate Schedule & Advance Rounds Automatically
     useEffect(() => {
         if (!teams || teams.length === 0 || !schedule || schedule.length === 0) return;
 
@@ -97,13 +97,13 @@ export const useSimulation = (
             localStorage.removeItem(nextDayKey);
         }
         
-        // [Trade Logic] (Preserved & Enhanced with Messaging)
+        // [Trade Logic]
         const deadline = new Date(TRADE_DEADLINE);
         const start = new Date(SEASON_START_DATE);
         const current = new Date(nextDate);
         const recoveredPlayers: string[] = [];
         const recoveryTransactions: Transaction[] = [];
-        const dailyTrades: Transaction[] = []; // Store for Daily Report
+        const dailyTrades: Transaction[] = []; 
 
         let newTeams = [...teams];
 
@@ -122,29 +122,36 @@ export const useSimulation = (
                     const { updatedTeams, transaction } = tradeResult;
                     newTeams = updatedTeams;
                     if (transaction) {
-                        // [FIX] Ensure transaction from CPU sim has UUID (handled in API usually, but safe to verify/cast if needed)
-                        // Assuming API returns valid structure. If not, would need patching.
+                        // [FIX] Assign ID and save to DB
+                        transaction.id = crypto.randomUUID();
+                        transaction.date = nextDate; // Ensure date matches current sim date
+
                         dailyTrades.push(transaction); 
                         setTransactions(prev => [transaction, ...prev]);
+                        
                         if (session?.user && !isGuestMode) {
-                            saveUserTransaction(session.user.id, transaction);
+                            console.log("💾 Saving CPU Trade:", transaction);
+                            await saveUserTransaction(session.user.id, transaction);
                         }
                     }
                 }
             }
         }
         
-        // [Inbox] Create Daily Trade Report (Added)
+        // [Inbox] Create Daily Trade Report
         if (dailyTrades.length > 0 && session?.user && !isGuestMode && myTeamId) {
             const tradeContent: TradeAlertContent = {
-                summary: ``, // Removing summary as requested
+                summary: ``, 
                 trades: dailyTrades.map(t => {
                     const team1 = newTeams.find(tm => tm.id === t.teamId);
+                    // Must handle UNKNOWN explicitly if partner not found (shouldn't happen with correct logic)
+                    const partnerTeamName = t.details?.partnerTeamName || 'Unknown';
+                    
                     return {
                         team1Id: t.teamId,
                         team1Name: team1?.name || t.teamId,
                         team2Id: t.details?.partnerTeamId || '',
-                        team2Name: t.details?.partnerTeamName || 'Unknown',
+                        team2Name: partnerTeamName,
                         team1Acquired: t.details?.acquired?.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 0 })) || [],
                         team2Acquired: t.details?.traded?.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 0 })) || [],
                     };
@@ -159,10 +166,10 @@ export const useSimulation = (
                 `[리그 리포트] ${nextDate} 트레이드 소식`,
                 tradeContent
             );
-            refreshUnreadCount(); // Update Sidebar Badge
+            refreshUnreadCount(); 
         }
 
-        // Recovery & Fatigue Logic (Preserved)
+        // Recovery & Fatigue Logic
         newTeams = newTeams.map(t => ({
             ...t,
             roster: t.roster.map(p => {
@@ -180,7 +187,6 @@ export const useSimulation = (
                         }
 
                         const tx: Transaction = {
-                            // [FIX] Use UUID for DB Compatibility
                             id: crypto.randomUUID(),
                             date: nextDate,
                             type: 'InjuryUpdate',
@@ -282,7 +288,6 @@ export const useSimulation = (
                 const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
                 const homeWin = result.homeScore > result.awayScore;
 
-                // Update Team Stats & Tactics History (Preserved)
                 updatedTeams[homeIdx] = { 
                     ...home, 
                     wins: home.wins + (homeWin ? 1 : 0), 
@@ -311,25 +316,21 @@ export const useSimulation = (
                             targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0); targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
                             targetStats.pf = (targetStats.pf || 0) + (box.pf || 0);
 
-                            // [FIX] Accumulate 10-Zone Data for Shot Chart
                             if (box.zoneData) {
                                 targetStats.zone_rim_m = (targetStats.zone_rim_m || 0) + (box.zoneData.zone_rim_m || 0);
                                 targetStats.zone_rim_a = (targetStats.zone_rim_a || 0) + (box.zoneData.zone_rim_a || 0);
                                 targetStats.zone_paint_m = (targetStats.zone_paint_m || 0) + (box.zoneData.zone_paint_m || 0);
                                 targetStats.zone_paint_a = (targetStats.zone_paint_a || 0) + (box.zoneData.zone_paint_a || 0);
-                                
                                 targetStats.zone_mid_l_m = (targetStats.zone_mid_l_m || 0) + (box.zoneData.zone_mid_l_m || 0);
                                 targetStats.zone_mid_l_a = (targetStats.zone_mid_l_a || 0) + (box.zoneData.zone_mid_l_a || 0);
                                 targetStats.zone_mid_c_m = (targetStats.zone_mid_c_m || 0) + (box.zoneData.zone_mid_c_m || 0);
                                 targetStats.zone_mid_c_a = (targetStats.zone_mid_c_a || 0) + (box.zoneData.zone_mid_c_a || 0);
                                 targetStats.zone_mid_r_m = (targetStats.zone_mid_r_m || 0) + (box.zoneData.zone_mid_r_m || 0);
                                 targetStats.zone_mid_r_a = (targetStats.zone_mid_r_a || 0) + (box.zoneData.zone_mid_r_a || 0);
-                                
                                 targetStats.zone_c3_l_m = (targetStats.zone_c3_l_m || 0) + (box.zoneData.zone_c3_l_m || 0);
                                 targetStats.zone_c3_l_a = (targetStats.zone_c3_l_a || 0) + (box.zoneData.zone_c3_l_a || 0);
                                 targetStats.zone_c3_r_m = (targetStats.zone_c3_r_m || 0) + (box.zoneData.zone_c3_r_m || 0);
                                 targetStats.zone_c3_r_a = (targetStats.zone_c3_r_a || 0) + (box.zoneData.zone_c3_r_a || 0);
-                                
                                 targetStats.zone_atb3_l_m = (targetStats.zone_atb3_l_m || 0) + (box.zoneData.zone_atb3_l_m || 0);
                                 targetStats.zone_atb3_l_a = (targetStats.zone_atb3_l_a || 0) + (box.zoneData.zone_atb3_l_a || 0);
                                 targetStats.zone_atb3_c_m = (targetStats.zone_atb3_c_m || 0) + (box.zoneData.zone_atb3_c_m || 0);
@@ -339,11 +340,9 @@ export const useSimulation = (
                             }
                         }
 
-                        // Check for NEW injuries (Preserved + Messaging)
                         if (update && update.health === 'Injured' && p.health !== 'Injured') {
                             const isMyPlayer = t.id === myTeamId;
                             const tx: Transaction = {
-                                // [FIX] Use UUID for DB Compatibility
                                 id: crypto.randomUUID(),
                                 date: game.date,
                                 type: 'InjuryUpdate',
@@ -359,7 +358,6 @@ export const useSimulation = (
                             };
                             injuryTransactionsToInsert.push(tx);
                             
-                            // User notification (Toast + Inbox)
                             if (isMyPlayer) {
                                 setToastMessage(`🚑 부상 발생: ${p.name} (${update.injuryType})`);
                                 
@@ -402,7 +400,6 @@ export const useSimulation = (
                 const updatedGame: Game = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, tactics: { home: result.homeTactics, away: result.awayTactics } };
                 const schIdx = updatedSchedule.findIndex(g => g.id === game.id); if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
                 
-                // Playoff Series Update Logic (Preserved)
                 if (game.isPlayoff && game.seriesId) {
                     const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
                     if (sIdx !== -1) {
@@ -434,7 +431,6 @@ export const useSimulation = (
                     }
                 }
 
-                // Regular Season Save Queue
                 if (session?.user && !isGuestMode && !game.isPlayoff) {
                     regularGameResultsToInsert.push({ 
                         user_id: session.user.id, 
@@ -454,7 +450,6 @@ export const useSimulation = (
                 if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
             }
 
-            // Save Transactions
             if (injuryTransactionsToInsert.length > 0) {
                 setTransactions(prev => [...injuryTransactionsToInsert, ...prev]);
                 if (session?.user && !isGuestMode) {
@@ -464,7 +459,6 @@ export const useSimulation = (
                 }
             }
 
-            // Batch Save Results
             if (regularGameResultsToInsert.length > 0) { saveGameResults(regularGameResultsToInsert); }
             
             if (playoffGameResultsToInsert.length > 0) {
@@ -476,12 +470,10 @@ export const useSimulation = (
                 }
             }
 
-            // Local State Update
             setTeams(updatedTeams); 
             setSchedule(updatedSchedule); 
             setPlayoffSeries(updatedSeries); 
             
-            // [Inbox] Generate Game Recap Message for User (Added)
             if (userGameResultOutput && session?.user && !isGuestMode) {
                 const isHome = userGameResultOutput.myTeamId === userGameResultOutput.home.id;
                 const userScore = isHome ? userGameResultOutput.homeScore : userGameResultOutput.awayScore;
@@ -510,7 +502,6 @@ export const useSimulation = (
                             name: mvp.playerName,
                             stats: `${mvp.pts} PTS, ${mvp.reb} REB, ${mvp.ast} AST`
                         },
-                        // Send FULL user team box score (Removed slice)
                         userBoxScore: isHome ? userGameResultOutput.homeBox : userGameResultOutput.awayBox
                     }
                 );
@@ -519,10 +510,8 @@ export const useSimulation = (
                 const recap = await generateGameRecapNews(userGameResultOutput);
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
                 
-                // Critical Save
                 triggerSave({ teams: updatedTeams, schedule: updatedSchedule, playoffSeries: updatedSeries });
             } else if (userGameResultOutput) {
-                // Guest mode recap
                 const recap = await generateGameRecapNews(userGameResultOutput);
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
             } else { 

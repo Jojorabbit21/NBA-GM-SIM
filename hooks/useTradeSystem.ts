@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Team, Player, TradeOffer, Transaction, TradeAlertContent } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { TRADE_DEADLINE } from '../utils/constants';

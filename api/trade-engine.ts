@@ -59,15 +59,13 @@ interface TeamNeeds {
 const TRADE_CONFIG = {
     BASE: { 
         REPLACEMENT_LEVEL_OVR: 40, 
-        // [Difficulty Update] Value Exponent Increased (3.0 -> 3.8)
-        // Makes high OVR players exponentially more valuable than mid-tier players.
         VALUE_EXPONENT: 3.8, 
         SUPERSTAR_PREMIUM_THRESHOLD: 90,
         SUPERSTAR_MULTIPLIER: 1.8 
     },
     CONTRACT: {
         VALUE_MULTIPLIER: 1.1, 
-        BAD_CONTRACT_PENALTY: 0.6, // Penalize bad contracts more heavily
+        BAD_CONTRACT_PENALTY: 0.6, 
     },
     NEEDS: { 
         POSITION_BONUS: 0.25,
@@ -87,9 +85,6 @@ const TRADE_CONFIG = {
     DEPTH: {
         MAX_CORE_ASSETS_IN_DEAL: 2, 
         MIN_ROSTER_SIZE: 13,
-        // [Difficulty Update] Diminishing Returns for Quantity
-        // 1st player: 100% value, 2nd: 80%, 3rd: 20%, 4th+: 5%
-        // Prevents "5 trash players for 1 star" exploits.
         PACKAGE_WEIGHTS: [1.0, 0.8, 0.2, 0.05, 0.05]
     }
 };
@@ -108,28 +103,24 @@ function checkTradeLegality(team: Team, incoming: Player[], outgoing: Player[]):
     const { TAX_LINE, APRON_1, APRON_2 } = TRADE_CONFIG.SALARY;
 
     if (currentCap >= APRON_2) {
-        // Rule A: Aggregation Ban (Sending >1 players for 1 player)
         if (outgoing.length > 1 && incoming.length === 1) return false;
-        // Rule B: 100% Salary Match (Can't take back more)
         if (inSalary > outSalary) return false;
     } 
     else if (currentCap >= APRON_1) {
-        // Rule: 100% Salary Match
         if (inSalary > outSalary) return false;
     }
     else if (currentCap >= TAX_LINE) {
-        // Rule: 110% Match
         if (inSalary > outSalary * 1.10) return false;
     }
     else {
-        // Rule: 125% Match + padding (simplified)
+        // Rule: 125% Match + 250k (simplified to +0.25M)
         if (inSalary > (outSalary * 1.25) + 0.25) return false;
     }
 
     return true;
 }
 
-// 1. Calculate Base Trade Value (Individual)
+// 1. Calculate Base Trade Value
 function getPlayerTradeValue(p: Player): number {
     const C = TRADE_CONFIG;
     const safeOvr = typeof p.ovr === 'number' ? p.ovr : 70;
@@ -137,22 +128,18 @@ function getPlayerTradeValue(p: Player): number {
     
     let baseValue = Math.pow(effectiveOvr - C.BASE.REPLACEMENT_LEVEL_OVR, C.BASE.VALUE_EXPONENT);
 
-    // [Update] Sharper curve for stars
     if (safeOvr >= C.BASE.SUPERSTAR_PREMIUM_THRESHOLD) baseValue *= C.BASE.SUPERSTAR_MULTIPLIER;
     else if (safeOvr >= 85) baseValue *= 1.2; 
 
-    // Young Talent Premium
     if (p.age <= 23 && p.potential > safeOvr) {
         const potDiff = p.potential - safeOvr;
-        baseValue *= (1.0 + (potDiff * 0.08)); // Increased from 0.05
+        baseValue *= (1.0 + (potDiff * 0.08)); 
     } else if (p.age >= 32) {
-        baseValue *= Math.max(0.1, 1.0 - ((p.age - 31) * 0.15)); // Steeper decline value
+        baseValue *= Math.max(0.1, 1.0 - ((p.age - 31) * 0.15)); 
     }
 
-    // Contract Context
     if (safeOvr < 78 && p.salary > 15) baseValue *= C.CONTRACT.BAD_CONTRACT_PENALTY;
 
-    // Injury Context
     if (p.health === 'Injured') {
         baseValue *= C.INJURY.INJURED_PENALTY;
     } else if (p.health === 'Day-to-Day') {
@@ -162,17 +149,15 @@ function getPlayerTradeValue(p: Player): number {
     return Math.max(1, Math.floor(baseValue));
 }
 
-// 2. [New] Calculate Total Package Value with Diminishing Returns
+// 2. Calculate Total Package Value
 function calculatePackageTrueValue(players: Player[]): number {
-    // Sort by value desc (Best players first)
     const sorted = [...players].sort((a, b) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
-    
     let totalValue = 0;
     const weights = TRADE_CONFIG.DEPTH.PACKAGE_WEIGHTS;
 
     sorted.forEach((p, idx) => {
         const val = getPlayerTradeValue(p);
-        const weight = idx < weights.length ? weights[idx] : 0.05; // 5% for deep bench fillers
+        const weight = idx < weights.length ? weights[idx] : 0.05;
         totalValue += (val * weight);
     });
 
@@ -239,25 +224,20 @@ export default async function handler(req: any, res: any) {
             const myTeam = leagueState.find((t: Team) => t.id === myTeamId);
             
             const offers: TradeOffer[] = [];
-            // [Difficulty Update] Use weighted package value instead of sum
             const outgoingValue = calculatePackageTrueValue(tradingPlayers);
             
             for (const otherTeam of leagueState) {
                 if (otherTeam.id === myTeamId) continue;
                 const needs = analyzeTeamSituation(otherTeam);
                 
-                // Detailed Matching Logic
                 let interestScore = 0;
                 const interestReasons: string[] = [];
 
                 tradingPlayers.forEach((p: Player) => {
-                    // 1. Weak Position Check
                     if (needs.weakPositions.some(pos => p.position.includes(pos))) {
                         interestScore += 2;
                         interestReasons.push(`✅ ${p.name}: 약점 포지션(${p.position}) 보강`);
                     }
-                    
-                    // 2. Stat Needs Check
                     if (needs.statNeeds.includes('DEF') && p.def > 75) {
                         interestScore += 1;
                         if (!interestReasons.some(r => r.includes('수비'))) interestReasons.push(`✅ ${p.name}: 수비력 보강`);
@@ -270,8 +250,6 @@ export default async function handler(req: any, res: any) {
                         interestScore += 1;
                         if (!interestReasons.some(r => r.includes('리바운드'))) interestReasons.push(`✅ ${p.name}: 리바운드 보강`);
                     }
-
-                    // 3. Team Timeline Fit
                     if (needs.isSeller && p.age <= 24) {
                         interestScore += 2;
                         interestReasons.push(`✅ ${p.name}: 리빌딩 코어 (유망주)`);
@@ -284,38 +262,31 @@ export default async function handler(req: any, res: any) {
 
                 if (interestScore > 0) {
                     const tradeable = otherTeam.roster
-                        .filter((p: Player) => p.ovr < 94) // Harder to get superstars
+                        .filter((p: Player) => p.ovr < 94)
                         .sort((a: Player, b: Player) => getPlayerTradeValue(b) - getPlayerTradeValue(a));
                     
                     const pkg: Player[] = [];
                     for (const p of tradeable) {
                         const currentPkgVal = calculatePackageTrueValue([...pkg, p]);
-                        const maxVal = outgoingValue * (1.0 + (interestScore * 0.05)); // Tighter margin
+                        const maxVal = outgoingValue * (1.0 + (interestScore * 0.05)); 
                         
-                        // Proposed Check: Will adding this player break rules?
                         const potentialPkg = [...pkg, p];
-                        
-                        // Check if Other Team (AI) allows sending this package
                         if (!checkTradeLegality(otherTeam, tradingPlayers, potentialPkg)) continue;
-                        
-                        // Check if My Team (User) allows receiving this package
                         if (!checkTradeLegality(myTeam, potentialPkg, tradingPlayers)) continue;
 
-                        if (currentPkgVal < maxVal && pkg.length < 3) { // Smaller AI packages (Quality over Quantity)
+                        if (currentPkgVal < maxVal && pkg.length < 3) {
                             pkg.push(p);
                         }
                     }
                     
                     const pkgValue = calculatePackageTrueValue(pkg);
                     
-                    // [Difficulty Update] Minimum Value Threshold increased
                     if (pkg.length > 0 && pkgValue >= outgoingValue * 0.95) {
                         const uniqueReasons = [...new Set(interestReasons)];
                         
                         offers.push({
                             teamId: otherTeam.id,
                             teamName: otherTeam.name,
-                            // [FIX] Return FULL player objects including stats
                             players: pkg,
                             diffValue: pkgValue - outgoingValue,
                             analysis: [
@@ -326,7 +297,6 @@ export default async function handler(req: any, res: any) {
                     }
                 }
             }
-            
             return res.status(200).json({ offers: offers.sort((a: TradeOffer, b: TradeOffer) => b.diffValue - a.diffValue).slice(0, 5) });
         }
         
@@ -339,13 +309,10 @@ export default async function handler(req: any, res: any) {
                 return res.status(404).json({ message: 'Teams not found', offers: [] });
             }
 
-            // [Difficulty Update] Use weighted package value
             const targetValue = calculatePackageTrueValue(targetPlayers);
             const needs = analyzeTeamSituation(targetTeam);
             const myAssets = myTeam.roster.filter((p: Player) => p.health !== 'Injured');
 
-            // [Difficulty Update] Star Protection Logic
-            // If user is asking for a Star (OVR 88+), they MUST send a Star (OVR 82+) or High Potential
             const targetBestOvr = Math.max(...targetPlayers.map((p: Player) => p.ovr));
             const requirePremiumAsset = targetBestOvr >= 88;
 
@@ -360,7 +327,6 @@ export default async function handler(req: any, res: any) {
                 if (needs.isSeller && p.age <= 24) { score += 2; reasons.push(`✅ ${p.name}: 리빌딩 코어 (유망주)`); }
                 if (needs.isContender && p.ovr >= 80) { score += 2; reasons.push(`✅ ${p.name}: 윈나우 조각 (즉시전력)`); }
                 
-                // Penalize if we need a premium asset but this player isn't one
                 if (requirePremiumAsset && p.ovr < 82 && p.potential < 88) {
                     score -= 5;
                 }
@@ -375,27 +341,18 @@ export default async function handler(req: any, res: any) {
                 let currentVal = 0;
                 const pkg: Player[] = [];
                 const reasons: string[] = [];
-                
                 let hasPremiumAsset = false;
 
                 for (const asset of availableAssets) {
                     if (pkg.includes(asset.player)) continue;
-                    
-                    // Proposed Check
                     const potentialPkg = [...pkg, asset.player];
-                    // Check if User allows sending this package (My Team)
                     if (!checkTradeLegality(myTeam, targetPlayers, potentialPkg)) continue;
-                    // Check if AI allows receiving this package (Target Team)
                     if (!checkTradeLegality(targetTeam, potentialPkg, targetPlayers)) continue;
 
-                    // [Difficulty Update] AI hates giving up stars for 4+ players
                     if (pkg.length >= 4) break; 
-                    
-                    // Don't wildly overpay
                     const potentialVal = calculatePackageTrueValue(potentialPkg);
                     if (potentialVal > targetValue * 1.3) continue;
 
-                    // Star Protection Check
                     if (requirePremiumAsset) {
                         if (asset.player.ovr >= 82 || asset.player.potential >= 88) hasPremiumAsset = true;
                     }
@@ -407,19 +364,15 @@ export default async function handler(req: any, res: any) {
                     if (currentVal >= targetValue * valueMultiplier) break;
                 }
 
-                // If asking for a star but giving trash, reject
                 if (requirePremiumAsset && !hasPremiumAsset) return { players: [], value: 0, reasons: [] };
-
                 return { players: pkg, value: currentVal, reasons: [...new Set(reasons)] };
             };
 
-            // [Difficulty Update] AI Demands 100% Value Match or more for direct proposals
             const p1 = generatePackage(scoredAssets, 1.05);
             if (p1.players.length > 0 && p1.value >= targetValue) {
                 offers.push({
                     teamId: targetTeam.id,
                     teamName: targetTeam.name,
-                    // [FIX] Return FULL player objects
                     players: p1.players,
                     diffValue: p1.value - targetValue,
                     analysis: [`AI Counter Proposal (Balanced)`, ...p1.reasons.slice(0, 3)]
@@ -428,25 +381,124 @@ export default async function handler(req: any, res: any) {
 
             if (p1.players.length > 0) {
                 const altAssets = scoredAssets.filter((a: any) => a.player.id !== p1.players[0].id);
-                // Alternative package demands even more value (since it's not their first choice)
                 const p2 = generatePackage(altAssets, 1.15); 
                 if (p2.players.length > 0 && p2.value >= targetValue) {
                     offers.push({
                         teamId: targetTeam.id,
                         teamName: targetTeam.name,
-                        // [FIX] Return FULL player objects
                         players: p2.players,
                         diffValue: p2.value - targetValue,
                         analysis: [`AI Counter Proposal (Alternative)`, ...p2.reasons.slice(0, 3)]
                     });
                 }
             }
-
             return res.status(200).json({ offers });
         }
 
+        // ==================================================================================
+        //  AI vs AI Trade Simulation (CPU Trades)
+        // ==================================================================================
         if (action === 'simulate-cpu-trades') {
-             return res.status(200).json({ success: true, transaction: null });
+             const { leagueState, myTeamId } = payload;
+             
+             // 1. Filter viable teams
+             // Don't trade if it's the user's team (handled separately)
+             const aiTeams: Team[] = leagueState.filter((t: Team) => t.id !== myTeamId);
+             
+             // Shuffle teams to randomize who initiates
+             const shuffledTeams = [...aiTeams].sort(() => Math.random() - 0.5);
+             
+             for (const initiator of shuffledTeams) {
+                 const needs = analyzeTeamSituation(initiator);
+                 
+                 // Buyers look for upgrades, Sellers look for picks/youth
+                 // Simple logic: Initiator wants to trade a "Surplus" player
+                 // Identify surplus: Low minutes, bad contract, or position redundancy
+                 
+                 // Sort roster by Trade Value ASC (Dump bad players) or OVR DESC (Win now needs consolidation)
+                 // Let's assume Initiator is "active"
+                 
+                 const candidates = initiator.roster.filter(p => {
+                     // Don't trade superstars unless blowing it up
+                     if (p.ovr > 90) return false; 
+                     // Don't trade injured
+                     if (p.health === 'Injured') return false;
+                     return true;
+                 });
+                 
+                 // Pick a random candidate to shop
+                 if (candidates.length === 0) continue;
+                 const tradeBlockPlayer = candidates[Math.floor(Math.random() * candidates.length)];
+                 const playerValue = getPlayerTradeValue(tradeBlockPlayer);
+                 
+                 // Try to find a partner
+                 for (const partner of shuffledTeams) {
+                     if (partner.id === initiator.id) continue;
+                     
+                     const partnerNeeds = analyzeTeamSituation(partner);
+                     let isInterested = false;
+                     
+                     // Check Partner Interest
+                     if (partnerNeeds.weakPositions.some(pos => tradeBlockPlayer.position.includes(pos))) isInterested = true;
+                     if (partnerNeeds.isContender && tradeBlockPlayer.ovr > 80) isInterested = true;
+                     if (partnerNeeds.isSeller && tradeBlockPlayer.age < 24) isInterested = true;
+                     
+                     if (isInterested) {
+                         // Partner looks for assets to send back (Salary Match + Value)
+                         // Simple matching algorithm
+                         const partnerCandidates = partner.roster.filter(p => p.health !== 'Injured');
+                         const returnPackage: Player[] = [];
+                         let returnValue = 0;
+                         
+                         for (const asset of partnerCandidates) {
+                             // Proposed package
+                             const potentialPkg = [...returnPackage, asset];
+                             
+                             // Check Salary Rules
+                             // Note: AI trades are slightly looser in games usually, but let's try to stick to rules
+                             const validForInitiator = checkTradeLegality(initiator, potentialPkg, [tradeBlockPlayer]);
+                             const validForPartner = checkTradeLegality(partner, [tradeBlockPlayer], potentialPkg);
+                             
+                             if (validForInitiator && validForPartner) {
+                                 // Check Value
+                                 const pVal = getPlayerTradeValue(asset);
+                                 if (Math.abs((returnValue + pVal) - playerValue) < playerValue * 0.15) {
+                                     // Found a match!
+                                     returnPackage.push(asset);
+                                     returnValue += pVal;
+                                     break; // Single player swap preferred for simplicity
+                                 }
+                             }
+                         }
+                         
+                         if (returnPackage.length > 0) {
+                             // TRADE EXECUTED
+                             // Return transaction object
+                             return res.status(200).json({ 
+                                 success: true, 
+                                 transaction: {
+                                     date: new Date().toISOString().split('T')[0], // Will be overwritten by client date
+                                     type: 'Trade',
+                                     teamId: initiator.id,
+                                     description: `[CPU] ${initiator.name} trade ${tradeBlockPlayer.name}`,
+                                     details: {
+                                         partnerTeamId: partner.id,
+                                         partnerTeamName: partner.name,
+                                         // User is observing: Initiator sends [tradeBlockPlayer], Receives [returnPackage]
+                                         // 'acquired' means what initiator got
+                                         acquired: returnPackage,
+                                         // 'traded' means what initiator sent
+                                         traded: [tradeBlockPlayer]
+                                     }
+                                 }
+                             });
+                         }
+                     }
+                 }
+             }
+             
+             // No trade found after loop
+             return res.status(200).json({ success: false, transaction: null });
         }
         
         return res.status(400).json({ message: 'Unknown action' });
