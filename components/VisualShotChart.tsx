@@ -1,3 +1,4 @@
+
 import React, { useMemo } from 'react';
 import { Player } from '../types';
 import { getProjectedZoneDensity } from '../services/game/engine/shotDistribution';
@@ -267,8 +268,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
 
                                         // Dynamic Width Calculation based on text content (Fix for 100% bug)
                                         const isWide = pct.length >= 4; // e.g. "100%"
-                                        const width = isWide ? 48 : 38; // Increased from 38 if text is long
-                                        const height = 26; 
+                                        const width = isWide ? 60 : 48; // Increased from 48/38
+                                        const height = 36; // Increased from 26
 
                                         return (
                                             <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -277,7 +278,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                                     y={-height / 2} 
                                                     width={width} 
                                                     height={height} 
-                                                    rx={4} 
+                                                    rx={6} 
                                                     fill={pillFill} 
                                                     stroke={borderStroke}
                                                     strokeWidth={1}
@@ -285,7 +286,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                                 />
                                                 <text 
                                                     textAnchor="middle" 
-                                                    y={-1} 
+                                                    y={-4} 
                                                     fill={textFill} 
                                                     fontSize="13px" // Increased Font Size (Two steps up from 10/11px)
                                                     fontWeight="800" 
@@ -295,7 +296,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                                 </text>
                                                 <text 
                                                     textAnchor="middle" 
-                                                    y={9} 
+                                                    y={12} 
                                                     fill={'#ffffff'} // Changed from slate-400 to white
                                                     fontSize="10px" // Increased from 9px to 10px
                                                     fontWeight="600" 
