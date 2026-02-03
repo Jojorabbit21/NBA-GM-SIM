@@ -2,68 +2,58 @@
 import React from 'react';
 import { Player } from '../types';
 
-// 500 x 470 Canvas Coordinate System
+// 435 x 403 Canvas Coordinate System (Derived from provided SVG)
 // Layer 1: Shot Zones (Heatmap Areas)
 const ZONE_PATHS = {
-    // 1. Restricted Area
-    RIM: "M 210 0 L 210 47.5 A 40 40 0 1 0 290 47.5 L 290 0 Z",
+    // 10. 3PT Center (Top)
+    ATB3_C: "M.8,64.3V.6h433v63.7l-114.1,114.1-.3-.2c-30.9-17.8-66.2-27.2-102-27.2s-71.2,9.4-102,27.2l-.3.2L.8,64.3Z",
     
-    // 2. Paint (Non-RA)
-    PAINT: "M 170 0 L 170 190 L 330 190 L 330 0 L 290 0 L 290 47.5 A 40 40 0 1 1 210 47.5 L 210 0 Z",
-    
-    // 3. Mid-Range Left
-    MID_L: "M 30 0 L 170 0 L 170 190 L 138 190 L 30 140 Z",
-    
-    // 4. Mid-Range Center
-    MID_C: "M 138 190 L 170 190 L 330 190 L 362 190 L 320 280 A 100 100 0 0 1 180 280 Z",
-    
-    // 5. Mid-Range Right
-    MID_R: "M 330 0 L 470 0 L 470 140 L 362 190 L 330 190 Z",
-    
-    // 6. 3PT Left Corner
-    C3_L: "M 0 0 L 30 0 L 30 140 L 0 140 Z",
-    
-    // 7. 3PT Left Wing
-    ATB3_L: "M 0 140 L 30 140 L 138 190 L 180 280 L 100 470 L 0 470 Z",
-    
-    // 8. 3PT Center
-    ATB3_C: "M 180 280 A 100 100 0 0 0 320 280 L 400 470 L 100 470 Z",
+    // 4. Mid Center
+    MID_C: "M81.9,202.6l.4-.4c37.2-32.8,85.1-50.8,135-50.8s97.8,18,135,50.8l.4.4-66.8,66.8v-32h-137.2v32l-66.8-66.8Z",
     
     // 9. 3PT Right Wing
-    ATB3_R: "M 470 140 L 500 140 L 500 470 L 400 470 L 320 280 L 362 190 Z",
-
-    // 10. 3PT Right Corner
-    C3_R: "M 470 0 L 500 0 L 500 140 L 470 140 Z",
+    ATB3_R: "M407.1,278.7l-.2-.3c-15.3-37.3-40.9-68.9-74.1-91.7-4.3-3-8.8-5.8-13.4-8.4l-.6-.3,115-115v215.8h-26.7Z",
+    
+    // 5. Mid Right
+    MID_R: "M285.9,401.6v-133.6l66.1-66.1.4.3c23.4,20.6,42.1,47,54.1,76.1h0v123.2h-120.5Z",
+    
+    // 7. 3PT Left Wing
+    ATB3_L: "M.8,278.7V62.9l115,115-.6.3c-4.6,2.6-9.1,5.5-13.4,8.4-33.3,22.8-58.9,54.4-74.1,91.6v.2c-.1,0-.3.2-.3.2H.8Z",
+    
+    // 3. Mid Left
+    MID_L: "M28.2,401.6v-123.1h0c11.9-29.2,30.6-55.6,54.1-76.2l.4-.3,66.1,66.1v133.6H28.2Z",
+    
+    // 10. 3PT Right Corner (Rect)
+    C3_R: "M406.9,277.7h26.9v123.9h-26.9Z",
+    
+    // 2. Paint (Non-RA) (Rect) - Note: Visually covers Rim, drawn first
+    PAINT: "M149.1,237.9h136.4v163.7h-136.4Z",
+    
+    // 1. Rim (Rect)
+    RIM: "M149.1,318.5h136.4v83.1h-136.4Z",
+    
+    // 6. 3PT Left Corner (Rect)
+    C3_L: "M.8,277.7h26.9v123.9h-26.9Z",
 };
 
-// Layer 2: Court Lines (Static Overlay)
-const COURT_LINES = {
-    // Outer Boundary (Optional, mainly for stroke)
-    BOUNDARY: "M 0 0 L 500 0 L 500 470 L 0 470 Z",
-    // 3-Point Line (Corner + Arc)
-    THREE_POINT: "M 30 0 L 30 140 A 237.5 237.5 0 0 0 470 140 L 470 0",
-    // Paint Area (Key)
-    KEY: "M 170 0 L 170 190 L 330 190 L 330 0",
-    // Free Throw Circle (Top Semi-Circle)
-    FT_CIRCLE_TOP: "M 330 190 A 80 80 0 0 0 170 190",
-    // Free Throw Circle (Bottom Semi-Circle - Dashed usually, but solid for simplicity here)
-    FT_CIRCLE_BOTTOM: "M 170 190 A 80 80 0 0 0 330 190",
-    // Restricted Area Arc
-    RESTRICTED: "M 210 0 L 210 47.5 A 40 40 0 1 0 290 47.5 L 290 0",
-    // Backboard (Approx)
-    BACKBOARD: "M 220 40 L 280 40",
-    // Hoop
-    HOOP: "M 250 47.5 A 7.5 7.5 0 1 0 250 47.6", // Small circle
-};
+// Layer 2: Court Lines (Static Overlay - Goal removed)
+const COURT_LINES = [
+  "M1.3,1.5h432v399.6H1.3V1.5M-.1,0v402.5h434.9V0H-.1Z", // Outline
+  "M149.6,238.4h135.4v162.7h-135.4v-162.7M148.2,236.9v165.6h138.2v-165.6h-138.2Z", // Key
+  "M269.2,237.7h-1.4c0-27.8-22.6-50.4-50.4-50.4s-50.4,22.6-50.4,50.4h-1.4c0-28.6,23.3-51.8,51.8-51.8s51.8,23.3,51.8,51.8Z", // Free Throw Circle
+  // Dashed lines / markings
+  "M269.1,237.7c0,2.6-.2,5.3-.6,7.9l-1.4-.2c.6-3.6.7-7.3.5-11h1.4c0,1,.1,2.2.1,3.3ZM267.1,223.2l-1.4.4c-1-3.5-2.4-6.9-4.2-10.1l1.3-.7c1.8,3.3,3.3,6.8,4.3,10.4ZM265.6,256.5c-1.4,3.5-3.1,6.9-5.2,10l-1.2-.8c2-3,3.7-6.3,5.1-9.7l1.3.5ZM256.3,203.5l-1.1.9c-2.4-2.7-5.1-5.2-8.1-7.4l.9-1.2c3,2.2,5.8,4.8,8.3,7.6ZM253.1,275.1c-2.7,2.6-5.7,4.9-9,6.9l-.7-1.2c3.1-1.9,6.1-4.1,8.7-6.7l1,1ZM238.2,190.2l-.6,1.3c-3.4-1.5-6.9-2.6-10.5-3.3l.3-1.4c3.7.7,7.3,1.9,10.8,3.4ZM233.9,286.8c-1.4.5-2.8.9-4.3,1.2-2.2.5-4.5,1-6.8,1.2l-.2-1.4c2.2-.2,4.4-.6,6.6-1.2,1.4-.3,2.8-.7,4.1-1.2l.5,1.4ZM216.2,187.3c-3.6,0-7.3.6-10.9,1.5-2.8.7-5.5,1.6-8.2,2.7l-.6-1.3c2.7-1.2,5.5-2.1,8.4-2.8,3.7-.9,7.4-1.4,11.2-1.5v1.4ZM211.8,287.8l-.2,1.4c-3.7-.4-7.5-1.2-11-2.5l.5-1.4c3.5,1.2,7.1,2,10.7,2.4ZM191.1,280.7l-.7,1.2c-3.2-2-6.2-4.3-9-6.9l1-1c2.6,2.5,5.6,4.8,8.7,6.7ZM187.6,196.9c-3,2.2-5.7,4.6-8.1,7.4l-1.1-1c2.5-2.8,5.3-5.4,8.3-7.6l.8,1.2ZM175.4,265.6l-1.2.8c-2.1-3.1-3.8-6.5-5.2-10l1.3-.5c1.3,3.4,3,6.7,5,9.8ZM173.2,213.3c-1.8,3.2-3.2,6.6-4.2,10.1l-1.4-.4c1.1-3.6,2.5-7.1,4.4-10.4l1.3.7ZM167.5,245.2l-1.4.2c-.6-3.7-.7-7.5-.5-11.3h1.4c-.2,3.7,0,7.4.5,11.1Z",
+  "M252.9,355.9v10.7h-1.4v-10.7c0-18.9-15.3-34.2-34.2-34.2s-34.2,15.3-34.2,34.2v10.7h-1.4v-10.7c0-19.6,16-35.6,35.6-35.6s35.6,16,35.6,35.6Z", // Restricted Area Arc
+  "M407.4,278.3v122.8h-1.4v-122.5c-31.5-76.9-105.5-126.6-188.6-126.6S60.2,201.7,28.7,278.6v122.5h-1.4v-122.9h0c15.2-37.4,40.9-69.1,74.3-91.9,34.2-23.4,74.2-35.7,115.7-35.7s81.6,12.4,115.7,35.7c33.4,22.8,59,54.6,74.3,91.9h0Z" // 3PT Arc
+];
 
 const getZoneColor = (makes: number, attempts: number, leagueAvg: number) => {
-    if (attempts === 0) return { fill: 'rgba(15, 23, 42, 0.4)', stroke: 'none', opacity: 1 }; // Slate-900 (Background-ish)
+    if (attempts === 0) return { fill: '#1e293b', opacity: 0.3 }; // Slate-800
     
     const pct = makes / attempts;
-    // Using slightly more opaque colors for better visibility under the white lines
-    if (pct >= leagueAvg + 0.05) return { fill: '#ef4444', stroke: 'none', opacity: 0.8 }; // Hot (Red-500)
-    if (pct <= leagueAvg - 0.05) return { fill: '#3b82f6', stroke: 'none', opacity: 0.8 }; // Cold (Blue-500)
-    return { fill: '#eab308', stroke: 'none', opacity: 0.8 }; // Avg (Yellow-500)
+    if (pct >= leagueAvg + 0.05) return { fill: '#ef4444', opacity: 0.9 }; // Hot (Red-500)
+    if (pct <= leagueAvg - 0.05) return { fill: '#3b82f6', opacity: 0.9 }; // Cold (Blue-500)
+    return { fill: '#eab308', opacity: 0.9 }; // Avg (Yellow-500)
 };
 
 const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, value }) => (
@@ -100,8 +90,9 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
     const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
 
     const zones = [
-        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area" },
+        // Order matters for layering! Paint first, then Rim.
         { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint" },
+        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area" },
         { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left" },
         { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center" },
         { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right" },
@@ -164,10 +155,10 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                             <span className="text-blue-400 flex items-center gap-1"><div className="w-2 h-2 bg-blue-500 rounded-sm"></div> COLD</span>
                         </div>
                     </h5>
-                    <div className="relative w-full aspect-[500/470] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
-                        <svg viewBox="0 0 500 470" className="w-full h-full transform rotate-180 scale-x-[-1]">
+                    <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
+                        <svg viewBox="0 0 435 403" className="w-full h-full">
                             {/* Layer 0: Background */}
-                            <rect x="0" y="0" width="500" height="470" fill="#0f172a" />
+                            <rect x="0" y="0" width="435" height="403" fill="#0f172a" />
                             
                             {/* Layer 1: Shot Zones (Heatmap) */}
                             <g className="zones">
@@ -179,7 +170,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                                             d={z.path} 
                                             fill={style.fill} 
                                             fillOpacity={style.opacity}
-                                            stroke={style.stroke}
+                                            stroke="#0f172a"
+                                            strokeWidth="1"
                                             className="transition-all duration-300 hover:fill-opacity-100 cursor-help"
                                         >
                                             <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
@@ -189,13 +181,10 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                             </g>
 
                             {/* Layer 2: Court Lines Overlay (Static White Lines) */}
-                            <g className="court-lines" fill="none" stroke="#e2e8f0" strokeWidth="2" strokeOpacity="0.8" pointerEvents="none">
-                                <path d={COURT_LINES.THREE_POINT} />
-                                <path d={COURT_LINES.KEY} />
-                                <path d={COURT_LINES.FT_CIRCLE_TOP} />
-                                <path d={COURT_LINES.RESTRICTED} />
-                                <path d={COURT_LINES.BACKBOARD} strokeWidth="3" />
-                                <path d={COURT_LINES.HOOP} strokeWidth="2" stroke="#f97316" />
+                            <g className="court-lines" fill="none" stroke="#e2e8f0" strokeWidth="1.5" strokeOpacity="0.8" pointerEvents="none">
+                                {COURT_LINES.map((d, i) => (
+                                    <path key={i} d={d} />
+                                ))}
                             </g>
                         </svg>
                     </div>
