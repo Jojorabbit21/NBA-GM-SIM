@@ -2,49 +2,48 @@
 import { supabase } from './supabaseClient';
 import { Transaction, GameTactics } from '../types';
 
-// 0. Register Device ID (Enforce Single Session)
-export const registerDeviceId = async (userId: string, deviceId: string) => {
+// [Simple Lock] 1. Check if anyone is playing
+export const checkSessionLock = async (userId: string): Promise<string | null> => {
+    const { data, error } = await supabase
+        .from('profiles')
+        .select('active_device_id')
+        .eq('id', userId)
+        .single();
+    
+    if (error || !data) return null;
+    return data.active_device_id; // Returns ID if locked, null if free
+};
+
+// [Simple Lock] 2. Lock the session for ME
+export const acquireSessionLock = async (userId: string, deviceId: string) => {
     const { error } = await supabase
         .from('profiles')
         .update({ active_device_id: deviceId })
         .eq('id', userId);
     
-    if (error) {
-        console.error("❌ [Persistence] Failed to register device ID:", error);
-    } else {
-        console.log("🔒 [Security] Session Locked to Device:", deviceId);
-    }
+    if (error) console.error("❌ Failed to acquire lock:", error);
+};
+
+// [Simple Lock] 3. Release the lock (Logout/Close)
+export const releaseSessionLock = async (userId: string) => {
+    const { error } = await supabase
+        .from('profiles')
+        .update({ active_device_id: null })
+        .eq('id', userId);
+
+    if (error) console.error("❌ Failed to release lock:", error);
+    else console.log("🔓 Session Lock Released.");
 };
 
 // 1. Save Metadata (Pointer to current progress)
-// [Update] Added deviceId verification for Anti-Cheat
 export const saveCheckpoint = async (
     userId: string, 
     teamId: string, 
     simDate: string, 
     tactics?: GameTactics | null,
-    currentDeviceId?: string // New Param
+    currentDeviceId?: string // Not strictly needed for blocking, but good for verify
 ) => {
-    if (!userId || !teamId || !simDate) {
-        console.error("❌ [Persistence] Invalid Checkpoint Data:", { userId, teamId, simDate });
-        return null;
-    }
-
-    // [Anti-Cheat] Verify Session Integrity
-    if (currentDeviceId) {
-        const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('active_device_id')
-            .eq('id', userId)
-            .single();
-
-        if (!profileError && profile) {
-            if (profile.active_device_id !== currentDeviceId) {
-                console.error("⛔ [Security] Duplicate Login Detected. Access Denied.");
-                throw new Error("DUPLICATE_LOGIN");
-            }
-        }
-    }
+    if (!userId || !teamId || !simDate) return null;
 
     const payload: any = { 
         user_id: userId, 
@@ -53,7 +52,6 @@ export const saveCheckpoint = async (
         updated_at: new Date().toISOString()
     };
 
-    // Only add tactics if it exists to avoid overwriting with null if unintentional
     if (tactics) {
         payload.tactics = tactics;
     }
@@ -71,11 +69,10 @@ export const saveCheckpoint = async (
 };
 
 // 2. Load Metadata
-// [Update] Select tactics column
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, updated_at') // Added tactics
+        .select('team_id, sim_date, tactics, updated_at')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -85,14 +82,10 @@ export const loadCheckpoint = async (userId: string) => {
 
 // 3. Load History Logs (Source of Truth)
 export const loadUserHistory = async (userId: string) => {
-    // Parallel Fetch for Performance
     const [gamesRes, txRes] = await Promise.all([
         supabase.from('user_game_results').select('*').eq('user_id', userId).order('date', { ascending: true }),
         supabase.from('user_transactions').select('*').eq('user_id', userId).order('date', { ascending: true })
     ]);
-
-    if (gamesRes.error) console.error("❌ History (Games) Load Error:", gamesRes.error);
-    if (txRes.error) console.error("❌ History (TX) Load Error:", txRes.error);
 
     return {
         games: gamesRes.data || [],
@@ -102,12 +95,11 @@ export const loadUserHistory = async (userId: string) => {
 
 // 4. Write Logs
 export const writeGameResult = async (result: any) => {
-    const { error } = await supabase.from('user_game_results').insert(result);
-    if (error) console.error("❌ Write Game Result Error:", error);
+    await supabase.from('user_game_results').insert(result);
 };
 
 export const writeTransaction = async (userId: string, tx: Transaction) => {
-    const { error } = await supabase.from('user_transactions').insert({
+    await supabase.from('user_transactions').insert({
         user_id: userId,
         transaction_id: tx.id,
         date: tx.date,
@@ -116,5 +108,4 @@ export const writeTransaction = async (userId: string, tx: Transaction) => {
         description: tx.description,
         details: tx.details
     });
-    if (error) console.error("❌ Write Transaction Error:", error);
 };

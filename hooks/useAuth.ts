@@ -1,6 +1,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase, supabaseUrl, supabaseKey } from '../services/supabaseClient';
+import { releaseSessionLock } from '../services/persistence'; // New import
 
 export const useAuth = () => {
     const [session, setSession] = useState<any | null>(null);
@@ -23,11 +24,12 @@ export const useAuth = () => {
         }
     };
 
-    // Browser Close/Tab Close Detection
+    // Browser Close/Tab Close Detection (Best Effort)
     useEffect(() => {
         const handleUnload = () => {
             if (session?.user?.id && supabaseUrl && supabaseKey) {
-                const url = `${supabaseUrl}/rest/v1/login_logs`;
+                // Log logout
+                const logUrl = `${supabaseUrl}/rest/v1/login_logs`;
                 const headers = {
                     'Content-Type': 'application/json',
                     'apikey': supabaseKey,
@@ -35,14 +37,14 @@ export const useAuth = () => {
                     'Prefer': 'return=minimal'
                 };
                 
-                const body = JSON.stringify({ 
+                const logBody = JSON.stringify({ 
                     user_id: session.user.id,
                     type: 'logout',
                     user_agent: navigator.userAgent,
                     timestamp: new Date().toISOString()
                 });
                 
-                fetch(url, { method: 'POST', headers, body, keepalive: true }).catch(() => {});
+                fetch(logUrl, { method: 'POST', headers, body: logBody, keepalive: true }).catch(() => {});
             }
         };
 
@@ -84,6 +86,10 @@ export const useAuth = () => {
         try {
             if (session?.user) {
                await insertAuthLog(session.user.id, 'logout');
+               
+               // [Lock Release] Clear active_device_id on explicit logout
+               await releaseSessionLock(session.user.id);
+               
                await (supabase.auth as any).signOut();
             }
         } catch (e) {
