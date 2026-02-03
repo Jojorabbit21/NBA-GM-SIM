@@ -221,9 +221,10 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                             fill={style.fill} 
                                             fillOpacity={style.opacity}
                                             stroke="none" // Removed Stroke
-                                            className="transition-all duration-300 cursor-help"
+                                            className="transition-all duration-300" // Removed cursor-help
                                         >
-                                            <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title>
+                                            {/* Tooltip temporarily disabled as requested */}
+                                            {/* <title>{z.label}: {z.data.m}/{z.data.a} ({z.data.a > 0 ? (z.data.m/z.data.a*100).toFixed(1):0}%)</title> */}
                                         </path>
                                     );
                                 })}
@@ -266,8 +267,8 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                         }
 
                                         // Increased Padding (+2px total width/height for 1px padding on all sides)
-                                        const width = 26; 
-                                        const height = 16; 
+                                        const width = 38; // Increased width for readability
+                                        const height = 26; // Increased height for two lines
 
                                         return (
                                             <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -280,16 +281,26 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                                     fill={pillFill} 
                                                     stroke={borderStroke}
                                                     strokeWidth={1}
-                                                    fillOpacity={0.9}
+                                                    fillOpacity={0.95} // Increased opacity
                                                 />
                                                 <text 
                                                     textAnchor="middle" 
-                                                    y={3.5} 
+                                                    y={-1} 
                                                     fill={textFill} 
-                                                    fontSize="11px" // Increased Font Size
-                                                    fontWeight="700" 
+                                                    fontSize="13px" // Increased Font Size (Two steps up from 10/11px)
+                                                    fontWeight="800" 
+                                                    style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
                                                 >
                                                     {pct}%
+                                                </text>
+                                                <text 
+                                                    textAnchor="middle" 
+                                                    y={9} 
+                                                    fill={isScoutingMode ? '#64748b' : '#94a3b8'} // slate-500/400
+                                                    fontSize="9px" 
+                                                    fontWeight="600" 
+                                                >
+                                                    {z.data.m}/{z.data.a}
                                                 </text>
                                             </g>
                                         );
