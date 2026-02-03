@@ -82,18 +82,18 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
         return { fill: '#f97316', opacity: 0.35, isHot: false, isCold: false }; // Avg (Orange)
     };
 
-    // Updated Zone Config with Tuned Centroids for Text Labels
+    // Updated Zone Config with Tuned Centroids for Text Labels (Korean Translations)
     const zones = useMemo(() => [
-        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint", key: 'paint', cx: 217, cy: 290 }, 
-        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area", key: 'rim', cx: 217, cy: 375 },
-        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left", key: 'midL', cx: 80, cy: 300 }, 
-        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center", key: 'midC', cx: 217, cy: 200 },
-        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right", key: 'midR', cx: 355, cy: 300 }, 
-        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L", key: 'c3L', cx: 15, cy: 350 },
-        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L", key: 'atb3L', cx: 40, cy: 140 }, 
-        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3", key: 'atb3C', cx: 217, cy: 80 },
-        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R", key: 'atb3R', cx: 395, cy: 140 }, 
-        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R", key: 'c3R', cx: 420, cy: 350 },
+        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "페인트존", key: 'paint', cx: 217, cy: 290 }, 
+        { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "골밑", key: 'rim', cx: 217, cy: 375 },
+        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "좌측 미드레인지", key: 'midL', cx: 80, cy: 300 }, 
+        { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "중앙 미드레인지", key: 'midC', cx: 217, cy: 200 },
+        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "우측 미드레인지", key: 'midR', cx: 355, cy: 300 }, 
+        { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "좌측 코너", key: 'c3L', cx: 15, cy: 350 },
+        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "좌측 45도", key: 'atb3L', cx: 40, cy: 140 }, 
+        { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "탑 오브 더 키", key: 'atb3C', cx: 217, cy: 80 },
+        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "우측 45도", key: 'atb3R', cx: 395, cy: 140 }, 
+        { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "우측 코너", key: 'c3R', cx: 420, cy: 350 },
     ], [zData, AVG]);
 
     // Stats Grid Calculation
@@ -163,36 +163,37 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                          <span>구역별 야투 효율</span>
                          {isScoutingMode && <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SCOUTING REPORT MODE</span>}
                      </h5>
-                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                        {zones.map((z, i) => {
-                             const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
-                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
-                             
-                             let colorClass = 'text-slate-500';
-                             if (!isScoutingMode) {
-                                 if (style.isHot) colorClass = 'text-emerald-400';
-                                 else if (style.isCold) colorClass = 'text-red-400';
-                                 else if (z.data.a > 0) colorClass = 'text-orange-400';
-                             }
+                     <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm">
+                         <div className="grid grid-cols-2 md:grid-cols-5 gap-y-2 gap-x-1">
+                            {zones.map((z, i) => {
+                                 const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
+                                 const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                                 
+                                 let colorClass = 'text-slate-500';
+                                 if (!isScoutingMode) {
+                                     if (style.isHot) colorClass = 'text-emerald-400';
+                                     else if (style.isCold) colorClass = 'text-red-400';
+                                     else if (z.data.a > 0) colorClass = 'text-orange-400';
+                                 }
 
-                             return (
-                                 <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-16 min-w-0">
-                                     {/* Removed truncate to ensure visibility, ensure parent has enough height */}
-                                     <span className="text-[10px] font-bold text-slate-400 w-full px-1 mb-1 leading-tight" title={z.label}>{z.label}</span>
-                                     <span className={`text-base font-black ${colorClass}`}>{pct}%</span>
-                                     <span className="text-[11px] font-mono text-slate-500">{z.data.m}/{z.data.a}</span>
-                                 </div>
-                             )
-                        })}
+                                 return (
+                                     <div key={i} className="flex flex-col items-center justify-center p-1.5 text-center min-w-0">
+                                         <span className="text-[10px] font-bold text-slate-500 w-full px-1 mb-0.5 leading-tight truncate" title={z.label}>{z.label}</span>
+                                         <span className={`text-sm font-black ${colorClass} tabular-nums`}>{pct}%</span>
+                                         <span className="text-[9px] font-medium text-slate-600 tabular-nums">{z.data.m}/{z.data.a}</span>
+                                     </div>
+                                 )
+                            })}
+                         </div>
                      </div>
                 </div>
             </div>
 
             {/* Right Column: Shot Chart */}
-            <div className="w-full lg:w-[45%] flex flex-col items-center justify-start pt-2">
+            <div className="w-full lg:w-[45%] flex flex-col items-center justify-start">
                 <div className="flex flex-col gap-2 w-full max-w-[400px]">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between items-center">
-                        <span>SHOT CHART</span>
+                        <span>샷 차트</span>
                         {!isScoutingMode ? (
                             <div className="flex gap-3 text-[10px]">
                                 <span className="text-emerald-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></div> HOT</span>
@@ -235,39 +236,59 @@ export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ playe
                                 ))}
                             </g>
 
-                             {/* Layer 3: Data Labels Overlay (Only in Data Mode) */}
+                             {/* Layer 3: Data Labels Overlay (Only in Data Mode) - Pill Design */}
                              {!isScoutingMode && (
                                  <g className="data-labels" pointerEvents="none">
                                      {zones.map((z, i) => {
                                         const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
-                                        const label = `${z.data.m}/${z.data.a}`;
                                         
-                                        // Skip drawing text for rim/paint if it gets too crowded, or adjust font size
-                                        const isSmallZone = ['c3L', 'c3R'].includes(z.key); 
-                                        const fontSizePct = isSmallZone ? "10px" : "12px";
-                                        const fontSizeLabel = "8px";
+                                        // Colors based on efficiency logic used in getZoneStyle
+                                        const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
+                                        
+                                        let pillFill = '#1e293b'; // slate-800
+                                        let textFill = '#94a3b8'; // slate-400
+                                        let borderStroke = '#334155'; // slate-700
+
+                                        if (z.data.a > 0) {
+                                            if (style.isHot) {
+                                                pillFill = '#064e3b'; // emerald-900
+                                                textFill = '#34d399'; // emerald-400
+                                                borderStroke = '#059669'; // emerald-600
+                                            } else if (style.isCold) {
+                                                pillFill = '#7f1d1d'; // red-900
+                                                textFill = '#f87171'; // red-400
+                                                borderStroke = '#dc2626'; // red-600
+                                            } else {
+                                                pillFill = '#431407'; // orange-950/brown
+                                                textFill = '#fb923c'; // orange-400
+                                                borderStroke = '#d97706'; // orange-600
+                                            }
+                                        }
+
+                                        const width = 24;
+                                        const height = 14;
 
                                         return (
                                             <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                <rect 
+                                                    x={-width / 2} 
+                                                    y={-height / 2} 
+                                                    width={width} 
+                                                    height={height} 
+                                                    rx={4} 
+                                                    fill={pillFill} 
+                                                    stroke={borderStroke}
+                                                    strokeWidth={1}
+                                                    fillOpacity={0.9}
+                                                />
                                                 <text 
                                                     textAnchor="middle" 
-                                                    y="-2" 
-                                                    fill="white" 
-                                                    fontSize={fontSizePct} 
-                                                    fontWeight="900" 
-                                                    style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}
+                                                    y={3.5} 
+                                                    fill={textFill} 
+                                                    fontSize="10px" 
+                                                    fontWeight="700" 
                                                 >
                                                     {pct}%
-                                                </text>
-                                                <text 
-                                                    textAnchor="middle" 
-                                                    y="10" 
-                                                    fill="#cbd5e1" 
-                                                    fontSize={fontSizeLabel} 
-                                                    fontWeight="700"
-                                                    style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.8)' }}
-                                                >
-                                                    {label}
                                                 </text>
                                             </g>
                                         );
