@@ -1,7 +1,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { supabase, supabaseUrl, supabaseKey } from '../services/supabaseClient';
-import { releaseSessionLock } from '../services/persistence'; // New import
 
 export const useAuth = () => {
     const [session, setSession] = useState<any | null>(null);
@@ -86,10 +85,6 @@ export const useAuth = () => {
         try {
             if (session?.user) {
                await insertAuthLog(session.user.id, 'logout');
-               
-               // [Lock Release] Clear active_device_id on explicit logout
-               await releaseSessionLock(session.user.id);
-               
                await (supabase.auth as any).signOut();
             }
         } catch (e) {

@@ -1,7 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { releaseSessionLock } from '../services/persistence';
 import { LogIn, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import { AuthInput } from '../components/auth/AuthInput';
 
@@ -88,17 +87,9 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
 
-        // 2. FORCE UNLOCK (Loop Fix)
-        // If login is successful, we unconditionally clear any stale locks for this user.
-        // This ensures useGameData.ts (next step) sees a clean state or overwrites it.
+        // 2. Just ensure profile exists (Removed Lock Logic)
         if (data.user) {
             await ensureProfileExists(data.user.id, data.user.email);
-            
-            // Critical Fix: Clear any existing lock so this new session can take over.
-            await releaseSessionLock(data.user.id);
-            
-            // We do NOT navigate here. The App.tsx state listener will detect the session change
-            // and mount Dashboard, which triggers useGameData -> acquire lock.
         }
       }
     } catch (error: any) {

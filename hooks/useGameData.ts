@@ -5,7 +5,7 @@ import { supabase } from '../services/supabaseClient';
 import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, saveCheckpoint, checkSessionLock, acquireSessionLock } from '../services/persistence';
+import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 
@@ -41,7 +41,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
 
     // ------------------------------------------------------------------
-    //  INIT LOGIC: Load & Session Lock (Loop Fix: Takeover Mode)
+    //  INIT LOGIC (Simple Load)
     // ------------------------------------------------------------------
     useEffect(() => {
         if (hasInitialLoadRef.current || isResettingRef.current) return;
@@ -64,30 +64,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     return;
                 }
 
-                // [Session Locking: Single Source of Truth]
-                // 1. Get Stable Device ID from LocalStorage (Persists across tabs/refreshes)
-                let myDeviceId = localStorage.getItem('nbagm_device_id');
-                if (!myDeviceId) {
-                    myDeviceId = crypto.randomUUID();
-                    localStorage.setItem('nbagm_device_id', myDeviceId);
-                }
-
-                // 2. Check DB Status
-                const activeDevice = await checkSessionLock(userId);
-
-                // 3. Logic: "I Am The Captain Now"
-                // Even if DB has a different ID, if we just logged in (which triggers this load),
-                // we assume the old session is stale or invalid. We overwrite it.
-                // This breaks the infinite loop where the client waits for a lock it can never clear.
-                
-                if (activeDevice && activeDevice !== myDeviceId) {
-                    console.log("⚠️ Found stale session lock. Overwriting with current session.");
-                }
-                
-                // Always acquire/refresh lock on load
-                await acquireSessionLock(userId, myDeviceId);
-
-                // 4. Data Load
+                // [Simplified] Load Data Directly (No Locks)
                 const checkpoint = await loadCheckpoint(userId);
 
                 if (checkpoint && checkpoint.team_id) {
@@ -143,46 +120,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
         initializeGame();
     }, [baseData, isBaseDataLoading, isGuestMode, session]);
-
-    // ------------------------------------------------------------------
-    //  SESSION WATCHDOG (Realtime Conflict Detection)
-    //  If another device takes the lock *after* we loaded, we should leave.
-    // ------------------------------------------------------------------
-    useEffect(() => {
-        if (!session?.user?.id || isGuestMode) return;
-
-        const myDeviceId = localStorage.getItem('nbagm_device_id');
-        if (!myDeviceId) return;
-
-        // Subscribe to changes on my profile
-        const channel = supabase
-            .channel('profile_lock_watch')
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'profiles',
-                    filter: `id=eq.${session.user.id}`
-                },
-                (payload) => {
-                    const newLock = payload.new.active_device_id;
-                    // If lock changes to something that is NOT me, and IS NOT null (null = logout)
-                    if (newLock && newLock !== myDeviceId) {
-                        console.warn("⛔ Session Conflict: Another device took the lock.");
-                        alert("다른 기기에서 접속하여 현재 세션이 종료됩니다.");
-                        // Perform local cleanup and refresh to login screen
-                        // Don't call signOut() API to avoid killing the other session
-                        window.location.reload(); 
-                    }
-                }
-            )
-            .subscribe();
-
-        return () => {
-            supabase.removeChannel(channel);
-        };
-    }, [session, isGuestMode]);
 
     // ------------------------------------------------------------------
     //  ACTIONS: Save, Select Team, Reset
@@ -241,6 +178,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             
             queryClient.removeQueries();
             
+            // Clean up old trade counters
             Object.keys(localStorage).forEach((key) => {
                 if (key.startsWith('trade_ops_')) {
                     localStorage.removeItem(key);
