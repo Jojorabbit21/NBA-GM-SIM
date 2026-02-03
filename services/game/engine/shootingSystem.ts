@@ -66,7 +66,8 @@ export function calculateShootingStats(
 
     // [Update] Relaxed Hard Caps for High Volume
     // Diminishing returns starts at 14 attempts now (was 10)
-    if (p3a > 14) p3a = 14 + (p3a - 14) * 0.4; 
+    // [CRITICAL FIX] Added Math.round to prevent floating point attempts (e.g. 16.4 attempts)
+    if (p3a > 14) p3a = Math.round(14 + (p3a - 14) * 0.4); 
     
     // Low rating hard caps
     if (threeAvg < 60) p3a = Math.min(p3a, 1);       // Can't shoot
@@ -126,7 +127,7 @@ export function calculateShootingStats(
     ));
 
     const threeBasePct = Math.min(0.50, Math.max(0.20, 
-       C.THREE_BASE_PCT + ((threeAvg - oppDefMetrics.perDef) * C.THREE_DEF_IMPACT) 
+       C.THREE_BASE_PCT + ((threeAvg - oppDefMetrics.perDef) * C.THREE_DEF_IMPACT 
        - effectivePerfDrop - (hastePenalty * 0.8) + (mentalClutchBonus * 0.5) + (homeAdvantage * 0.8)
     ));
 
