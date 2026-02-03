@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Transaction, Team } from '../../types';
-import { History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { History, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 import { getOvrBadgeStyle } from '../SharedComponents';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
 
@@ -28,13 +28,20 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
               return { ovr: calculatePlayerOvr(p), pos: p.position };
           }
       }
-      // Fallback to historical data if player retired or removed (though unlikely in this sim)
+      // Fallback to historical data if player retired or removed
       if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
       
       return { ovr: 0, pos: '-' };
     };
 
-    if (transactions.length === 0) {
+    const filteredTransactions = transactions.filter(t => {
+        if (historyFilter === 'mine') {
+            return t.teamId === teamId || t.details?.partnerTeamId === teamId;
+        }
+        return true; // 'all'
+    });
+
+    if (filteredTransactions.length === 0) {
         return (
             <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
                 <div className="p-6 bg-slate-900 rounded-full border border-slate-800"><History size={48} className="opacity-30" /></div>
@@ -47,8 +54,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
     }
 
     // Pagination Logic
-    const totalPages = Math.ceil(transactions.length / ITEMS_PER_PAGE);
-    const paginatedTransactions = transactions.slice(
+    const totalPages = Math.ceil(filteredTransactions.length / ITEMS_PER_PAGE);
+    const paginatedTransactions = filteredTransactions.slice(
         (currentPage - 1) * ITEMS_PER_PAGE,
         currentPage * ITEMS_PER_PAGE
     );
@@ -56,7 +63,6 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
     const handlePageChange = (newPage: number) => {
         if (newPage >= 1 && newPage <= totalPages) {
             setCurrentPage(newPage);
-            // Optional: Scroll to top of table container if needed
             const container = document.querySelector('.custom-scrollbar');
             if (container) container.scrollTop = 0;
         }
@@ -70,40 +76,44 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                         <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest sticky top-0 bg-slate-900 z-10">
                             <th className="py-4 px-4 w-32">일자</th>
                             <th className="py-4 px-4 w-60">참여 구단</th>
-                            <th className="py-4 px-4">IN Assets</th>
-                            <th className="py-4 px-4">OUT Assets</th>
+                            <th className="py-4 px-4">IN Assets (to Team 1)</th>
+                            <th className="py-4 px-4">OUT Assets (to Team 2)</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                         {paginatedTransactions.map(t => {
-                            // [Safety] Ensure transaction object exists
                             if (!t) return null;
                             
-                            const initiator = teams.find(it => it.id === t.teamId);
-                            const partner = teams.find(pt => pt.id === t.details?.partnerTeamId);
+                            const team1 = teams.find(it => it.id === t.teamId);
+                            const team2 = teams.find(pt => pt.id === t.details?.partnerTeamId);
                             
-                            // [Safety] Ultra-defensive ID Access
+                            const team1Name = team1?.name || t.teamId;
+                            const team2Name = team2?.name || t.details?.partnerTeamName || 'Unknown';
+                            
                             const txId = (t.id && typeof t.id === 'string') ? t.id.slice(-6) : '??????';
                             
                             return (
                             <tr key={t.id || Math.random()} className="hover:bg-white/5 transition-colors">
-                                <td className="py-4 px-4 align-middle">
+                                <td className="py-4 px-4 align-top">
                                     <div className="text-xs font-bold text-slate-400">{t.date === 'TODAY' ? currentSimDate : t.date}</div>
-                                    <div className="text-[10px] text-slate-600 font-mono mt-1">{txId}</div>
+                                    <div className="text-[10px] text-slate-600 font-mono mt-1">ID: {txId}</div>
                                 </td>
-                                <td className="py-4 px-4 align-middle">
+                                <td className="py-4 px-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         <div className="flex items-center gap-2">
-                                            <img src={getTeamLogoUrl(initiator?.id || '')} className="w-6 h-6 object-contain" alt="" />
-                                            <span className={`text-xs font-black uppercase ${initiator?.id === teamId ? 'text-indigo-400' : 'text-white'}`}>{initiator?.name || 'Unknown'}</span>
+                                            <img src={getTeamLogoUrl(t.teamId)} className="w-6 h-6 object-contain" alt="" />
+                                            <span className={`text-xs font-black uppercase ${t.teamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team1Name}</span>
+                                        </div>
+                                        <div className="pl-2">
+                                             <ArrowRightLeft size={12} className="text-slate-600" />
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <img src={getTeamLogoUrl(partner?.id || '')} className="w-6 h-6 object-contain" alt="" />
-                                            <span className={`text-xs font-black uppercase ${partner?.id === teamId ? 'text-indigo-400' : 'text-white'}`}>{partner?.name || 'Unknown'}</span>
+                                            <img src={getTeamLogoUrl(t.details?.partnerTeamId || '')} className="w-6 h-6 object-contain" alt="" />
+                                            <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
                                         </div>
                                     </div>
                                 </td>
-                                <td className="py-4 px-4 align-middle">
+                                <td className="py-4 px-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         {(t.details?.acquired || []).map((p, i) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
@@ -115,9 +125,10 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                                 </div>
                                             );
                                         })}
+                                        {(t.details?.acquired || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
                                 </td>
-                                <td className="py-4 px-4 align-middle">
+                                <td className="py-4 px-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         {(t.details?.traded || []).map((p, i) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
@@ -129,6 +140,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                                 </div>
                                             );
                                         })}
+                                        {(t.details?.traded || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
                                 </td>
                             </tr>
