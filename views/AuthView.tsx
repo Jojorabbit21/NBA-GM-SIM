@@ -3,7 +3,6 @@ import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import { AuthInput } from '../components/auth/AuthInput';
-import { getDeviceId } from '../utils/device';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
@@ -43,21 +42,16 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     );
   }, [email, password, confirmPassword]);
 
-  // 프로필 생성/확인 시 Device ID도 함께 기록
+  // removed deviceId logic
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
-    const deviceId = getDeviceId();
     const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
     if (!data) {
         await supabase.from('profiles').insert({
             id: userId,
             email: userEmail,
             nickname: userEmail ? userEmail.split('@')[0] : 'GM',
-            active_device_id: deviceId,
             created_at: new Date().toISOString()
         });
-    } else {
-        // 이미 존재하면 Device ID 갱신
-        await supabase.from('profiles').update({ active_device_id: deviceId }).eq('id', userId);
     }
   };
 
