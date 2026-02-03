@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Player } from '../types';
 import { getProjectedZoneDensity } from '../services/game/engine/shotDistribution';
 
@@ -18,7 +18,7 @@ const ZONE_PATHS = {
 };
 
 const COURT_LINES = [
-  "M1.3,1.5h432v399.6H1.3V1.5M-.1,0v402.5h434.9V0H-.1Z", // Outline
+  // Removed Outer Border M1.3,1.5h432v399.6...
   "M149.6,238.4h135.4v162.7h-135.4v-162.7M148.2,236.9v165.6h138.2v-165.6h-138.2Z", // Key
   "M269.2,237.7h-1.4c0-27.8-22.6-50.4-50.4-50.4s-50.4,22.6-50.4,50.4h-1.4c0-28.6,23.3-51.8,51.8-51.8s51.8,23.3,51.8,51.8Z", // Free Throw Circle
   // Dashed lines / markings
@@ -34,7 +34,8 @@ const StatItem: React.FC<{ label: string, value: string | number }> = ({ label, 
     </div>
 );
 
-export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
+// [Optimization] Wrap in React.memo to prevent re-renders when parent modal updates but player stats haven't changed
+export const VisualShotChart: React.FC<{ player: Player }> = React.memo(({ player }) => {
     const s = player.stats;
     if (!s) return null;
 
@@ -44,7 +45,7 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
 
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
-    const zData = {
+    const zData = useMemo(() => ({
         rim: getZ(s.zone_rim_m, s.zone_rim_a),
         paint: getZ(s.zone_paint_m, s.zone_paint_a),
         midL: getZ(s.zone_mid_l_m, s.zone_mid_l_a),
@@ -55,20 +56,20 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
         atb3L: getZ(s.zone_atb3_l_m, s.zone_atb3_l_a),
         atb3C: getZ(s.zone_atb3_c_m, s.zone_atb3_c_a),
         atb3R: getZ(s.zone_atb3_r_m, s.zone_atb3_r_a),
-    };
+    }), [s]);
 
     const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
 
     // Get projected densities for Scouting Mode
-    const projected = isScoutingMode ? getProjectedZoneDensity(player) : null;
+    const projected = useMemo(() => isScoutingMode ? getProjectedZoneDensity(player) : null, [player, isScoutingMode]);
 
     // Helper to determine style
-    // Opacity logic: Data Mode gets slightly clearer opacity, Scouting is more ghostly
+    // Opacity decreased to ~30%
     const getZoneStyle = (key: string, makes: number, attempts: number, avg: number) => {
         if (isScoutingMode && projected) {
             // Scouting Mode: Show predicted hot zones in grayscale/slate
             const density = projected[key as keyof typeof projected];
-            return { fill: '#94a3b8', opacity: 0.1 + (density * 0.5), isHot: false, isCold: false }; 
+            return { fill: '#94a3b8', opacity: 0.1 + (density * 0.4), isHot: false, isCold: false }; 
         }
 
         // Data Mode: Show actual efficiency
@@ -76,53 +77,61 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
         if (attempts === 0) return { fill: '#1e293b', opacity: 0.2, isHot: false, isCold: false }; // Slate-800
         
         const pct = makes / attempts;
-        if (pct >= avg + 0.05) return { fill: '#ef4444', opacity: 0.7, isHot: true, isCold: false }; // Hot (Red)
-        if (pct <= avg - 0.05) return { fill: '#3b82f6', opacity: 0.7, isHot: false, isCold: true }; // Cold (Blue)
-        return { fill: '#eab308', opacity: 0.6, isHot: false, isCold: false }; // Avg (Yellow)
+        if (pct >= avg + 0.05) return { fill: '#10b981', opacity: 0.35, isHot: true, isCold: false }; // Hot (Green/Emerald)
+        if (pct <= avg - 0.05) return { fill: '#ef4444', opacity: 0.35, isHot: false, isCold: true }; // Cold (Red)
+        return { fill: '#f97316', opacity: 0.35, isHot: false, isCold: false }; // Avg (Orange)
     };
 
-    // Updated Zone Config with Centroids for Text Labels (Approximate based on SVG paths)
-    const zones = [
-        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint", key: 'paint', cx: 217, cy: 320 },
+    // Updated Zone Config with Tuned Centroids for Text Labels
+    const zones = useMemo(() => [
+        { path: ZONE_PATHS.PAINT, data: zData.paint, avg: AVG.paint, label: "Paint", key: 'paint', cx: 217, cy: 290 }, 
         { path: ZONE_PATHS.RIM, data: zData.rim, avg: AVG.rim, label: "Restricted Area", key: 'rim', cx: 217, cy: 375 },
-        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left", key: 'midL', cx: 80, cy: 280 },
+        { path: ZONE_PATHS.MID_L, data: zData.midL, avg: AVG.mid, label: "Mid Left", key: 'midL', cx: 80, cy: 300 }, 
         { path: ZONE_PATHS.MID_C, data: zData.midC, avg: AVG.mid, label: "Mid Center", key: 'midC', cx: 217, cy: 200 },
-        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right", key: 'midR', cx: 355, cy: 280 },
+        { path: ZONE_PATHS.MID_R, data: zData.midR, avg: AVG.mid, label: "Mid Right", key: 'midR', cx: 355, cy: 300 }, 
         { path: ZONE_PATHS.C3_L, data: zData.c3L, avg: AVG.c3, label: "Corner 3 L", key: 'c3L', cx: 15, cy: 350 },
-        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L", key: 'atb3L', cx: 60, cy: 110 },
+        { path: ZONE_PATHS.ATB3_L, data: zData.atb3L, avg: AVG.atb3, label: "Wing 3 L", key: 'atb3L', cx: 40, cy: 140 }, 
         { path: ZONE_PATHS.ATB3_C, data: zData.atb3C, avg: AVG.atb3, label: "Top 3", key: 'atb3C', cx: 217, cy: 80 },
-        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R", key: 'atb3R', cx: 375, cy: 110 },
+        { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "Wing 3 R", key: 'atb3R', cx: 395, cy: 140 }, 
         { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "Corner 3 R", key: 'c3R', cx: 420, cy: 350 },
-    ];
+    ], [zData, AVG]);
 
     // Stats Grid Calculation
     const fgPct = s.fga > 0 ? (s.fgm / s.fga * 100).toFixed(1) + '%' : '0%';
     const p3Pct = s.p3a > 0 ? (s.p3m / s.p3a * 100).toFixed(1) + '%' : '0%';
     const ftPct = s.fta > 0 ? (s.ftm / s.fta * 100).toFixed(1) + '%' : '0%';
+    // True Shooting %: PTS / (2 * (FGA + 0.44 * FTA))
+    const tsPct = (s.fga + 0.44 * s.fta) > 0 
+        ? (s.pts / (2 * (s.fga + 0.44 * s.fta)) * 100).toFixed(1) + '%' 
+        : '0%';
 
     const row1 = [
         { l: 'GP', v: s.g }, 
-        { l: 'GS', v: s.gs }, 
         { l: 'MIN', v: (s.g > 0 ? (s.mp / s.g).toFixed(1) : 0) },
         { l: 'PTS', v: (s.g > 0 ? (s.pts / s.g).toFixed(1) : 0) }, 
         { l: 'OREB', v: (s.g > 0 ? (s.offReb / s.g).toFixed(1) : 0) },
         { l: 'DREB', v: (s.g > 0 ? (s.defReb / s.g).toFixed(1) : 0) },
         { l: 'AST', v: (s.g > 0 ? (s.ast / s.g).toFixed(1) : 0) }, 
         { l: 'STL', v: (s.g > 0 ? (s.stl / s.g).toFixed(1) : 0) },
-        { l: 'BLK', v: (s.g > 0 ? (s.blk / s.g).toFixed(1) : 0) },
-        { l: 'TOV', v: (s.g > 0 ? (s.tov / s.g).toFixed(1) : 0) }
+        { l: 'BLK', v: (s.g > 0 ? (s.blk / s.g).toFixed(1) : 0) }
     ];
 
     const row2 = [
+        { l: 'TOV', v: (s.g > 0 ? (s.tov / s.g).toFixed(1) : 0) },
+        { l: 'PF', v: (s.g > 0 ? ((s.pf || 0) / s.g).toFixed(1) : 0) },
         { l: 'FGM', v: (s.g > 0 ? (s.fgm / s.g).toFixed(1) : 0) },
         { l: 'FGA', v: (s.g > 0 ? (s.fga / s.g).toFixed(1) : 0) },
         { l: 'FG%', v: fgPct },
         { l: '3PM', v: (s.g > 0 ? (s.p3m / s.g).toFixed(1) : 0) },
         { l: '3PA', v: (s.g > 0 ? (s.p3a / s.g).toFixed(1) : 0) },
         { l: '3P%', v: p3Pct },
+    ];
+
+    const row3 = [
         { l: 'FTM', v: (s.g > 0 ? (s.ftm / s.g).toFixed(1) : 0) },
         { l: 'FTA', v: (s.g > 0 ? (s.fta / s.g).toFixed(1) : 0) },
         { l: 'FT%', v: ftPct },
+        { l: 'TS%', v: tsPct },
     ];
 
     return (
@@ -130,16 +139,20 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
             
             {/* Left Column: Stats & Zone List */}
             <div className="w-full lg:w-[55%] flex flex-col gap-6 h-full">
-                {/* 1. Season Stats (2 Rows) */}
+                {/* 1. Season Stats (3 Rows) */}
                 <div className="flex flex-col gap-2">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1">시즌 스탯</h5>
                     <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm flex flex-col gap-3">
-                        <div className="grid grid-cols-5 md:grid-cols-10 gap-y-2">
+                        <div className="grid grid-cols-8 gap-y-2">
                              {row1.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
                         </div>
                         <div className="w-full h-px bg-slate-800/50"></div>
-                        <div className="grid grid-cols-5 md:grid-cols-9 gap-y-2">
+                        <div className="grid grid-cols-8 gap-y-2">
                              {row2.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
+                        </div>
+                        <div className="w-full h-px bg-slate-800/50"></div>
+                        <div className="grid grid-cols-8 gap-y-2">
+                             {row3.map((item, idx) => <StatItem key={idx} label={item.l} value={item.v} />)}
                         </div>
                     </div>
                 </div>
@@ -157,14 +170,15 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                              
                              let colorClass = 'text-slate-500';
                              if (!isScoutingMode) {
-                                 if (style.isHot) colorClass = 'text-red-400';
-                                 else if (style.isCold) colorClass = 'text-blue-400';
-                                 else if (z.data.a > 0) colorClass = 'text-yellow-400';
+                                 if (style.isHot) colorClass = 'text-emerald-400';
+                                 else if (style.isCold) colorClass = 'text-red-400';
+                                 else if (z.data.a > 0) colorClass = 'text-orange-400';
                              }
 
                              return (
                                  <div key={i} className="flex flex-col justify-center items-center bg-slate-900/40 p-2 rounded border border-slate-800/50 text-center h-16 min-w-0">
-                                     <span className="text-[10px] font-bold text-slate-400 truncate w-full px-1 mb-1" title={z.label}>{z.label}</span>
+                                     {/* Removed truncate to ensure visibility, ensure parent has enough height */}
+                                     <span className="text-[10px] font-bold text-slate-400 w-full px-1 mb-1 leading-tight" title={z.label}>{z.label}</span>
                                      <span className={`text-base font-black ${colorClass}`}>{pct}%</span>
                                      <span className="text-[11px] font-mono text-slate-500">{z.data.m}/{z.data.a}</span>
                                  </div>
@@ -181,9 +195,9 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
                         <span>SHOT CHART</span>
                         {!isScoutingMode ? (
                             <div className="flex gap-3 text-[10px]">
-                                <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> HOT</span>
-                                <span className="text-yellow-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-yellow-500 rounded-sm"></div> AVG</span>
-                                <span className="text-blue-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-blue-500 rounded-sm"></div> COLD</span>
+                                <span className="text-emerald-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></div> HOT</span>
+                                <span className="text-orange-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-orange-500 rounded-sm"></div> AVG</span>
+                                <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> COLD</span>
                             </div>
                         ) : (
                             <span className="text-[10px] text-slate-400 flex items-center gap-1">PROJECTED ZONES</span>
@@ -266,4 +280,4 @@ export const VisualShotChart: React.FC<{ player: Player }> = ({ player }) => {
             </div>
         </div>
     );
-};
+});

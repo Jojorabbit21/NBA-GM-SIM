@@ -174,15 +174,16 @@ const App: React.FC = () => {
     };
 
     // [Update] Ticker Data Logic with Dynamic Label
+    // [Performance] Slice data to max 30 items to prevent DOM explosion
     const tickerData = useMemo(() => {
         const todayGames = gameData.schedule.filter(g => g.date === gameData.currentSimDate && g.played);
-        if (todayGames.length > 0) return { games: todayGames, label: "Today's Results" };
+        if (todayGames.length > 0) return { games: todayGames.slice(0, 30), label: "Today's Results" };
         
         for (let i = gameData.schedule.length - 1; i >= 0; i--) {
             const game = gameData.schedule[i]; 
             if (game.played && game.date < gameData.currentSimDate) { 
                 const pastGames = gameData.schedule.filter(g => g.date === game.date && g.played);
-                return { games: pastGames, label: "Latest Results" }; 
+                return { games: pastGames.slice(0, 30), label: "Latest Results" }; 
             }
         }
         return { games: [], label: "Today's Results" };
@@ -275,7 +276,8 @@ const App: React.FC = () => {
                             </div>
                             <div className="flex-1 overflow-hidden relative h-5">
                                 <div className="absolute inset-0 flex items-center animate-marquee whitespace-nowrap gap-12">
-                                    {[...gameData.news, ...gameData.news].map((item, i) => (
+                                    {/* [Performance] Limit news ticker items to latest 20 to prevent DOM bloat */}
+                                    {[...gameData.news, ...gameData.news].slice(0, 20).map((item, i) => (
                                         <span key={i} className="text-xs font-bold text-slate-300 ko-tight flex items-center gap-3">
                                             <div className="w-1 h-1 rounded-full bg-indigo-500"></div>
                                             {typeof item === 'string' ? item : item.content}
