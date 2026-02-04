@@ -242,7 +242,7 @@ export interface PbpLog {
     timeRemaining: string; // "11:45"
     teamId: string;
     text: string;
-    type: 'score' | 'miss' | 'rebound' | 'turnover' | 'foul' | 'info';
+    type: 'score' | 'miss' | 'rebound' | 'turnover' | 'foul' | 'info' | 'block' | 'freethrow';
 }
 
 export interface TradeOffer {
