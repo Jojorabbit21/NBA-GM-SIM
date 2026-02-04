@@ -1,6 +1,6 @@
 
 import { Team, Player, OffenseTactic, DefenseTactic, GameTactics, TacticStatRecord, PlayerBoxScore, TacticalSnapshot } from '../types';
-import { OFFENSE_TACTIC_CONFIG, DEFENSE_TACTIC_CONFIG } from '../services/game/engine/pbp/tacticMaps';
+import { OFFENSE_STRATEGY_CONFIG, DEFENSE_STRATEGY_CONFIG } from '../services/game/engine/pbp/strategyMap';
 import { calculatePlayerArchetypes } from '../services/game/engine/pbp/archetypeSystem';
 
 // UI Texts
@@ -47,8 +47,8 @@ export const calculateTacticScore = (
 
     // 2. Get Engine Config for the requested tactic
     // Force type casting to access the maps (Engine maps are source of truth)
-    const offConfig = OFFENSE_TACTIC_CONFIG[type as OffenseTactic];
-    const defConfig = DEFENSE_TACTIC_CONFIG[type as DefenseTactic];
+    const offConfig = OFFENSE_STRATEGY_CONFIG[type as OffenseTactic];
+    const defConfig = DEFENSE_STRATEGY_CONFIG[type as DefenseTactic];
     const config = offConfig || defConfig;
 
     if (!config) return 50;
@@ -74,7 +74,8 @@ export const calculateTacticScore = (
         };
 
         // Calculate Archetypes using current condition
-        const archs = calculatePlayerArchetypes(attr, p.condition || 100);
+        // Default condition to 100 if undefined to avoid heavy penalty in UI view
+        const archs = calculatePlayerArchetypes(attr, p.condition ?? 100);
 
         // Sum up weighted scores defined in Engine Config
         // fit: { spacer: 3, handler: 2 ... }
@@ -87,10 +88,10 @@ export const calculateTacticScore = (
     });
 
     // 4. Normalize to 0-100 scale
-    // Total Score / Total Weight / Player Count
+    // [FIX] Removed division by effectiveStarters.length because totalWeight accumulates per player
     if (totalWeight === 0) return 50;
     
-    const finalScore = totalScore / totalWeight / effectiveStarters.length;
+    const finalScore = totalScore / totalWeight;
     return Math.min(99, Math.max(40, Math.round(finalScore)));
 };
 
