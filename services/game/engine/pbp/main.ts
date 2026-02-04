@@ -6,6 +6,7 @@ import { handleSubstitutions } from './substitutionSystem';
 import { formatTime } from './timeEngine';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { calculatePlayerOvr } from '../../../../utils/constants';
+import { calculateIncrementalFatigue } from '../fatigueSystem'; // [New] Import
 
 // --- Initialization Helpers ---
 
@@ -15,7 +16,7 @@ const initLivePlayer = (p: Player): LivePlayer => ({
     position: p.position,
     ovr: calculatePlayerOvr(p),
     currentCondition: p.condition || 100,
-    isStarter: false, // Default false, set later
+    isStarter: false, 
     // Attributes for engine
     attr: {
         ins: p.ins || 70, out: p.out || 70, ft: p.ft || 75,
@@ -23,7 +24,8 @@ const initLivePlayer = (p: Player): LivePlayer => ({
         def: p.def || 70, blk: p.blk || 50, stl: p.steal || 50, foulTendency: 50,
         reb: p.reb || 70,
         pas: p.passAcc || 70,
-        stamina: p.stamina || 80
+        stamina: p.stamina || 80,
+        durability: p.durability || 80 // [New] Map durability
     },
     // Box Score Init
     pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
@@ -82,6 +84,8 @@ const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
     };
 };
 
+// [Removed] Local calculateFatigueDrain function is replaced by module import
+
 // --- Main Engine ---
 
 export function runFullGameSimulation(
@@ -119,7 +123,7 @@ export function runFullGameSimulation(
                 text: `--- ${state.quarter}쿼터 종료 (${state.home.score} : ${state.away.score}) ---`
             });
 
-            // [NEW] Break Time Recovery Logic
+            // [Recovery] Break Time Recovery Logic
             // Halftime (End of Q2) -> +5 Recovery
             // Quarter Break (End of Q1, Q3) -> +2 Recovery
             const recoveryAmount = state.quarter === 2 ? 5 : 2;
@@ -210,16 +214,47 @@ export function runFullGameSimulation(
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
         
-        // Fatigue Drain (ADJUSTED: Lowered from 3.0 to 1.5)
-        const drainMultiplier = 1.5; 
-        const drain = (result.timeTaken / 60) * drainMultiplier;
-        
-        state.home.onCourt.forEach(p => { p.mp += result.timeTaken / 60; p.currentCondition -= drain; });
-        state.away.onCourt.forEach(p => { p.mp += result.timeTaken / 60; p.currentCondition -= drain; });
+        // [New] Apply Fatigue using Modular System
+        // Helper to apply to a specific team side
+        const applyFatigueToTeam = (t: TeamState, isB2B: boolean) => {
+            t.onCourt.forEach(p => {
+                const isStopper = t.tactics.stopperId === p.playerId;
+                
+                // Call Module
+                const { drain, injuryOccurred, injuryDetails } = calculateIncrementalFatigue(
+                    p, 
+                    result.timeTaken, 
+                    t.tactics.sliders, 
+                    isB2B, 
+                    isStopper
+                );
+
+                p.mp += result.timeTaken / 60;
+                p.currentCondition -= drain;
+
+                // Handle In-Game Injury
+                if (injuryOccurred) {
+                    state.logs.push({
+                        quarter: state.quarter,
+                        timeRemaining: formatTime(Math.max(0, state.gameClock)),
+                        teamId: t.id,
+                        type: 'info',
+                        text: `🚑 [부상] ${p.playerName} 선수가 고통을 호소하며 코트에 쓰러졌습니다. (${injuryDetails?.type})`
+                    });
+                    // Force Substitution Logic to kick in
+                    p.currentCondition = 0; // Force sub out
+                    state.isDeadBall = true; // Ensure substitution happens next loop
+                }
+            });
+        };
+
+        applyFatigueToTeam(state.home, state.isHomeB2B);
+        applyFatigueToTeam(state.away, state.isAwayB2B);
         
         // Bench Recovery (Slow regeneration while sitting)
-        state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + (drain * 0.8)));
-        state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + (drain * 0.8)));
+        const benchRecovery = (result.timeTaken / 60) * 0.8;
+        state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
+        state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
 
         // Add Log
         state.logs.push({
@@ -259,7 +294,7 @@ export function runFullGameSimulation(
     // Prepare Roster Updates (Fatigue)
     const rosterUpdates: any = {};
     [...finalHomeBox, ...finalAwayBox].forEach(p => {
-        rosterUpdates[p.playerId] = { condition: Math.round(p.currentCondition) };
+        rosterUpdates[p.playerId] = { condition: Math.max(0, Math.round(p.currentCondition)) };
     });
 
     return {
