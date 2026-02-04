@@ -1,3 +1,4 @@
+
 import { Player, PlayerBoxScore, GameTactics, PbpLog } from '../../../../types';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -5,7 +6,7 @@ export interface LivePlayer extends PlayerBoxScore {
     currentCondition: number;
     position: string;
     ovr: number;
-    isStarter: boolean; // [New] Identifies if this player is in the starting 5
+    isStarter: boolean; 
     
     // Attributes needed for simulation
     attr: {
@@ -15,6 +16,7 @@ export interface LivePlayer extends PlayerBoxScore {
         reb: number;
         pas: number;
         stamina: number;
+        durability: number; // [Added] for fatigue/injury calc
     }
 }
 
@@ -51,12 +53,12 @@ export interface GameState {
 export interface PossessionResult {
     type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow';
     points?: 1 | 2 | 3;
-    attempts?: number; // Added for counting FTA
+    attempts?: number; 
     player?: LivePlayer; // Main actor
     secondaryPlayer?: LivePlayer; // Assister, Fouler, Blocker
     rebounder?: LivePlayer;
     timeTaken: number;
     logText: string;
-    nextPossession: 'home' | 'away' | 'keep' | 'free_throw'; // free_throw is a special state
+    nextPossession: 'home' | 'away' | 'keep' | 'free_throw'; 
     isDeadBall?: boolean;
 }

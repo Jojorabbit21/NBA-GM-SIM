@@ -2,7 +2,9 @@
 import { Player, TacticalSliders } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { FatigueResult } from './types';
+import { LivePlayer } from './pbp/pbpTypes';
 
+// --- Legacy / Post-Game Calculation (For Box Score Sim) ---
 export function calculateFatigueAndInjury(
     p: Player,
     mp: number,
@@ -16,7 +18,6 @@ export function calculateFatigueAndInjury(
 
     const preGameCondition = p.condition !== undefined ? p.condition : 100;
     
-    // Default response if no minutes played
     if (mp <= 0) {
         return {
             newCondition: preGameCondition,
@@ -41,21 +42,16 @@ export function calculateFatigueAndInjury(
     else if (mp <= 32) workloadMult = 1.2;
     else if (mp <= 36) workloadMult = 1.35;
     else if (mp <= 40) workloadMult = 1.6;
-    else workloadMult = 1.8; // 40+ min (Overwork)
+    else workloadMult = 1.8; 
 
     drain *= workloadMult;
     
-    // Back-to-Back Penalty
-    if (isB2B) {
-        drain *= 1.5;
-    }
-
-    // Stopper Penalty
+    if (isB2B) drain *= 1.5;
     if (isStopper && mp > 5) drain *= 1.25;
 
     const newCondition = Math.max(0, Math.floor(preGameCondition - drain));
 
-    // 2. Calculate Injury Risk
+    // 2. Calculate Injury Risk (Simulated for whole game)
     let newHealth = p.health;
     let injuryType = p.injuryType;
     let returnDate = p.returnDate;
@@ -89,23 +85,81 @@ export function calculateFatigueAndInjury(
         }
     }
 
-    // 3. Performance Penalties
-    // In-game fatigue (getting tired during the game)
-    const intensityFactor = 1 + (sliders.defIntensity - 5) * 0.05 + (sliders.fullCourtPress - 5) * 0.05;
-    const inGameFatiguePenalty = Math.max(0, (mp - (p.stamina * 0.4))) * 0.01 * intensityFactor; 
-    
-    // Pre-game fatigue (starting tired)
-    let fatiguePerfPenalty = 0;
-    if (preGameCondition < 40) fatiguePerfPenalty = C.FATIGUE_PENALTY_HIGH; 
-    else if (preGameCondition < 60) fatiguePerfPenalty = C.FATIGUE_PENALTY_MED;
-    else if (preGameCondition < 80) fatiguePerfPenalty = C.FATIGUE_PENALTY_LOW;
-
     return {
         newCondition,
         newHealth,
         injuryType,
         returnDate,
-        fatiguePerfPenalty,
-        inGameFatiguePenalty
+        fatiguePerfPenalty: 0,
+        inGameFatiguePenalty: 0
     };
+}
+
+
+// --- [NEW] Incremental Calculation for PbP Engine ---
+// Designed to be called every possession (seconds scale)
+export function calculateIncrementalFatigue(
+    player: LivePlayer,
+    secondsPlayed: number,
+    sliders: TacticalSliders,
+    isB2B: boolean,
+    isStopper: boolean
+): { drain: number, injuryOccurred: boolean, injuryDetails?: any } {
+    
+    const C = SIM_CONFIG.FATIGUE;
+    const minutes = secondsPlayed / 60;
+
+    // 1. Base Factors (Shared Logic)
+    // Stamina: Higher (99) -> Lower Factor (0.25). Lower (50) -> Higher Factor.
+    const staminaFactor = Math.max(0.25, C.DRAIN_BASE - (player.attr.stamina * C.STAMINA_SAVE_FACTOR));
+    
+    // Durability: Higher -> Lower Drain
+    const durabilityFactor = 1 + (80 - player.attr.durability) * C.DURABILITY_FACTOR;
+    
+    // 2. Base Drain for this time slice
+    const baseDrain = minutes * staminaFactor * durabilityFactor;
+
+    // 3. Tactical Intensity (Sliders)
+    // 1(Low) ~ 10(High). Average 5.
+    const sliderIntensity = (sliders.pace + sliders.defIntensity + sliders.fullCourtPress) / 15;
+    
+    let drain = baseDrain * sliderIntensity;
+
+    // 4. Situational Multipliers
+    if (isB2B) drain *= 1.5;
+    if (isStopper) drain *= 1.25;
+
+    // 5. [PbP Specific] Real-time Workload Penalty
+    // If player is already tired, they drain faster
+    if (player.currentCondition < 50) drain *= 1.2;
+    if (player.currentCondition < 20) drain *= 1.5;
+
+    // 6. Injury Check (Micro-roll)
+    // Probability scaled down to per-second, but weighted heavily by exhaustion
+    let injuryOccurred = false;
+    let injuryDetails = undefined;
+
+    // Only risk injury if condition is compromised or extreme bad luck
+    if (player.currentCondition < 70) {
+        const I = SIM_CONFIG.INJURY;
+        // Base risk per minute played under load
+        let riskPerMinute = I.BASE_RISK * 0.1; // Reduced for gameplay flow
+        
+        if (player.currentCondition < 20) riskPerMinute *= 5; // Danger zone
+        else if (player.currentCondition < 40) riskPerMinute *= 2;
+
+        const currentRisk = riskPerMinute * minutes;
+
+        if (Math.random() < currentRisk) {
+            injuryOccurred = true;
+            // Generate basic injury details (simplified for PbP)
+            const severe = Math.random() > 0.7; // 30% Severe
+            injuryDetails = {
+                health: severe ? 'Injured' : 'Day-to-Day',
+                type: severe ? 'Hamstring Strain' : 'Ankle Sprain'
+            };
+        }
+    }
+
+    return { drain, injuryOccurred, injuryDetails };
 }
