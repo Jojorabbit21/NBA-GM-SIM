@@ -80,7 +80,7 @@ const initLivePlayer = (p: Player): LivePlayer => {
         fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
         rimM: 0, rimA: 0, midM: 0, midA: 0,
         mp: 0, g: 1, gs: 0, pf: 0,
-        plusMinus: 0 // Added missing property
+        plusMinus: 0 // Initialize plusMinus
     };
 };
 
@@ -201,10 +201,22 @@ export function runFullGameSimulation(
         
         // 2-3. Apply Results
         const activeTeam = state.possession === 'home' ? state.home : state.away;
+        const defendingTeam = state.possession === 'home' ? state.away : state.home;
         
-        // Score
+        // Score & Plus/Minus
+        let pointsScored = 0;
         if ((result.type === 'score' || result.type === 'freethrow') && result.points) {
-            activeTeam.score += result.points;
+            pointsScored = result.points;
+            
+            // [New] Free Throw Special Handling (And-1 or FTs)
+            // ResolvePossession might return points for the whole play.
+            // If it's FT, points are already calculated.
+            
+            activeTeam.score += pointsScored;
+
+            // [New] Update Plus/Minus for players currently on court
+            activeTeam.onCourt.forEach(p => p.plusMinus += pointsScored);
+            defendingTeam.onCourt.forEach(p => p.plusMinus -= pointsScored);
         }
         
         // Player Stats - Primary Actor
@@ -347,9 +359,13 @@ export function runFullGameSimulation(
         while (state.home.score === state.away.score) {
             const result = resolvePossession(state);
             const activeTeam = state.possession === 'home' ? state.home : state.away;
+            const defendingTeam = state.possession === 'home' ? state.away : state.home;
             
             if ((result.type === 'score' || result.type === 'freethrow') && result.points) {
                 activeTeam.score += result.points;
+                // Update Plus/Minus in OT
+                activeTeam.onCourt.forEach(p => p.plusMinus += result.points!);
+                defendingTeam.onCourt.forEach(p => p.plusMinus -= result.points!);
             }
             state.logs.push({ quarter: 4, timeRemaining: 'SD', teamId: activeTeam.id, type: result.type, text: `[서든데스] ${result.logText}` });
             if (result.nextPossession !== 'keep') state.possession = result.nextPossession as any;
@@ -390,6 +406,7 @@ export function runFullGameSimulation(
                 "Condition": Math.round(p.currentCondition),
                 "Health": p.health,
                 "Status": p.isStarter ? 'Starter' : 'Bench',
+                "PlusMinus": p.plusMinus,
                 // Debug Archetypes
                 "Arch-Handler": p.archetypes.handler,
                 "Arch-Spacer": p.archetypes.spacer

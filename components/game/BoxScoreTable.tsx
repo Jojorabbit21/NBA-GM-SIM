@@ -29,7 +29,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
       stl: acc.stl + p.stl, blk: acc.blk + p.blk, tov: acc.tov + p.tov, pf: acc.pf! + (p.pf || 0),
       fgm: acc.fgm + p.fgm, fga: acc.fga + p.fga,
       p3m: acc.p3m + p.p3m, p3a: acc.p3a + p.p3a, ftm: acc.ftm + p.ftm, fta: acc.fta + p.fta,
-    }), { mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+      plusMinus: acc.plusMinus + p.plusMinus // Not technically summed for team, but for completeness
+    }), { mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, plusMinus: 0 });
   }, [box]);
 
   const highlightClass = "text-yellow-400 font-medium pretendard drop-shadow-[0_0_5px_rgba(250,204,21,0.5)]";
@@ -65,6 +66,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                       <th className="py-3 px-2 text-right w-14">3P%</th>
                       <th className="py-3 px-2 text-right w-14">FT</th>
                       <th className="py-3 px-2 text-right w-14">FT%</th>
+                      <th className="py-3 px-2 text-right w-14">+/-</th>
                    </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
@@ -124,6 +126,9 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.p3m, p.p3a)}</td>
                                <td className={`${statCellClass} text-right text-slate-400`}>{p.ftm}/{p.fta}</td>
                                <td className={`${statCellClass} text-right text-slate-500`}>{getPct(p.ftm, p.fta)}</td>
+                               <td className={`${statCellClass} text-right font-black ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
+                               </td>
                            </tr>
                        );
                    })}
@@ -146,6 +151,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.p3m, teamTotals.p3a)}</td>
                         <td className={`${statCellClass} text-right text-slate-400`}>{teamTotals.ftm}/{teamTotals.fta}</td>
                         <td className={`${statCellClass} text-right text-slate-500`}>{getPct(teamTotals.ftm, teamTotals.fta)}</td>
+                        <td className={`${statCellClass} text-right text-slate-500`}>-</td>
                     </tr>
                 </tfoot>
              </table>
