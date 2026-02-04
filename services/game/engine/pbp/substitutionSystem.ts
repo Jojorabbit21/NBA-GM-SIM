@@ -173,13 +173,24 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
             
             if (isTired || isOverLimit) {
                 // Find Replacement from Bench
-                // Criteria: Healthy, Not Tired (Threshold + buffer), Under Limit, Best OVR
                 const candidates = team.bench
                     .filter(b => 
                         !selectedIds.has(b.playerId) && 
-                        isTacticallyFit(b, dynamicThreshold + 5) // +5 buffer so we don't sub in someone who gets tired in 1 min
+                        isTacticallyFit(b, dynamicThreshold + 5) // +5 buffer
                     )
-                    .sort((a, b) => b.ovr - a.ovr);
+                    .sort((a, b) => {
+                        // [Updated] Deep Rotation Sorting Strategy
+                        // If "Deep", prioritize players who have played LESS (mp asc).
+                        // This forces the rotation to go deeper (11th, 12th man) before returning to starters.
+                        if (flexibility >= 7) {
+                            // Primary: Minutes Played (Low to High)
+                            if (Math.abs(a.mp - b.mp) > 2) return a.mp - b.mp;
+                            // Secondary: Condition (High to Low)
+                            return b.currentCondition - a.currentCondition;
+                        }
+                        // Default: Best Player Available (OVR)
+                        return b.ovr - a.ovr;
+                    });
                 
                 if (candidates.length > 0) {
                     const sub = candidates[0];
@@ -203,40 +214,43 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
         }
 
         // B. SUB IN: Check if any Key Starters on bench are Fresh and ready to return
-        // (Only if they aren't already selected)
-        const restingStarters = team.bench.filter(b => 
-            starterIds.includes(b.playerId) && 
-            !selectedIds.has(b.playerId) &&
-            isTacticallyFit(b, dynamicThreshold + 8) // Needs to be very fresh to bump someone else
-        );
+        // [Updated] In "Deep" mode, we DISABLE this aggressive starter return logic.
+        // We want to rely purely on Section A's "remove when tired" + "least minutes insert" logic.
+        // This prevents the system from bouncing back to starters immediately after they recover slightly.
+        if (flexibility < 7) {
+            const restingStarters = team.bench.filter(b => 
+                starterIds.includes(b.playerId) && 
+                !selectedIds.has(b.playerId) &&
+                isTacticallyFit(b, dynamicThreshold + 8) // Needs to be very fresh to bump someone else
+            );
 
-        restingStarters.forEach(starter => {
-            // Find someone on court to bump
-            // Prioritize bumping: Bench players, or Tired Starters (though Tired Starters should have been removed in step A)
-            // Sort current lineup by: IsBench (desc), Fatigue (asc - most tired first), OVR (asc)
-            const bumpCandidates = selected
-                .filter(p => !starterIds.includes(p.playerId)) // Try to replace bench players first
-                .sort((a, b) => a.currentCondition - b.currentCondition || a.ovr - b.ovr);
-            
-            if (bumpCandidates.length > 0) {
-                const toRemove = bumpCandidates[0];
+            restingStarters.forEach(starter => {
+                // Find someone on court to bump
+                // Prioritize bumping: Bench players, or Tired Starters
+                const bumpCandidates = selected
+                    .filter(p => !starterIds.includes(p.playerId)) // Try to replace bench players first
+                    .sort((a, b) => a.currentCondition - b.currentCondition || a.ovr - b.ovr);
                 
-                // Only swap if Starter is actually better or fresher
-                selected = selected.filter(p => p.playerId !== toRemove.playerId);
-                selected.push(starter);
-                selectedIds.add(starter.playerId);
-                selectedIds.delete(toRemove.playerId);
-                changesMade = true;
+                if (bumpCandidates.length > 0) {
+                    const toRemove = bumpCandidates[0];
+                    
+                    // Only swap if Starter is actually better or fresher
+                    selected = selected.filter(p => p.playerId !== toRemove.playerId);
+                    selected.push(starter);
+                    selectedIds.add(starter.playerId);
+                    selectedIds.delete(toRemove.playerId);
+                    changesMade = true;
 
-                state.logs.push({
-                    quarter: state.quarter,
-                    timeRemaining: formatTime(state.gameClock),
-                    teamId: team.id,
-                    type: 'info',
-                    text: `[교체] OUT: ${toRemove.playerName}, IN: ${starter.playerName} (주전 복귀)`
-                });
-            }
-        });
+                    state.logs.push({
+                        quarter: state.quarter,
+                        timeRemaining: formatTime(state.gameClock),
+                        teamId: team.id,
+                        type: 'info',
+                        text: `[교체] OUT: ${toRemove.playerName}, IN: ${starter.playerName} (주전 복귀)`
+                    });
+                }
+            });
+        }
 
         // If we made changes via the logic above, we need to update the actual team state
         if (changesMade) {
