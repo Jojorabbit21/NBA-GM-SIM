@@ -134,6 +134,34 @@ const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
     };
 };
 
+// [New] Rotation Tracker Helper
+const updateRotationHistory = (state: GameState, duration: number) => {
+    const activePlayers = [...state.home.onCourt, ...state.away.onCourt];
+    
+    // Current ABSOLUTE start time of this segment (seconds from game start)
+    // Quarter 1: 0~720, Q2: 720~1440, etc.
+    const quarterOffset = (state.quarter - 1) * 720;
+    const currentSegmentStart = quarterOffset + (720 - state.gameClock);
+    const currentSegmentEnd = currentSegmentStart + duration;
+
+    activePlayers.forEach(p => {
+        if (!state.rotationHistory[p.playerId]) {
+            state.rotationHistory[p.playerId] = [];
+        }
+        
+        const history = state.rotationHistory[p.playerId];
+        const lastSeg = history[history.length - 1];
+
+        // Merge contiguous segments to reduce array size
+        // Tolerance of 1s for floating point drift
+        if (lastSeg && Math.abs(lastSeg.out - currentSegmentStart) <= 1) {
+            lastSeg.out = currentSegmentEnd;
+        } else {
+            history.push({ in: currentSegmentStart, out: currentSegmentEnd });
+        }
+    });
+};
+
 // --- Main Engine ---
 
 export function runFullGameSimulation(
@@ -159,7 +187,8 @@ export function runFullGameSimulation(
         isDeadBall: true, // Start as dead ball
         logs: [],
         isHomeB2B,
-        isAwayB2B
+        isAwayB2B,
+        rotationHistory: {}
     };
 
     console.group(`🏀 Starting Simulation: ${homeTeam.name} vs ${awayTeam.name}`);
@@ -265,6 +294,9 @@ export function runFullGameSimulation(
             else result.rebounder.defReb++;
         }
 
+        // [New] Update Rotation History (BEFORE subtracting time)
+        updateRotationHistory(state, result.timeTaken);
+
         // 2-4. Update Time & Fatigue
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
@@ -369,6 +401,10 @@ export function runFullGameSimulation(
                 // Update Plus/Minus in OT
                 activeTeam.onCourt.forEach(p => p.plusMinus += result.points!);
                 defendingTeam.onCourt.forEach(p => p.plusMinus -= result.points!);
+                
+                // [New] Update Rotation in OT (Append to end of 48min)
+                // OT adds time beyond 2880
+                updateRotationHistory(state, result.timeTaken);
             }
             state.logs.push({ quarter: 4, timeRemaining: 'SD', teamId: activeTeam.id, type: result.type, text: `[서든데스] ${result.logText}` });
             if (result.nextPossession !== 'keep') state.possession = result.nextPossession as any;
@@ -413,6 +449,8 @@ export function runFullGameSimulation(
         // [Fix 1] Explicitly map current TeamState tactics to snapshot format
         homeTactics: mapToSnapshot(state.home.tactics), 
         awayTactics: mapToSnapshot(state.away.tactics),
-        pbpLogs: state.logs
+        pbpLogs: state.logs,
+        // [New] Pass Rotation Data
+        rotationData: state.rotationHistory
     };
 }

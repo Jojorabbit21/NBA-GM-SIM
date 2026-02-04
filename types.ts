@@ -231,6 +231,13 @@ export interface PlayerBoxScore {
   matchupEffect?: number;
 }
 
+// [New] Rotation Tracking Data
+export interface RotationSegment {
+    in: number;  // Absolute seconds (0-2880)
+    out: number; // Absolute seconds (0-2880)
+}
+export type RotationData = Record<string, RotationSegment[]>;
+
 export interface SimulationResult {
   homeScore: number;
   awayScore: number;
@@ -241,6 +248,8 @@ export interface SimulationResult {
   awayTactics: TacticalSnapshot;
   // [New] PBP Logs (Ephemeral)
   pbpLogs?: PbpLog[]; 
+  // [New] Rotation History
+  rotationData?: RotationData;
 }
 
 export interface PbpLog {
