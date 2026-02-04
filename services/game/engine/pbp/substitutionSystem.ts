@@ -9,26 +9,27 @@ const FATIGUE_SAFETY_THRESHOLD = 15; // [Safety] 최소 생존 한계선 (부상
 enum LineupType {
     STARTERS = 'STARTERS',
     BENCH = 'BENCH',
-    GARBAGE = 'GARBAGE'
+    GARBAGE = 'GARBAGE',
+    FLUID = 'FLUID' // [New] 개별 컨디션 기반 유동적 로테이션
 }
 
 /**
  * Calculates the fatigue threshold based on Rotation Flexibility Slider (0-10).
  * 0 (Strict): ~20% (Only sub when almost dead)
- * 5 (Normal): ~50%
- * 10 (Deep): ~80% (Aggressive subs to keep fresh legs)
+ * 5 (Normal): ~45%
+ * 10 (Deep): ~72% (Sub earlier to keep fresh, but not too aggressive to force platoon swaps)
  */
 function getDynamicFatigueThreshold(flexibility: number): number {
     // If Strict (0-3), ignore fatigue mostly, just stick to safety net + small buffer
     if (flexibility <= 3) return 20;
     
-    // Linear scale from 4 to 10 mapped to 40% -> 80%
-    // flexibility 4 -> 40%
-    // flexibility 10 -> 80%
-    // Slope = (80-40) / (10-4) = 40/6 = ~6.6
-    const base = 40;
-    const extra = (flexibility - 4) * 6.6;
-    return Math.min(80, Math.round(base + extra));
+    // Linear scale for Normal to Deep
+    // Flex 4 -> 30%
+    // Flex 10 -> 72%
+    // Slope = (72 - 30) / (10 - 4) = 7
+    const base = 30;
+    const extra = (flexibility - 4) * 7;
+    return Math.min(72, Math.round(base + extra));
 }
 
 /**
@@ -61,12 +62,6 @@ export function handleSubstitutions(state: GameState) {
 
 /**
  * Check if a rotation is REQUIRED right now.
- * Triggers if:
- * 1. Garbage time mismatch
- * 2. [Priority 1] User Defined Minute Limit Reached
- * 3. [Priority 2] Safety (Exhaustion)
- * 4. [Priority 3] Tactical Fatigue (Deep Rotation)
- * 5. Rotation timeline mismatch
  */
 export function isRotationNeeded(team: TeamState, state: GameState): boolean {
     const flexibility = team.tactics.sliders.rotationFlexibility ?? 5;
@@ -75,11 +70,10 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
 
     // 1. [Priority 1] Minute Limit Check
     // If ANY player on court has exceeded their set limit, force a sub.
-    // Allow a small buffer (0.5 min) to prevent instant sub-back loops if logic is tight
     const hasLimitViolation = team.onCourt.some(p => {
         const limit = minutesLimits[p.playerId];
-        // Check if limit exists AND player has exceeded it
-        return limit !== undefined && p.mp >= limit;
+        // Allow small buffer (0.5 min) to prevent rapid toggling
+        return limit !== undefined && p.mp >= (limit + 0.5);
     });
     if (hasLimitViolation) return true;
 
@@ -87,29 +81,33 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
     const hasCriticalPlayer = team.onCourt.some(p => p.currentCondition < FATIGUE_SAFETY_THRESHOLD && p.health !== 'Injured');
     if (hasCriticalPlayer) return true;
 
-    // 3. Tactical Fatigue Check:
-    // If playing "Deep" (Flexibility > 7), strictly enforce the fatigue threshold.
+    // 3. Tactical Fatigue Check (Deep Rotation):
+    // If "Deep" (Flexibility >= 7), sub individual players who hit the threshold.
     if (flexibility >= 7) {
+        // Find players who are below the performance threshold
         const hasTiredPlayer = team.onCourt.some(p => p.currentCondition < dynamicThreshold && p.health !== 'Injured');
         if (hasTiredPlayer) {
-            // Only trigger if we actually have a valid sub on the bench who is fresher
-            const betterOptionExists = team.bench.some(b => b.currentCondition > dynamicThreshold && b.health !== 'Injured');
+            // Only trigger if we have a fresher replacement on bench
+            const betterOptionExists = team.bench.some(b => b.currentCondition > (dynamicThreshold + 5) && b.health !== 'Injured');
             if (betterOptionExists) return true;
         }
     }
 
-    // 4. Standard Time-based Rotation Logic
+    // 4. Standard Time-based Rotation Logic (For Strict/Normal)
     const targetType = determineLineupType(team, state, flexibility);
+    
+    // If we are in FLUID mode (Deep), we rely on checks 1, 2, 3 above.
+    // determineLineupType will return FLUID for Deep settings, so we skip the rigid check below.
+    if (targetType === LineupType.FLUID) return false; 
+
     const starterIds = Object.values(team.tactics.starters);
     const currentStartersOnCourt = team.onCourt.filter(p => starterIds.includes(p.playerId)).length;
 
-    // If it's GARBAGE time, but we still have starters -> Need rotation
+    // Garbage Time Check
     if (targetType === LineupType.GARBAGE && currentStartersOnCourt > 0) return true;
 
-    // If it's BENCH time, but we have 3+ starters -> Need rotation
+    // Rigid Template Checks (Only for Strict/Normal)
     if (targetType === LineupType.BENCH && currentStartersOnCourt >= 3) return true;
-
-    // If it's STARTER time, but we have < 3 starters -> Need rotation
     if (targetType === LineupType.STARTERS && currentStartersOnCourt < 3) return true;
 
     return false;
@@ -120,118 +118,194 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
     const flexibility = team.tactics.sliders.rotationFlexibility ?? 5; 
     const minutesLimits = team.tactics.minutesLimits || {};
     
-    // 1. Determine Target Lineup Type purely based on Time & Slider
     const targetType = determineLineupType(team, state, flexibility);
     const dynamicThreshold = getDynamicFatigueThreshold(flexibility);
     
-    // 2. Identify Pools
+    // Pools
     const allPlayers = [...team.onCourt, ...team.bench];
     const starterIds = Object.values(team.tactics.starters);
     
-    // 3. Selection Logic
+    // Setup Selection Arrays
     let selected: LivePlayer[] = [];
     const selectedIds = new Set<string>();
 
-    // [Check] Has player reached their user-defined minute limit?
+    // -------------------------------------------------------------------------
+    // Helper: Fitness Checks
+    // -------------------------------------------------------------------------
     const isUnderLimit = (p: LivePlayer) => {
         const limit = minutesLimits[p.playerId];
-        // If no limit set, they are always "under limit"
+        // If limit is 0, they should never play unless emergency
+        if (limit === 0) return false;
         if (limit === undefined) return true;
-        // Strict check: if current MP >= limit, they are NOT available
         return p.mp < limit;
     };
 
-    // Helper: Is player fit to play based on current TACTICS + LIMITS?
-    // In DEEP mode, this rejects players below 80%. In STRICT mode, allows down to 20%.
-    // ALWAYS rejects players over minute limit.
-    const isTacticallyFit = (p: LivePlayer) => 
+    // Strict Mode: Lenient fitness
+    // Fluid Mode: Strict fitness (must be > threshold)
+    const isTacticallyFit = (p: LivePlayer, threshold: number) => 
         p.health !== 'Injured' && 
-        p.currentCondition >= dynamicThreshold &&
+        p.currentCondition >= threshold &&
         isUnderLimit(p);
 
-    // Helper: Is player fit to play based on SAFETY + LIMITS? (Fallback)
+    // Bare minimum to play
     const isPhysicallyAlive = (p: LivePlayer) => 
         p.health !== 'Injured' && 
-        p.currentCondition >= FATIGUE_SAFETY_THRESHOLD &&
-        isUnderLimit(p);
+        p.currentCondition >= FATIGUE_SAFETY_THRESHOLD;
 
-    if (targetType === LineupType.STARTERS) {
-        // A. Try to fill with Tactically Fit Starters
-        starterIds.forEach(id => {
-            const p = allPlayers.find(pl => pl.playerId === id);
-            if (p) {
-                // Determine foul limit
-                let foulLimit = 6;
-                if (state.quarter <= 2) foulLimit = 3;
-                else if (state.quarter <= 3) foulLimit = 4;
 
-                // Check Fitness & Limits & Fouls
-                if (isTacticallyFit(p) && p.pf < foulLimit) {
-                    selected.push(p);
-                    selectedIds.add(p.playerId);
+    // -------------------------------------------------------------------------
+    // STRATEGY 1: FLUID ROTATION (Deep / Individual)
+    // -------------------------------------------------------------------------
+    if (targetType === LineupType.FLUID) {
+        // Start with current on-court players
+        selected = [...team.onCourt];
+        selectedIds.clear();
+        selected.forEach(p => selectedIds.add(p.playerId));
+        
+        let changesMade = false;
+
+        // A. SUB OUT: Remove Tired Players or Over-Limit Players
+        // Iterate backwards to safely splice
+        for (let i = selected.length - 1; i >= 0; i--) {
+            const p = selected[i];
+            const isTired = p.currentCondition < dynamicThreshold;
+            const isOverLimit = !isUnderLimit(p);
+            
+            if (isTired || isOverLimit) {
+                // Find Replacement from Bench
+                // Criteria: Healthy, Not Tired (Threshold + buffer), Under Limit, Best OVR
+                const candidates = team.bench
+                    .filter(b => 
+                        !selectedIds.has(b.playerId) && 
+                        isTacticallyFit(b, dynamicThreshold + 5) // +5 buffer so we don't sub in someone who gets tired in 1 min
+                    )
+                    .sort((a, b) => b.ovr - a.ovr);
+                
+                if (candidates.length > 0) {
+                    const sub = candidates[0];
+                    selected.splice(i, 1); // Remove tired
+                    selected.push(sub);    // Add fresh
+                    selectedIds.delete(p.playerId);
+                    selectedIds.add(sub.playerId);
+                    changesMade = true;
+                    
+                    // Log specific reason
+                    const reason = isOverLimit ? " (시간 제한)" : " (체력 안배)";
+                    state.logs.push({
+                        quarter: state.quarter,
+                        timeRemaining: formatTime(state.gameClock),
+                        teamId: team.id,
+                        type: 'info',
+                        text: `[교체] OUT: ${p.playerName}${reason}, IN: ${sub.playerName}`
+                    });
                 }
+            }
+        }
+
+        // B. SUB IN: Check if any Key Starters on bench are Fresh and ready to return
+        // (Only if they aren't already selected)
+        const restingStarters = team.bench.filter(b => 
+            starterIds.includes(b.playerId) && 
+            !selectedIds.has(b.playerId) &&
+            isTacticallyFit(b, dynamicThreshold + 8) // Needs to be very fresh to bump someone else
+        );
+
+        restingStarters.forEach(starter => {
+            // Find someone on court to bump
+            // Prioritize bumping: Bench players, or Tired Starters (though Tired Starters should have been removed in step A)
+            // Sort current lineup by: IsBench (desc), Fatigue (asc - most tired first), OVR (asc)
+            const bumpCandidates = selected
+                .filter(p => !starterIds.includes(p.playerId)) // Try to replace bench players first
+                .sort((a, b) => a.currentCondition - b.currentCondition || a.ovr - b.ovr);
+            
+            if (bumpCandidates.length > 0) {
+                const toRemove = bumpCandidates[0];
+                
+                // Only swap if Starter is actually better or fresher
+                selected = selected.filter(p => p.playerId !== toRemove.playerId);
+                selected.push(starter);
+                selectedIds.add(starter.playerId);
+                selectedIds.delete(toRemove.playerId);
+                changesMade = true;
+
+                state.logs.push({
+                    quarter: state.quarter,
+                    timeRemaining: formatTime(state.gameClock),
+                    teamId: team.id,
+                    type: 'info',
+                    text: `[교체] OUT: ${toRemove.playerName}, IN: ${starter.playerName} (주전 복귀)`
+                });
             }
         });
 
-        // B. Fill gaps with best Tactically Fit Bench
-        // This handles cases where Starters are over Minutes Limit
+        // If we made changes via the logic above, we need to update the actual team state
+        if (changesMade) {
+            team.onCourt = selected;
+            team.bench = allPlayers.filter(p => !selectedIds.has(p.playerId));
+            return true;
+        }
+        return false;
+    }
+
+
+    // -------------------------------------------------------------------------
+    // STRATEGY 2: RIGID ROTATION (Strict / Normal)
+    // -------------------------------------------------------------------------
+    if (targetType === LineupType.STARTERS) {
+        // Try to field all Starters
+        starterIds.forEach(id => {
+            const p = allPlayers.find(pl => pl.playerId === id);
+            // In Strict mode, we play starters even if tired (unless Dead < 20%)
+            // But we respect Minute Limits
+            if (p && isPhysicallyAlive(p) && isUnderLimit(p)) {
+                 selected.push(p);
+                 selectedIds.add(p.playerId);
+            }
+        });
+        
+        // Fill gaps with best bench
         if (selected.length < 5) {
-            const benchPool = allPlayers
-                .filter(p => !selectedIds.has(p.playerId) && isTacticallyFit(p))
+             const benchPool = allPlayers
+                .filter(p => !selectedIds.has(p.playerId) && isPhysicallyAlive(p))
                 .sort((a, b) => b.ovr - a.ovr);
-            
-            for (const p of benchPool) {
-                if (selected.length >= 5) break;
-                selected.push(p);
-                selectedIds.add(p.playerId);
-            }
+             
+             for (const p of benchPool) {
+                 if (selected.length >= 5) break;
+                 selected.push(p);
+                 selectedIds.add(p.playerId);
+             }
         }
-        
-        // C. Fallback: If we still lack players (e.g. Deep rotation but everyone is at 75%)
-        // Pick Starters who are at least Physically Alive (ignoring Deep threshold, but respecting Limits)
-        if (selected.length < 5) {
-            const tiredStarters = allPlayers
-                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isPhysicallyAlive(p))
-                .sort((a, b) => b.currentCondition - a.currentCondition); // Least tired first
-            
-            for (const p of tiredStarters) {
-                if (selected.length >= 5) break;
-                selected.push(p);
-                selectedIds.add(p.playerId);
-            }
-        }
-
-    } else if (targetType === LineupType.BENCH) {
-        // Force Bench
-        
-        // A. Pick Tactically Fit Bench Players (Respecting Limits)
+    } 
+    else if (targetType === LineupType.BENCH) {
+        // Force Bench unit
         const benchPool = allPlayers
-            .filter(p => !starterIds.includes(p.playerId) && isTacticallyFit(p))
+            .filter(p => !starterIds.includes(p.playerId) && isTacticallyFit(p, 40)) // Moderate threshold for bench
             .sort((a, b) => b.ovr - a.ovr);
-
+            
         for (const p of benchPool) {
             if (selected.length >= 5) break;
             selected.push(p);
             selectedIds.add(p.playerId);
         }
-
-        // B. Fill with Fit Starters if bench is empty/injured/over-limit
+        
+        // Fill gaps with Starters if bench depleted
         if (selected.length < 5) {
-            const starterPool = allPlayers
-                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isTacticallyFit(p))
-                .sort((a, b) => b.currentCondition - a.currentCondition);
-            
-            for (const p of starterPool) {
-                if (selected.length >= 5) break;
-                selected.push(p);
-                selectedIds.add(p.playerId);
-            }
+             const starterPool = allPlayers
+                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isPhysicallyAlive(p))
+                .sort((a, b) => b.currentCondition - a.currentCondition); // Freshest first
+             
+             for (const p of starterPool) {
+                 if (selected.length >= 5) break;
+                 selected.push(p);
+                 selectedIds.add(p.playerId);
+             }
         }
-    } else if (targetType === LineupType.GARBAGE) {
-        // Lowest OVR players who are Alive (Respecting Limits if possible)
+    } 
+    else if (targetType === LineupType.GARBAGE) {
+        // Worst players
         const garbagePool = allPlayers
             .filter(p => isPhysicallyAlive(p))
-            .sort((a, b) => a.ovr - b.ovr); // Ascending OVR
+            .sort((a, b) => a.ovr - b.ovr); // Lowest OVR first
         
         for (const p of garbagePool) {
             if (selected.length >= 5) break;
@@ -240,9 +314,7 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
         }
     }
 
-    // [Final Safety Net] If we still don't have 5 players 
-    // (everyone injured or over minutes limits)
-    // We MUST ignore minutes limits to field a team.
+    // [Final Safety Net] If we still don't have 5 players (everyone injured/limited)
     if (selected.length < 5) {
         const emergencyPool = allPlayers
             .filter(p => !selectedIds.has(p.playerId) && p.health !== 'Injured')
@@ -255,7 +327,7 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
         }
     }
 
-    // 4. Apply Substitutions
+    // Apply Rigid Substitution
     const onCourtIds = new Set(team.onCourt.map(p => p.playerId));
     const newCourtIds = new Set(selected.map(p => p.playerId));
 
@@ -263,8 +335,6 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
     const toSubOut = team.onCourt.filter(p => !newCourtIds.has(p.playerId));
     const toSubIn = selected.filter(p => !onCourtIds.has(p.playerId));
     
-    let substitutionOccurred = false;
-
     if (toSubOut.length > 0) {
         toSubOut.forEach((outP, idx) => {
             const inP = toSubIn[idx];
@@ -272,32 +342,23 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
                 // Update Arrays
                 team.onCourt = team.onCourt.filter(p => p.playerId !== outP.playerId);
                 team.onCourt.push(inP);
-                
                 team.bench = team.bench.filter(p => p.playerId !== inP.playerId);
                 team.bench.push(outP);
 
                 // Add Log
-                let reason = "";
-                const limit = minutesLimits[outP.playerId];
-                
-                if (limit !== undefined && outP.mp >= limit) reason = " (시간 제한)";
-                else if (outP.currentCondition < FATIGUE_SAFETY_THRESHOLD) reason = " (체력 고갈)";
-                else if (outP.currentCondition < dynamicThreshold && flexibility >= 7) reason = " (체력 안배)";
-
                 state.logs.push({
                     quarter: state.quarter,
                     timeRemaining: formatTime(state.gameClock),
                     teamId: team.id,
                     type: 'info',
-                    text: `[교체] OUT: ${outP.playerName}${reason}, IN: ${inP.playerName}`
+                    text: `[교체] OUT: ${outP.playerName}, IN: ${inP.playerName}`
                 });
-                
-                substitutionOccurred = true;
             }
         });
+        return true;
     }
     
-    return substitutionOccurred;
+    return false;
 }
 
 function determineLineupType(team: TeamState, state: GameState, flexibility: number): LineupType {
@@ -309,33 +370,28 @@ function determineLineupType(team: TeamState, state: GameState, flexibility: num
         return LineupType.GARBAGE;
     }
 
-    // 2. Rotation Timeline based on Slider (0: Strict, 5: Normal, 10: Deep)
-    
-    // Q1 & Q3: Starters start the game. When do they sit?
-    if (quarter === 1 || quarter === 3) {
-        // Strict (0-3): Play full quarter (0:00) or sit very late (1:00)
-        // Normal (4-6): Sit at 3:00 remaining
-        // Deep (7-10): Sit at 5:00 remaining
-        
-        let benchEntryTime = 180; // 3:00
-        if (flexibility <= 3) benchEntryTime = 0; // Don't sit in Q1/Q3
-        else if (flexibility >= 7) benchEntryTime = 300; // 5:00
+    // 2. Fluid Mode (Deep Rotation)
+    // If flexibility is high (>= 7), use fluid logic instead of rigid blocks
+    if (flexibility >= 7) {
+        return LineupType.FLUID;
+    }
 
+    // 3. Rigid Timeline (Strict/Normal)
+    // Q1 & Q3: Starters start. Sit late.
+    if (quarter === 1 || quarter === 3) {
+        let benchEntryTime = 180; // 3:00 (Normal)
+        if (flexibility <= 3) benchEntryTime = 60; // 1:00 (Strict)
+        
         if (gameClock > benchEntryTime) return LineupType.STARTERS;
         return LineupType.BENCH;
     }
 
-    // Q2 & Q4: Bench starts. When do Starters return?
+    // Q2 & Q4: Bench starts. Starters return.
     if (quarter === 2 || quarter === 4) {
-        // Strict (0-3): Starters return early (8:00 remaining)
-        // Normal (4-6): Starters return mid (6:00 remaining)
-        // Deep (7-10): Starters return late (4:00 remaining)
+        let starterReturnTime = 360; // 6:00 (Normal)
+        if (flexibility <= 3) starterReturnTime = 480; // 8:00 (Strict)
 
-        let starterReturnTime = 360; // 6:00
-        if (flexibility <= 3) starterReturnTime = 480; // 8:00
-        else if (flexibility >= 7) starterReturnTime = 240; // 4:00
-
-        // In Q4 Clutch, force starters regardless of slider if game is close
+        // Clutch Override (Always Starters in close Q4)
         if (quarter === 4 && scoreDiff < 15 && gameClock < 300) {
             return LineupType.STARTERS;
         }
