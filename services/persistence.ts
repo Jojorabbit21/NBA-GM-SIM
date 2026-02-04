@@ -8,7 +8,7 @@ export const saveCheckpoint = async (
     teamId: string, 
     simDate: string, 
     tactics?: GameTactics | null,
-    rosterState?: Record<string, number> // [NEW] Map of PlayerID -> Condition
+    rosterState?: Record<string, number> // Map of PlayerID -> Condition
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -27,13 +27,14 @@ export const saveCheckpoint = async (
         payload.roster_state = rosterState;
     }
 
+    // Direct upsert (Column 'roster_state' is confirmed to exist)
     const { data, error } = await supabase
         .from('saves')
         .upsert(payload, { onConflict: 'user_id' })
         .select();
     
     if (error) {
-        console.error("❌ [Supabase] Save Meta Failed:", error);
+        console.error("❌ [Supabase] Save Failed:", error);
         throw error;
     }
     return data;
@@ -43,7 +44,7 @@ export const saveCheckpoint = async (
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, updated_at')
+        .select('*') 
         .eq('user_id', userId)
         .maybeSingle();
 
