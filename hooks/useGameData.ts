@@ -32,7 +32,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const isResettingRef = useRef(false);
     
     // Refs to avoid stale closures in callbacks
-    // Added 'teams' to ref to capture latest roster state for saving
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, teams });
     useEffect(() => { 
         gameStateRef.current = { myTeamId, currentSimDate, userTactics, teams }; 
@@ -91,7 +90,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                             ...t,
                             roster: t.roster.map(p => ({
                                 ...p,
-                                condition: conditionMap[p.id] !== undefined ? conditionMap[p.id] : (p.condition || 100)
+                                // [CRITICAL FIX] Use ?? instead of || to prevent 0 -> 100 flip
+                                condition: conditionMap[p.id] !== undefined ? conditionMap[p.id] : (p.condition ?? 100)
                             }))
                         }));
                     }
@@ -155,7 +155,6 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 currentTeams.forEach((t: Team) => {
                     t.roster.forEach((p: Player) => {
                         // Only save if condition is not 100 to save space, or save all
-                        // For simplicity and safety, let's save all modified ones
                         if (p.condition !== undefined && p.condition < 100) {
                             rosterState[p.id] = p.condition;
                         }

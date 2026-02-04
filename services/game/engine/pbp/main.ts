@@ -15,9 +15,10 @@ const initLivePlayer = (p: Player): LivePlayer => ({
     playerName: p.name,
     position: p.position,
     ovr: calculatePlayerOvr(p),
-    currentCondition: p.condition || 100,
+    // [CRITICAL FIX] Use ?? 100 to allow 0 condition (exhausted)
+    currentCondition: p.condition ?? 100,
     isStarter: false, 
-    health: p.health, // [Fix] Initialize health properly
+    health: p.health, 
     // Attributes for engine
     attr: {
         ins: p.ins || 70, out: p.out || 70, ft: p.ft || 75,
