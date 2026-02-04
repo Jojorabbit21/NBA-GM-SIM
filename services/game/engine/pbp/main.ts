@@ -1,5 +1,5 @@
 
-import { Team, SimulationResult, GameTactics, Player, PlayerBoxScore } from '../../../../types';
+import { Team, SimulationResult, GameTactics, Player, PlayerBoxScore, TacticalSnapshot } from '../../../../types';
 import { GameState, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePossession } from './flowEngine';
 import { handleSubstitutions, isRotationNeeded } from './substitutionSystem';
@@ -162,6 +162,8 @@ export function runFullGameSimulation(
         isAwayB2B
     };
 
+    console.group(`🏀 Starting Simulation: ${homeTeam.name} vs ${awayTeam.name}`);
+
     // 2. Game Loop
     while (state.quarter <= 4) {
         // 2-1. Pre-Possession: Check Substitutions & Quarter End
@@ -207,11 +209,6 @@ export function runFullGameSimulation(
         let pointsScored = 0;
         if ((result.type === 'score' || result.type === 'freethrow') && result.points) {
             pointsScored = result.points;
-            
-            // [New] Free Throw Special Handling (And-1 or FTs)
-            // ResolvePossession might return points for the whole play.
-            // If it's FT, points are already calculated.
-            
             activeTeam.score += pointsScored;
 
             // [New] Update Plus/Minus for players currently on court
@@ -273,8 +270,6 @@ export function runFullGameSimulation(
         state.isDeadBall = result.isDeadBall || false;
         
         // [New] Check for Mandatory Rotation AFTER Score
-        // In NBA, you can sub after made baskets if you call timeout, or if refs stop play.
-        // We simulate this by checking if rotation is overdue based on timeline.
         if (result.type === 'score' || result.type === 'freethrow') {
             const homeNeedsSub = isRotationNeeded(state.home, state);
             const awayNeedsSub = isRotationNeeded(state.away, state);
@@ -298,8 +293,6 @@ export function runFullGameSimulation(
         const applyFatigueToTeam = (t: TeamState, isB2B: boolean) => {
             t.onCourt.forEach(p => {
                 const isStopper = t.tactics.stopperId === p.playerId;
-                
-                // Call Module
                 const { drain, injuryOccurred, injuryDetails } = calculateIncrementalFatigue(
                     p, 
                     result.timeTaken, 
@@ -320,12 +313,11 @@ export function runFullGameSimulation(
                         type: 'info',
                         text: `🚑 [부상] ${p.playerName} 선수가 고통을 호소하며 코트에 쓰러졌습니다. (${injuryDetails?.type})`
                     });
-                    // Force Substitution Logic to kick in
                     p.currentCondition = 0; // Force sub out
                     if (injuryDetails?.health) {
-                        p.health = injuryDetails.health; // Update health status so subs logic ignores player
+                        p.health = injuryDetails.health; 
                     }
-                    state.isDeadBall = true; // Ensure substitution happens next loop
+                    state.isDeadBall = true; 
                 }
             });
         };
@@ -346,6 +338,17 @@ export function runFullGameSimulation(
             type: result.type,
             text: `[${state.home.score}-${state.away.score}] ${result.logText}`
         });
+
+        // --- DEVELOPER CONSOLE LOG (Fix 4) ---
+        // Format: [Q1 11:45] 0-0 | Balance > Iso | Actor: Player (H:80, S:70) | Result: score
+        const timeStr = formatTime(Math.max(0, state.gameClock));
+        const tacticName = activeTeam.tactics.offenseTactics[0] || 'Balance';
+        const playName = result.playType || 'Unknown';
+        const actorName = result.player ? result.player.playerName : 'None';
+        const archInfo = result.player ? `(H:${result.player.archetypes.handler.toFixed(0)}, S:${result.player.archetypes.spacer.toFixed(0)}, D:${result.player.archetypes.driver.toFixed(0)})` : '';
+        const resType = result.type.toUpperCase();
+        
+        console.log(`[Q${state.quarter} ${timeStr}] ${state.home.score}-${state.away.score} | ${tacticName} > ${playName} | Actor: ${actorName} ${archInfo} | Result: ${resType}`);
 
         // 2-5. Switch Possession
         if (result.nextPossession !== 'keep') {
@@ -372,19 +375,18 @@ export function runFullGameSimulation(
         }
     }
 
+    console.groupEnd(); // End Simulation Group
+
     // 4. Finalize
-    // Merge stats from onCourt and Bench
     const finalHomeBox = [...state.home.onCourt, ...state.home.bench];
     const finalAwayBox = [...state.away.onCourt, ...state.away.bench];
     
-    // Prepare Roster Updates (Fatigue)
-    // [CRITICAL FIX] Ensure ALL players (including bench who didn't play) are included to sync fatigue
     const rosterUpdates: any = {};
     
     [...state.home.onCourt, ...state.home.bench].forEach(p => {
         rosterUpdates[p.playerId] = { 
             condition: Math.max(0, Math.round(p.currentCondition)),
-            health: p.health // Sync health (if injured in-game)
+            health: p.health 
         };
     });
     [...state.away.onCourt, ...state.away.bench].forEach(p => {
@@ -394,29 +396,13 @@ export function runFullGameSimulation(
         };
     });
 
-    // [DEBUG LOG] Print User Team Fatigue Report to Console
-    if (userTeamId) {
-        const userTeamState = state.home.id === userTeamId ? state.home : (state.away.id === userTeamId ? state.away : null);
-        
-        if (userTeamState) {
-            const fatigueReport = [...userTeamState.onCourt, ...userTeamState.bench].map(p => ({
-                Name: p.playerName,
-                Position: p.position,
-                "Minutes": p.mp.toFixed(1),
-                "Condition": Math.round(p.currentCondition),
-                "Health": p.health,
-                "Status": p.isStarter ? 'Starter' : 'Bench',
-                "PlusMinus": p.plusMinus,
-                // Debug Archetypes
-                "Arch-Handler": p.archetypes.handler,
-                "Arch-Spacer": p.archetypes.spacer
-            })).sort((a, b) => parseFloat(b.Minutes) - parseFloat(a.Minutes));
-
-            console.group(`📊 [Post-Game Fatigue & Archetype Report] ${userTeamState.name}`);
-            console.table(fatigueReport);
-            console.groupEnd();
-        }
-    }
+    // Helper to Map Full Tactics to Snapshot
+    const mapToSnapshot = (t: GameTactics): TacticalSnapshot => ({
+        offense: t.offenseTactics[0],
+        defense: t.defenseTactics[0],
+        pace: t.sliders.pace,
+        stopperId: t.stopperId
+    });
 
     return {
         homeScore: state.home.score,
@@ -424,8 +410,9 @@ export function runFullGameSimulation(
         homeBox: finalHomeBox,
         awayBox: finalAwayBox,
         rosterUpdates: rosterUpdates, 
-        homeTactics: state.home.tactics, // Simplified return
-        awayTactics: state.away.tactics,
+        // [Fix 1] Explicitly map current TeamState tactics to snapshot format
+        homeTactics: mapToSnapshot(state.home.tactics), 
+        awayTactics: mapToSnapshot(state.away.tactics),
         pbpLogs: state.logs
     };
 }

@@ -1,3 +1,4 @@
+
 import { Player, PlayerBoxScore, GameTactics, PbpLog } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
@@ -81,4 +82,5 @@ export interface PossessionResult {
     logText: string;
     nextPossession: 'home' | 'away' | 'keep' | 'free_throw'; 
     isDeadBall?: boolean;
+    playType?: string; // Developer Log Info (added)
 }
