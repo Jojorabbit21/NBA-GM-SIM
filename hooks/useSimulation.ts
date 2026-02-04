@@ -481,13 +481,6 @@ export const useSimulation = (
                 const userWon = userScore > oppScore;
                 const oppName = isHome ? userGameResultOutput.away.name : userGameResultOutput.home.name;
                 
-                // [Modified] Round MP before sending to message
-                const userBox = isHome ? userGameResultOutput.homeBox : userGameResultOutput.awayBox;
-                const roundedUserBox = userBox.map(p => ({
-                    ...p,
-                    mp: Math.round(p.mp)
-                }));
-                
                 const allPlayers = [...userGameResultOutput.homeBox, ...userGameResultOutput.awayBox];
                 const mvp = allPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), allPlayers[0]);
 
@@ -509,7 +502,7 @@ export const useSimulation = (
                             name: mvp.playerName,
                             stats: `${mvp.pts} PTS, ${mvp.reb} REB, ${mvp.ast} AST`
                         },
-                        userBoxScore: roundedUserBox // Use the rounded stats
+                        userBoxScore: isHome ? userGameResultOutput.homeBox : userGameResultOutput.awayBox
                     }
                 );
                 refreshUnreadCount();

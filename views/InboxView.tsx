@@ -263,8 +263,7 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                 <tr key={p.playerId} className="hover:bg-white/5 transition-colors cursor-pointer group" onClick={() => onPlayerClick(p.playerId)}>
                                                     <td className="p-3 pl-6 font-medium text-slate-300 pretendard group-hover:text-white transition-colors">{p.playerName}</td>
                                                     <td className="p-3 text-center font-medium text-slate-300 pretendard">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</td>
-                                                    {/* [Modified] Round MP here as well for safety/compatibility with old messages */}
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{Math.round(p.mp)}</td>
+                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.mp}</td>
                                                     <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.pts}</td>
                                                     <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.reb}</td>
                                                     <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.ast}</td>
