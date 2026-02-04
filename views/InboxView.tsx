@@ -261,7 +261,15 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                         </thead>
                                         <tbody className="divide-y divide-slate-800/50">
                                             {[...gameData.userBoxScore]
-                                                .sort((a, b) => b.mp - a.mp) // Sort by Minutes Played Descending
+                                                // Sort: MP -> PTS -> REB -> AST -> STL -> BLK
+                                                .sort((a, b) => {
+                                                    if (b.mp !== a.mp) return b.mp - a.mp;
+                                                    if (b.pts !== a.pts) return b.pts - a.pts;
+                                                    if (b.reb !== a.reb) return b.reb - a.reb;
+                                                    if (b.ast !== a.ast) return b.ast - a.ast;
+                                                    if (b.stl !== a.stl) return b.stl - a.stl;
+                                                    return b.blk - a.blk;
+                                                })
                                                 .map(p => (
                                                 <tr key={p.playerId} className="hover:bg-white/5 transition-colors cursor-pointer group" onClick={() => onPlayerClick(p.playerId)}>
                                                     <td className="p-3 pl-6 font-medium text-slate-300 pretendard group-hover:text-white transition-colors">{p.playerName}</td>

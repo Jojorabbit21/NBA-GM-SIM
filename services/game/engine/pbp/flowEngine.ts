@@ -162,7 +162,8 @@ export function resolvePossession(state: GameState): PossessionResult {
             timeTaken,
             logText: `${actor.playerName}, ${playType} 시도 중 턴오버.`,
             nextPossession: state.possession === 'home' ? 'away' : 'home',
-            isDeadBall: false
+            isDeadBall: false,
+            playType: playType // Log info
         };
     }
 
@@ -199,7 +200,8 @@ export function resolvePossession(state: GameState): PossessionResult {
             timeTaken,
             logText,
             nextPossession: state.possession === 'home' ? 'away' : 'home',
-            isDeadBall: false
+            isDeadBall: false,
+            playType: playType
         };
     } else {
         // MISSED SHOT
@@ -213,7 +215,8 @@ export function resolvePossession(state: GameState): PossessionResult {
             timeTaken,
             logText: `${actor.playerName}, ${getLocationName(preferredZone)} 슛 실패.`,
             nextPossession: state.possession === 'home' ? 'away' : 'home', // Defensive rebound usually
-            isDeadBall: false
+            isDeadBall: false,
+            playType: playType
         };
     }
 }

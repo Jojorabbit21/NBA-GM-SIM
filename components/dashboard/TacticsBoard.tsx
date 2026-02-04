@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, Save, ChevronDown, Edit3, Trash2, Check, Download, Plus } from 'lucide-react';
 import { OffenseTactic, DefenseTactic, Team, GameTactics, TacticPreset } from '../../types';
-import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO, getEfficiencyStyles } from '../../utils/tacticUtils';
+import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../utils/tacticUtils';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
 import { supabase } from '../../services/supabaseClient';
 
@@ -99,10 +99,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 setUserId(user.id);
-                // Try to get teamId from URL or implicit context (assuming user only manages one team in current view context)
-                // For safety, we need to pass teamId down or fetch from checkpoint.
-                // However, since TacticsBoard is inside Dashboard which has team prop, we might need to adjust props.
-                // But for now, let's fetch the latest checkpoint to get current teamId as a fallback
                 const { data: save } = await supabase.from('saves').select('team_id').eq('user_id', user.id).maybeSingle();
                 if (save) {
                     setTeamId(save.team_id);
@@ -136,7 +132,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
             const newTactics = {
                 ...tactics,
                 ...presetData,
-                // Ensure we don't lose starters or stopper if preset data is partial
                 starters: tactics.starters,
                 minutesLimits: tactics.minutesLimits,
                 stopperId: tactics.stopperId
@@ -178,15 +173,10 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
     const handleRenameConfirm = async (newName: string) => {
         if (!userId || !teamId || targetRenameSlot === null) return;
         
-        // If preset exists, update name. If not, create empty shell? No, just rename logic typically applies to existing.
-        // But if slot is empty, we might want to just set the name for future save?
-        // Let's assume we are renaming an EXISTING preset.
         if (presets[targetRenameSlot]) {
              await renamePreset(userId, teamId, targetRenameSlot, newName);
              await loadPresetsFromDB(userId, teamId);
         } else {
-             // Saving a placeholder name for a new save?
-             // Actually, let's just save the CURRENT tactics to that slot with the NEW name.
              await savePreset(userId, teamId, targetRenameSlot, newName, tactics);
              await loadPresetsFromDB(userId, teamId);
              setActiveSlot(targetRenameSlot);
@@ -276,7 +266,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
                                                 </button>
                                                 
                                                 <div className="flex items-center gap-1 pr-3">
-                                                    {/* Rename Button - Available for empty slots too (to create new) */}
                                                     <button 
                                                         onClick={(e) => openRenameModal(e, slot)}
                                                         className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
@@ -284,7 +273,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
                                                     >
                                                         <Edit3 size={14} />
                                                     </button>
-                                                    {/* Delete Button - Only if data exists */}
                                                     {hasData && (
                                                         <button 
                                                             onClick={(e) => handleDeletePreset(e, slot)}
@@ -324,26 +312,19 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
                     <div className="flex items-center gap-3 text-indigo-400 px-2"><Target size={20} /><span className="font-black text-sm uppercase tracking-widest ko-tight">공격 전술</span></div>
                     <div className="grid grid-cols-1 gap-3">
                         {(['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => {
-                            const score = calculateTacticScore(t);
                             const isActive = offTactics.includes(t);
-                            const { bar, text, border } = getEfficiencyStyles(score);
 
                             return (
-                                <button key={t} onClick={() => handleTacticToggle(t)} className={`w-full relative p-4 rounded-2xl border text-left overflow-hidden transition-all ${isActive ? `bg-slate-900/90 ${border} shadow-xl ring-1 ring-white/10` : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
+                                <button key={t} onClick={() => handleTacticToggle(t)} className={`w-full relative p-4 rounded-2xl border text-left overflow-hidden transition-all ${isActive ? `bg-indigo-600 border-indigo-400 shadow-xl ring-1 ring-white/10` : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
                                     <div className="flex justify-between items-center relative z-10">
                                         <div>
                                             <div className={`font-black text-base uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{OFFENSE_TACTIC_INFO[t].label}</div>
-                                            <div className={`text-xs mt-1 opacity-60 ${isActive ? 'text-slate-300' : 'text-slate-500'}`}>{OFFENSE_TACTIC_INFO[t].desc}</div>
+                                            <div className={`text-xs mt-1 opacity-60 ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{OFFENSE_TACTIC_INFO[t].desc}</div>
                                         </div>
-                                        <div className={`text-2xl font-black oswald leading-none ${isActive ? text : 'text-slate-600'}`}>
-                                            {score}<span className="text-sm opacity-50 ml-0.5">%</span>
-                                        </div>
-                                    </div>
-                                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden mt-3 relative z-10">
-                                        <div className={`h-full transition-all duration-1000 ease-out ${isActive ? bar : 'bg-slate-700/30'}`} style={{ width: `${score}%` }} />
+                                        {isActive && <Check size={20} className="text-white" strokeWidth={3} />}
                                     </div>
                                     {isActive && (
-                                        <div className={`absolute top-0 right-0 w-24 h-24 blur-[40px] opacity-20 pointer-events-none ${bar}`} />
+                                        <div className="absolute top-0 right-0 w-24 h-24 blur-[40px] opacity-20 bg-white pointer-events-none" />
                                     )}
                                 </button>
                             );
@@ -356,31 +337,27 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
                     <div className="space-y-8">
                         <div className="grid grid-cols-2 gap-3">
                             {(['ManToManPerimeter', 'ZoneDefense'] as DefenseTactic[]).map(t => {
-                                const score = calculateTacticScore(t);
                                 const isActive = defTactics.includes(t);
-                                const { text } = getEfficiencyStyles(score);
 
                                 return (
                                     <button key={t} onClick={() => toggleDefTactic(t)} className={`relative p-4 rounded-2xl border text-left transition-all ${isActive ? 'bg-indigo-600 border-indigo-400 shadow-xl' : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
                                         <div className={`font-black text-sm uppercase tracking-tight mb-2 ${isActive ? 'text-white' : 'text-slate-400'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
-                                        <div className={`text-2xl font-black oswald leading-none ${isActive ? 'text-white' : 'text-slate-600'}`}>{score}%</div>
                                     </button>
                                 );
                             })}
                         </div>
                         <div className="pt-4 border-t border-white/5">
                             {(['AceStopper'] as DefenseTactic[]).map(t => {
-                                const score = calculateTacticScore(t);
                                 const isActive = defTactics.includes(t);
                                 return (
                                     <button key={t} onClick={() => toggleDefTactic(t)} className={`w-full relative p-5 rounded-2xl border text-left transition-all ${isActive ? 'bg-fuchsia-600 border-fuchsia-400 shadow-[0_0_30px_rgba(192,38,211,0.2)]' : 'bg-slate-950/40 border-white/5 hover:border-fuchsia-500/30 group'}`}>
-                                        <div className="flex justify-between items-start relative z-10">
+                                        <div className="flex justify-between items-center relative z-10">
                                             <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${isActive ? 'bg-white/20' : 'bg-slate-800'}`}><ShieldAlert size={18} className={isActive ? 'text-white' : 'text-fuchsia-500'} /></div>
                                             <div>
                                                 <div className={`font-black text-base uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
                                                 <div className={`text-xs mt-1 opacity-70 ${isActive ? 'text-white' : 'text-slate-500'}`}>{DEFENSE_TACTIC_INFO[t].desc}</div>
                                             </div></div>
-                                            <div className="text-right"><div className={`text-2xl font-black oswald leading-none ${isActive ? 'text-white' : 'text-slate-600'}`}>{score}%</div></div>
+                                            {isActive && <Check size={20} className="text-white" strokeWidth={3} />}
                                         </div>
                                     </button>
                                 );
