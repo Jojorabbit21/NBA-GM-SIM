@@ -255,7 +255,8 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                 <th className="p-3 text-right">TOV</th>
                                                 <th className="p-3 text-right">FG</th>
                                                 <th className="p-3 text-right">3P</th>
-                                                <th className="p-3 text-right pr-6">FT</th>
+                                                <th className="p-3 text-right">FT</th>
+                                                <th className="p-3 text-right pr-6">+/-</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-800/50">
@@ -274,7 +275,10 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                     <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.tov}</td>
                                                     <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.fgm}/{p.fga}</td>
                                                     <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.p3m}/{p.p3a}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard pr-6">{p.ftm}/{p.fta}</td>
+                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.ftm}/{p.fta}</td>
+                                                    <td className={`p-3 text-right font-medium pretendard pr-6 ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                                                        {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
+                                                    </td>
                                                 </tr>
                                             ))}
                                         </tbody>

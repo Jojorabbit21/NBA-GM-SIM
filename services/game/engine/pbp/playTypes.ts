@@ -81,7 +81,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
             const handler = pickBest(p => p.archetypes.handler, popper.playerId);
             return {
                 playType,
-                actor,
+                actor: popper,
                 secondaryActor: handler,
                 preferredZone: '3PT',
                 shotType: 'CatchShoot',
