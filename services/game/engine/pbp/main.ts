@@ -329,6 +329,26 @@ export function runFullGameSimulation(
         };
     });
 
+    // [DEBUG LOG] Print User Team Fatigue Report to Console
+    if (userTeamId) {
+        const userTeamState = state.home.id === userTeamId ? state.home : (state.away.id === userTeamId ? state.away : null);
+        
+        if (userTeamState) {
+            const fatigueReport = [...userTeamState.onCourt, ...userTeamState.bench].map(p => ({
+                Name: p.playerName,
+                Position: p.position,
+                "Minutes": p.mp.toFixed(1),
+                "Condition": Math.round(p.currentCondition),
+                "Health": p.health,
+                "Status": p.isStarter ? 'Starter' : 'Bench'
+            })).sort((a, b) => parseFloat(b.Minutes) - parseFloat(a.Minutes));
+
+            console.group(`📊 [Post-Game Fatigue Report] ${userTeamState.name}`);
+            console.table(fatigueReport);
+            console.groupEnd();
+        }
+    }
+
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
