@@ -2,8 +2,6 @@
 import { TeamState, LivePlayer, GameState } from './pbpTypes';
 import { formatTime } from './timeEngine';
 
-// Emergency Low Condition Threshold
-const CRITICAL_FATIGUE = 50; 
 const SCORE_DIFF_THRESHOLD = 20; // Blowout definition
 
 enum LineupType {
@@ -28,27 +26,33 @@ function processTeamRotation(team: TeamState, state: GameState, teamSide: 'home'
     const { quarter, gameClock } = state;
     const flexibility = team.tactics.sliders.rotationFlexibility ?? 5; 
     
-    // 1. Determine Target Lineup Type
+    // 1. Calculate Dynamic Fatigue Threshold based on Slider (0-10)
+    // 0 (Strict) -> 25 (Play until dead)
+    // 5 (Normal) -> 47.5
+    // 10 (Deep) -> 70 (Quick sub)
+    const criticalFatigue = 25 + (flexibility * 4.5);
+
+    // 2. Determine Target Lineup Type based on Timeline
     const targetType = determineLineupType(team, state, flexibility);
     
-    // 2. Identify Current State
+    // 3. Identify Current State
     const allPlayers = [...team.onCourt, ...team.bench];
     const starterIds = Object.values(team.tactics.starters); // User defined starters
     
-    // 3. Selection Logic based on Lineup Type
+    // 4. Selection Logic based on Lineup Type
     let selected: LivePlayer[] = [];
     const selectedIds = new Set<string>();
 
     if (targetType === LineupType.STARTERS) {
-        // [Fixed] Priority: The specific 5 players the user set as starters.
-        // Do NOT force positional balance (e.g. 2G, 2F, 1C) if user didn't set it that way.
+        // Priority: The specific 5 players the user set as starters.
         
         // A. Try to put in all defined starters first
         starterIds.forEach(id => {
             const p = allPlayers.find(pl => pl.playerId === id);
             if (p) {
-                // Check health
-                if (p.currentCondition > CRITICAL_FATIGUE && p.pf < 6) {
+                // Check health & fouling
+                // HUGE Weight on Starters: Only sit if below DYNAMIC critical threshold or fouled out
+                if (p.currentCondition > criticalFatigue && p.pf < 6) {
                     selected.push(p);
                     selectedIds.add(p.playerId);
                 }
@@ -58,7 +62,7 @@ function processTeamRotation(team: TeamState, state: GameState, teamSide: 'home'
         // B. If a starter is tired/fouled out, fill with best available bench
         if (selected.length < 5) {
             const availableBench = allPlayers
-                .filter(p => !selectedIds.has(p.playerId) && p.pf < 6 && p.currentCondition > CRITICAL_FATIGUE)
+                .filter(p => !selectedIds.has(p.playerId) && p.pf < 6 && p.currentCondition > criticalFatigue)
                 .sort((a, b) => b.ovr - a.ovr); // Highest OVR bench
             
             for (const p of availableBench) {
@@ -72,7 +76,7 @@ function processTeamRotation(team: TeamState, state: GameState, teamSide: 'home'
         // Priority: Best Bench players > Tired Starters
         
         const benchPool = allPlayers
-            .filter(p => !starterIds.includes(p.playerId) && p.pf < 6 && p.currentCondition > CRITICAL_FATIGUE)
+            .filter(p => !starterIds.includes(p.playerId) && p.pf < 6 && p.currentCondition > criticalFatigue)
             .sort((a, b) => b.ovr - a.ovr);
 
         // Fill with bench
@@ -111,7 +115,7 @@ function processTeamRotation(team: TeamState, state: GameState, teamSide: 'home'
         // HYBRID: Best 5 players available regardless of role
         // Usually mix of starters and 6th man
         const bestPool = allPlayers
-            .filter(p => p.pf < 6 && p.currentCondition > CRITICAL_FATIGUE)
+            .filter(p => p.pf < 6 && p.currentCondition > criticalFatigue)
             .sort((a, b) => b.ovr - a.ovr);
 
         for (const p of bestPool) {
@@ -131,7 +135,7 @@ function processTeamRotation(team: TeamState, state: GameState, teamSide: 'home'
         }
     }
 
-    // 4. Apply Substitutions
+    // 5. Apply Substitutions
     const onCourtIds = new Set(team.onCourt.map(p => p.playerId));
     const newCourtIds = new Set(selected.map(p => p.playerId));
 
@@ -170,41 +174,42 @@ function determineLineupType(team: TeamState, state: GameState, flexibility: num
         return LineupType.GARBAGE;
     }
 
-    // 2. Normal Rotation Strategy
-    // 0-3: Strict (Thibodeau) - Ride Starters
-    // 4-6: Normal (Standard NBA)
-    // 7-10: Deep (Spurs/Warriors) - More Bench
+    // 2. Timeline Definition based on Flexibility (0-10)
     
-    const isStrict = flexibility <= 3;
-    const isDeep = flexibility >= 7;
-
-    // Q1 & Q3 Logic
     if (quarter === 1 || quarter === 3) {
-        // Start with Starters
-        if (gameClock > 300) return LineupType.STARTERS; // First 7 mins always Starters
-
-        // End of Quarter Logic
-        if (isStrict) {
-            return LineupType.STARTERS; // Play full quarter
-        } else if (isDeep) {
-            return LineupType.BENCH; // Bench comes in at 5:00 remaining
-        } else {
-            // Normal: Hybrid/Bench mix near end
-            return LineupType.HYBRID;
+        // Q1/Q3 Logic: Start with Starters
+        // Determine "Bench Entry Time" (When do we switch to Bench?)
+        
+        let benchEntryTime = 120; // Default Normal (2:00 remaining)
+        
+        if (flexibility <= 3) { // STRICT (0-3)
+            benchEntryTime = 0; // Never switch to bench in Q1/Q3 (play full 12m)
+        } else if (flexibility >= 7) { // DEEP (7-10)
+            benchEntryTime = 300; // Switch early at 5:00 remaining
+        } else { // NORMAL (4-6)
+            benchEntryTime = 120; // Switch at 2:00 remaining
         }
+        
+        if (gameClock > benchEntryTime) return LineupType.STARTERS;
+        return LineupType.BENCH;
     }
 
-    // Q2 & Q4 Logic (Non-Garbage)
     if (quarter === 2 || quarter === 4) {
-        let returnTime = 360; // Default: Return at 6:00
-        if (isStrict) returnTime = 480; // Return early at 8:00
-        if (isDeep) returnTime = 240; // Return late at 4:00
-
-        if (gameClock > returnTime) {
-            return LineupType.BENCH;
-        } else {
-            return LineupType.STARTERS; // Closing lineup
+        // Q2/Q4 Logic: Start with Bench
+        // Determine "Starter Return Time" (When do starters come back?)
+        
+        let starterReturnTime = 360; // Default Normal (6:00 remaining)
+        
+        if (flexibility <= 3) { // STRICT (0-3)
+            starterReturnTime = 540; // Return early at 9:00 remaining (only 3m bench rest)
+        } else if (flexibility >= 7) { // DEEP (7-10)
+            starterReturnTime = 240; // Return late at 4:00 remaining
+        } else { // NORMAL (4-6)
+            starterReturnTime = 360; // Return at 6:00 remaining
         }
+
+        if (gameClock > starterReturnTime) return LineupType.BENCH;
+        return LineupType.STARTERS;
     }
 
     return LineupType.STARTERS; // Fallback
