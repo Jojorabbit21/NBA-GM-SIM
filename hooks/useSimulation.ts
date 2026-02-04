@@ -78,7 +78,8 @@ export const useSimulation = (
     }, [currentSimDate, schedule, playoffSeries, teams, setSchedule, setPlayoffSeries, setToastMessage, triggerSave, session, isGuestMode, myTeamId]);
 
 
-    const advanceDate = useCallback(async () => {
+    // [Fix] Allow passing overrideTeams to use the latest state (e.g., after game sim)
+    const advanceDate = useCallback(async (overrideTeams?: Team[]) => {
         const prevDate = currentSimDate;
         const teamsPlayedToday = schedule
             .filter(g => g.date === prevDate && g.played)
@@ -105,7 +106,8 @@ export const useSimulation = (
         const recoveryTransactions: Transaction[] = [];
         const dailyTrades: Transaction[] = []; 
 
-        let newTeams = [...teams];
+        // Use overrideTeams if provided (vital for post-game update)
+        let newTeams = overrideTeams ? [...overrideTeams] : [...teams];
 
         if (current <= deadline) {
             const totalDuration = deadline.getTime() - start.getTime();
@@ -122,9 +124,8 @@ export const useSimulation = (
                     const { updatedTeams, transaction } = tradeResult;
                     newTeams = updatedTeams;
                     if (transaction) {
-                        // [FIX] Assign ID and save to DB
                         transaction.id = crypto.randomUUID();
-                        transaction.date = nextDate; // Ensure date matches current sim date
+                        transaction.date = nextDate; 
 
                         dailyTrades.push(transaction); 
                         setTransactions(prev => [transaction, ...prev]);
@@ -144,7 +145,6 @@ export const useSimulation = (
                 summary: ``, 
                 trades: dailyTrades.map(t => {
                     const team1 = newTeams.find(tm => tm.id === t.teamId);
-                    // Must handle UNKNOWN explicitly if partner not found (shouldn't happen with correct logic)
                     const partnerTeamName = t.details?.partnerTeamName || 'Unknown';
                     
                     return {
@@ -211,10 +211,13 @@ export const useSimulation = (
                 let totalRecovery = baseRec + staBonus + durBonus;
 
                 if (teamsPlayedToday.has(t.id)) {
+                    // Played yesterday: reduced recovery
                     totalRecovery *= 0.5;
                 }
 
-                updatedPlayer.condition = Math.min(100, Math.round((updatedPlayer.condition || 100) + totalRecovery));
+                // Apply recovery
+                const currentCond = updatedPlayer.condition !== undefined ? updatedPlayer.condition : 100;
+                updatedPlayer.condition = Math.min(100, Math.round(currentCond + totalRecovery));
                 
                 return updatedPlayer;
             })
@@ -390,7 +393,17 @@ export const useSimulation = (
                             }
                         }
 
-                        const returnObj = { ...p, condition: update?.condition !== undefined ? Math.round(update.condition) : p.condition, health: update?.health ?? p.health, injuryType: update?.injuryType ?? p.injuryType, returnDate: update?.returnDate ?? p.returnDate };
+                        // Apply Condition Update (Fatigue)
+                        const newCondition = update?.condition !== undefined ? Math.round(update.condition) : p.condition;
+                        
+                        const returnObj = { 
+                            ...p, 
+                            condition: newCondition, 
+                            health: update?.health ?? p.health, 
+                            injuryType: update?.injuryType ?? p.injuryType, 
+                            returnDate: update?.returnDate ?? p.returnDate 
+                        };
+                        
                         if (game.isPlayoff) returnObj.playoffStats = targetStats; else returnObj.stats = targetStats;
                         return returnObj;
                     });
@@ -481,7 +494,6 @@ export const useSimulation = (
                 const userWon = userScore > oppScore;
                 const oppName = isHome ? userGameResultOutput.away.name : userGameResultOutput.home.name;
                 
-                // [Modified] Round MP before sending to message
                 const userBox = isHome ? userGameResultOutput.homeBox : userGameResultOutput.awayBox;
                 const roundedUserBox = userBox.map(p => ({
                     ...p,
@@ -509,7 +521,7 @@ export const useSimulation = (
                             name: mvp.playerName,
                             stats: `${mvp.pts} PTS, ${mvp.reb} REB, ${mvp.ast} AST`
                         },
-                        userBoxScore: roundedUserBox // Use the rounded stats
+                        userBoxScore: roundedUserBox 
                     }
                 );
                 refreshUnreadCount();
@@ -523,7 +535,8 @@ export const useSimulation = (
                 setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
             } else { 
                 setIsSimulating(false); 
-                await advanceDate(); 
+                // [CRITICAL FIX] Pass updated teams to advanceDate to prevent stale closure state (resetting condition)
+                await advanceDate(updatedTeams); 
             }
         };
         

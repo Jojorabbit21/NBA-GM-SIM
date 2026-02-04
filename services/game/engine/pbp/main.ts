@@ -6,7 +6,7 @@ import { handleSubstitutions } from './substitutionSystem';
 import { formatTime } from './timeEngine';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { calculatePlayerOvr } from '../../../../utils/constants';
-import { calculateIncrementalFatigue } from '../fatigueSystem'; // [New] Import
+import { calculateIncrementalFatigue } from '../fatigueSystem'; 
 
 // --- Initialization Helpers ---
 
@@ -25,7 +25,7 @@ const initLivePlayer = (p: Player): LivePlayer => ({
         reb: p.reb || 70,
         pas: p.passAcc || 70,
         stamina: p.stamina || 80,
-        durability: p.durability || 80 // [New] Map durability
+        durability: p.durability || 80 
     },
     // Box Score Init
     pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
@@ -83,8 +83,6 @@ const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
         bonus: false
     };
 };
-
-// [Removed] Local calculateFatigueDrain function is replaced by module import
 
 // --- Main Engine ---
 
@@ -214,8 +212,7 @@ export function runFullGameSimulation(
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
         
-        // [New] Apply Fatigue using Modular System
-        // Helper to apply to a specific team side
+        // [Fatigue Application]
         const applyFatigueToTeam = (t: TeamState, isB2B: boolean) => {
             t.onCourt.forEach(p => {
                 const isStopper = t.tactics.stopperId === p.playerId;
@@ -292,6 +289,7 @@ export function runFullGameSimulation(
     const finalAwayBox = [...state.away.onCourt, ...state.away.bench];
     
     // Prepare Roster Updates (Fatigue)
+    // NOTE: We round here, so small decimals might clip, but condition generally persists
     const rosterUpdates: any = {};
     [...finalHomeBox, ...finalAwayBox].forEach(p => {
         rosterUpdates[p.playerId] = { condition: Math.max(0, Math.round(p.currentCondition)) };
