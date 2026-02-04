@@ -1,5 +1,7 @@
 
 import { Team, Player, OffenseTactic, DefenseTactic, GameTactics, TacticStatRecord, PlayerBoxScore, TacticalSnapshot } from '../types';
+import { OFFENSE_TACTIC_CONFIG, DEFENSE_TACTIC_CONFIG } from '../services/game/engine/pbp/tacticMaps';
+import { calculatePlayerArchetypes } from '../services/game/engine/pbp/archetypeSystem';
 
 // UI Texts
 export const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
@@ -27,7 +29,7 @@ export const getEfficiencyStyles = (score: number) => {
     return { bar: 'bg-slate-500', text: 'text-slate-400', border: 'border-slate-500/50' };
 };
 
-// Simplified Tactic Score Calculation for UI (Does not rely on PbP engine internals)
+// Real Tactic Score Calculation linked to Engine Logic
 export const calculateTacticScore = (
     type: OffenseTactic | DefenseTactic, 
     team: Team, 
@@ -35,53 +37,61 @@ export const calculateTacticScore = (
 ): number => {
     if (!team?.roster) return 60;
 
+    // 1. Identify effective lineup (Starters or Top 5)
     const healthySorted = team.roster.filter(p => p.health !== 'Injured').sort((a, b) => b.ovr - a.ovr);
     const starterIds = Object.values(tactics.starters).filter(id => id !== '');
     const activeStarters = team.roster.filter(p => starterIds.includes(p.id));
     const effectiveStarters = activeStarters.length > 0 ? activeStarters : healthySorted.slice(0, 5);
     
-    if (effectiveStarters.length === 0) return 70;
+    if (effectiveStarters.length === 0) return 60;
 
-    const getAvg = (players: Player[], attr: keyof Player) => {
-        if (players.length === 0) return 70;
-        return players.reduce((sum, p) => sum + (p[attr] as number), 0) / players.length;
-    };
-    const sAvg = (attr: keyof Player) => getAvg(effectiveStarters, attr);
+    // 2. Get Engine Config for the requested tactic
+    // Force type casting to access the maps (Engine maps are source of truth)
+    const offConfig = OFFENSE_TACTIC_CONFIG[type as OffenseTactic];
+    const defConfig = DEFENSE_TACTIC_CONFIG[type as DefenseTactic];
+    const config = offConfig || defConfig;
 
-    let baseScore = 0;
+    if (!config) return 50;
 
-    // Use simplified logic based on attribute averages
-    switch(type) {
-        case 'Balance': 
-            baseScore = sAvg('ovr'); 
-            break;
-        case 'PaceAndSpace': 
-            baseScore = (sAvg('threeCorner') + sAvg('speed')) / 2; 
-            break;
-        case 'PerimeterFocus': 
-            baseScore = (sAvg('handling') + sAvg('midRange')) / 2; 
-            break;
-        case 'PostFocus': 
-            baseScore = (sAvg('postPlay') + sAvg('strength')) / 2; 
-            break;
-        case 'Grind': 
-            baseScore = (sAvg('def') + sAvg('ins')) / 2; 
-            break;
-        case 'SevenSeconds': 
-            baseScore = (sAvg('speed') + sAvg('passAcc')) / 2; 
-            break;
-        case 'ManToManPerimeter':
-            baseScore = sAvg('perDef');
-            break;
-        case 'ZoneDefense':
-            baseScore = sAvg('intDef');
-            break;
-        case 'AceStopper':
-             baseScore = sAvg('perDef'); // Placeholder
-             break;
-    }
+    let totalScore = 0;
+    let totalWeight = 0;
 
-    return Math.min(99, Math.max(40, Math.round(baseScore)));
+    // 3. Calculate Score based on Archetypes (Fit)
+    effectiveStarters.forEach(p => {
+        // Map Player to Engine Attribute format
+        const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
+        const attr = {
+            ins: p.ins, out: p.out, mid: p.midRange, ft: p.ft, threeVal: threeAvg,
+            speed: p.speed, agility: p.agility, strength: p.strength, vertical: p.vertical,
+            stamina: p.stamina, durability: p.durability, hustle: p.hustle,
+            height: p.height, weight: p.weight,
+            handling: p.handling, hands: p.hands, pas: p.passAcc, passAcc: p.passAcc,
+            passVision: p.passVision, passIq: p.passIq, shotIq: p.shotIq, offConsist: p.offConsist,
+            postPlay: p.postPlay, drFoul: p.drawFoul,
+            def: p.def, intDef: p.intDef, perDef: p.perDef, blk: p.blk, stl: p.steal,
+            helpDefIq: p.helpDefIq, defConsist: p.defConsist, foulTendency: 50,
+            reb: p.reb
+        };
+
+        // Calculate Archetypes using current condition
+        const archs = calculatePlayerArchetypes(attr, p.condition || 100);
+
+        // Sum up weighted scores defined in Engine Config
+        // fit: { spacer: 3, handler: 2 ... }
+        Object.entries(config.fit).forEach(([key, weight]) => {
+            const rating = archs[key as keyof typeof archs] || 50;
+            const w = weight as number;
+            totalScore += rating * w;
+            totalWeight += w;
+        });
+    });
+
+    // 4. Normalize to 0-100 scale
+    // Total Score / Total Weight / Player Count
+    if (totalWeight === 0) return 50;
+    
+    const finalScore = totalScore / totalWeight / effectiveStarters.length;
+    return Math.min(99, Math.max(40, Math.round(finalScore)));
 };
 
 export const updateTeamTacticHistory = (
