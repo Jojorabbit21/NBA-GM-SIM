@@ -24,7 +24,7 @@ export function calculateShootingStats(
     
     // Ensure tendencies
     const tendencies = p.tendencies || generateHiddenTendencies(p);
-    const { lateralBias, archetype } = tendencies;
+    const { lateralBias } = tendencies; // [Fix] archetype removed from destructuring
 
     // --- Step 1: Determine Volume (Attempts) by Range ---
     // [Update] Boosted Base Tendencies for Modern NBA (2025-26)
@@ -41,10 +41,11 @@ export function calculateShootingStats(
     // [Update] Positional Penalty relaxed for Stretch Bigs
     if (['C', 'PF'].includes(p.position)) {
         // Only penalize if they are primarily post players or poor shooters
-        if (archetype === 'Elbow Operator' || threeAvg < 75) {
+        // Using 'threeAvg' directly as a simple check, or could use new archetypes if available.
+        // For simplicity in this legacy/hybrid function, we stick to stat checks.
+        if (threeAvg < 75) {
             base3PTendency *= 0.80; 
         }
-        // Stretch bigs (Archtypes 'Balanced' or 'Top Initiator' with high 3PT) get no penalty
     }
 
     // [Update] Slasher Penalty relaxed (Many slashers now shoot 3s)
@@ -90,6 +91,7 @@ export function calculateShootingStats(
     let midA = twoPa - rimA;
 
     // --- Step 2: Distribute Attempts to Specific 10 Zones ---
+    // [New] Uses Archetype System for macro distribution
     const zoneAttempts = distributeAttemptsToZones(p, rimA, midA, p3a);
 
     // --- Step 3: Calculate Makes per Zone (Applying Off-Spot Penalty) ---

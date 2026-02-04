@@ -1,6 +1,8 @@
 
-import { Player, HiddenTendencies, PlayerStats } from '../../../types';
+import { Player, HiddenTendencies } from '../../../types';
 import { generateHiddenTendencies } from '../../../utils/hiddenTendencies';
+import { ArchetypeRatings } from './pbp/archetypeSystem';
+import { calculatePlayerArchetypes } from './pbp/archetypeSystem';
 
 export interface ZoneAttempts {
     // Rim
@@ -14,25 +16,61 @@ export interface ZoneAttempts {
 }
 
 /**
- * Helper: Calculates weights for zones based on tendencies.
+ * Calculates weights for zones based on Tendencies (Bias) AND Archetypes (Role).
+ * 
+ * Precedence:
+ * 1. Archetype Scores (High Spacer = More 3s, High PostScorer = More Paint)
+ * 2. Lateral Bias (Left/Right preference)
  */
-function calculateZoneWeights(tendency: HiddenTendencies) {
-    const { lateralBias, archetype } = tendency;
+function calculateZoneWeights(player: Player, tendency: HiddenTendencies) {
+    const { lateralBias } = tendency;
+
+    // Convert raw attributes to Archetype Ratings on the fly if not present
+    // (This ensures we use the consistent logic from archetypeSystem)
+    // Note: In PbP engine, 'p.archetypes' exists. In View, it might not.
+    // We try to use existing, or calculate fresh.
+    let archs: ArchetypeRatings;
+    if ((player as any).archetypes) {
+        archs = (player as any).archetypes;
+    } else {
+        // Mock attr structure for calculation if passing a raw Player object
+        const mockAttr = {
+            ins: player.ins, out: player.out, mid: player.midRange, ft: player.ft, 
+            threeVal: (player.threeCorner+player.three45+player.threeTop)/3,
+            speed: player.speed, agility: player.agility, strength: player.strength, vertical: player.vertical,
+            stamina: player.stamina, durability: player.durability, hustle: player.hustle,
+            height: player.height, weight: player.weight,
+            handling: player.handling, hands: player.hands, pas: player.passAcc, passAcc: player.passAcc,
+            passVision: player.passVision, passIq: player.passIq, shotIq: player.shotIq, offConsist: player.offConsist,
+            drFoul: player.drawFoul, def: player.def, intDef: player.intDef, perDef: player.perDef,
+            blk: player.blk, stl: player.steal, helpDefIq: player.helpDefIq, defConsist: player.defConsist,
+            foulTendency: 50, reb: player.reb
+        };
+        archs = calculatePlayerArchetypes(mockAttr, player.condition || 100);
+    }
 
     // Base Weights [Left, Center, Right]
     const midWeights = { l: 0.33, c: 0.34, r: 0.33 };
     const threeWeights = { l_corn: 0.15, l_wing: 0.2, c_top: 0.3, r_wing: 0.2, r_corn: 0.15 };
 
-    // 1. Archetype Modifiers
-    if (archetype === 'Corner Sitter') {
-        threeWeights.l_corn += 0.20; threeWeights.r_corn += 0.20;
+    // --- 1. Archetype Modifiers (Macro Adjustment) ---
+    
+    // A. Corner Sitter (High Spacer, Low Handler)
+    // If Spacer > 80 and Handler < 70, boost corners.
+    if (archs.spacer > 80 && archs.handler < 70) {
+        threeWeights.l_corn += 0.25; 
+        threeWeights.r_corn += 0.25;
         threeWeights.c_top -= 0.3;
-    } else if (archetype === 'Top Initiator') {
+    } 
+    // B. Top Initiator / Pull-up Shooter (High Handler & Spacer)
+    // If Handler > 80 and Spacer > 75, boost Top & Wings
+    else if (archs.handler > 80 && archs.spacer > 75) {
         threeWeights.c_top += 0.3;
-        threeWeights.l_corn -= 0.1; threeWeights.r_corn -= 0.1;
+        threeWeights.l_corn -= 0.1; 
+        threeWeights.r_corn -= 0.1;
     }
 
-    // 2. Lateral Bias (-1.0 to 1.0)
+    // --- 2. Lateral Bias (-1.0 to 1.0) (Micro Adjustment) ---
     // Bias > 0 favors Right, Bias < 0 favors Left
     const biasFactor = 0.6; // Stronger shift
 
@@ -58,7 +96,7 @@ function calculateZoneWeights(tendency: HiddenTendencies) {
     threeWeights.l_corn /= norm3; threeWeights.l_wing /= norm3; threeWeights.c_top /= norm3;
     threeWeights.r_wing /= norm3; threeWeights.r_corn /= norm3;
 
-    return { midWeights, threeWeights };
+    return { midWeights, threeWeights, archs };
 }
 
 /**
@@ -72,7 +110,7 @@ export function distributeAttemptsToZones(
     total3PA: number
 ): ZoneAttempts {
     const tendency = player.tendencies || generateHiddenTendencies(player);
-    const { midWeights, threeWeights } = calculateZoneWeights(tendency);
+    const { midWeights, threeWeights, archs } = calculateZoneWeights(player, tendency);
 
     const result: ZoneAttempts = {
         zone_rim_a: 0, zone_paint_a: 0,
@@ -81,8 +119,18 @@ export function distributeAttemptsToZones(
         zone_atb3_l_a: 0, zone_atb3_c_a: 0, zone_atb3_r_a: 0
     };
 
-    // Rim Distribution
-    const rimRatio = 0.75;
+    // Rim Distribution (Rim vs Paint)
+    // Post Scorers stay in Paint/Rim. Slashers go to Rim.
+    // If PostScorer > Driver, bias towards Paint (Short mid-range/Post hooks)
+    // If Driver > PostScorer, bias towards Rim (Layups/Dunks)
+    
+    let rimRatio = 0.75;
+    if (archs.postScorer > archs.driver + 10) {
+        rimRatio = 0.50; // More post hooks (Paint)
+    } else if (archs.driver > archs.postScorer + 10) {
+        rimRatio = 0.85; // More drives (Rim)
+    }
+
     result.zone_rim_a = Math.round(totalRimA * rimRatio);
     result.zone_paint_a = totalRimA - result.zone_rim_a;
 
@@ -107,7 +155,7 @@ export function distributeAttemptsToZones(
  */
 export function getProjectedZoneDensity(player: Player) {
     const tendency = player.tendencies || generateHiddenTendencies(player);
-    const { midWeights, threeWeights } = calculateZoneWeights(tendency);
+    const { midWeights, threeWeights, archs } = calculateZoneWeights(player, tendency);
 
     // Identify max weight to normalize opacity
     const allWeights = [
@@ -116,9 +164,17 @@ export function getProjectedZoneDensity(player: Player) {
     ];
     const maxW = Math.max(...allWeights);
 
+    // Rim vs Paint density based on archetype
+    let rimDens = 0.8;
+    let paintDens = 0.4;
+    if (archs.postScorer > archs.driver) {
+        paintDens = 0.7; // High post activity
+        rimDens = 0.6;
+    }
+
     return {
-        rim: 0.8, // Always high traffic
-        paint: 0.4,
+        rim: rimDens, 
+        paint: paintDens,
         midL: midWeights.l / maxW,
         midC: midWeights.c / maxW,
         midR: midWeights.r / maxW,
