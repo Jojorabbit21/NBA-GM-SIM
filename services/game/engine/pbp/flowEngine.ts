@@ -51,6 +51,55 @@ function selectPlayType(tactic: OffenseTactic): PlayType {
     return 'Iso'; // Fallback
 }
 
+// --- Helper: Select Rebounder (Weighted Random) ---
+function selectRebounder(players: LivePlayer[]): LivePlayer {
+    // 1. Calculate weighted score for each player
+    const weightedPool = players.map(p => {
+        // Base: Attribute + Archetype
+        let weight = p.attr.reb;
+        if (p.archetypes) {
+            // Mix raw stat with calculated archetype (which includes hustle/vertical)
+            weight = (weight * 0.4) + (p.archetypes.rebounder * 0.6);
+        }
+
+        // Positional Bias
+        // Center: King of boards
+        // PF: Secondary rebounder
+        // PG: Primary Handlers often hunt long rebounds for transition
+        if (p.position === 'C') weight *= 1.6;
+        else if (p.position === 'PF') weight *= 1.35;
+        else if (p.position === 'PG') weight *= 1.25; 
+        else weight *= 1.0;
+
+        // Fatigue Factor: Tired players react slower
+        // Condition 100 -> 1.0, Condition 50 -> 0.75, Condition 0 -> 0.5
+        const fatigueMod = 0.5 + (Math.max(0, p.currentCondition) / 200);
+        weight *= fatigueMod;
+
+        // Random Noise (Positioning/Luck)
+        // Adds +/- 15% variance to prevent stats from being too deterministic
+        weight *= (0.85 + Math.random() * 0.3);
+
+        return { player: p, weight: Math.max(1, weight) };
+    });
+
+    // 2. Sum Total Weight
+    const totalWeight = weightedPool.reduce((sum, item) => sum + item.weight, 0);
+
+    // 3. Roulette Wheel Selection
+    let randomVal = Math.random() * totalWeight;
+    
+    for (const item of weightedPool) {
+        randomVal -= item.weight;
+        if (randomVal <= 0) {
+            return item.player;
+        }
+    }
+
+    // Fallback: Return player with highest weight if loop finishes (rounding errors)
+    return weightedPool.sort((a, b) => b.weight - a.weight)[0].player;
+}
+
 // --- Helper: Generate Flavor Text ---
 function generateScoreLog(context: PlayContext): string {
     const { playType, actor, secondaryActor, shotType, preferredZone } = context;
@@ -205,8 +254,9 @@ export function resolvePossession(state: GameState): PossessionResult {
         };
     } else {
         // MISSED SHOT
-        // Rebound logic (Simplified)
-        const rebounder = defTeam.onCourt.sort((a,b) => b.attr.reb - a.attr.reb)[0];
+        // Rebound logic (Weighted Random)
+        // Determine which player on the defensive team grabs the board
+        const rebounder = selectRebounder(defTeam.onCourt);
         
         return {
             type: 'miss',
