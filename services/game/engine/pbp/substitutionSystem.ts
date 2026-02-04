@@ -3,12 +3,31 @@ import { TeamState, LivePlayer, GameState } from './pbpTypes';
 import { formatTime } from './timeEngine';
 
 const SCORE_DIFF_THRESHOLD = 25; // 가비지 타임 기준 점수차
-const FATIGUE_SAFETY_THRESHOLD = 15; // [Safety] 체력이 이 값 미만이면 전술 무시하고 강제 교체
+const FATIGUE_SAFETY_THRESHOLD = 15; // [Safety] 최소 생존 한계선 (부상 방지)
 
 enum LineupType {
     STARTERS = 'STARTERS',
     BENCH = 'BENCH',
     GARBAGE = 'GARBAGE'
+}
+
+/**
+ * Calculates the fatigue threshold based on Rotation Flexibility Slider (0-10).
+ * 0 (Strict): ~20% (Only sub when almost dead)
+ * 5 (Normal): ~50%
+ * 10 (Deep): ~80% (Aggressive subs to keep fresh legs)
+ */
+function getDynamicFatigueThreshold(flexibility: number): number {
+    // If Strict (0-3), ignore fatigue mostly, just stick to safety net + small buffer
+    if (flexibility <= 3) return 20;
+    
+    // Linear scale from 4 to 10 mapped to 40% -> 80%
+    // flexibility 4 -> 40%
+    // flexibility 10 -> 80%
+    // Slope = (80-40) / (10-4) = 40/6 = ~6.6
+    const base = 40;
+    const extra = (flexibility - 4) * 6.6;
+    return Math.min(80, Math.round(base + extra));
 }
 
 /**
@@ -28,17 +47,31 @@ export function handleSubstitutions(state: GameState) {
  * Triggers if:
  * 1. Garbage time mismatch
  * 2. Rotation timeline mismatch
- * 3. [NEW] Any player on court is critically exhausted (< 15%)
+ * 3. [Safety] Any player is critically exhausted (< 15%)
+ * 4. [Tactical] Any player is below the Dynamic Threshold set by "Deep" slider
  */
 export function isRotationNeeded(team: TeamState, state: GameState): boolean {
-    // 1. Safety Check: Is anyone dying on the court?
-    const hasExhaustedPlayer = team.onCourt.some(p => p.currentCondition < FATIGUE_SAFETY_THRESHOLD && p.health !== 'Injured');
-    if (hasExhaustedPlayer) return true;
-
-    // 2. Standard Rotation Logic
     const flexibility = team.tactics.sliders.rotationFlexibility ?? 5;
+    const dynamicThreshold = getDynamicFatigueThreshold(flexibility);
+
+    // 1. Safety Check: Is anyone dying on the court? (< 15%)
+    const hasCriticalPlayer = team.onCourt.some(p => p.currentCondition < FATIGUE_SAFETY_THRESHOLD && p.health !== 'Injured');
+    if (hasCriticalPlayer) return true;
+
+    // 2. Tactical Fatigue Check:
+    // If playing "Deep" (Flexibility > 7), strictly enforce the fatigue threshold.
+    // E.g. If Flex is 10 (Threshold 80%), and player is at 75%, we WANT to sub.
+    if (flexibility >= 7) {
+        const hasTiredPlayer = team.onCourt.some(p => p.currentCondition < dynamicThreshold && p.health !== 'Injured');
+        if (hasTiredPlayer) {
+            // Only trigger if we actually have a valid sub on the bench who is fresher
+            const betterOptionExists = team.bench.some(b => b.currentCondition > dynamicThreshold && b.health !== 'Injured');
+            if (betterOptionExists) return true;
+        }
+    }
+
+    // 3. Standard Time-based Rotation Logic
     const targetType = determineLineupType(team, state, flexibility);
-    
     const starterIds = Object.values(team.tactics.starters);
     const currentStartersOnCourt = team.onCourt.filter(p => starterIds.includes(p.playerId)).length;
 
@@ -59,6 +92,7 @@ function processTeamRotation(team: TeamState, state: GameState) {
     
     // 1. Determine Target Lineup Type purely based on Time & Slider
     const targetType = determineLineupType(team, state, flexibility);
+    const dynamicThreshold = getDynamicFatigueThreshold(flexibility);
     
     // 2. Identify Pools
     const allPlayers = [...team.onCourt, ...team.bench];
@@ -68,18 +102,20 @@ function processTeamRotation(team: TeamState, state: GameState) {
     let selected: LivePlayer[] = [];
     const selectedIds = new Set<string>();
 
-    // Helper: Is player fit to play? (Not injured AND Not exhausted)
-    const isFit = (p: LivePlayer) => 
+    // Helper: Is player fit to play based on current TACTICS?
+    // In DEEP mode, this rejects players below 80%. In STRICT mode, allows down to 20%.
+    const isTacticallyFit = (p: LivePlayer) => 
+        p.health !== 'Injured' && p.currentCondition >= dynamicThreshold;
+
+    // Helper: Is player fit to play based on SAFETY? (Fallback)
+    const isPhysicallyAlive = (p: LivePlayer) => 
         p.health !== 'Injured' && p.currentCondition >= FATIGUE_SAFETY_THRESHOLD;
 
     if (targetType === LineupType.STARTERS) {
-        // Force Starters
+        // A. Try to fill with Tactically Fit Starters
         starterIds.forEach(id => {
             const p = allPlayers.find(pl => pl.playerId === id);
-            
-            // Criteria: Must exist, Not Injured, AND Not Exhausted
-            // Foul trouble logic remains
-            if (p && isFit(p)) {
+            if (p && isTacticallyFit(p)) {
                 let foulLimit = 6;
                 if (state.quarter <= 2) foulLimit = 3;
                 else if (state.quarter <= 3) foulLimit = 4;
@@ -91,10 +127,10 @@ function processTeamRotation(team: TeamState, state: GameState) {
             }
         });
 
-        // Fill gaps with best Bench (who are fit)
+        // B. Fill gaps with best Tactically Fit Bench
         if (selected.length < 5) {
             const benchPool = allPlayers
-                .filter(p => !selectedIds.has(p.playerId) && isFit(p))
+                .filter(p => !selectedIds.has(p.playerId) && isTacticallyFit(p))
                 .sort((a, b) => b.ovr - a.ovr);
             
             for (const p of benchPool) {
@@ -103,14 +139,28 @@ function processTeamRotation(team: TeamState, state: GameState) {
                 selectedIds.add(p.playerId);
             }
         }
+        
+        // C. Fallback: If we still lack players (e.g. Deep rotation but everyone is at 75%)
+        // We MUST put someone in. Pick Starters who are at least Physically Alive.
+        if (selected.length < 5) {
+            const tiredStarters = allPlayers
+                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isPhysicallyAlive(p))
+                .sort((a, b) => b.currentCondition - a.currentCondition); // Least tired first
+            
+            for (const p of tiredStarters) {
+                if (selected.length >= 5) break;
+                selected.push(p);
+                selectedIds.add(p.playerId);
+            }
+        }
 
     } else if (targetType === LineupType.BENCH) {
         // Force Bench
-        // Logic: Remove starters, put in highest OVR bench players
         
+        // A. Pick Tactically Fit Bench Players
         const benchPool = allPlayers
-            .filter(p => !starterIds.includes(p.playerId) && isFit(p))
-            .sort((a, b) => b.ovr - a.ovr); // Pure OVR based
+            .filter(p => !starterIds.includes(p.playerId) && isTacticallyFit(p))
+            .sort((a, b) => b.ovr - a.ovr);
 
         for (const p of benchPool) {
             if (selected.length >= 5) break;
@@ -118,11 +168,11 @@ function processTeamRotation(team: TeamState, state: GameState) {
             selectedIds.add(p.playerId);
         }
 
-        // Fill with Starters if bench is empty or exhausted (rare but possible)
+        // B. Fill with Fit Starters if bench is empty/injured
         if (selected.length < 5) {
             const starterPool = allPlayers
-                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isFit(p))
-                .sort((a, b) => b.currentCondition - a.currentCondition); // Least tired starter
+                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isTacticallyFit(p))
+                .sort((a, b) => b.currentCondition - a.currentCondition);
             
             for (const p of starterPool) {
                 if (selected.length >= 5) break;
@@ -130,11 +180,10 @@ function processTeamRotation(team: TeamState, state: GameState) {
                 selectedIds.add(p.playerId);
             }
         }
-
     } else if (targetType === LineupType.GARBAGE) {
-        // Lowest OVR players (ignoring fatigue slightly more leniently? No, safety first)
+        // Lowest OVR players who are Alive
         const garbagePool = allPlayers
-            .filter(p => p.health !== 'Injured') // Garbage time might allow tired players if no one else? Let's keep fit rule.
+            .filter(p => isPhysicallyAlive(p))
             .sort((a, b) => a.ovr - b.ovr); // Ascending OVR
         
         for (const p of garbagePool) {
@@ -144,8 +193,8 @@ function processTeamRotation(team: TeamState, state: GameState) {
         }
     }
 
-    // [Safety Net] If we still don't have 5 players (everyone exhausted/injured),
-    // force ANY living player even if tired (avoid crash), but prefer least tired.
+    // [Final Safety Net] If we still don't have 5 players (everyone exhausted/injured),
+    // force ANY living player even if critically tired to avoid crash.
     if (selected.length < 5) {
         const emergencyPool = allPlayers
             .filter(p => !selectedIds.has(p.playerId) && p.health !== 'Injured')
@@ -180,6 +229,7 @@ function processTeamRotation(team: TeamState, state: GameState) {
                 // Add Fatigue Alert Log if subbing out due to exhaustion
                 let reason = "";
                 if (outP.currentCondition < FATIGUE_SAFETY_THRESHOLD) reason = " (체력 고갈)";
+                else if (outP.currentCondition < dynamicThreshold && flexibility >= 7) reason = " (체력 안배)";
 
                 state.logs.push({
                     quarter: state.quarter,
