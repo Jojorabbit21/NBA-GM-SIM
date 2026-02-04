@@ -116,9 +116,6 @@ export function calculateIncrementalFatigue(
     const minutes = secondsPlayed / 60;
 
     // 1. Base Factors (Focus on Stamina)
-    // Pivot at Stamina 75. 
-    // Higher Stamina reduces drain, Lower Stamina increases drain.
-    // Range constraint: Factor cannot go below 0.5 (even for 99 stamina)
     const staminaDiff = 75 - player.attr.stamina;
     const staminaFactor = Math.max(0.5, 1.0 + (staminaDiff * 0.02));
     
@@ -126,23 +123,24 @@ export function calculateIncrementalFatigue(
     const baseDrain = minutes * C.DRAIN_BASE * staminaFactor;
 
     // 3. Tactical Intensity (Sliders)
-    // 1(Low) ~ 10(High). Average 5.
-    // Higher intensity = Significantly higher drain
     const sliderIntensity = 1 + ((sliders.pace + sliders.defIntensity + sliders.fullCourtPress - 15) * 0.05);
-    
     let drain = baseDrain * Math.max(0.5, sliderIntensity);
 
     // 4. Situational Multipliers
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.25;
 
-    // 5. [PbP Specific] Real-time Workload Penalty
-    // If player is already tired, they drain faster (Death Spiral)
-    if (player.currentCondition < 50) drain *= 1.2;
-    if (player.currentCondition < 20) drain *= 1.5;
+    // 5. [FATIGUE SPIRAL] Progressive Drain based on Current Condition
+    // The more tired you are, the faster you get MORE tired.
+    // Low stamina players will reach this spiral faster.
+    // Condition 100-90: Multiplier 1.0
+    // Condition 70: Multiplier 1.3
+    // Condition 50: Multiplier 1.5
+    // Formula: 1 + (100 - Current) * 0.01
+    const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - player.currentCondition) * 0.01);
+    drain *= cumulativeFatiguePenalty;
 
     // 6. Injury Check (Micro-roll)
-    // Durability affects INJURY CHANCE, not Drain rate.
     let injuryOccurred = false;
     let injuryDetails = undefined;
 
