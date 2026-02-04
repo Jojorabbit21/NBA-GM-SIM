@@ -7,6 +7,7 @@ export interface LivePlayer extends PlayerBoxScore {
     position: string;
     ovr: number;
     isStarter: boolean; 
+    health: 'Healthy' | 'Injured' | 'Day-to-Day'; // Added for logic checks
     
     // Attributes needed for simulation
     attr: {
@@ -16,7 +17,7 @@ export interface LivePlayer extends PlayerBoxScore {
         reb: number;
         pas: number;
         stamina: number;
-        durability: number; // [Added] for fatigue/injury calc
+        durability: number; 
     }
 }
 

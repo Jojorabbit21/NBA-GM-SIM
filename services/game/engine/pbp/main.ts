@@ -2,7 +2,7 @@
 import { Team, SimulationResult, GameTactics, Player, PlayerBoxScore } from '../../../../types';
 import { GameState, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePossession } from './flowEngine';
-import { handleSubstitutions } from './substitutionSystem';
+import { handleSubstitutions, isRotationNeeded } from './substitutionSystem';
 import { formatTime } from './timeEngine';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { calculatePlayerOvr } from '../../../../utils/constants';
@@ -17,6 +17,7 @@ const initLivePlayer = (p: Player): LivePlayer => ({
     ovr: calculatePlayerOvr(p),
     currentCondition: p.condition || 100,
     isStarter: false, 
+    health: p.health, // [Fix] Initialize health properly
     // Attributes for engine
     attr: {
         ins: p.ins || 70, out: p.out || 70, ft: p.ft || 75,
@@ -122,9 +123,7 @@ export function runFullGameSimulation(
             });
 
             // [Recovery] Break Time Recovery Logic
-            // Halftime (End of Q2) -> +5 Recovery
-            // Quarter Break (End of Q1, Q3) -> +2 Recovery
-            const recoveryAmount = state.quarter === 2 ? 5 : 2;
+            const recoveryAmount = state.quarter === 2 ? 10 : 3; // Boosted recovery
             
             const recoverTeam = (t: TeamState) => {
                 [...t.onCourt, ...t.bench].forEach(p => {
@@ -212,6 +211,28 @@ export function runFullGameSimulation(
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
         
+        // [New] Check for Mandatory Rotation AFTER Score
+        // In NBA, you can sub after made baskets if you call timeout, or if refs stop play.
+        // We simulate this by checking if rotation is overdue based on timeline.
+        if (result.type === 'score' || result.type === 'freethrow') {
+            const homeNeedsSub = isRotationNeeded(state.home, state);
+            const awayNeedsSub = isRotationNeeded(state.away, state);
+            
+            if (homeNeedsSub || awayNeedsSub) {
+                state.isDeadBall = true;
+                // Add log only if it's not a normal quarter end
+                if (state.gameClock > 5) {
+                    state.logs.push({
+                        quarter: state.quarter,
+                        timeRemaining: formatTime(Math.max(0, state.gameClock)),
+                        teamId: homeNeedsSub ? state.home.id : state.away.id,
+                        type: 'info',
+                        text: `[작전 타임] 선수 교체를 위해 작전 타임을 요청합니다.`
+                    });
+                }
+            }
+        }
+
         // [Fatigue Application]
         const applyFatigueToTeam = (t: TeamState, isB2B: boolean) => {
             t.onCourt.forEach(p => {
@@ -240,6 +261,9 @@ export function runFullGameSimulation(
                     });
                     // Force Substitution Logic to kick in
                     p.currentCondition = 0; // Force sub out
+                    if (injuryDetails?.health) {
+                        p.health = injuryDetails.health; // Update health status so subs logic ignores player
+                    }
                     state.isDeadBall = true; // Ensure substitution happens next loop
                 }
             });
@@ -249,7 +273,7 @@ export function runFullGameSimulation(
         applyFatigueToTeam(state.away, state.isAwayB2B);
         
         // Bench Recovery (Slow regeneration while sitting)
-        const benchRecovery = (result.timeTaken / 60) * 0.8;
+        const benchRecovery = (result.timeTaken / 60) * 1.0;
         state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
         state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
 
@@ -289,10 +313,20 @@ export function runFullGameSimulation(
     const finalAwayBox = [...state.away.onCourt, ...state.away.bench];
     
     // Prepare Roster Updates (Fatigue)
-    // NOTE: We round here, so small decimals might clip, but condition generally persists
+    // [CRITICAL FIX] Ensure ALL players (including bench who didn't play) are included to sync fatigue
     const rosterUpdates: any = {};
-    [...finalHomeBox, ...finalAwayBox].forEach(p => {
-        rosterUpdates[p.playerId] = { condition: Math.max(0, Math.round(p.currentCondition)) };
+    
+    [...state.home.onCourt, ...state.home.bench].forEach(p => {
+        rosterUpdates[p.playerId] = { 
+            condition: Math.max(0, Math.round(p.currentCondition)),
+            health: p.health // Sync health (if injured in-game)
+        };
+    });
+    [...state.away.onCourt, ...state.away.bench].forEach(p => {
+        rosterUpdates[p.playerId] = { 
+            condition: Math.max(0, Math.round(p.currentCondition)),
+            health: p.health
+        };
     });
 
     return {
