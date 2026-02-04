@@ -1,10 +1,20 @@
 import { Player, PlayerBoxScore, GameTactics, PbpLog } from '../../../../types';
 
 export interface LivePlayer extends PlayerBoxScore {
-    // Current runtime attributes (can be modified by fatigue)
+    // Current runtime attributes
     currentCondition: number;
     position: string;
     ovr: number;
+    
+    // Attributes needed for simulation
+    attr: {
+        ins: number; out: number; ft: number;
+        drFoul: number; 
+        def: number; blk: number; stl: number; foulTendency: number;
+        reb: number;
+        pas: number;
+        stamina: number;
+    }
 }
 
 export interface TeamState {
@@ -12,19 +22,20 @@ export interface TeamState {
     name: string;
     score: number;
     tactics: GameTactics;
-    onCourt: LivePlayer[]; // 5 players currently on floor
+    onCourt: LivePlayer[]; // Always 5 players
     bench: LivePlayer[];
     timeouts: number;
     fouls: number; // Team fouls in quarter
+    bonus: boolean; // Penalty situation
 }
 
 export interface GameState {
     home: TeamState;
     away: TeamState;
     
-    quarter: number; // 1, 2, 3, 4, 5(OT)...
-    gameClock: number; // Seconds remaining in quarter (720 -> 0)
-    shotClock: number; // 24 -> 0
+    quarter: number; 
+    gameClock: number; 
+    shotClock: number; 
     
     possession: 'home' | 'away';
     isDeadBall: boolean;
@@ -37,12 +48,13 @@ export interface GameState {
 }
 
 export interface PossessionResult {
-    type: 'score' | 'miss' | 'turnover' | 'foul';
-    points?: 2 | 3;
-    player?: LivePlayer; // Primary actor (Scorer, Turnover committer)
-    secondaryPlayer?: LivePlayer; // (Assister, Stealer, Blocker)
+    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow';
+    points?: 1 | 2 | 3;
+    player?: LivePlayer; // Main actor
+    secondaryPlayer?: LivePlayer; // Assister, Fouler, Blocker
     rebounder?: LivePlayer;
-    timeTaken: number; // Seconds consumed
+    timeTaken: number;
     logText: string;
-    nextPossession: 'home' | 'away' | 'keep'; // 'keep' for off reb
+    nextPossession: 'home' | 'away' | 'keep' | 'free_throw'; // free_throw is a special state
+    isDeadBall?: boolean;
 }
