@@ -1,7 +1,7 @@
 
 import { GameState } from './pbpTypes';
 import { TacticalSliders, OffenseTactic } from '../../../../types';
-import { OFFENSE_TACTIC_CONFIG } from './tacticMaps';
+import { OFFENSE_STRATEGY_CONFIG } from './strategyMap';
 
 /**
  * Calculates how much time a possession takes based on:
@@ -25,11 +25,11 @@ export function calculatePossessionTime(
     timeTaken += paceMod;
 
     // 2. Tactic Adjustment
-    const config = OFFENSE_TACTIC_CONFIG[tactic];
+    const config = OFFENSE_STRATEGY_CONFIG[tactic];
     if (config) {
         // paceMod in config: +5 (Fast) to -5 (Slow)
         // Invert because higher config pace = lower time
-        timeTaken -= config.paceMod; 
+        timeTaken -= (config.paceMod || 0); 
     }
 
     // 3. Situational Logic (2-for-1)

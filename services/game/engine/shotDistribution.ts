@@ -44,7 +44,8 @@ function calculateZoneWeights(player: Player, tendency: HiddenTendencies) {
             passVision: player.passVision, passIq: player.passIq, shotIq: player.shotIq, offConsist: player.offConsist,
             drFoul: player.drawFoul, def: player.def, intDef: player.intDef, perDef: player.perDef,
             blk: player.blk, stl: player.steal, helpDefIq: player.helpDefIq, defConsist: player.defConsist,
-            foulTendency: 50, reb: player.reb
+            foulTendency: 50, reb: player.reb,
+            postPlay: player.postPlay // Added postPlay to satisfy LivePlayer['attr']
         };
         archs = calculatePlayerArchetypes(mockAttr, player.condition || 100);
     }

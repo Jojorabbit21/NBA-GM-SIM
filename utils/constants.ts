@@ -54,6 +54,7 @@ export const INITIAL_STATS = () => ({
     fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
     rimM: 0, rimA: 0, midM: 0, midA: 0,
     pf: 0,
+    plusMinus: 0,
     
     // --- New 10-Zone Shooting Data ---
     zone_rim_m: 0, zone_rim_a: 0,
