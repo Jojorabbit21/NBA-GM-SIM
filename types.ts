@@ -233,6 +233,16 @@ export interface SimulationResult {
   rosterUpdates: RosterUpdate;
   homeTactics: TacticalSnapshot;
   awayTactics: TacticalSnapshot;
+  // [New] PBP Logs (Ephemeral)
+  pbpLogs?: PbpLog[]; 
+}
+
+export interface PbpLog {
+    quarter: number;
+    timeRemaining: string; // "11:45"
+    teamId: string;
+    text: string;
+    type: 'score' | 'miss' | 'rebound' | 'turnover' | 'foul' | 'info';
 }
 
 export interface TradeOffer {
