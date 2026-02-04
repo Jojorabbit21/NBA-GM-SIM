@@ -35,10 +35,12 @@ const PbpViewer: React.FC<{ logs: PbpLog[], homeTeamId: string, awayTeamId: stri
                     const isHome = log.teamId === homeTeamId;
                     const isScore = log.type === 'score';
                     const isImportant = log.type === 'info';
+                    const isFT = log.type === 'freethrow';
                     
                     let textColor = 'text-slate-400';
                     if (isImportant) textColor = 'text-yellow-400 font-bold';
                     else if (isScore) textColor = isHome ? 'text-indigo-300 font-bold' : 'text-emerald-300 font-bold';
+                    else if (isFT) textColor = 'text-cyan-400';
                     else if (log.type === 'turnover' || log.type === 'foul') textColor = 'text-red-400';
 
                     return (
