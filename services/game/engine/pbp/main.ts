@@ -202,16 +202,17 @@ export function runFullGameSimulation(
                 text: `--- ${state.quarter}쿼터 종료 (${state.home.score} : ${state.away.score}) ---`
             });
 
-            // [Recovery] Break Time Recovery Logic
-            const recoveryAmount = state.quarter === 2 ? 10 : 3; // Boosted recovery
-            
-            const recoverTeam = (t: TeamState) => {
-                [...t.onCourt, ...t.bench].forEach(p => {
-                    p.currentCondition = Math.min(100, p.currentCondition + recoveryAmount);
-                });
-            };
-            recoverTeam(state.home);
-            recoverTeam(state.away);
+            // [Recovery] Halftime Recovery only. Removed general quarter recovery.
+            if (state.quarter === 2) {
+                const halftimeRecovery = 5; 
+                const recoverTeam = (t: TeamState) => {
+                    [...t.onCourt, ...t.bench].forEach(p => {
+                        p.currentCondition = Math.min(100, p.currentCondition + halftimeRecovery);
+                    });
+                };
+                recoverTeam(state.home);
+                recoverTeam(state.away);
+            }
 
             state.quarter++;
             if (state.quarter > 4) break; 
@@ -357,8 +358,9 @@ export function runFullGameSimulation(
         applyFatigueToTeam(state.home, state.isHomeB2B);
         applyFatigueToTeam(state.away, state.isAwayB2B);
         
-        // Bench Recovery (Slow regeneration while sitting)
-        const benchRecovery = (result.timeTaken / 60) * 1.0;
+        // Bench Recovery (Updated: 0.2 per minute)
+        // 1 minute = 60 seconds. Recovery per second = 0.2 / 60 = 0.0033
+        const benchRecovery = (result.timeTaken / 60) * 0.2;
         state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
         state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
 
