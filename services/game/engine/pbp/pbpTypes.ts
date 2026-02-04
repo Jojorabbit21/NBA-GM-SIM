@@ -1,4 +1,3 @@
-
 import { Player, PlayerBoxScore, GameTactics, PbpLog } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
@@ -28,6 +27,7 @@ export interface LivePlayer extends PlayerBoxScore {
         handling: number; hands: number;
         pas: number; passAcc: number; passVision: number; passIq: number;
         shotIq: number; offConsist: number;
+        postPlay: number;
         
         // Defense
         def: number; intDef: number; perDef: number;
