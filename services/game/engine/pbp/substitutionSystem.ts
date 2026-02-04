@@ -31,136 +31,119 @@ function processTeamRotation(team: TeamState, state: GameState, teamSide: 'home'
     // 1. Determine Target Lineup Type
     const targetType = determineLineupType(team, state, flexibility);
     
-    // 2. Filter Available Players (Not fouled out, Not injured)
-    // Note: In this engine, injured/fouled out players should ideally be removed from team.bench/onCourt lists beforehand or flagged.
-    // Assuming available players are in onCourt + bench.
-    
+    // 2. Identify Current State
     const allPlayers = [...team.onCourt, ...team.bench];
+    const starterIds = Object.values(team.tactics.starters); // User defined starters
     
-    // 3. Define Roles based on OVR
-    // Sort all players by OVR descending to identify hierarchy
-    const sortedByOvr = [...allPlayers].sort((a, b) => b.ovr - a.ovr);
-    
-    // Starters are explicitly flagged.
-    // Core Rotation: The top 4-5 players AFTER starters (usually OVR rank 6-10)
-    // Garbage: The lowest rated players (usually OVR rank 11-15)
-    
-    const starters = allPlayers.filter(p => p.isStarter);
-    const bench = allPlayers.filter(p => !p.isStarter).sort((a, b) => b.ovr - a.ovr);
-    
-    // Determine Rotation Size based on Slider (0: Tight 8-man, 10: Deep 11-man)
-    // Base 8, max 12.
-    const rotationSize = 8 + Math.floor(flexibility * 0.4); 
-    const coreBenchCount = Math.max(3, rotationSize - 5); 
-    
-    const coreBenchIds = new Set(bench.slice(0, coreBenchCount).map(p => p.playerId));
-    const garbageIds = new Set(bench.slice(coreBenchCount).map(p => p.playerId)); // Anyone below core is deep bench/garbage
-
-    // 4. Calculate Deployment Score for each player
-    const scoredPlayers = allPlayers.map(p => {
-        let score = p.ovr; // Base score is OVR
-        
-        // --- A. Minutes Limit Constraint (Strict) ---
-        const limit = team.tactics.minutesLimits?.[p.playerId];
-        if (limit !== undefined && p.mp >= limit) {
-            score -= 10000; // Massive penalty to force them out (unless no one else available)
-        }
-
-        // --- B. Fatigue Check ---
-        // If tired, reduce score to favor fresher players
-        if (p.currentCondition < CRITICAL_FATIGUE) {
-            score -= 500; 
-        } else if (p.currentCondition < 70) {
-            score -= 50; // Mild penalty
-        }
-
-        // --- C. Role Context Weights ---
-        
-        if (targetType === LineupType.GARBAGE) {
-            // In Garbage time, LOWEST OVR players get highest score
-            // We invert the OVR logic effectively
-            score = 100 - p.ovr; 
-            if (p.isStarter) score -= 2000; // Starters must sit
-            if (coreBenchIds.has(p.playerId)) score -= 1000; // Core bench sits
-            // Garbage unit (Deep Bench) naturally gets higher priority here
-        } 
-        else {
-            // NORMAL GAME FLOW (Starters, Bench, Hybrid)
-            
-            // 1. Prevent Garbage players from playing in competitive time
-            if (garbageIds.has(p.playerId)) {
-                score -= 2000; // Only play if literally everyone else is dead
-            }
-
-            if (targetType === LineupType.STARTERS) {
-                if (p.isStarter) score += 500;
-            } 
-            else if (targetType === LineupType.BENCH) {
-                // Favor Core Bench > Starters
-                if (!p.isStarter && coreBenchIds.has(p.playerId)) score += 300;
-                else if (p.isStarter) score -= 100; // Starters rest
-            } 
-            else if (targetType === LineupType.HYBRID) {
-                // Best available mix (usually Starters + Top 1-2 Bench)
-                if (p.isStarter) score += 200;
-                if (coreBenchIds.has(p.playerId)) score += 150;
-            }
-        }
-        
-        return { player: p, score };
-    });
-
-    // 5. Select Top 5 based on Score
-    scoredPlayers.sort((a, b) => b.score - a.score);
-
-    // Positional Balance Logic (Simple)
-    // We need at least 1 Guard, 1 Forward, 1 Big if possible from the top candidates
-    const selected: LivePlayer[] = [];
+    // 3. Selection Logic based on Lineup Type
+    let selected: LivePlayer[] = [];
     const selectedIds = new Set<string>();
 
-    const pool = scoredPlayers;
-    
-    // Helper to pick best available fitting a condition
-    const pickBest = (filterFn: (p: LivePlayer) => boolean) => {
-        for (const item of pool) {
-            if (!selectedIds.has(item.player.playerId) && filterFn(item.player)) {
-                selected.push(item.player);
-                selectedIds.add(item.player.playerId);
-                return;
+    if (targetType === LineupType.STARTERS) {
+        // [Fixed] Priority: The specific 5 players the user set as starters.
+        // Do NOT force positional balance (e.g. 2G, 2F, 1C) if user didn't set it that way.
+        
+        // A. Try to put in all defined starters first
+        starterIds.forEach(id => {
+            const p = allPlayers.find(pl => pl.playerId === id);
+            if (p) {
+                // Check health
+                if (p.currentCondition > CRITICAL_FATIGUE && p.pf < 6) {
+                    selected.push(p);
+                    selectedIds.add(p.playerId);
+                }
+            }
+        });
+
+        // B. If a starter is tired/fouled out, fill with best available bench
+        if (selected.length < 5) {
+            const availableBench = allPlayers
+                .filter(p => !selectedIds.has(p.playerId) && p.pf < 6 && p.currentCondition > CRITICAL_FATIGUE)
+                .sort((a, b) => b.ovr - a.ovr); // Highest OVR bench
+            
+            for (const p of availableBench) {
+                if (selected.length >= 5) break;
+                selected.push(p);
+                selectedIds.add(p.playerId);
             }
         }
-    };
 
-    // Try to fill standard composition (G, G, F, F, C) roughly
-    pickBest(p => p.position.includes('G')); // PG/SG
-    pickBest(p => p.position.includes('G')); 
-    pickBest(p => p.position.includes('F')); // SF/PF
-    pickBest(p => p.position.includes('F'));
-    pickBest(p => p.position === 'C' || p.position === 'PF'); // Big
+    } else if (targetType === LineupType.BENCH) {
+        // Priority: Best Bench players > Tired Starters
+        
+        const benchPool = allPlayers
+            .filter(p => !starterIds.includes(p.playerId) && p.pf < 6 && p.currentCondition > CRITICAL_FATIGUE)
+            .sort((a, b) => b.ovr - a.ovr);
 
-    // Fill remaining spots if position requirements couldn't be met perfectly
-    for (const item of pool) {
-        if (selected.length >= 5) break;
-        if (!selectedIds.has(item.player.playerId)) {
-            selected.push(item.player);
-            selectedIds.add(item.player.playerId);
+        // Fill with bench
+        for (const p of benchPool) {
+            if (selected.length >= 5) break;
+            selected.push(p);
+            selectedIds.add(p.playerId);
+        }
+
+        // Fill remaining spots with freshest starters if bench is thin
+        if (selected.length < 5) {
+            const starterPool = allPlayers
+                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && p.pf < 6)
+                .sort((a, b) => b.currentCondition - a.currentCondition); // Freshest first
+            
+            for (const p of starterPool) {
+                if (selected.length >= 5) break;
+                selected.push(p);
+                selectedIds.add(p.playerId);
+            }
+        }
+    
+    } else if (targetType === LineupType.GARBAGE) {
+        // Priority: Lowest OVR players
+        const garbagePool = allPlayers
+            .filter(p => p.pf < 6)
+            .sort((a, b) => a.ovr - b.ovr); // Lowest first
+        
+        for (const p of garbagePool) {
+            if (selected.length >= 5) break;
+            selected.push(p);
+            selectedIds.add(p.playerId);
+        }
+
+    } else {
+        // HYBRID: Best 5 players available regardless of role
+        // Usually mix of starters and 6th man
+        const bestPool = allPlayers
+            .filter(p => p.pf < 6 && p.currentCondition > CRITICAL_FATIGUE)
+            .sort((a, b) => b.ovr - a.ovr);
+
+        for (const p of bestPool) {
+            if (selected.length >= 5) break;
+            selected.push(p);
+            selectedIds.add(p.playerId);
         }
     }
 
-    // 6. Execute Substitutions
+    // Failsafe: If we somehow don't have 5 (e.g. everyone fouled out), fill with anyone
+    if (selected.length < 5) {
+        const remaining = allPlayers.filter(p => !selectedIds.has(p.playerId));
+        for (const p of remaining) {
+            if (selected.length >= 5) break;
+            selected.push(p);
+            selectedIds.add(p.playerId);
+        }
+    }
+
+    // 4. Apply Substitutions
     const onCourtIds = new Set(team.onCourt.map(p => p.playerId));
     const newCourtIds = new Set(selected.map(p => p.playerId));
 
+    // Identify changes
     const toSubOut = team.onCourt.filter(p => !newCourtIds.has(p.playerId));
     const toSubIn = selected.filter(p => !onCourtIds.has(p.playerId));
 
-    // Sort In/Out to try and match positions for log readability (optional but nice)
-    // Just simple swap logic here
     if (toSubOut.length > 0) {
+        // Perform Swap
         toSubOut.forEach((outP, idx) => {
             const inP = toSubIn[idx];
             if (inP) {
-                // Update Arrays
                 team.bench.push(outP);
                 team.onCourt = team.onCourt.filter(p => p.playerId !== outP.playerId);
                 team.onCourt.push(inP);
@@ -182,8 +165,7 @@ function determineLineupType(team: TeamState, state: GameState, flexibility: num
     const { quarter, gameClock, home, away } = state;
     const scoreDiff = Math.abs(home.score - away.score);
 
-    // 1. Garbage Time Rule (High Priority)
-    // Condition: 4th Quarter, Last 6 minutes (360s), Score Diff >= 20
+    // 1. Garbage Time Rule
     if (quarter === 4 && gameClock <= 360 && scoreDiff >= SCORE_DIFF_THRESHOLD) {
         return LineupType.GARBAGE;
     }
@@ -214,9 +196,6 @@ function determineLineupType(team: TeamState, state: GameState, flexibility: num
 
     // Q2 & Q4 Logic (Non-Garbage)
     if (quarter === 2 || quarter === 4) {
-        // Start of Quarter: Usually Bench unit
-        // When do starters return?
-        
         let returnTime = 360; // Default: Return at 6:00
         if (isStrict) returnTime = 480; // Return early at 8:00
         if (isDeep) returnTime = 240; // Return late at 4:00
