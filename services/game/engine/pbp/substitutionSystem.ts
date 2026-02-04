@@ -3,6 +3,7 @@ import { TeamState, LivePlayer, GameState } from './pbpTypes';
 import { formatTime } from './timeEngine';
 
 const SCORE_DIFF_THRESHOLD = 25; // 가비지 타임 기준 점수차
+const FATIGUE_SAFETY_THRESHOLD = 15; // [Safety] 체력이 이 값 미만이면 전술 무시하고 강제 교체
 
 enum LineupType {
     STARTERS = 'STARTERS',
@@ -12,7 +13,7 @@ enum LineupType {
 
 /**
  * Checks and executes substitutions based on Slider-based Rotation Logic.
- * NOW IGNORING FATIGUE LEVELS completely for substitution decisions.
+ * INCLUDES SAFETY OVERRIDE for critically tired players.
  */
 export function handleSubstitutions(state: GameState) {
     if (!state.isDeadBall) return;
@@ -23,10 +24,18 @@ export function handleSubstitutions(state: GameState) {
 }
 
 /**
- * Check if a rotation is REQUIRED right now based on the clock strategy.
- * Used to trigger timeouts after made baskets.
+ * Check if a rotation is REQUIRED right now.
+ * Triggers if:
+ * 1. Garbage time mismatch
+ * 2. Rotation timeline mismatch
+ * 3. [NEW] Any player on court is critically exhausted (< 15%)
  */
 export function isRotationNeeded(team: TeamState, state: GameState): boolean {
+    // 1. Safety Check: Is anyone dying on the court?
+    const hasExhaustedPlayer = team.onCourt.some(p => p.currentCondition < FATIGUE_SAFETY_THRESHOLD && p.health !== 'Injured');
+    if (hasExhaustedPlayer) return true;
+
+    // 2. Standard Rotation Logic
     const flexibility = team.tactics.sliders.rotationFlexibility ?? 5;
     const targetType = determineLineupType(team, state, flexibility);
     
@@ -59,13 +68,18 @@ function processTeamRotation(team: TeamState, state: GameState) {
     let selected: LivePlayer[] = [];
     const selectedIds = new Set<string>();
 
+    // Helper: Is player fit to play? (Not injured AND Not exhausted)
+    const isFit = (p: LivePlayer) => 
+        p.health !== 'Injured' && p.currentCondition >= FATIGUE_SAFETY_THRESHOLD;
+
     if (targetType === LineupType.STARTERS) {
         // Force Starters
         starterIds.forEach(id => {
             const p = allPlayers.find(pl => pl.playerId === id);
-            // Exception: Foul Trouble (PF >= 4 in Q3, >= 5 in Q4)
-            // Exception: Injured
-            if (p && p.health !== 'Injured') {
+            
+            // Criteria: Must exist, Not Injured, AND Not Exhausted
+            // Foul trouble logic remains
+            if (p && isFit(p)) {
                 let foulLimit = 6;
                 if (state.quarter <= 2) foulLimit = 3;
                 else if (state.quarter <= 3) foulLimit = 4;
@@ -77,10 +91,10 @@ function processTeamRotation(team: TeamState, state: GameState) {
             }
         });
 
-        // Fill gaps with best Bench
+        // Fill gaps with best Bench (who are fit)
         if (selected.length < 5) {
             const benchPool = allPlayers
-                .filter(p => !selectedIds.has(p.playerId) && p.health !== 'Injured')
+                .filter(p => !selectedIds.has(p.playerId) && isFit(p))
                 .sort((a, b) => b.ovr - a.ovr);
             
             for (const p of benchPool) {
@@ -95,7 +109,7 @@ function processTeamRotation(team: TeamState, state: GameState) {
         // Logic: Remove starters, put in highest OVR bench players
         
         const benchPool = allPlayers
-            .filter(p => !starterIds.includes(p.playerId) && p.health !== 'Injured')
+            .filter(p => !starterIds.includes(p.playerId) && isFit(p))
             .sort((a, b) => b.ovr - a.ovr); // Pure OVR based
 
         for (const p of benchPool) {
@@ -104,10 +118,10 @@ function processTeamRotation(team: TeamState, state: GameState) {
             selectedIds.add(p.playerId);
         }
 
-        // Fill with Starters if bench is empty (rare)
+        // Fill with Starters if bench is empty or exhausted (rare but possible)
         if (selected.length < 5) {
             const starterPool = allPlayers
-                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && p.health !== 'Injured')
+                .filter(p => starterIds.includes(p.playerId) && !selectedIds.has(p.playerId) && isFit(p))
                 .sort((a, b) => b.currentCondition - a.currentCondition); // Least tired starter
             
             for (const p of starterPool) {
@@ -118,12 +132,26 @@ function processTeamRotation(team: TeamState, state: GameState) {
         }
 
     } else if (targetType === LineupType.GARBAGE) {
-        // Lowest OVR players
+        // Lowest OVR players (ignoring fatigue slightly more leniently? No, safety first)
         const garbagePool = allPlayers
-            .filter(p => p.health !== 'Injured')
+            .filter(p => p.health !== 'Injured') // Garbage time might allow tired players if no one else? Let's keep fit rule.
             .sort((a, b) => a.ovr - b.ovr); // Ascending OVR
         
         for (const p of garbagePool) {
+            if (selected.length >= 5) break;
+            selected.push(p);
+            selectedIds.add(p.playerId);
+        }
+    }
+
+    // [Safety Net] If we still don't have 5 players (everyone exhausted/injured),
+    // force ANY living player even if tired (avoid crash), but prefer least tired.
+    if (selected.length < 5) {
+        const emergencyPool = allPlayers
+            .filter(p => !selectedIds.has(p.playerId) && p.health !== 'Injured')
+            .sort((a, b) => b.currentCondition - a.currentCondition);
+        
+        for (const p of emergencyPool) {
             if (selected.length >= 5) break;
             selected.push(p);
             selectedIds.add(p.playerId);
@@ -149,12 +177,16 @@ function processTeamRotation(team: TeamState, state: GameState) {
                 team.bench = team.bench.filter(p => p.playerId !== inP.playerId);
                 team.bench.push(outP);
 
+                // Add Fatigue Alert Log if subbing out due to exhaustion
+                let reason = "";
+                if (outP.currentCondition < FATIGUE_SAFETY_THRESHOLD) reason = " (체력 고갈)";
+
                 state.logs.push({
                     quarter: state.quarter,
                     timeRemaining: formatTime(state.gameClock),
                     teamId: team.id,
                     type: 'info',
-                    text: `[교체] OUT: ${outP.playerName}, IN: ${inP.playerName}`
+                    text: `[교체] OUT: ${outP.playerName}${reason}, IN: ${inP.playerName}`
                 });
             }
         });

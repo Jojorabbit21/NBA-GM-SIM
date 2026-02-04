@@ -216,6 +216,7 @@ export const useSimulation = (
                 }
 
                 // Apply recovery
+                // [CRITICAL FIX] Use ?? 100 instead of || 100 to allow low condition values (e.g. 0) to recover properly
                 const currentCond = updatedPlayer.condition !== undefined ? updatedPlayer.condition : 100;
                 updatedPlayer.condition = Math.min(100, Math.round(currentCond + totalRecovery));
                 
@@ -394,7 +395,8 @@ export const useSimulation = (
                         }
 
                         // Apply Condition Update (Fatigue)
-                        const newCondition = update?.condition !== undefined ? Math.round(update.condition) : p.condition;
+                        // [CRITICAL FIX] Use ?? instead of || to correctly handle 0 condition
+                        const newCondition = update?.condition !== undefined ? Math.round(update.condition) : (p.condition ?? 100);
                         
                         const returnObj = { 
                             ...p, 
