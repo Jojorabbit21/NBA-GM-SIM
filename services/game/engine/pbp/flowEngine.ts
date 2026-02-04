@@ -34,11 +34,7 @@ export function resolvePossession(state: GameState): PossessionResult {
     // If team is in bonus, this leads to FTs.
     const foulChance = 0.05 + (defTeam.tactics.sliders.defIntensity * 0.005);
     if (Math.random() < foulChance) {
-        // Shooting Foul vs Non-Shooting Foul? 
-        // For simplicity in this PBP loop, we treat most fouls as defensive fouls.
-        // If bonus, shoot 2. If not, side out (unless shooting).
-        
-        // Let's simplify: 30% Shooting Foul, 70% Non-Shooting (unless bonus)
+        // 30% Shooting Foul, 70% Non-Shooting (unless bonus)
         const isShootingFoul = Math.random() < 0.3;
         const isBonus = defTeam.fouls >= 5;
         
@@ -125,7 +121,7 @@ export function resolvePossession(state: GameState): PossessionResult {
 
 function resolveFreeThrows(shooter: LivePlayer, fouler: LivePlayer, time: number, possession: string, andOnePoints?: number): PossessionResult {
     const ftPct = shooter.attr.ft / 100;
-    const count = andOnePoints ? 1 : 2;
+    const count = andOnePoints ? 1 : 2; // If And-1, only 1 shot. Else 2.
     let made = 0;
     
     for(let i=0; i<count; i++) {
@@ -139,17 +135,18 @@ function resolveFreeThrows(shooter: LivePlayer, fouler: LivePlayer, time: number
     if (isAndOne) {
         text = `${shooter.playerName}, 앤드원! 추가 자유투 ${made > 0 ? '성공' : '실패'}. (${totalPoints}점 플레이)`;
     } else {
-        text = `${fouler.playerName}의 슈팅 파울. ${shooter.playerName} 자유투 ${made}/${count} 성공.`;
+        text = `${fouler.playerName} 파울. ${shooter.playerName} 자유투 ${made}/${count} 성공.`;
     }
 
     return {
         type: 'freethrow',
-        points: totalPoints as any, // Cast for simplicity, handled by adder
+        points: totalPoints as any, // Only points added to score
+        attempts: count, // Actual FT attempts for stat sheet
         player: shooter,
         secondaryPlayer: fouler, // Fouler
         timeTaken: time,
         logText: text,
-        nextPossession: possession === 'home' ? 'away' : 'home', // Ball switches after FTs (usually)
+        nextPossession: possession === 'home' ? 'away' : 'home', 
         isDeadBall: true
     };
 }
@@ -162,6 +159,5 @@ function getRandomPlayer(players: LivePlayer[], excludeId?: string): LivePlayer 
         pool = players.filter(p => p.playerId !== excludeId);
         if (pool.length === 0) pool = players;
     }
-    // Weighted by role? For now random.
     return pool[Math.floor(Math.random() * pool.length)];
 }

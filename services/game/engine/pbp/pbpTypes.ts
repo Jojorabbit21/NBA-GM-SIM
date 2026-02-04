@@ -5,6 +5,7 @@ export interface LivePlayer extends PlayerBoxScore {
     currentCondition: number;
     position: string;
     ovr: number;
+    isStarter: boolean; // [New] Identifies if this player is in the starting 5
     
     // Attributes needed for simulation
     attr: {
@@ -50,6 +51,7 @@ export interface GameState {
 export interface PossessionResult {
     type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow';
     points?: 1 | 2 | 3;
+    attempts?: number; // Added for counting FTA
     player?: LivePlayer; // Main actor
     secondaryPlayer?: LivePlayer; // Assister, Fouler, Blocker
     rebounder?: LivePlayer;

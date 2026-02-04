@@ -15,6 +15,7 @@ const initLivePlayer = (p: Player): LivePlayer => ({
     position: p.position,
     ovr: calculatePlayerOvr(p),
     currentCondition: p.condition || 100,
+    isStarter: false, // Default false, set later
     // Attributes for engine
     attr: {
         ins: p.ins || 70, out: p.out || 70, ft: p.ft || 75,
@@ -58,11 +59,15 @@ const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
         starters = sorted.slice(0, 5);
     }
     
+    // Mark Starters
+    starters.forEach(p => {
+        p.gs = 1;
+        p.isStarter = true;
+    });
+
     // Determine Bench
     bench = roster.filter(p => !starters.find(s => s.playerId === p.playerId));
-
-    // Mark GS
-    starters.forEach(p => p.gs = 1);
+    bench.forEach(p => p.isStarter = false);
 
     return {
         id: team.id,
@@ -151,16 +156,23 @@ export function runFullGameSimulation(
             } else if (result.type === 'turnover') {
                 result.player.tov++;
             } else if (result.type === 'freethrow') {
-                // Approximate FT stats from points (e.g., 2 points = 2/2 or 2/3?) 
-                // Simplified: Points = FTM. Attempts = Points + 0 or 1 random miss logic in flowEngine?
-                // Let's assume flowEngine handles logic, but here we just add points.
-                // NOTE: flowEngine logic for FTs needs to track attempts. 
-                // For now, assume 100% or store attempts in result. 
-                // *Correction*: Updated flowEngine to not track FTA explicitly in result struct efficiently yet.
-                // We will rely on simple approximation here: 
-                result.player.pts += result.points!;
-                result.player.ftm += result.points!;
-                result.player.fta += result.points!; // Assume made for now to fix 0/0 bug, improve later
+                // Approximate FT logic
+                if (result.logText.includes('앤드원')) {
+                     result.player.pts += result.points!;
+                     result.player.fgm++; result.player.fga++; 
+                     result.player.ftm += (result.points! - 2); 
+                     result.player.fta += result.attempts!;
+                     if (result.points! > result.attempts!) {
+                         result.player.ftm += (result.points! - 2); 
+                     } else {
+                         result.player.ftm += result.points!; 
+                     }
+                } else {
+                     // Regular FT
+                     result.player.pts += result.points!;
+                     result.player.ftm += result.points!;
+                     result.player.fta += result.attempts!;
+                }
             }
         }
         
@@ -185,14 +197,16 @@ export function runFullGameSimulation(
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
         
-        // Fatigue Drain (Simple)
-        const drain = (result.timeTaken / 60) * 0.5; // ~0.5 condition per minute
+        // Fatigue Drain (INCREASED SIGNIFICANTLY to 3.0 base)
+        const drainMultiplier = 3.0; 
+        const drain = (result.timeTaken / 60) * drainMultiplier;
+        
         state.home.onCourt.forEach(p => { p.mp += result.timeTaken / 60; p.currentCondition -= drain; });
         state.away.onCourt.forEach(p => { p.mp += result.timeTaken / 60; p.currentCondition -= drain; });
         
         // Bench Recovery
-        state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + (drain * 0.6)));
-        state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + (drain * 0.6)));
+        state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + (drain * 0.8)));
+        state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + (drain * 0.8)));
 
         // Add Log
         state.logs.push({
