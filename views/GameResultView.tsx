@@ -1,12 +1,14 @@
+
 import React, { useRef, useEffect } from 'react';
 import { Activity, List, Clock } from 'lucide-react';
-import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog } from '../types';
+import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData } from '../types';
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
 import { TacticsAnalysis } from '../components/game/TacticsAnalysis';
 import { BoxScoreTable, GameStatLeaders } from '../components/game/BoxScoreTable';
 import { ResultFooter } from '../components/game/ResultFooter';
+import { RotationChart } from '../components/game/RotationChart';
 
 // PBP Viewer Component
 const PbpViewer: React.FC<{ logs: PbpLog[], homeTeamId: string, awayTeamId: string }> = ({ logs, homeTeamId, awayTeamId }) => {
@@ -77,12 +79,13 @@ export const GameResultView: React.FC<{
     userTactics?: any;
     myTeamId: string;
     pbpLogs?: PbpLog[];
+    rotationData?: RotationData;
   };
   myTeamId: string;
   teams: Team[];
   onFinish: () => void;
 }> = ({ result, myTeamId, teams, onFinish }) => {
-  const { home, away, homeScore, awayScore, homeBox, awayBox, recap, otherGames, homeTactics, awayTactics, pbpLogs } = result;
+  const { home, away, homeScore, awayScore, homeBox, awayBox, recap, otherGames, homeTactics, awayTactics, pbpLogs, rotationData } = result;
   
   const isHome = myTeamId === home.id;
   const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
@@ -120,8 +123,19 @@ export const GameResultView: React.FC<{
 
           <div className="flex-1 max-w-6xl mx-auto w-full p-6 space-y-8">
               
-              {/* Play-by-Play Logs (Inserted Here) */}
+              {/* Play-by-Play Logs */}
               {pbpLogs && <PbpViewer logs={pbpLogs} homeTeamId={home.id} awayTeamId={away.id} />}
+
+              {/* Rotation Chart */}
+              {rotationData && (
+                  <RotationChart 
+                    homeTeam={home} 
+                    awayTeam={away} 
+                    homeBox={homeBox} 
+                    awayBox={awayBox} 
+                    rotationData={rotationData} 
+                  />
+              )}
 
               <TacticsAnalysis 
                   homeTeam={home} 

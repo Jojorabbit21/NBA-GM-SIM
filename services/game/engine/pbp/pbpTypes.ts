@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -69,6 +69,9 @@ export interface GameState {
     // Config
     isHomeB2B: boolean;
     isAwayB2B: boolean;
+
+    // [New] Rotation Tracking
+    rotationHistory: RotationData;
 }
 
 export interface PossessionResult {
