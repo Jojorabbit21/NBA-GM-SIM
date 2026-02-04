@@ -1,4 +1,3 @@
-
 import { Team, SimulationResult, GameTactics, Player, PlayerBoxScore } from '../../../../types';
 import { GameState, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePossession } from './flowEngine';
@@ -43,6 +42,7 @@ const initLivePlayer = (p: Player): LivePlayer => {
         passIq: p.passIq || 70,
         shotIq: p.shotIq || 70,
         offConsist: p.offConsist || 70,
+        postPlay: p.postPlay || 70,
         drFoul: p.drawFoul || 50,
         
         // Defense

@@ -1,31 +1,42 @@
-import { GameState } from './pbpTypes';
-import { TacticalSliders } from '../../../../types';
 
-const QUARTER_LENGTH = 720; // 12 mins
-const AVG_POSSESSION_TIME = 14; 
+import { GameState } from './pbpTypes';
+import { TacticalSliders, OffenseTactic } from '../../../../types';
+import { OFFENSE_TACTIC_CONFIG } from './tacticMaps';
 
 /**
  * Calculates how much time a possession takes based on:
  * - Pace slider
  * - Strategy (SevenSeconds vs Grind)
  * - Game situation (2-for-1, Clutch)
- * 
- * NOTE: Currently implements basic randomization. Will be enhanced with tactics later.
  */
 export function calculatePossessionTime(
     state: GameState, 
-    sliders: TacticalSliders
+    sliders: TacticalSliders,
+    tactic: OffenseTactic = 'Balance'
 ): number {
-    const { gameClock, shotClock } = state;
+    const { gameClock } = state;
     
-    // Base time: 14 seconds average (Gaussian-ish distribution 10~18)
+    // Base time: 14 seconds average
     let timeTaken = Math.floor(Math.random() * 8) + 10;
     
-    // Simple Pace Adjustment
-    // Slider 1-10. 5 is neutral. 
+    // 1. Slider Adjustment (1-10)
     // Higher pace = Less time taken.
     const paceMod = (sliders.pace - 5) * -0.8;
     timeTaken += paceMod;
+
+    // 2. Tactic Adjustment
+    const config = OFFENSE_TACTIC_CONFIG[tactic];
+    if (config) {
+        // paceMod in config: +5 (Fast) to -5 (Slow)
+        // Invert because higher config pace = lower time
+        timeTaken -= config.paceMod; 
+    }
+
+    // 3. Situational Logic (2-for-1)
+    // If quarter ending (between 28s and 40s), speed up to get 2 shots
+    if (gameClock <= 45 && gameClock >= 30) {
+        timeTaken = Math.min(timeTaken, 8); // Hurry up
+    }
 
     // Hard clamps
     if (timeTaken < 4) timeTaken = 4; // Unlikely to be faster than 4s
