@@ -66,6 +66,7 @@ export interface PlayerStats {
   zone_atb3_r_m: number; zone_atb3_r_a: number;
 
   pf: number;
+  plusMinus: number; 
 }
 
 // New: Hidden Tendencies (Generated at runtime, not stored in DB)
@@ -113,6 +114,7 @@ export interface Player {
 
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
+export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition';
 
 export interface TacticalSliders {
   pace: number;
@@ -220,6 +222,10 @@ export interface PlayerBoxScore {
   zoneData?: Partial<PlayerStats>; 
 
   mp: number; g: number; gs: number; pf: number;
+  
+  // [New] Plus Minus
+  plusMinus: number;
+
   isStopper?: boolean;
   isAceTarget?: boolean;
   matchupEffect?: number;
