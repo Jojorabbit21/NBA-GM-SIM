@@ -1,13 +1,64 @@
-
-import React from 'react';
-import { Activity } from 'lucide-react';
-import { Team, PlayerBoxScore, Game, TacticalSnapshot } from '../types';
+import React, { useRef, useEffect } from 'react';
+import { Activity, List, Clock } from 'lucide-react';
+import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog } from '../types';
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
 import { TacticsAnalysis } from '../components/game/TacticsAnalysis';
 import { BoxScoreTable, GameStatLeaders } from '../components/game/BoxScoreTable';
 import { ResultFooter } from '../components/game/ResultFooter';
+
+// PBP Viewer Component
+const PbpViewer: React.FC<{ logs: PbpLog[], homeTeamId: string, awayTeamId: string }> = ({ logs, homeTeamId, awayTeamId }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Auto-scroll to bottom on load not necessary for result view, but good for UX if list is long
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, []);
+
+    if (!logs || logs.length === 0) return null;
+
+    return (
+        <div className="w-full bg-slate-950 border border-slate-800 rounded-3xl p-6 mb-8 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4 pb-2 border-b border-slate-800">
+                <List className="text-slate-400" size={20} />
+                <h3 className="text-lg font-black uppercase text-slate-200 tracking-widest ko-tight">Play-by-Play Log</h3>
+            </div>
+            <div 
+                ref={scrollRef}
+                className="h-64 overflow-y-auto custom-scrollbar bg-slate-900/50 rounded-xl p-4 font-mono text-xs md:text-sm space-y-1.5 border border-white/5"
+            >
+                {logs.map((log, idx) => {
+                    const isHome = log.teamId === homeTeamId;
+                    const isScore = log.type === 'score';
+                    const isImportant = log.type === 'info';
+                    
+                    let textColor = 'text-slate-400';
+                    if (isImportant) textColor = 'text-yellow-400 font-bold';
+                    else if (isScore) textColor = isHome ? 'text-indigo-300 font-bold' : 'text-emerald-300 font-bold';
+                    else if (log.type === 'turnover' || log.type === 'foul') textColor = 'text-red-400';
+
+                    return (
+                        <div key={idx} className={`flex gap-3 ${isImportant ? 'py-2 border-y border-white/10 my-2 bg-white/5 justify-center' : ''}`}>
+                            {!isImportant && (
+                                <div className="flex-shrink-0 w-16 text-slate-600 flex items-center gap-1">
+                                    <Clock size={10} />
+                                    <span>{log.quarter}Q {log.timeRemaining}</span>
+                                </div>
+                            )}
+                            <div className={`flex-1 break-words ${textColor}`}>
+                                {log.text}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
 export const GameResultView: React.FC<{
   result: {
@@ -23,12 +74,13 @@ export const GameResultView: React.FC<{
     awayTactics?: TacticalSnapshot;
     userTactics?: any;
     myTeamId: string;
+    pbpLogs?: PbpLog[];
   };
   myTeamId: string;
   teams: Team[];
   onFinish: () => void;
 }> = ({ result, myTeamId, teams, onFinish }) => {
-  const { home, away, homeScore, awayScore, homeBox, awayBox, recap, otherGames, homeTactics, awayTactics } = result;
+  const { home, away, homeScore, awayScore, homeBox, awayBox, recap, otherGames, homeTactics, awayTactics, pbpLogs } = result;
   
   const isHome = myTeamId === home.id;
   const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
@@ -66,6 +118,9 @@ export const GameResultView: React.FC<{
 
           <div className="flex-1 max-w-6xl mx-auto w-full p-6 space-y-8">
               
+              {/* Play-by-Play Logs (Inserted Here) */}
+              {pbpLogs && <PbpViewer logs={pbpLogs} homeTeamId={home.id} awayTeamId={away.id} />}
+
               <TacticsAnalysis 
                   homeTeam={home} 
                   awayTeam={away} 
