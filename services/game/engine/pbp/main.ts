@@ -197,8 +197,8 @@ export function runFullGameSimulation(
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
         
-        // Fatigue Drain (INCREASED SIGNIFICANTLY to 3.0 base)
-        const drainMultiplier = 3.0; 
+        // Fatigue Drain (ADJUSTED: Lowered from 3.0 to 1.5)
+        const drainMultiplier = 1.5; 
         const drain = (result.timeTaken / 60) * drainMultiplier;
         
         state.home.onCourt.forEach(p => { p.mp += result.timeTaken / 60; p.currentCondition -= drain; });
