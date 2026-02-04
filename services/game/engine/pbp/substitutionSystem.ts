@@ -1,6 +1,7 @@
 
 import { TeamState, LivePlayer, GameState } from './pbpTypes';
 import { formatTime } from './timeEngine';
+import { calculatePlayerArchetypes } from './archetypeSystem';
 
 const SCORE_DIFF_THRESHOLD = 25; // 가비지 타임 기준 점수차
 const FATIGUE_SAFETY_THRESHOLD = 15; // [Safety] 최소 생존 한계선 (부상 방지)
@@ -31,15 +32,31 @@ function getDynamicFatigueThreshold(flexibility: number): number {
 }
 
 /**
+ * Helper: Recalculate archetypes for the players on court based on their CURRENT condition.
+ * Fatigue reduces archetype effectiveness.
+ */
+function updateLineupArchetypes(team: TeamState) {
+    team.onCourt.forEach(p => {
+        // Recalculate using current condition
+        p.archetypes = calculatePlayerArchetypes(p.attr, p.currentCondition);
+    });
+}
+
+/**
  * Checks and executes substitutions based on Slider-based Rotation Logic.
  * INCLUDES SAFETY OVERRIDE for critically tired players.
+ * Now updates archetypes after sub.
  */
 export function handleSubstitutions(state: GameState) {
     if (!state.isDeadBall) return;
     
     // Run for both teams
-    processTeamRotation(state.home, state);
-    processTeamRotation(state.away, state);
+    const homeSubbed = processTeamRotation(state.home, state);
+    const awaySubbed = processTeamRotation(state.away, state);
+    
+    // If substitutions happened, recalculate archetype scores for active players
+    if (homeSubbed) updateLineupArchetypes(state.home);
+    if (awaySubbed) updateLineupArchetypes(state.away);
 }
 
 /**
@@ -98,7 +115,8 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
     return false;
 }
 
-function processTeamRotation(team: TeamState, state: GameState) {
+// Returns true if a substitution occurred
+function processTeamRotation(team: TeamState, state: GameState): boolean {
     const flexibility = team.tactics.sliders.rotationFlexibility ?? 5; 
     const minutesLimits = team.tactics.minutesLimits || {};
     
@@ -244,6 +262,8 @@ function processTeamRotation(team: TeamState, state: GameState) {
     // Calculate changes
     const toSubOut = team.onCourt.filter(p => !newCourtIds.has(p.playerId));
     const toSubIn = selected.filter(p => !onCourtIds.has(p.playerId));
+    
+    let substitutionOccurred = false;
 
     if (toSubOut.length > 0) {
         toSubOut.forEach((outP, idx) => {
@@ -271,9 +291,13 @@ function processTeamRotation(team: TeamState, state: GameState) {
                     type: 'info',
                     text: `[교체] OUT: ${outP.playerName}${reason}, IN: ${inP.playerName}`
                 });
+                
+                substitutionOccurred = true;
             }
         });
     }
+    
+    return substitutionOccurred;
 }
 
 function determineLineupType(team: TeamState, state: GameState, flexibility: number): LineupType {

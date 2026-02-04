@@ -1,5 +1,6 @@
 
 import { Player, PlayerBoxScore, GameTactics, PbpLog } from '../../../../types';
+import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
     // Current runtime attributes
@@ -7,17 +8,35 @@ export interface LivePlayer extends PlayerBoxScore {
     position: string;
     ovr: number;
     isStarter: boolean; 
-    health: 'Healthy' | 'Injured' | 'Day-to-Day'; // Added for logic checks
+    health: 'Healthy' | 'Injured' | 'Day-to-Day'; 
     
-    // Attributes needed for simulation
+    // Dynamic Role Ratings (0-100+) - Recalculated on substitutions
+    archetypes: ArchetypeRatings;
+
+    // Attributes needed for simulation (Expanded for precise archetype calc)
     attr: {
-        ins: number; out: number; ft: number;
-        drFoul: number; 
-        def: number; blk: number; stl: number; foulTendency: number;
+        // General
+        ins: number; out: number; mid: number; 
+        ft: number; threeVal: number; // Derived 3pt average
+        
+        // Physical
+        speed: number; agility: number; strength: number; vertical: number;
+        stamina: number; durability: number; hustle: number;
+        height: number; weight: number;
+
+        // Skill
+        handling: number; hands: number;
+        pas: number; passAcc: number; passVision: number; passIq: number;
+        shotIq: number; offConsist: number;
+        
+        // Defense
+        def: number; intDef: number; perDef: number;
+        blk: number; stl: number; 
+        helpDefIq: number; defConsist: number;
+        drFoul: number; foulTendency: number;
+
+        // Rebound
         reb: number;
-        pas: number;
-        stamina: number;
-        durability: number; 
     }
 }
 

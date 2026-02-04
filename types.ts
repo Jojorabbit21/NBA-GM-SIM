@@ -72,7 +72,7 @@ export interface PlayerStats {
 export interface HiddenTendencies {
     hand: 'Right' | 'Left';
     lateralBias: number; // -1.0 (Left) to 1.0 (Right)
-    archetype: 'Corner Sitter' | 'Elbow Operator' | 'Top Initiator' | 'Balanced';
+    // Archetype field removed. Replaced by dynamic archetypeSystem.ts
 }
 
 export interface Player {

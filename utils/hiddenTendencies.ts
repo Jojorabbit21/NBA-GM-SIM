@@ -27,6 +27,9 @@ function seededRandom(seed: number): number {
 /**
  * Generates hidden tendencies for a player based on their ID and Attributes.
  * Not stored in DB, generated on the fly.
+ * 
+ * [Update] 'Archetype' removed here. We now use the dynamic 'ArchetypeSystem' for role-based logic.
+ * This file now focuses purely on 'Flavor' (Left/Right preference).
  */
 export function generateHiddenTendencies(player: Player): HiddenTendencies {
     const seed = stringToHash(player.id + player.name);
@@ -46,22 +49,5 @@ export function generateHiddenTendencies(player: Player): HiddenTendencies {
     // Clamp to -1.5 ~ 1.5 and normalize to -1 ~ 1 range effectively
     const lateralBias = Math.max(-1.0, Math.min(1.0, z / 2.5));
 
-    // 3. Zone Archetype
-    let archetype: 'Corner Sitter' | 'Elbow Operator' | 'Top Initiator' | 'Balanced' = 'Balanced';
-
-    const pos = player.position;
-    const stats = player; // Alias
-
-    // Archetype Rules
-    if (pos === 'PG' && stats.handling > 80 && stats.passVision > 80) {
-        archetype = 'Top Initiator';
-    } 
-    else if ((pos === 'SG' || pos === 'SF') && stats.out > 80 && stats.speed < 75) {
-        archetype = 'Corner Sitter';
-    } 
-    else if ((pos === 'PF' || pos === 'C') && stats.midRange > 75 && stats.postPlay > 75) {
-        archetype = 'Elbow Operator';
-    }
-    
-    return { hand, lateralBias, archetype };
+    return { hand, lateralBias };
 }

@@ -7,34 +7,80 @@ import { formatTime } from './timeEngine';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { calculatePlayerOvr } from '../../../../utils/constants';
 import { calculateIncrementalFatigue } from '../fatigueSystem'; 
+import { calculatePlayerArchetypes } from './archetypeSystem';
 
 // --- Initialization Helpers ---
 
-const initLivePlayer = (p: Player): LivePlayer => ({
-    playerId: p.id,
-    playerName: p.name,
-    position: p.position,
-    ovr: calculatePlayerOvr(p),
-    // [CRITICAL FIX] Use ?? 100 to allow 0 condition (exhausted)
-    currentCondition: p.condition ?? 100,
-    isStarter: false, 
-    health: p.health, 
-    // Attributes for engine
-    attr: {
-        ins: p.ins || 70, out: p.out || 70, ft: p.ft || 75,
-        drFoul: p.drawFoul || 50,
-        def: p.def || 70, blk: p.blk || 50, stl: p.steal || 50, foulTendency: 50,
-        reb: p.reb || 70,
-        pas: p.passAcc || 70,
+const initLivePlayer = (p: Player): LivePlayer => {
+    // Prepare extended attribute object
+    const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
+
+    const attr = {
+        // General
+        ins: p.ins || 70, 
+        out: p.out || 70, 
+        mid: p.midRange || 70,
+        ft: p.ft || 75,
+        threeVal: threeAvg || 70,
+
+        // Physical
+        speed: p.speed || 70,
+        agility: p.agility || 70,
+        strength: p.strength || 60,
+        vertical: p.vertical || 60,
         stamina: p.stamina || 80,
-        durability: p.durability || 80 
-    },
-    // Box Score Init
-    pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
-    fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
-    rimM: 0, rimA: 0, midM: 0, midA: 0,
-    mp: 0, g: 1, gs: 0, pf: 0
-});
+        durability: p.durability || 80,
+        hustle: p.hustle || 70,
+        height: p.height || 200,
+        weight: p.weight || 100,
+
+        // Skill
+        handling: p.handling || 70,
+        hands: p.hands || 70,
+        pas: p.passAcc || 70,
+        passAcc: p.passAcc || 70,
+        passVision: p.passVision || 70,
+        passIq: p.passIq || 70,
+        shotIq: p.shotIq || 70,
+        offConsist: p.offConsist || 70,
+        drFoul: p.drawFoul || 50,
+        
+        // Defense
+        def: p.def || 70,
+        intDef: p.intDef || 70,
+        perDef: p.perDef || 70,
+        blk: p.blk || 50,
+        stl: p.steal || 50,
+        helpDefIq: p.helpDefIq || 70,
+        defConsist: p.defConsist || 70,
+        passPerc: p.passPerc || 70,
+        foulTendency: 50,
+
+        // Rebound
+        reb: p.reb || 70
+    };
+
+    return {
+        playerId: p.id,
+        playerName: p.name,
+        position: p.position,
+        ovr: calculatePlayerOvr(p),
+        currentCondition: p.condition ?? 100,
+        isStarter: false, 
+        health: p.health, 
+        
+        // Initial Archetype Calculation
+        archetypes: calculatePlayerArchetypes(attr, p.condition ?? 100),
+
+        attr: attr,
+
+        // Box Score Init
+        pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
+        fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
+        rimM: 0, rimA: 0, midM: 0, midA: 0,
+        mp: 0, g: 1, gs: 0, pf: 0
+    };
+};
 
 const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
     // 1. Determine Starters based on Tactics or Best OVR
@@ -341,10 +387,13 @@ export function runFullGameSimulation(
                 "Minutes": p.mp.toFixed(1),
                 "Condition": Math.round(p.currentCondition),
                 "Health": p.health,
-                "Status": p.isStarter ? 'Starter' : 'Bench'
+                "Status": p.isStarter ? 'Starter' : 'Bench',
+                // Debug Archetypes
+                "Arch-Handler": p.archetypes.handler,
+                "Arch-Spacer": p.archetypes.spacer
             })).sort((a, b) => parseFloat(b.Minutes) - parseFloat(a.Minutes));
 
-            console.group(`📊 [Post-Game Fatigue Report] ${userTeamState.name}`);
+            console.group(`📊 [Post-Game Fatigue & Archetype Report] ${userTeamState.name}`);
             console.table(fatigueReport);
             console.groupEnd();
         }
