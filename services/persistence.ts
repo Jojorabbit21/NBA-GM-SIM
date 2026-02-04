@@ -7,7 +7,8 @@ export const saveCheckpoint = async (
     userId: string, 
     teamId: string, 
     simDate: string, 
-    tactics?: GameTactics | null
+    tactics?: GameTactics | null,
+    rosterState?: Record<string, number> // [NEW] Map of PlayerID -> Condition
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -20,6 +21,10 @@ export const saveCheckpoint = async (
 
     if (tactics) {
         payload.tactics = tactics;
+    }
+
+    if (rosterState) {
+        payload.roster_state = rosterState;
     }
 
     const { data, error } = await supabase
@@ -38,7 +43,7 @@ export const saveCheckpoint = async (
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, updated_at')
+        .select('team_id, sim_date, tactics, roster_state, updated_at')
         .eq('user_id', userId)
         .maybeSingle();
 

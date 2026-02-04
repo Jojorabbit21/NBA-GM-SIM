@@ -31,11 +31,12 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
     
-    // Refs
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics });
+    // Refs to avoid stale closures in callbacks
+    // Added 'teams' to ref to capture latest roster state for saving
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, teams });
     useEffect(() => { 
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics }; 
-    }, [myTeamId, currentSimDate, userTactics]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, teams }; 
+    }, [myTeamId, currentSimDate, userTactics, teams]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -82,8 +83,21 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                         checkpoint.sim_date
                     );
 
+                    // [NEW] Apply Saved Roster Condition State
+                    let loadedTeams = replayedState.teams;
+                    if (checkpoint.roster_state) {
+                        const conditionMap = checkpoint.roster_state;
+                        loadedTeams = loadedTeams.map(t => ({
+                            ...t,
+                            roster: t.roster.map(p => ({
+                                ...p,
+                                condition: conditionMap[p.id] !== undefined ? conditionMap[p.id] : (p.condition || 100)
+                            }))
+                        }));
+                    }
+
                     setMyTeamId(checkpoint.team_id);
-                    setTeams(replayedState.teams);
+                    setTeams(loadedTeams);
                     setSchedule(replayedState.schedule);
                     setCurrentSimDate(replayedState.currentSimDate);
                     
@@ -133,9 +147,24 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
             const date = overrides?.currentSimDate || gameStateRef.current.currentSimDate;
             const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
+            
+            // [NEW] Capture Roster State (Condition) from current teams (or override)
+            const currentTeams = overrides?.teams || gameStateRef.current.teams;
+            const rosterState: Record<string, number> = {};
+            if (currentTeams) {
+                currentTeams.forEach((t: Team) => {
+                    t.roster.forEach((p: Player) => {
+                        // Only save if condition is not 100 to save space, or save all
+                        // For simplicity and safety, let's save all modified ones
+                        if (p.condition !== undefined && p.condition < 100) {
+                            rosterState[p.id] = p.condition;
+                        }
+                    });
+                });
+            }
 
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics);
+                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState);
             }
         } catch (e: any) {
             console.error("Save Failed:", e);
