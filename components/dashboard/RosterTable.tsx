@@ -77,7 +77,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                 </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {/* Changed overflow-y-auto to overflow-auto to support horizontal scrolling when needed */}
+            <div className="flex-1 overflow-auto custom-scrollbar">
                 {activeRosterTab === 'mine' ? (
                     <div className="flex flex-col">
                         {/* 1. Starting Lineup Visualizer */}
@@ -247,14 +248,15 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                     <div className="flex flex-col h-full">
                         {/* Opponent table with Stats */}
                         {opponent ? (
-                            <table className="w-full text-left border-collapse table-fixed">
+                            // [Updated] Min-width set to 1280px for scrolling, Columns re-balanced
+                            <table className="w-full min-w-[1280px] text-left border-collapse table-fixed">
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                        <th className="py-2 px-6 w-[14%]">이름</th>
-                                        <th className="py-2 px-2 text-center w-[5%]">POS</th>
-                                        <th className="py-2 px-2 text-center w-[5%]">OVR</th>
+                                        <th className="py-2 px-6 w-[18%]">이름</th>
+                                        <th className="py-2 px-2 text-center w-[4%]">POS</th>
+                                        <th className="py-2 px-2 text-center w-[4%]">OVR</th>
                                         
-                                        {/* Reordered: INS, OUT, ATH, PLM, DEF, REB */}
+                                        {/* Attributes - 5% each */}
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">INS</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">OUT</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">ATH</th>
@@ -262,13 +264,13 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">DEF</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400 border-r border-white/10">REB</th>
                                         
-                                        {/* Stats - Evenly distributed (approx 6% each), FG% increased to 10% */}
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">PTS</th>
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">REB</th>
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">AST</th>
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">STL</th>
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">BLK</th>
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">TOV</th>
+                                        {/* Stats - 5.5% each, FG% 10% */}
+                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">PTS</th>
+                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">REB</th>
+                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">AST</th>
+                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">STL</th>
+                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">BLK</th>
+                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">TOV</th>
                                         <th className="py-2 px-1 text-right w-[10%] text-slate-400 pr-6">FG%</th>
                                     </tr>
                                 </thead>

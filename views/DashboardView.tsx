@@ -179,6 +179,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           />
           <TacticsBoard 
             tactics={tactics}
+            roster={effectiveRoster}
             onUpdateTactics={onUpdateTactics}
             onAutoSet={handleAutoSet}
             calculateTacticScore={handleCalculateTacticScore}

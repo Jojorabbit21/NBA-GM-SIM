@@ -1,14 +1,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, Save, ChevronDown, Edit3, Trash2, Check, Download, Plus } from 'lucide-react';
-import { OffenseTactic, DefenseTactic, Team, GameTactics, TacticPreset } from '../../types';
+import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, Save, ChevronDown, Edit3, Trash2, Check, Download, AlertCircle } from 'lucide-react';
+import { OffenseTactic, DefenseTactic, Team, GameTactics, TacticPreset, Player } from '../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../utils/tacticUtils';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
 import { supabase } from '../../services/supabaseClient';
+import { calculatePlayerOvr } from '../../utils/constants';
 
 interface TacticsBoardProps {
   tactics: GameTactics;
+  roster: Player[];
   onUpdateTactics: (t: GameTactics) => void;
   onAutoSet: () => void;
   calculateTacticScore: (type: OffenseTactic | DefenseTactic) => number;
@@ -65,7 +67,7 @@ const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: (
                     type="text" 
                     value={name} 
                     onChange={(e) => setName(e.target.value)} 
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold focus:outline-none focus:border-indigo-500 transition-colors mb-6"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold focus:outline-none focus:border-indigo-500 transition-colors mb-6"
                     placeholder="전술 이름을 입력하세요"
                     autoFocus
                 />
@@ -79,8 +81,8 @@ const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: (
     );
 };
 
-export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTactics, onAutoSet, calculateTacticScore }) => {
-    const { offenseTactics: offTactics, defenseTactics: defTactics, sliders } = tactics;
+export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onUpdateTactics, onAutoSet, calculateTacticScore }) => {
+    const { offenseTactics: offTactics, defenseTactics: defTactics, sliders, stopperId } = tactics;
     
     // Preset State
     const [userId, setUserId] = useState<string | null>(null);
@@ -183,16 +185,44 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
         }
     };
 
-
-    const handleTacticToggle = (t: OffenseTactic) => {
-        const newTactics = offTactics.includes(t) ? (offTactics.length === 1 ? offTactics : offTactics.filter(i => i !== t)) : [...offTactics, t].slice(-1);
-        onUpdateTactics({ ...tactics, offenseTactics: newTactics });
+    const handleOffenseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const t = e.target.value as OffenseTactic;
+        onUpdateTactics({ ...tactics, offenseTactics: [t] });
     };
 
-    const toggleDefTactic = (t: DefenseTactic) => {
-        const newTactics = t === 'AceStopper' ? (defTactics.includes(t) ? defTactics.filter(i => i !== t) : [...defTactics, t]) : [defTactics.includes('AceStopper') ? 'AceStopper' : '', t].filter(Boolean) as DefenseTactic[];
+    const handleDefenseChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const t = e.target.value as DefenseTactic;
+        const currentStopper = defTactics.includes('AceStopper') ? 'AceStopper' : null;
+        const newTactics = currentStopper ? [currentStopper, t] as DefenseTactic[] : [t];
         onUpdateTactics({ ...tactics, defenseTactics: newTactics });
     };
+
+    const handleStopperChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+        const playerId = e.target.value;
+        const baseDefense = defTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter';
+        
+        if (playerId) {
+            // Set Stopper
+            onUpdateTactics({ 
+                ...tactics, 
+                stopperId: playerId,
+                defenseTactics: ['AceStopper', baseDefense] 
+            });
+        } else {
+            // Clear Stopper
+            onUpdateTactics({ 
+                ...tactics, 
+                stopperId: undefined,
+                defenseTactics: [baseDefense] 
+            });
+        }
+    };
+
+    const currentOffense = offTactics[0] || 'Balance';
+    const currentDefense = defTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter';
+
+    // Helper: Get Sorted Roster for Stopper Dropdown
+    const sortedRoster = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
     return (
         <div className="lg:col-span-4 flex flex-col min-h-0 overflow-y-auto custom-scrollbar bg-slate-900/40 rounded-br-3xl">
@@ -209,163 +239,177 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, onUpdateTac
                     <Activity size={24} className="text-indigo-400" />
                     <h3 className="text-2xl font-black uppercase text-white oswald tracking-tight ko-tight">전술 설정</h3>
                 </div>
-                <div className="flex gap-2">
+
+                {/* Preset Controls moved to Header */}
+                <div className="flex items-center gap-2">
+                    <div className="relative" ref={dropdownRef}>
+                        <button 
+                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                            className="flex items-center gap-2 bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-3 py-1.5 rounded-lg transition-all shadow-sm group min-w-[140px] justify-between"
+                        >
+                            <span className="text-xs font-bold truncate max-w-[120px]">
+                                {presets[activeSlot] ? presets[activeSlot].name : `Slot ${activeSlot}`}
+                            </span>
+                            <ChevronDown size={14} className={`text-slate-500 transition-transform group-hover:text-indigo-400 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isDropdownOpen && (
+                            <div className="absolute top-full right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {[1, 2, 3].map(slot => {
+                                    const hasData = !!presets[slot];
+                                    return (
+                                        <div key={slot} className="flex items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/50 transition-colors">
+                                            <button 
+                                                onClick={() => handleSlotSelect(slot)}
+                                                className="flex-1 flex items-center gap-3 px-4 py-2.5 text-left min-w-0"
+                                            >
+                                                <div className={`w-1.5 h-1.5 rounded-full ${activeSlot === slot ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]' : 'bg-slate-700'}`}></div>
+                                                <span className={`text-xs font-bold truncate ${activeSlot === slot ? 'text-white' : 'text-slate-400'}`}>
+                                                    {hasData ? presets[slot].name : `Slot ${slot} (Empty)`}
+                                                </span>
+                                            </button>
+                                            
+                                            <div className="flex items-center gap-1 pr-2">
+                                                <button 
+                                                    onClick={(e) => openRenameModal(e, slot)}
+                                                    className="p-1.5 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
+                                                    title="이름 변경"
+                                                >
+                                                    <Edit3 size={12} />
+                                                </button>
+                                                {hasData && (
+                                                    <button 
+                                                        onClick={(e) => handleDeletePreset(e, slot)}
+                                                        className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                                                        title="삭제"
+                                                    >
+                                                        <Trash2 size={12} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    <button 
+                        onClick={handleSaveCurrent}
+                        disabled={isProcessing || !teamId}
+                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-3 py-1.5 rounded-lg font-black uppercase text-xs tracking-wide shadow-lg shadow-indigo-900/20 transition-all active:scale-95 min-w-[50px] flex justify-center"
+                    >
+                        {isProcessing ? <Activity size={14} className="animate-spin" /> : "저장"}
+                    </button>
+                    
                     <button 
                         onClick={onAutoSet}
-                        className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center gap-2 transition-all active:scale-95 border border-white/5"
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 border border-white/5"
+                        title="AI 추천 전술 적용"
                     >
-                        <Wand2 size={16} />
-                        <span className="text-[10px] font-black uppercase tracking-wider">AI 추천</span>
+                        <Wand2 size={14} />
+                        <span className="text-[10px] font-black uppercase tracking-wider hidden xl:inline">AI 추천</span>
                     </button>
                 </div>
             </div>
             
-            <div className="p-8 space-y-10">
+            <div className="p-8 space-y-8">
                 
-                {/* Preset Manager Section */}
+                {/* Offensive Strategy */}
                 <div className="space-y-4">
                     <div className="flex items-center gap-3 text-indigo-400 px-2">
-                        <Save size={20} />
-                        <span className="font-black text-sm uppercase tracking-widest ko-tight">전술 프리셋 관리</span>
+                        <Target size={20} />
+                        <span className="font-black text-sm uppercase tracking-widest ko-tight">공격 전술</span>
                     </div>
                     
-                    <div className="bg-slate-950/40 border border-slate-800 rounded-2xl p-2 flex gap-2">
-                        {/* Dropdown Selector */}
-                        <div className="relative flex-1" ref={dropdownRef}>
-                            <button 
-                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                className="w-full flex items-center justify-between bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-4 py-3 rounded-xl transition-all shadow-sm group"
-                            >
-                                <div className="flex flex-col items-start">
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">SELECTED SLOT</span>
-                                    <span className="text-sm font-bold truncate">
-                                        {presets[activeSlot] ? presets[activeSlot].name : `Slot ${activeSlot} (Empty)`}
-                                    </span>
-                                </div>
-                                <ChevronDown size={16} className={`text-slate-500 transition-transform group-hover:text-indigo-400 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {/* Dropdown Menu */}
-                            {isDropdownOpen && (
-                                <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {[1, 2, 3].map(slot => {
-                                        const hasData = !!presets[slot];
-                                        return (
-                                            <div key={slot} className="flex items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/50 transition-colors">
-                                                <button 
-                                                    onClick={() => handleSlotSelect(slot)}
-                                                    className="flex-1 flex items-center gap-3 px-4 py-3 text-left min-w-0"
-                                                >
-                                                    <div className={`w-2 h-2 rounded-full ${activeSlot === slot ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]' : 'bg-slate-700'}`}></div>
-                                                    <div className="flex flex-col min-w-0">
-                                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">SLOT {slot}</span>
-                                                        <span className={`text-sm font-bold truncate ${activeSlot === slot ? 'text-white' : 'text-slate-400'}`}>
-                                                            {hasData ? presets[slot].name : '(Empty)'}
-                                                        </span>
-                                                    </div>
-                                                </button>
-                                                
-                                                <div className="flex items-center gap-1 pr-3">
-                                                    <button 
-                                                        onClick={(e) => openRenameModal(e, slot)}
-                                                        className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"
-                                                        title="이름 변경"
-                                                    >
-                                                        <Edit3 size={14} />
-                                                    </button>
-                                                    {hasData && (
-                                                        <button 
-                                                            onClick={(e) => handleDeletePreset(e, slot)}
-                                                            className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
-                                                            title="삭제"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Save Button */}
-                        <button 
-                            onClick={handleSaveCurrent}
-                            disabled={isProcessing || !teamId}
-                            className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-5 rounded-xl font-black uppercase text-xs tracking-wide shadow-lg shadow-indigo-900/20 flex flex-col items-center justify-center gap-1 transition-all active:scale-95 min-w-[80px]"
+                    <div className="relative group">
+                        <select 
+                            value={currentOffense} 
+                            onChange={handleOffenseChange}
+                            className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all"
                         >
-                            {isProcessing ? (
-                                <Activity size={18} className="animate-spin" />
-                            ) : (
-                                <>
-                                    <Download size={18} />
-                                    <span>저장</span>
-                                </>
-                            )}
-                        </button>
+                            {(['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => (
+                                <option key={t} value={t}>{OFFENSE_TACTIC_INFO[t].label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400 transition-colors" size={16} />
                     </div>
-                </div>
 
-                <div className="space-y-4">
-                    <div className="flex items-center gap-3 text-indigo-400 px-2"><Target size={20} /><span className="font-black text-sm uppercase tracking-widest ko-tight">공격 전술</span></div>
-                    <div className="grid grid-cols-1 gap-3">
-                        {(['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => {
-                            const isActive = offTactics.includes(t);
-
-                            return (
-                                <button key={t} onClick={() => handleTacticToggle(t)} className={`w-full relative p-4 rounded-2xl border text-left overflow-hidden transition-all ${isActive ? `bg-indigo-600 border-indigo-400 shadow-xl ring-1 ring-white/10` : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
-                                    <div className="flex justify-between items-center relative z-10">
-                                        <div>
-                                            <div className={`font-black text-base uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{OFFENSE_TACTIC_INFO[t].label}</div>
-                                            <div className={`text-xs mt-1 opacity-60 ${isActive ? 'text-slate-200' : 'text-slate-500'}`}>{OFFENSE_TACTIC_INFO[t].desc}</div>
-                                        </div>
-                                        {isActive && <Check size={20} className="text-white" strokeWidth={3} />}
-                                    </div>
-                                    {isActive && (
-                                        <div className="absolute top-0 right-0 w-24 h-24 blur-[40px] opacity-20 bg-white pointer-events-none" />
-                                    )}
-                                </button>
-                            );
-                        })}
+                    {/* Pros & Cons Display */}
+                    <div className="bg-slate-950/40 border border-slate-800/50 rounded-xl p-4 space-y-3">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{OFFENSE_TACTIC_INFO[currentOffense].desc}</div>
+                        
+                        <div className="space-y-2">
+                            {OFFENSE_TACTIC_INFO[currentOffense].pros.map((pro, i) => (
+                                <div key={`pro-${i}`} className="flex items-start gap-2.5 text-xs text-slate-300">
+                                    <span className="text-emerald-500 text-sm mt-0.5">✅</span>
+                                    <span className="leading-relaxed">{pro}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="border-t border-slate-800/50 my-2"></div>
+                        <div className="space-y-2">
+                            {OFFENSE_TACTIC_INFO[currentOffense].cons.map((con, i) => (
+                                <div key={`con-${i}`} className="flex items-start gap-2.5 text-xs text-slate-300">
+                                    <span className="text-red-500 text-sm mt-0.5">❌</span>
+                                    <span className="leading-relaxed">{con}</span>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
                 
-                <div className="space-y-6">
-                    <div className="flex items-center gap-3 text-indigo-400 px-2"><Shield size={20} /><span className="font-black text-sm uppercase tracking-widest ko-tight">수비 전술</span></div>
-                    <div className="space-y-8">
-                        <div className="grid grid-cols-2 gap-3">
-                            {(['ManToManPerimeter', 'ZoneDefense'] as DefenseTactic[]).map(t => {
-                                const isActive = defTactics.includes(t);
+                {/* Defensive Strategy */}
+                <div className="space-y-4">
+                    <div className="flex items-center gap-3 text-indigo-400 px-2">
+                        <Shield size={20} />
+                        <span className="font-black text-sm uppercase tracking-widest ko-tight">수비 전술</span>
+                    </div>
 
-                                return (
-                                    <button key={t} onClick={() => toggleDefTactic(t)} className={`relative p-4 rounded-2xl border text-left transition-all ${isActive ? 'bg-indigo-600 border-indigo-400 shadow-xl' : 'bg-slate-950/40 border-white/5 hover:bg-slate-900/80'}`}>
-                                        <div className={`font-black text-sm uppercase tracking-tight mb-2 ${isActive ? 'text-white' : 'text-slate-400'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
-                                    </button>
-                                );
-                            })}
+                    <div className="relative group">
+                        <select 
+                            value={currentDefense} 
+                            onChange={handleDefenseChange}
+                            className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all"
+                        >
+                            {(['ManToManPerimeter', 'ZoneDefense'] as DefenseTactic[]).map(t => (
+                                <option key={t} value={t}>{DEFENSE_TACTIC_INFO[t].label}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400 transition-colors" size={16} />
+                    </div>
+                    
+                    {/* Ace Stopper Dropdown */}
+                    <div className="relative group pt-2">
+                         <div className="flex items-center gap-2 mb-2 px-1">
+                            <ShieldAlert size={14} className="text-fuchsia-400" />
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">에이스 스토퍼 (전담 마크)</span>
+                         </div>
+                         <div className="relative">
+                            <select 
+                                value={stopperId || ""}
+                                onChange={handleStopperChange}
+                                className={`w-full bg-slate-950/60 border rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none appearance-none cursor-pointer hover:bg-slate-900/80 transition-all ${stopperId ? 'border-fuchsia-500/50 text-white' : 'border-slate-800 text-slate-500'}`}
+                            >
+                                <option value="">지정 안함 (기본 수비)</option>
+                                {sortedRoster.map(p => (
+                                    <option key={p.id} value={p.id}>
+                                        {p.name} ({p.position}) - OVR {calculatePlayerOvr(p)}
+                                    </option>
+                                ))}
+                            </select>
+                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-fuchsia-400 transition-colors" size={14} />
                         </div>
-                        <div className="pt-4 border-t border-white/5">
-                            {(['AceStopper'] as DefenseTactic[]).map(t => {
-                                const isActive = defTactics.includes(t);
-                                return (
-                                    <button key={t} onClick={() => toggleDefTactic(t)} className={`w-full relative p-5 rounded-2xl border text-left transition-all ${isActive ? 'bg-fuchsia-600 border-fuchsia-400 shadow-[0_0_30px_rgba(192,38,211,0.2)]' : 'bg-slate-950/40 border-white/5 hover:border-fuchsia-500/30 group'}`}>
-                                        <div className="flex justify-between items-center relative z-10">
-                                            <div className="flex items-center gap-3"><div className={`p-2 rounded-lg ${isActive ? 'bg-white/20' : 'bg-slate-800'}`}><ShieldAlert size={18} className={isActive ? 'text-white' : 'text-fuchsia-500'} /></div>
-                                            <div>
-                                                <div className={`font-black text-base uppercase tracking-tight ${isActive ? 'text-white' : 'text-slate-300'}`}>{DEFENSE_TACTIC_INFO[t].label}</div>
-                                                <div className={`text-xs mt-1 opacity-70 ${isActive ? 'text-white' : 'text-slate-500'}`}>{DEFENSE_TACTIC_INFO[t].desc}</div>
-                                            </div></div>
-                                            {isActive && <Check size={20} className="text-white" strokeWidth={3} />}
-                                        </div>
-                                    </button>
-                                );
-                            })}
-                        </div>
+                        {stopperId && (
+                            <div className="mt-2 flex items-center gap-2 text-[10px] text-fuchsia-300 bg-fuchsia-500/10 px-3 py-1.5 rounded-lg border border-fuchsia-500/20">
+                                <AlertCircle size={12} />
+                                <span>선택된 선수의 체력이 빠르게 소모됩니다.</span>
+                            </div>
+                        )}
                     </div>
                 </div>
 
+                {/* Sliders */}
                 <div className="space-y-6 pt-4 border-t border-white/5">
                     <div className="flex items-center gap-3 text-indigo-400 px-2"><Sliders size={20} /><span className="font-black text-sm uppercase tracking-widest ko-tight">전술 세부 조정</span></div>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-8 bg-slate-950/20 p-5 rounded-2xl border border-slate-800/50">
