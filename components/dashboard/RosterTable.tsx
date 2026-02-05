@@ -36,8 +36,9 @@ const AttrCell: React.FC<{ value: number; className?: string }> = ({ value, clas
     </td>
 );
 
-const StatCell: React.FC<{ value: string | number, isPercent?: boolean }> = ({ value, isPercent }) => (
-    <td className={`py-1.5 px-1 text-right text-xs font-black font-mono text-slate-400 tabular-nums`}>
+// [Updated] Font weight lowered to bold, added className prop for padding
+const StatCell: React.FC<{ value: string | number, isPercent?: boolean, className?: string }> = ({ value, isPercent, className }) => (
+    <td className={`py-1.5 px-1 text-right text-xs font-bold font-mono text-slate-400 tabular-nums ${className || ''}`}>
         {value}{isPercent ? '%' : ''}
     </td>
 );
@@ -259,15 +260,15 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
                                         <th className="py-2 px-1 text-center w-10 text-slate-400 border-r border-white/10">REB</th>
                                         
-                                        {/* Added Stats Columns - MP Removed */}
-                                        <th className="py-2 px-1 text-right w-10 text-white">PTS</th>
-                                        <th className="py-2 px-1 text-right w-10 text-white">REB</th>
-                                        <th className="py-2 px-1 text-right w-10 text-white">AST</th>
-                                        <th className="py-2 px-1 text-right w-10 text-white">STL</th>
-                                        <th className="py-2 px-1 text-right w-10 text-white">BLK</th>
-                                        <th className="py-2 px-1 text-right w-10 text-white">TOV</th>
-                                        <th className="py-2 px-1 text-right w-12 text-white">FG%</th>
-                                        <th className="py-2 px-1 text-right w-12 text-white">TS%</th>
+                                        {/* Added Stats Columns - MP Removed. Color changed to slate-400 */}
+                                        <th className="py-2 px-1 text-right w-10 text-slate-400">PTS</th>
+                                        <th className="py-2 px-1 text-right w-10 text-slate-400">REB</th>
+                                        <th className="py-2 px-1 text-right w-10 text-slate-400">AST</th>
+                                        <th className="py-2 px-1 text-right w-10 text-slate-400">STL</th>
+                                        <th className="py-2 px-1 text-right w-10 text-slate-400">BLK</th>
+                                        <th className="py-2 px-1 text-right w-10 text-slate-400">TOV</th>
+                                        <th className="py-2 px-1 text-right w-12 text-slate-400">FG%</th>
+                                        <th className="py-2 px-1 text-right w-12 text-slate-400 pr-6">TS%</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
@@ -303,7 +304,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                 <StatCell value={(s.blk/g).toFixed(1)} />
                                                 <StatCell value={(s.tov/g).toFixed(1)} />
                                                 <StatCell value={fgPct} isPercent />
-                                                <StatCell value={tsPct} isPercent />
+                                                <StatCell value={tsPct} isPercent className="pr-6" />
                                             </tr>
                                         );
                                     })}
