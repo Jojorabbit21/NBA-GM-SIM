@@ -406,14 +406,14 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     {/* Ace Stopper Dropdown */}
                     <div className="relative group pt-2">
                          <div className="flex items-center gap-2 mb-2 px-1">
-                            <ShieldAlert size={14} className="text-fuchsia-400" />
+                            <ShieldAlert size={14} className="text-indigo-400" />
                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">에이스 스토퍼 (전담 마크)</span>
                          </div>
                          <div className="relative">
                             <select 
                                 value={stopperId || ""}
                                 onChange={handleStopperChange}
-                                className={`w-full bg-slate-950/60 border rounded-xl px-4 py-2.5 text-xs font-bold focus:outline-none appearance-none cursor-pointer hover:bg-slate-900/80 transition-all ${stopperId ? 'border-fuchsia-500/50 text-white' : 'border-slate-800 text-slate-500'}`}
+                                className="w-full bg-slate-950/60 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all"
                             >
                                 <option value="">지정 안함 (기본 수비)</option>
                                 {sortedRoster.map(p => (
@@ -422,37 +422,34 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                                     </option>
                                 ))}
                             </select>
-                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-fuchsia-400 transition-colors" size={14} />
+                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400 transition-colors" size={16} />
                         </div>
                         
-                        {/* Ace Stopper Detail Info */}
+                        {/* Ace Stopper Detail Info - Redesigned */}
                         {stopperId ? (
-                            <div className="mt-3 bg-fuchsia-900/20 border border-fuchsia-500/30 rounded-xl p-4 space-y-3">
-                                <div className="flex items-center gap-2 text-[10px] font-black text-fuchsia-300 uppercase tracking-widest mb-1">
-                                    <Info size={12} /> Lockdown Defense Mechanism
-                                </div>
+                            <div className="mt-3 bg-slate-950/40 border border-slate-800/50 rounded-xl p-4 space-y-3">
                                 <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
                                     <div className="flex items-start gap-2">
-                                        <span className="text-fuchsia-400 mt-0.5">•</span>
+                                        <span className="text-slate-500 mt-0.5">•</span>
                                         <span>상대방의 에이스(가장 높은 OVR)를 계속 따라다니며 락다운 디펜스를 펼칩니다.</span>
                                     </div>
                                     <div className="flex items-start gap-2">
-                                        <span className="text-fuchsia-400 mt-0.5">•</span>
-                                        <span>퍼리미터 디펜스, 스틸, 패스 퍼셉션에 따라 에이스 스토퍼의 락다운 디펜스 능력이 결정됩니다.</span>
+                                        <span className="text-slate-500 mt-0.5">•</span>
+                                        <span>퍼리미터 디펜스, 스틸, 패스 퍼셉션에 따라 락다운 디펜스 능력이 결정됩니다.</span>
                                     </div>
                                     <div className="flex items-start gap-2">
-                                        <span className="text-emerald-400 mt-0.5">▲</span>
-                                        <span>락다운 디펜스 능력이 좋다면 에이스의 공격 효율이 큰 폭으로 감소할 수 있습니다.</span>
+                                        <span className="text-emerald-500 mt-0.5">▲</span>
+                                        <span>능력이 좋다면 상대 에이스의 공격 효율이 감소합니다.</span>
                                     </div>
                                     <div className="flex items-start gap-2">
-                                        <span className="text-red-400 mt-0.5">▼</span>
-                                        <span>반대의 경우 상대 에이스의 공격 효율이 오히려 좋아지는 결과를 낳을 수도 있습니다.</span>
+                                        <span className="text-red-500 mt-0.5">▼</span>
+                                        <span>능력이 부족하면 오히려 상대에게 기회를 줄 수 있습니다.</span>
                                     </div>
                                 </div>
-                                <div className="border-t border-fuchsia-500/20 pt-2 mt-2">
-                                    <div className="flex items-center gap-2 text-[10px] font-bold text-fuchsia-200">
-                                        <AlertCircle size={12} />
-                                        <span>체력 소모 경고: 스토퍼는 다른 수비수보다 훨씬 빠르게 체력이 소모됩니다.</span>
+                                <div className="border-t border-slate-800/50 pt-2 mt-2">
+                                    <div className="flex items-start gap-2 text-xs text-slate-400">
+                                        <span className="text-red-500 mt-0.5">!</span>
+                                        <span>주의: 스토퍼는 다른 수비수보다 훨씬 빠르게 체력이 소모됩니다.</span>
                                     </div>
                                 </div>
                             </div>
