@@ -38,11 +38,9 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
     if (!depthChart) return null;
 
     // Helper: Get Sorted Roster for Dropdown (Healthy + Injured)
-    // Group by position? Or just alphabetical? OVR sort is best.
     const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
     const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
-    const labels = ['주전 (Starter)', '벤치 (Bench)', '써드 (Third)'];
 
     // Handle Change
     const handleChange = (pos: keyof DepthChart, depthIndex: number, playerId: string) => {
@@ -51,10 +49,24 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
         
         // If empty string, set to null
         const newVal = playerId === "" ? null : playerId;
+        
+        // 1. Set new value
         newRow[depthIndex] = newVal;
+
+        // [Constraint Check 1: Row Uniqueness]
+        // 같은 행(포지션) 내에서 중복 방지
+        // 예: PG 주전에 있는 선수를 PG 벤치로 옮기면, 주전 자리는 비워짐
+        if (newVal) {
+            for (let i = 0; i < 3; i++) {
+                if (i !== depthIndex && newRow[i] === newVal) {
+                    newRow[i] = null;
+                }
+            }
+        }
+
         newChart[pos] = newRow;
 
-        // [Constraint Check: Starter Uniqueness]
+        // [Constraint Check 2: Starter Uniqueness across Positions]
         // If changing a Starter (index 0), remove this player from OTHER Starter slots
         if (depthIndex === 0 && newVal) {
             positions.forEach(p => {
@@ -69,18 +81,9 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
             const newStarters = { ...tactics.starters };
             newStarters[pos] = newVal; // Update this position
             
-            // Also need to check if we cleared any other starter slot, 
-            // but tactics.starters structure doesn't support 'null', so we might leave them as is
-            // or find the next best player? 
-            // For now, let's just update the explicit change. 
-            // If we cleared a starter in DepthChart, we should probably update tactics too, 
-            // but tactics.starters requires a string.
-            // Let's iterate all positions to sync fully.
-            
-            positions.forEach(p => {
-                const sId = newChart[p][0];
-                if (sId) newStarters[p] = sId;
-            });
+            // Sync logic: If duplicate starter was removed from another pos, we should reflect that too if needed.
+            // But since 'tactics.starters' keys are fixed strings, we just update the explicit change here.
+            // The user will see the empty slot in the other position in Depth Chart and can fix it.
             
             onUpdateTactics({ ...tactics, starters: newStarters });
         }
@@ -97,6 +100,8 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                 </div>
                 <p className="text-xs text-slate-400 font-bold">
                     각 포지션별 선수 운용 순위를 설정합니다. 주전 슬롯 변경 시 실제 로테이션의 선발 명단에도 반영됩니다.
+                    <br/>
+                    <span className="text-indigo-400">* 같은 포지션 내에서는 선수를 중복해서 선택할 수 없습니다.</span>
                 </p>
             </div>
 
