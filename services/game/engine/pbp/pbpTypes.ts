@@ -47,6 +47,19 @@ export interface LivePlayer extends PlayerBoxScore {
         // Rebound
         reb: number;
     }
+    
+    // [New] Runtime Zone Tracking (Flat structure for easy increment)
+    // These need to be initialized in main.ts
+    zone_rim_m: number; zone_rim_a: number;
+    zone_paint_m: number; zone_paint_a: number;
+    zone_mid_l_m: number; zone_mid_l_a: number;
+    zone_mid_c_m: number; zone_mid_c_a: number;
+    zone_mid_r_m: number; zone_mid_r_a: number;
+    zone_c3_l_m: number; zone_c3_l_a: number;
+    zone_c3_r_m: number; zone_c3_r_a: number;
+    zone_atb3_l_m: number; zone_atb3_l_a: number;
+    zone_atb3_c_m: number; zone_atb3_c_a: number;
+    zone_atb3_r_m: number; zone_atb3_r_a: number;
 }
 
 export interface TeamState {
@@ -95,4 +108,7 @@ export interface PossessionResult {
     nextPossession: 'home' | 'away' | 'keep' | 'free_throw'; 
     isDeadBall?: boolean;
     playType?: string; // Developer Log Info (added)
+    
+    // [Fix] Zone Tracking ID
+    shotZoneId?: string; // e.g. 'zone_mid_c'
 }
