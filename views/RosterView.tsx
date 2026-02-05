@@ -26,6 +26,7 @@ const ALL_ROSTER_COLUMNS: { key: keyof Player | string, label: string, tooltip: 
     { key: 'dunk', label: 'DNK', tooltip: '덩크' },
     { key: 'postPlay', label: 'PST', tooltip: '포스트 플레이' },
     { key: 'drawFoul', label: 'DRF', tooltip: '자유투 유도' },
+    
     { key: 'out', label: 'OUT', tooltip: '외곽 스코어링' },
     { key: 'midRange', label: 'MID', tooltip: '중거리 슛' },
     { key: 'threeCorner', label: '3PT', tooltip: '3점 슛' },
@@ -60,10 +61,10 @@ const ALL_ROSTER_COLUMNS: { key: keyof Player | string, label: string, tooltip: 
     { key: 'helpDefIq', label: 'HLP', tooltip: '헬프 수비' },
     { key: 'passPerc', label: 'PRC', tooltip: '패스 차단' },
     { key: 'defConsist', label: 'DCN', tooltip: '수비 기복' },
+    
     { key: 'reb', label: 'REB', tooltip: '리바운드' },
     { key: 'offReb', label: 'ORB', tooltip: '공격 리바운드' },
     { key: 'defReb', label: 'DRB', tooltip: '수비 리바운드' },
-    { key: 'intangibles', label: 'INT', tooltip: '무형자산/멘탈' },
 ];
 
 const STATS_COLUMNS = [
@@ -278,7 +279,11 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                          )}
                          
                          {tab === 'roster' ? (
-                            ALL_ROSTER_COLUMNS.map(col => (
+                            ALL_ROSTER_COLUMNS.map(col => {
+                                const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
+                                const isSeparator = ['DRF', 'DCN'].includes(col.label);
+
+                                return (
                                 <SortHeader 
                                     key={String(col.key)} 
                                     label={col.label} 
@@ -286,10 +291,12 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                     width="45px" 
                                     tooltip={col.tooltip} 
                                     className={`
-                                        ${col.label === 'PLM' || col.label === 'ATH' || col.label === 'DEF' ? 'border-l border-white/10' : ''}
+                                        ${isMajor ? 'bg-white/5' : ''}
+                                        ${isSeparator ? 'border-r border-white/10' : ''}
                                     `}
                                 />
-                            ))
+                                );
+                            })
                          ) : tab === 'stats' ? (
                             STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />)
                          ) : (
@@ -323,9 +330,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               </td>
                               {tab === 'roster' && (
                                 <>
-                                    <td className="px-1 py-2 text-center">
-                                        <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
-                                    </td>
+                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400">{p.position}</td>
                                     <td className="px-1 py-2 text-center text-xs font-bold text-slate-400">{p.age}</td>
                                     <td className="px-1 py-2 text-center border-r border-white/10 pr-2">
                                         <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
@@ -333,13 +338,21 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                 </>
                               )}
                               {tab === 'roster' ? (
-                                  ALL_ROSTER_COLUMNS.map(col => (
+                                  ALL_ROSTER_COLUMNS.map(col => {
+                                      const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
+                                      const isSeparator = ['DRF', 'DCN'].includes(col.label);
+                                      
+                                      return (
                                       <AttrCell 
                                         key={String(col.key)} 
                                         value={p[col.key as keyof Player] as number} 
-                                        className={col.label === 'PLM' || col.label === 'ATH' || col.label === 'DEF' ? 'border-l border-white/10' : ''}
+                                        className={`
+                                            ${isMajor ? 'bg-white/5' : ''}
+                                            ${isSeparator ? 'border-r border-white/10' : ''}
+                                        `}
                                       />
-                                  ))
+                                      );
+                                  })
                               ) : tab === 'stats' ? (
                                   STATS_COLUMNS.map(col => {
                                       const s = p.stats;
@@ -377,16 +390,23 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                        <tfoot className="bg-slate-900 border-t border-slate-800 z-10 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.5)]">
                            <tr>
                                <td className="py-3 px-6 text-[10px] font-black text-indigo-400 uppercase tracking-widest sticky left-0 bg-slate-900 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">TEAM AVERAGE</td>
-                               <td className="px-1 py-3 text-center text-[10px] font-bold text-slate-600">-</td>
+                               <td className="px-1 py-3 text-center text-xs font-bold text-slate-600">-</td>
                                <td className="px-1 py-3 text-center text-xs font-bold text-slate-400">{teamStats.age}</td>
                                <td className="px-1 py-3 text-center border-r border-white/10 pr-2"><div className={getOvrBadgeStyle(teamStats.ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{teamStats.ovr}</div></td>
-                               {ALL_ROSTER_COLUMNS.map(col => (
+                               {ALL_ROSTER_COLUMNS.map(col => {
+                                   const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
+                                   const isSeparator = ['DRF', 'DCN'].includes(col.label);
+                                   return (
                                    <AttrCell 
                                      key={String(col.key)} 
                                      value={teamStats.getAvg(col.key as keyof Player)} 
-                                     className={col.label === 'PLM' || col.label === 'ATH' || col.label === 'DEF' ? 'border-l border-white/10' : ''}
+                                     className={`
+                                        ${isMajor ? 'bg-white/5' : ''}
+                                        ${isSeparator ? 'border-r border-white/10' : ''}
+                                     `}
                                    />
-                               ))}
+                                   );
+                               })}
                            </tr>
                        </tfoot>
                    )}
