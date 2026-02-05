@@ -250,7 +250,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                        <th className="py-2 px-6 w-[18%]">이름</th>
+                                        <th className="py-2 px-6 w-[14%]">이름</th>
                                         <th className="py-2 px-2 text-center w-[5%]">POS</th>
                                         <th className="py-2 px-2 text-center w-[5%]">OVR</th>
                                         
@@ -262,14 +262,14 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">DEF</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400 border-r border-white/10">REB</th>
                                         
-                                        {/* Stats - Evenly distributed (approx 6% each), TS% removed */}
+                                        {/* Stats - Evenly distributed (approx 6% each), FG% increased to 10% */}
                                         <th className="py-2 px-1 text-right w-[6%] text-slate-400">PTS</th>
                                         <th className="py-2 px-1 text-right w-[6%] text-slate-400">REB</th>
                                         <th className="py-2 px-1 text-right w-[6%] text-slate-400">AST</th>
                                         <th className="py-2 px-1 text-right w-[6%] text-slate-400">STL</th>
                                         <th className="py-2 px-1 text-right w-[6%] text-slate-400">BLK</th>
                                         <th className="py-2 px-1 text-right w-[6%] text-slate-400">TOV</th>
-                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400 pr-6">FG%</th>
+                                        <th className="py-2 px-1 text-right w-[10%] text-slate-400 pr-6">FG%</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
@@ -297,7 +297,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                 <AttrCell value={p.def} />
                                                 <AttrCell value={p.reb} className="border-r border-white/10" />
                                                 
-                                                {/* Stats Cells - TS% removed */}
+                                                {/* Stats Cells */}
                                                 <StatCell value={(s.pts/g).toFixed(1)} />
                                                 <StatCell value={(s.reb/g).toFixed(1)} />
                                                 <StatCell value={(s.ast/g).toFixed(1)} />
