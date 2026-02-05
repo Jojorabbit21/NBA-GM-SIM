@@ -103,22 +103,22 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                         {positions.map(pos => (
                             <tr key={pos} className="hover:bg-slate-900/40 transition-colors">
                                 <td className="py-4 px-4 text-center border-r border-slate-800/50 bg-slate-950/20">
-                                    <span className="text-base font-black text-white">{pos}</span>
+                                    <span className="text-sm font-black text-white">{pos}</span>
                                 </td>
                                 {[0, 1, 2].map(depthIndex => {
                                     const selectedId = depthChart[pos][depthIndex];
                                     
                                     return (
-                                        <td key={`${pos}-${depthIndex}`} className={`p-3 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
-                                            <div className="relative group">
+                                        <td key={`${pos}-${depthIndex}`} className={`p-0 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
+                                            <div className="relative group w-full h-full">
                                                 <select 
-                                                    className={`w-full appearance-none bg-slate-900 border border-slate-700 rounded-lg pl-4 pr-10 py-3 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all cursor-pointer hover:border-slate-600 ${!selectedId ? 'text-slate-500' : ''}`}
+                                                    className={`w-full h-full appearance-none bg-transparent border-none rounded-none pl-4 pr-10 py-4 text-xs font-bold text-white focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all ${!selectedId ? 'text-slate-500' : ''}`}
                                                     value={selectedId || ""}
                                                     onChange={(e) => handleChange(pos, depthIndex, e.target.value)}
                                                 >
-                                                    <option value="">- Empty -</option>
+                                                    <option value="" className="bg-slate-900 text-slate-500">선수 선택</option>
                                                     {sortedRoster.map(p => (
-                                                        <option key={p.id} value={p.id}>
+                                                        <option key={p.id} value={p.id} className="bg-slate-900 text-white">
                                                             {p.name} - {p.position}
                                                         </option>
                                                     ))}
