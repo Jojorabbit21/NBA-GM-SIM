@@ -8,8 +8,8 @@ import { StartingLineup } from '../roster/StartingLineup';
 import { DepthChartEditor } from './DepthChartEditor';
 
 interface RosterTableProps {
-  activeRosterTab: 'mine' | 'opponent' | 'depth'; // [Updated] Added 'depth'
-  setActiveRosterTab: (tab: 'mine' | 'opponent' | 'depth') => void; // [Updated]
+  activeRosterTab: 'mine' | 'opponent'; // [Updated] Removed 'depth'
+  setActiveRosterTab: (tab: 'mine' | 'opponent') => void; // [Updated]
   team: Team;
   opponent?: Team;
   healthySorted: Player[];
@@ -18,8 +18,8 @@ interface RosterTableProps {
   tactics: GameTactics;
   onUpdateTactics: (t: GameTactics) => void;
   onViewPlayer: (p: Player) => void;
-  depthChart?: DepthChart | null; // [New]
-  onUpdateDepthChart?: (dc: DepthChart) => void; // [New]
+  depthChart?: DepthChart | null; 
+  onUpdateDepthChart?: (dc: DepthChart) => void;
 }
 
 export const RosterTable: React.FC<RosterTableProps> = ({ 
@@ -36,8 +36,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
         Object.keys(newStarters).forEach(k => { if (newStarters[k as keyof typeof starters] === id) newStarters[k as keyof typeof starters] = ''; });
         newStarters[pos] = id;
         onUpdateTactics({ ...tactics, starters: newStarters });
-        // Note: Ideally we sync this back to DepthChart too, but that requires more complex state lifting or effect.
-        // For now, DepthChart -> Tactics sync is implemented in DepthChartEditor.
     };
 
     return (
@@ -49,20 +47,9 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                         className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'mine' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} `}
                     >
                         <Users size={20} />
-                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">로테이션 관리</span>
+                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">로테이션 & 뎁스 차트</span>
                     </button>
                     
-                    <div className="w-[1px] h-6 bg-white/10"></div>
-                    
-                    {/* [New] Depth Chart Tab */}
-                    <button 
-                        onClick={() => setActiveRosterTab('depth')}
-                        className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'depth' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} `}
-                    >
-                        <ListOrdered size={20} />
-                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">뎁스 차트</span>
-                    </button>
-
                     <div className="w-[1px] h-6 bg-white/10"></div>
                     
                     <button 
@@ -79,12 +66,27 @@ export const RosterTable: React.FC<RosterTableProps> = ({
             <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {activeRosterTab === 'mine' ? (
                     <div className="flex flex-col">
-                        {/* Starting Lineup Visualizer */}
+                        {/* 1. Starting Lineup Visualizer */}
                         <div className="p-8 pb-4 bg-slate-900/30 border-b border-white/5">
                             <StartingLineup team={team} tactics={tactics} roster={team.roster} />
                         </div>
 
-                        {/* Healthy Players Table */}
+                        {/* 2. Depth Chart Editor (Integrated) */}
+                        <div className="border-b border-white/5 border-t border-white/5 bg-slate-950/30">
+                             <DepthChartEditor 
+                                team={team} 
+                                tactics={tactics} 
+                                depthChart={depthChart || null} 
+                                onUpdateDepthChart={onUpdateDepthChart || (() => {})} 
+                                onUpdateTactics={onUpdateTactics}
+                            />
+                        </div>
+
+                        {/* 3. Detailed Roster Table */}
+                        <div className="px-8 py-6 bg-slate-900/30 border-b border-white/5 flex items-center gap-3">
+                            <ListOrdered size={20} className="text-indigo-400" />
+                            <h3 className="text-lg font-black uppercase text-white oswald tracking-tight">선수단 상세 설정 (Minute Allocation)</h3>
+                        </div>
                         <table className="w-full text-left border-collapse table-fixed">
                             <thead>
                                 <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
@@ -102,8 +104,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                     const assignedSlot = Object.entries(starters).find(([slot, id]) => id === p.id)?.[0];
                                     const isStarter = !!assignedSlot;
                                     const isSelectedStopper = stopperId === p.id;
-                                    // [CRITICAL FIX] Use ?? 100 instead of || 100. 
-                                    // '0' is a valid condition (exhausted), not a falsy fallback.
                                     const cond = Math.round(p.condition ?? 100); 
                                     const displayOvr = calculatePlayerOvr(p, assignedSlot || p.position);
                                     
@@ -221,14 +221,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             </div>
                         )}
                     </div>
-                ) : activeRosterTab === 'depth' ? (
-                    <DepthChartEditor 
-                        team={team} 
-                        tactics={tactics} 
-                        depthChart={depthChart || null} 
-                        onUpdateDepthChart={onUpdateDepthChart || (() => {})} 
-                        onUpdateTactics={onUpdateTactics}
-                    />
                 ) : (
                     <div className="flex flex-col h-full">
                         {opponent ? (
