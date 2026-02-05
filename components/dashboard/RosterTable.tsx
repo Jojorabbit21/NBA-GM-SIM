@@ -36,6 +36,12 @@ const AttrCell: React.FC<{ value: number }> = ({ value }) => (
     </td>
 );
 
+const StatCell: React.FC<{ value: string | number, isPercent?: boolean }> = ({ value, isPercent }) => (
+    <td className={`py-1.5 px-1 text-right text-xs font-medium text-slate-300 tabular-nums`}>
+        {value}{isPercent ? '%' : ''}
+    </td>
+);
+
 export const RosterTable: React.FC<RosterTableProps> = ({ 
   activeRosterTab, setActiveRosterTab, team, opponent, 
   healthySorted, injuredSorted, oppHealthySorted, 
@@ -89,102 +95,100 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             />
                         </div>
 
-                        {/* 3. Detailed Roster Table (Redesigned) */}
-                        <div className="px-6 py-3 bg-slate-900/30 border-b border-white/5 border-t border-white/5 flex items-center gap-2 mt-4">
-                            <ListOrdered size={16} className="text-indigo-400" />
-                            <h3 className="text-xs font-black uppercase text-white oswald tracking-tight">선수단 상세 설정 (Minute Allocation)</h3>
+                        {/* 3. Detailed Roster Table (Redesigned) - Removed Title Header */}
+                        <div className="mt-0">
+                            <table className="w-full text-left border-collapse table-fixed">
+                                <thead>
+                                    <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
+                                        <th className="py-2 px-4 w-[120px]">이름</th>
+                                        <th className="py-2 px-1 text-center w-10">POS</th>
+                                        <th className="py-2 px-1 text-center w-10">OVR</th>
+                                        <th className="py-2 px-1 text-center w-10">COND</th>
+                                        
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">INS</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">OUT</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">ATH</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">PLM</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">REB</th>
+
+                                        <th className="py-2 px-1 text-center w-12">스토퍼</th>
+                                        <th className="py-2 px-1 text-center w-16">시간 제한</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {healthySorted.map(p => {
+                                        const assignedSlot = Object.entries(starters).find(([slot, id]) => id === p.id)?.[0];
+                                        const isStarter = !!assignedSlot;
+                                        const isSelectedStopper = stopperId === p.id;
+                                        const cond = Math.round(p.condition ?? 100); 
+                                        const displayOvr = calculatePlayerOvr(p, assignedSlot || p.position);
+                                        
+                                        let condColor = 'text-emerald-500';
+                                        if (cond < 60) condColor = 'text-red-500';
+                                        else if (cond < 80) condColor = 'text-amber-500';
+
+                                        return (
+                                            <tr key={p.id} className={`transition-all ${isStarter ? 'bg-indigo-500/5' : 'hover:bg-white/5'}`}>
+                                                {/* Name */}
+                                                <td className="py-1.5 px-4 cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className={`font-bold text-xs truncate hover:text-indigo-400 hover:underline ${isStarter ? 'text-white' : 'text-slate-400'}`}>{p.name}</span>
+                                                    </div>
+                                                </td>
+
+                                                {/* POS */}
+                                                <td className="py-1.5 px-1 text-center">
+                                                    <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
+                                                </td>
+
+                                                {/* OVR */}
+                                                <td className="py-1.5 px-1 text-center">
+                                                    <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
+                                                </td>
+
+                                                {/* Condition (Text Only) */}
+                                                <td className="py-1.5 px-1 text-center">
+                                                    <span className={`text-xs font-black ${condColor}`}>{cond}</span>
+                                                </td>
+
+                                                {/* Attributes */}
+                                                <AttrCell value={p.ins} />
+                                                <AttrCell value={p.out} />
+                                                <AttrCell value={p.ath} />
+                                                <AttrCell value={p.plm} />
+                                                <AttrCell value={p.def} />
+                                                <AttrCell value={p.reb} />
+
+                                                {/* Stopper Toggle */}
+                                                <td className="py-1.5 px-1 text-center">
+                                                    <div className="flex justify-center items-center">
+                                                        <button disabled={!isAceStopperActive} onClick={() => onUpdateTactics({...tactics, stopperId: isSelectedStopper ? undefined : p.id})} className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all border ${!isAceStopperActive ? 'opacity-20 cursor-not-allowed border-slate-800 bg-slate-900' : isSelectedStopper ? 'bg-fuchsia-600 border-fuchsia-400 text-white shadow-[0_0_10px_rgba(192,38,211,0.4)]' : 'bg-slate-950 border-white/10 text-slate-600 hover:border-fuchsia-500/30'}`}>
+                                                            {isAceStopperActive ? (isSelectedStopper ? <Lock size={10} /> : <ShieldAlert size={10} />) : <Lock size={10} />}
+                                                        </button>
+                                                    </div>
+                                                </td>
+
+                                                {/* Minutes Input */}
+                                                <td className="py-1.5 px-1 text-center">
+                                                    <div className="flex items-center justify-center gap-1">
+                                                        <input type="number" min="0" max="48" placeholder="-" value={minutesLimits[p.id] !== undefined ? minutesLimits[p.id] : ''} onChange={e => {
+                                                            const val = e.target.value;
+                                                            const next = { ...minutesLimits };
+                                                            if (val === '') { delete next[p.id]; }
+                                                            else { next[p.id] = Math.min(48, Math.max(0, parseInt(val) || 0)); }
+                                                            onUpdateTactics({ ...tactics, minutesLimits: next });
+                                                        }} className="w-10 h-7 bg-slate-950 border border-white/10 rounded-md py-0.5 text-center text-xs font-black text-white focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-700" />
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
                         </div>
-                        <table className="w-full text-left border-collapse table-fixed">
-                            <thead>
-                                <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                    <th className="py-2 px-4 w-[120px]">이름</th>
-                                    <th className="py-2 px-1 text-center w-10">POS</th>
-                                    <th className="py-2 px-1 text-center w-10">OVR</th>
-                                    <th className="py-2 px-1 text-center w-10">COND</th>
-                                    
-                                    <th className="py-2 px-1 text-center w-10 text-slate-400">INS</th>
-                                    <th className="py-2 px-1 text-center w-10 text-slate-400">OUT</th>
-                                    <th className="py-2 px-1 text-center w-10 text-slate-400">ATH</th>
-                                    <th className="py-2 px-1 text-center w-10 text-slate-400">PLM</th>
-                                    <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
-                                    <th className="py-2 px-1 text-center w-10 text-slate-400">REB</th>
-
-                                    <th className="py-2 px-1 text-center w-12">스토퍼</th>
-                                    <th className="py-2 px-1 text-center w-16">시간 제한</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-white/5">
-                                {healthySorted.map(p => {
-                                    const assignedSlot = Object.entries(starters).find(([slot, id]) => id === p.id)?.[0];
-                                    const isStarter = !!assignedSlot;
-                                    const isSelectedStopper = stopperId === p.id;
-                                    const cond = Math.round(p.condition ?? 100); 
-                                    const displayOvr = calculatePlayerOvr(p, assignedSlot || p.position);
-                                    
-                                    let condColor = 'text-emerald-500';
-                                    if (cond < 60) condColor = 'text-red-500';
-                                    else if (cond < 80) condColor = 'text-amber-500';
-
-                                    return (
-                                        <tr key={p.id} className={`transition-all ${isStarter ? 'bg-indigo-500/5' : 'hover:bg-white/5'}`}>
-                                            {/* Name */}
-                                            <td className="py-1.5 px-4 cursor-pointer" onClick={() => onViewPlayer(p)}>
-                                                <div className="flex items-center gap-2">
-                                                    <span className={`font-bold text-xs truncate hover:text-indigo-400 hover:underline ${isStarter ? 'text-white' : 'text-slate-400'}`}>{p.name}</span>
-                                                </div>
-                                            </td>
-
-                                            {/* POS */}
-                                            <td className="py-1.5 px-1 text-center">
-                                                <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
-                                            </td>
-
-                                            {/* OVR */}
-                                            <td className="py-1.5 px-1 text-center">
-                                                <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
-                                            </td>
-
-                                            {/* Condition (Text Only) */}
-                                            <td className="py-1.5 px-1 text-center">
-                                                <span className={`text-xs font-black ${condColor}`}>{cond}</span>
-                                            </td>
-
-                                            {/* Attributes */}
-                                            <AttrCell value={p.ins} />
-                                            <AttrCell value={p.out} />
-                                            <AttrCell value={p.ath} />
-                                            <AttrCell value={p.plm} />
-                                            <AttrCell value={p.def} />
-                                            <AttrCell value={p.reb} />
-
-                                            {/* Stopper Toggle */}
-                                            <td className="py-1.5 px-1 text-center">
-                                                <div className="flex justify-center items-center">
-                                                    <button disabled={!isAceStopperActive} onClick={() => onUpdateTactics({...tactics, stopperId: isSelectedStopper ? undefined : p.id})} className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all border ${!isAceStopperActive ? 'opacity-20 cursor-not-allowed border-slate-800 bg-slate-900' : isSelectedStopper ? 'bg-fuchsia-600 border-fuchsia-400 text-white shadow-[0_0_10px_rgba(192,38,211,0.4)]' : 'bg-slate-950 border-white/10 text-slate-600 hover:border-fuchsia-500/30'}`}>
-                                                        {isAceStopperActive ? (isSelectedStopper ? <Lock size={10} /> : <ShieldAlert size={10} />) : <Lock size={10} />}
-                                                    </button>
-                                                </div>
-                                            </td>
-
-                                            {/* Minutes Input */}
-                                            <td className="py-1.5 px-1 text-center">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <input type="number" min="0" max="48" placeholder="-" value={minutesLimits[p.id] !== undefined ? minutesLimits[p.id] : ''} onChange={e => {
-                                                        const val = e.target.value;
-                                                        const next = { ...minutesLimits };
-                                                        if (val === '') { delete next[p.id]; }
-                                                        else { next[p.id] = Math.min(48, Math.max(0, parseInt(val) || 0)); }
-                                                        onUpdateTactics({ ...tactics, minutesLimits: next });
-                                                    }} className="w-10 h-7 bg-slate-950 border border-white/10 rounded-md py-0.5 text-center text-xs font-black text-white focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-slate-700" />
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
                         
-                        {/* Injured Reserve Table */}
+                        {/* Injured Reserve Table - Redesigned */}
                         {injuredSorted.length > 0 && (
                             <div className="flex flex-col mt-6 border-t border-red-900/30 bg-red-950/10">
                                 <div className="px-6 py-2 bg-red-950/20 flex items-center gap-2 border-b border-red-900/20">
@@ -193,34 +197,42 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 </div>
                                 <table className="w-full text-left border-collapse table-fixed">
                                     <thead>
-                                        <tr className="text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-900/30">
+                                        {/* Match Header Style of Main Table */}
+                                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
                                             <th className="py-2 px-4 w-[120px]">이름</th>
-                                            <th className="py-2 px-2 text-center w-10">OVR</th>
-                                            <th className="py-2 px-2 text-center w-10">POS</th>
-                                            <th className="py-2 px-4 text-left">부상명</th>
-                                            <th className="py-2 px-4 text-left w-[120px]">복귀 예정일</th>
+                                            <th className="py-2 px-1 text-center w-10">POS</th>
+                                            <th className="py-2 px-1 text-center w-10">OVR</th>
+                                            
+                                            {/* Spacer to push Injury Info to right */}
+                                            <th className="py-2 px-1 w-full"></th>
+                                            
+                                            <th className="py-2 px-4 text-right w-auto">부상명</th>
+                                            <th className="py-2 px-4 text-right w-[120px]">복귀 예정일</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-800/50">
+                                    <tbody className="divide-y divide-white/5">
                                         {injuredSorted.map(p => {
                                             const ovr = calculatePlayerOvr(p);
                                             return (
                                                 <tr key={p.id} className="hover:bg-red-500/5 transition-all group">
-                                                    <td className="py-2 px-4 cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                                    <td className="py-1.5 px-4 cursor-pointer" onClick={() => onViewPlayer(p)}>
                                                         <span className="font-bold text-xs text-slate-400 group-hover:text-red-400">{p.name}</span>
                                                     </td>
-                                                    <td className="py-2 px-2 text-center">
-                                                        <div className={getOvrBadgeStyle(ovr) + " !w-6 !h-6 !text-xs !mx-auto grayscale opacity-70"}>{ovr}</div>
-                                                    </td>
-                                                    <td className="py-2 px-2 text-center">
+                                                    <td className="py-1.5 px-1 text-center">
                                                         <span className="text-[10px] font-bold text-slate-600">{p.position}</span>
                                                     </td>
-                                                    <td className="py-2 px-4 text-left">
+                                                    <td className="py-1.5 px-1 text-center">
+                                                        <div className={getOvrBadgeStyle(ovr) + " !w-6 !h-6 !text-xs !mx-auto grayscale opacity-70"}>{ovr}</div>
+                                                    </td>
+                                                    
+                                                    <td></td>
+
+                                                    <td className="py-1.5 px-4 text-right">
                                                         <span className="pretendard text-xs font-bold text-red-500 whitespace-nowrap">
                                                             {p.injuryType || 'Unknown Injury'}
                                                         </span>
                                                     </td>
-                                                    <td className="py-2 px-4 text-left">
+                                                    <td className="py-1.5 px-4 text-right">
                                                         <span className="pretendard text-xs font-black text-slate-500 tracking-tight">
                                                             {p.returnDate || 'TBD'}
                                                         </span>
@@ -235,25 +247,42 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                     </div>
                 ) : (
                     <div className="flex flex-col h-full">
-                        {/* Opponent table kept simple for now, can apply similar styling if requested */}
+                        {/* Opponent table with Stats */}
                         {opponent ? (
                             <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                        <th className="py-2 px-6">이름</th>
+                                        <th className="py-2 px-6 w-[140px]">이름</th>
                                         <th className="py-2 px-2 text-center w-12">POS</th>
                                         <th className="py-2 px-2 text-center w-12">OVR</th>
-                                        <th className="py-2 px-1 text-center w-10">ATH</th>
-                                        <th className="py-2 px-1 text-center w-10">OUT</th>
-                                        <th className="py-2 px-1 text-center w-10">INS</th>
-                                        <th className="py-2 px-1 text-center w-10">PLM</th>
-                                        <th className="py-2 px-1 text-center w-10">DEF</th>
-                                        <th className="py-2 px-1 text-center w-10">REB</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">ATH</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">OUT</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">INS</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">PLM</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400 border-r border-white/5">REB</th>
+                                        
+                                        {/* Added Stats Columns */}
+                                        <th className="py-2 px-1 text-right w-10 text-white">MP</th>
+                                        <th className="py-2 px-1 text-right w-10 text-white">PTS</th>
+                                        <th className="py-2 px-1 text-right w-10 text-white">REB</th>
+                                        <th className="py-2 px-1 text-right w-10 text-white">AST</th>
+                                        <th className="py-2 px-1 text-right w-10 text-white">STL</th>
+                                        <th className="py-2 px-1 text-right w-10 text-white">BLK</th>
+                                        <th className="py-2 px-1 text-right w-10 text-white">TOV</th>
+                                        <th className="py-2 px-1 text-right w-12 text-white">FG%</th>
+                                        <th className="py-2 px-1 text-right w-12 text-white">TS%</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
                                     {oppHealthySorted.map((p) => {
                                         const ovr = calculatePlayerOvr(p);
+                                        const s = p.stats;
+                                        const g = s.g > 0 ? s.g : 1;
+                                        const tsa = s.fga + 0.44 * s.fta;
+                                        const tsPct = tsa > 0 ? (s.pts / (2 * tsa) * 100).toFixed(1) : '0.0';
+                                        const fgPct = s.fga > 0 ? (s.fgm / s.fga * 100).toFixed(1) : '0.0';
+
                                         return (
                                             <tr key={p.id} className="hover:bg-white/5 transition-all">
                                                 <td className="py-1.5 px-6 cursor-pointer" onClick={() => onViewPlayer(p)}>
@@ -269,6 +298,17 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                 <AttrCell value={p.plm} />
                                                 <AttrCell value={p.def} />
                                                 <AttrCell value={p.reb} />
+                                                
+                                                {/* Stats Cells */}
+                                                <StatCell value={(s.mp/g).toFixed(1)} />
+                                                <StatCell value={(s.pts/g).toFixed(1)} />
+                                                <StatCell value={(s.reb/g).toFixed(1)} />
+                                                <StatCell value={(s.ast/g).toFixed(1)} />
+                                                <StatCell value={(s.stl/g).toFixed(1)} />
+                                                <StatCell value={(s.blk/g).toFixed(1)} />
+                                                <StatCell value={(s.tov/g).toFixed(1)} />
+                                                <StatCell value={fgPct} isPercent />
+                                                <StatCell value={tsPct} isPercent />
                                             </tr>
                                         );
                                     })}
