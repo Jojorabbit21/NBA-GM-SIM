@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock, Table2, Target, Swords } from 'lucide-react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import { Team, Player, TacticStatRecord, OffenseTactic, DefenseTactic } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
@@ -310,7 +310,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const SortHeader: React.FC<{ label: string, sortKey: string, align?: 'left' | 'center' | 'right', width?: string, className?: string, tooltip?: string, rowSpan?: number }> = ({ label, sortKey, align = 'center', width, className, tooltip, rowSpan }) => (
     <th 
         rowSpan={rowSpan}
-        className={`px-1 py-3 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-white/5 transition-colors group select-none relative ${className}`} 
+        // [Optimized] Replaced hover:bg-white/5 with hover:bg-slate-800
+        className={`px-1 py-3 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-slate-800 transition-colors group select-none relative ${className}`} 
         style={{ width, textAlign: align }} 
         onClick={() => handleSort(sortKey)}
     >
@@ -343,42 +344,41 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         onSelectTeam={setSelectedTeamId} dropdownRef={dropdownRef}
       />
 
-      {/* [Refactor] Removed Outer Container (bg-slate-900/95, border, p-8) */}
-      <div className="flex flex-col gap-6">
-         {/* Removed border-b to eliminate the separator line */}
-         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-6 flex-shrink-0">
+      {/* [Refactor] Reduced Gap and Removed Icons */}
+      <div className="flex flex-col gap-2">
+         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-2 flex-shrink-0">
              <div className="flex bg-slate-950 rounded-xl p-1.5 border border-slate-800 overflow-x-auto max-w-full">
                  <button onClick={() => setTab('roster')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                    <Users size={16} /> 능력치
+                    능력치
                  </button>
                  <button onClick={() => setTab('stats')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'stats' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                    <Activity size={16} /> 기록
+                    기록
                  </button>
                  <button onClick={() => setTab('salary')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'salary' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                    <Wallet size={16} /> 샐러리
+                    샐러리
                  </button>
              </div>
 
-             {/* Stat Mode Toggle */}
+             {/* Stat Mode Toggle - Icons Removed */}
              {tab === 'stats' && (
                  <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
                     <button 
                         onClick={() => setStatMode('traditional')}
                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'traditional' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Table2 size={12} /> 기본
+                        기본
                     </button>
                     <button 
                         onClick={() => setStatMode('shooting')}
                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'shooting' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Target size={12} /> 슈팅
+                        슈팅
                     </button>
                     <button 
                         onClick={() => setStatMode('strategy')}
                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'strategy' ? 'bg-fuchsia-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Swords size={12} /> 전술
+                        전술
                     </button>
                  </div>
              )}
@@ -392,34 +392,34 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                <thead className="sticky top-0 z-20">
                   {tab === 'stats' && statMode === 'shooting' ? (
                       <>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-y border-white/10 bg-slate-950/90 backdrop-blur-sm">
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-y border-white/10 bg-slate-950">
                              {/* Fixed Columns rowSpan=2 */}
-                             <th rowSpan={2} className="py-3 px-6 text-left sticky left-0 bg-slate-950/95 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-white/10 w-[180px]">PLAYER NAME</th>
-                             <SortHeader rowSpan={2} label="POS" sortKey="position" width="50px" className="border-b border-white/10 bg-slate-950/95" />
-                             <SortHeader rowSpan={2} label="AGE" sortKey="age" width="40px" className="border-b border-white/10 bg-slate-950/95" />
-                             <SortHeader rowSpan={2} label="OVR" sortKey="ovr" width="50px" className="border-r border-b border-white/10 pr-2 bg-slate-950/95" />
+                             <th rowSpan={2} className="py-3 px-6 text-left sticky left-0 bg-slate-950 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-white/10 w-[180px]">PLAYER NAME</th>
+                             <SortHeader rowSpan={2} label="POS" sortKey="position" width="50px" className="border-b border-white/10 bg-slate-950" />
+                             <SortHeader rowSpan={2} label="AGE" sortKey="age" width="40px" className="border-b border-white/10 bg-slate-950" />
+                             <SortHeader rowSpan={2} label="OVR" sortKey="ovr" width="50px" className="border-r border-b border-white/10 pr-2 bg-slate-950" />
 
-                             {/* Group Headers colSpan=3 */}
+                             {/* Group Headers colSpan=3 - Added border-r */}
                              {SHOOTING_ZONES.map(z => (
-                                 <th key={z.id} colSpan={3} className="py-2 text-center border-b border-r border-white/10 text-slate-300 bg-slate-950/95">{z.label}</th>
+                                 <th key={z.id} colSpan={3} className="py-2 text-center border-b border-r border-white/10 text-slate-300 bg-slate-950">{z.label}</th>
                              ))}
                         </tr>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-950/90 backdrop-blur-sm">
-                            {/* Sub Headers M/A/% */}
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-950">
+                            {/* Sub Headers M/A/% - Added border-r where needed */}
                              {SHOOTING_ZONES.map(z => (
                                 <React.Fragment key={z.id + '_sub'}>
-                                    <SortHeader label="M" sortKey={`${z.id}_m`} width="45px" align="right" className="bg-slate-950/95 border-b border-white/10" />
-                                    <SortHeader label="A" sortKey={`${z.id}_a`} width="45px" align="right" className="bg-slate-950/95 border-b border-white/10" />
-                                    <SortHeader label="%" sortKey={`${z.id}_pct`} width="45px" align="right" className="bg-slate-950/95 border-r border-b border-white/10 pr-2" />
+                                    <SortHeader label="M" sortKey={`${z.id}_m`} width="45px" align="right" className="bg-slate-950 border-b border-white/10" />
+                                    <SortHeader label="A" sortKey={`${z.id}_a`} width="45px" align="right" className="bg-slate-950 border-b border-white/10" />
+                                    <SortHeader label="%" sortKey={`${z.id}_pct`} width="45px" align="right" className="bg-slate-950 border-r border-b border-white/10 pr-2" />
                                 </React.Fragment>
                              ))}
                         </tr>
                       </>
                   ) : (
                       // STANDARD HEADER (1 Row)
-                      <tr className="border-y border-white/10 text-slate-500 bg-slate-950/90 backdrop-blur-sm">
+                      <tr className="border-y border-white/10 text-slate-500 bg-slate-950">
                          {/* Name Column - Sticky Left */}
-                         <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950/95 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">
+                         <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">
                             {statMode === 'strategy' && tab === 'stats' ? 'TACTIC NAME' : 'PLAYER NAME'}
                          </th>
                          
@@ -449,7 +449,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                     width="45px" 
                                     tooltip={col.tooltip} 
                                     className={`
-                                        ${isMajor ? 'bg-white/5' : ''}
+                                        ${isMajor ? 'bg-slate-900' : ''}
                                         ${isSeparator ? 'border-r border-white/10' : ''}
                                     `}
                                 />
@@ -486,7 +486,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               const rimPct = s.rimA > 0 ? ((s.rimM / s.rimA) * 100).toFixed(1) + '%' : '0.0%';
 
                               return (
-                                <tr key={idx} className="hover:bg-white/5 transition-all group">
+                                <tr key={idx} className="hover:bg-slate-900 transition-all group">
                                     <td className="py-3 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                                         <span className="text-xs font-bold text-slate-300">{record.name}</span>
                                     </td>
@@ -514,8 +514,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                           const displayOvr = calculatePlayerOvr(p);
                           
                           return (
-                          <tr key={p.id} className="hover:bg-white/5 transition-all group">
-                              <td className="py-2.5 px-6 sticky left-0 bg-slate-950/95 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setViewPlayer(p)}>
+                          <tr key={p.id} className="hover:bg-slate-900 transition-all group">
+                              <td className="py-2.5 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setViewPlayer(p)}>
                                   <div className="flex items-center gap-3">
                                       <div className="flex flex-col min-w-0">
                                           <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
@@ -536,9 +536,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                               {/* Shared Info Columns with Dark Background */}
                               {(tab === 'roster' || tab === 'stats') && (
                                 <>
-                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950/80">{p.position}</td>
-                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950/80">{p.age}</td>
-                                    <td className="px-1 py-2 text-center border-r border-white/10 pr-2 bg-slate-950/80">
+                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950">{p.position}</td>
+                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950">{p.age}</td>
+                                    <td className="px-1 py-2 text-center border-r border-white/10 pr-2 bg-slate-950">
                                         <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
                                     </td>
                                 </>
@@ -554,7 +554,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                         key={String(col.key)} 
                                         value={p[col.key as keyof Player] as number} 
                                         className={`
-                                            ${isMajor ? 'bg-white/5' : ''}
+                                            ${isMajor ? 'bg-slate-900' : ''}
                                             ${isSeparator ? 'border-r border-white/10' : ''}
                                         `}
                                       />
@@ -633,7 +633,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                  key={String(col.key)} 
                                  value={teamStats.getAvg(col.key as keyof Player)} 
                                  className={`
-                                    ${isMajor ? 'bg-white/5' : ''}
+                                    ${isMajor ? 'bg-slate-900' : ''}
                                     ${isSeparator ? 'border-r border-white/10' : ''}
                                  `}
                                />
