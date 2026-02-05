@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, Save, ChevronDown, Edit3, Trash2, Check, Download, AlertCircle } from 'lucide-react';
+import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, Save, ChevronDown, Edit3, Trash2, Check, Download, AlertCircle, Info } from 'lucide-react';
 import { OffenseTactic, DefenseTactic, Team, GameTactics, TacticPreset, Player } from '../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../utils/tacticUtils';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
@@ -234,27 +234,29 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                 initialName={targetRenameSlot ? (presets[targetRenameSlot]?.name || `Preset ${targetRenameSlot}`) : ""}
             />
 
-            <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-[88px] flex-shrink-0">
+            <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center h-[88px] flex-shrink-0">
                 <div className="flex items-center gap-4">
                     <Activity size={24} className="text-indigo-400" />
                     <h3 className="text-2xl font-black uppercase text-white oswald tracking-tight ko-tight">전술 설정</h3>
                 </div>
+            </div>
 
-                {/* Preset Controls moved to Header */}
-                <div className="flex items-center gap-2">
-                    <div className="relative" ref={dropdownRef}>
+             {/* Preset Controls moved to separate row */}
+            <div className="px-8 py-3 bg-slate-900/60 border-b border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2 w-full">
+                    <div className="relative flex-1" ref={dropdownRef}>
                         <button 
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className="flex items-center gap-2 bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-3 py-1.5 rounded-lg transition-all shadow-sm group min-w-[140px] justify-between"
+                            className="w-full flex items-center justify-between gap-2 bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-3 py-1.5 rounded-lg transition-all shadow-sm group"
                         >
-                            <span className="text-xs font-bold truncate max-w-[120px]">
+                            <span className="text-xs font-bold truncate">
                                 {presets[activeSlot] ? presets[activeSlot].name : `Slot ${activeSlot}`}
                             </span>
                             <ChevronDown size={14} className={`text-slate-500 transition-transform group-hover:text-indigo-400 ${isDropdownOpen ? 'rotate-180' : ''}`} />
                         </button>
 
                         {isDropdownOpen && (
-                            <div className="absolute top-full right-0 mt-1 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {[1, 2, 3].map(slot => {
                                     const hasData = !!presets[slot];
                                     return (
@@ -297,18 +299,17 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     <button 
                         onClick={handleSaveCurrent}
                         disabled={isProcessing || !teamId}
-                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-3 py-1.5 rounded-lg font-black uppercase text-xs tracking-wide shadow-lg shadow-indigo-900/20 transition-all active:scale-95 min-w-[50px] flex justify-center"
+                        className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-600 text-white px-3 py-1.5 rounded-lg font-black uppercase text-xs tracking-wide shadow-lg shadow-indigo-900/20 transition-all active:scale-95 flex-shrink-0"
                     >
                         {isProcessing ? <Activity size={14} className="animate-spin" /> : "저장"}
                     </button>
                     
                     <button 
                         onClick={onAutoSet}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 border border-white/5"
+                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg flex items-center gap-1.5 transition-all active:scale-95 border border-white/5 flex-shrink-0"
                         title="AI 추천 전술 적용"
                     >
                         <Wand2 size={14} />
-                        <span className="text-[10px] font-black uppercase tracking-wider hidden xl:inline">AI 추천</span>
                     </button>
                 </div>
             </div>
@@ -335,7 +336,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400 transition-colors" size={16} />
                     </div>
 
-                    {/* Pros & Cons Display */}
+                    {/* Offense Pros & Cons Display */}
                     <div className="bg-slate-950/40 border border-slate-800/50 rounded-xl p-4 space-y-3">
                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{OFFENSE_TACTIC_INFO[currentOffense].desc}</div>
                         
@@ -378,6 +379,29 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                         </select>
                         <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400 transition-colors" size={16} />
                     </div>
+
+                    {/* Defense Pros & Cons Display */}
+                    <div className="bg-slate-950/40 border border-slate-800/50 rounded-xl p-4 space-y-3">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">{DEFENSE_TACTIC_INFO[currentDefense].desc}</div>
+                        
+                        <div className="space-y-2">
+                            {DEFENSE_TACTIC_INFO[currentDefense].pros.map((pro, i) => (
+                                <div key={`def-pro-${i}`} className="flex items-start gap-2.5 text-xs text-slate-300">
+                                    <span className="text-emerald-500 text-sm mt-0.5">✅</span>
+                                    <span className="leading-relaxed">{pro}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="border-t border-slate-800/50 my-2"></div>
+                        <div className="space-y-2">
+                            {DEFENSE_TACTIC_INFO[currentDefense].cons.map((con, i) => (
+                                <div key={`def-con-${i}`} className="flex items-start gap-2.5 text-xs text-slate-300">
+                                    <span className="text-red-500 text-sm mt-0.5">❌</span>
+                                    <span className="leading-relaxed">{con}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                     
                     {/* Ace Stopper Dropdown */}
                     <div className="relative group pt-2">
@@ -400,12 +424,39 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                             </select>
                             <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-fuchsia-400 transition-colors" size={14} />
                         </div>
-                        {stopperId && (
-                            <div className="mt-2 flex items-center gap-2 text-[10px] text-fuchsia-300 bg-fuchsia-500/10 px-3 py-1.5 rounded-lg border border-fuchsia-500/20">
-                                <AlertCircle size={12} />
-                                <span>선택된 선수의 체력이 빠르게 소모됩니다.</span>
+                        
+                        {/* Ace Stopper Detail Info */}
+                        {stopperId ? (
+                            <div className="mt-3 bg-fuchsia-900/20 border border-fuchsia-500/30 rounded-xl p-4 space-y-3">
+                                <div className="flex items-center gap-2 text-[10px] font-black text-fuchsia-300 uppercase tracking-widest mb-1">
+                                    <Info size={12} /> Lockdown Defense Mechanism
+                                </div>
+                                <div className="space-y-2 text-xs text-slate-300 leading-relaxed">
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-fuchsia-400 mt-0.5">•</span>
+                                        <span>상대방의 에이스(가장 높은 OVR)를 계속 따라다니며 락다운 디펜스를 펼칩니다.</span>
+                                    </div>
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-fuchsia-400 mt-0.5">•</span>
+                                        <span>퍼리미터 디펜스, 스틸, 패스 퍼셉션에 따라 에이스 스토퍼의 락다운 디펜스 능력이 결정됩니다.</span>
+                                    </div>
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-emerald-400 mt-0.5">▲</span>
+                                        <span>락다운 디펜스 능력이 좋다면 에이스의 공격 효율이 큰 폭으로 감소할 수 있습니다.</span>
+                                    </div>
+                                    <div className="flex items-start gap-2">
+                                        <span className="text-red-400 mt-0.5">▼</span>
+                                        <span>반대의 경우 상대 에이스의 공격 효율이 오히려 좋아지는 결과를 낳을 수도 있습니다.</span>
+                                    </div>
+                                </div>
+                                <div className="border-t border-fuchsia-500/20 pt-2 mt-2">
+                                    <div className="flex items-center gap-2 text-[10px] font-bold text-fuchsia-200">
+                                        <AlertCircle size={12} />
+                                        <span>체력 소모 경고: 스토퍼는 다른 수비수보다 훨씬 빠르게 체력이 소모됩니다.</span>
+                                    </div>
+                                </div>
                             </div>
-                        )}
+                        ) : null}
                     </div>
                 </div>
 
