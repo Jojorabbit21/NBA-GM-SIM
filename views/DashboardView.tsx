@@ -25,8 +25,8 @@ interface DashboardViewProps {
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
   playoffSeries?: PlayoffSeries[];
-  depthChart?: any; // [New]
-  onUpdateDepthChart?: (dc: any) => void; // [New]
+  depthChart?: any; 
+  onUpdateDepthChart?: (dc: any) => void;
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
@@ -77,14 +77,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return latest.round === 4;
   }, [playoffSeries, team?.id]);
 
-  const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent' | 'depth'>('mine');
+  const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   
   const { starters } = tactics;
   
-  // [CLEANUP] effectiveRoster Logic Removed
-  // The injury recovery is now handled persistently in useSimulation.ts (advanceDate).
-  // We can trust team.roster directly.
   const effectiveRoster = team?.roster || [];
   const effectiveOppRoster = opponent?.roster || [];
 
@@ -95,7 +92,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // [Fix] Calculate Sort OVR dynamically
   const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
   
-  // Auto-Fill Starters if Empty (checking against healthy players only)
+  // Auto-Fill Starters if Empty
   useEffect(() => {
     if (healthySorted.length >= 5 && Object.values(starters).every(v => v === '')) {
       const newStarters = {
@@ -111,18 +108,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const myOvr = useMemo(() => {
     if (!effectiveRoster.length) return 0;
-    // [Fix] Calculate Team OVR dynamically
     return Math.round(effectiveRoster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / effectiveRoster.length);
   }, [effectiveRoster]);
 
   const opponentOvrValue = useMemo(() => {
     if (!effectiveOppRoster.length) return 0;
-    // [Fix] Calculate Team OVR dynamically
     return Math.round(effectiveOppRoster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / effectiveOppRoster.length);
   }, [effectiveOppRoster]);
 
   const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
-      // Pass the effective roster to tactic calc
       return calculateTacticScore(type, { ...team, roster: effectiveRoster }, tactics);
   };
 
