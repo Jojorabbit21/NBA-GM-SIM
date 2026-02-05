@@ -25,12 +25,14 @@ interface DashboardViewProps {
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
   playoffSeries?: PlayoffSeries[];
+  depthChart?: any; // [New]
+  onUpdateDepthChart?: (dc: any) => void; // [New]
 }
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
   team, teams, schedule, onSim, tactics, onUpdateTactics, 
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
-  playoffSeries = []
+  playoffSeries = [], depthChart, onUpdateDepthChart
 }) => {
   // 1. Find the next game for the user's team
   const nextGameDisplay = useMemo(() => {
@@ -75,7 +77,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return latest.round === 4;
   }, [playoffSeries, team?.id]);
 
-  const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
+  const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent' | 'depth'>('mine');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   
   const { starters } = tactics;
@@ -178,6 +180,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             tactics={tactics}
             onUpdateTactics={onUpdateTactics}
             onViewPlayer={setViewPlayer}
+            depthChart={depthChart}
+            onUpdateDepthChart={onUpdateDepthChart}
           />
           <TacticsBoard 
             tactics={tactics}

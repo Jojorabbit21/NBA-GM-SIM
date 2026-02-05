@@ -1,14 +1,15 @@
 
 import React from 'react';
-import { Users, Eye, ShieldAlert, Lock } from 'lucide-react';
-import { Player, Team, GameTactics } from '../../types';
+import { Users, Eye, ShieldAlert, Lock, ListOrdered } from 'lucide-react';
+import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { getOvrBadgeStyle, getRankStyle } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { StartingLineup } from '../roster/StartingLineup';
+import { DepthChartEditor } from './DepthChartEditor';
 
 interface RosterTableProps {
-  activeRosterTab: 'mine' | 'opponent';
-  setActiveRosterTab: (tab: 'mine' | 'opponent') => void;
+  activeRosterTab: 'mine' | 'opponent' | 'depth'; // [Updated] Added 'depth'
+  setActiveRosterTab: (tab: 'mine' | 'opponent' | 'depth') => void; // [Updated]
   team: Team;
   opponent?: Team;
   healthySorted: Player[];
@@ -17,12 +18,15 @@ interface RosterTableProps {
   tactics: GameTactics;
   onUpdateTactics: (t: GameTactics) => void;
   onViewPlayer: (p: Player) => void;
+  depthChart?: DepthChart | null; // [New]
+  onUpdateDepthChart?: (dc: DepthChart) => void; // [New]
 }
 
 export const RosterTable: React.FC<RosterTableProps> = ({ 
   activeRosterTab, setActiveRosterTab, team, opponent, 
   healthySorted, injuredSorted, oppHealthySorted, 
-  tactics, onUpdateTactics, onViewPlayer 
+  tactics, onUpdateTactics, onViewPlayer,
+  depthChart, onUpdateDepthChart
 }) => {
     const { starters, minutesLimits, stopperId, defenseTactics } = tactics;
     const isAceStopperActive = defenseTactics.includes('AceStopper');
@@ -32,6 +36,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
         Object.keys(newStarters).forEach(k => { if (newStarters[k as keyof typeof starters] === id) newStarters[k as keyof typeof starters] = ''; });
         newStarters[pos] = id;
         onUpdateTactics({ ...tactics, starters: newStarters });
+        // Note: Ideally we sync this back to DepthChart too, but that requires more complex state lifting or effect.
+        // For now, DepthChart -> Tactics sync is implemented in DepthChartEditor.
     };
 
     return (
@@ -42,17 +48,30 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                         onClick={() => setActiveRosterTab('mine')}
                         className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'mine' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} `}
                     >
-                        <Users size={24} />
-                        <span className="text-2xl font-black uppercase oswald tracking-tight ko-tight">로테이션 관리</span>
+                        <Users size={20} />
+                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">로테이션 관리</span>
                     </button>
+                    
                     <div className="w-[1px] h-6 bg-white/10"></div>
+                    
+                    {/* [New] Depth Chart Tab */}
+                    <button 
+                        onClick={() => setActiveRosterTab('depth')}
+                        className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'depth' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} `}
+                    >
+                        <ListOrdered size={20} />
+                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">뎁스 차트</span>
+                    </button>
+
+                    <div className="w-[1px] h-6 bg-white/10"></div>
+                    
                     <button 
                         onClick={() => setActiveRosterTab('opponent')}
                         disabled={!opponent}
                         className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} ${!opponent ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        <Eye size={24} />
-                        <span className="text-2xl font-black uppercase oswald tracking-tight ko-tight">상대 전력 분석</span>
+                        <Eye size={20} />
+                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">상대 전력 분석</span>
                     </button>
                 </div>
             </div>
@@ -202,6 +221,14 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             </div>
                         )}
                     </div>
+                ) : activeRosterTab === 'depth' ? (
+                    <DepthChartEditor 
+                        team={team} 
+                        tactics={tactics} 
+                        depthChart={depthChart || null} 
+                        onUpdateDepthChart={onUpdateDepthChart || (() => {})} 
+                        onUpdateTactics={onUpdateTactics}
+                    />
                 ) : (
                     <div className="flex flex-col h-full">
                         {opponent ? (

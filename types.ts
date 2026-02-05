@@ -135,6 +135,17 @@ export interface GameTactics {
   stopperId?: string;
 }
 
+// [New] Depth Chart Structure
+// Each position has an array of 3 player IDs (Starter, Bench, Third)
+// Use null or empty string for empty slots
+export interface DepthChart {
+    PG: (string | null)[];
+    SG: (string | null)[];
+    SF: (string | null)[];
+    PF: (string | null)[];
+    C:  (string | null)[];
+}
+
 export interface TacticPreset {
   slot: number;
   name: string;
