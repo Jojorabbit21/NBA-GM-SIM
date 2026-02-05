@@ -345,7 +345,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
       {/* [Refactor] Removed Outer Container (bg-slate-900/95, border, p-8) */}
       <div className="flex flex-col gap-6">
-         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0">
+         {/* Removed border-b to eliminate the separator line */}
+         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 pb-6 flex-shrink-0">
              <div className="flex bg-slate-950 rounded-xl p-1.5 border border-slate-800 overflow-x-auto max-w-full">
                  <button onClick={() => setTab('roster')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Users size={16} /> 능력치
@@ -391,7 +392,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                <thead className="sticky top-0 z-20">
                   {tab === 'stats' && statMode === 'shooting' ? (
                       <>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-y border-white/10 bg-slate-950/90 backdrop-blur-sm">
                              {/* Fixed Columns rowSpan=2 */}
                              <th rowSpan={2} className="py-3 px-6 text-left sticky left-0 bg-slate-950/95 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-white/10 w-[180px]">PLAYER NAME</th>
                              <SortHeader rowSpan={2} label="POS" sortKey="position" width="50px" className="border-b border-white/10 bg-slate-950/95" />
@@ -403,7 +404,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                  <th key={z.id} colSpan={3} className="py-2 text-center border-b border-r border-white/10 text-slate-300 bg-slate-950/95">{z.label}</th>
                              ))}
                         </tr>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-950/90 backdrop-blur-sm">
                             {/* Sub Headers M/A/% */}
                              {SHOOTING_ZONES.map(z => (
                                 <React.Fragment key={z.id + '_sub'}>
@@ -593,10 +594,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                           
                                           return (
                                               <React.Fragment key={zone.id}>
-                                                  {/* [Visual Update] Font Monospace & Black */}
-                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-300 text-xs tabular-nums bg-white/5">{m}</td>
-                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-500 text-xs tabular-nums bg-white/5">{a}</td>
-                                                  <td className={`px-1 py-2 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums bg-white/5 ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
+                                                  {/* [Visual Update] Font Monospace & Black, No Background */}
+                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{m}</td>
+                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{a}</td>
+                                                  <td className={`px-1 py-2 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
                                               </React.Fragment>
                                           );
                                       })
@@ -695,10 +696,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       
                                       return (
                                           <React.Fragment key={zone.id}>
-                                              {/* [Visual Update] Font Monospace & Black */}
-                                              <td className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-slate-300 text-xs tabular-nums bg-white/5">{m}</td>
-                                              <td className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-slate-500 text-xs tabular-nums bg-white/5">{a}</td>
-                                              <td className={`px-1 py-3 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums bg-white/5 ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
+                                              {/* [Visual Update] Font Monospace & Black, No Background */}
+                                              <td className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{m}</td>
+                                              <td className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{a}</td>
+                                              <td className={`px-1 py-3 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
                                           </React.Fragment>
                                       );
                                   })
