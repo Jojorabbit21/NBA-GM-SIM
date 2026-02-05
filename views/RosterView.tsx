@@ -104,6 +104,16 @@ const STRATEGY_COLUMNS = [
     { key: 'rim', label: 'RIM%', width: "70px" },
 ];
 
+const ACE_STOPPER_COLUMNS = [
+    { key: 'games', label: 'GP', width: "60px" },
+    { key: 'record', label: 'W-L', width: "80px" },
+    { key: 'winPct', label: 'WIN%', width: "80px" },
+    { key: 'acePts', label: 'OPP ACE PTS', width: "100px" },
+    { key: 'aceFg', label: 'OPP ACE FG%', width: "100px" },
+    { key: 'ace3p', label: 'OPP ACE 3P%', width: "100px" },
+    { key: 'impact', label: 'IMPACT', width: "80px" },
+];
+
 const SALARY_COLUMNS = [
   { key: 'ovr', label: 'OVR' }, { key: 'age', label: 'AGE' }, { key: 'salary', label: '연봉 ($M)' }, { key: 'contractYears', label: '잔여계약' }, { key: 'totalValue', label: '총 계약규모' },
 ];
@@ -279,12 +289,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     return { ...t, teamGames };
   }, [selectedTeam]);
 
-  // Transform TacticHistory into Array for Table
-  const strategyData = useMemo(() => {
-    if (!selectedTeam?.tacticHistory) return [];
+  // [Refactor] Separate Strategy Data for Rendering
+  const { generalStrategyData, aceStopperData } = useMemo(() => {
+    if (!selectedTeam?.tacticHistory) return { generalStrategyData: [], aceStopperData: null };
     
     const history = selectedTeam.tacticHistory;
     const records: { type: string, name: string, stats: TacticStatRecord }[] = [];
+    let aceStopper: { type: string, name: string, stats: TacticStatRecord } | null = null;
     
     // Offense
     Object.entries(history.offense).forEach(([key, stats]) => {
@@ -297,14 +308,25 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
     // Defense
     Object.entries(history.defense).forEach(([key, stats]) => {
-        records.push({ 
-            type: 'DEF', 
-            name: key === 'AceStopper' ? '에이스 스토퍼' : (DEFENSE_TACTIC_INFO[key as DefenseTactic]?.label || key), 
-            stats: stats as TacticStatRecord
-        });
+        if (key === 'AceStopper') {
+            aceStopper = {
+                type: 'DEF',
+                name: '에이스 스토퍼',
+                stats: stats as TacticStatRecord
+            };
+        } else {
+            records.push({ 
+                type: 'DEF', 
+                name: DEFENSE_TACTIC_INFO[key as DefenseTactic]?.label || key, 
+                stats: stats as TacticStatRecord
+            });
+        }
     });
 
-    return records.sort((a, b) => b.stats.games - a.stats.games);
+    return { 
+        generalStrategyData: records.sort((a, b) => b.stats.games - a.stats.games),
+        aceStopperData: aceStopper
+    };
   }, [selectedTeam]);
 
   const SortHeader: React.FC<{ label: string, sortKey: string, align?: 'left' | 'center' | 'right', width?: string, className?: string, tooltip?: string, rowSpan?: number }> = ({ label, sortKey, align = 'center', width, className, tooltip, rowSpan }) => (
@@ -388,235 +410,279 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
          <div className="w-full overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse table-auto">
-               {/* Separate Logic for Shooting Tab Header (2 Rows) vs Standard (1 Row) */}
-               <thead className="sticky top-0 z-20">
-                  {tab === 'stats' && statMode === 'shooting' ? (
-                      <>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-y border-white/10 bg-slate-950">
-                             {/* Fixed Columns rowSpan=2 */}
-                             <th rowSpan={2} className="py-3 px-6 text-left sticky left-0 bg-slate-950 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-white/10 w-[180px]">PLAYER NAME</th>
-                             <SortHeader rowSpan={2} label="POS" sortKey="position" width="50px" className="border-b border-white/10 bg-slate-950" />
-                             <SortHeader rowSpan={2} label="AGE" sortKey="age" width="40px" className="border-b border-white/10 bg-slate-950" />
-                             <SortHeader rowSpan={2} label="OVR" sortKey="ovr" width="50px" className="border-r border-b border-white/10 pr-2 bg-slate-950" />
-
-                             {/* Group Headers colSpan=3 - Added border-r */}
-                             {SHOOTING_ZONES.map(z => (
-                                 <th key={z.id} colSpan={3} className="py-2 text-center border-b border-r border-white/10 text-slate-300 bg-slate-950">{z.label}</th>
-                             ))}
-                        </tr>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-950">
-                            {/* Sub Headers M/A/% - Added border-r where needed */}
-                             {SHOOTING_ZONES.map(z => (
-                                <React.Fragment key={z.id + '_sub'}>
-                                    <SortHeader label="M" sortKey={`${z.id}_m`} width="45px" align="right" className="bg-slate-950 border-b border-white/10" />
-                                    <SortHeader label="A" sortKey={`${z.id}_a`} width="45px" align="right" className="bg-slate-950 border-b border-white/10" />
-                                    <SortHeader label="%" sortKey={`${z.id}_pct`} width="45px" align="right" className="bg-slate-950 border-r border-b border-white/10 pr-2" />
-                                </React.Fragment>
-                             ))}
-                        </tr>
-                      </>
-                  ) : (
-                      // STANDARD HEADER (1 Row)
-                      <tr className="border-y border-white/10 text-slate-500 bg-slate-950">
-                         {/* Name Column - Sticky Left */}
-                         <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">
-                            {statMode === 'strategy' && tab === 'stats' ? 'TACTIC NAME' : 'PLAYER NAME'}
-                         </th>
-                         
-                         {/* Basic Info Cols (Available in Roster & Stats (Trad/Shooting) tabs) */}
-                         {(tab === 'roster' || (tab === 'stats' && statMode !== 'strategy')) && (
-                           <>
-                             <SortHeader label="POS" sortKey="position" width="50px" />
-                             <SortHeader label="AGE" sortKey="age" width="40px" />
-                             <SortHeader label="OVR" sortKey="ovr" width="50px" className="border-r border-white/10 pr-2" />
-                           </>
-                         )}
-                         
-                         {/* Strategy Type Column */}
-                         {statMode === 'strategy' && tab === 'stats' && (
-                             <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-center border-r border-white/10 w-[60px]">TYPE</th>
-                         )}
-                         
-                         {tab === 'roster' ? (
-                            ALL_ROSTER_COLUMNS.map(col => {
-                                const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
-                                const isSeparator = ['DRF', 'DCN'].includes(col.label);
-                                return (
-                                <SortHeader 
-                                    key={String(col.key)} 
-                                    label={col.label} 
-                                    sortKey={col.key as string} 
-                                    width="45px" 
-                                    tooltip={col.tooltip} 
-                                    className={`
-                                        ${isMajor ? 'bg-slate-900' : ''}
-                                        ${isSeparator ? 'border-r border-white/10' : ''}
-                                    `}
-                                />
-                                );
-                            })
-                         ) : tab === 'stats' ? (
-                            statMode === 'traditional' ? (
-                                TRADITIONAL_STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width={UNIFIED_STAT_WIDTH} align="right" className="pr-3" />)
-                            ) : (
-                                // Strategy Stats Header
-                                STRATEGY_COLUMNS.map(col => (
+               {/* Separate Logic for Strategy Mode (Two Distinct Tables) */}
+               {statMode === 'strategy' && tab === 'stats' ? (
+                   <>
+                        {/* Table 1: General Strategy */}
+                        <thead className="sticky top-0 z-20">
+                            <tr className="border-y border-white/10 text-slate-500 bg-slate-950">
+                                <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">TACTIC NAME</th>
+                                <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-center border-r border-white/10 w-[60px]">TYPE</th>
+                                {STRATEGY_COLUMNS.map(col => (
                                     <SortHeader key={col.key} label={col.label} sortKey={`strategy_${col.key}`} width={col.width} align="right" className="pr-4" />
-                                ))
-                            )
-                         ) : (
-                            SALARY_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />)
-                         )}
-                      </tr>
-                  )}
-               </thead>
-               <tbody className="divide-y divide-white/5">
-                  {/* STRATEGY MODE BODY */}
-                  {statMode === 'strategy' && tab === 'stats' ? (
-                      strategyData.length === 0 ? (
-                          <tr><td colSpan={10} className="py-12 text-center text-slate-500 font-bold text-xs">기록된 전술 데이터가 없습니다.</td></tr>
-                      ) : (
-                          strategyData.map((record, idx) => {
-                              const s = record.stats;
-                              const winPct = s.games > 0 ? (s.wins / s.games * 100).toFixed(1) : '0.0';
-                              const avgPts = s.games > 0 ? (s.ptsFor / s.games).toFixed(1) : '0.0';
-                              const avgPa = s.games > 0 ? (s.ptsAgainst / s.games).toFixed(1) : '0.0';
-                              const fgPct = s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '0.0%';
-                              const p3Pct = s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '0.0%';
-                              const rimPct = s.rimA > 0 ? ((s.rimM / s.rimA) * 100).toFixed(1) + '%' : '0.0%';
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                            {generalStrategyData.length === 0 ? (
+                                <tr><td colSpan={10} className="py-12 text-center text-slate-500 font-bold text-xs">기록된 전술 데이터가 없습니다.</td></tr>
+                            ) : (
+                                generalStrategyData.map((record, idx) => {
+                                    const s = record.stats;
+                                    const winPct = s.games > 0 ? (s.wins / s.games * 100).toFixed(1) : '0.0';
+                                    const avgPts = s.games > 0 ? (s.ptsFor / s.games).toFixed(1) : '0.0';
+                                    const avgPa = s.games > 0 ? (s.ptsAgainst / s.games).toFixed(1) : '0.0';
+                                    const fgPct = s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '0.0%';
+                                    const p3Pct = s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '0.0%';
+                                    const rimPct = s.rimA > 0 ? ((s.rimM / s.rimA) * 100).toFixed(1) + '%' : '0.0%';
 
-                              return (
-                                <tr key={idx} className="hover:bg-slate-900 transition-all group">
-                                    <td className="py-3 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
-                                        <span className="text-xs font-bold text-slate-300">{record.name}</span>
-                                    </td>
-                                    <td className="py-3 px-2 text-center border-r border-white/10">
-                                        <span className={`text-[10px] font-black px-2 py-0.5 rounded ${record.type === 'OFF' ? 'bg-indigo-900/50 text-indigo-400' : 'bg-red-900/50 text-red-400'}`}>
-                                            {record.type}
-                                        </span>
-                                    </td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{s.games}</td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{s.wins}-{s.games - s.wins}</td>
-                                    <td className={`py-2 px-1 text-right pr-4 font-black font-mono text-xs ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-white text-xs">{avgPts}</td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{avgPa}</td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{fgPct}</td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{p3Pct}</td>
-                                    <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{rimPct}</td>
+                                    return (
+                                        <tr key={idx} className="hover:bg-slate-900 transition-all group">
+                                            <td className="py-3 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                                                <span className="text-xs font-bold text-slate-300">{record.name}</span>
+                                            </td>
+                                            <td className="py-3 px-2 text-center border-r border-white/10">
+                                                <span className={`text-[10px] font-black px-2 py-0.5 rounded ${record.type === 'OFF' ? 'bg-indigo-900/50 text-indigo-400' : 'bg-red-900/50 text-red-400'}`}>
+                                                    {record.type}
+                                                </span>
+                                            </td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{s.games}</td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{s.wins}-{s.games - s.wins}</td>
+                                            <td className={`py-2 px-1 text-right pr-4 font-black font-mono text-xs ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-white text-xs">{avgPts}</td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{avgPa}</td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{fgPct}</td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{p3Pct}</td>
+                                            <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{rimPct}</td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                        
+                        {/* Table 2: Ace Stopper (Separate Header) */}
+                        {aceStopperData && (
+                            <>
+                                <thead className="sticky top-0 z-20">
+                                    {/* Spacer Row */}
+                                    <tr><th colSpan={10} className="h-8 bg-transparent"></th></tr>
+                                    <tr className="border-y border-white/10 text-slate-500 bg-slate-950">
+                                        <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">TACTIC NAME</th>
+                                        <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-center border-r border-white/10 w-[60px]">TYPE</th>
+                                        {ACE_STOPPER_COLUMNS.map(col => (
+                                            <th key={col.key} className="px-1 py-3 text-[10px] font-black uppercase tracking-widest text-right pr-4" style={{ width: col.width }}>
+                                                {col.label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {(() => {
+                                        const s = aceStopperData.stats;
+                                        const winPct = s.games > 0 ? (s.wins / s.games * 100).toFixed(1) : '0.0';
+                                        const avgAcePts = s.games > 0 ? (s.ptsAgainst / s.games).toFixed(1) : '0.0';
+                                        const aceFgPct = s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '0.0%';
+                                        const ace3pPct = s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '0.0%';
+                                        const avgImpact = s.games > 0 ? (s.aceImpact! / s.games).toFixed(1) : '0.0';
+
+                                        return (
+                                            <tr className="hover:bg-slate-900 transition-all group">
+                                                <td className="py-3 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                                                    <span className="text-xs font-bold text-slate-300">{aceStopperData.name}</span>
+                                                </td>
+                                                <td className="py-3 px-2 text-center border-r border-white/10">
+                                                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-fuchsia-900/50 text-fuchsia-400">
+                                                        {aceStopperData.type}
+                                                    </span>
+                                                </td>
+                                                <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{s.games}</td>
+                                                <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{s.wins}-{s.games - s.wins}</td>
+                                                <td className={`py-2 px-1 text-right pr-4 font-black font-mono text-xs ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
+                                                <td className="py-2 px-1 text-right pr-4 font-black font-mono text-white text-xs">{avgAcePts}</td>
+                                                <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{aceFgPct}</td>
+                                                <td className="py-2 px-1 text-right pr-4 font-black font-mono text-slate-400 text-xs">{ace3pPct}</td>
+                                                <td className={`py-2 px-1 text-right pr-4 font-black font-mono text-xs ${Number(avgImpact) < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                    {Number(avgImpact) > 0 ? '+' : ''}{avgImpact}%
+                                                </td>
+                                            </tr>
+                                        );
+                                    })()}
+                                </tbody>
+                            </>
+                        )}
+                   </>
+               ) : (
+                   // STANDARD PLAYER TABLE (Logic Unchanged)
+                   <>
+                       <thead className="sticky top-0 z-20">
+                          {tab === 'stats' && statMode === 'shooting' ? (
+                              <>
+                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-y border-white/10 bg-slate-950">
+                                     <th rowSpan={2} className="py-3 px-6 text-left sticky left-0 bg-slate-950 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-white/10 w-[180px]">PLAYER NAME</th>
+                                     <SortHeader rowSpan={2} label="POS" sortKey="position" width="50px" className="border-b border-white/10 bg-slate-950" />
+                                     <SortHeader rowSpan={2} label="AGE" sortKey="age" width="40px" className="border-b border-white/10 bg-slate-950" />
+                                     <SortHeader rowSpan={2} label="OVR" sortKey="ovr" width="50px" className="border-r border-b border-white/10 pr-2 bg-slate-950" />
+
+                                     {SHOOTING_ZONES.map(z => (
+                                         <th key={z.id} colSpan={3} className="py-2 text-center border-b border-r border-white/10 text-slate-300 bg-slate-950">{z.label}</th>
+                                     ))}
                                 </tr>
-                              );
-                          })
-                      )
-                  ) : (
-                      // PLAYER LIST BODY
-                      sortedRoster.map(p => {
-                          // [Fix] Calculate real-time OVR for display
-                          const displayOvr = calculatePlayerOvr(p);
-                          
-                          return (
-                          <tr key={p.id} className="hover:bg-slate-900 transition-all group">
-                              <td className="py-2.5 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setViewPlayer(p)}>
-                                  <div className="flex items-center gap-3">
-                                      <div className="flex flex-col min-w-0">
-                                          <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                                              <span className="text-xs font-bold text-slate-300 truncate max-w-[140px] group-hover:text-indigo-400 group-hover:underline">{p.name}</span>
-                                              {p.health !== 'Healthy' && (
-                                                  <span 
-                                                    className={`px-1 py-0.5 rounded-[3px] text-[8px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}
-                                                    title={`복귀 예정: ${p.returnDate || '미정'} (${p.injuryType || '부상'})`}
-                                                  >
-                                                    {p.health === 'Injured' ? 'OUT' : 'DTD'}
-                                                  </span>
-                                              )}
+                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest bg-slate-950">
+                                     {SHOOTING_ZONES.map(z => (
+                                        <React.Fragment key={z.id + '_sub'}>
+                                            <SortHeader label="M" sortKey={`${z.id}_m`} width="45px" align="right" className="bg-slate-950 border-b border-white/10" />
+                                            <SortHeader label="A" sortKey={`${z.id}_a`} width="45px" align="right" className="bg-slate-950 border-b border-white/10" />
+                                            <SortHeader label="%" sortKey={`${z.id}_pct`} width="45px" align="right" className="bg-slate-950 border-r border-b border-white/10 pr-2" />
+                                        </React.Fragment>
+                                     ))}
+                                </tr>
+                              </>
+                          ) : (
+                              <tr className="border-y border-white/10 text-slate-500 bg-slate-950">
+                                 <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">
+                                    PLAYER NAME
+                                 </th>
+                                 
+                                 {(tab === 'roster' || (tab === 'stats' && statMode !== 'strategy')) && (
+                                   <>
+                                     <SortHeader label="POS" sortKey="position" width="50px" />
+                                     <SortHeader label="AGE" sortKey="age" width="40px" />
+                                     <SortHeader label="OVR" sortKey="ovr" width="50px" className="border-r border-white/10 pr-2" />
+                                   </>
+                                 )}
+                                 
+                                 {tab === 'roster' ? (
+                                    ALL_ROSTER_COLUMNS.map(col => {
+                                        const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
+                                        const isSeparator = ['DRF', 'DCN'].includes(col.label);
+                                        return (
+                                        <SortHeader 
+                                            key={String(col.key)} 
+                                            label={col.label} 
+                                            sortKey={col.key as string} 
+                                            width="45px" 
+                                            tooltip={col.tooltip} 
+                                            className={`
+                                                ${isMajor ? 'bg-slate-900' : ''}
+                                                ${isSeparator ? 'border-r border-white/10' : ''}
+                                            `}
+                                        />
+                                        );
+                                    })
+                                 ) : tab === 'stats' ? (
+                                    statMode === 'traditional' ? (
+                                        TRADITIONAL_STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width={UNIFIED_STAT_WIDTH} align="right" className="pr-3" />)
+                                    ) : null
+                                 ) : (
+                                    SALARY_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />)
+                                 )}
+                              </tr>
+                          )}
+                       </thead>
+                       <tbody className="divide-y divide-white/5">
+                          {sortedRoster.map(p => {
+                              const displayOvr = calculatePlayerOvr(p);
+                              return (
+                              <tr key={p.id} className="hover:bg-slate-900 transition-all group">
+                                  <td className="py-2.5 px-6 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setViewPlayer(p)}>
+                                      <div className="flex items-center gap-3">
+                                          <div className="flex flex-col min-w-0">
+                                              <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
+                                                  <span className="text-xs font-bold text-slate-300 truncate max-w-[140px] group-hover:text-indigo-400 group-hover:underline">{p.name}</span>
+                                                  {p.health !== 'Healthy' && (
+                                                      <span 
+                                                        className={`px-1 py-0.5 rounded-[3px] text-[8px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}
+                                                        title={`복귀 예정: ${p.returnDate || '미정'} (${p.injuryType || '부상'})`}
+                                                      >
+                                                        {p.health === 'Injured' ? 'OUT' : 'DTD'}
+                                                      </span>
+                                                  )}
+                                              </div>
                                           </div>
                                       </div>
-                                  </div>
-                              </td>
-                              
-                              {/* Shared Info Columns with Dark Background */}
-                              {(tab === 'roster' || tab === 'stats') && (
-                                <>
-                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950">{p.position}</td>
-                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950">{p.age}</td>
-                                    <td className="px-1 py-2 text-center border-r border-white/10 pr-2 bg-slate-950">
-                                        <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
-                                    </td>
-                                </>
-                              )}
+                                  </td>
+                                  
+                                  {(tab === 'roster' || tab === 'stats') && (
+                                    <>
+                                        <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950">{p.position}</td>
+                                        <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950">{p.age}</td>
+                                        <td className="px-1 py-2 text-center border-r border-white/10 pr-2 bg-slate-950">
+                                            <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
+                                        </td>
+                                    </>
+                                  )}
 
-                              {tab === 'roster' ? (
-                                  ALL_ROSTER_COLUMNS.map(col => {
-                                      const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
-                                      const isSeparator = ['DRF', 'DCN'].includes(col.label);
-                                      
-                                      return (
-                                      <AttrCell 
-                                        key={String(col.key)} 
-                                        value={p[col.key as keyof Player] as number} 
-                                        className={`
-                                            ${isMajor ? 'bg-slate-900' : ''}
-                                            ${isSeparator ? 'border-r border-white/10' : ''}
-                                        `}
-                                      />
-                                      );
-                                  })
-                              ) : tab === 'stats' ? (
-                                  statMode === 'traditional' ? (
-                                      TRADITIONAL_STATS_COLUMNS.map(col => {
-                                          const s = p.stats;
-                                          const g = s.g || 1;
-                                          let valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
-                                          
-                                          if (col.key === 'g' || col.key === 'gs') valStr = String(s[col.key as keyof typeof s]);
-                                          else if (col.key === 'fgm' || col.key === 'fga' || col.key === 'p3m' || col.key === 'p3a' || col.key === 'ftm' || col.key === 'fta') {
-                                              valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
-                                          }
-                                          else if (col.key.includes('%')) {
-                                              let n = 0, d = 0;
-                                              if (col.key === 'fg%') { n = s.fgm; d = s.fga; }
-                                              else if (col.key === '3p%') { n = s.p3m; d = s.p3a; }
-                                              else if (col.key === 'ft%') { n = s.ftm; d = s.fta; }
-                                              else if (col.key === 'ts%') { n = s.pts; d = 2 * (s.fga + 0.44 * s.fta); }
-                                              valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
-                                          } else if (col.key === 'pf') {
-                                              valStr = ((s.pf || 0) / g).toFixed(1);
-                                          }
-                                          // [Visual Update] Font Monospace & Black
-                                          return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{valStr}</td>;
-                                      })
-                                  ) : (
-                                      // Shooting Stats Body
-                                      SHOOTING_ZONES.map(zone => {
-                                          const s = p.stats as any;
-                                          const m = s[`${zone.id}_m`] || 0;
-                                          const a = s[`${zone.id}_a`] || 0;
-                                          const pct = a > 0 ? ((m / a) * 100).toFixed(1) + '%' : '-';
+                                  {tab === 'roster' ? (
+                                      ALL_ROSTER_COLUMNS.map(col => {
+                                          const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
+                                          const isSeparator = ['DRF', 'DCN'].includes(col.label);
                                           
                                           return (
-                                              <React.Fragment key={zone.id}>
-                                                  {/* [Visual Update] Font Monospace & Black, No Background */}
-                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{m}</td>
-                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{a}</td>
-                                                  <td className={`px-1 py-2 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
-                                              </React.Fragment>
+                                          <AttrCell 
+                                            key={String(col.key)} 
+                                            value={p[col.key as keyof Player] as number} 
+                                            className={`
+                                                ${isMajor ? 'bg-slate-900' : ''}
+                                                ${isSeparator ? 'border-r border-white/10' : ''}
+                                            `}
+                                          />
                                           );
                                       })
-                                  )
-                              ) : (
-                                  SALARY_COLUMNS.map(col => {
-                                      let valStr = String(p[col.key as keyof Player] || '');
-                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-0"}>{displayOvr}</div></div></td>;
-                                      if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
-                                      else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
-                                      else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
-                                      return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-400 text-xs tabular-nums">{valStr}</td>;
-                                  })
-                              )}
-                          </tr>
-                      );
-                      })
-                  )}
-               </tbody>
+                                  ) : tab === 'stats' ? (
+                                      statMode === 'traditional' ? (
+                                          TRADITIONAL_STATS_COLUMNS.map(col => {
+                                              const s = p.stats;
+                                              const g = s.g || 1;
+                                              let valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
+                                              
+                                              if (col.key === 'g' || col.key === 'gs') valStr = String(s[col.key as keyof typeof s]);
+                                              else if (col.key === 'fgm' || col.key === 'fga' || col.key === 'p3m' || col.key === 'p3a' || col.key === 'ftm' || col.key === 'fta') {
+                                                  valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
+                                              }
+                                              else if (col.key.includes('%')) {
+                                                  let n = 0, d = 0;
+                                                  if (col.key === 'fg%') { n = s.fgm; d = s.fga; }
+                                                  else if (col.key === '3p%') { n = s.p3m; d = s.p3a; }
+                                                  else if (col.key === 'ft%') { n = s.ftm; d = s.fta; }
+                                                  else if (col.key === 'ts%') { n = s.pts; d = 2 * (s.fga + 0.44 * s.fta); }
+                                                  valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                              } else if (col.key === 'pf') {
+                                                  valStr = ((s.pf || 0) / g).toFixed(1);
+                                              }
+                                              return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{valStr}</td>;
+                                          })
+                                      ) : (
+                                          SHOOTING_ZONES.map(zone => {
+                                              const s = p.stats as any;
+                                              const m = s[`${zone.id}_m`] || 0;
+                                              const a = s[`${zone.id}_a`] || 0;
+                                              const pct = a > 0 ? ((m / a) * 100).toFixed(1) + '%' : '-';
+                                              
+                                              return (
+                                                  <React.Fragment key={zone.id}>
+                                                      <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{m}</td>
+                                                      <td className="px-1 py-2 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{a}</td>
+                                                      <td className={`px-1 py-2 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
+                                                  </React.Fragment>
+                                              );
+                                          })
+                                      )
+                                  ) : (
+                                      SALARY_COLUMNS.map(col => {
+                                          let valStr = String(p[col.key as keyof Player] || '');
+                                          if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-0"}>{displayOvr}</div></div></td>;
+                                          if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
+                                          else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
+                                          else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
+                                          return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-400 text-xs tabular-nums">{valStr}</td>;
+                                      })
+                                  )}
+                              </tr>
+                          );
+                          })}
+                       </tbody>
+                   </>
+               )}
                {/* Footer for Roster Tab */}
                {teamStats && tab === 'roster' && (
                    <tfoot className="bg-slate-900 border-t border-slate-800 z-10 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.5)]">
@@ -682,12 +748,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                             valStr = (statsTotals[statKey as keyof typeof statsTotals] / g).toFixed(1);
                                         }
                                     }
-                                    
-                                    // [Visual Update] Font Monospace & Black
                                     return <td key={col.key} className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-white text-xs tabular-nums">{valStr}</td>
                                 })
                             ) : (
-                                 // Shooting Stats Footer
                                   SHOOTING_ZONES.map(zone => {
                                       const s = statsTotals as any;
                                       const m = s[`${zone.id}_m`] || 0;
@@ -696,7 +759,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       
                                       return (
                                           <React.Fragment key={zone.id}>
-                                              {/* [Visual Update] Font Monospace & Black, No Background */}
                                               <td className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{m}</td>
                                               <td className="px-1 py-3 align-middle text-right pr-3 font-black font-mono text-slate-400 text-xs tabular-nums">{a}</td>
                                               <td className={`px-1 py-3 align-middle text-right pr-4 border-r border-white/10 font-black font-mono text-xs tabular-nums ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
