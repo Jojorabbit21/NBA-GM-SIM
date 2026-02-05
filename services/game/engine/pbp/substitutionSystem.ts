@@ -5,7 +5,7 @@ import { calculatePlayerArchetypes } from './archetypeSystem';
 import { DepthChart } from '../../../../types';
 
 const SCORE_DIFF_GARBAGE = 25; // 25+ pts diff in Q4 = Garbage
-const MIN_STINT_SECONDS = 120; // Minimum 2 minutes lock
+const MIN_STINT_SECONDS = 60; // Reduced lock to 1 min to allow quicker corrections
 
 // Safety Nets
 const HARD_FLOOR = 20; // < 20% -> Shutdown
@@ -27,22 +27,27 @@ enum RotationMode {
     DEEP = 'DEEP'        // 8-10
 }
 
-function getRotationMode(flexibility: number): RotationMode {
-    if (flexibility <= 3) return RotationMode.STRICT;
-    if (flexibility >= 8) return RotationMode.DEEP;
-    return RotationMode.NORMAL;
+function getMaxEnergyBurn(flexibility: number): number {
+    if (flexibility <= 3) return 100; // Strict: Infinite burn (controlled by schedule)
+    if (flexibility >= 8) return 10; // Deep: Short stints
+    return 17; // Normal
 }
 
 /**
- * Calculates Maximum Energy Burn allowed per Stint based on flexibility.
- * Strict: Ignored (Infinite burn until floor)
- * Normal: 17 (~8.5m)
- * Deep: 10 (~5m)
+ * Returns specific timing thresholds based on Strict Level (1-3)
+ * @param flexibility 1, 2, or 3
  */
-function getMaxEnergyBurn(flexibility: number): number {
-    if (flexibility <= 3) return 100; // Strict: Effectively infinite (controlled by isStrict check)
-    if (flexibility >= 8) return 10; // Deep: Only allow 10% drain (e.g. 100->90)
-    return 17; // Normal: ~17% drain
+function getStrictSchedule(flexibility: number) {
+    if (flexibility <= 1) {
+        // Level 1: Q1/3 Full (12m), Q2/4 Last 7m
+        return { q1q3Out: 0, q2q4In: 420 }; 
+    } else if (flexibility === 2) {
+        // Level 2: Q1/3 10m (Out at 2:00), Q2/4 Last 7m
+        return { q1q3Out: 120, q2q4In: 420 };
+    } else {
+        // Level 3: Q1/3 8m (Out at 4:00), Q2/4 Last 6m
+        return { q1q3Out: 240, q2q4In: 360 };
+    }
 }
 
 function updateLineupArchetypes(team: TeamState) {
@@ -70,6 +75,21 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
     const isGarbage = state.quarter === 4 && state.gameClock < 300 && scoreDiff >= SCORE_DIFF_GARBAGE;
     const isClutch = state.quarter === 4 && state.gameClock < 300 && scoreDiff <= 10;
 
+    // [STRICT MODE SCHEDULER CHECK]
+    if (isStrict && !isClutch) {
+        const schedule = getStrictSchedule(flexibility);
+        
+        // Q1 & Q3: Check if it's time to sub OUT starters (e.g. at 2:00 mark)
+        if ((state.quarter === 1 || state.quarter === 3) && state.gameClock <= schedule.q1q3Out) {
+             if (team.onCourt.some(p => p.isStarter)) return true;
+        }
+
+        // Q2 & Q4: Check if starters should be RESTING (Before entry time)
+        if ((state.quarter === 2 || state.quarter === 4) && state.gameClock > schedule.q2q4In) {
+             if (team.onCourt.some(p => p.isStarter)) return true;
+        }
+    }
+
     for (const p of team.onCourt) {
         // 1. Injury / Ejection
         if (p.health === 'Injured' || p.pf >= 6) return true;
@@ -89,11 +109,34 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
         const limit = minutesLimits[p.playerId];
         if (limit !== undefined && p.mp >= limit + 0.5) return true;
 
-        // 6. Stint Limit Check (Delta)
-        // [FIX] Skip this check if Strict Mode OR Clutch time
+        // 6. Stint Limit Check (Delta) - ONLY for Non-Strict
         if (!isClutch && !isStrict) {
             const energyConsumed = p.conditionAtSubIn - p.currentCondition;
             if (energyConsumed >= maxBurn) return true;
+        }
+    }
+
+    // [STRICT MODE RETURN CHECK]
+    if (isStrict && !isGarbage) {
+        const schedule = getStrictSchedule(flexibility);
+        
+        let shouldStartersBeIn = false;
+        
+        // Q1/Q3: Should be IN if clock > cutoff
+        if (state.quarter === 1 || state.quarter === 3) {
+            if (state.gameClock > schedule.q1q3Out) shouldStartersBeIn = true;
+        }
+        // Q2/Q4: Should be IN if clock <= entry time
+        else if (state.quarter === 2 || state.quarter === 4) {
+            if (state.gameClock <= schedule.q2q4In) shouldStartersBeIn = true;
+        }
+
+        if (shouldStartersBeIn) {
+            const startersOnBench = team.bench.some(b => 
+                b.isStarter && b.health !== 'Injured' && b.pf < 6 && !b.isShutdown && 
+                (!b.needsDeepRecovery || b.currentCondition >= RED_ZONE_RECOVERY_TARGET)
+            );
+            if (startersOnBench) return true; // Bring them back!
         }
     }
 
@@ -111,6 +154,9 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
 
     let changesMade = false;
     
+    // [STRICT MODE] Schedule Config
+    const strictSched = getStrictSchedule(flexibility);
+
     team.onCourt.forEach(p => {
         let shouldSub = false;
         let reason = '';
@@ -142,8 +188,19 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
                  shouldSub = true; reason = '시간 제한';
             }
 
-            // Stint Limit (Delta)
-            // [FIX] Ignore if Strict Mode or Clutch
+            // [STRICT MODE] Scheduled Sub-Out
+            else if (isStrict && p.isStarter && !isClutch) {
+                // Q1/Q3 Time Limit Check
+                if ((state.quarter === 1 || state.quarter === 3) && state.gameClock <= strictSched.q1q3Out) {
+                    shouldSub = true; reason = `체력 안배(Q${state.quarter} Limit)`;
+                }
+                // Q2/Q4 Rest Period Check
+                else if ((state.quarter === 2 || state.quarter === 4) && state.gameClock > strictSched.q2q4In) {
+                    shouldSub = true; reason = `체력 안배(Q${state.quarter} Rest)`;
+                }
+            }
+
+            // Stint Limit (Delta) - Only Non-Strict
             else if (!isClutch && !isStrict && energyConsumed >= maxBurn) {
                  shouldSub = true; reason = '로테이션(Stint)';
             }
@@ -166,10 +223,6 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
     return changesMade;
 }
 
-/**
- * Finds the best replacement based on Depth Chart hierarchy AND Safety Nets.
- * [FIX] Added Position Compatibility Logic
- */
 function findReplacement(
     team: TeamState, 
     current: LivePlayer, 
@@ -181,8 +234,6 @@ function findReplacement(
     const posKeys: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
     let positionKey: keyof DepthChart = 'PG';
     
-    // Determine the slot the current player is occupying
-    // Try to find them in depth chart
     let found = false;
     for (const key of posKeys) {
         if (team.depthChart[key].includes(current.playerId)) {
@@ -191,7 +242,6 @@ function findReplacement(
             break;
         }
     }
-    // Fallback: Use their primary position string
     if (!found) {
         const rawPos = current.position.split('/')[0] as keyof DepthChart;
         if (team.depthChart[rawPos]) positionKey = rawPos;
@@ -199,20 +249,18 @@ function findReplacement(
 
     const depthList = team.depthChart[positionKey];
     
-    // 2. Define Candidate Order from Depth Chart
+    // 2. Define Candidate Order
     let candidateIds: (string|null)[] = [];
     const currentIndex = depthList.indexOf(current.playerId);
 
     if (isGarbage) {
         candidateIds = [depthList[2], depthList[1]]; 
     } else {
-        // Standard Logic
         if (currentIndex === 0) candidateIds = [depthList[1], depthList[2]];
         else if (currentIndex === 1) candidateIds = [depthList[0], depthList[2]];
         else candidateIds = [depthList[1], depthList[0]];
     }
 
-    // 3. Helper to validate a candidate
     const isValid = (c: LivePlayer) => {
         if (c.health === 'Injured') return false;
         if (c.pf >= 6) return false;
@@ -221,7 +269,7 @@ function findReplacement(
         return true;
     };
 
-    // 4. Check Candidates from Depth Chart first
+    // 3. Check Candidates from Depth Chart first
     for (const id of candidateIds) {
         if (!id) continue;
         const candidate = team.bench.find(b => b.playerId === id);
@@ -234,8 +282,7 @@ function findReplacement(
         }
     }
 
-    // 5. [FIX] Emergency Fallback: Strict Position Matching
-    // Find best bench player who plays compatible position
+    // 4. Emergency Fallback: Strict Position Matching
     const compatiblePositions = POS_COMPATIBILITY[positionKey] || [positionKey];
     
     const validBench = team.bench
@@ -243,7 +290,7 @@ function findReplacement(
             const bPos = b.position.split('/')[0];
             return (bPos === positionKey || compatiblePositions.includes(bPos)) && isValid(b);
         })
-        .sort((a, b) => b.currentCondition - a.currentCondition); // Prioritize energy
+        .sort((a, b) => b.currentCondition - a.currentCondition);
     
     if (validBench.length > 0) {
         const best = validBench[0];
@@ -251,7 +298,7 @@ function findReplacement(
         return best;
     }
 
-    // 6. Absolute Last Resort: Anyone breathing
+    // 5. Absolute Last Resort
     const anyBench = team.bench
         .filter(b => isValid(b))
         .sort((a, b) => b.currentCondition - a.currentCondition);
@@ -265,7 +312,6 @@ function executeSwap(team: TeamState, outP: LivePlayer, inP: LivePlayer, state: 
     team.onCourt = team.onCourt.filter(p => p.playerId !== outP.playerId);
     team.onCourt.push(inP);
     
-    // [Fix] Set entry snapshot
     inP.lastSubInTime = state.gameClock;
     inP.conditionAtSubIn = inP.currentCondition;
     
@@ -283,7 +329,7 @@ function executeSwap(team: TeamState, outP: LivePlayer, inP: LivePlayer, state: 
 
 /**
  * Check if starters on bench are ready to return.
- * [FIX] Position-aware return logic
+ * [UPDATED] Strict Mode now uses granular scheduling.
  */
 function checkStartersReturn(
     team: TeamState, 
@@ -294,9 +340,10 @@ function checkStartersReturn(
 ) {
     const minutesLimits = team.tactics.minutesLimits || {};
     const isStrict = flexibility <= 3;
-    
-    // Return Threshold
-    const returnThreshold = isStrict ? 78 : (100 - maxBurn + 3);
+    const strictSched = getStrictSchedule(flexibility);
+
+    // Normal/Deep Mode Threshold
+    const normalReturnThreshold = 100 - maxBurn + 3;
 
     const startersOnBench = team.bench.filter(b => b.isStarter && b.health !== 'Injured' && b.pf < 6 && !b.isShutdown);
     
@@ -305,15 +352,30 @@ function checkStartersReturn(
         if (starter.needsDeepRecovery && starter.currentCondition < RED_ZONE_RECOVERY_TARGET) return;
         if (starter.needsDeepRecovery) starter.needsDeepRecovery = false;
 
-        // Condition Check (Clutch overrides)
-        const effectiveThreshold = isClutch ? 60 : returnThreshold;
-        if (starter.currentCondition < effectiveThreshold) return;
+        // Condition / Schedule Check
+        if (isStrict) {
+            // [STRICT MODE] Scheduled Return Check
+            let isTime = false;
+
+            if (state.quarter === 1 || state.quarter === 3) {
+                // Should stay IN until the cutoff. If they are out before cutoff, bring them back.
+                if (state.gameClock > strictSched.q1q3Out) isTime = true;
+            } else if (state.quarter === 2 || state.quarter === 4) {
+                // Return after the entry time (e.g. 7:00 mark)
+                if (state.gameClock <= strictSched.q2q4In) isTime = true;
+            }
+
+            if (!isTime && !isClutch) return; // Not time yet
+        } else {
+            // Normal/Deep Mode: Rely on recovery threshold
+            const effectiveThreshold = isClutch ? 60 : normalReturnThreshold;
+            if (starter.currentCondition < effectiveThreshold) return;
+        }
 
         // Check Limit
         if (minutesLimits[starter.playerId] !== undefined && starter.mp >= minutesLimits[starter.playerId]) return;
 
-        // [FIX] Find who to replace (Backup at SAME Position)
-        // 1. Determine Starter's assigned position from Depth Chart
+        // Find who to replace (Backup at SAME Position)
         const posKeys: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
         let starterPos: keyof DepthChart = 'PG';
         
@@ -328,7 +390,6 @@ function checkStartersReturn(
              starterPos = starter.position.split('/')[0] as keyof DepthChart;
         }
 
-        // 2. Find compatible non-starter on court
         // Priority: Direct Backup > Compatible Position > Anyone
         const directBackupIds = team.depthChart ? [team.depthChart[starterPos][1], team.depthChart[starterPos][2]] : [];
         const compatiblePositions = POS_COMPATIBILITY[starterPos] || [];
@@ -336,14 +397,13 @@ function checkStartersReturn(
         let target = team.onCourt.find(p => directBackupIds.includes(p.playerId));
         
         if (!target) {
-            // Find someone playing the same or compatible position who is NOT a starter
             target = team.onCourt.find(p => 
                 !p.isStarter && 
                 (p.position.split('/')[0] === starterPos || compatiblePositions.includes(p.position.split('/')[0]))
             );
         }
 
-        // Fallback (Rare): Just find lowest OVR non-starter
+        // Fallback
         if (!target) {
              target = team.onCourt
                 .filter(p => !p.isStarter)
@@ -351,9 +411,12 @@ function checkStartersReturn(
         }
 
         if (target) {
-             // Avoid rapid swaps (Min Stint), unless clutch
-             if (isClutch || (target.lastSubInTime - state.gameClock) >= MIN_STINT_SECONDS) {
-                 executeSwap(team, target, starter, state, '주전 복귀');
+             // Avoid rapid swaps (Min Stint), unless clutch or Strict Schedule
+             // In Strict, if schedule dictates, we swap regardless of min stint lock
+             const ignoreLock = isClutch || isStrict; 
+             if (ignoreLock || (target.lastSubInTime - state.gameClock) >= MIN_STINT_SECONDS) {
+                 const reason = isStrict ? '주전 투입(Scheduled)' : '주전 복귀';
+                 executeSwap(team, target, starter, state, reason);
              }
         }
     });
