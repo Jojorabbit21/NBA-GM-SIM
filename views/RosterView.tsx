@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock } from 'lucide-react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle, getRankStyle } from '../components/SharedComponents';
+import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
 
@@ -17,28 +17,54 @@ interface RosterViewProps {
   initialTeamId?: string | null;
 }
 
-const ROSTER_CATEGORIES = {
-  'Shooting': '슈팅/득점',
-  'Athleticism': '신체능력',
-  'Playmaking': '핸들링/패스',
-  'DefReb': '수비/리바운드'
-};
+// Flattened columns for the single unified table
+const ALL_ROSTER_COLUMNS: { key: keyof Player | string, label: string, tooltip: string }[] = [
+    // Shooting & Scoring
+    { key: 'ins', label: 'INS', tooltip: '인사이드 스코어링' },
+    { key: 'closeShot', label: 'CLS', tooltip: '근거리 슛' },
+    { key: 'layup', label: 'LAY', tooltip: '레이업' },
+    { key: 'dunk', label: 'DNK', tooltip: '덩크' },
+    { key: 'postPlay', label: 'PST', tooltip: '포스트 플레이' },
+    { key: 'drawFoul', label: 'DRF', tooltip: '자유투 유도' },
+    { key: 'out', label: 'OUT', tooltip: '외곽 스코어링' },
+    { key: 'midRange', label: 'MID', tooltip: '중거리 슛' },
+    { key: 'threeCorner', label: '3PT', tooltip: '3점 슛' },
+    { key: 'ft', label: 'FT', tooltip: '자유투' },
+    { key: 'shotIq', label: 'SIQ', tooltip: '슛 셀렉션' },
+    { key: 'offConsist', label: 'OCN', tooltip: '공격 기복' },
+    
+    // Playmaking
+    { key: 'plm', label: 'PLM', tooltip: '플레이메이킹' },
+    { key: 'handling', label: 'HDL', tooltip: '볼 핸들링' },
+    { key: 'hands', label: 'HND', tooltip: '핸즈' },
+    { key: 'passAcc', label: 'PAS', tooltip: '패스 정확도' },
+    { key: 'passVision', label: 'VIS', tooltip: '패스 시야' },
+    { key: 'passIq', label: 'PIQ', tooltip: '패스 IQ' },
 
-const ROSTER_COLUMNS: Record<string, { key: keyof Player | string, label: string }[]> = {
-  'Shooting': [
-    { key: 'ins', label: 'INS' }, { key: 'closeShot', label: 'CLS' }, { key: 'layup', label: 'LAY' }, { key: 'dunk', label: 'DNK' }, { key: 'drawFoul', label: 'DRF' },
-    { key: 'out', label: 'OUT' }, { key: 'midRange', label: 'MID' }, { key: 'threeCorner', label: '3PT' }, { key: 'ft', label: 'FT' }, { key: 'shotIq', label: 'SIQ' }, { key: 'offConsist', label: 'OCN' },
-  ],
-  'Athleticism': [
-    { key: 'ath', label: 'ATH' }, { key: 'speed', label: 'SPD' }, { key: 'agility', label: 'AGI' }, { key: 'strength', label: 'STR' }, { key: 'vertical', label: 'JMP' }, { key: 'stamina', label: 'STA' }, { key: 'durability', label: 'DUR' },
-  ],
-  'Playmaking': [
-    { key: 'plm', label: 'PLM' }, { key: 'handling', label: 'HDL' }, { key: 'hands', label: 'HND' }, { key: 'passAcc', label: 'PAS' }, { key: 'passVision', label: 'VIS' }, { key: 'passIq', label: 'IQ' },
-  ],
-  'DefReb': [
-    { key: 'def', label: 'DEF' }, { key: 'perDef', label: 'PER' }, { key: 'intDef', label: 'INT' }, { key: 'steal', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'hustle', label: 'HUS' }, { key: 'passPerc', label: 'PRC' }, { key: 'defConsist', label: 'DCN' }, { key: 'reb', label: 'REB' }, { key: 'offReb', label: 'ORB' }, { key: 'defReb', label: 'DRB' },
-  ]
-};
+    // Athleticism
+    { key: 'ath', label: 'ATH', tooltip: '운동능력' },
+    { key: 'speed', label: 'SPD', tooltip: '스피드' },
+    { key: 'agility', label: 'AGI', tooltip: '민첩성' },
+    { key: 'strength', label: 'STR', tooltip: '힘' },
+    { key: 'vertical', label: 'JMP', tooltip: '점프력' },
+    { key: 'stamina', label: 'STA', tooltip: '지구력' },
+    { key: 'durability', label: 'DUR', tooltip: '내구도' },
+    { key: 'hustle', label: 'HUS', tooltip: '허슬' },
+
+    // Defense & Rebound
+    { key: 'def', label: 'DEF', tooltip: '수비력' },
+    { key: 'perDef', label: 'PER', tooltip: '퍼리미터 수비' },
+    { key: 'intDef', label: 'INT', tooltip: '인사이드 수비' },
+    { key: 'steal', label: 'STL', tooltip: '스틸' },
+    { key: 'blk', label: 'BLK', tooltip: '블록' },
+    { key: 'helpDefIq', label: 'HLP', tooltip: '헬프 수비' },
+    { key: 'passPerc', label: 'PRC', tooltip: '패스 차단' },
+    { key: 'defConsist', label: 'DCN', tooltip: '수비 기복' },
+    { key: 'reb', label: 'REB', tooltip: '리바운드' },
+    { key: 'offReb', label: 'ORB', tooltip: '공격 리바운드' },
+    { key: 'defReb', label: 'DRB', tooltip: '수비 리바운드' },
+    { key: 'intangibles', label: 'INT', tooltip: '무형자산/멘탈' },
+];
 
 const STATS_COLUMNS = [
   { key: 'g', label: 'GP' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' }, { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'offReb', label: 'ORB' }, { key: 'defReb', label: 'DRB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' }, { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' }, { key: 'ts%', label: 'TS%' },
@@ -48,16 +74,25 @@ const SALARY_COLUMNS = [
   { key: 'ovr', label: 'OVR' }, { key: 'age', label: 'AGE' }, { key: 'salary', label: '연봉 ($M)' }, { key: 'contractYears', label: '잔여계약' }, { key: 'totalValue', label: '총 계약규모' },
 ];
 
-const ATTRIBUTE_TOOLTIPS: Record<string, string> = {
-  'INS': '인사이드 스코어링', 'CLS': '근거리 슛', 'LAY': '레이업', 'DNK': '덩크', 'DRF': '자유투 유도', 'OUT': '외곽 스코어링', 'MID': '중거리 슛', '3PT': '3점 슛', 'FT': '자유투', 'SIQ': '슛 셀렉션', 'OCN': '공격 기복', 'ATH': '운동능력', 'SPD': '스피드', 'AGI': '민첩성', 'STR': '힘', 'JMP': '점프력', 'STA': '지구력', 'DUR': '내구도', 'PLM': '플레이메이킹', 'HDL': '볼 핸들링', 'HND': '핸즈', 'PAS': '패스 정확도', 'VIS': '패스 시야', 'IQ': '농구 지능', 'DEF': '수비력', 'PER': '퍼리미터 수비', 'INT': '인사이드 수비', 'STL': '스틸', 'BLK': '블록', 'PRC': '패스 차단', 'DCN': '수비 기복', 'REB': '리바운드', 'ORB': '공격 리바운드', 'DRB': '수비 리바운드', 'HUS': '허슬'
+type SortConfig = { key: string; direction: 'asc' | 'desc'; };
+
+// Helper for Attribute Color Coding (Same as Dashboard RosterTable)
+const getAttrColor = (val: number) => {
+    if (val >= 90) return 'text-fuchsia-400';
+    if (val >= 80) return 'text-emerald-400';
+    if (val >= 70) return 'text-amber-400';
+    return 'text-slate-500';
 };
 
-type SortConfig = { key: string; direction: 'asc' | 'desc'; };
+const AttrCell: React.FC<{ value: number; className?: string }> = ({ value, className }) => (
+    <td className={`py-2 px-1 text-center text-xs font-black font-mono ${getAttrColor(value)} ${className || ''}`}>
+        {value}
+    </td>
+);
 
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
   const [tab, setTab] = useState<'roster' | 'stats' | 'salary' | 'tactics'>('roster');
-  const [rosterCategory, setRosterCategory] = useState<string>('Shooting');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -175,7 +210,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   }, [selectedTeam]);
 
   const SortHeader: React.FC<{ label: string, sortKey: string, align?: 'left' | 'center' | 'right', width?: string, className?: string, tooltip?: string }> = ({ label, sortKey, align = 'center', width, className, tooltip }) => (
-    <th className={`px-1 py-4 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-white/5 transition-colors group select-none relative ${className}`} style={{ width, textAlign: align }} onClick={() => handleSort(sortKey)}>
+    <th className={`px-1 py-3 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-white/5 transition-colors group select-none relative ${className}`} style={{ width, textAlign: align }} onClick={() => handleSort(sortKey)}>
         <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
             <div className="relative group/text">
                 <span>{label}</span>
@@ -222,29 +257,38 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                     <ClipboardList size={16} /> 전술 기록
                  </button>
              </div>
-             {tab === 'roster' && (
-                 <div className="flex flex-wrap gap-2">
-                    {Object.keys(ROSTER_CATEGORIES).map(cat => (
-                        <button key={cat} onClick={() => setRosterCategory(cat)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all border ${rosterCategory === cat ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/50' : 'bg-transparent text-slate-500 border-slate-800 hover:border-slate-600'}`}>{ROSTER_CATEGORIES[cat as keyof typeof ROSTER_CATEGORIES]}</button>
-                    ))}
-                 </div>
-             )}
          </div>
 
          {tab === 'salary' && teamStats && <SalaryCapDashboard currentTotalSalary={teamStats.salary} />}
 
          {tab === 'tactics' ? <TacticsHistory team={selectedTeam} /> : (
-             <div className="w-full overflow-x-auto">
+             <div className="w-full overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left border-collapse table-auto">
-                   <thead className="sticky top-0 bg-slate-900/95 z-20">
-                      <tr className="border-b border-slate-800 text-slate-500">
-                         <SortHeader label="Player Info" sortKey="name" align="left" width="200px" className="pl-8 px-6" />
+                   <thead className="sticky top-0 bg-slate-950/90 z-20 backdrop-blur-sm">
+                      <tr className="border-y border-white/10 text-slate-500">
+                         {/* Name Column - Sticky Left */}
+                         <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950/95 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">Player Name</th>
+                         
                          {tab === 'roster' && (
-                           <><SortHeader label="POS" sortKey="position" width="60px" /><SortHeader label="AGE" sortKey="age" width="50px" /><SortHeader label="Salary" sortKey="salary" width="80px" /><SortHeader label="OVR" sortKey="ovr" width="60px" className="border-r-2 border-slate-700/60 pl-2" /></>
+                           <>
+                             <SortHeader label="POS" sortKey="position" width="50px" />
+                             <SortHeader label="AGE" sortKey="age" width="40px" />
+                             <SortHeader label="OVR" sortKey="ovr" width="50px" className="border-r border-white/10 pr-2" />
+                           </>
                          )}
+                         
                          {tab === 'roster' ? (
-                            ROSTER_COLUMNS[rosterCategory].map(col => (
-                                <SortHeader key={String(col.key)} label={col.label} sortKey={col.key as string} width="50px" tooltip={ATTRIBUTE_TOOLTIPS[col.label]} className={col.label === 'OUT' || col.label === 'REB' ? "border-l-2 border-slate-700/60 pl-2" : ""} />
+                            ALL_ROSTER_COLUMNS.map(col => (
+                                <SortHeader 
+                                    key={String(col.key)} 
+                                    label={col.label} 
+                                    sortKey={col.key as string} 
+                                    width="45px" 
+                                    tooltip={col.tooltip} 
+                                    className={`
+                                        ${col.label === 'PLM' || col.label === 'ATH' || col.label === 'DEF' ? 'border-l border-white/10' : ''}
+                                    `}
+                                />
                             ))
                          ) : tab === 'stats' ? (
                             STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />)
@@ -253,21 +297,21 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                          )}
                       </tr>
                    </thead>
-                   <tbody className="divide-y divide-slate-800/40">
+                   <tbody className="divide-y divide-white/5">
                       {sortedRoster.map(p => {
                           // [Fix] Calculate real-time OVR for display
                           const displayOvr = calculatePlayerOvr(p);
                           
                           return (
-                          <tr key={p.id} className="hover:bg-slate-800/30 transition-all group">
-                              <td className="pl-8 px-6 py-3 cursor-pointer" onClick={() => setViewPlayer(p)}>
+                          <tr key={p.id} className="hover:bg-white/5 transition-all group">
+                              <td className="py-2.5 px-6 sticky left-0 bg-slate-950/95 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)] cursor-pointer" onClick={() => setViewPlayer(p)}>
                                   <div className="flex items-center gap-3">
                                       <div className="flex flex-col min-w-0">
                                           <div className="flex items-center gap-2 group-hover:translate-x-1 transition-transform">
-                                              <span className="text-base font-black text-white truncate max-w-[160px] group-hover:text-indigo-400 group-hover:underline">{p.name}</span>
+                                              <span className="text-xs font-bold text-slate-300 truncate max-w-[140px] group-hover:text-indigo-400 group-hover:underline">{p.name}</span>
                                               {p.health !== 'Healthy' && (
                                                   <span 
-                                                    className={`px-1.5 py-0.5 rounded-[4px] text-[8px] font-black text-white uppercase cursor-help ${p.health === 'Injured' ? 'bg-red-600' : 'bg-amber-600'}`}
+                                                    className={`px-1 py-0.5 rounded-[3px] text-[8px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}
                                                     title={`복귀 예정: ${p.returnDate || '미정'} (${p.injuryType || '부상'})`}
                                                   >
                                                     {p.health === 'Injured' ? 'OUT' : 'DTD'}
@@ -278,14 +322,23 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                   </div>
                               </td>
                               {tab === 'roster' && (
-                                <><td className="px-2 py-3 text-center"><span className="text-sm font-bold text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase">{p.position}</span></td>
-                                <td className="px-2 py-3 text-center text-sm font-bold text-white">{p.age}</td>
-                                <td className="px-2 py-3 text-center text-sm font-bold text-white">${p.salary.toFixed(1)}M</td>
-                                <td className="px-1 py-3 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(displayOvr) + " !w-9 !h-9 !text-lg !mx-auto"}>{displayOvr}</div></td></>
+                                <>
+                                    <td className="px-1 py-2 text-center">
+                                        <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
+                                    </td>
+                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400">{p.age}</td>
+                                    <td className="px-1 py-2 text-center border-r border-white/10 pr-2">
+                                        <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
+                                    </td>
+                                </>
                               )}
                               {tab === 'roster' ? (
-                                  ROSTER_COLUMNS[rosterCategory].map(col => (
-                                      <td key={String(col.key)} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/60' : ''}`}><div className={getRankStyle(p[col.key as keyof Player] as number) + " !mx-auto"}>{p[col.key as keyof Player] as number}</div></td>
+                                  ALL_ROSTER_COLUMNS.map(col => (
+                                      <AttrCell 
+                                        key={String(col.key)} 
+                                        value={p[col.key as keyof Player] as number} 
+                                        className={col.label === 'PLM' || col.label === 'ATH' || col.label === 'DEF' ? 'border-l border-white/10' : ''}
+                                      />
                                   ))
                               ) : tab === 'stats' ? (
                                   STATS_COLUMNS.map(col => {
@@ -303,16 +356,16 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       } else if (col.key === 'pf') {
                                           valStr = ((s.pf || 0) / g).toFixed(1);
                                       }
-                                      return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-medium text-slate-300 text-sm tabular-nums">{valStr}</td>;
+                                      return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-400 text-xs tabular-nums">{valStr}</td>;
                                   })
                               ) : (
                                   SALARY_COLUMNS.map(col => {
                                       let valStr = String(p[col.key as keyof Player] || '');
-                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(displayOvr) + " !w-8 !h-8 !text-sm !mx-0"}>{displayOvr}</div></div></td>;
+                                      if (col.key === 'ovr') return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3"><div className="flex justify-end"><div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-0"}>{displayOvr}</div></div></td>;
                                       if (col.key === 'salary') valStr = `$${p.salary.toFixed(1)}M`;
                                       else if (col.key === 'contractYears') valStr = `${p.contractYears}년`;
                                       else if (col.key === 'totalValue') valStr = `$${(p.salary * p.contractYears).toFixed(1)}M`;
-                                      return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-300 text-sm tabular-nums">{valStr}</td>;
+                                      return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-400 text-xs tabular-nums">{valStr}</td>;
                                   })
                               )}
                           </tr>
@@ -321,24 +374,27 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                    </tbody>
                    {/* Footer for Roster Tab */}
                    {teamStats && tab === 'roster' && (
-                       <tfoot className="bg-slate-800/40 border-t-2 border-slate-700/50">
+                       <tfoot className="bg-slate-900 border-t border-slate-800 z-10 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.5)]">
                            <tr>
-                               <td className="pl-8 px-6 py-4 text-xs font-black text-indigo-400 uppercase">TEAM TOTAL</td>
-                               <td className="px-2 py-4 text-center text-xs font-bold text-slate-500">-</td>
-                               <td className="px-2 py-4 text-center text-sm font-bold text-white">{teamStats.age}</td>
-                               <td className="px-2 py-4 text-center text-sm font-bold text-white">${teamStats.salary.toFixed(1)}M</td>
-                               <td className="px-1 py-4 text-center border-r-2 border-slate-700/60 pl-2"><div className={getOvrBadgeStyle(teamStats.ovr) + " !w-9 !h-9 !text-lg !mx-auto"}>{teamStats.ovr}</div></td>
-                               {ROSTER_COLUMNS[rosterCategory].map(col => (
-                                   <td key={String(col.key)} className={`px-0 py-2 align-middle text-center ${col.label === 'OUT' || col.label === 'REB' ? 'border-l-2 border-slate-700/40' : ''}`}><div className={getRankStyle(teamStats.getAvg(col.key as keyof Player)) + " !mx-auto"}>{teamStats.getAvg(col.key as keyof Player)}</div></td>
+                               <td className="py-3 px-6 text-[10px] font-black text-indigo-400 uppercase tracking-widest sticky left-0 bg-slate-900 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">TEAM AVERAGE</td>
+                               <td className="px-1 py-3 text-center text-[10px] font-bold text-slate-600">-</td>
+                               <td className="px-1 py-3 text-center text-xs font-bold text-slate-400">{teamStats.age}</td>
+                               <td className="px-1 py-3 text-center border-r border-white/10 pr-2"><div className={getOvrBadgeStyle(teamStats.ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{teamStats.ovr}</div></td>
+                               {ALL_ROSTER_COLUMNS.map(col => (
+                                   <AttrCell 
+                                     key={String(col.key)} 
+                                     value={teamStats.getAvg(col.key as keyof Player)} 
+                                     className={col.label === 'PLM' || col.label === 'ATH' || col.label === 'DEF' ? 'border-l border-white/10' : ''}
+                                   />
                                ))}
                            </tr>
                        </tfoot>
                    )}
                    {/* Footer for Stats Tab */}
                    {statsTotals && tab === 'stats' && (
-                        <tfoot className="bg-slate-800/40 border-t-2 border-slate-700/50">
+                        <tfoot className="bg-slate-900 border-t border-slate-800 z-10 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.5)]">
                             <tr>
-                                <td className="pl-8 px-6 py-4 text-xs font-black text-indigo-400 uppercase">TEAM</td>
+                                <td className="py-3 px-6 text-[10px] font-black text-indigo-400 uppercase tracking-widest sticky left-0 bg-slate-900 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">TEAM TOTAL</td>
                                 {STATS_COLUMNS.map(col => {
                                     let valStr = '-';
                                     const g = statsTotals.teamGames;
@@ -364,7 +420,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                         }
                                     }
                                     
-                                    return <td key={col.key} className="px-1 py-4 align-middle text-right pr-3 font-bold text-white text-sm tabular-nums">{valStr}</td>
+                                    return <td key={col.key} className="px-1 py-3 align-middle text-right pr-3 font-bold text-white text-xs tabular-nums">{valStr}</td>
                                 })}
                             </tr>
                         </tfoot>
