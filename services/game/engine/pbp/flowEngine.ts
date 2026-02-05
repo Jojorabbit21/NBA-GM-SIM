@@ -160,15 +160,30 @@ function getLocationName(zone: string): string {
     return names[zone] || '외곽';
 }
 
-function mapZoneToShotZone(simpleZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): ShotZone {
-    if (simpleZone === '3PT') {
-        const r = Math.random();
-        if (r < 0.2) return '3PT-Corn';
-        if (r < 0.6) return '3PT-C';
-        return '3PT-L'; // Simplified
+// [Fix] New Helper to determine exact zone ID for tracking
+function determineShotZoneId(preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): string {
+    const rand = Math.random();
+
+    if (preferredZone === 'Rim') return 'zone_rim';
+    if (preferredZone === 'Paint') return 'zone_paint';
+    
+    if (preferredZone === 'Mid') {
+        // Simple distribution: 33% Left, 34% Center, 33% Right
+        if (rand < 0.33) return 'zone_mid_l';
+        if (rand < 0.67) return 'zone_mid_c';
+        return 'zone_mid_r';
     }
-    if (simpleZone === 'Mid') return 'Mid-C';
-    return simpleZone;
+
+    if (preferredZone === '3PT') {
+        // Distribution: 10% L-Corner, 25% L-Wing, 30% Top, 25% R-Wing, 10% R-Corner
+        if (rand < 0.10) return 'zone_c3_l';
+        if (rand < 0.35) return 'zone_atb3_l';
+        if (rand < 0.65) return 'zone_atb3_c';
+        if (rand < 0.90) return 'zone_atb3_r';
+        return 'zone_c3_r';
+    }
+
+    return 'zone_paint'; // Fallback
 }
 
 // --- Main Logic ---
@@ -184,6 +199,9 @@ export function resolvePossession(state: GameState): PossessionResult {
     
     const { actor, secondaryActor, preferredZone, shotType, bonusHitRate } = playContext;
     const defender = defTeam.onCourt.sort((a, b) => b.attr.def - a.attr.def)[0]; // Simplified defender selection for now
+
+    // [Fix] Determine specific zone ID (e.g. 'zone_c3_l') for tracking
+    const shotZoneId = determineShotZoneId(preferredZone);
 
     // 2. Calculate Time
     const timeTaken = calculatePossessionTime(state, attTeam.tactics.sliders, tactic);
@@ -250,7 +268,8 @@ export function resolvePossession(state: GameState): PossessionResult {
             logText,
             nextPossession: state.possession === 'home' ? 'away' : 'home',
             isDeadBall: false,
-            playType: playType
+            playType: playType,
+            shotZoneId // [Fix] Return ID
         };
     } else {
         // MISSED SHOT
@@ -266,7 +285,8 @@ export function resolvePossession(state: GameState): PossessionResult {
             logText: `${actor.playerName}, ${getLocationName(preferredZone)} 슛 실패.`,
             nextPossession: state.possession === 'home' ? 'away' : 'home', // Defensive rebound usually
             isDeadBall: false,
-            playType: playType
+            playType: playType,
+            shotZoneId // [Fix] Return ID
         };
     }
 }

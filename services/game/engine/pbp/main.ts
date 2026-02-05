@@ -86,7 +86,19 @@ const initLivePlayer = (p: Player): LivePlayer => {
         fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
         rimM: 0, rimA: 0, midM: 0, midA: 0,
         mp: 0, g: 1, gs: 0, pf: 0,
-        plusMinus: 0 // Initialize plusMinus
+        plusMinus: 0,
+
+        // [Fix] Initialize Zone Stats
+        zone_rim_m: 0, zone_rim_a: 0,
+        zone_paint_m: 0, zone_paint_a: 0,
+        zone_mid_l_m: 0, zone_mid_l_a: 0,
+        zone_mid_c_m: 0, zone_mid_c_a: 0,
+        zone_mid_r_m: 0, zone_mid_r_a: 0,
+        zone_c3_l_m: 0, zone_c3_l_a: 0,
+        zone_c3_r_m: 0, zone_c3_r_a: 0,
+        zone_atb3_l_m: 0, zone_atb3_l_a: 0,
+        zone_atb3_c_m: 0, zone_atb3_c_a: 0,
+        zone_atb3_r_m: 0, zone_atb3_r_a: 0
     };
 };
 
@@ -310,9 +322,27 @@ export function runFullGameSimulation(
                 result.player.pts += result.points!;
                 result.player.fgm++; result.player.fga++;
                 if (result.points === 3) { result.player.p3m++; result.player.p3a++; }
+                
+                // [Fix] Update Zone Stats on MAKE
+                if (result.shotZoneId) {
+                    const zoneKeyM = `${result.shotZoneId}_m` as keyof LivePlayer;
+                    const zoneKeyA = `${result.shotZoneId}_a` as keyof LivePlayer;
+                    
+                    // Increment Make and Attempt
+                    if (typeof result.player[zoneKeyM] === 'number') (result.player[zoneKeyM] as number)++;
+                    if (typeof result.player[zoneKeyA] === 'number') (result.player[zoneKeyA] as number)++;
+                }
+                
             } else if (result.type === 'miss') {
                 result.player.fga++;
                 if (result.logText.includes('3점')) result.player.p3a++;
+                
+                // [Fix] Update Zone Stats on MISS
+                if (result.shotZoneId) {
+                    const zoneKeyA = `${result.shotZoneId}_a` as keyof LivePlayer;
+                    if (typeof result.player[zoneKeyA] === 'number') (result.player[zoneKeyA] as number)++;
+                }
+                
             } else if (result.type === 'turnover') {
                 result.player.tov++;
             } else if (result.type === 'freethrow') {
@@ -326,6 +356,15 @@ export function runFullGameSimulation(
                      } else {
                          result.player.ftm += result.points!; 
                      }
+                     
+                     // And-One implies a make, update zone if provided
+                     if (result.shotZoneId) {
+                        const zoneKeyM = `${result.shotZoneId}_m` as keyof LivePlayer;
+                        const zoneKeyA = `${result.shotZoneId}_a` as keyof LivePlayer;
+                        if (typeof result.player[zoneKeyM] === 'number') (result.player[zoneKeyM] as number)++;
+                        if (typeof result.player[zoneKeyA] === 'number') (result.player[zoneKeyA] as number)++;
+                     }
+
                 } else {
                      result.player.pts += result.points!;
                      result.player.ftm += result.points!;
@@ -438,6 +477,14 @@ export function runFullGameSimulation(
                 activeTeam.onCourt.forEach(p => p.plusMinus += result.points!);
                 defendingTeam.onCourt.forEach(p => p.plusMinus -= result.points!);
                 updateRotationHistory(state, result.timeTaken);
+                
+                // [Fix] Update Zone Stats in Sudden Death
+                if (result.type === 'score' && result.player && result.shotZoneId) {
+                     const zoneKeyM = `${result.shotZoneId}_m` as keyof LivePlayer;
+                     const zoneKeyA = `${result.shotZoneId}_a` as keyof LivePlayer;
+                     if (typeof result.player[zoneKeyM] === 'number') (result.player[zoneKeyM] as number)++;
+                     if (typeof result.player[zoneKeyA] === 'number') (result.player[zoneKeyA] as number)++;
+                }
             }
             state.logs.push({ quarter: 4, timeRemaining: 'SD', teamId: activeTeam.id, type: result.type, text: `[서든데스] ${result.logText}` });
             if (result.nextPossession !== 'keep') state.possession = result.nextPossession as any;
@@ -446,9 +493,30 @@ export function runFullGameSimulation(
 
     console.groupEnd(); 
 
-    // 4. Finalize
+    // 4. Finalize & Package Zone Data
+    // [Fix] Ensure zone stats are packaged into zoneData for persistence
+    const packageZoneData = (p: LivePlayer) => {
+        if (!p.zoneData) {
+            p.zoneData = {
+                zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
+                zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
+                zone_mid_l_m: p.zone_mid_l_m, zone_mid_l_a: p.zone_mid_l_a,
+                zone_mid_c_m: p.zone_mid_c_m, zone_mid_c_a: p.zone_mid_c_a,
+                zone_mid_r_m: p.zone_mid_r_m, zone_mid_r_a: p.zone_mid_r_a,
+                zone_c3_l_m: p.zone_c3_l_m, zone_c3_l_a: p.zone_c3_l_a,
+                zone_c3_r_m: p.zone_c3_r_m, zone_c3_r_a: p.zone_c3_r_a,
+                zone_atb3_l_m: p.zone_atb3_l_m, zone_atb3_l_a: p.zone_atb3_l_a,
+                zone_atb3_c_m: p.zone_atb3_c_m, zone_atb3_c_a: p.zone_atb3_c_a,
+                zone_atb3_r_m: p.zone_atb3_r_m, zone_atb3_r_a: p.zone_atb3_r_a,
+            };
+        }
+    };
+
     const finalHomeBox = [...state.home.onCourt, ...state.home.bench];
     const finalAwayBox = [...state.away.onCourt, ...state.away.bench];
+    
+    finalHomeBox.forEach(packageZoneData);
+    finalAwayBox.forEach(packageZoneData);
     
     const rosterUpdates: any = {};
     
