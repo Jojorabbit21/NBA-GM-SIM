@@ -458,16 +458,16 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                 </div>
 
                 {/* Sliders */}
-                <div className="space-y-6 pt-4 border-t border-white/5">
+                <div className="space-y-3">
                     <div className="flex items-center gap-3 text-indigo-400 px-2"><Sliders size={20} /><span className="font-black text-sm uppercase tracking-widest ko-tight">전술 세부 조정</span></div>
-                    <div className="grid grid-cols-2 gap-x-6 gap-y-8 bg-slate-950/20 p-5 rounded-2xl border border-slate-800/50">
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-8 bg-slate-950/40 p-5 rounded-2xl border border-slate-800/50">
                         <div className="col-span-2">
                             <SliderControl 
                                 label="로테이션 유연성" 
                                 value={sliders.rotationFlexibility ?? 5} 
                                 onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, rotationFlexibility: v } })}
-                                leftLabel="Strict (42m+)" 
-                                rightLabel="Deep (25m)" 
+                                leftLabel="주전 활용" 
+                                rightLabel="모든 선수 활용" 
                                 tooltip="0에 가까울수록 주전 5명을 혹사(최대 42~44분)시키며, 10에 가까울수록 벤치를 폭폭넓게 활용해 체력을 안배합니다. (설정된 시간 제한 우선)" 
                             />
                         </div>
@@ -475,48 +475,48 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                             label="공격 페이스" 
                             value={sliders.pace} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, pace: v } })}
-                            leftLabel="Slow" 
-                            rightLabel="Fast" 
+                            leftLabel="느리게" 
+                            rightLabel="빠르게" 
                             tooltip="수치를 높이면 런앤건 스타일로 공격 횟수가 증가하지만, 실점 위험도 함께 증가합니다." 
                         />
                         <SliderControl 
                             label="공격 리바운드" 
                             value={sliders.offReb} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, offReb: v } })}
-                            leftLabel="Transition" 
-                            rightLabel="Crash" 
+                            leftLabel="소극적" 
+                            rightLabel="적극적" 
                             tooltip="수치를 높이면 공격 리바운드 참여도가 늘어나지만, 백코트가 늦어져 실점(속공 허용) 위험이 늘어납니다." 
                         />
                         <SliderControl 
                             label="수비 강도" 
                             value={sliders.defIntensity} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, defIntensity: v } })}
-                            leftLabel="Safe" 
-                            rightLabel="Physical" 
+                            leftLabel="약하게" 
+                            rightLabel="강하게" 
                             tooltip="수치를 높이면 스틸과 블록 시도가 늘어나지만, 파울 트러블과 체력 저하 위험이 커집니다." 
                         />
                         <SliderControl 
                             label="수비 리바운드" 
                             value={sliders.defReb} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, defReb: v } })}
-                            leftLabel="Leak Out" 
-                            rightLabel="Secure" 
+                            leftLabel="속공 준비" 
+                            rightLabel="박스아웃" 
                             tooltip="수치를 높이면 박스아웃에 집중해 리바운드를 사수하지만, 우리 팀의 속공 전개는 느려집니다." 
                         />
                         <SliderControl 
                             label="풀 코트 프레스" 
                             value={sliders.fullCourtPress} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, fullCourtPress: v } })}
-                            leftLabel="Never" 
-                            rightLabel="Always" 
+                            leftLabel="거의 하지 않음" 
+                            rightLabel="항상" 
                             tooltip="수치를 높이면 풀코트 압박으로 상대 실책을 유발하지만, 선수들의 체력이 급격히 소모됩니다." 
                         />
                         <SliderControl 
                             label="존 디펜스 빈도" 
                             value={sliders.zoneUsage} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, zoneUsage: v } })}
-                            leftLabel="Rarely" 
-                            rightLabel="Frequent" 
+                            leftLabel="거의 하지 않음" 
+                            rightLabel="항상" 
                             tooltip="수치를 높이면 골밑 수비가 강화되지만, 상대에게 외곽 3점슛 기회를 더 많이 허용합니다." 
                         />
                     </div>
