@@ -60,7 +60,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                         className={`flex items-center gap-3 transition-all h-full border-b-2 ${activeRosterTab === 'mine' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} `}
                     >
                         <Users size={20} />
-                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">로테이션 & 뎁스 차트</span>
+                        <span className="text-lg font-black uppercase oswald tracking-tight ko-tight">로스터 관리</span>
                     </button>
                     
                     <div className="w-[1px] h-6 bg-white/10"></div>
@@ -99,7 +99,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                         <div className="mt-0">
                             <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
-                                    <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
+                                    <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-y border-white/10 bg-slate-950/50">
                                         <th className="py-2 px-4 w-[120px]">이름</th>
                                         <th className="py-2 px-1 text-center w-10">POS</th>
                                         <th className="py-2 px-1 text-center w-10">OVR</th>
@@ -203,11 +203,9 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                             <th className="py-2 px-1 text-center w-10">POS</th>
                                             <th className="py-2 px-1 text-center w-10">OVR</th>
                                             
-                                            {/* Spacer to push Injury Info to right */}
-                                            <th className="py-2 px-1 w-full"></th>
-                                            
-                                            <th className="py-2 px-4 text-right w-auto">부상명</th>
-                                            <th className="py-2 px-4 text-right w-[120px]">복귀 예정일</th>
+                                            {/* Stacked to the right of OVR, Left Aligned */}
+                                            <th className="py-2 px-4 text-left w-auto">부상명</th>
+                                            <th className="py-2 px-4 text-left w-[120px]">복귀 예정일</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-white/5">
@@ -225,14 +223,12 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                         <div className={getOvrBadgeStyle(ovr) + " !w-6 !h-6 !text-xs !mx-auto grayscale opacity-70"}>{ovr}</div>
                                                     </td>
                                                     
-                                                    <td></td>
-
-                                                    <td className="py-1.5 px-4 text-right">
+                                                    <td className="py-1.5 px-4 text-left">
                                                         <span className="pretendard text-xs font-bold text-red-500 whitespace-nowrap">
                                                             {p.injuryType || 'Unknown Injury'}
                                                         </span>
                                                     </td>
-                                                    <td className="py-1.5 px-4 text-right">
+                                                    <td className="py-1.5 px-4 text-left">
                                                         <span className="pretendard text-xs font-black text-slate-500 tracking-tight">
                                                             {p.returnDate || 'TBD'}
                                                         </span>
@@ -262,8 +258,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
                                         <th className="py-2 px-1 text-center w-10 text-slate-400 border-r border-white/5">REB</th>
                                         
-                                        {/* Added Stats Columns */}
-                                        <th className="py-2 px-1 text-right w-10 text-white">MP</th>
+                                        {/* Added Stats Columns - MP Removed */}
                                         <th className="py-2 px-1 text-right w-10 text-white">PTS</th>
                                         <th className="py-2 px-1 text-right w-10 text-white">REB</th>
                                         <th className="py-2 px-1 text-right w-10 text-white">AST</th>
@@ -299,8 +294,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                 <AttrCell value={p.def} />
                                                 <AttrCell value={p.reb} />
                                                 
-                                                {/* Stats Cells */}
-                                                <StatCell value={(s.mp/g).toFixed(1)} />
+                                                {/* Stats Cells - MP Removed */}
                                                 <StatCell value={(s.pts/g).toFixed(1)} />
                                                 <StatCell value={(s.reb/g).toFixed(1)} />
                                                 <StatCell value={(s.ast/g).toFixed(1)} />
