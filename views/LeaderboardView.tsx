@@ -77,17 +77,11 @@ const LeaderboardCard: React.FC<{
     }, [players, currentStat, statDef]);
 
     return (
-        <div className="flex flex-col bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-xl h-full">
+        <div className="flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-xl h-full">
             {/* Card Header with Dropdown */}
-            <div className="px-5 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30">
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-slate-800/50 rounded-lg text-indigo-400">
-                        <BarChart3 size={18} />
-                    </div>
-                    <div className="flex flex-col">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">RANKING</span>
-                        <span className="text-sm font-black text-white uppercase tracking-tight">{statDef.id} Leaders</span>
-                    </div>
+            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-white uppercase tracking-tight">{statDef.label}</span>
                 </div>
                 
                 <div className="relative" ref={dropdownRef}>
@@ -95,7 +89,7 @@ const LeaderboardCard: React.FC<{
                         onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                         className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors border border-slate-700"
                     >
-                        <span>Change</span>
+                        <span>카테고리</span>
                         <ChevronDown size={12} />
                     </button>
                     
@@ -116,14 +110,14 @@ const LeaderboardCard: React.FC<{
                 </div>
             </div>
 
-            {/* Table Body - No Scroll here, expands naturally */}
+            {/* Table Body */}
             <div className="flex-1">
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-slate-950/50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
                         <tr>
-                            <th className="py-3 pl-5 w-12 text-center">#</th>
-                            <th className="py-3 px-2">Player</th>
-                            <th className="py-3 pr-5 text-right">Value</th>
+                            <th className="py-2 pl-4 w-10 text-center">#</th>
+                            <th className="py-2 px-2">선수 이름</th>
+                            <th className="py-2 pr-4 text-right">{statDef.id}</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
@@ -135,36 +129,32 @@ const LeaderboardCard: React.FC<{
                             let rankColor = 'text-slate-500';
                             let rankIcon = null;
                             
-                            if (rank === 1) { rankColor = 'text-yellow-400'; rankIcon = <Trophy size={12} className="text-yellow-500 fill-yellow-500 mb-0.5" />; }
-                            else if (rank === 2) { rankColor = 'text-slate-300'; rankIcon = <Medal size={12} className="text-slate-300 fill-slate-300 mb-0.5" />; }
-                            else if (rank === 3) { rankColor = 'text-amber-600'; rankIcon = <Medal size={12} className="text-amber-700 fill-amber-700 mb-0.5" />; }
+                            if (rank === 1) { rankColor = 'text-yellow-400'; rankIcon = <Trophy size={10} className="text-yellow-500 fill-yellow-500 mb-0.5" />; }
+                            else if (rank === 2) { rankColor = 'text-slate-300'; rankIcon = <Medal size={10} className="text-slate-300 fill-slate-300 mb-0.5" />; }
+                            else if (rank === 3) { rankColor = 'text-amber-600'; rankIcon = <Medal size={10} className="text-amber-700 fill-amber-700 mb-0.5" />; }
 
                             return (
                                 <tr key={p.id} className={`group transition-colors ${isTop3 ? 'bg-slate-900/40 hover:bg-slate-800/60' : 'hover:bg-slate-900'}`}>
-                                    <td className="py-3 pl-5 text-center">
+                                    <td className="py-2 pl-4 text-center">
                                         <div className="flex flex-col items-center justify-center">
                                             {rankIcon}
-                                            <span className={`text-sm font-black ${rankColor} font-mono leading-none`}>{rank}</span>
+                                            <span className={`text-xs font-black ${rankColor} font-mono leading-none`}>{rank}</span>
                                         </div>
                                     </td>
-                                    <td className="py-3 px-2 cursor-pointer" onClick={() => onPlayerClick(p)}>
+                                    <td className="py-2 px-2 cursor-pointer" onClick={() => onPlayerClick(p)}>
                                         <div className="flex items-center gap-3">
-                                            <div className={getOvrBadgeStyle(ovr) + " !w-8 !h-8 !text-xs !mx-0"}>{ovr}</div>
-                                            <div className="flex flex-col min-w-0">
+                                            <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-0"}>{ovr}</div>
+                                            <div className="flex items-center gap-2 min-w-0">
                                                 <span className={`text-xs font-bold truncate group-hover:text-indigo-400 group-hover:underline ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
-                                                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
-                                                    <span>{p.position}</span>
-                                                    <span className="w-0.5 h-0.5 bg-slate-600 rounded-full"></span>
-                                                    <div className="flex items-center gap-1">
-                                                        <img src={p.teamLogo} className="w-3 h-3 object-contain opacity-70" alt="" />
-                                                        <span>{p.teamName}</span>
-                                                    </div>
-                                                </div>
+                                                <span className="text-[10px] text-slate-600">|</span>
+                                                <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
+                                                <span className="text-[10px] text-slate-600">|</span>
+                                                <span className="text-[10px] font-bold text-slate-500 truncate max-w-[80px]">{p.teamName}</span>
                                             </div>
                                         </div>
                                     </td>
-                                    <td className="py-3 pr-5 text-right">
-                                        <span className={`text-base font-black font-mono tabular-nums ${isTop3 ? 'text-white' : 'text-slate-400'}`}>
+                                    <td className="py-2 pr-4 text-right">
+                                        <span className={`text-sm font-black font-mono tabular-nums ${isTop3 ? 'text-white' : 'text-slate-400'}`}>
                                             {statDef.format(statDef.getValue(p))}
                                         </span>
                                     </td>
