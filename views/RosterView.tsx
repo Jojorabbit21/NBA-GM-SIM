@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock, Table2, Target, Swords } from 'lucide-react';
 import { Team, Player, TacticStatRecord, OffenseTactic, DefenseTactic } from '../types';
@@ -80,16 +81,16 @@ const TRADITIONAL_STATS_COLUMNS = [
 ];
 
 const SHOOTING_ZONES = [
-    { id: 'zone_rim', label: 'Rim' },
-    { id: 'zone_paint', label: 'Paint' },
-    { id: 'zone_mid_l', label: 'Mid-L' },
-    { id: 'zone_mid_c', label: 'Mid-C' },
-    { id: 'zone_mid_r', label: 'Mid-R' },
+    { id: 'zone_rim', label: 'RIM' },
+    { id: 'zone_paint', label: 'PAINT' },
+    { id: 'zone_mid_l', label: 'MID-L' },
+    { id: 'zone_mid_c', label: 'MID-C' },
+    { id: 'zone_mid_r', label: 'MID-R' },
     { id: 'zone_c3_l', label: 'C3-L' },
     { id: 'zone_c3_r', label: 'C3-R' },
-    { id: 'zone_atb3_l', label: '3PT-L' },
-    { id: 'zone_atb3_c', label: '3PT-C' },
-    { id: 'zone_atb3_r', label: '3PT-R' },
+    { id: 'zone_atb3_l', label: '3P-L' },
+    { id: 'zone_atb3_c', label: '3P-C' },
+    { id: 'zone_atb3_r', label: '3P-R' },
 ];
 
 const STRATEGY_COLUMNS = [
@@ -306,8 +307,13 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     return records.sort((a, b) => b.stats.games - a.stats.games);
   }, [selectedTeam]);
 
-  const SortHeader: React.FC<{ label: string, sortKey: string, align?: 'left' | 'center' | 'right', width?: string, className?: string, tooltip?: string }> = ({ label, sortKey, align = 'center', width, className, tooltip }) => (
-    <th className={`px-1 py-3 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-white/5 transition-colors group select-none relative ${className}`} style={{ width, textAlign: align }} onClick={() => handleSort(sortKey)}>
+  const SortHeader: React.FC<{ label: string, sortKey: string, align?: 'left' | 'center' | 'right', width?: string, className?: string, tooltip?: string, rowSpan?: number }> = ({ label, sortKey, align = 'center', width, className, tooltip, rowSpan }) => (
+    <th 
+        rowSpan={rowSpan}
+        className={`px-1 py-3 text-[10px] font-black uppercase tracking-widest cursor-pointer hover:bg-white/5 transition-colors group select-none relative ${className}`} 
+        style={{ width, textAlign: align }} 
+        onClick={() => handleSort(sortKey)}
+    >
         <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
             <div className="relative group/text">
                 <span>{label}</span>
@@ -337,15 +343,15 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         onSelectTeam={setSelectedTeamId} dropdownRef={dropdownRef}
       />
 
-      {/* [Optimization] bg-slate-900/60 -> bg-slate-900/95, Removed backdrop-blur-sm */}
-      <div className="flex flex-col gap-6 bg-slate-900/95 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl">
+      {/* [Refactor] Removed Outer Container (bg-slate-900/95, border, p-8) */}
+      <div className="flex flex-col gap-6">
          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0">
              <div className="flex bg-slate-950 rounded-xl p-1.5 border border-slate-800 overflow-x-auto max-w-full">
                  <button onClick={() => setTab('roster')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'roster' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Users size={16} /> 능력치
                  </button>
                  <button onClick={() => setTab('stats')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'stats' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
-                    <Activity size={16} /> 시즌 스탯 & 전술
+                    <Activity size={16} /> 기록
                  </button>
                  <button onClick={() => setTab('salary')} className={`px-6 md:px-8 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 flex-shrink-0 ${tab === 'salary' ? 'bg-amber-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
                     <Wallet size={16} /> 샐러리
@@ -359,19 +365,19 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                         onClick={() => setStatMode('traditional')}
                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'traditional' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Table2 size={12} /> Traditional
+                        <Table2 size={12} /> 기본
                     </button>
                     <button 
                         onClick={() => setStatMode('shooting')}
                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'shooting' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Target size={12} /> Shooting
+                        <Target size={12} /> 슈팅
                     </button>
                     <button 
                         onClick={() => setStatMode('strategy')}
                         className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'strategy' ? 'bg-fuchsia-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <Swords size={12} /> Strategy
+                        <Swords size={12} /> 전술
                     </button>
                  </div>
              )}
@@ -381,67 +387,87 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
          <div className="w-full overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse table-auto">
-               <thead className="sticky top-0 bg-slate-950/90 z-20 backdrop-blur-sm">
-                  <tr className="border-y border-white/10 text-slate-500">
-                     {/* Name Column - Sticky Left */}
-                     <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950/95 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">
-                        {statMode === 'strategy' && tab === 'stats' ? 'TACTIC NAME' : 'PLAYER NAME'}
-                     </th>
-                     
-                     {/* Basic Info Cols (Available in Roster & Stats (Trad/Shooting) tabs) */}
-                     {(tab === 'roster' || (tab === 'stats' && statMode !== 'strategy')) && (
-                       <>
-                         <SortHeader label="POS" sortKey="position" width="50px" />
-                         <SortHeader label="AGE" sortKey="age" width="40px" />
-                         <SortHeader label="OVR" sortKey="ovr" width="50px" className="border-r border-white/10 pr-2" />
-                       </>
-                     )}
-                     
-                     {/* Strategy Type Column */}
-                     {statMode === 'strategy' && tab === 'stats' && (
-                         <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-center border-r border-white/10 w-[60px]">TYPE</th>
-                     )}
-                     
-                     {tab === 'roster' ? (
-                        ALL_ROSTER_COLUMNS.map(col => {
-                            const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
-                            const isSeparator = ['DRF', 'DCN'].includes(col.label);
-                            return (
-                            <SortHeader 
-                                key={String(col.key)} 
-                                label={col.label} 
-                                sortKey={col.key as string} 
-                                width="45px" 
-                                tooltip={col.tooltip} 
-                                className={`
-                                    ${isMajor ? 'bg-white/5' : ''}
-                                    ${isSeparator ? 'border-r border-white/10' : ''}
-                                `}
-                            />
-                            );
-                        })
-                     ) : tab === 'stats' ? (
-                        statMode === 'traditional' ? (
-                            TRADITIONAL_STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width={UNIFIED_STAT_WIDTH} align="right" className="pr-3" />)
-                        ) : statMode === 'shooting' ? (
-                            // Shooting Stats Header
-                            SHOOTING_ZONES.map(zone => (
-                                <React.Fragment key={zone.id}>
-                                    <SortHeader label={`${zone.label} M`} sortKey={`${zone.id}_m`} width="45px" align="right" className="pl-3 bg-white/5" />
-                                    <SortHeader label={`${zone.label} A`} sortKey={`${zone.id}_a`} width="45px" align="right" className="bg-white/5" />
-                                    <SortHeader label={`${zone.label} %`} sortKey={`${zone.id}_pct`} width="50px" align="right" className="pr-4 border-r border-white/10 bg-white/5" />
+               {/* Separate Logic for Shooting Tab Header (2 Rows) vs Standard (1 Row) */}
+               <thead className="sticky top-0 z-20">
+                  {tab === 'stats' && statMode === 'shooting' ? (
+                      <>
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                             {/* Fixed Columns rowSpan=2 */}
+                             <th rowSpan={2} className="py-3 px-6 text-left sticky left-0 bg-slate-950/95 z-30 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-b border-white/10 w-[180px]">PLAYER NAME</th>
+                             <SortHeader rowSpan={2} label="POS" sortKey="position" width="50px" className="border-b border-white/10 bg-slate-950/95" />
+                             <SortHeader rowSpan={2} label="AGE" sortKey="age" width="40px" className="border-b border-white/10 bg-slate-950/95" />
+                             <SortHeader rowSpan={2} label="OVR" sortKey="ovr" width="50px" className="border-r border-b border-white/10 pr-2 bg-slate-950/95" />
+
+                             {/* Group Headers colSpan=3 */}
+                             {SHOOTING_ZONES.map(z => (
+                                 <th key={z.id} colSpan={3} className="py-2 text-center border-b border-r border-white/10 text-slate-300 bg-slate-950/95">{z.label}</th>
+                             ))}
+                        </tr>
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                            {/* Sub Headers M/A/% */}
+                             {SHOOTING_ZONES.map(z => (
+                                <React.Fragment key={z.id + '_sub'}>
+                                    <SortHeader label="M" sortKey={`${z.id}_m`} width="45px" align="right" className="bg-slate-950/95 border-b border-white/10" />
+                                    <SortHeader label="A" sortKey={`${z.id}_a`} width="45px" align="right" className="bg-slate-950/95 border-b border-white/10" />
+                                    <SortHeader label="%" sortKey={`${z.id}_pct`} width="45px" align="right" className="bg-slate-950/95 border-r border-b border-white/10 pr-2" />
                                 </React.Fragment>
-                            ))
-                        ) : (
-                            // Strategy Stats Header
-                            STRATEGY_COLUMNS.map(col => (
-                                <SortHeader key={col.key} label={col.label} sortKey={`strategy_${col.key}`} width={col.width} align="right" className="pr-4" />
-                            ))
-                        )
-                     ) : (
-                        SALARY_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />)
-                     )}
-                  </tr>
+                             ))}
+                        </tr>
+                      </>
+                  ) : (
+                      // STANDARD HEADER (1 Row)
+                      <tr className="border-y border-white/10 text-slate-500 bg-slate-950/90 backdrop-blur-sm">
+                         {/* Name Column - Sticky Left */}
+                         <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950/95 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">
+                            {statMode === 'strategy' && tab === 'stats' ? 'TACTIC NAME' : 'PLAYER NAME'}
+                         </th>
+                         
+                         {/* Basic Info Cols (Available in Roster & Stats (Trad/Shooting) tabs) */}
+                         {(tab === 'roster' || (tab === 'stats' && statMode !== 'strategy')) && (
+                           <>
+                             <SortHeader label="POS" sortKey="position" width="50px" />
+                             <SortHeader label="AGE" sortKey="age" width="40px" />
+                             <SortHeader label="OVR" sortKey="ovr" width="50px" className="border-r border-white/10 pr-2" />
+                           </>
+                         )}
+                         
+                         {/* Strategy Type Column */}
+                         {statMode === 'strategy' && tab === 'stats' && (
+                             <th className="py-3 px-2 text-[10px] font-black uppercase tracking-widest text-center border-r border-white/10 w-[60px]">TYPE</th>
+                         )}
+                         
+                         {tab === 'roster' ? (
+                            ALL_ROSTER_COLUMNS.map(col => {
+                                const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
+                                const isSeparator = ['DRF', 'DCN'].includes(col.label);
+                                return (
+                                <SortHeader 
+                                    key={String(col.key)} 
+                                    label={col.label} 
+                                    sortKey={col.key as string} 
+                                    width="45px" 
+                                    tooltip={col.tooltip} 
+                                    className={`
+                                        ${isMajor ? 'bg-white/5' : ''}
+                                        ${isSeparator ? 'border-r border-white/10' : ''}
+                                    `}
+                                />
+                                );
+                            })
+                         ) : tab === 'stats' ? (
+                            statMode === 'traditional' ? (
+                                TRADITIONAL_STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width={UNIFIED_STAT_WIDTH} align="right" className="pr-3" />)
+                            ) : (
+                                // Strategy Stats Header
+                                STRATEGY_COLUMNS.map(col => (
+                                    <SortHeader key={col.key} label={col.label} sortKey={`strategy_${col.key}`} width={col.width} align="right" className="pr-4" />
+                                ))
+                            )
+                         ) : (
+                            SALARY_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />)
+                         )}
+                      </tr>
+                  )}
                </thead>
                <tbody className="divide-y divide-white/5">
                   {/* STRATEGY MODE BODY */}
