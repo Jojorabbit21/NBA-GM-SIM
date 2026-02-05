@@ -30,14 +30,14 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-const AttrCell: React.FC<{ value: number }> = ({ value }) => (
-    <td className={`py-1.5 px-1 text-center text-xs font-black font-mono ${getAttrColor(value)}`}>
+const AttrCell: React.FC<{ value: number; className?: string }> = ({ value, className }) => (
+    <td className={`py-1.5 px-1 text-center text-xs font-black font-mono ${getAttrColor(value)} ${className || ''}`}>
         {value}
     </td>
 );
 
 const StatCell: React.FC<{ value: string | number, isPercent?: boolean }> = ({ value, isPercent }) => (
-    <td className={`py-1.5 px-1 text-right text-xs font-medium text-slate-300 tabular-nums`}>
+    <td className={`py-1.5 px-1 text-right text-xs font-black font-mono text-slate-400 tabular-nums`}>
         {value}{isPercent ? '%' : ''}
     </td>
 );
@@ -100,10 +100,11 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-y border-white/10 bg-slate-950/50">
-                                        <th className="py-2 px-4 w-[120px]">이름</th>
-                                        <th className="py-2 px-1 text-center w-10">POS</th>
-                                        <th className="py-2 px-1 text-center w-10">OVR</th>
-                                        <th className="py-2 px-1 text-center w-10">COND</th>
+                                        {/* Changed fixed pixels to percentages for alignment */}
+                                        <th className="py-2 px-4 w-[16%]">이름</th>
+                                        <th className="py-2 px-1 text-center w-[5%]">POS</th>
+                                        <th className="py-2 px-1 text-center w-[5%]">OVR</th>
+                                        <th className="py-2 px-1 text-center w-[5%]">COND</th>
                                         
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">INS</th>
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">OUT</th>
@@ -197,11 +198,11 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 </div>
                                 <table className="w-full text-left border-collapse table-fixed">
                                     <thead>
-                                        {/* Match Header Style of Main Table */}
+                                        {/* Match Header Style of Main Table (Using Percentages) */}
                                         <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                            <th className="py-2 px-4 w-[120px]">이름</th>
-                                            <th className="py-2 px-1 text-center w-10">POS</th>
-                                            <th className="py-2 px-1 text-center w-10">OVR</th>
+                                            <th className="py-2 px-4 w-[16%]">이름</th>
+                                            <th className="py-2 px-1 text-center w-[5%]">POS</th>
+                                            <th className="py-2 px-1 text-center w-[5%]">OVR</th>
                                             
                                             {/* Stacked to the right of OVR, Left Aligned */}
                                             <th className="py-2 px-4 text-left w-auto">부상명</th>
@@ -256,7 +257,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">INS</th>
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">PLM</th>
                                         <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400 border-r border-white/5">REB</th>
+                                        <th className="py-2 px-1 text-center w-10 text-slate-400 border-r border-white/10">REB</th>
                                         
                                         {/* Added Stats Columns - MP Removed */}
                                         <th className="py-2 px-1 text-right w-10 text-white">PTS</th>
@@ -286,13 +287,13 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                 <td className="py-1.5 px-2 text-center">
                                                     <span className="text-[10px] font-black text-slate-500">{p.position}</span>
                                                 </td>
-                                                <td className="py-1.5 px-2 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-0"}>{ovr}</div></td>
+                                                <td className="py-1.5 px-2 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div></td>
                                                 <AttrCell value={p.ath} />
                                                 <AttrCell value={p.out} />
                                                 <AttrCell value={p.ins} />
                                                 <AttrCell value={p.plm} />
                                                 <AttrCell value={p.def} />
-                                                <AttrCell value={p.reb} />
+                                                <AttrCell value={p.reb} className="border-r border-white/10" />
                                                 
                                                 {/* Stats Cells - MP Removed */}
                                                 <StatCell value={(s.pts/g).toFixed(1)} />
