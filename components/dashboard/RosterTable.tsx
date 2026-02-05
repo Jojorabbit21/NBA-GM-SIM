@@ -77,8 +77,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                 </div>
             </div>
 
-            {/* Changed overflow-y-auto to overflow-auto to support horizontal scrolling when needed */}
-            <div className="flex-1 overflow-auto custom-scrollbar">
+            {/* Changed back to overflow-y-auto to remove horizontal scroll */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
                 {activeRosterTab === 'mine' ? (
                     <div className="flex flex-col">
                         {/* 1. Starting Lineup Visualizer */}
@@ -248,15 +248,15 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                     <div className="flex flex-col h-full">
                         {/* Opponent table with Stats */}
                         {opponent ? (
-                            // [Updated] Min-width set to 1280px for scrolling, Columns re-balanced
-                            <table className="w-full min-w-[1280px] text-left border-collapse table-fixed">
+                            // [Updated] Removed min-width, readjusted percentages to fit 100% width
+                            <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                        <th className="py-2 px-6 w-[18%]">이름</th>
-                                        <th className="py-2 px-2 text-center w-[4%]">POS</th>
-                                        <th className="py-2 px-2 text-center w-[4%]">OVR</th>
+                                        <th className="py-2 px-6 w-[20%]">이름</th>
+                                        <th className="py-2 px-1 text-center w-[5%]">POS</th>
+                                        <th className="py-2 px-1 text-center w-[5%]">OVR</th>
                                         
-                                        {/* Attributes - 5% each */}
+                                        {/* Attributes - ~5% each (Total 30%) */}
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">INS</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">OUT</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">ATH</th>
@@ -264,14 +264,14 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400">DEF</th>
                                         <th className="py-2 px-1 text-center w-[5%] text-slate-400 border-r border-white/10">REB</th>
                                         
-                                        {/* Stats - 5.5% each, FG% 10% */}
-                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">PTS</th>
-                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">REB</th>
-                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">AST</th>
-                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">STL</th>
-                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">BLK</th>
-                                        <th className="py-2 px-1 text-right w-[5.5%] text-slate-400">TOV</th>
-                                        <th className="py-2 px-1 text-right w-[10%] text-slate-400 pr-6">FG%</th>
+                                        {/* Stats - ~5% each (Total 40%) */}
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">PTS</th>
+                                        <th className="py-2 px-1 text-right w-[5%] text-slate-400">REB</th>
+                                        <th className="py-2 px-1 text-right w-[5%] text-slate-400">AST</th>
+                                        <th className="py-2 px-1 text-right w-[5%] text-slate-400">STL</th>
+                                        <th className="py-2 px-1 text-right w-[5%] text-slate-400">BLK</th>
+                                        <th className="py-2 px-1 text-right w-[5%] text-slate-400">TOV</th>
+                                        <th className="py-2 px-1 text-right w-[9%] text-slate-400 pr-6">FG%</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
@@ -284,12 +284,12 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         return (
                                             <tr key={p.id} className="hover:bg-white/5 transition-all">
                                                 <td className="py-1.5 px-6 cursor-pointer" onClick={() => onViewPlayer(p)}>
-                                                    <span className="font-bold text-xs text-slate-300 hover:text-white hover:underline">{p.name}</span>
+                                                    <span className="font-bold text-xs text-slate-300 hover:text-white hover:underline truncate block">{p.name}</span>
                                                 </td>
-                                                <td className="py-1.5 px-2 text-center">
+                                                <td className="py-1.5 px-1 text-center">
                                                     <span className="text-[10px] font-black text-slate-500">{p.position}</span>
                                                 </td>
-                                                <td className="py-1.5 px-2 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div></td>
+                                                <td className="py-1.5 px-1 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div></td>
                                                 
                                                 {/* Reordered Attributes */}
                                                 <AttrCell value={p.ins} />

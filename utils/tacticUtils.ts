@@ -84,10 +84,39 @@ export const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: s
   }
 };
 
-export const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: string }> = {
-  'ManToManPerimeter': { label: '맨투맨 & 퍼리미터', desc: '대인 방어 및 외곽 억제' },
-  'ZoneDefense': { label: '지역 방어 및 골밑 보호', desc: '지역 방어 및 골밑 보호' },
-  'AceStopper': { label: '에이스 스토퍼', desc: '상대 주득점원 봉쇄 지시' }
+export const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: string, pros: string[], cons: string[] }> = {
+  'ManToManPerimeter': { 
+      label: '맨투맨 & 퍼리미터', 
+      desc: '대인 방어 및 외곽 억제',
+      pros: [
+          '상대방의 공격 시작 지점부터 강하게 압박하여 턴오버를 유발합니다.',
+          '상대방의 3점 시도에 적극적으로 컨테스트합니다.'
+      ],
+      cons: [
+          '퍼리미터 디펜더들의 높은 체력 소모가 요구됩니다.',
+          '외곽 수비 능력이 좋지 못하면 오히려 더 많은 3점 기회를 내줄 수 있습니다.',
+          '상대방에게 공격 리바운드를 많이 내줄 수 있습니다.'
+      ]
+  },
+  'ZoneDefense': { 
+      label: '지역 방어 및 골밑 보호', 
+      desc: '지역 방어 및 골밑 보호',
+      pros: [
+          '페인트존과 미드레인지 지역의 진입 자체를 막아 상대에게 3점을 강요합니다.',
+          '상대방의 내곽 공격 생산력이 크게 감소할 수 있습니다.',
+          '상대방에게 더 적은 공격 리바운드를 허용합니다.',
+          '많은 체력이 소모되지 않습니다.'
+      ],
+      cons: [
+          '상대방의 3점 능력에 따라 더 많은 점수를 쉽게 내어줄 수 있습니다.'
+      ]
+  },
+  'AceStopper': { 
+      label: '에이스 스토퍼', 
+      desc: '상대 주득점원 봉쇄 지시',
+      pros: [],
+      cons: []
+  }
 };
 
 export const getEfficiencyStyles = (score: number) => {
