@@ -3,6 +3,7 @@ import React, { useEffect } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { getOvrBadgeStyle } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { ChevronDown } from 'lucide-react';
 
 interface DepthChartEditorProps {
     team: Team;
@@ -91,27 +92,27 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
             <div className="p-0">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="bg-slate-900/60 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                            <th className="py-2 px-4 w-16 text-center border-r border-slate-800/50">POS</th>
-                            <th className="py-2 px-2 w-1/3 text-center border-r border-slate-800/50 text-indigo-400">주전 (Starter)</th>
-                            <th className="py-2 px-2 w-1/3 text-center border-r border-slate-800/50 text-slate-300">벤치 (Bench)</th>
-                            <th className="py-2 px-2 w-1/3 text-center text-slate-500">써드 (Third)</th>
+                        <tr className="bg-slate-950 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800/80">
+                            <th className="py-4 px-4 w-16 text-center border-r border-slate-800/50">POS</th>
+                            <th className="py-4 px-4 w-1/3 text-center border-r border-slate-800/50 text-indigo-400">주전 (Starter)</th>
+                            <th className="py-4 px-4 w-1/3 text-center border-r border-slate-800/50 text-slate-300">벤치 (Bench)</th>
+                            <th className="py-4 px-4 w-1/3 text-center text-slate-500">써드 (Third)</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className="divide-y divide-slate-800/50">
                         {positions.map(pos => (
-                            <tr key={pos} className="hover:bg-white/5 transition-colors">
-                                <td className="py-2 px-2 text-center border-r border-slate-800/50 bg-slate-900/20">
-                                    <span className="text-sm font-black text-white">{pos}</span>
+                            <tr key={pos} className="hover:bg-slate-900/40 transition-colors">
+                                <td className="py-4 px-4 text-center border-r border-slate-800/50 bg-slate-950/20">
+                                    <span className="text-base font-black text-white">{pos}</span>
                                 </td>
                                 {[0, 1, 2].map(depthIndex => {
                                     const selectedId = depthChart[pos][depthIndex];
                                     
                                     return (
-                                        <td key={`${pos}-${depthIndex}`} className={`p-1 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-500/5' : ''}`}>
-                                            <div className="flex flex-col gap-1">
+                                        <td key={`${pos}-${depthIndex}`} className={`p-3 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
+                                            <div className="relative group">
                                                 <select 
-                                                    className={`w-full bg-slate-950 border border-slate-700 rounded-md px-2 py-1.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 transition-all ${!selectedId ? 'text-slate-500' : ''}`}
+                                                    className={`w-full appearance-none bg-slate-900 border border-slate-700 rounded-lg pl-4 pr-10 py-3 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all cursor-pointer hover:border-slate-600 ${!selectedId ? 'text-slate-500' : ''}`}
                                                     value={selectedId || ""}
                                                     onChange={(e) => handleChange(pos, depthIndex, e.target.value)}
                                                 >
@@ -122,6 +123,9 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                                                         </option>
                                                     ))}
                                                 </select>
+                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-white transition-colors">
+                                                    <ChevronDown size={14} strokeWidth={2} />
+                                                </div>
                                             </div>
                                         </td>
                                     );
