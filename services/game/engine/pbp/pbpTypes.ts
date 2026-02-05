@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -46,6 +46,7 @@ export interface TeamState {
     name: string;
     score: number;
     tactics: GameTactics;
+    depthChart?: DepthChart; // [New] Added Depth Chart info
     onCourt: LivePlayer[]; // Always 5 players
     bench: LivePlayer[];
     timeouts: number;

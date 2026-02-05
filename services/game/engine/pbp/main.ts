@@ -1,5 +1,5 @@
 
-import { Team, SimulationResult, GameTactics, Player, PlayerBoxScore, TacticalSnapshot } from '../../../../types';
+import { Team, SimulationResult, GameTactics, Player, PlayerBoxScore, TacticalSnapshot, DepthChart } from '../../../../types';
 import { GameState, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePossession } from './flowEngine';
 import { handleSubstitutions, isRotationNeeded } from './substitutionSystem';
@@ -84,31 +84,37 @@ const initLivePlayer = (p: Player): LivePlayer => {
     };
 };
 
-const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
-    // 1. Determine Starters based on Tactics or Best OVR
+const initTeamState = (team: Team, tactics?: GameTactics, depthChart?: DepthChart | null): TeamState => {
     const finalTactics = tactics || generateAutoTactics(team);
     const roster = team.roster.map(initLivePlayer);
     
     let starters: LivePlayer[] = [];
     let bench: LivePlayer[] = [];
 
-    if (finalTactics.starters) {
-        // Map configured starters
-        const starterIds = Object.values(finalTactics.starters).filter(id => id);
-        starters = roster.filter(p => starterIds.includes(p.playerId));
-        
-        // Fill gaps if missing (e.g., injuries or incomplete setup)
-        if (starters.length < 5) {
-            const missingCount = 5 - starters.length;
-            const remaining = roster.filter(p => !starterIds.includes(p.playerId));
-            // Sort by OVR desc
-            remaining.sort((a, b) => b.ovr - a.ovr);
-            starters = [...starters, ...remaining.slice(0, missingCount)];
-        }
-    } else {
-        // Fallback: Top 5 OVR
-        const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
-        starters = sorted.slice(0, 5);
+    // [Update] Prioritize Depth Chart for starters if available, otherwise Tactics
+    let starterIds: string[] = [];
+
+    if (depthChart) {
+        // Extract starters from Depth Chart (Index 0 of each position)
+        const posKeys: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
+        posKeys.forEach(pos => {
+            const pid = depthChart[pos][0];
+            if (pid) starterIds.push(pid);
+        });
+    } else if (finalTactics.starters) {
+        starterIds = Object.values(finalTactics.starters).filter(id => id);
+    }
+
+    // Populate Starters
+    starters = roster.filter(p => starterIds.includes(p.playerId));
+
+    // Fill gaps if missing (e.g. injuries or incomplete config)
+    if (starters.length < 5) {
+        const missingCount = 5 - starters.length;
+        const remaining = roster.filter(p => !starterIds.includes(p.playerId));
+        // Sort by OVR desc
+        remaining.sort((a, b) => b.ovr - a.ovr);
+        starters = [...starters, ...remaining.slice(0, missingCount)];
     }
     
     // Mark Starters
@@ -121,11 +127,16 @@ const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
     bench = roster.filter(p => !starters.find(s => s.playerId === p.playerId));
     bench.forEach(p => p.isStarter = false);
 
+    // [New] Generate Fallback Depth Chart if missing
+    // This ensures the substitution system always has a structure to work with
+    const finalDepthChart = depthChart || generateDefaultDepthChart(starters, bench);
+
     return {
         id: team.id,
         name: team.name,
         score: 0,
         tactics: finalTactics,
+        depthChart: finalDepthChart, // [New]
         onCourt: starters,
         bench: bench,
         timeouts: 7,
@@ -134,12 +145,50 @@ const initTeamState = (team: Team, tactics?: GameTactics): TeamState => {
     };
 };
 
+// Helper: Generate simple depth chart based on OVR
+function generateDefaultDepthChart(starters: LivePlayer[], bench: LivePlayer[]): DepthChart {
+    const dc: DepthChart = { PG: [], SG: [], SF: [], PF: [], C: [] };
+    const posMap: Record<string, string> = {}; // PlayerID -> POS
+
+    // 1. Assign Starters
+    starters.forEach(p => {
+        // Simplified position mapping (Complex logic might be needed for multi-pos)
+        let pos = p.position.split('/')[0] as keyof DepthChart;
+        if (!dc[pos]) pos = 'SF'; // Fallback
+        if (dc[pos].length === 0) {
+            dc[pos][0] = p.playerId;
+            posMap[p.playerId] = pos;
+        }
+    });
+
+    // 2. Assign Bench by OVR
+    const sortedBench = [...bench].sort((a, b) => b.ovr - a.ovr);
+    
+    sortedBench.forEach(p => {
+        let pos = p.position.split('/')[0] as keyof DepthChart;
+        if (!dc[pos]) pos = 'SF';
+        
+        // Find first empty slot (Index 1 or 2)
+        if (!dc[pos][1]) dc[pos][1] = p.playerId;
+        else if (!dc[pos][2]) dc[pos][2] = p.playerId;
+        else {
+            // Spillover: Try secondary position or generic
+            // For now, ignore spillover in default chart
+        }
+    });
+
+    // Ensure array structure is [string|null, string|null, string|null]
+    (['PG', 'SG', 'SF', 'PF', 'C'] as const).forEach(pos => {
+        while(dc[pos].length < 3) dc[pos].push(null);
+    });
+
+    return dc;
+}
+
 // [New] Rotation Tracker Helper
 const updateRotationHistory = (state: GameState, duration: number) => {
     const activePlayers = [...state.home.onCourt, ...state.away.onCourt];
     
-    // Current ABSOLUTE start time of this segment (seconds from game start)
-    // Quarter 1: 0~720, Q2: 720~1440, etc.
     const quarterOffset = (state.quarter - 1) * 720;
     const currentSegmentStart = quarterOffset + (720 - state.gameClock);
     const currentSegmentEnd = currentSegmentStart + duration;
@@ -152,8 +201,6 @@ const updateRotationHistory = (state: GameState, duration: number) => {
         const history = state.rotationHistory[p.playerId];
         const lastSeg = history[history.length - 1];
 
-        // Merge contiguous segments to reduce array size
-        // Tolerance of 1s for floating point drift
         if (lastSeg && Math.abs(lastSeg.out - currentSegmentStart) <= 1) {
             lastSeg.out = currentSegmentEnd;
         } else {
@@ -170,7 +217,9 @@ export function runFullGameSimulation(
     userTeamId: string | null, 
     userTactics?: GameTactics,
     isHomeB2B: boolean = false,
-    isAwayB2B: boolean = false
+    isAwayB2B: boolean = false,
+    homeDepthChart?: DepthChart | null, // [New]
+    awayDepthChart?: DepthChart | null  // [New]
 ): SimulationResult {
     
     // 1. Initialize State
@@ -178,13 +227,13 @@ export function runFullGameSimulation(
     const isUserAway = userTeamId === awayTeam.id;
     
     const state: GameState = {
-        home: initTeamState(homeTeam, isUserHome ? userTactics : undefined),
-        away: initTeamState(awayTeam, isUserAway ? userTactics : undefined),
+        home: initTeamState(homeTeam, isUserHome ? userTactics : undefined, isUserHome ? homeDepthChart : undefined),
+        away: initTeamState(awayTeam, isUserAway ? userTactics : undefined, isUserAway ? awayDepthChart : undefined),
         quarter: 1,
         gameClock: 720,
         shotClock: 24,
         possession: 'home', 
-        isDeadBall: true, // Start as dead ball
+        isDeadBall: true, 
         logs: [],
         isHomeB2B,
         isAwayB2B,
@@ -195,14 +244,12 @@ export function runFullGameSimulation(
 
     // 2. Game Loop
     while (state.quarter <= 4) {
-        // 2-1. Pre-Possession: Check Substitutions & Quarter End
         if (state.gameClock <= 0) {
             state.logs.push({
                 quarter: state.quarter, timeRemaining: '0:00', teamId: '', type: 'info',
                 text: `--- ${state.quarter}쿼터 종료 (${state.home.score} : ${state.away.score}) ---`
             });
 
-            // [Recovery] Halftime Recovery only. Removed general quarter recovery.
             if (state.quarter === 2) {
                 const halftimeRecovery = 5; 
                 const recoverTeam = (t: TeamState) => {
@@ -222,31 +269,24 @@ export function runFullGameSimulation(
             state.isDeadBall = true;
         }
 
-        // Substitutions (Only on Dead Ball)
         if (state.isDeadBall) {
             handleSubstitutions(state);
-            state.isDeadBall = false; // Ball becomes live
+            state.isDeadBall = false; 
         }
 
-        // 2-2. Simulate Possession
         const result = resolvePossession(state);
         
-        // 2-3. Apply Results
         const activeTeam = state.possession === 'home' ? state.home : state.away;
         const defendingTeam = state.possession === 'home' ? state.away : state.home;
         
-        // Score & Plus/Minus
         let pointsScored = 0;
         if ((result.type === 'score' || result.type === 'freethrow') && result.points) {
             pointsScored = result.points;
             activeTeam.score += pointsScored;
-
-            // [New] Update Plus/Minus for players currently on court
             activeTeam.onCourt.forEach(p => p.plusMinus += pointsScored);
             defendingTeam.onCourt.forEach(p => p.plusMinus -= pointsScored);
         }
         
-        // Player Stats - Primary Actor
         if (result.player) {
             if (result.type === 'score') {
                 result.player.pts += result.points!;
@@ -258,7 +298,6 @@ export function runFullGameSimulation(
             } else if (result.type === 'turnover') {
                 result.player.tov++;
             } else if (result.type === 'freethrow') {
-                // Approximate FT logic
                 if (result.logText.includes('앤드원')) {
                      result.player.pts += result.points!;
                      result.player.fgm++; result.player.fga++; 
@@ -270,7 +309,6 @@ export function runFullGameSimulation(
                          result.player.ftm += result.points!; 
                      }
                 } else {
-                     // Regular FT
                      result.player.pts += result.points!;
                      result.player.ftm += result.points!;
                      result.player.fta += result.attempts!;
@@ -278,7 +316,6 @@ export function runFullGameSimulation(
             }
         }
         
-        // Secondary Actor
         if (result.secondaryPlayer) {
              if (result.type === 'score') result.secondaryPlayer.ast++;
              if (result.type === 'turnover') result.secondaryPlayer.stl++;
@@ -286,30 +323,24 @@ export function runFullGameSimulation(
              if (result.type === 'foul' || result.type === 'freethrow') result.secondaryPlayer.pf++;
         }
         
-        // Rebound
         if (result.rebounder) {
             result.rebounder.reb++;
             const rebounderTeam = state.home.onCourt.includes(result.rebounder) ? 'home' : 'away';
-            // Offensive rebound if team matched possession (before switch)
             if (rebounderTeam === state.possession) result.rebounder.offReb++;
             else result.rebounder.defReb++;
         }
 
-        // [New] Update Rotation History (BEFORE subtracting time)
         updateRotationHistory(state, result.timeTaken);
 
-        // 2-4. Update Time & Fatigue
         state.gameClock -= result.timeTaken;
         state.isDeadBall = result.isDeadBall || false;
         
-        // [New] Check for Mandatory Rotation AFTER Score
         if (result.type === 'score' || result.type === 'freethrow') {
             const homeNeedsSub = isRotationNeeded(state.home, state);
             const awayNeedsSub = isRotationNeeded(state.away, state);
             
             if (homeNeedsSub || awayNeedsSub) {
                 state.isDeadBall = true;
-                // Add log only if it's not a normal quarter end
                 if (state.gameClock > 5) {
                     state.logs.push({
                         quarter: state.quarter,
@@ -322,7 +353,6 @@ export function runFullGameSimulation(
             }
         }
 
-        // [Fatigue Application]
         const applyFatigueToTeam = (t: TeamState, isB2B: boolean) => {
             t.onCourt.forEach(p => {
                 const isStopper = t.tactics.stopperId === p.playerId;
@@ -337,7 +367,6 @@ export function runFullGameSimulation(
                 p.mp += result.timeTaken / 60;
                 p.currentCondition -= drain;
 
-                // Handle In-Game Injury
                 if (injuryOccurred) {
                     state.logs.push({
                         quarter: state.quarter,
@@ -346,7 +375,7 @@ export function runFullGameSimulation(
                         type: 'info',
                         text: `🚑 [부상] ${p.playerName} 선수가 고통을 호소하며 코트에 쓰러졌습니다. (${injuryDetails?.type})`
                     });
-                    p.currentCondition = 0; // Force sub out
+                    p.currentCondition = 0; 
                     if (injuryDetails?.health) {
                         p.health = injuryDetails.health; 
                     }
@@ -358,13 +387,10 @@ export function runFullGameSimulation(
         applyFatigueToTeam(state.home, state.isHomeB2B);
         applyFatigueToTeam(state.away, state.isAwayB2B);
         
-        // Bench Recovery (Updated: 0.2 per minute)
-        // 1 minute = 60 seconds. Recovery per second = 0.2 / 60 = 0.0033
         const benchRecovery = (result.timeTaken / 60) * 0.2;
         state.home.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
         state.away.bench.forEach(p => p.currentCondition = Math.min(100, p.currentCondition + benchRecovery));
 
-        // Add Log
         state.logs.push({
             quarter: state.quarter,
             timeRemaining: formatTime(Math.max(0, state.gameClock)),
@@ -373,24 +399,15 @@ export function runFullGameSimulation(
             text: `[${state.home.score}-${state.away.score}] ${result.logText}`
         });
 
-        // --- DEVELOPER CONSOLE LOG (Fix 4) ---
-        // Format: [Q1 11:45] 0-0 | Balance > Iso | Actor: Player (H:80, S:70) | Result: score
-        const timeStr = formatTime(Math.max(0, state.gameClock));
-        const tacticName = activeTeam.tactics.offenseTactics[0] || 'Balance';
-        const playName = result.playType || 'Unknown';
-        const actorName = result.player ? result.player.playerName : 'None';
-        const archInfo = result.player ? `(H:${result.player.archetypes.handler.toFixed(0)}, S:${result.player.archetypes.spacer.toFixed(0)}, D:${result.player.archetypes.driver.toFixed(0)})` : '';
-        const resType = result.type.toUpperCase();
-        
-        console.log(`[Q${state.quarter} ${timeStr}] ${state.home.score}-${state.away.score} | ${tacticName} > ${playName} | Actor: ${actorName} ${archInfo} | Result: ${resType}`);
+        // Console Log (Dev)
+        // const timeStr = formatTime(Math.max(0, state.gameClock));
+        // console.log(`[Q${state.quarter} ${timeStr}] ${state.home.score}-${state.away.score} | ${result.type.toUpperCase()}`);
 
-        // 2-5. Switch Possession
         if (result.nextPossession !== 'keep') {
             state.possession = result.nextPossession as 'home' | 'away';
         }
     }
 
-    // 3. Sudden Death (If Tied)
     if (state.home.score === state.away.score) {
         state.logs.push({ quarter: 4, timeRemaining: '0:00', teamId: '', type: 'info', text: `!!! 정규 시간 종료 동점 (${state.home.score} : ${state.away.score}) - 서든데스 !!!` });
         while (state.home.score === state.away.score) {
@@ -400,12 +417,8 @@ export function runFullGameSimulation(
             
             if ((result.type === 'score' || result.type === 'freethrow') && result.points) {
                 activeTeam.score += result.points;
-                // Update Plus/Minus in OT
                 activeTeam.onCourt.forEach(p => p.plusMinus += result.points!);
                 defendingTeam.onCourt.forEach(p => p.plusMinus -= result.points!);
-                
-                // [New] Update Rotation in OT (Append to end of 48min)
-                // OT adds time beyond 2880
                 updateRotationHistory(state, result.timeTaken);
             }
             state.logs.push({ quarter: 4, timeRemaining: 'SD', teamId: activeTeam.id, type: result.type, text: `[서든데스] ${result.logText}` });
@@ -413,7 +426,7 @@ export function runFullGameSimulation(
         }
     }
 
-    console.groupEnd(); // End Simulation Group
+    console.groupEnd(); 
 
     // 4. Finalize
     const finalHomeBox = [...state.home.onCourt, ...state.home.bench];
@@ -434,7 +447,6 @@ export function runFullGameSimulation(
         };
     });
 
-    // Helper to Map Full Tactics to Snapshot
     const mapToSnapshot = (t: GameTactics): TacticalSnapshot => ({
         offense: t.offenseTactics[0],
         defense: t.defenseTactics[0],
@@ -448,11 +460,9 @@ export function runFullGameSimulation(
         homeBox: finalHomeBox,
         awayBox: finalAwayBox,
         rosterUpdates: rosterUpdates, 
-        // [Fix 1] Explicitly map current TeamState tactics to snapshot format
         homeTactics: mapToSnapshot(state.home.tactics), 
         awayTactics: mapToSnapshot(state.away.tactics),
         pbpLogs: state.logs,
-        // [New] Pass Rotation Data
         rotationData: state.rotationHistory
     };
 }
