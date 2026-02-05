@@ -10,8 +10,13 @@ export interface LivePlayer extends PlayerBoxScore {
     isStarter: boolean; 
     health: 'Healthy' | 'Injured' | 'Day-to-Day'; 
     
-    // [New] Rotation Stability Tracking
+    // [New] Rotation Stability & Fatigue Tracking
     lastSubInTime: number; // Game clock seconds when they entered (720 -> 0)
+    conditionAtSubIn: number; // Condition when they last entered the court (for Delta calc)
+    
+    // [New] Safety Nets
+    isShutdown: boolean; // True if hit < 20% (Cannot return)
+    needsDeepRecovery: boolean; // True if hit < 30% (Cannot return until > 65%)
 
     // Dynamic Role Ratings (0-100+) - Recalculated on substitutions
     archetypes: ArchetypeRatings;

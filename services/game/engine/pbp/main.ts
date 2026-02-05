@@ -72,6 +72,9 @@ const initLivePlayer = (p: Player): LivePlayer => {
         
         // [New] Init with full quarter time
         lastSubInTime: 720,
+        conditionAtSubIn: p.condition ?? 100, // [New]
+        isShutdown: false, // [New]
+        needsDeepRecovery: false, // [New]
 
         // Initial Archetype Calculation
         archetypes: calculatePlayerArchetypes(attr, p.condition ?? 100),
@@ -269,9 +272,16 @@ export function runFullGameSimulation(
 
             state.gameClock = 720; 
             
-            // [Fix] Reset Stint Timer for players on court at start of new quarter
-            state.home.onCourt.forEach(p => p.lastSubInTime = 720);
-            state.away.onCourt.forEach(p => p.lastSubInTime = 720);
+            // [Fix] Reset Stint Timer & Energy Baseline for players on court at new quarter
+            // This treats the new quarter as a "Fresh Stint" context, though condition remains drained.
+            const resetStintBaseline = (t: TeamState) => {
+                t.onCourt.forEach(p => {
+                    p.lastSubInTime = 720;
+                    p.conditionAtSubIn = p.currentCondition; // Reset delta reference
+                });
+            };
+            resetStintBaseline(state.home);
+            resetStintBaseline(state.away);
 
             state.home.fouls = 0; state.away.fouls = 0;
             state.isDeadBall = true;
