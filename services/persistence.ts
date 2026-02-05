@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Transaction, GameTactics } from '../types';
+import { Transaction, GameTactics, DepthChart } from '../types';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
@@ -8,7 +8,8 @@ export const saveCheckpoint = async (
     teamId: string, 
     simDate: string, 
     tactics?: GameTactics | null,
-    rosterState?: Record<string, number> // Map of PlayerID -> Condition
+    rosterState?: Record<string, number>, // Map of PlayerID -> Condition
+    depthChart?: DepthChart | null // [New] Depth Chart Data
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -27,7 +28,11 @@ export const saveCheckpoint = async (
         payload.roster_state = rosterState;
     }
 
-    // Direct upsert (Column 'roster_state' is confirmed to exist)
+    if (depthChart) {
+        payload.depth_chart = depthChart;
+    }
+
+    // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     const { data, error } = await supabase
         .from('saves')
         .upsert(payload, { onConflict: 'user_id' })

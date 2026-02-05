@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
 import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
@@ -23,6 +23,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [prospects, setProspects] = useState<Player[]>([]);
     const [currentSimDate, setCurrentSimDate] = useState<string>(INITIAL_DATE);
     const [userTactics, setUserTactics] = useState<GameTactics | null>(null);
+    const [depthChart, setDepthChart] = useState<DepthChart | null>(null); // [New] Depth Chart
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -32,10 +33,10 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const isResettingRef = useRef(false);
     
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, teams });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams });
     useEffect(() => { 
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, teams }; 
-    }, [myTeamId, currentSimDate, userTactics, teams]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams }; 
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -104,6 +105,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     if (checkpoint.tactics) {
                         setUserTactics(checkpoint.tactics);
                     }
+
+                    // [New] Load Depth Chart
+                    if (checkpoint.depth_chart) {
+                        setDepthChart(checkpoint.depth_chart);
+                    }
                     
                     if (playoffState && playoffState.bracket_data) {
                         setPlayoffSeries(playoffState.bracket_data.series);
@@ -147,6 +153,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
             const date = overrides?.currentSimDate || gameStateRef.current.currentSimDate;
             const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
+            const depthChart = overrides?.depthChart || gameStateRef.current.depthChart; // [New]
             
             // [NEW] Capture Roster State (Condition) from current teams (or override)
             const currentTeams = overrides?.teams || gameStateRef.current.teams;
@@ -163,7 +170,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             }
 
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState);
+                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart);
             }
         } catch (e: any) {
             console.error("Save Failed:", e);
@@ -221,6 +228,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setTransactions([]);
             setPlayoffSeries([]);
             setUserTactics(null);
+            setDepthChart(null); // [New]
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -245,6 +253,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         prospects, setProspects,
         currentSimDate, setCurrentSimDate,
         userTactics, setUserTactics,
+        depthChart, setDepthChart, // [New]
         news, setNews,
         
         isBaseDataLoading,
