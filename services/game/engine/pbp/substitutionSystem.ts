@@ -6,6 +6,8 @@ import { DepthChart } from '../../../../types';
 
 const SCORE_DIFF_GARBAGE = 25; // 25+ pts diff in Q4 = Garbage
 const CRITICAL_FATIGUE = 15; // Bare minimum to stay on court
+const MIN_STINT_SECONDS = 180; // Minimum 3 minutes on court before voluntary sub
+const HYSTERESIS_BUFFER = 8; // Player needs Threshold + 8% to re-enter (Ping-pong prevention)
 
 enum RotationMode {
     STRICT = 'STRICT',   // 1-3: Minutes > Fatigue
@@ -83,7 +85,7 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
 
     // Check each player on court
     for (const p of team.onCourt) {
-        // 1. Injury / Ejection (Always sub)
+        // 1. Injury / Ejection (Always sub, ignore stint)
         if (p.health === 'Injured' || p.pf >= 6) return true;
 
         // 2. Critical Fatigue (Safety Net)
@@ -92,11 +94,16 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
         // 3. Garbage Time (Pull starters)
         if (isGarbage && p.isStarter) return true;
 
-        // 4. Minutes Limit Reached
+        // 4. Minimum Stint Check (Stability)
+        // If not critical/garbage/injured, enforce minimum play time
+        const stintDuration = p.lastSubInTime - state.gameClock;
+        if (stintDuration < MIN_STINT_SECONDS) continue; // Keep them on court
+
+        // 5. Minutes Limit Reached
         const limit = minutesLimits[p.playerId];
         if (limit !== undefined && p.mp >= limit + 0.5) return true;
 
-        // 5. Fatigue Logic per Mode
+        // 6. Fatigue Logic per Mode
         if (p.currentCondition < fatigueThreshold) {
             if (mode === RotationMode.STRICT) {
                 // Strict: Only sub if below threshold AND minutes limit reached (or critical)
@@ -109,7 +116,7 @@ export function isRotationNeeded(team: TeamState, state: GameState): boolean {
             }
         }
 
-        // 6. Scheduled Rest (Strict/Normal)
+        // 7. Scheduled Rest (Strict/Normal)
         if (isScheduledRest(p, state.quarter, state.gameClock, mode)) return true;
     }
 
@@ -165,37 +172,44 @@ function processTeamRotation(team: TeamState, state: GameState): boolean {
     team.onCourt.forEach(p => {
         let shouldSub = false;
         let reason = '';
+        
+        // Calculate Stint Duration
+        const stintDuration = p.lastSubInTime - state.gameClock;
+        const isStintLocked = stintDuration < MIN_STINT_SECONDS;
 
-        // Emergency
+        // Emergency (Overrides Stint Lock)
         if (p.health === 'Injured') { shouldSub = true; reason = '부상'; }
         else if (p.pf >= 6) { shouldSub = true; reason = '퇴장'; }
         else if (p.currentCondition < CRITICAL_FATIGUE) { shouldSub = true; reason = '체력 고갈'; }
         
-        // Garbage Time
-        else if (isGarbage && p.isStarter) { shouldSub = true; reason = '가비지 타임'; }
-        
-        // Minutes Limit
-        else if (minutesLimits[p.playerId] !== undefined && p.mp >= minutesLimits[p.playerId] + 0.5) {
-             shouldSub = true; reason = '시간 제한';
-        }
+        // Voluntary Checks (Respected Stint Lock)
+        else if (!isStintLocked) {
+             // Garbage Time
+            if (isGarbage && p.isStarter) { shouldSub = true; reason = '가비지 타임'; }
+            
+            // Minutes Limit
+            else if (minutesLimits[p.playerId] !== undefined && p.mp >= minutesLimits[p.playerId] + 0.5) {
+                 shouldSub = true; reason = '시간 제한';
+            }
 
-        // Logic by Mode
-        else if (mode === RotationMode.STRICT) {
-            // Strict: Time > Fatigue.
-            // Check scheduled rest (Q2/Q4 start)
-            if (isScheduledRest(p, state.quarter, state.gameClock, mode)) {
-                shouldSub = true; reason = '로테이션(휴식)';
-            }
-            // Only sub for fatigue if limit reached or extremely tired (handled by critical)
-        } 
-        else {
-            // Normal / Deep: Fatigue > Time
-            if (p.currentCondition < fatigueThreshold) {
-                shouldSub = true; reason = '체력 안배';
-            }
-            // Normal schedule check
-            if (mode === RotationMode.NORMAL && isScheduledRest(p, state.quarter, state.gameClock, mode)) {
-                 shouldSub = true; reason = '로테이션(휴식)';
+            // Logic by Mode
+            else if (mode === RotationMode.STRICT) {
+                // Strict: Time > Fatigue.
+                // Check scheduled rest (Q2/Q4 start)
+                if (isScheduledRest(p, state.quarter, state.gameClock, mode)) {
+                    shouldSub = true; reason = '로테이션(휴식)';
+                }
+                // Only sub for fatigue if limit reached or extremely tired (handled by critical)
+            } 
+            else {
+                // Normal / Deep: Fatigue > Time
+                if (p.currentCondition < fatigueThreshold) {
+                    shouldSub = true; reason = '체력 안배';
+                }
+                // Normal schedule check
+                if (mode === RotationMode.NORMAL && isScheduledRest(p, state.quarter, state.gameClock, mode)) {
+                     shouldSub = true; reason = '로테이션(휴식)';
+                }
             }
         }
         
@@ -287,11 +301,11 @@ function findReplacement(
         
         // Validation
         if (candidate && candidate.health !== 'Injured' && candidate.pf < 6) {
-            // Condition Check: Must be significantly better than current or above threshold
-            // In garbage time, just play whoever is alive
             if (isGarbage) return candidate;
 
-            if (candidate.currentCondition >= fatigueThreshold + 5) {
+            // Hysteresis Check: Candidate must be significantly recovered
+            // e.g. Threshold 75 -> Need > 83 to come back in
+            if (candidate.currentCondition >= fatigueThreshold + HYSTERESIS_BUFFER) {
                 return candidate;
             }
         }
@@ -319,6 +333,9 @@ function findReplacement(
 function executeSwap(team: TeamState, outP: LivePlayer, inP: LivePlayer, state: GameState, reason: string) {
     team.onCourt = team.onCourt.filter(p => p.playerId !== outP.playerId);
     team.onCourt.push(inP);
+    
+    // [Fix] Set entry time for new player
+    inP.lastSubInTime = state.gameClock;
     
     team.bench = team.bench.filter(p => p.playerId !== inP.playerId);
     team.bench.push(outP);
@@ -362,8 +379,8 @@ function checkStartersReturn(team: TeamState, state: GameState, mode: RotationMo
         // Check Limit
         if (minutesLimits[starter.playerId] !== undefined && starter.mp >= minutesLimits[starter.playerId]) return;
         
-        // Check Condition (Must be recovered enough, e.g. > Threshold or at least > 60)
-        const readyCondition = Math.max(60, fatigueThreshold);
+        // Check Condition (Must be recovered enough, e.g. > Threshold + Hysteresis)
+        const readyCondition = Math.max(60, fatigueThreshold + HYSTERESIS_BUFFER);
         if (starter.currentCondition < readyCondition) return;
 
         // Find who is occupying their spot
@@ -388,16 +405,22 @@ function checkStartersReturn(team: TeamState, state: GameState, mode: RotationMo
         const occupant = team.onCourt.find(p => p.playerId === occupantId1 || p.playerId === occupantId2);
         
         if (occupant) {
-            executeSwap(team, occupant, starter, state, '주전 복귀');
+            // Check occupant stint duration to avoid rapid swaps
+            const stint = occupant.lastSubInTime - state.gameClock;
+            if (stint >= MIN_STINT_SECONDS) {
+                 executeSwap(team, occupant, starter, state, '주전 복귀');
+            }
         } else {
-            // If explicit backup not found (scrambled lineup), sub out worst condition player?
-            // Safer to just swap with lowest OVR non-starter
+            // If explicit backup not found (scrambled lineup), swap with lowest OVR non-starter
             const worstNonStarter = team.onCourt
                 .filter(p => !p.isStarter)
                 .sort((a, b) => a.ovr - b.ovr)[0];
             
             if (worstNonStarter) {
-                 executeSwap(team, worstNonStarter, starter, state, '주전 복귀');
+                 const stint = worstNonStarter.lastSubInTime - state.gameClock;
+                 if (stint >= MIN_STINT_SECONDS) {
+                      executeSwap(team, worstNonStarter, starter, state, '주전 복귀');
+                 }
             }
         }
     });

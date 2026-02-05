@@ -10,6 +10,9 @@ export interface LivePlayer extends PlayerBoxScore {
     isStarter: boolean; 
     health: 'Healthy' | 'Injured' | 'Day-to-Day'; 
     
+    // [New] Rotation Stability Tracking
+    lastSubInTime: number; // Game clock seconds when they entered (720 -> 0)
+
     // Dynamic Role Ratings (0-100+) - Recalculated on substitutions
     archetypes: ArchetypeRatings;
 

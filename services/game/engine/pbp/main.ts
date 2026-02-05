@@ -70,6 +70,9 @@ const initLivePlayer = (p: Player): LivePlayer => {
         isStarter: false, 
         health: p.health, 
         
+        // [New] Init with full quarter time
+        lastSubInTime: 720,
+
         // Initial Archetype Calculation
         archetypes: calculatePlayerArchetypes(attr, p.condition ?? 100),
 
@@ -265,6 +268,11 @@ export function runFullGameSimulation(
             if (state.quarter > 4) break; 
 
             state.gameClock = 720; 
+            
+            // [Fix] Reset Stint Timer for players on court at start of new quarter
+            state.home.onCourt.forEach(p => p.lastSubInTime = 720);
+            state.away.onCourt.forEach(p => p.lastSubInTime = 720);
+
             state.home.fouls = 0; state.away.fouls = 0;
             state.isDeadBall = true;
         }
