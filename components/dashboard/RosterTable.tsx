@@ -250,25 +250,26 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             <table className="w-full text-left border-collapse table-fixed">
                                 <thead>
                                     <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/10 bg-slate-950/50">
-                                        <th className="py-2 px-6 w-[140px]">이름</th>
-                                        <th className="py-2 px-2 text-center w-12">POS</th>
-                                        <th className="py-2 px-2 text-center w-12">OVR</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400">ATH</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400">OUT</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400">INS</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400">PLM</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400">DEF</th>
-                                        <th className="py-2 px-1 text-center w-10 text-slate-400 border-r border-white/10">REB</th>
+                                        <th className="py-2 px-6 w-[18%]">이름</th>
+                                        <th className="py-2 px-2 text-center w-[5%]">POS</th>
+                                        <th className="py-2 px-2 text-center w-[5%]">OVR</th>
                                         
-                                        {/* Added Stats Columns - MP Removed. Color changed to slate-400 */}
-                                        <th className="py-2 px-1 text-right w-10 text-slate-400">PTS</th>
-                                        <th className="py-2 px-1 text-right w-10 text-slate-400">REB</th>
-                                        <th className="py-2 px-1 text-right w-10 text-slate-400">AST</th>
-                                        <th className="py-2 px-1 text-right w-10 text-slate-400">STL</th>
-                                        <th className="py-2 px-1 text-right w-10 text-slate-400">BLK</th>
-                                        <th className="py-2 px-1 text-right w-10 text-slate-400">TOV</th>
-                                        <th className="py-2 px-1 text-right w-12 text-slate-400">FG%</th>
-                                        <th className="py-2 px-1 text-right w-12 text-slate-400 pr-6">TS%</th>
+                                        {/* Reordered: INS, OUT, ATH, PLM, DEF, REB */}
+                                        <th className="py-2 px-1 text-center w-[5%] text-slate-400">INS</th>
+                                        <th className="py-2 px-1 text-center w-[5%] text-slate-400">OUT</th>
+                                        <th className="py-2 px-1 text-center w-[5%] text-slate-400">ATH</th>
+                                        <th className="py-2 px-1 text-center w-[5%] text-slate-400">PLM</th>
+                                        <th className="py-2 px-1 text-center w-[5%] text-slate-400">DEF</th>
+                                        <th className="py-2 px-1 text-center w-[5%] text-slate-400 border-r border-white/10">REB</th>
+                                        
+                                        {/* Stats - Evenly distributed (approx 6% each), TS% removed */}
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">PTS</th>
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">REB</th>
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">AST</th>
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">STL</th>
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">BLK</th>
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400">TOV</th>
+                                        <th className="py-2 px-1 text-right w-[6%] text-slate-400 pr-6">FG%</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
@@ -276,8 +277,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         const ovr = calculatePlayerOvr(p);
                                         const s = p.stats;
                                         const g = s.g > 0 ? s.g : 1;
-                                        const tsa = s.fga + 0.44 * s.fta;
-                                        const tsPct = tsa > 0 ? (s.pts / (2 * tsa) * 100).toFixed(1) : '0.0';
                                         const fgPct = s.fga > 0 ? (s.fgm / s.fga * 100).toFixed(1) : '0.0';
 
                                         return (
@@ -289,22 +288,23 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                     <span className="text-[10px] font-black text-slate-500">{p.position}</span>
                                                 </td>
                                                 <td className="py-1.5 px-2 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div></td>
-                                                <AttrCell value={p.ath} />
-                                                <AttrCell value={p.out} />
+                                                
+                                                {/* Reordered Attributes */}
                                                 <AttrCell value={p.ins} />
+                                                <AttrCell value={p.out} />
+                                                <AttrCell value={p.ath} />
                                                 <AttrCell value={p.plm} />
                                                 <AttrCell value={p.def} />
                                                 <AttrCell value={p.reb} className="border-r border-white/10" />
                                                 
-                                                {/* Stats Cells - MP Removed */}
+                                                {/* Stats Cells - TS% removed */}
                                                 <StatCell value={(s.pts/g).toFixed(1)} />
                                                 <StatCell value={(s.reb/g).toFixed(1)} />
                                                 <StatCell value={(s.ast/g).toFixed(1)} />
                                                 <StatCell value={(s.stl/g).toFixed(1)} />
                                                 <StatCell value={(s.blk/g).toFixed(1)} />
                                                 <StatCell value={(s.tov/g).toFixed(1)} />
-                                                <StatCell value={fgPct} isPercent />
-                                                <StatCell value={tsPct} isPercent className="pr-6" />
+                                                <StatCell value={fgPct} isPercent className="pr-6" />
                                             </tr>
                                         );
                                     })}
