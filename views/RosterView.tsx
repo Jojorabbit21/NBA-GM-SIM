@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock } from 'lucide-react';
+import { Users, Activity, Wallet, ClipboardList, ArrowUp, ArrowDown, CalendarClock, Table2, Target } from 'lucide-react';
 import { Team, Player } from '../types';
 import { getOvrBadgeStyle } from '../components/SharedComponents';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
@@ -67,8 +67,28 @@ const ALL_ROSTER_COLUMNS: { key: keyof Player | string, label: string, tooltip: 
     { key: 'defReb', label: 'DRB', tooltip: '수비 리바운드' },
 ];
 
-const STATS_COLUMNS = [
-  { key: 'g', label: 'GP' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' }, { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'offReb', label: 'ORB' }, { key: 'defReb', label: 'DRB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' }, { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' }, { key: 'ts%', label: 'TS%' },
+const TRADITIONAL_STATS_COLUMNS = [
+  { key: 'g', label: 'GP' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' }, 
+  { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'offReb', label: 'ORB' }, { key: 'defReb', label: 'DRB' }, 
+  { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' }, { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+  { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
+  { key: 'p3m', label: '3PM' }, { key: 'p3a', label: '3PA' }, { key: '3p%', label: '3P%' },
+  { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
+  { key: 'ts%', label: 'TS%' },
+];
+
+// Zone definitions for Shooting Stats
+const SHOOTING_ZONES = [
+    { id: 'zone_rim', label: 'Rim' },
+    { id: 'zone_paint', label: 'Paint' },
+    { id: 'zone_mid_l', label: 'Mid-L' },
+    { id: 'zone_mid_c', label: 'Mid-C' },
+    { id: 'zone_mid_r', label: 'Mid-R' },
+    { id: 'zone_c3_l', label: 'C3-L' },
+    { id: 'zone_c3_r', label: 'C3-R' },
+    { id: 'zone_atb3_l', label: '3PT-L' },
+    { id: 'zone_atb3_c', label: '3PT-C' },
+    { id: 'zone_atb3_r', label: '3PT-R' },
 ];
 
 const SALARY_COLUMNS = [
@@ -94,6 +114,7 @@ const AttrCell: React.FC<{ value: number; className?: string }> = ({ value, clas
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
   const [tab, setTab] = useState<'roster' | 'stats' | 'salary' | 'tactics'>('roster');
+  const [statMode, setStatMode] = useState<'traditional' | 'shooting'>('traditional');
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -146,6 +167,31 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         const tsa = s.fga + 0.44 * s.fta;
         return tsa > 0 ? s.pts / (2 * tsa) : 0;
     }
+    // Handle specific stats keys
+    if (key === 'fgm') return s.fgm / g;
+    if (key === 'fga') return s.fga / g;
+    if (key === 'p3m') return s.p3m / g;
+    if (key === 'p3a') return s.p3a / g;
+    if (key === 'ftm') return s.ftm / g;
+    if (key === 'fta') return s.fta / g;
+    
+    // Handle Zone Stats for sorting
+    if (key.includes('_m') || key.includes('_a') || key.includes('_pct')) {
+        // e.g. zone_rim_m, zone_rim_a, zone_rim_pct
+        const zoneKey = key.replace('_pct', '');
+        const isPct = key.endsWith('_pct');
+        
+        // Find makes and attempts keys
+        const mKey = isPct ? zoneKey + '_m' : (key.endsWith('_m') ? key : key.replace('_a', '_m'));
+        const aKey = isPct ? zoneKey + '_a' : (key.endsWith('_a') ? key : key.replace('_m', '_a'));
+        
+        const m = (s as any)[mKey] || 0;
+        const a = (s as any)[aKey] || 0;
+        
+        if (isPct) return a > 0 ? m / a : 0;
+        return (s as any)[key] / g;
+    }
+
     if (key in s) return (s[key as keyof typeof s] as number) / g;
     return 0;
   };
@@ -160,7 +206,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       }
       return sortConfig.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
     });
-  }, [selectedTeam, sortConfig, tab]);
+  }, [selectedTeam, sortConfig, tab, statMode]);
 
   const filteredTeamsList = useMemo(() => {
     return allTeams
@@ -188,7 +234,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
     const teamGames = Math.max(1, (selectedTeam.wins || 0) + (selectedTeam.losses || 0));
     const t = selectedTeam.roster.reduce((acc, p) => {
         const s = p.stats;
-        return {
+        const res: any = {
             mp: acc.mp + s.mp,
             pts: acc.pts + s.pts,
             reb: acc.reb + s.reb,
@@ -206,6 +252,16 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
             ftm: acc.ftm + s.ftm,
             fta: acc.fta + s.fta,
         };
+
+        // Aggregate Zone Stats
+        SHOOTING_ZONES.forEach(z => {
+            const mKey = `${z.id}_m`;
+            const aKey = `${z.id}_a`;
+            res[mKey] = (acc[mKey] || 0) + ((s as any)[mKey] || 0);
+            res[aKey] = (acc[aKey] || 0) + ((s as any)[aKey] || 0);
+        });
+
+        return res;
     }, { mp:0, pts:0, reb:0, offReb:0, defReb:0, ast:0, stl:0, blk:0, tov:0, pf:0, fgm:0, fga:0, p3m:0, p3a:0, ftm:0, fta:0 });
     return { ...t, teamGames };
   }, [selectedTeam]);
@@ -258,6 +314,24 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                     <ClipboardList size={16} /> 전술 기록
                  </button>
              </div>
+
+             {/* Stat Mode Toggle */}
+             {tab === 'stats' && (
+                 <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
+                    <button 
+                        onClick={() => setStatMode('traditional')}
+                        className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'traditional' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        <Table2 size={12} /> Traditional
+                    </button>
+                    <button 
+                        onClick={() => setStatMode('shooting')}
+                        className={`px-4 py-2 rounded-md text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${statMode === 'shooting' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        <Target size={12} /> Shooting
+                    </button>
+                 </div>
+             )}
          </div>
 
          {tab === 'salary' && teamStats && <SalaryCapDashboard currentTotalSalary={teamStats.salary} />}
@@ -270,7 +344,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                          {/* Name Column - Sticky Left */}
                          <th className="py-3 px-6 text-[10px] font-black uppercase tracking-widest sticky left-0 bg-slate-950/95 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] w-[180px]">Player Name</th>
                          
-                         {tab === 'roster' && (
+                         {/* Basic Info Cols (Available in Roster & Stats tabs) */}
+                         {(tab === 'roster' || tab === 'stats') && (
                            <>
                              <SortHeader label="POS" sortKey="position" width="50px" />
                              <SortHeader label="AGE" sortKey="age" width="40px" />
@@ -282,7 +357,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                             ALL_ROSTER_COLUMNS.map(col => {
                                 const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
                                 const isSeparator = ['DRF', 'DCN'].includes(col.label);
-
                                 return (
                                 <SortHeader 
                                     key={String(col.key)} 
@@ -298,7 +372,18 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                 );
                             })
                          ) : tab === 'stats' ? (
-                            STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />)
+                            statMode === 'traditional' ? (
+                                TRADITIONAL_STATS_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="50px" align="right" className="pr-3" />)
+                            ) : (
+                                // Shooting Stats Header
+                                SHOOTING_ZONES.map(zone => (
+                                    <React.Fragment key={zone.id}>
+                                        <SortHeader label={`${zone.label} M`} sortKey={`${zone.id}_m`} width="45px" align="right" className="pl-3 bg-white/5" />
+                                        <SortHeader label={`${zone.label} A`} sortKey={`${zone.id}_a`} width="45px" align="right" className="bg-white/5" />
+                                        <SortHeader label={`${zone.label} %`} sortKey={`${zone.id}_pct`} width="50px" align="right" className="pr-4 border-r border-white/10 bg-white/5" />
+                                    </React.Fragment>
+                                ))
+                            )
                          ) : (
                             SALARY_COLUMNS.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} width="120px" align="right" className="pr-3" />)
                          )}
@@ -328,15 +413,18 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       </div>
                                   </div>
                               </td>
-                              {tab === 'roster' && (
+                              
+                              {/* Shared Info Columns with Dark Background */}
+                              {(tab === 'roster' || tab === 'stats') && (
                                 <>
-                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400">{p.position}</td>
-                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400">{p.age}</td>
-                                    <td className="px-1 py-2 text-center border-r border-white/10 pr-2">
+                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950/80">{p.position}</td>
+                                    <td className="px-1 py-2 text-center text-xs font-bold text-slate-400 bg-slate-950/80">{p.age}</td>
+                                    <td className="px-1 py-2 text-center border-r border-white/10 pr-2 bg-slate-950/80">
                                         <div className={getOvrBadgeStyle(displayOvr) + " !w-7 !h-7 !text-xs !mx-auto"}>{displayOvr}</div>
                                     </td>
                                 </>
                               )}
+
                               {tab === 'roster' ? (
                                   ALL_ROSTER_COLUMNS.map(col => {
                                       const isMajor = ['INS', 'OUT', 'PLM', 'ATH', 'DEF', 'REB'].includes(col.label);
@@ -354,23 +442,45 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                                       );
                                   })
                               ) : tab === 'stats' ? (
-                                  STATS_COLUMNS.map(col => {
-                                      const s = p.stats;
-                                      const g = s.g || 1;
-                                      let valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
-                                      if (col.key === 'g' || col.key === 'gs') valStr = String(s[col.key as keyof typeof s]);
-                                      else if (col.key.includes('%')) {
-                                          let n = 0, d = 0;
-                                          if (col.key === 'fg%') { n = s.fgm; d = s.fga; }
-                                          else if (col.key === '3p%') { n = s.p3m; d = s.p3a; }
-                                          else if (col.key === 'ft%') { n = s.ftm; d = s.fta; }
-                                          else if (col.key === 'ts%') { n = s.pts; d = 2 * (s.fga + 0.44 * s.fta); }
-                                          valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
-                                      } else if (col.key === 'pf') {
-                                          valStr = ((s.pf || 0) / g).toFixed(1);
-                                      }
-                                      return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-400 text-xs tabular-nums">{valStr}</td>;
-                                  })
+                                  statMode === 'traditional' ? (
+                                      TRADITIONAL_STATS_COLUMNS.map(col => {
+                                          const s = p.stats;
+                                          const g = s.g || 1;
+                                          let valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
+                                          
+                                          if (col.key === 'g' || col.key === 'gs') valStr = String(s[col.key as keyof typeof s]);
+                                          else if (col.key === 'fgm' || col.key === 'fga' || col.key === 'p3m' || col.key === 'p3a' || col.key === 'ftm' || col.key === 'fta') {
+                                              valStr = (s[col.key as keyof typeof s] as number / g).toFixed(1);
+                                          }
+                                          else if (col.key.includes('%')) {
+                                              let n = 0, d = 0;
+                                              if (col.key === 'fg%') { n = s.fgm; d = s.fga; }
+                                              else if (col.key === '3p%') { n = s.p3m; d = s.p3a; }
+                                              else if (col.key === 'ft%') { n = s.ftm; d = s.fta; }
+                                              else if (col.key === 'ts%') { n = s.pts; d = 2 * (s.fga + 0.44 * s.fta); }
+                                              valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                          } else if (col.key === 'pf') {
+                                              valStr = ((s.pf || 0) / g).toFixed(1);
+                                          }
+                                          return <td key={col.key} className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-400 text-xs tabular-nums">{valStr}</td>;
+                                      })
+                                  ) : (
+                                      // Shooting Stats Body
+                                      SHOOTING_ZONES.map(zone => {
+                                          const s = p.stats as any;
+                                          const m = s[`${zone.id}_m`] || 0;
+                                          const a = s[`${zone.id}_a`] || 0;
+                                          const pct = a > 0 ? ((m / a) * 100).toFixed(1) + '%' : '-';
+                                          
+                                          return (
+                                              <React.Fragment key={zone.id}>
+                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-300 text-xs tabular-nums bg-white/5">{m}</td>
+                                                  <td className="px-1 py-2 align-middle text-right pr-3 font-bold text-slate-500 text-xs tabular-nums bg-white/5">{a}</td>
+                                                  <td className={`px-1 py-2 align-middle text-right pr-4 border-r border-white/10 font-bold text-xs tabular-nums bg-white/5 ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
+                                              </React.Fragment>
+                                          );
+                                      })
+                                  )
                               ) : (
                                   SALARY_COLUMNS.map(col => {
                                       let valStr = String(p[col.key as keyof Player] || '');
@@ -415,33 +525,61 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
                         <tfoot className="bg-slate-900 border-t border-slate-800 z-10 sticky bottom-0 shadow-[0_-2px_10px_rgba(0,0,0,0.5)]">
                             <tr>
                                 <td className="py-3 px-6 text-[10px] font-black text-indigo-400 uppercase tracking-widest sticky left-0 bg-slate-900 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">TEAM TOTAL</td>
-                                {STATS_COLUMNS.map(col => {
-                                    let valStr = '-';
-                                    const g = statsTotals.teamGames;
-                                    
-                                    if (col.key === 'g' || col.key === 'gs' || col.key === 'mp') {
-                                        valStr = '-';
-                                    }
-                                    else if (col.key.includes('%')) {
-                                        let n = 0, d = 0;
-                                        if (col.key === 'fg%') { n = statsTotals.fgm; d = statsTotals.fga; }
-                                        else if (col.key === '3p%') { n = statsTotals.p3m; d = statsTotals.p3a; }
-                                        else if (col.key === 'ft%') { n = statsTotals.ftm; d = statsTotals.fta; }
-                                        else if (col.key === 'ts%') { n = statsTotals.pts; d = 2 * (statsTotals.fga + 0.44 * statsTotals.fta); }
-                                        valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
-                                    } else {
-                                        const keyMap: any = {
-                                            'pts': 'pts', 'reb': 'reb', 'offReb': 'offReb', 'defReb': 'defReb',
-                                            'ast': 'ast', 'stl': 'stl', 'blk': 'blk', 'tov': 'tov', 'pf': 'pf'
-                                        };
-                                        const statKey = keyMap[col.key];
-                                        if (statKey) {
-                                            valStr = (statsTotals[statKey as keyof typeof statsTotals] / g).toFixed(1);
+                                <td className="px-1 py-3 text-center text-xs font-bold text-slate-600 bg-slate-900">-</td>
+                                <td className="px-1 py-3 text-center text-xs font-bold text-slate-400 bg-slate-900">-</td>
+                                <td className="px-1 py-3 text-center border-r border-white/10 pr-2 bg-slate-900"><div className={getOvrBadgeStyle(teamStats!.ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{teamStats!.ovr}</div></td>
+                                
+                                {statMode === 'traditional' ? (
+                                    TRADITIONAL_STATS_COLUMNS.map(col => {
+                                        let valStr = '-';
+                                        const g = statsTotals.teamGames;
+                                        
+                                        if (col.key === 'g' || col.key === 'gs' || col.key === 'mp') {
+                                            valStr = '-';
                                         }
-                                    }
-                                    
-                                    return <td key={col.key} className="px-1 py-3 align-middle text-right pr-3 font-bold text-white text-xs tabular-nums">{valStr}</td>
-                                })}
+                                        else if (col.key === 'fgm' || col.key === 'fga' || col.key === 'p3m' || col.key === 'p3a' || col.key === 'ftm' || col.key === 'fta') {
+                                            const keyMap: any = {
+                                                'fgm': 'fgm', 'fga': 'fga', 'p3m': 'p3m', 'p3a': 'p3a', 'ftm': 'ftm', 'fta': 'fta'
+                                            };
+                                            valStr = (statsTotals[keyMap[col.key] as keyof typeof statsTotals] / g).toFixed(1);
+                                        }
+                                        else if (col.key.includes('%')) {
+                                            let n = 0, d = 0;
+                                            if (col.key === 'fg%') { n = statsTotals.fgm; d = statsTotals.fga; }
+                                            else if (col.key === '3p%') { n = statsTotals.p3m; d = statsTotals.p3a; }
+                                            else if (col.key === 'ft%') { n = statsTotals.ftm; d = statsTotals.fta; }
+                                            else if (col.key === 'ts%') { n = statsTotals.pts; d = 2 * (statsTotals.fga + 0.44 * statsTotals.fta); }
+                                            valStr = d > 0 ? ((n / d) * 100).toFixed(1) + '%' : '0.0%';
+                                        } else {
+                                            const keyMap: any = {
+                                                'pts': 'pts', 'reb': 'reb', 'offReb': 'offReb', 'defReb': 'defReb',
+                                                'ast': 'ast', 'stl': 'stl', 'blk': 'blk', 'tov': 'tov', 'pf': 'pf'
+                                            };
+                                            const statKey = keyMap[col.key];
+                                            if (statKey) {
+                                                valStr = (statsTotals[statKey as keyof typeof statsTotals] / g).toFixed(1);
+                                            }
+                                        }
+                                        
+                                        return <td key={col.key} className="px-1 py-3 align-middle text-right pr-3 font-bold text-white text-xs tabular-nums">{valStr}</td>
+                                    })
+                                ) : (
+                                     // Shooting Stats Footer
+                                      SHOOTING_ZONES.map(zone => {
+                                          const s = statsTotals as any;
+                                          const m = s[`${zone.id}_m`] || 0;
+                                          const a = s[`${zone.id}_a`] || 0;
+                                          const pct = a > 0 ? ((m / a) * 100).toFixed(1) + '%' : '-';
+                                          
+                                          return (
+                                              <React.Fragment key={zone.id}>
+                                                  <td className="px-1 py-3 align-middle text-right pr-3 font-bold text-slate-300 text-xs tabular-nums bg-white/5">{m}</td>
+                                                  <td className="px-1 py-3 align-middle text-right pr-3 font-bold text-slate-500 text-xs tabular-nums bg-white/5">{a}</td>
+                                                  <td className={`px-1 py-3 align-middle text-right pr-4 border-r border-white/10 font-bold text-xs tabular-nums bg-white/5 ${a > 0 ? 'text-emerald-400' : 'text-slate-600'}`}>{pct}</td>
+                                              </React.Fragment>
+                                          );
+                                      })
+                                )}
                             </tr>
                         </tfoot>
                    )}
