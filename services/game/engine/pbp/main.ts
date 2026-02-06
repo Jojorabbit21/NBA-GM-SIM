@@ -1,54 +1,40 @@
-import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, PbpLog, RotationData, Player } from '../../../../types';
-import { GameState, TeamState, LivePlayer } from './pbpTypes';
-import { resolvePossession } from './flowEngine';
-import { processTeamRotation } from './substitutionSystem';
-import { calculateIncrementalFatigue } from '../fatigueSystem';
+import { Team, GameTactics, SimulationResult, PlayerBoxScore, PbpLog, DepthChart } from '../../../../types';
+import { GameState, LivePlayer, TeamState } from './pbpTypes';
 import { calculatePlayerArchetypes } from './archetypeSystem';
-import { INITIAL_STATS } from '../../../../utils/constants';
+import { resolvePossession } from './flowEngine';
+import { checkSubstitutions, executeSubstitutions } from './substitutionSystem';
+import { distributeAssists } from '../playmakingSystem';
+import { distributeRebounds } from '../defenseSystem';
+import { calculateIncrementalFatigue } from '../fatigueSystem';
+import { calculateAceStopperImpact } from '../aceStopperSystem';
+import { calculateFoulStats } from '../foulSystem';
 
-// --- Initialization Helpers ---
-
-function initializeLivePlayer(p: Player, isStarter: boolean): LivePlayer {
-    // Basic stats init
-    const stats: any = { ...INITIAL_STATS() };
-    
-    // Attribute Mapping for Engine
+// Helper to init LivePlayer
+function createLivePlayer(p: any, isStarter: boolean): LivePlayer {
     const attr = {
-        ins: p.ins, out: p.out, mid: p.midRange,
-        ft: p.ft, threeVal: (p.threeCorner + p.three45 + p.threeTop) / 3,
+        ins: p.ins, out: p.out, mid: p.midRange, ft: p.ft, threeVal: (p.threeCorner+p.three45+p.threeTop)/3,
         speed: p.speed, agility: p.agility, strength: p.strength, vertical: p.vertical,
         stamina: p.stamina, durability: p.durability, hustle: p.hustle,
         height: p.height, weight: p.weight,
-        handling: p.handling, hands: p.hands, pas: p.passAcc, passAcc: p.passAcc,
-        passVision: p.passVision, passIq: p.passIq,
+        handling: p.handling, hands: p.hands, pas: p.passAcc, passAcc: p.passAcc, passVision: p.passVision, passIq: p.passIq,
         shotIq: p.shotIq, offConsist: p.offConsist,
-        postPlay: p.postPlay,
-        def: p.def, intDef: p.intDef, perDef: p.perDef,
-        blk: p.blk, stl: p.steal,
-        helpDefIq: p.helpDefIq, defConsist: p.defConsist,
-        drFoul: p.drawFoul, foulTendency: 50,
+        postPlay: p.postPlay, drFoul: p.drawFoul,
+        def: p.def, intDef: p.intDef, perDef: p.perDef, blk: p.blk, stl: p.steal,
+        helpDefIq: p.helpDefIq, defConsist: p.defConsist, foulTendency: 50,
         reb: p.reb
     };
-
+    
+    // [CRITICAL FIX] Use condition ?? 100
     const condition = p.condition !== undefined ? p.condition : 100;
 
     return {
         playerId: p.id,
         playerName: p.name,
-        // Box Score stats
-        pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
+        pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
         fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
-        offReb: 0, defReb: 0, pf: 0,
-        mp: 0, gs: isStarter ? 1 : 0, g: 0, plusMinus: 0,
+        rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0, plusMinus: 0,
+        mp: 0, g: 1, gs: isStarter ? 1 : 0,
         
-        // Detailed Shooting
-        rimM: 0, rimA: 0, midM: 0, midA: 0,
-        zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
-        zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
-        zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,
-        zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0,
-
-        // Live State
         currentCondition: condition,
         position: p.position,
         ovr: p.ovr,
@@ -59,65 +45,59 @@ function initializeLivePlayer(p: Player, isStarter: boolean): LivePlayer {
         isShutdown: false,
         needsDeepRecovery: false,
         archetypes: calculatePlayerArchetypes(attr, condition),
-        attr
+        attr,
+        
+        zone_rim_m: 0, zone_rim_a: 0,
+        zone_paint_m: 0, zone_paint_a: 0,
+        zone_mid_l_m: 0, zone_mid_l_a: 0,
+        zone_mid_c_m: 0, zone_mid_c_a: 0,
+        zone_mid_r_m: 0, zone_mid_r_a: 0,
+        zone_c3_l_m: 0, zone_c3_l_a: 0,
+        zone_c3_r_m: 0, zone_c3_r_a: 0,
+        zone_atb3_l_m: 0, zone_atb3_l_a: 0,
+        zone_atb3_c_m: 0, zone_atb3_c_a: 0,
+        zone_atb3_r_m: 0, zone_atb3_r_a: 0
     };
 }
 
-function initializeTeamState(team: Team, tactics: GameTactics | undefined, depthChart: DepthChart | null | undefined): TeamState {
+function initTeamState(team: Team, tactics?: GameTactics, depthChart?: DepthChart | null): TeamState {
     // Default tactics if missing
-    const activeTactics = tactics || {
+    const appliedTactics = tactics || {
         offenseTactics: ['Balance'],
         defenseTactics: ['ManToManPerimeter'],
-        sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2, rotationFlexibility: 5 },
+        sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 1, rotationFlexibility: 5 },
         starters: { PG: '', SG: '', SF: '', PF: '', C: '' },
         minutesLimits: {}
     };
 
-    // Identify Starters
-    const starterIds = new Set(Object.values(activeTactics.starters).filter(id => id !== ''));
-    
-    // Sort roster: Healthy first, then OVR
-    const roster = [...team.roster].sort((a, b) => {
-        if (a.health === 'Injured' && b.health !== 'Injured') return 1;
-        if (a.health !== 'Injured' && b.health === 'Injured') return -1;
-        return b.ovr - a.ovr;
-    });
+    // Determine starters
+    const starterIds = Object.values(appliedTactics.starters).filter(Boolean);
+    // Fallback if starters not set
+    if (starterIds.length === 0) {
+        const sorted = [...team.roster].sort((a, b) => b.ovr - a.ovr);
+        for(let i=0; i<5 && i<sorted.length; i++) starterIds.push(sorted[i].id);
+    }
 
-    const liveRoster = roster.map(p => initializeLivePlayer(p, starterIds.has(p.id)));
-    
-    // Separate OnCourt vs Bench
     const onCourt: LivePlayer[] = [];
     const bench: LivePlayer[] = [];
 
-    // Fill OnCourt based on starterIds or Top 5
-    // Order matters for positions: PG, SG, SF, PF, C
-    const posOrder = ['PG', 'SG', 'SF', 'PF', 'C'];
-    const filledIds = new Set<string>();
-
-    posOrder.forEach(pos => {
-        const id = activeTactics.starters[pos as keyof typeof activeTactics.starters];
-        const p = liveRoster.find(lp => lp.playerId === id);
-        if (p && !filledIds.has(p.playerId)) {
-            onCourt.push(p);
-            filledIds.add(p.playerId);
-        }
+    team.roster.forEach(p => {
+        const isStarter = starterIds.includes(p.id);
+        const live = createLivePlayer(p, isStarter);
+        if (isStarter && onCourt.length < 5) onCourt.push(live);
+        else bench.push(live);
     });
 
-    // Fill remaining spots if starters invalid
-    liveRoster.forEach(p => {
-        if (!filledIds.has(p.playerId) && onCourt.length < 5 && p.health !== 'Injured') {
-            onCourt.push(p);
-            filledIds.add(p.playerId);
-        } else if (!filledIds.has(p.playerId)) {
-            bench.push(p);
-        }
-    });
+    // Handle edge case where roster < 5 or starters missing (shouldn't happen in valid DB)
+    while (onCourt.length < 5 && bench.length > 0) {
+        onCourt.push(bench.shift()!);
+    }
 
     return {
         id: team.id,
         name: team.name,
         score: 0,
-        tactics: activeTactics,
+        tactics: appliedTactics,
         depthChart: depthChart || undefined,
         onCourt,
         bench,
@@ -130,7 +110,7 @@ function initializeTeamState(team: Team, tactics: GameTactics | undefined, depth
 export function runFullGameSimulation(
     homeTeam: Team, 
     awayTeam: Team, 
-    userTeamId: string | null,
+    userTeamId: string | null, 
     userTactics?: GameTactics,
     isHomeB2B: boolean = false,
     isAwayB2B: boolean = false,
@@ -139,16 +119,18 @@ export function runFullGameSimulation(
 ): SimulationResult {
     
     // 1. Initialize State
-    const homeState = initializeTeamState(homeTeam, userTeamId === homeTeam.id ? userTactics : undefined, homeDepthChart);
-    const awayState = initializeTeamState(awayTeam, userTeamId === awayTeam.id ? userTactics : undefined, awayDepthChart);
+    const homeTactics = userTeamId === homeTeam.id && userTactics ? userTactics : undefined;
+    const awayTactics = userTeamId === awayTeam.id && userTactics ? userTactics : undefined;
+
+    // TODO: AI Tactics Generation if undefined (using generateAutoTactics) - handled in calling function or defaults
 
     const state: GameState = {
-        home: homeState,
-        away: awayState,
+        home: initTeamState(homeTeam, homeTactics, homeDepthChart),
+        away: initTeamState(awayTeam, awayTactics, awayDepthChart),
         quarter: 1,
-        gameClock: 720, // 12 mins
+        gameClock: 720,
         shotClock: 24,
-        possession: 'home', // Jump ball logic omitted for simplicity, assume Home starts
+        possession: 'home', // Jumpball logic simplified
         isDeadBall: false,
         logs: [],
         isHomeB2B,
@@ -156,238 +138,239 @@ export function runFullGameSimulation(
         rotationHistory: {}
     };
 
-    // Init Rotation History for Starters
-    [...homeState.onCourt, ...awayState.onCourt].forEach(p => {
-        if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
-    });
+    state.logs.push({ quarter: 1, timeRemaining: '12:00', teamId: '', text: '경기 시작', type: 'info' });
 
-    // --- GAME LOOP ---
     let isGameOver = false;
-    
+
+    // 2. Game Loop
     while (!isGameOver) {
-        
-        // Quarter Management
+        // A. Quarter Management
         if (state.gameClock <= 0) {
             if (state.quarter >= 4 && state.home.score !== state.away.score) {
                 isGameOver = true;
+                state.logs.push({ 
+                    quarter: state.quarter, timeRemaining: '0:00', teamId: '', 
+                    text: `경기 종료 - 최종 스코어 ${state.home.score}:${state.away.score}`, type: 'info' 
+                });
+                
+                // Final Rotation Flush
+                [state.home, state.away].forEach(t => {
+                    t.onCourt.forEach(p => {
+                        const qLen = state.quarter > 4 ? 300 : 720;
+                        const prevDuration = (Math.min(state.quarter, 5) - 1) * 720 + Math.max(0, state.quarter - 5) * 300;
+                        const inRelative = qLen - p.lastSubInTime;
+                        const outRelative = qLen;
+                        
+                        if (outRelative > inRelative) {
+                            const segIn = prevDuration + inRelative;
+                            const segOut = prevDuration + outRelative;
+                            if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
+                            state.rotationHistory[p.playerId].push({ in: segIn, out: segOut });
+                        }
+                    });
+                });
+
                 break;
             } else {
-                // Next Quarter / OT
-                state.quarter++;
-                state.gameClock = (state.quarter > 4) ? 300 : 720; // 5 mins for OT
-                
-                // Reset Foul Counts
-                state.home.fouls = 0;
-                state.away.fouls = 0;
-                state.home.bonus = false;
-                state.away.bonus = false;
-
-                // Reset Stint Baselines (Time reset, but fatigue persists)
-                const resetStint = (t: TeamState) => {
+                // End of Quarter Logic (Flush rotation, reset clock/fouls)
+                [state.home, state.away].forEach(t => {
                     t.onCourt.forEach(p => {
-                        p.lastSubInTime = state.gameClock;
-                        // Condition delta is persistent across quarter breaks to prevent spamming starters
+                        const qLen = state.quarter > 4 ? 300 : 720;
+                        const prevDuration = (Math.min(state.quarter, 5) - 1) * 720 + Math.max(0, state.quarter - 5) * 300;
+                        const inRelative = qLen - p.lastSubInTime;
+                        const outRelative = qLen;
+                        
+                        // [FIX] Flush segment for the quarter that just ended
+                        if (outRelative > inRelative) {
+                            const segIn = prevDuration + inRelative;
+                            const segOut = prevDuration + outRelative;
+                            if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
+                            state.rotationHistory[p.playerId].push({ in: segIn, out: segOut });
+                        }
+                        
+                        // Reset for next quarter
+                        p.lastSubInTime = (state.quarter >= 4) ? 300 : 720; // Next Q duration (OT is 5min)
                     });
-                };
-                resetStint(state.home);
-                resetStint(state.away);
-                
+                    t.fouls = 0;
+                    t.bonus = false;
+                });
+
+                state.quarter++;
+                state.gameClock = (state.quarter > 4) ? 300 : 720;
                 state.isDeadBall = true;
+                
                 state.logs.push({ 
-                    quarter: state.quarter, timeRemaining: '12:00', teamId: '', 
+                    quarter: state.quarter, timeRemaining: (state.quarter > 4 ? '5:00' : '12:00'), teamId: '', 
                     text: `${state.quarter > 4 ? '연장전' : state.quarter + '쿼터'} 시작`, type: 'info' 
                 });
             }
         }
 
-        // Substitution Check (Dead Ball or Timeout)
-        processTeamRotation(state.home, state);
-        processTeamRotation(state.away, state);
+        // B. Substitutions (Only during dead ball or if forced)
+        // We check every possession for simulation simplicity, treating it as "next dead ball opportunity"
+        // In real PBP, we'd check `isDeadBall`. Here we check frequently to simulate flow.
+        const homeSubs = checkSubstitutions(state, state.home);
+        if (homeSubs.length > 0) executeSubstitutions(state, state.home, homeSubs);
+        
+        const awaySubs = checkSubstitutions(state, state.away);
+        if (awaySubs.length > 0) executeSubstitutions(state, state.away, awaySubs);
 
-        // Resolve Possession
+        // C. Resolve Possession
         const result = resolvePossession(state);
         
-        // Update Time
+        // Update Game Clock
         state.gameClock -= result.timeTaken;
-        if (state.gameClock < 0) state.gameClock = 0;
+        if (state.gameClock < 0) state.gameClock = 0; // Clamp
 
-        // Apply Result
-        const attTeam = state.possession === 'home' ? state.home : state.away;
+        // D. Apply Results to Players & Teams
+        const offTeam = state.possession === 'home' ? state.home : state.away;
         const defTeam = state.possession === 'home' ? state.away : state.home;
 
-        // Logging
-        state.logs.push({
-            quarter: state.quarter,
-            timeRemaining: `${Math.floor(state.gameClock / 60)}:${(state.gameClock % 60).toString().padStart(2, '0')}`,
-            teamId: attTeam.id,
-            text: `[${attTeam.score}-${defTeam.score}] ${result.logText}`,
-            type: result.type
-        });
-
-        // --- STATS UPDATE LOGIC ---
-        
-        // 1. Team Score & DeadBall Status
-        if (result.type === 'score') {
-            attTeam.score += (result.points || 0);
-            
-            // Plus/Minus
-            attTeam.onCourt.forEach(p => p.plusMinus += result.points!);
-            defTeam.onCourt.forEach(p => p.plusMinus -= result.points!);
-            
-            state.isDeadBall = true;
-        } else if (result.type === 'turnover' || result.type === 'miss') {
-            state.isDeadBall = false; 
-        } else if (result.type === 'foul') {
-            defTeam.fouls++;
-            // Bonus logic simplified
-            state.isDeadBall = true;
-        }
-
-        // 2. Player Stats Accumulation
+        // Apply Player Stats
         if (result.player) {
             const p = result.player;
+            p.mp += (result.timeTaken / 60); // Approx
+            
+            // Incremental Fatigue
+            const isB2B = state.possession === 'home' ? state.isHomeB2B : state.isAwayB2B;
+            const stopperId = defTeam.tactics.stopperId;
+            const isStopper = stopperId === p.playerId; // Wait, p is OFFENSIVE player here.
+            
+            // Apply fatigue to ALL players on court
+            [state.home, state.away].forEach(t => {
+                const isTeamB2B = t.id === state.home.id ? state.isHomeB2B : state.isAwayB2B;
+                t.onCourt.forEach(cp => {
+                    // This assumes timeTaken is ~14s. 
+                    // To be precise, we accumulate minutes.
+                    // But for condition, we decrement.
+                    const isCPStopper = t.id !== offTeam.id && t.tactics.stopperId === cp.playerId;
+                    const fatRes = calculateIncrementalFatigue(cp, result.timeTaken, t.tactics.sliders, isTeamB2B, isCPStopper);
+                    cp.currentCondition = Math.max(0, cp.currentCondition - fatRes.drain);
+                    
+                    // Recover bench players
+                    t.bench.forEach(bp => {
+                        // Bench recovery: ~0.1 per minute? 
+                        // Base recovery logic can be simple here.
+                        if (bp.currentCondition < 100) {
+                            bp.currentCondition = Math.min(100, bp.currentCondition + (result.timeTaken / 60) * 0.5);
+                        }
+                    });
+                });
+            });
+
             if (result.type === 'score') {
-                p.pts += result.points!;
+                offTeam.score += (result.points || 2);
+                p.pts += (result.points || 2);
                 p.fgm++; p.fga++;
-                if (result.points === 3) { 
-                    p.p3m++; p.p3a++; 
+                if (result.points === 3) { p.p3m++; p.p3a++; }
+                else {
+                    // Distribute 2PT (Rim vs Mid)
+                    // Simplified: Logic inside resolvePossession should ideally return zone info.
+                    // For now, assume based on points/type.
+                    // result.shotZoneId helps tracking
                 }
                 
-                // Detailed Shooting Stats (Zone) - Make
+                // Update Zones based on `shotZoneId`
                 if (result.shotZoneId) {
-                    const zM = `${result.shotZoneId}_m` as keyof LivePlayer;
-                    const zA = `${result.shotZoneId}_a` as keyof LivePlayer;
-                    if (typeof p[zM] === 'number') (p[zM] as number)++;
-                    if (typeof p[zA] === 'number') (p[zA] as number)++;
+                    (p as any)[result.shotZoneId + '_m']++;
+                    (p as any)[result.shotZoneId + '_a']++;
                 }
+
+                // Assist
+                if (result.secondaryPlayer) {
+                    result.secondaryPlayer.ast++;
+                }
+                
+                // Plus/Minus
+                offTeam.onCourt.forEach(op => op.plusMinus += (result.points || 2));
+                defTeam.onCourt.forEach(dp => dp.plusMinus -= (result.points || 2));
 
             } else if (result.type === 'miss') {
                 p.fga++;
-                // 3PT attempt check
-                if (result.shotZoneId && (result.shotZoneId.includes('c3') || result.shotZoneId.includes('atb3'))) {
-                     p.p3a++;
-                } else if (result.logText.includes('3점')) {
-                     p.p3a++;
-                }
+                if (result.logText.includes('3점')) p.p3a++; // Rough check if zone not passed explicitly in `points` context
                 
-                // Detailed Shooting Stats (Zone) - Attempt
                 if (result.shotZoneId) {
-                    const zA = `${result.shotZoneId}_a` as keyof LivePlayer;
-                    if (typeof p[zA] === 'number') (p[zA] as number)++;
+                    (p as any)[result.shotZoneId + '_a']++;
                 }
 
+                // Rebound
+                if (result.rebounder) {
+                    result.rebounder.reb++;
+                    if (result.rebounder.playerId === p.playerId) result.rebounder.offReb++; // Own miss
+                    else if (offTeam.onCourt.some(x => x.playerId === result.rebounder?.playerId)) result.rebounder.offReb++;
+                    else result.rebounder.defReb++;
+                }
             } else if (result.type === 'turnover') {
                 p.tov++;
-            } else if (result.type === 'freethrow') {
-                if (result.points) {
-                    p.pts += result.points;
-                    p.ftm += result.points;
-                }
-                if (result.attempts) {
-                    p.fta += result.attempts;
-                }
+                if (result.secondaryPlayer) result.secondaryPlayer.stl++; // Steal
+            } else if (result.type === 'foul') {
+                // Handled in foulSystem if needed, or simplified here
             }
         }
 
-        // Secondary Stats (Assist, Steal, Block, Foul)
-        if (result.secondaryPlayer) {
-            if (result.type === 'score') result.secondaryPlayer.ast++;
-            if (result.type === 'turnover') result.secondaryPlayer.stl++;
-            if (result.type === 'miss' && result.logText.includes('블록')) result.secondaryPlayer.blk++; 
-            if (result.type === 'foul') result.secondaryPlayer.pf++;
-        }
-
-        // Rebound
-        if (result.rebounder) {
-            result.rebounder.reb++;
-            const rebounderTeam = state.home.onCourt.includes(result.rebounder) ? 'home' : 'away';
-            // Determine OFF vs DEF rebound
-            // Note: state.possession is currently the attacking team (shooter's team)
-            if (rebounderTeam === state.possession) result.rebounder.offReb++; 
-            else result.rebounder.defReb++;
-        }
-
-        // Apply Fatigue to ALL players on court
-        const applyFatigue = (t: TeamState, isB2B: boolean) => {
-            t.onCourt.forEach(p => {
-                p.mp += (result.timeTaken / 60); // Add minutes
-                const fatigue = calculateIncrementalFatigue(
-                    p, 
-                    result.timeTaken, 
-                    t.tactics.sliders, 
-                    isB2B, 
-                    t.tactics.stopperId === p.playerId
-                );
-                p.currentCondition = Math.max(0, p.currentCondition - fatigue.drain);
-                
-                if (fatigue.injuryOccurred && p.health === 'Healthy') {
-                    p.health = fatigue.injuryDetails.health; 
-                    state.logs.push({ 
-                        quarter: state.quarter, timeRemaining: '0:00', teamId: t.id, 
-                        text: `🚑 ${p.playerName} 부상 발생! (${fatigue.injuryDetails.type})`, type: 'info' 
-                    });
-                }
+        // Add Log
+        if (result.logText) {
+            state.logs.push({
+                quarter: state.quarter,
+                timeRemaining: `${Math.floor(state.gameClock/60)}:${String(state.gameClock%60).padStart(2,'0')}`,
+                teamId: offTeam.id,
+                text: result.logText,
+                type: result.type
             });
-        };
-        applyFatigue(state.home, state.isHomeB2B);
-        applyFatigue(state.away, state.isAwayB2B);
+        }
 
         // Switch Possession
-        if (result.nextPossession === 'home') state.possession = 'home';
-        else if (result.nextPossession === 'away') state.possession = 'away';
+        if (result.nextPossession !== 'keep' && result.nextPossession !== 'free_throw') {
+            state.possession = result.nextPossession;
+        }
     }
 
-    // --- End of Game Processing ---
-    
-    // Package Zone Data for persistence (flattened props -> object)
-    const packageZoneData = (p: LivePlayer) => {
-        if (!p.zoneData) {
-            p.zoneData = {
-                zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
-                zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
-                zone_mid_l_m: p.zone_mid_l_m, zone_mid_l_a: p.zone_mid_l_a,
-                zone_mid_c_m: p.zone_mid_c_m, zone_mid_c_a: p.zone_mid_c_a,
-                zone_mid_r_m: p.zone_mid_r_m, zone_mid_r_a: p.zone_mid_r_a,
-                zone_c3_l_m: p.zone_c3_l_m, zone_c3_l_a: p.zone_c3_l_a,
-                zone_c3_r_m: p.zone_c3_r_m, zone_c3_r_a: p.zone_c3_r_a,
-                zone_atb3_l_m: p.zone_atb3_l_m, zone_atb3_l_a: p.zone_atb3_l_a,
-                zone_atb3_c_m: p.zone_atb3_c_m, zone_atb3_c_a: p.zone_atb3_c_a,
-                zone_atb3_r_m: p.zone_atb3_r_m, zone_atb3_r_a: p.zone_atb3_r_a,
-            };
+    // 3. Finalize & Return
+    // Map LivePlayer to PlayerBoxScore
+    const mapBox = (live: LivePlayer[]): PlayerBoxScore[] => live.map(p => ({
+        playerId: p.playerId,
+        playerName: p.playerName,
+        pts: p.pts, reb: p.reb, offReb: p.offReb, defReb: p.defReb, ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov, pf: p.pf,
+        fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a, ftm: p.ftm, fta: p.fta,
+        rimM: p.zone_rim_m + p.zone_paint_m, rimA: p.zone_rim_a + p.zone_paint_a,
+        midM: p.zone_mid_l_m + p.zone_mid_c_m + p.zone_mid_r_m, midA: p.zone_mid_l_a + p.zone_mid_c_a + p.zone_mid_r_a,
+        mp: p.mp, g: 1, gs: p.isStarter ? 1 : 0, plusMinus: p.plusMinus,
+        zoneData: {
+            zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
+            zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
+            zone_mid_l_m: p.zone_mid_l_m, zone_mid_l_a: p.zone_mid_l_a,
+            zone_mid_c_m: p.zone_mid_c_m, zone_mid_c_a: p.zone_mid_c_a,
+            zone_mid_r_m: p.zone_mid_r_m, zone_mid_r_a: p.zone_mid_r_a,
+            zone_c3_l_m: p.zone_c3_l_m, zone_c3_l_a: p.zone_c3_l_a,
+            zone_c3_r_m: p.zone_c3_r_m, zone_c3_r_a: p.zone_c3_r_a,
+            zone_atb3_l_m: p.zone_atb3_l_m, zone_atb3_l_a: p.zone_atb3_l_a,
+            zone_atb3_c_m: p.zone_atb3_c_m, zone_atb3_c_a: p.zone_atb3_c_a,
+            zone_atb3_r_m: p.zone_atb3_r_m, zone_atb3_r_a: p.zone_atb3_r_a,
         }
-    };
+    }));
 
-    const finalHomeBox = [...state.home.onCourt, ...state.home.bench];
-    const finalAwayBox = [...state.away.onCourt, ...state.away.bench];
-    
-    finalHomeBox.forEach(packageZoneData);
-    finalAwayBox.forEach(packageZoneData);
-    
+    // Create Roster Updates (Condition & Injuries)
     const rosterUpdates: any = {};
-    [...finalHomeBox, ...finalAwayBox].forEach(p => {
-        rosterUpdates[p.playerId] = { 
-            condition: p.currentCondition,
-            health: p.health
-        };
-    });
+    const processUpdates = (teamState: TeamState) => {
+        [...teamState.onCourt, ...teamState.bench].forEach(p => {
+            rosterUpdates[p.playerId] = {
+                condition: p.currentCondition,
+                health: p.health,
+                // injuryType, returnDate handled if injury occurred
+            };
+        });
+    };
+    processUpdates(state.home);
+    processUpdates(state.away);
 
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
-        homeBox: finalHomeBox,
-        awayBox: finalAwayBox,
+        homeBox: mapBox([...state.home.onCourt, ...state.home.bench]),
+        awayBox: mapBox([...state.away.onCourt, ...state.away.bench]),
         rosterUpdates,
-        // [Fix] Include sliders in tactics snapshot so UI can render them
-        homeTactics: { 
-            offense: state.home.tactics.offenseTactics[0], 
-            defense: state.home.tactics.defenseTactics[0],
-            sliders: state.home.tactics.sliders
-        },
-        awayTactics: { 
-            offense: state.away.tactics.offenseTactics[0], 
-            defense: state.away.tactics.defenseTactics[0],
-            sliders: state.away.tactics.sliders
-        },
+        homeTactics: { offense: state.home.tactics.offenseTactics[0], defense: state.home.tactics.defenseTactics[0], pace: state.home.tactics.sliders.pace, sliders: state.home.tactics.sliders, stopperId: state.home.tactics.stopperId },
+        awayTactics: { offense: state.away.tactics.offenseTactics[0], defense: state.away.tactics.defenseTactics[0], pace: state.away.tactics.sliders.pace, sliders: state.away.tactics.sliders, stopperId: state.away.tactics.stopperId },
         pbpLogs: state.logs,
         rotationData: state.rotationHistory
     };
