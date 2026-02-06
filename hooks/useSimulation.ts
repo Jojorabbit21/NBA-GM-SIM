@@ -30,7 +30,7 @@ export const useSimulation = (
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any>(null);
-    const finalizeSimRef = useRef<((userResult?: any) => void) | null>(null);
+    const finalizeSimRef = useRef<((userResult?: any) => Promise<void>) | null>(null);
 
     const updatedTeamsRef = useRef(teams);
     useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
@@ -90,9 +90,11 @@ export const useSimulation = (
                 return acc;
             }, new Set<string>());
 
-        const currentDateObj = new Date(prevDate);
-        currentDateObj.setDate(currentDateObj.getDate() + 1);
-        const nextDate = currentDateObj.toISOString().split('T')[0];
+        // [Fix] Robust Date Addition to prevent Timezone issues
+        const [y, m, d] = prevDate.split('-').map(Number);
+        const nextDateObj = new Date(y, m - 1, d);
+        nextDateObj.setDate(nextDateObj.getDate() + 1);
+        const nextDate = `${nextDateObj.getFullYear()}-${String(nextDateObj.getMonth()+1).padStart(2,'0')}-${String(nextDateObj.getDate()).padStart(2,'0')}`;
         
         if (myTeamId) {
             const nextDayKey = `trade_ops_${myTeamId}_${nextDate}`;
@@ -241,7 +243,6 @@ export const useSimulation = (
 
         setTeams(newTeams);
         onDateChange(nextDate, { teams: newTeams, currentSimDate: nextDate });
-        // [Fixed] Removed setLastGameResult(null) from here to prevent clearing result before user views it
 
     }, [schedule, myTeamId, session, isGuestMode, teams, setTeams, setTransactions, setNews, setToastMessage, currentSimDate, onDateChange, refreshUnreadCount]);
 
@@ -335,8 +336,7 @@ export const useSimulation = (
                     }
                 });
 
-                // [Fix] Save Game Result Logic - Separate Logic for Regular vs Playoff to match DB Schema
-                // Base Result object (fields common to both tables)
+                // Save Game Result Logic
                 const baseGameResult = {
                     user_id: session?.user?.id,
                     game_id: game.id,
@@ -354,10 +354,9 @@ export const useSimulation = (
                 if (game.isPlayoff && game.seriesId) {
                     const series = updatedSeries.find(s => s.id === game.seriesId);
                     if (series) {
-                        // Playoff Result includes extra fields: round_number, game_number
                         const playoffResult: PlayoffGameResultDB = {
                             ...baseGameResult,
-                            series_id: game.seriesId, // Ensure non-null for playoffs
+                            series_id: game.seriesId, 
                             round_number: series.round,
                             game_number: series.higherSeedWins + series.lowerSeedWins + 1
                         };
@@ -372,7 +371,6 @@ export const useSimulation = (
                         playoffGameResultsToInsert.push(playoffResult);
                     }
                 } else {
-                    // Regular Season Result (Exclude round_number/game_number)
                     regularGameResultsToInsert.push(baseGameResult);
                 }
 
@@ -402,12 +400,11 @@ export const useSimulation = (
                         homeTactics: result.homeTactics, awayTactics: result.awayTactics,
                         pbpLogs: result.pbpLogs,
                         rotationData: result.rotationData,
-                        otherGames: [] // Will fill later
+                        otherGames: [] 
                     };
                 }
             }
 
-            // Fill other games for user result
             if (userGameResultOutput) {
                 userGameResultOutput.otherGames = allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId);
             }
@@ -425,11 +422,12 @@ export const useSimulation = (
             setSchedule(updatedSchedule);
             setPlayoffSeries(updatedSeries);
             
+            // [Fix] Set result BEFORE date advance to ensure UI updates correctly
             if (userGameResultOutput) {
                 setLastGameResult(userGameResultOutput);
             }
 
-            // Advance Date Logic (After all games processed)
+            // Advance Date Logic
             await advanceDate(updatedTeams);
         };
 
@@ -448,8 +446,9 @@ export const useSimulation = (
             
             setActiveGame({ ...userGameToday, homeScore: preResult.homeScore, awayScore: preResult.awayScore });
             
-            finalizeSimRef.current = () => {
-                processSimulation(preResult);
+            // [Fix] Async finalize to prevent race condition causing view flash
+            finalizeSimRef.current = async () => {
+                await processSimulation(preResult);
                 setActiveGame(null);
             };
 
