@@ -165,6 +165,12 @@ export function runFullGameSimulation(
             state.rotationHistory[p.playerId].push({ in: 0, out: 0 }); // Will update out later
         }
     });
+    
+    // [Helper] Update +/- for all players on court
+    const updatePlusMinus = (scoringTeam: TeamState, concedingTeam: TeamState, points: number) => {
+        scoringTeam.onCourt.forEach(p => p.plusMinus += points);
+        concedingTeam.onCourt.forEach(p => p.plusMinus -= points);
+    };
 
     // 2. Game Loop
     while (state.quarter <= 4 || state.home.score === state.away.score) {
@@ -308,6 +314,9 @@ export function runFullGameSimulation(
                     actor.fgm++; actor.fga++;
                     actor.pts += 2;
                     attTeam.score += 2;
+                    // [Fix] Update +/- for the bucket
+                    updatePlusMinus(attTeam, defTeam, 2);
+
                     ftCount = 1;
                     state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 득점 (앤드원!)`, type: 'score' });
                 } else {
@@ -320,6 +329,8 @@ export function runFullGameSimulation(
                     if (Math.random() < ftChance) {
                         ftMade++;
                         actor.ftm++;
+                        // [Fix] Update +/- for each FT made
+                        updatePlusMinus(attTeam, defTeam, 1);
                     }
                     actor.fta++;
                 }
@@ -345,6 +356,9 @@ export function runFullGameSimulation(
                     if (isMake) {
                         actor.p3m++; actor.fgm++; actor.pts += 3;
                         attTeam.score += 3;
+                        // [Fix] Update +/-
+                        updatePlusMinus(attTeam, defTeam, 3);
+
                         state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 3점슛 성공`, type: 'score' });
                     } else {
                         state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 3점슛 실패`, type: 'miss' });
@@ -354,6 +368,9 @@ export function runFullGameSimulation(
                     if (isMake) {
                         actor.fgm++; actor.pts += 2;
                         attTeam.score += 2;
+                        // [Fix] Update +/-
+                        updatePlusMinus(attTeam, defTeam, 2);
+
                         state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 2점슛 성공`, type: 'score' });
                     } else {
                         state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 2점슛 실패`, type: 'miss' });
