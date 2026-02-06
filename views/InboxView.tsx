@@ -91,7 +91,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-4">
-       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
+       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
        
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-4 flex-shrink-0">
@@ -261,6 +261,7 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                         </thead>
                                         <tbody className="divide-y divide-slate-800/50">
                                             {[...gameData.userBoxScore]
+                                                .filter(p => p.mp > 0) // Filter out DNPs
                                                 // Sort: MP -> PTS -> REB -> AST -> STL -> BLK
                                                 .sort((a, b) => {
                                                     if (b.mp !== a.mp) return b.mp - a.mp;

@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Activity } from 'lucide-react';
 import { Team, PlayerBoxScore, Game } from '../../../types';
 import { BoxScoreTable, GameStatLeaders } from '../BoxScoreTable';
@@ -21,12 +21,16 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
     
     const getTeamInfo = (id: string) => teams.find(t => t.id === id);
 
+    // Filter out players who didn't play (DNP)
+    const activeHomeBox = useMemo(() => homeBox.filter(p => p.mp > 0), [homeBox]);
+    const activeAwayBox = useMemo(() => awayBox.filter(p => p.mp > 0), [awayBox]);
+
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Away Team Box Score */}
             <BoxScoreTable 
                 team={awayTeam} 
-                box={awayBox} 
+                box={activeAwayBox} 
                 isFirst 
                 mvpId={mvpId} 
                 leaders={leaders} 
@@ -35,7 +39,7 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
             {/* Home Team Box Score */}
             <BoxScoreTable 
                 team={homeTeam} 
-                box={homeBox} 
+                box={activeHomeBox} 
                 mvpId={mvpId} 
                 leaders={leaders} 
             />

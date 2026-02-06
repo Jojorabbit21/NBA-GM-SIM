@@ -183,7 +183,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
 
   return (
     <div className="flex flex-col animate-in fade-in duration-500 ko-normal pb-20">
-      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={viewPlayer.teamName} teamId={viewPlayer.teamId} onClose={() => setViewPlayer(null)} />}
+      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={viewPlayer.teamName} teamId={viewPlayer.teamId} onClose={() => setViewPlayer(null)} allTeams={teams} />}
       
       {/* Header - Simple Title */}
       <div className="flex flex-col mb-8 border-b border-slate-800 pb-6">
