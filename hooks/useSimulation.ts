@@ -241,11 +241,14 @@ export const useSimulation = (
 
         setTeams(newTeams);
         onDateChange(nextDate, { teams: newTeams, currentSimDate: nextDate });
-        setLastGameResult(null);
+        // [Fixed] Removed setLastGameResult(null) from here to prevent clearing result before user views it
 
     }, [schedule, myTeamId, session, isGuestMode, teams, setTeams, setTransactions, setNews, setToastMessage, currentSimDate, onDateChange, refreshUnreadCount]);
 
     const handleExecuteSim = async (tactics: GameTactics) => {
+        // [Fixed] Clear last result at START of sim, not end of date advance
+        setLastGameResult(null);
+
         const myTeam = teams.find(t => t.id === myTeamId);
         if (!myTeamId || !myTeam) return;
         
