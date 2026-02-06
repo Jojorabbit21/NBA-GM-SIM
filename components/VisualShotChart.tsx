@@ -145,7 +145,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
         const pct = makes / attempts;
         if (pct >= avg + 0.05) return { fill: '#10b981', opacity: 0.35, isHot: true, isCold: false }; // Hot (Green/Emerald)
         if (pct <= avg - 0.05) return { fill: '#ef4444', opacity: 0.35, isHot: false, isCold: true }; // Cold (Red)
-        return { fill: '#f97316', opacity: 0.35, isHot: false, isCold: false }; // Avg (Orange)
+        return { fill: '#eab308', opacity: 0.35, isHot: false, isCold: false }; // Avg (Yellow)
     };
 
     // Updated Zone Config
@@ -245,7 +245,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                                  if (!isScoutingMode) {
                                      if (style.isHot) colorClass = 'text-emerald-400';
                                      else if (style.isCold) colorClass = 'text-red-400';
-                                     else if (z.data.a > 0) colorClass = 'text-orange-400';
+                                     else if (z.data.a > 0) colorClass = 'text-yellow-400';
                                  }
 
                                  return (
@@ -269,7 +269,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                         {!isScoutingMode ? (
                             <div className="flex gap-3 text-[10px]">
                                 <span className="text-emerald-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></div> HOT</span>
-                                <span className="text-orange-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-orange-500 rounded-sm"></div> AVG</span>
+                                <span className="text-yellow-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-yellow-500 rounded-sm"></div> AVG</span>
                                 <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> COLD</span>
                             </div>
                         ) : (
@@ -330,10 +330,10 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                                             textFill = '#f87171'; // red-400
                                             borderStroke = '#dc2626'; // red-600
                                         } else if (z.data.a > 0) {
-                                            // Avg (Orange)
-                                            pillFill = '#431407'; // orange-950/brown
-                                            textFill = '#fb923c'; // orange-400
-                                            borderStroke = '#d97706'; // orange-600
+                                            // Avg (Yellow)
+                                            pillFill = '#713f12'; // yellow-900
+                                            textFill = '#facc15'; // yellow-400
+                                            borderStroke = '#ca8a04'; // yellow-600
                                         }
 
                                         // Dynamic Width Calculation based on text content (Fix for 100% bug)
