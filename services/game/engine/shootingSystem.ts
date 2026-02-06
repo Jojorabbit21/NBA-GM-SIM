@@ -1,9 +1,9 @@
 
-import { Player, HiddenTendencies, PlayerStats } from '../../../types';
+import { Player, HiddenTendencies, PlayerStats, TacticalSliders } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { ShootingResult, OpponentDefensiveMetrics, PerfModifiers } from './types';
 import { calculateAceStopperImpact } from './aceStopperSystem';
-import { distributeAttemptsToZones } from './shotDistribution'; // New import
+import { distributeAttemptsToZones } from './shotDistribution'; 
 import { generateHiddenTendencies } from '../../../utils/hiddenTendencies';
 
 export function calculateShootingStats(
@@ -11,6 +11,7 @@ export function calculateShootingStats(
     mp: number,
     fga: number,
     tactics: { offense: string[] },
+    sliders: TacticalSliders, // [New] Needed for Pace check
     modifiers: PerfModifiers,
     oppDefMetrics: OpponentDefensiveMetrics,
     oppHasStopper: boolean,
@@ -20,11 +21,39 @@ export function calculateShootingStats(
     stopperMP: number = 0
 ): ShootingResult {
     const C = SIM_CONFIG.SHOOTING;
-    const { effectivePerfDrop, homeAdvantage, hastePenalty, mentalClutchBonus } = modifiers;
+    const { effectivePerfDrop, homeAdvantage, mentalClutchBonus } = modifiers;
     
     // Ensure tendencies
     const tendencies = p.tendencies || generateHiddenTendencies(p);
-    const { lateralBias } = tendencies; // [Fix] archetype removed from destructuring
+    const { lateralBias } = tendencies;
+
+    // --- Step 0: Calculate Haste Penalty (The "Rush" Factor) ---
+    // High pace reduces accuracy unless player has high composure.
+    let hasteMalus = 0;
+    const pace = sliders.pace;
+    
+    if (pace > 6) {
+        // Base penalty scales with pace above 6
+        // Pace 7: -5%, Pace 8: -10%, Pace 9: -15%, Pace 10: -20% (Base)
+        const basePacePenalty = (pace - 6) * 0.05; 
+        
+        // Calculate "Composure" Rating (Ability to play fast without error)
+        // Weighted: ShotIQ (45%) + OffConsist (40%) + Intangibles (15%)
+        const composure = (p.shotIq * 0.45) + (p.offConsist * 0.40) + (p.intangibles * 0.15);
+        
+        // Mitigation Factor: 
+        // Composure 100 -> 100% Mitigation (No Penalty)
+        // Composure 70  -> 30% Penalty Applied
+        // Composure 50  -> 50% Penalty Applied
+        const mitigation = Math.min(1.0, composure / 100);
+        
+        // Final Penalty applied to percentages (e.g. -0.05 for -5%)
+        hasteMalus = basePacePenalty * (1 - mitigation);
+        
+        // Cap penalty (Max -15% realistic impact)
+        hasteMalus = Math.min(0.15, hasteMalus);
+    }
+
 
     // --- Step 1: Determine Volume (Attempts) by Range ---
     // [Update] Boosted Base Tendencies for Modern NBA (2025-26)
@@ -40,39 +69,33 @@ export function calculateShootingStats(
 
     // [Update] Positional Penalty relaxed for Stretch Bigs
     if (['C', 'PF'].includes(p.position)) {
-        // Only penalize if they are primarily post players or poor shooters
-        // Using 'threeAvg' directly as a simple check, or could use new archetypes if available.
-        // For simplicity in this legacy/hybrid function, we stick to stat checks.
         if (threeAvg < 75) {
             base3PTendency *= 0.80; 
         }
     }
 
-    // [Update] Slasher Penalty relaxed (Many slashers now shoot 3s)
-    // Old: if (p.ins > threeAvg + 15) base3PTendency *= 0.5;
+    // [Update] Slasher Penalty relaxed
     if (p.ins > threeAvg + 20) {
-        base3PTendency *= 0.85; // Only slight reduction
+        base3PTendency *= 0.85; 
     }
 
     // [Update] Tactical Multipliers Boosted
     let tacticMult = 1.0;
-    if (tactics.offense.includes('SevenSeconds')) tacticMult = 1.35; // Significant boost
+    if (tactics.offense.includes('SevenSeconds')) tacticMult = 1.35; 
     else if (tactics.offense.includes('PaceAndSpace')) tacticMult = 1.25;
     else if (tactics.offense.includes('PerimeterFocus')) tacticMult = (threeAvg > 75) ? 1.20 : 0.9;
-    else if (tactics.offense.includes('PostFocus')) tacticMult = 0.85; // Reduce 3s for post focus
+    else if (tactics.offense.includes('PostFocus')) tacticMult = 0.85; 
     else if (tactics.offense.includes('Grind')) tacticMult = 0.90;
 
     // Calculate Raw Attempts
     let p3a = Math.round(fga * base3PTendency * tacticMult);
 
     // [Update] Relaxed Hard Caps for High Volume
-    // Diminishing returns starts at 14 attempts now (was 10)
-    // [CRITICAL FIX] Added Math.round to prevent floating point attempts (e.g. 16.4 attempts)
     if (p3a > 14) p3a = Math.round(14 + (p3a - 14) * 0.4); 
     
     // Low rating hard caps
-    if (threeAvg < 60) p3a = Math.min(p3a, 1);       // Can't shoot
-    else if (threeAvg < 70) p3a = Math.min(p3a, 4);  // Bad shooter max 4
+    if (threeAvg < 60) p3a = Math.min(p3a, 1);       
+    else if (threeAvg < 70) p3a = Math.min(p3a, 4);  
     
     // Safety clamp
     if (p3a > fga) p3a = fga;
@@ -91,20 +114,15 @@ export function calculateShootingStats(
     let midA = twoPa - rimA;
 
     // --- Step 2: Distribute Attempts to Specific 10 Zones ---
-    // [New] Uses Archetype System for macro distribution
     const zoneAttempts = distributeAttemptsToZones(p, rimA, midA, p3a);
 
     // --- Step 3: Calculate Makes per Zone (Applying Off-Spot Penalty) ---
-    // Helper to calc makes with off-spot logic
     const calcMakes = (attempts: number, basePct: number, zoneSide: 'L' | 'R' | 'C') => {
         if (attempts <= 0) return 0;
 
         let penalty = 0;
-        // Off-Spot Penalty Logic:
-        // If Player prefers Right (Bias > 0.2) but shoots Left -> Penalty
-        // If Player prefers Left (Bias < -0.2) but shoots Right -> Penalty
-        if (zoneSide === 'L' && lateralBias > 0.2) penalty = 0.05; // -5%
-        else if (zoneSide === 'R' && lateralBias < -0.2) penalty = 0.05; // -5%
+        if (zoneSide === 'L' && lateralBias > 0.2) penalty = 0.05; 
+        else if (zoneSide === 'R' && lateralBias < -0.2) penalty = 0.05; 
 
         const finalPct = Math.max(0.10, basePct - penalty);
         return Math.round(attempts * finalPct);
@@ -116,34 +134,35 @@ export function calculateShootingStats(
                                  (tactics.offense.includes('PaceAndSpace') ? 1.08 : 
                                  (tactics.offense.includes('SevenSeconds') ? 1.10 : 1.0));
 
+    // [Update] Apply Haste Malus (Calculated above) to Base Percentages
     const rimAbility = (rimAttr * 0.7 + p.strength * 0.2 + p.vertical * 0.1) * tacticInteriorBonus * (1 - effectivePerfDrop);
     const rimBasePct = Math.min(0.85, Math.max(0.30, 
       C.INSIDE_BASE_PCT + (rimAbility - oppDefMetrics.intDef) * C.INSIDE_DEF_IMPACT 
-      - (oppDefMetrics.block * 0.001) - (hastePenalty * 0.5) + mentalClutchBonus + homeAdvantage
+      - (oppDefMetrics.block * 0.001) - (hasteMalus * 0.5) + mentalClutchBonus + homeAdvantage
     ));
 
     const midAbility = (midAttr * 0.8 + p.shotIq * 0.2) * tacticPerimeterBonus * (1 - effectivePerfDrop);
     const midBasePct = Math.min(0.60, Math.max(0.20, 
       C.MID_BASE_PCT + (midAbility - oppDefMetrics.perDef) * C.MID_DEF_IMPACT 
-      - (oppDefMetrics.pressure * 0.001) - hastePenalty + mentalClutchBonus + homeAdvantage
+      - (oppDefMetrics.pressure * 0.001) - hasteMalus + mentalClutchBonus + homeAdvantage
     ));
 
     const threeBasePct = Math.min(0.50, Math.max(0.20, 
        C.THREE_BASE_PCT + ((threeAvg - oppDefMetrics.perDef) * C.THREE_DEF_IMPACT 
-       - effectivePerfDrop - (hastePenalty * 0.8) + (mentalClutchBonus * 0.5) + (homeAdvantage * 0.8)
+       - effectivePerfDrop - hasteMalus + (mentalClutchBonus * 0.5) + (homeAdvantage * 0.8)
     ));
 
     // Calculate Zone Makes
     const z = zoneAttempts;
     const zm = {
         rim: calcMakes(z.zone_rim_a, rimBasePct, 'C'),
-        paint: calcMakes(z.zone_paint_a, rimBasePct * 0.7, 'C'), // Paint harder than Rim
+        paint: calcMakes(z.zone_paint_a, rimBasePct * 0.7, 'C'), 
         
         midL: calcMakes(z.zone_mid_l_a, midBasePct, 'L'),
         midC: calcMakes(z.zone_mid_c_a, midBasePct, 'C'),
         midR: calcMakes(z.zone_mid_r_a, midBasePct, 'R'),
         
-        c3L: calcMakes(z.zone_c3_l_a, threeBasePct * 1.05, 'L'), // Corner bonus
+        c3L: calcMakes(z.zone_c3_l_a, threeBasePct * 1.05, 'L'), 
         c3R: calcMakes(z.zone_c3_r_a, threeBasePct * 1.05, 'R'),
         atb3L: calcMakes(z.zone_atb3_l_a, threeBasePct, 'L'),
         atb3C: calcMakes(z.zone_atb3_c_a, threeBasePct, 'C'),
@@ -155,7 +174,7 @@ export function calculateShootingStats(
     let midM = zm.midL + zm.midC + zm.midR;
     let p3m = zm.c3L + zm.c3R + zm.atb3L + zm.atb3C + zm.atb3R;
 
-    // Stopper Effect (Applied to totals for simplicity, could apply to zones)
+    // Stopper Effect
     const isAceTarget = !!(oppHasStopper && p.id === acePlayerId && stopperId && stopperMP > 0);
     let matchupEffect = 0;
 
@@ -173,9 +192,6 @@ export function calculateShootingStats(
         rimM = Math.round(rimM * factor);
         midM = Math.round(midM * factor);
         p3m = Math.round(p3m * factor);
-        
-        // Scale down individual zones roughly
-        // (Optimization: We don't scale distinct zones here to save perf, usually only totals matter for box score)
     }
 
     // Consistency Checks

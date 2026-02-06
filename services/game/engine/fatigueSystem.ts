@@ -1,106 +1,8 @@
 
-import { Player, TacticalSliders } from '../../../types';
+import { Player, TacticalSliders, OffenseTactic, DefenseTactic } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { FatigueResult } from './types';
 import { LivePlayer } from './pbp/pbpTypes';
-
-// --- Legacy / Post-Game Calculation (For Box Score Sim) ---
-export function calculateFatigueAndInjury(
-    p: Player,
-    mp: number,
-    sliders: TacticalSliders,
-    tacticDrainMult: number,
-    isB2B: boolean,
-    isStopper: boolean
-): FatigueResult {
-    const C = SIM_CONFIG.FATIGUE;
-    const I = SIM_CONFIG.INJURY;
-
-    const preGameCondition = p.condition !== undefined ? p.condition : 100;
-    
-    if (mp <= 0) {
-        return {
-            newCondition: preGameCondition,
-            newHealth: p.health,
-            fatiguePerfPenalty: 0,
-            inGameFatiguePenalty: 0
-        };
-    }
-
-    // [Updated] Removed Durability from Drain, Focused on Stamina
-    // Stamina 99 -> Factor ~0.6 (Slow drain)
-    // Stamina 75 -> Factor ~1.0 (Base drain)
-    // Stamina 50 -> Factor ~1.5 (Fast drain)
-    // Formula: 1.0 + (75 - Stamina) * 0.02
-    const staminaDiff = 75 - p.stamina;
-    const staminaFactor = 1.0 + (staminaDiff * 0.02);
-    
-    const baseDrain = mp * C.DRAIN_BASE * Math.max(0.5, staminaFactor);
-    
-    const sliderIntensity = (sliders.pace + sliders.defIntensity + sliders.fullCourtPress) / 15; 
-    let drain = baseDrain * sliderIntensity * tacticDrainMult;
-    
-    // Workload Penalty
-    let workloadMult = 1.0;
-    if (mp <= 15) workloadMult = 1.0;
-    else if (mp <= 25) workloadMult = 1.1;
-    else if (mp <= 32) workloadMult = 1.2;
-    else if (mp <= 36) workloadMult = 1.35;
-    else if (mp <= 40) workloadMult = 1.6;
-    else workloadMult = 1.8; 
-
-    drain *= workloadMult;
-    
-    if (isB2B) drain *= 1.5;
-    if (isStopper && mp > 5) drain *= 1.25;
-
-    const newCondition = Math.max(0, Math.floor(preGameCondition - drain));
-
-    // 2. Calculate Injury Risk (Durability affects Injury Chance, NOT Drain)
-    let newHealth = p.health;
-    let injuryType = p.injuryType;
-    let returnDate = p.returnDate;
-
-    let injuryRisk = I.BASE_RISK;
-    if (newCondition < 20) injuryRisk += I.RISK_CRITICAL_COND;
-    else if (newCondition < 40) injuryRisk += 0.03;
-    else if (newCondition < 60) injuryRisk += I.RISK_LOW_COND;
-    
-    // Durability Impact on Injury
-    injuryRisk *= (1 + (100 - p.durability) / 50); 
-
-    if (Math.random() < injuryRisk) {
-        const isSevere = Math.random() > I.SEVERE_INJURY_CHANCE;
-        const minorInjuries = ['Ankle Sprain', 'Knee Soreness', 'Back Spasms', 'Calf Strain', 'Groin Tightness', 'Hamstring Tightness'];
-        const severeInjuries = ['Hamstring Strain', 'MCL Sprain', 'High Ankle Sprain', 'Calf Strain', 'Bone Bruise', 'Achilles Soreness'];
-        
-        newHealth = isSevere ? 'Injured' : 'Day-to-Day';
-        
-        if (isSevere) {
-            injuryType = severeInjuries[Math.floor(Math.random() * severeInjuries.length)];
-            const days = Math.floor(Math.random() * 21) + 7;
-            const rDate = new Date();
-            rDate.setDate(rDate.getDate() + days);
-            returnDate = rDate.toISOString().split('T')[0];
-        } else {
-            injuryType = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
-            const days = Math.floor(Math.random() * 4) + 1;
-            const rDate = new Date();
-            rDate.setDate(rDate.getDate() + days);
-            returnDate = rDate.toISOString().split('T')[0];
-        }
-    }
-
-    return {
-        newCondition,
-        newHealth,
-        injuryType,
-        returnDate,
-        fatiguePerfPenalty: 0,
-        inGameFatiguePenalty: 0
-    };
-}
-
 
 // --- [NEW] Incremental Calculation for PbP Engine ---
 // Designed to be called every possession (seconds scale)
@@ -109,7 +11,10 @@ export function calculateIncrementalFatigue(
     secondsPlayed: number,
     sliders: TacticalSliders,
     isB2B: boolean,
-    isStopper: boolean
+    isStopper: boolean,
+    // [New] Need tactics to apply combo penalty
+    offTactic?: OffenseTactic,
+    defTactic?: DefenseTactic
 ): { drain: number, injuryOccurred: boolean, injuryDetails?: any } {
     
     const C = SIM_CONFIG.FATIGUE;
@@ -122,29 +27,39 @@ export function calculateIncrementalFatigue(
     // 2. Base Drain for this time slice
     const baseDrain = minutes * C.DRAIN_BASE * staminaFactor;
 
-    // 3. Tactical Intensity (Sliders)
-    const sliderIntensity = 1 + ((sliders.pace + sliders.defIntensity + sliders.fullCourtPress - 15) * 0.05);
-    let drain = baseDrain * Math.max(0.5, sliderIntensity);
+    // 3. [UPDATED] Tactical Intensity (Sliders)
+    // Pace Slider has exponential impact on fatigue
+    // Pace 5 (Base) -> 1.0x
+    // Pace 7 -> 1.2x
+    // Pace 10 -> 1.8x
+    const paceMult = 1.0 + Math.max(0, (sliders.pace - 5) * 0.16);
+    
+    // Other sliders (Defense, Press)
+    const defIntensityMult = 1.0 + ((sliders.defIntensity - 5) * 0.05);
+    const pressMult = sliders.fullCourtPress > 5 ? (1.0 + (sliders.fullCourtPress - 5) * 0.1) : 1.0;
+
+    let drain = baseDrain * paceMult * defIntensityMult * pressMult;
 
     // 4. Situational Multipliers
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.25;
 
-    // 5. [FATIGUE SPIRAL] Progressive Drain based on Current Condition
+    // 5. [NEW] The "Run & Chase" Tax
+    // Seven Seconds Offense + Man To Man Defense = Exhaustion
+    if (offTactic === 'SevenSeconds' && defTactic === 'ManToManPerimeter') {
+        drain *= 1.30; // +30% Fatigue
+    }
+
+    // 6. [FATIGUE SPIRAL] Progressive Drain based on Current Condition
     // The more tired you are, the faster you get MORE tired.
-    // Low stamina players will reach this spiral faster.
-    // Condition 100-90: Multiplier 1.0
-    // Condition 70: Multiplier 1.3
-    // Condition 50: Multiplier 1.5
-    // Formula: 1 + (100 - Current) * 0.01
-    const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - player.currentCondition) * 0.01);
+    const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - player.currentCondition) * 0.015);
     drain *= cumulativeFatiguePenalty;
 
-    // 6. Injury Check (Micro-roll)
+    // 7. Injury Check (Micro-roll)
     let injuryOccurred = false;
     let injuryDetails = undefined;
 
-    if (player.currentCondition < 70) {
+    if (player.currentCondition < 60) { // Lowered threshold for risk start
         const I = SIM_CONFIG.INJURY;
         let riskPerMinute = I.BASE_RISK * 0.1;
         
@@ -152,8 +67,11 @@ export function calculateIncrementalFatigue(
         const durabilityRiskMult = 1 + ((100 - player.attr.durability) * 0.02);
         riskPerMinute *= durabilityRiskMult;
         
-        if (player.currentCondition < 20) riskPerMinute *= 5; 
-        else if (player.currentCondition < 40) riskPerMinute *= 2;
+        // High Pace increases injury risk when tired
+        if (sliders.pace > 7) riskPerMinute *= 1.5;
+
+        if (player.currentCondition < 20) riskPerMinute *= 8; // Danger zone
+        else if (player.currentCondition < 40) riskPerMinute *= 3;
 
         const currentRisk = riskPerMinute * minutes;
 
