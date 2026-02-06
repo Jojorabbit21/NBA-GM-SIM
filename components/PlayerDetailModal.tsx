@@ -1,8 +1,8 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Activity, Shield, Zap, Target } from 'lucide-react';
-import { Player } from '../types';
+import { Player, Team } from '../types';
 import { getTeamLogoUrl } from '../utils/constants';
 import { getOvrBadgeStyle } from './SharedComponents';
 import { VisualShotChart } from './VisualShotChart';
@@ -11,10 +11,11 @@ interface PlayerDetailModalProps {
     player: Player;
     teamName?: string;
     teamId?: string;
+    allTeams?: Team[]; // Added for global ranking
     onClose: () => void;
 }
 
-export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, onClose }) => {
+export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, allTeams, onClose }) => {
     const [activeTab, setActiveTab] = useState<'attributes' | 'stats'>('attributes');
 
     // Prevent background scrolling
@@ -22,6 +23,12 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
         document.body.style.overflow = 'hidden';
         return () => { document.body.style.overflow = 'unset'; };
     }, []);
+
+    // Flatten all players for ranking
+    const allPlayers = useMemo(() => {
+        if (!allTeams) return undefined;
+        return allTeams.flatMap(t => t.roster);
+    }, [allTeams]);
 
     const AttributeRow = ({ label, value, isGrade = false }: { label: string, value: number, isGrade?: boolean }) => (
         <div className={`flex items-center justify-between py-1 ${isGrade ? 'border-t border-slate-700/60 mt-2 pt-2' : 'border-b border-slate-800/40 last:border-0'}`}>
@@ -175,7 +182,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                         {/* Tab 2: Stats & Shot Chart */}
                         {activeTab === 'stats' && (
                             <div className="animate-in fade-in duration-300">
-                                <VisualShotChart player={player} />
+                                <VisualShotChart player={player} allPlayers={allPlayers} />
                             </div>
                         )}
 

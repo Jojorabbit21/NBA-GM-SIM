@@ -358,7 +358,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
   return (
     <div className="space-y-6 flex flex-col animate-in fade-in duration-500 pb-10">
-      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} />}
+      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={selectedTeam.name} teamId={selectedTeam.id} onClose={() => setViewPlayer(null)} allTeams={allTeams} />}
       
       <RosterHeader 
         selectedTeam={selectedTeam} myTeamId={myTeamId} isDropdownOpen={isDropdownOpen} setIsDropdownOpen={setIsDropdownOpen}
