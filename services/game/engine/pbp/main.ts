@@ -57,6 +57,7 @@ function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?
             
             // Live Props
             currentCondition,
+            startCondition: currentCondition, // [New] Track starting condition
             position: p.position,
             ovr: p.ovr,
             isStarter: false, // Set later
@@ -282,79 +283,106 @@ export function runFullGameSimulation(
         
         // Simulate Play Result (Simplified for robustness)
         const roll = Math.random();
+        
         if (roll < 0.14) {
             // Turnover
             actor.tov++;
             attTeam.score += 0; // No points
             state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 턴오버`, type: 'turnover' });
         } else {
-            // Shot Attempt
-            const is3PT = Math.random() < 0.35;
-            // Use shooting system to determine make/miss probability
-            // For now, simple weighted roll based on attr
-            const shotRating = is3PT ? actor.attr.threeVal : actor.attr.ins;
-            const makeChance = (shotRating / 200) + 0.1; // roughly 45-55%
-            const isMake = Math.random() < makeChance;
+            // [NEW] Check for Foul before Shot (approx 15% of non-TOV possessions result in shooting foul)
+            const isFoul = Math.random() < 0.15; // 15% Foul Rate
             
-            if (is3PT) {
-                actor.p3a++; actor.fga++;
-                if (isMake) {
-                    actor.p3m++; actor.fgm++; actor.pts += 3;
-                    attTeam.score += 3;
-                    state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 3점슛 성공`, type: 'score' });
-                } else {
-                    state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 3점슛 실패`, type: 'miss' });
-                }
-            } else {
-                actor.fga++;
-                if (isMake) {
-                    actor.fgm++; actor.pts += 2;
-                    attTeam.score += 2;
-                    state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 2점슛 성공`, type: 'score' });
-                } else {
-                    state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 2점슛 실패`, type: 'miss' });
-                }
-            }
-
-            // Rebound if miss
-            if (!isMake) {
-                // [Balance Patch] Transition Defense Breakdown
-                // If Defending Team (defTeam) uses High Pace or SevenSeconds, their DRB% drops.
-                let drbChance = 0.75;
-                if (defTeam.tactics.sliders.pace > 7) {
-                    drbChance -= 0.15; // High pace teams rush out, leaving glass exposed
-                }
-                if (defTeam.tactics.offenseTactics.includes('SevenSeconds')) {
-                    drbChance -= 0.10; // Seven Seconds actively punts OREB to run back? 
-                    // No, "Transition Defense Breakdown" implies the team RUNNING (SevenSeconds) is vulnerable 
-                    // when they are on DEFENSE? No, usually it means they are vulnerable after they shoot.
-                    // Here `defTeam` is the team defending the REBOUND (i.e. the team that didn't shoot).
-                    // So if `defTeam` is the High Pace team, they should be GOOD at DRB because they are already back?
-                    // OR: "Transition Defense Breakdown" means the team that SHOT (Attacking Team) is bad at TRANSITION DEFENSE.
-                    // This affects Fast Break Success, not necessarily Rebounding, UNLESS the Attacking Team
-                    // over-commits to OREB? No, High Pace usually punts OREB.
-                    
-                    // Let's interpret "Transition Defense Breakdown" as:
-                    // If Attacking Team (attTeam) is High Pace, they might leak out early (cherry pick) or be disorganized?
-                    // Actually, "Transition Defense Breakdown" usually refers to the team that *just missed* (attTeam) 
-                    // failing to get back. So `defTeam` (who got the rebound) gets a boost in next possession.
-                    
-                    // BUT here we are deciding who gets the rebound.
-                    // If attTeam is High Pace, they likely punt OREB. So defTeam DRB% should GO UP.
-                    // If defTeam is High Pace, they might leak out for fast break, reducing their DRB%.
-                    // Let's implement: If Defending Team is High Pace (looking for fast break), their DRB% Drops.
-                }
-
-                const rebTeam = Math.random() < drbChance ? defTeam : attTeam;
+            if (isFoul) {
+                // Defensive Foul
+                const fouler = defTeam.onCourt[Math.floor(Math.random() * 5)];
+                fouler.pf++;
                 
-                const rebounder = rebTeam.onCourt[Math.floor(Math.random() * 5)];
-                rebounder.reb++;
-                if (rebTeam === attTeam) rebounder.offReb++; else rebounder.defReb++;
+                // FT Calculation
+                const ftChance = actor.attr.ft / 100;
+                const isAndOne = Math.random() < 0.15; // 15% Chance of And-1
+                let ftCount = 2;
+                
+                if (isAndOne) {
+                    // Count Bucket + 1 FT
+                    actor.fgm++; actor.fga++;
+                    actor.pts += 2;
+                    attTeam.score += 2;
+                    ftCount = 1;
+                    state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 득점 (앤드원!)`, type: 'score' });
+                } else {
+                    state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: defTeam.id, text: `파울: ${fouler.playerName}`, type: 'foul' });
+                }
+
+                // Shoot Free Throws
+                let ftMade = 0;
+                for (let i=0; i<ftCount; i++) {
+                    if (Math.random() < ftChance) {
+                        ftMade++;
+                        actor.ftm++;
+                    }
+                    actor.fta++;
+                }
+                
+                actor.pts += ftMade;
+                attTeam.score += ftMade;
+                
+                if (ftMade > 0) {
+                     state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 자유투 ${ftMade}/${ftCount} 성공`, type: 'freethrow' });
+                }
+
             } else {
-                // Assist check
-                if (Math.random() < 0.6) {
-                    const assister = attTeam.onCourt.filter(p => p.playerId !== actor.playerId)[Math.floor(Math.random() * 4)];
-                    if (assister) assister.ast++;
+                // Normal Shot Attempt (No Foul)
+                const is3PT = Math.random() < 0.35;
+                // Use shooting system to determine make/miss probability
+                // For now, simple weighted roll based on attr
+                const shotRating = is3PT ? actor.attr.threeVal : actor.attr.ins;
+                const makeChance = (shotRating / 200) + 0.1; // roughly 45-55%
+                const isMake = Math.random() < makeChance;
+                
+                if (is3PT) {
+                    actor.p3a++; actor.fga++;
+                    if (isMake) {
+                        actor.p3m++; actor.fgm++; actor.pts += 3;
+                        attTeam.score += 3;
+                        state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 3점슛 성공`, type: 'score' });
+                    } else {
+                        state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 3점슛 실패`, type: 'miss' });
+                    }
+                } else {
+                    actor.fga++;
+                    if (isMake) {
+                        actor.fgm++; actor.pts += 2;
+                        attTeam.score += 2;
+                        state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 2점슛 성공`, type: 'score' });
+                    } else {
+                        state.logs.push({ quarter: state.quarter, timeRemaining: formatTime(state.gameClock), teamId: attTeam.id, text: `${actor.playerName} 2점슛 실패`, type: 'miss' });
+                    }
+                }
+
+                // Rebound if miss
+                if (!isMake) {
+                    // [Balance Patch] Transition Defense Breakdown
+                    // If Defending Team (defTeam) uses High Pace or SevenSeconds, their DRB% drops.
+                    let drbChance = 0.75;
+                    if (defTeam.tactics.sliders.pace > 7) {
+                        drbChance -= 0.15; // High pace teams rush out, leaving glass exposed
+                    }
+                    if (defTeam.tactics.offenseTactics.includes('SevenSeconds')) {
+                        drbChance -= 0.10; 
+                    }
+
+                    const rebTeam = Math.random() < drbChance ? defTeam : attTeam;
+                    
+                    const rebounder = rebTeam.onCourt[Math.floor(Math.random() * 5)];
+                    rebounder.reb++;
+                    if (rebTeam === attTeam) rebounder.offReb++; else rebounder.defReb++;
+                } else {
+                    // Assist check
+                    if (Math.random() < 0.6) {
+                        const assister = attTeam.onCourt.filter(p => p.playerId !== actor.playerId)[Math.floor(Math.random() * 4)];
+                        if (assister) assister.ast++;
+                    }
                 }
             }
         }
@@ -400,6 +428,7 @@ export function runFullGameSimulation(
         mp: p.mp, g: 1, gs: p.gs, pf: p.pf,
         plusMinus: p.plusMinus,
         condition: Math.round(p.currentCondition),
+        fatigue: Math.round(p.startCondition - p.currentCondition), // [New] Calculate Used Fatigue
         isStopper: teamState.tactics.stopperId === p.playerId
     }));
 

@@ -1,3 +1,4 @@
+
 export type AppView = 'TeamSelect' | 'Onboarding' | 'GameSim' | 'GameResult' | 'Dashboard' | 'Inbox' | 'Roster' | 'Standings' | 'Leaderboard' | 'Transactions' | 'Playoffs' | 'SeasonReview' | 'PlayoffReview' | 'Draft' | 'Help' | 'OvrCalculator' | 'Schedule';
 
 export type PositionType = 'PG' | 'SG' | 'SF' | 'PF' | 'C';
@@ -71,6 +72,7 @@ export interface PlayerBoxScore {
   mp: number; g: number; gs: number; pf: number;
   plusMinus: number;
   condition?: number;
+  fatigue?: number;
   isStopper?: boolean;
   isAceTarget?: boolean;
   matchupEffect?: number;

@@ -1,4 +1,5 @@
-import React from 'react';
+
+import React, { useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { getOvrBadgeStyle } from '../SharedComponents';
@@ -29,7 +30,38 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
         return b.mp - a.mp;
     });
 
+    // Calculate Team Totals
+    const totals = useMemo(() => {
+        return box.reduce((acc, p) => ({
+            mp: acc.mp + p.mp,
+            pts: acc.pts + p.pts,
+            reb: acc.reb + p.reb,
+            ast: acc.ast + p.ast,
+            stl: acc.stl + p.stl,
+            blk: acc.blk + p.blk,
+            tov: acc.tov + p.tov,
+            pf: acc.pf + (p.pf || 0),
+            fgm: acc.fgm + p.fgm,
+            fga: acc.fga + p.fga,
+            p3m: acc.p3m + p.p3m,
+            p3a: acc.p3a + p.p3a,
+            ftm: acc.ftm + p.ftm,
+            fta: acc.fta + p.fta,
+            offReb: acc.offReb + (p.offReb || 0),
+            defReb: acc.defReb + (p.defReb || 0),
+        }), {
+            mp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0,
+            fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, offReb: 0, defReb: 0
+        });
+    }, [box]);
+
     const statCellClass = "py-2.5 px-2 text-right text-xs font-bold text-slate-300 font-mono tabular-nums";
+    const totalCellClass = "py-3 px-2 text-right text-xs font-black text-white font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
+
+    const formatPct = (m: number, a: number) => {
+        if (a === 0) return '-';
+        return ((m / a) * 100).toFixed(1) + '%';
+    };
 
     return (
         <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
@@ -47,6 +79,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <th className="py-3 px-4 sticky left-0 bg-slate-950 z-20 w-40 text-left shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</th>
                             <th className="py-3 px-2 text-center w-12">POS</th>
                             <th className="py-3 px-2 text-center w-10">OVR</th>
+                            <th className="py-3 px-2 text-center w-10">FAT</th>
                             <th className="py-3 px-2 text-right w-12">MIN</th>
                             <th className="py-3 px-2 text-right w-12 text-white">PTS</th>
                             <th className="py-3 px-2 text-right w-12">REB</th>
@@ -56,8 +89,11 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <th className="py-3 px-2 text-right w-12">TOV</th>
                             <th className="py-3 px-2 text-right w-12">PF</th>
                             <th className="py-3 px-2 text-right w-16">FG</th>
+                            <th className="py-3 px-2 text-right w-14">FG%</th>
                             <th className="py-3 px-2 text-right w-16">3P</th>
+                            <th className="py-3 px-2 text-right w-14">3P%</th>
                             <th className="py-3 px-2 text-right w-16">FT</th>
+                            <th className="py-3 px-2 text-right w-14">FT%</th>
                             <th className="py-3 px-4 text-right w-14">+/-</th>
                         </tr>
                     </thead>
@@ -71,6 +107,14 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             const effect = p.matchupEffect || 0;
                             const isBuff = effect > 0;
                             const isDebuff = effect < 0;
+
+                            // Condition Color Logic
+                            // Use fatigue if available, otherwise calculate estimate or default to 0
+                            const fatigue = p.fatigue !== undefined ? p.fatigue : (p.condition !== undefined ? Math.max(0, 100 - p.condition) : 0);
+                            
+                            let fatColor = 'text-emerald-500';
+                            if (fatigue > 25) fatColor = 'text-red-500';
+                            else if (fatigue > 12) fatColor = 'text-amber-500';
 
                             return (
                                 <tr key={p.playerId} className={`group hover:bg-white/5 transition-colors ${isMvp ? 'bg-amber-900/10' : ''}`}>
@@ -101,22 +145,10 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                     </td>
                                     <td className={`${statCellClass} text-center text-slate-500`}>{playerInfo?.position || '-'}</td>
                                     <td className={`${statCellClass} text-center`}>
-                                        <div className="flex items-center justify-center gap-1">
-                                            <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-0"}>{ovr}</div>
-                                            {/* Condition Pill */}
-                                            {p.mp > 0 && p.condition !== undefined && (
-                                                <div 
-                                                    className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-black border ${
-                                                        p.condition < 60 ? 'bg-red-900/50 border-red-500 text-red-400' : 
-                                                        p.condition < 80 ? 'bg-amber-900/50 border-amber-500 text-amber-400' : 
-                                                        'bg-emerald-900/50 border-emerald-500 text-emerald-400'
-                                                    }`}
-                                                    title="경기 종료 시 체력 (Remaining Stamina)"
-                                                >
-                                                    {p.condition}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div>
+                                    </td>
+                                    <td className={`${statCellClass} text-center`}>
+                                        <span className={`text-xs font-black ${fatColor}`}>{fatigue}</span>
                                     </td>
                                     <td className={statCellClass}>{Math.round(p.mp)}</td>
                                     <td className={`${statCellClass} text-white`}>{p.pts}</td>
@@ -126,9 +158,16 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                     <td className={statCellClass}>{p.blk}</td>
                                     <td className={statCellClass}>{p.tov}</td>
                                     <td className={statCellClass}>{p.pf}</td>
+                                    
                                     <td className={statCellClass}>{p.fgm}/{p.fga}</td>
+                                    <td className={`${statCellClass} text-slate-400`}>{formatPct(p.fgm, p.fga)}</td>
+                                    
                                     <td className={statCellClass}>{p.p3m}/{p.p3a}</td>
+                                    <td className={`${statCellClass} text-slate-400`}>{formatPct(p.p3m, p.p3a)}</td>
+                                    
                                     <td className={statCellClass}>{p.ftm}/{p.fta}</td>
+                                    <td className={`${statCellClass} text-slate-400`}>{formatPct(p.ftm, p.fta)}</td>
+                                    
                                     <td className={`py-2.5 px-4 text-right text-xs font-bold font-mono tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
                                     </td>
@@ -136,6 +175,33 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             );
                         })}
                     </tbody>
+                    <tfoot>
+                        <tr>
+                            <td className="py-3 px-4 sticky left-0 bg-slate-800 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-t border-slate-700">
+                                <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
+                            </td>
+                            <td className={totalCellClass} colSpan={3}></td>
+                            <td className={totalCellClass}>{Math.round(totals.mp)}</td>
+                            <td className={totalCellClass}>{totals.pts}</td>
+                            <td className={totalCellClass}>{totals.reb}</td>
+                            <td className={totalCellClass}>{totals.ast}</td>
+                            <td className={totalCellClass}>{totals.stl}</td>
+                            <td className={totalCellClass}>{totals.blk}</td>
+                            <td className={totalCellClass}>{totals.tov}</td>
+                            <td className={totalCellClass}>{totals.pf}</td>
+                            
+                            <td className={totalCellClass}>{totals.fgm}/{totals.fga}</td>
+                            <td className={totalCellClass}>{formatPct(totals.fgm, totals.fga)}</td>
+                            
+                            <td className={totalCellClass}>{totals.p3m}/{totals.p3a}</td>
+                            <td className={totalCellClass}>{formatPct(totals.p3m, totals.p3a)}</td>
+                            
+                            <td className={totalCellClass}>{totals.ftm}/{totals.fta}</td>
+                            <td className={totalCellClass}>{formatPct(totals.ftm, totals.fta)}</td>
+                            
+                            <td className={totalCellClass}>-</td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
         </div>
