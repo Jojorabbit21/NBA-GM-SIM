@@ -16,11 +16,15 @@ export function calculatePossessionTime(
 ): number {
     const { gameClock } = state;
     
-    // Base time: 14 seconds average
-    let timeTaken = Math.floor(Math.random() * 8) + 10;
+    // [Balance Fix] Increased Base time: 12 ~ 22 seconds (Avg ~17s)
+    // Real NBA Avg is ~14-15s, but simulation overhead usually requires slight padding
+    // to prevent 150+ point games constantly.
+    let timeTaken = Math.floor(Math.random() * 10) + 12;
     
     // 1. Slider Adjustment (1-10)
     // Higher pace = Less time taken.
+    // Range: (1-5) -> +Adds time, (6-10) -> -Removes time
+    // Max Impact: Pace 10 => (5 * -0.8) = -4s. Pace 1 => (-4 * -0.8) = +3.2s
     const paceMod = (sliders.pace - 5) * -0.8;
     timeTaken += paceMod;
 
@@ -33,14 +37,14 @@ export function calculatePossessionTime(
     }
 
     // 3. Situational Logic (2-for-1)
-    // If quarter ending (between 28s and 40s), speed up to get 2 shots
+    // If quarter ending (between 30s and 45s), speed up to get 2 shots
     if (gameClock <= 45 && gameClock >= 30) {
-        timeTaken = Math.min(timeTaken, 8); // Hurry up
+        timeTaken = Math.min(timeTaken, 6); // Hurry up significantly
     }
 
     // Hard clamps
-    if (timeTaken < 4) timeTaken = 4; // Unlikely to be faster than 4s
-    if (timeTaken > 24) timeTaken = 24; // Shot clock violation limit
+    if (timeTaken < 4) timeTaken = 4; // Unlikely to be faster than 4s (Inbound + Dribble)
+    if (timeTaken > 23) timeTaken = 23; // Shot clock is 24
 
     // End of quarter/game logic
     if (timeTaken > gameClock) {

@@ -323,17 +323,22 @@ export function resolvePossession(state: GameState): PossessionResult {
     const handleSkill = actor.attr.handling * (actor.currentCondition / 100);
     const pressureSkill = defender.attr.def * (defender.currentCondition / 100);
     
-    // [Fix] Connect to SIM_CONFIG.STATS.TOV_USAGE_FACTOR (0.08)
-    // Usage Factor implies Per Possession volatility.
-    // Core Engine: tovBase = (usageProxy * 0.08). 
-    // Here we estimate probability.
-    
     // Base TOV rate ~12-14% is realistic.
-    let toChance = SIM_CONFIG.STATS.TOV_USAGE_FACTOR * 1.5; // Scaling for possession logic
+    let toChance = SIM_CONFIG.STATS.TOV_USAGE_FACTOR * 1.5; 
     
     // Skill Delta
     toChance -= (handleSkill - 70) * 0.002; // Better handle = less TOV
     toChance += (pressureSkill - 70) * 0.0015; // Better defense = more TOV
+
+    // [New] Haste Penalty for Turnovers
+    // Higher pace (e.g. 8, 9, 10) increases TOV chance significantly
+    const paceSlider = attTeam.tactics.sliders.pace;
+    if (paceSlider > 5) {
+        // Pace 10 -> +0.025 (2.5%) more turnovers
+        // Pace 6 -> +0.005 (0.5%)
+        const hasteTOV = (paceSlider - 5) * 0.005; 
+        toChance += hasteTOV;
+    }
     
     // Pass Risk
     if (['PnR_Roll', 'Cut', 'CatchShoot'].includes(playType)) {
@@ -350,13 +355,6 @@ export function resolvePossession(state: GameState): PossessionResult {
 
     if (Math.random() < toChance) {
         // [New] Check for Steal (Defensive Play) linked to SIM_CONFIG
-        // Core: stlBase = stlAttr * (mp/48) * 0.036
-        // PBP: Probability check. 
-        // 0.036 (3.6%) per game -> approx 0.05% per possession?? No, that's too low.
-        // Factor 0.036 is per minute-weighted unit.
-        // Let's use attribute relative to constant to derive "Steal on Turnover" probability.
-        // If a turnover happens, what is the chance it was a steal? ~50-60%.
-        
         const stlFactor = SIM_CONFIG.STATS.STL_BASE_FACTOR; // 0.036
         const stlAttr = defender.attr.stl;
         const stealProb = (stlAttr / 100) * (stlFactor * 15); // Calibration to get ~50%
@@ -445,6 +443,15 @@ export function resolvePossession(state: GameState): PossessionResult {
     hitRate *= attEfficiency; // Team spacing/fit bonus
     hitRate *= (2.0 - defEfficiency); // Defense coordination penalty
 
+    // [New] Haste Penalty (High Pace reduces Accuracy)
+    // Only applies if playType is NOT Transition (Transitions are usually easy buckets)
+    if (playType !== 'Transition' && paceSlider > 5) {
+        // Pace 10 -> -7.5% Hit Rate
+        // Pace 6 -> -1.5% Hit Rate
+        const hastePenalty = (paceSlider - 5) * 0.015;
+        hitRate -= hastePenalty;
+    }
+
     const points = preferredZone === '3PT' ? 3 : 2;
 
     if (Math.random() < hitRate) {
@@ -473,8 +480,6 @@ export function resolvePossession(state: GameState): PossessionResult {
         else if (defender.position === 'PF') blkFactor = SIM_CONFIG.STATS.BLK_BIG_FACTOR * 0.8;
 
         // Base chance derived from attribute & factor
-        // Factor 0.055 -> ~5.5% block rate per game? No, it's relative.
-        // We calibrate to typical block % (approx 3-8% of shots)
         const blkAttr = defender.attr.blk * 0.6 + defender.attr.vertical * 0.2 + (defender.attr.height - 180) * 0.5;
         const blkChance = (blkAttr / 100) * (blkFactor * 3.0); // Multiplier to map factor to probability
 
