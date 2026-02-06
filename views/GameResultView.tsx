@@ -1,68 +1,20 @@
 
-import React, { useRef, useEffect } from 'react';
-import { Activity, List, Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { List, RotateCw, Shield, LayoutList } from 'lucide-react';
 import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData } from '../types';
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
-import { TacticsAnalysis } from '../components/game/TacticsAnalysis';
-import { BoxScoreTable, GameStatLeaders } from '../components/game/BoxScoreTable';
+import { GameStatLeaders } from '../components/game/BoxScoreTable';
 import { ResultFooter } from '../components/game/ResultFooter';
-import { RotationChart } from '../components/game/RotationChart';
 
-// PBP Viewer Component
-const PbpViewer: React.FC<{ logs: PbpLog[], homeTeamId: string, awayTeamId: string }> = ({ logs, homeTeamId, awayTeamId }) => {
-    const scrollRef = useRef<HTMLDivElement>(null);
+// Tabs
+import { GameBoxScoreTab } from '../components/game/tabs/GameBoxScoreTab';
+import { GamePbpTab } from '../components/game/tabs/GamePbpTab';
+import { GameRotationTab } from '../components/game/tabs/GameRotationTab';
+import { GameTacticsTab } from '../components/game/tabs/GameTacticsTab';
 
-    // Auto-scroll to bottom on load not necessary for result view, but good for UX if list is long
-    useEffect(() => {
-        if (scrollRef.current) {
-            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-    }, []);
-
-    if (!logs || logs.length === 0) return null;
-
-    return (
-        <div className="w-full bg-slate-950 border border-slate-800 rounded-3xl p-6 mb-8 shadow-2xl">
-            <div className="flex items-center gap-3 mb-4 pb-2 border-b border-slate-800">
-                <List className="text-slate-400" size={20} />
-                <h3 className="text-lg font-black uppercase text-slate-200 tracking-widest ko-tight">Play-by-Play Log</h3>
-            </div>
-            <div 
-                ref={scrollRef}
-                className="h-64 overflow-y-auto custom-scrollbar bg-slate-900/50 rounded-xl p-4 font-mono text-xs md:text-sm space-y-1.5 border border-white/5"
-            >
-                {logs.map((log, idx) => {
-                    const isHome = log.teamId === homeTeamId;
-                    const isScore = log.type === 'score';
-                    const isImportant = log.type === 'info';
-                    const isFT = log.type === 'freethrow';
-                    
-                    let textColor = 'text-slate-400';
-                    if (isImportant) textColor = 'text-yellow-400 font-bold';
-                    else if (isScore) textColor = isHome ? 'text-indigo-300 font-bold' : 'text-emerald-300 font-bold';
-                    else if (isFT) textColor = 'text-cyan-400';
-                    else if (log.type === 'turnover' || log.type === 'foul') textColor = 'text-red-400';
-
-                    return (
-                        <div key={idx} className={`flex gap-3 ${isImportant ? 'py-2 border-y border-white/10 my-2 bg-white/5 justify-center' : ''}`}>
-                            {!isImportant && (
-                                <div className="flex-shrink-0 w-16 text-slate-600 flex items-center gap-1">
-                                    <Clock size={10} />
-                                    <span>{log.quarter}Q {log.timeRemaining}</span>
-                                </div>
-                            )}
-                            <div className={`flex-1 break-words ${textColor}`}>
-                                {log.text}
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        </div>
-    );
-};
+type ResultTab = 'BoxScore' | 'PbpLog' | 'Rotation' | 'Tactics';
 
 export const GameResultView: React.FC<{
   result: {
@@ -85,14 +37,11 @@ export const GameResultView: React.FC<{
   teams: Team[];
   onFinish: () => void;
 }> = ({ result, myTeamId, teams, onFinish }) => {
-  const { home, away, homeScore, awayScore, homeBox, awayBox, recap, otherGames, homeTactics, awayTactics, pbpLogs, rotationData } = result;
+  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames } = result;
   
   const isHome = myTeamId === home.id;
   const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
-  
-  const headline = recap && recap.length > 0 ? recap[0] : "경기 종료";
-
-  const getTeamInfo = (id: string) => teams.find(t => t.id === id);
+  const [activeTab, setActiveTab] = useState<ResultTab>('BoxScore');
 
   // MVP Calculation
   const allPlayers = [...homeBox, ...awayBox];
@@ -108,93 +57,86 @@ export const GameResultView: React.FC<{
       tov: Math.max(...allPlayers.map(p => p.tov)),
   };
 
+  const NavButton = ({ tab, label, icon: Icon }: { tab: ResultTab, label: string, icon: any }) => (
+      <button 
+        onClick={() => setActiveTab(tab)}
+        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+      >
+          <Icon size={16} /> {label}
+      </button>
+  );
+
   return (
     <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24">
        <div className="min-h-screen flex flex-col">
           
+          {/* 1. Header (Compact) */}
           <ResultHeader 
             homeTeam={home}
             awayTeam={away}
             homeScore={homeScore}
             awayScore={awayScore}
             isWin={isWin}
-            headline={headline}
+            pbpLogs={pbpLogs}
           />
 
-          <div className="flex-1 max-w-6xl mx-auto w-full p-6 space-y-8">
+          <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-6 flex flex-col">
               
-              {/* Play-by-Play Logs */}
-              {pbpLogs && <PbpViewer logs={pbpLogs} homeTeamId={home.id} awayTeamId={away.id} />}
+              {/* 2. Navigation Tabs (Carousel Style) */}
+              <div className="flex justify-center">
+                  <div className="flex p-1 bg-slate-900 border border-slate-800 rounded-2xl shadow-lg">
+                      <NavButton tab="BoxScore" label="Box Score" icon={LayoutList} />
+                      <NavButton tab="PbpLog" label="Play-by-Play" icon={List} />
+                      <NavButton tab="Rotation" label="Rotation" icon={RotateCw} />
+                      <NavButton tab="Tactics" label="Tactics" icon={Shield} />
+                  </div>
+              </div>
 
-              {/* Rotation Chart */}
-              {rotationData && (
-                  <RotationChart 
-                    homeTeam={home} 
-                    awayTeam={away} 
-                    homeBox={homeBox} 
-                    awayBox={awayBox} 
-                    rotationData={rotationData} 
-                  />
-              )}
+              {/* 3. Main Content Area */}
+              <div className="flex-1 min-h-[500px]">
+                  {activeTab === 'BoxScore' && (
+                      <GameBoxScoreTab 
+                          homeTeam={home}
+                          awayTeam={away}
+                          homeBox={homeBox}
+                          awayBox={awayBox}
+                          mvpId={mvp.playerId}
+                          leaders={leaders}
+                          otherGames={otherGames}
+                          teams={teams}
+                      />
+                  )}
 
-              <TacticsAnalysis 
-                  homeTeam={home} 
-                  awayTeam={away} 
-                  homeTactics={homeTactics} 
-                  awayTactics={awayTactics} 
-                  homeBox={homeBox}
-                  awayBox={awayBox}
-              />
+                  {activeTab === 'PbpLog' && (
+                      <GamePbpTab 
+                          logs={pbpLogs} 
+                          homeTeamId={home.id} 
+                          awayTeamId={away.id} 
+                      />
+                  )}
 
-              <BoxScoreTable 
-                team={away} 
-                box={awayBox} 
-                isFirst 
-                mvpId={mvp.playerId} 
-                leaders={leaders} 
-              />
-              
-              <BoxScoreTable 
-                team={home} 
-                box={homeBox} 
-                mvpId={mvp.playerId} 
-                leaders={leaders} 
-              />
-              
-              {/* Around the League Section (Kept within main view as it's minor) */}
-              {otherGames && otherGames.length > 0 && (
-                 <div className="mt-12 pt-8 border-t border-slate-800">
-                     <h3 className="text-lg font-black uppercase text-slate-500 tracking-widest mb-6 flex items-center gap-2">
-                        <Activity size={20} /> Around the League
-                     </h3>
-                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                         {otherGames.map(g => {
-                             const h = getTeamInfo(g.homeTeamId);
-                             const a = getTeamInfo(g.awayTeamId);
-                             if (!h || !a) return null;
-                             const hWin = (g.homeScore || 0) > (g.awayScore || 0);
-                             return (
-                                 <div key={g.id} className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-2">
-                                     <div className="flex justify-between items-center">
-                                         <div className="flex items-center gap-3">
-                                             <img src={a.logo} className="w-6 h-6 object-contain opacity-80" alt="" />
-                                             <span className={`text-sm font-bold uppercase ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
-                                         </div>
-                                         <span className={`text-lg font-black oswald ${!hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.awayScore}</span>
-                                     </div>
-                                     <div className="flex justify-between items-center">
-                                         <div className="flex items-center gap-3">
-                                             <img src={h.logo} className="w-6 h-6 object-contain opacity-80" alt="" />
-                                             <span className={`text-sm font-bold uppercase ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
-                                         </div>
-                                         <span className={`text-lg font-black oswald ${hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{g.homeScore}</span>
-                                     </div>
-                                 </div>
-                             );
-                         })}
-                     </div>
-                 </div>
-              )}
+                  {activeTab === 'Rotation' && (
+                      <GameRotationTab 
+                          homeTeam={home}
+                          awayTeam={away}
+                          homeBox={homeBox}
+                          awayBox={awayBox}
+                          rotationData={rotationData}
+                      />
+                  )}
+
+                  {activeTab === 'Tactics' && (
+                      <GameTacticsTab 
+                          homeTeam={home}
+                          awayTeam={away}
+                          homeTactics={homeTactics}
+                          awayTactics={awayTactics}
+                          homeBox={homeBox}
+                          awayBox={awayBox}
+                      />
+                  )}
+              </div>
+
           </div>
 
           <ResultFooter onFinish={onFinish} />

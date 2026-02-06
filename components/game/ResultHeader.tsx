@@ -1,7 +1,6 @@
 
-import React from 'react';
-import { Newspaper } from 'lucide-react';
-import { Team } from '../../types';
+import React, { useMemo } from 'react';
+import { Team, PbpLog } from '../../types';
 
 interface ResultHeaderProps {
     homeTeam: Team;
@@ -9,51 +8,121 @@ interface ResultHeaderProps {
     homeScore: number;
     awayScore: number;
     isWin: boolean;
-    headline: string;
+    pbpLogs?: PbpLog[];
 }
 
 export const ResultHeader: React.FC<ResultHeaderProps> = ({ 
-    homeTeam, awayTeam, homeScore, awayScore, isWin, headline 
+    homeTeam, awayTeam, homeScore, awayScore, isWin, pbpLogs 
 }) => {
+    
+    // Calculate Quarter Scores from PbpLogs
+    const quarterScores = useMemo(() => {
+        const scores = {
+            home: { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 },
+            away: { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 }
+        };
+
+        if (!pbpLogs) return scores;
+
+        pbpLogs.forEach(log => {
+            if (log.type === 'score' || log.type === 'freethrow') {
+                let points = 2;
+                if (log.text.includes('3점')) points = 3;
+                else if (log.type === 'freethrow') points = 1;
+
+                // Handle And-1 logic if text implies it (simplified)
+                if (log.text.includes('앤드원')) points = 1; // Usually logged separately
+
+                const q = Math.min(4, log.quarter) as 1|2|3|4;
+                const isHome = log.teamId === homeTeam.id;
+
+                if (isHome) {
+                    scores.home[q] += points;
+                    scores.home.total += points;
+                } else {
+                    scores.away[q] += points;
+                    scores.away.total += points;
+                }
+            }
+        });
+        
+        // Sync total with actual final score (in case of parsing diffs)
+        // We distribute the difference to Q4 to ensure totals match visual
+        const homeDiff = homeScore - scores.home.total;
+        const awayDiff = awayScore - scores.away.total;
+        scores.home[4] += homeDiff;
+        scores.away[4] += awayDiff;
+
+        return scores;
+    }, [pbpLogs, homeTeam.id, homeScore, awayScore]);
+
     return (
-        <div className="bg-slate-900 border-b border-slate-800 pt-10 pb-8 px-8 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl z-20">
-            <div className={`absolute inset-0 opacity-20 pointer-events-none bg-gradient-to-b ${isWin ? 'from-emerald-900 to-slate-900' : 'from-red-900 to-slate-900'}`}></div>
+        <div className="bg-slate-950 border-b border-slate-800 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl z-20">
+            <div className={`absolute inset-0 opacity-10 pointer-events-none bg-gradient-to-b ${isWin ? 'from-emerald-900 to-slate-900' : 'from-red-900 to-slate-900'}`}></div>
             
-            <div className="relative z-10 flex flex-col items-center gap-8 w-full max-w-5xl">
-                {/* Scoreboard Row: Away (Left) vs Home (Right) */}
-                <div className="flex items-center justify-between w-full">
-                    <div className="flex flex-col items-center gap-4 flex-1">
-                        <img src={awayTeam.logo} className="w-20 h-20 md:w-28 md:h-28 object-contain drop-shadow-2xl" alt={awayTeam.name} />
-                        <div className="text-center">
-                            <div className="text-2xl md:text-4xl font-black text-white oswald uppercase tracking-tight">{awayTeam.name}</div>
-                            <div className={`text-5xl md:text-7xl font-black oswald mt-2 ${awayScore > homeScore ? 'text-white' : 'text-slate-600'}`}>{Math.round(awayScore)}</div>
+            <div className="relative z-10 flex flex-col w-full max-w-7xl px-6 py-6">
+                
+                {/* Main Matchup Row */}
+                <div className="flex items-center justify-between w-full gap-4 md:gap-12">
+                    
+                    {/* Away Team (Left) */}
+                    <div className="flex items-center gap-4 flex-1 justify-end">
+                        <div className="text-right">
+                            <div className="text-xl md:text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{awayTeam.name}</div>
+                            <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${awayScore > homeScore ? 'text-white' : 'text-slate-500'}`}>{Math.round(awayScore)}</div>
                         </div>
+                        <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl" alt={awayTeam.name} />
                     </div>
 
-                    <div className="flex flex-col items-center justify-center px-4 md:px-12">
-                        <div className="text-xl md:text-2xl font-black text-slate-700 oswald tracking-widest mb-4">FINAL</div>
+                    {/* Center Info */}
+                    <div className="flex flex-col items-center justify-center min-w-[140px]">
+                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">FINAL SCORE</div>
                         {isWin ? (
-                            <div className="px-4 py-1.5 md:px-6 md:py-2 bg-emerald-600 text-white rounded-xl font-black uppercase text-xs md:text-sm tracking-widest shadow-[0_0_20px_rgba(16,185,129,0.4)]">Victory</div>
+                            <div className="px-5 py-1 bg-emerald-600 text-white rounded-full font-black uppercase text-xs tracking-widest shadow-[0_0_15px_rgba(16,185,129,0.4)] mb-3">Victory</div>
                         ) : (
-                            <div className="px-4 py-1.5 md:px-6 md:py-2 bg-red-600 text-white rounded-xl font-black uppercase text-xs md:text-sm tracking-widest shadow-[0_0_20px_rgba(239,68,68,0.4)]">Defeat</div>
+                            <div className="px-5 py-1 bg-red-600 text-white rounded-full font-black uppercase text-xs tracking-widest shadow-[0_0_15px_rgba(239,68,68,0.4)] mb-3">Defeat</div>
                         )}
-                    </div>
-
-                    <div className="flex flex-col items-center gap-4 flex-1">
-                        <img src={homeTeam.logo} className="w-20 h-20 md:w-28 md:h-28 object-contain drop-shadow-2xl" alt={homeTeam.name} />
-                        <div className="text-center">
-                            <div className="text-2xl md:text-4xl font-black text-white oswald uppercase tracking-tight">{homeTeam.name}</div>
-                            <div className={`text-5xl md:text-7xl font-black oswald mt-2 ${homeScore > awayScore ? 'text-white' : 'text-slate-600'}`}>{Math.round(homeScore)}</div>
+                        
+                        {/* Quarter Score Table */}
+                        <div className="bg-slate-900/80 border border-slate-700/50 rounded-lg overflow-hidden">
+                            <table className="text-[10px] md:text-xs font-mono tabular-nums">
+                                <thead>
+                                    <tr className="bg-slate-800/50 text-slate-400">
+                                        <th className="px-2 py-1 border-r border-slate-700/50 w-8"></th>
+                                        <th className="px-2 py-1 text-center border-r border-slate-700/50">1</th>
+                                        <th className="px-2 py-1 text-center border-r border-slate-700/50">2</th>
+                                        <th className="px-2 py-1 text-center border-r border-slate-700/50">3</th>
+                                        <th className="px-2 py-1 text-center">4</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="text-slate-300">
+                                    <tr className="border-b border-slate-700/30">
+                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-700/50 text-center">{awayTeam.id.toUpperCase()}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.away[1]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.away[2]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.away[3]}</td>
+                                        <td className="px-2 py-1 text-center">{quarterScores.away[4]}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-2 py-1 font-bold text-slate-500 border-r border-slate-700/50 text-center">{homeTeam.id.toUpperCase()}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.home[1]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.home[2]}</td>
+                                        <td className="px-2 py-1 text-center border-r border-slate-700/50">{quarterScores.home[3]}</td>
+                                        <td className="px-2 py-1 text-center">{quarterScores.home[4]}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
-                </div>
 
-                {/* Headline in Header */}
-                <div className="w-full bg-slate-950/50 border border-white/5 rounded-2xl p-4 text-center backdrop-blur-md">
-                    <p className="text-sm md:text-base font-bold text-slate-200 leading-relaxed break-keep">
-                        <Newspaper className="inline-block mr-2 text-indigo-400 mb-0.5" size={16} />
-                        {headline}
-                    </p>
+                    {/* Home Team (Right) */}
+                    <div className="flex items-center gap-4 flex-1 justify-start">
+                        <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl" alt={homeTeam.name} />
+                        <div className="text-left">
+                            <div className="text-xl md:text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{homeTeam.name}</div>
+                            <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${homeScore > awayScore ? 'text-white' : 'text-slate-600'}`}>{Math.round(homeScore)}</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
