@@ -5,7 +5,7 @@ import { OFFENSE_STRATEGY_CONFIG, DEFENSE_STRATEGY_CONFIG } from './strategyMap'
 import { OffenseTactic, DefenseTactic, PlayType, Player } from '../../../../types';
 import { resolvePlayAction, PlayContext } from './playTypes';
 import { calculateAceStopperImpact } from '../aceStopperSystem';
-import { SIM_CONFIG } from '../config/constants';
+import { SIM_CONFIG } from '../../config/constants'; // [Fixed] Correct import path
 import { FOUL_CONFIG } from '../foulSystem';
 
 // --- Text Generator Interfaces ---
@@ -84,12 +84,21 @@ function calculateTeamDefensiveRating(team: TeamState): { intDef: number, perDef
         helpSum += p.attr.helpDefIq * cond;
     });
 
-    return {
+    const metrics = {
         intDef: intSum / count,
         perDef: perSum / count,
         pressure: pressSum / count,
         help: helpSum / count
     };
+
+    // [New] Apply Zone Defense Slider Impact (Parity with Core Engine's defenseSystem.ts)
+    // Zone boosts Interior Defense but hurts Perimeter Defense
+    const zoneUsage = team.tactics.sliders.zoneUsage; // 1-10
+    const zoneEffect = (zoneUsage - 5) * 2.0; 
+    metrics.intDef += zoneEffect; 
+    metrics.perDef -= zoneEffect;
+
+    return metrics;
 }
 
 // --- Helper: Select Play Type based on Strategy Distribution ---
