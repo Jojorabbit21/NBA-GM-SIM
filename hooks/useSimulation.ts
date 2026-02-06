@@ -336,21 +336,21 @@ export const useSimulation = (
                     }
                 });
 
-                // Save Game Result logic
+                // Save Game Result logic - [Fix] Sanitize values for DB insert
                 const gameResultDB = {
                     user_id: session?.user?.id,
                     game_id: game.id,
                     date: game.date,
-                    series_id: game.seriesId,
+                    series_id: game.seriesId || null, // [Fix] Default to null if undefined
                     round_number: 0,
                     game_number: 0,
                     home_team_id: game.homeTeamId,
                     away_team_id: game.awayTeamId,
-                    home_score: result.homeScore,
-                    away_score: result.awayScore,
+                    home_score: Math.round(result.homeScore), // [Fix] Ensure Integer
+                    away_score: Math.round(result.awayScore), // [Fix] Ensure Integer
                     box_score: { home: result.homeBox, away: result.awayBox },
                     tactics: { home: result.homeTactics, away: result.awayTactics },
-                    is_playoff: game.isPlayoff
+                    is_playoff: game.isPlayoff || false // [Fix] Ensure Boolean
                 };
 
                 if (game.isPlayoff && game.seriesId) {
