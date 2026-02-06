@@ -1,4 +1,5 @@
-import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, RosterUpdate, PbpLog } from '../../../../types';
+
+import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, RosterUpdate, PbpLog, RotationData } from '../../../../types';
 import { GameState, TeamState, LivePlayer, PossessionResult } from './pbpTypes';
 import { resolvePossession } from './flowEngine';
 import { checkSubstitutions } from './substitutionSystem';
@@ -182,6 +183,9 @@ function handleQuarterEnd(state: GameState) {
         [...state.home.onCourt, ...state.away.onCourt].forEach(p => {
             if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
             state.rotationHistory[p.playerId].push({ in: nextTime, out: nextTime });
+            
+            // [Fix] Reset stint timer for new quarter to avoid "Locked" status from previous quarter play
+            p.lastSubInTime = QUARTER_LENGTH;
         });
         
         state.logs.push({
@@ -195,8 +199,27 @@ function handleQuarterEnd(state: GameState) {
 }
 
 function aggregateResults(state: GameState): SimulationResult {
-    const homeBox: PlayerBoxScore[] = [...state.home.onCourt, ...state.home.bench].map(p => toPlayerBoxScore(p));
-    const awayBox: PlayerBoxScore[] = [...state.away.onCourt, ...state.away.bench].map(p => toPlayerBoxScore(p));
+    // [Fix] Calculate minutes based on Rotation History for 100% accuracy
+    const calculateMinutes = (playerId: string): number => {
+        const hist = state.rotationHistory[playerId];
+        if (!hist) return 0;
+        
+        let totalSeconds = 0;
+        hist.forEach(seg => {
+            totalSeconds += (seg.out - seg.in);
+        });
+        return totalSeconds / 60; // Convert to minutes
+    };
+
+    const homeBox: PlayerBoxScore[] = [...state.home.onCourt, ...state.home.bench].map(p => {
+        const exactMp = calculateMinutes(p.playerId);
+        return toPlayerBoxScore(p, exactMp);
+    });
+    
+    const awayBox: PlayerBoxScore[] = [...state.away.onCourt, ...state.away.bench].map(p => {
+        const exactMp = calculateMinutes(p.playerId);
+        return toPlayerBoxScore(p, exactMp);
+    });
     
     const rosterUpdates: RosterUpdate = {};
     const collectUpdates = (team: TeamState) => {
@@ -235,7 +258,7 @@ function aggregateResults(state: GameState): SimulationResult {
     };
 }
 
-function toPlayerBoxScore(p: LivePlayer): PlayerBoxScore {
+function toPlayerBoxScore(p: LivePlayer, exactMp: number): PlayerBoxScore {
     return {
         playerId: p.playerId,
         playerName: p.playerName,
@@ -243,7 +266,10 @@ function toPlayerBoxScore(p: LivePlayer): PlayerBoxScore {
         ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov, pf: p.pf,
         fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a, ftm: p.ftm, fta: p.fta,
         rimM: p.rimM, rimA: p.rimA, midM: p.midM, midA: p.midA,
-        mp: p.mp, g: p.g, gs: p.gs, plusMinus: p.plusMinus,
+        mp: exactMp, // Use the recalculated exact time
+        g: exactMp > 0 ? 1 : 0, // Only count game if they played
+        gs: p.gs, 
+        plusMinus: p.plusMinus,
         zoneData: {
             zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
             zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
@@ -308,6 +334,7 @@ export function runFullGameSimulation(
         }
 
         // B. Substitutions
+        // Run substitution check every deadball or minute marks
         if (state.isDeadBall || state.gameClock % 60 === 0) {
             processSubstitutions(state, state.home);
             processSubstitutions(state, state.away);
@@ -331,11 +358,11 @@ export function runFullGameSimulation(
             });
         });
 
-        // Apply Time & Fatigue
+        // Apply Time & Fatigue (Internal Logic only, display uses Rotation History)
         const timeInMinutes = result.timeTaken / 60;
         [state.home, state.away].forEach(t => {
             t.onCourt.forEach(p => {
-                p.mp += timeInMinutes;
+                // p.mp += timeInMinutes; // [Removed] No longer accum here for display, only used for internal logic if needed
                 
                 const isB2B = t.id === state.home.id ? state.isHomeB2B : state.isAwayB2B;
                 const oppTeam = t.id === state.home.id ? state.away : state.home;
