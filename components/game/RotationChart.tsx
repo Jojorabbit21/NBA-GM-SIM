@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { Team, PlayerBoxScore, RotationData } from '../../types';
-import { Clock } from 'lucide-react';
 
 interface RotationChartProps {
     homeTeam: Team;
@@ -22,8 +21,8 @@ const PlayerRow: React.FC<{
     if (!segments || segments.length === 0) return null;
 
     return (
-        <div className="flex items-center h-8 hover:bg-white/5 transition-colors border-b border-slate-800/30">
-            <div className="w-32 md:w-40 flex-shrink-0 px-3 truncate text-xs font-bold text-slate-300 border-r border-slate-800/50 flex items-center justify-between">
+        <div className="flex items-center h-8 hover:bg-white/5 transition-colors border-b border-slate-800/30 relative z-10">
+            <div className="w-32 md:w-40 flex-shrink-0 px-3 truncate text-xs font-bold text-slate-300 border-r border-slate-800/50 flex items-center justify-between bg-slate-900/10">
                 <span className="truncate">{player.playerName}</span>
                 <span className="text-[10px] text-slate-500 font-mono">{Math.round(player.mp)}m</span>
             </div>
@@ -68,21 +67,19 @@ export const RotationChart: React.FC<RotationChartProps> = ({
     const sortedAway = [...awayBox].sort(sortPlayers);
 
     return (
-        <div className="w-full bg-slate-950 border border-slate-800 rounded-3xl p-6 mb-8 shadow-2xl">
-            <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-800">
-                <Clock className="text-slate-400" size={20} />
-                <h3 className="text-lg font-black uppercase text-slate-200 tracking-widest ko-tight">Rotation Analysis</h3>
+        <div className="w-full bg-slate-950 border border-slate-800 rounded-3xl p-6 mb-8 shadow-2xl relative overflow-hidden">
+            
+            {/* Background Quarter Markers (Spanning full height) */}
+            <div className="absolute inset-0 left-32 md:left-46 right-6 pointer-events-none z-0">
+                <div className="absolute top-0 bottom-0 left-0 w-full flex">
+                    <div className="flex-1 border-l border-slate-800/40"></div>
+                    <div className="flex-1 border-l border-slate-800/40"></div>
+                    <div className="flex-1 border-l border-slate-800/40"></div>
+                    <div className="flex-1 border-l border-slate-800/40 border-r"></div>
+                </div>
             </div>
 
-            <div className="relative">
-                {/* Quarter Markers */}
-                <div className="absolute top-0 bottom-0 left-32 md:left-40 right-0 flex pointer-events-none z-0">
-                    <div className="flex-1 border-l border-slate-800/50"></div>
-                    <div className="flex-1 border-l border-slate-800/50"></div>
-                    <div className="flex-1 border-l border-slate-800/50"></div>
-                    <div className="flex-1 border-l border-slate-800/50 border-r"></div>
-                </div>
-
+            <div className="relative z-10">
                 {/* Quarter Labels Header */}
                 <div className="flex pl-32 md:pl-40 mb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
                     <div className="flex-1">Q1</div>
@@ -97,7 +94,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                         <img src={awayTeam.logo} className="w-5 h-5 object-contain" alt="" />
                         <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{awayTeam.name}</span>
                     </div>
-                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/30">
+                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm">
                         {sortedAway.map(p => (
                             <PlayerRow 
                                 key={p.playerId} 
@@ -115,7 +112,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                         <img src={homeTeam.logo} className="w-5 h-5 object-contain" alt="" />
                         <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{homeTeam.name}</span>
                     </div>
-                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/30">
+                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm">
                         {sortedHome.map(p => (
                             <PlayerRow 
                                 key={p.playerId} 

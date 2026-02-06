@@ -44,7 +44,7 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
             {otherGames && otherGames.length > 0 && (
                 <div className="mt-8 pt-8 border-t border-slate-800/50">
                     <h3 className="text-sm font-black uppercase text-slate-500 tracking-widest mb-4 flex items-center gap-2">
-                        <Activity size={16} /> Around the League
+                        <Activity size={16} /> 타구장 경기 결과
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {otherGames.map(g => {

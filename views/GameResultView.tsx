@@ -57,14 +57,12 @@ export const GameResultView: React.FC<{
       tov: Math.max(...allPlayers.map(p => p.tov)),
   };
 
-  const NavButton = ({ tab, label, icon: Icon }: { tab: ResultTab, label: string, icon: any }) => (
-      <button 
-        onClick={() => setActiveTab(tab)}
-        className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-      >
-          <Icon size={16} /> {label}
-      </button>
-  );
+  const tabs: { id: ResultTab; label: string }[] = [
+      { id: 'BoxScore', label: '박스스코어' },
+      { id: 'PbpLog', label: '플레이-바이-플레이' },
+      { id: 'Rotation', label: '로테이션 차트' },
+      { id: 'Tactics', label: '전술 비교' },
+  ];
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24">
@@ -80,62 +78,71 @@ export const GameResultView: React.FC<{
             pbpLogs={pbpLogs}
           />
 
-          <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-6 flex flex-col">
+          {/* 2. Navigation Tabs (Full Width) */}
+          <div className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800">
+              <div className="max-w-7xl mx-auto flex items-center justify-center">
+                  {tabs.map((tab) => (
+                      <button
+                          key={tab.id}
+                          onClick={() => setActiveTab(tab.id)}
+                          className={`
+                              relative px-6 py-4 text-sm font-bold transition-all duration-300
+                              ${activeTab === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-300'}
+                          `}
+                      >
+                          {tab.label}
+                          {activeTab === tab.id && (
+                              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
+                          )}
+                      </button>
+                  ))}
+              </div>
+          </div>
+
+          {/* 3. Main Content Area */}
+          <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-6 flex flex-col min-h-[500px]">
               
-              {/* 2. Navigation Tabs (Carousel Style) */}
-              <div className="flex justify-center">
-                  <div className="flex p-1 bg-slate-900 border border-slate-800 rounded-2xl shadow-lg">
-                      <NavButton tab="BoxScore" label="Box Score" icon={LayoutList} />
-                      <NavButton tab="PbpLog" label="Play-by-Play" icon={List} />
-                      <NavButton tab="Rotation" label="Rotation" icon={RotateCw} />
-                      <NavButton tab="Tactics" label="Tactics" icon={Shield} />
-                  </div>
-              </div>
+              {activeTab === 'BoxScore' && (
+                  <GameBoxScoreTab 
+                      homeTeam={home}
+                      awayTeam={away}
+                      homeBox={homeBox}
+                      awayBox={awayBox}
+                      mvpId={mvp.playerId}
+                      leaders={leaders}
+                      otherGames={otherGames}
+                      teams={teams}
+                  />
+              )}
 
-              {/* 3. Main Content Area */}
-              <div className="flex-1 min-h-[500px]">
-                  {activeTab === 'BoxScore' && (
-                      <GameBoxScoreTab 
-                          homeTeam={home}
-                          awayTeam={away}
-                          homeBox={homeBox}
-                          awayBox={awayBox}
-                          mvpId={mvp.playerId}
-                          leaders={leaders}
-                          otherGames={otherGames}
-                          teams={teams}
-                      />
-                  )}
+              {activeTab === 'PbpLog' && (
+                  <GamePbpTab 
+                      logs={pbpLogs} 
+                      homeTeam={home} 
+                      awayTeam={away} 
+                  />
+              )}
 
-                  {activeTab === 'PbpLog' && (
-                      <GamePbpTab 
-                          logs={pbpLogs} 
-                          homeTeamId={home.id} 
-                          awayTeamId={away.id} 
-                      />
-                  )}
+              {activeTab === 'Rotation' && (
+                  <GameRotationTab 
+                      homeTeam={home}
+                      awayTeam={away}
+                      homeBox={homeBox}
+                      awayBox={awayBox}
+                      rotationData={rotationData}
+                  />
+              )}
 
-                  {activeTab === 'Rotation' && (
-                      <GameRotationTab 
-                          homeTeam={home}
-                          awayTeam={away}
-                          homeBox={homeBox}
-                          awayBox={awayBox}
-                          rotationData={rotationData}
-                      />
-                  )}
-
-                  {activeTab === 'Tactics' && (
-                      <GameTacticsTab 
-                          homeTeam={home}
-                          awayTeam={away}
-                          homeTactics={homeTactics}
-                          awayTactics={awayTactics}
-                          homeBox={homeBox}
-                          awayBox={awayBox}
-                      />
-                  )}
-              </div>
+              {activeTab === 'Tactics' && (
+                  <GameTacticsTab 
+                      homeTeam={home}
+                      awayTeam={away}
+                      homeTactics={homeTactics}
+                      awayTactics={awayTactics}
+                      homeBox={homeBox}
+                      awayBox={awayBox}
+                  />
+              )}
 
           </div>
 
