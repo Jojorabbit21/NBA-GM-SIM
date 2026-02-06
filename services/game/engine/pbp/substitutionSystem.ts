@@ -1,3 +1,4 @@
+
 import { GameState, TeamState, LivePlayer } from './pbpTypes';
 import { DepthChart } from '../../../../types';
 
@@ -8,8 +9,7 @@ export interface SubRequest {
 }
 
 const MIN_STINT_SECONDS = 180; // 3 minutes
-const HARD_FLOOR = 20; // Condition below 20 -> Shutdown
-const RED_ZONE_FLOOR = 60; // Condition below 60 -> Needs Recovery
+const HARD_FLOOR = 20; // Condition below 20 -> Shutdown (Emergency)
 
 export function checkSubstitutions(state: GameState, team: TeamState): SubRequest[] {
     const { tactics } = team;
@@ -27,6 +27,15 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
 
     // Max burn allowed per stint (Condition drop)
     const maxBurn = 12 + (flexibility * 1.5); 
+
+    // [Dynamic Red Zone] Fatigue check threshold
+    // Strict: Ignored (Only Hard Floor applies)
+    // Normal (4) ~ Deep (10): Ranges from 30 to 40
+    let redZoneFloor = 0;
+    if (!isStrict) {
+        // Map 4->30, 10->40. Slope = 1.66
+        redZoneFloor = 30 + ((flexibility - 4) * 1.6);
+    }
 
     const requests: SubRequest[] = [];
     const bench = team.bench.filter(p => p.health !== 'Injured' && !p.isShutdown && !p.needsDeepRecovery);
@@ -76,8 +85,8 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
         
         // --- Priority 2: Voluntary Checks (Respect Lock) ---
         else if (!isStintLocked) {
-             // Red Zone Recovery check
-             if (p.currentCondition < RED_ZONE_FLOOR) {
+             // Red Zone Recovery check (Only Normal/Deep)
+             if (!isStrict && p.currentCondition < redZoneFloor) {
                  shouldSub = true; reason = '체력 저하';
                  p.needsDeepRecovery = true;
              }
@@ -89,9 +98,8 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
                  shouldSub = true; reason = '시간 제한';
              }
 
-             // [NEW] Staggered Rotation Logic (Strict/Normal Only)
-             // Force starters out at start of Q2 & Q4 to ensure they rest after playing Q1/Q3.
-             // This prevents them from playing 20+ minutes straight.
+             // [Staggered Rotation] Force starters out at start of Q2 & Q4
+             // Normal/Strict modes only. Deep mode handles flow naturally.
              else if (!isDeep && !isClutch && p.isStarter) {
                  const isStartOfQ2 = state.quarter === 2 && state.gameClock > 600; // First 2 mins of Q2
                  const isStartOfQ4 = state.quarter === 4 && state.gameClock > 600; // First 2 mins of Q4
@@ -117,37 +125,51 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
 
     // Check for "Must Play" players on bench (Starters resting too long in non-garbage)
     if (!isGarbage) {
+        // [New] Dynamic Stagger Lock Calculation
+        // Determines how long the bench plays in Q2/Q4 before Starters are allowed back.
+        let staggerLockSeconds = 0;
+        
+        if (isStrict) {
+            // Flexibility 1 (Extreme Strict) -> 6 mins lock (Bench plays 6 mins)
+            // Flexibility 2 -> 5 mins lock
+            // Flexibility 3 -> 4 mins lock
+            staggerLockSeconds = (7 - flexibility) * 60; 
+        } else if (isNormal) {
+            // Normal (Flex 4-7) -> Fixed 4 mins lock (Bench plays 4 mins)
+            staggerLockSeconds = 240; 
+        }
+        // Deep: No lock, fluid rotation
+
+        const currentQTime = 720 - state.gameClock;
+        const isLockedPeriod = (state.quarter === 2 || state.quarter === 4) && currentQTime < staggerLockSeconds;
+
         bench.forEach(b => {
             if (b.isStarter && !b.isShutdown && !b.needsDeepRecovery && b.pf < 6 && b.health === 'Healthy') {
                 
-                // [NEW] Staggered Re-entry Logic
-                // If it's the start of Q2/Q4 (Stagger time), DO NOT bring starters back yet.
-                // Let the bench play for at least a few minutes.
-                if (!isDeep && (state.quarter === 2 || state.quarter === 4) && state.gameClock > 480) { // Wait until 8:00 mark
-                    return; 
-                }
+                // If in locked period (early Q2/Q4), do not bring starters back yet
+                if (isLockedPeriod) return;
 
-                // Strict Mode: Starters MUST be in during certain windows
-                // Force them back in Q4 Clutch or mid-quarters
+                // Strict Mode: Starters MUST be in unless disqualified
+                // Once the lock period is over, force them back immediately.
                 if (isStrict) {
-                    const isClosing = state.gameClock < 480; // Last 8 mins
                     const spotOccupier = team.onCourt.find(o => o.position === b.position && !o.isStarter);
                     
+                    // If a bench player is holding the spot, swap immediately
                     if (spotOccupier && !requests.some(r => r.outPlayer === spotOccupier)) {
-                        if (isClosing) {
-                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 투입(Closer)' });
-                        } else if (b.currentCondition > 85 && spotOccupier.currentCondition < 90) {
-                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 복귀' });
-                        }
+                        requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 복귀(Strict)' });
                     }
                 }
-                // Normal Mode: Energy recovered enough?
-                else if (b.currentCondition >= 90 || (b.currentCondition >= 80 && isClutch)) {
+                // Normal Mode: Organic Re-entry
+                // Removed condition-based auto return (90+).
+                // Starters return only if:
+                // 1. It's Clutch time
+                // 2. Or implicitly via Sub-Out logic (when Bench player hits Stint Limit/Fatigue, they ask for a sub, and findSub picks the Starter)
+                else if (isNormal) {
                      const spotOccupier = team.onCourt.find(o => o.position === b.position && !o.isStarter);
+                     
                      if (spotOccupier && !requests.some(r => r.outPlayer === spotOccupier)) {
-                         // Check if occupier is tired
-                         if (spotOccupier.conditionAtSubIn - spotOccupier.currentCondition > 5) {
-                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 복귀' });
+                         if (isClutch && b.currentCondition >= 80) {
+                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 투입(Closer)' });
                          }
                      }
                 }
