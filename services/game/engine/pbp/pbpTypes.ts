@@ -9,6 +9,8 @@ export interface LivePlayer extends PlayerBoxScore {
     ovr: number;
     isStarter: boolean; 
     health: 'Healthy' | 'Injured' | 'Day-to-Day'; 
+    injuryType?: string; // [Added] For runtime injury tracking
+    returnDate?: string; // [Added] For runtime injury tracking
     
     // [New] Rotation Stability & Fatigue Tracking
     lastSubInTime: number; // Game clock seconds when they entered (720 -> 0)

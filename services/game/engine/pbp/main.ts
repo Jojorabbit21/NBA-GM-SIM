@@ -6,7 +6,7 @@ import { checkSubstitutions } from './substitutionSystem';
 import { calculateIncrementalFatigue } from '../fatigueSystem';
 import { calculatePlayerArchetypes } from './archetypeSystem';
 import { formatTime } from './timeEngine';
-import { generateAutoTactics } from '../tactics/tacticGenerator'; 
+import { generateAutoTactics } from '../../tactics/tacticGenerator'; 
 import { calculateOvr } from '../../../../utils/ovrUtils';
 
 // Constants
@@ -46,6 +46,8 @@ function createLivePlayer(p: any, isStarter: boolean): LivePlayer {
         ovr: calculateOvr(p, p.position),
         isStarter,
         health: p.health,
+        injuryType: p.injuryType,
+        returnDate: p.returnDate,
         
         lastSubInTime: 0, // Will be set on court init
         conditionAtSubIn: condition,
@@ -227,6 +229,8 @@ function aggregateResults(state: GameState): SimulationResult {
             rosterUpdates[p.playerId] = {
                 condition: p.currentCondition,
                 health: p.health,
+                injuryType: p.injuryType, // [Added] Preserve injury type
+                returnDate: p.returnDate  // [Added] Preserve return date
             };
         });
     };
@@ -362,8 +366,6 @@ export function runFullGameSimulation(
         const timeInMinutes = result.timeTaken / 60;
         [state.home, state.away].forEach(t => {
             t.onCourt.forEach(p => {
-                // p.mp += timeInMinutes; // [Removed] No longer accum here for display, only used for internal logic if needed
-                
                 const isB2B = t.id === state.home.id ? state.isHomeB2B : state.isAwayB2B;
                 const oppTeam = t.id === state.home.id ? state.away : state.home;
                 const isStopper = t.tactics.stopperId === p.playerId;
@@ -377,6 +379,20 @@ export function runFullGameSimulation(
                 );
                 
                 p.currentCondition = Math.max(0, p.currentCondition - fatigueRes.drain);
+                
+                // [Added] Handle In-Game Injury
+                if (fatigueRes.injuryOccurred && p.health === 'Healthy') {
+                    p.health = fatigueRes.injuryDetails?.health || 'Day-to-Day';
+                    p.injuryType = fatigueRes.injuryDetails?.type;
+                    
+                    state.logs.push({
+                        quarter: state.quarter,
+                        timeRemaining: formatTime(state.gameClock),
+                        teamId: t.id,
+                        text: `[부상] ${p.playerName} - ${p.injuryType}`,
+                        type: 'info'
+                    });
+                }
             });
         });
 
@@ -443,6 +459,20 @@ export function runFullGameSimulation(
                 if (result.secondaryPlayer) {
                     result.secondaryPlayer.stl++;
                 }
+            } else if (result.type === 'foul') {
+                // [Added] Handle Fouls
+                if (result.secondaryPlayer) {
+                     result.secondaryPlayer.pf++;
+                     const defTeam = result.secondaryPlayer.playerId === state.home.onCourt.find(x=>x.playerId===result.secondaryPlayer?.playerId)?.playerId ? state.home : state.away;
+                     defTeam.fouls++;
+                }
+            } else if (result.type === 'freethrow') {
+                 // [Added] Handle Free Throws
+                 const pts = result.points || 1;
+                 p.pts += pts;
+                 p.ftm += pts;
+                 p.fta++;
+                 offTeam.score += pts;
             }
             
             if (result.type === 'score' && result.secondaryPlayer) {
@@ -454,7 +484,7 @@ export function runFullGameSimulation(
         if (result.nextPossession === 'home') state.possession = 'home';
         else if (result.nextPossession === 'away') state.possession = 'away';
         
-        state.isDeadBall = result.isDeadBall || result.type === 'score' || result.type === 'turnover' || result.type === 'foul';
+        state.isDeadBall = result.isDeadBall || result.type === 'score' || result.type === 'turnover' || result.type === 'foul' || result.type === 'freethrow';
     }
 
     return aggregateResults(state);
