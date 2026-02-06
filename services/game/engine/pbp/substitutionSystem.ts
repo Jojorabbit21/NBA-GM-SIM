@@ -1,74 +1,74 @@
-import { GameState, TeamState, LivePlayer } from './pbpTypes';
-import { PbpLog } from '../../../../types';
+import { GameState, LivePlayer, TeamState } from './pbpTypes';
+import { GameTactics, DepthChart } from '../../../../types';
 
-// --- Constants ---
-const SCORE_DIFF_GARBAGE = 20;
-const HARD_FLOOR = 20; // Players must be subbed out below this
-const RED_ZONE_FLOOR = 30; // Players should be subbed out
-const RED_ZONE_RECOVERY_TARGET = 65; // Must recover to this before returning
-const MIN_STINT_SECONDS = 120; // Minimum time on court (2 mins) to avoid yo-yo subs
+const MIN_STINT_SECONDS = 120; // 2 minutes lock
+const HARD_FLOOR = 20; // Must sub out
+const RED_ZONE_FLOOR = 35; // Should sub out if possible
 
-// --- Helper: Max Energy Burn per Stint ---
-function getMaxEnergyBurn(flexibility: number): number {
-    // Flexibility 0 (Strict): 20 energy burn allowed (Long stints)
-    // Flexibility 10 (Deep): 8 energy burn allowed (Short stints)
-    return 20 - (flexibility * 1.2); 
+export interface SubRequest {
+    outPlayer: LivePlayer;
+    inPlayer: LivePlayer;
+    reason: string;
 }
 
-// --- Helper: Strict Schedule ---
-// Defines fixed rotation points for Strict Mode
-function getStrictSchedule(flexibility: number) {
-    // Strictness affects how rigid the schedule is.
-    // Assuming simple fixed points for now.
-    // Q1/Q3: Starters play until X minutes remaining.
-    // Q2/Q4: Starters return at Y minutes remaining.
+export function checkSubstitutions(state: GameState, team: TeamState): SubRequest[] {
+    const { tactics } = team;
+    const { minutesLimits, sliders } = tactics;
+    const flexibility = sliders.rotationFlexibility ?? 5;
     
-    // Flex 0: Starters play 10 mins in Q1/Q3. Rest 2 mins.
-    // Flex 3: Starters play 8 mins in Q1/Q3. Rest 4 mins.
-    const starterStintMins = 10 - flexibility; 
-    const q1q3Out = (12 - starterStintMins) * 60; // Seconds remaining when sub out
-    
-    const q2q4In = (starterStintMins) * 60; // Seconds remaining when sub in
-    
-    return { q1q3Out, q2q4In };
-}
-
-// --- Helper: Calculate Absolute Time ---
-function getAbsoluteTime(state: GameState): number {
-    const q = state.quarter;
-    const elapsedInQuarter = (q > 4 ? 300 : 720) - state.gameClock;
-    const prevQuarters = (Math.min(q, 5) - 1) * 720 + Math.max(0, q - 5) * 300;
-    return prevQuarters + elapsedInQuarter;
-}
-
-// --- Main Rotation Logic ---
-
-export function processTeamRotation(team: TeamState, state: GameState): boolean {
-    const flexibility = team.tactics.sliders.rotationFlexibility ?? 5;
+    // Mode determination
     const isStrict = flexibility <= 3;
-    const isNormal = flexibility >= 4 && flexibility <= 7;
-    const maxBurn = getMaxEnergyBurn(flexibility);
-    const minutesLimits = team.tactics.minutesLimits || {};
+    const isNormal = flexibility > 3 && flexibility <= 7;
+    const isDeep = flexibility > 7;
+
     const scoreDiff = Math.abs(state.home.score - state.away.score);
-    const isGarbage = state.quarter === 4 && state.gameClock < 300 && scoreDiff >= SCORE_DIFF_GARBAGE;
-    const isClutch = state.quarter === 4 && state.gameClock < 300 && scoreDiff <= 10;
+    const isGarbage = state.quarter >= 4 && state.gameClock < 300 && scoreDiff > 20;
+    const isClutch = state.quarter >= 4 && state.gameClock < 300 && scoreDiff <= 10;
 
-    let changesMade = false;
-    const strictSched = getStrictSchedule(flexibility);
+    // Strict Mode Schedule (Simplified)
+    const strictSched = {
+        q1q3Out: 120, // Sub out starters with 2 mins left in Q1/Q3
+        q2q4In: 600   // Sub in starters with 10 mins left in Q2/Q4
+    };
 
-    // 1. Check players ON COURT for sub-out conditions
-    // Using a copy to modify the original array safely during iteration if needed, 
-    // though swap modifies array in place. Iterate backwards or use a list of swaps.
-    const toSubOut: { player: LivePlayer, reason: string }[] = [];
+    // Max burn allowed per stint (Condition drop)
+    const maxBurn = 12 + (flexibility * 1.5); 
+
+    const requests: SubRequest[] = [];
+    const bench = team.bench.filter(p => p.health !== 'Injured' && !p.isShutdown && !p.needsDeepRecovery);
+
+    // Helper to find best sub
+    const findSub = (pos: string, excludeIds: string[]) => {
+        // 1. Check Depth Chart
+        if (team.depthChart) {
+            const row = team.depthChart[pos as keyof DepthChart] || [];
+            // row[0] is starter (usually on court), row[1] is bench, row[2] is third
+            for (const id of row) {
+                if (!id) continue;
+                const candidate = bench.find(b => b.playerId === id && !excludeIds.includes(b.playerId));
+                if (candidate) return candidate;
+            }
+        }
+        
+        // 2. Fallback: Best available matching position
+        let candidates = bench.filter(b => b.position === pos && !excludeIds.includes(b.playerId));
+        if (candidates.length === 0) {
+            // 3. Fallback: Best available any position
+            candidates = bench.filter(b => !excludeIds.includes(b.playerId));
+        }
+        
+        return candidates.sort((a, b) => b.ovr - a.ovr)[0];
+    };
+
+    const currentOnCourtIds = team.onCourt.map(p => p.playerId);
 
     team.onCourt.forEach(p => {
         let shouldSub = false;
         let reason = '';
         
-        // Duration since last sub in (gameClock counts down)
-        // If lastSubInTime = 720 and gameClock = 700, duration = 20s
         const stintDuration = p.lastSubInTime - state.gameClock;
-        const isStintLocked = state.gameClock !== 720 && stintDuration < MIN_STINT_SECONDS;
+        // [FIX] Ignore lock at start of quarter (720 or 300) to allow immediate subs
+        const isStintLocked = state.gameClock !== 720 && state.gameClock !== 300 && stintDuration < MIN_STINT_SECONDS;
         const energyConsumed = p.conditionAtSubIn - p.currentCondition;
 
         // --- Priority 1: Emergencies (Override Lock) ---
@@ -79,224 +79,154 @@ export function processTeamRotation(team: TeamState, state: GameState): boolean 
         } else if (p.currentCondition <= HARD_FLOOR) { 
             shouldSub = true; reason = '탈진(Shutdown)';
             p.isShutdown = true; 
-        } else if (p.currentCondition < RED_ZONE_FLOOR) { 
-            shouldSub = true; reason = '체력 저하(RedZone)';
-            p.needsDeepRecovery = true; 
-        }
+        } 
         
         // --- Priority 2: Voluntary Checks (Respect Lock) ---
         else if (!isStintLocked) {
+             // Red Zone Recovery check
+             if (p.currentCondition < RED_ZONE_FLOOR) {
+                 shouldSub = true; reason = '체력 저하';
+                 p.needsDeepRecovery = true;
+             }
              // Garbage Time
-            if (isGarbage && p.isStarter) { shouldSub = true; reason = '가비지 타임'; }
+             else if (isGarbage && p.isStarter) { shouldSub = true; reason = '가비지 타임'; }
             
-            // Minutes Limit
-            else if (minutesLimits[p.playerId] !== undefined && p.mp >= minutesLimits[p.playerId] + 0.5) {
+             // Minutes Limit
+             else if (minutesLimits[p.playerId] !== undefined && p.mp >= minutesLimits[p.playerId] + 0.5) {
                  shouldSub = true; reason = '시간 제한';
-            }
+             }
 
-            // [STRICT MODE] Scheduled Sub-Out
-            else if (isStrict && p.isStarter && !isClutch) {
+             // [STRICT MODE] Scheduled Sub-Out
+             else if (isStrict && p.isStarter && !isClutch) {
                 if ((state.quarter === 1 || state.quarter === 3) && state.gameClock <= strictSched.q1q3Out) {
-                    shouldSub = true; reason = `체력 안배(Q${state.quarter} Limit)`;
+                    shouldSub = true; reason = `체력 안배(Q${state.quarter})`;
                 }
                 else if ((state.quarter === 2 || state.quarter === 4) && state.gameClock > strictSched.q2q4In) {
-                    // Logic check: Wait, Strict mode usually forces starters IN at start of Q1/Q3. 
-                    // And OUT at end of Q1/Q3? 
-                    // q1q3Out is "Seconds remaining when sub out". e.g. 120s (2 mins left).
-                    // If Clock <= 120, sub out. Correct.
-                    
-                    // q2q4In is "Seconds remaining when sub in". e.g. 600s (10 mins left).
-                    // If Clock > 600, starters should be resting (they played end of Q1).
-                    // So if Starter is ON COURT and Clock > 600 in Q2, sub out.
-                    shouldSub = true; reason = `체력 안배(Q${state.quarter} Rest)`;
+                    shouldSub = true; reason = `체력 안배(Bench Time)`;
                 }
-            }
+             }
 
-            // [NORMAL MODE] Start of Quarter Forced Rest
-            else if (isNormal && state.gameClock === 720 && p.isStarter) {
-                const fatigueThreshold = 35 + (flexibility - 4) * 5;
+             // [NORMAL MODE] Start of Quarter Forced Rest
+             else if (isNormal && (state.gameClock === 720 || state.gameClock === 300) && p.isStarter) {
+                const fatigueThreshold = 80; // If below 80 at start of quarter, consider resting if sub available
                 if (p.currentCondition < fatigueThreshold) {
-                    shouldSub = true; reason = '체력 안배(Start Q)';
+                    // Logic is complex here, simplified: if very tired at start of quarter
+                    if (p.currentCondition < 60) {
+                        shouldSub = true; reason = '체력 안배(Start Q)';
+                    }
                 }
-            }
+             }
 
-            // Stint Limit (Delta) - Only Non-Strict
-            else if (!isClutch && !isStrict && energyConsumed >= maxBurn) {
+             // Stint Limit (Delta) - Only Non-Strict
+             else if (!isClutch && !isStrict && energyConsumed >= maxBurn) {
                  shouldSub = true; reason = '로테이션(Stint)';
-            }
+             }
         }
         
         if (shouldSub) {
-            toSubOut.push({ player: p, reason });
+            const sub = findSub(p.position, [...currentOnCourtIds, ...requests.map(r => r.inPlayer.playerId)]);
+            if (sub) {
+                requests.push({ outPlayer: p, inPlayer: sub, reason });
+            }
         }
     });
 
-    toSubOut.forEach(item => {
-        const replacement = findReplacement(team, item.player, isGarbage, minutesLimits);
-        if (replacement) {
-            executeSwap(team, item.player, replacement, state, item.reason);
-            changesMade = true;
-        }
-    });
-
-    // 2. Check for bringing Starters BACK IN
-    // Only if not garbage time
+    // Check for "Must Play" players on bench (Starters resting too long in non-garbage)
     if (!isGarbage) {
-        if (checkStartersReturn(team, state, flexibility, strictSched, isClutch)) {
-            changesMade = true;
-        }
-    }
-
-    return changesMade;
-}
-
-// --- Selection Logic ---
-
-function findReplacement(
-    team: TeamState, 
-    outgoing: LivePlayer, 
-    isGarbage: boolean, 
-    minutesLimits: Record<string, number>
-): LivePlayer | null {
-    // Candidates from Bench
-    let candidates = team.bench.filter(p => p.health !== 'Injured' && p.pf < 6 && !p.isShutdown);
-
-    if (isGarbage) {
-        // Prioritize non-starters, low OVR
-        candidates = candidates.filter(p => !p.isStarter);
-        return candidates.sort((a, b) => a.ovr - b.ovr)[0] || null;
-    }
-
-    // Filter out tired players
-    candidates = candidates.filter(p => {
-        if (p.needsDeepRecovery && p.currentCondition < RED_ZONE_RECOVERY_TARGET) return false;
-        if (p.currentCondition < RED_ZONE_FLOOR) return false;
-        
-        // Check Minutes Limit
-        const limit = minutesLimits[p.playerId];
-        if (limit !== undefined && p.mp >= limit) return false;
-        
-        return true;
-    });
-
-    // 1. Position Match (Depth Chart Priority)
-    // Check Depth Chart if available
-    if (team.depthChart) {
-        // Find outgoing player's position index in chart
-        // A player might be listed in multiple positions, or none.
-        // We look for the best fit defined by Depth Chart.
-        // Simple fallback: Find a bench player who shares the same primary position
-        // Priority: 1. Depth Chart Backup for this position. 2. Same Position. 3. Best OVR.
-        
-        // Fallback Logic:
-        const samePos = candidates.filter(p => p.position === outgoing.position);
-        if (samePos.length > 0) {
-            // Sort by Depth Rank (if we knew it) or OVR
-            return samePos.sort((a, b) => b.ovr - a.ovr)[0];
-        }
-    }
-
-    // 2. Best OVR fallback
-    if (candidates.length > 0) {
-        return candidates.sort((a, b) => b.ovr - a.ovr)[0];
-    }
-
-    return null;
-}
-
-function executeSwap(
-    team: TeamState, 
-    outPlayer: LivePlayer, 
-    inPlayer: LivePlayer, 
-    state: GameState, 
-    reason: string
-) {
-    // 1. Remove OutPlayer from Court
-    const outIdx = team.onCourt.findIndex(p => p.playerId === outPlayer.playerId);
-    if (outIdx === -1) return; // Safety check
-    
-    // 2. Remove InPlayer from Bench
-    const inIdx = team.bench.findIndex(p => p.playerId === inPlayer.playerId);
-    if (inIdx === -1) return; // Safety check
-
-    // 3. Swap Arrays
-    team.onCourt.splice(outIdx, 1);
-    team.bench.splice(inIdx, 1);
-    
-    team.onCourt.push(inPlayer);
-    team.bench.push(outPlayer);
-
-    // 4. Update Player State
-    // OutPlayer: 
-    // Log Rotation Segment
-    const absoluteTime = getAbsoluteTime(state);
-    if (!state.rotationHistory[outPlayer.playerId]) state.rotationHistory[outPlayer.playerId] = [];
-    
-    const quarterStartAbsolute = (Math.min(state.quarter, 5) - 1) * 720 + Math.max(0, state.quarter - 5) * 300;
-    const qLen = state.quarter > 4 ? 300 : 720;
-    const entryElapsed = qLen - outPlayer.lastSubInTime;
-    const entryAbsolute = quarterStartAbsolute + entryElapsed;
-    
-    // Just push the segment.
-    state.rotationHistory[outPlayer.playerId].push({ in: entryAbsolute, out: absoluteTime });
-
-    // InPlayer:
-    inPlayer.lastSubInTime = state.gameClock;
-    inPlayer.conditionAtSubIn = inPlayer.currentCondition;
-
-    // 5. Log PBP
-    state.logs.push({
-        quarter: state.quarter,
-        timeRemaining: `${Math.floor(state.gameClock / 60)}:${(state.gameClock % 60).toString().padStart(2, '0')}`,
-        teamId: team.id,
-        text: `교체: ${inPlayer.playerName} IN, ${outPlayer.playerName} OUT (${reason})`,
-        type: 'info'
-    });
-}
-
-function checkStartersReturn(
-    team: TeamState, 
-    state: GameState, 
-    flexibility: number, 
-    strictSched: { q1q3Out: number, q2q4In: number },
-    isClutch: boolean
-): boolean {
-    const isStrict = flexibility <= 3;
-    let changes = false;
-
-    // Strict Mode: Force Starters back at scheduled time
-    if (isStrict) {
-        // Q2/Q4: Time to bring starters back?
-        if ((state.quarter === 2 || state.quarter === 4) && state.gameClock <= strictSched.q2q4In) {
-            // Find Starters on Bench
-            const startersOnBench = team.bench.filter(b => b.isStarter && b.health !== 'Injured' && b.pf < 6 && !b.isShutdown);
-            
-            startersOnBench.forEach(starter => {
-                // Find someone on court to replace (Bench player)
-                const benchOnCourt = team.onCourt.find(p => !p.isStarter);
-                if (benchOnCourt) {
-                    executeSwap(team, benchOnCourt, starter, state, '주전 복귀');
-                    changes = true;
+        bench.forEach(b => {
+            if (b.isStarter && !b.isShutdown && !b.needsDeepRecovery && b.pf < 6 && b.health === 'Healthy') {
+                const recoveryAmt = b.currentCondition - b.conditionAtSubIn; // It increases on bench
+                
+                // Strict Mode: Starters MUST be in during certain windows
+                if (isStrict) {
+                    if ((state.quarter === 1 || state.quarter === 3) && state.gameClock > strictSched.q1q3Out) {
+                        // Should be in
+                        // Find who is playing in their spot
+                        // Simplified: Check if position is occupied by non-starter
+                        const spotOccupier = team.onCourt.find(o => o.position === b.position && !o.isStarter);
+                        if (spotOccupier && !requests.some(r => r.outPlayer === spotOccupier)) {
+                             // Force sub in
+                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 투입' });
+                        }
+                    }
+                    else if ((state.quarter === 2 || state.quarter === 4) && state.gameClock <= strictSched.q2q4In) {
+                        // Should be in (Closing lineup / Start Q2/4 logic varies but generally starters close)
+                        const spotOccupier = team.onCourt.find(o => o.position === b.position && !o.isStarter);
+                        if (spotOccupier && !requests.some(r => r.outPlayer === spotOccupier)) {
+                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 투입(Closer)' });
+                        }
+                    }
                 }
-            });
-        }
-    }
-    
-    // Clutch Mode: Bring best players
-    if (isClutch) {
-        // Simple check: Are any starters on bench?
-        const startersOnBench = team.bench.filter(b => b.isStarter && b.health !== 'Injured' && b.pf < 6 && !b.isShutdown);
-        startersOnBench.forEach(starter => {
-             // Find worst player on court
-             const candidates = [...team.onCourt].sort((a, b) => a.ovr - b.ovr); // Low OVR first
-             const worst = candidates[0];
-             
-             if (starter.ovr > worst.ovr + 5) { // Significant upgrade
-                 executeSwap(team, worst, starter, state, '클러치 라인업');
-                 changes = true;
-             }
+                // Normal Mode: Energy recovered enough?
+                else if (b.currentCondition >= 90 || (b.currentCondition >= 80 && isClutch)) {
+                     const spotOccupier = team.onCourt.find(o => o.position === b.position && !o.isStarter);
+                     if (spotOccupier && !requests.some(r => r.outPlayer === spotOccupier)) {
+                         // Check if occupier is tired
+                         if (spotOccupier.conditionAtSubIn - spotOccupier.currentCondition > 5) {
+                             requests.push({ outPlayer: spotOccupier, inPlayer: b, reason: '주전 복귀' });
+                         }
+                     }
+                }
+            }
         });
     }
 
-    return changes;
+    return requests;
+}
+
+export function executeSubstitutions(state: GameState, team: TeamState, requests: SubRequest[]) {
+    requests.forEach(req => {
+        const { outPlayer, inPlayer } = req;
+        
+        // Remove outPlayer from court
+        const outIdx = team.onCourt.findIndex(p => p.playerId === outPlayer.playerId);
+        if (outIdx === -1) return;
+        team.onCourt.splice(outIdx, 1);
+        
+        // Add to bench
+        team.bench.push(outPlayer);
+        
+        // Remove inPlayer from bench
+        const inIdx = team.bench.findIndex(p => p.playerId === inPlayer.playerId);
+        if (inIdx !== -1) team.bench.splice(inIdx, 1);
+        
+        // Add to court
+        team.onCourt.push(inPlayer);
+        
+        // Update Rotation Logs
+        // Close segment for outPlayer
+        if (!state.rotationHistory[outPlayer.playerId]) state.rotationHistory[outPlayer.playerId] = [];
+        
+        // Absolute Time Calculation
+        // Quarter duration logic (Q1-4: 720s, OT: 300s)
+        const getQuarterStartAbs = (q: number) => (Math.min(q, 5) - 1) * 720 + Math.max(0, q - 5) * 300;
+        const absStart = getQuarterStartAbs(state.quarter);
+        
+        // in/out in seconds from start of game
+        // p.lastSubInTime is seconds REMAINING in quarter when they entered.
+        // state.gameClock is seconds REMAINING now.
+        // Quarter Length
+        const qLen = state.quarter > 4 ? 300 : 720;
+        
+        const segInRelative = qLen - outPlayer.lastSubInTime;
+        const segOutRelative = qLen - state.gameClock;
+        
+        const absoluteIn = absStart + segInRelative;
+        const absoluteOut = absStart + segOutRelative;
+        
+        state.rotationHistory[outPlayer.playerId].push({ in: absoluteIn, out: absoluteOut });
+        
+        // Update Status for new player
+        inPlayer.lastSubInTime = state.gameClock;
+        inPlayer.conditionAtSubIn = inPlayer.currentCondition;
+        
+        // Log
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: `${Math.floor(state.gameClock/60)}:${String(state.gameClock%60).padStart(2,'0')}`,
+            teamId: team.id,
+            text: `교체: ${outPlayer.playerName} out, ${inPlayer.playerName} in (${req.reason})`,
+            type: 'info'
+        });
+    });
 }
