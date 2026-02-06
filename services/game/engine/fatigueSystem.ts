@@ -94,13 +94,14 @@ export function calculateIncrementalFatigue(
  */
 export function recoverBenchPlayers(bench: LivePlayer[], secondsElapsed: number) {
     const minutes = secondsElapsed / 60;
-    // Base recovery rate: ~4% per minute
-    const baseRecovery = 4.0 * minutes;
+    // [Fix] Reduced Base recovery rate: 1.0% per minute (was 4.0% -> 1.2%)
+    // This forces deeper rotation usage as players recover slower.
+    const baseRecovery = 1.0 * minutes;
 
     bench.forEach(p => {
         if (p.health === 'Healthy' && p.currentCondition < 100) {
             // Stamina bonus to recovery
-            const staminaBonus = (p.attr.stamina - 70) * 0.05 * minutes; 
+            const staminaBonus = (p.attr.stamina - 70) * 0.02 * minutes; // Reduced bonus as well
             const totalRecovery = baseRecovery + Math.max(0, staminaBonus);
             
             p.currentCondition = Math.min(100, p.currentCondition + totalRecovery);

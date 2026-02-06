@@ -13,7 +13,8 @@ export const SIM_CONFIG = {
         SCORING_MODIFIER: 1.05, // 점수 보강을 위해 모디파이어 상향
     },
     FATIGUE: {
-        DRAIN_BASE: 1.8,
+        // [Balance Patch] Increased from 2.8 to 3.5 to ensure players get tired
+        DRAIN_BASE: 3.5, 
         STAMINA_SAVE_FACTOR: 0.015,
         DURABILITY_FACTOR: 0.005,
         FATIGUE_PENALTY_LOW: 0.02,
