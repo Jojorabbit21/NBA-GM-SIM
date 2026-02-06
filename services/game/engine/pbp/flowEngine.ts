@@ -116,19 +116,32 @@ function selectPlayType(tactic: OffenseTactic): PlayType {
 }
 
 // --- Helper: Select Rebounder (Weighted Random) ---
-function selectRebounder(players: LivePlayer[], isOffensive: boolean = false): LivePlayer {
+// [Updated] Connected to SIM_CONFIG.STATS.REB_BASE_FACTOR implicitly via weight logic parity
+function selectRebounder(players: LivePlayer[], isOffensive: boolean = false, sliders: any): LivePlayer {
     const weightedPool = players.map(p => {
         const fatigue = Math.max(0.5, p.currentCondition / 100);
-        const baseReb = p.attr.reb * 0.6;
+        
+        // [Fix] Use Off/Def specific stats if available (LivePlayer attr is usually flat, but we check)
+        // If p.attr doesn't have split, fallback to generic reb
+        // Note: Core Engine uses (Reb * 0.6 + Phys * 0.4). We match that.
+        const baseStat = isOffensive ? (p.offReb || p.attr.reb) : (p.defReb || p.attr.reb);
+        
         const physical = (p.attr.strength * 0.2) + (p.attr.vertical * 0.1) + (p.attr.hustle * 0.1);
         
-        let weight = (baseReb + physical) * fatigue;
+        let weight = (baseStat * 0.6 + physical) * fatigue;
 
+        // Positional Bias (Centers are naturally positioned closer)
         if (p.position === 'C') weight *= 1.5;
         else if (p.position === 'PF') weight *= 1.3;
         else if (p.position === 'PG') weight *= 0.8;
+        
+        // [New] Slider Impact from SIM_CONFIG parity
+        // In defenseSystem.ts: slider impact is 0.15 for Off, 0.10 for Def
+        const sliderVal = isOffensive ? sliders.offReb : sliders.defReb;
+        const sliderMod = 1.0 + (sliderVal - 5) * (isOffensive ? 0.15 : 0.10);
+        weight *= sliderMod;
 
-        weight *= (0.8 + Math.random() * 0.4);
+        weight *= (0.8 + Math.random() * 0.4); // Random noise
 
         return { player: p, weight: Math.max(1, weight) };
     });
@@ -310,8 +323,13 @@ export function resolvePossession(state: GameState): PossessionResult {
     const handleSkill = actor.attr.handling * (actor.currentCondition / 100);
     const pressureSkill = defender.attr.def * (defender.currentCondition / 100);
     
-    // Base TOV rate ~13%
-    let toChance = 0.13; 
+    // [Fix] Connect to SIM_CONFIG.STATS.TOV_USAGE_FACTOR (0.08)
+    // Usage Factor implies Per Possession volatility.
+    // Core Engine: tovBase = (usageProxy * 0.08). 
+    // Here we estimate probability.
+    
+    // Base TOV rate ~12-14% is realistic.
+    let toChance = SIM_CONFIG.STATS.TOV_USAGE_FACTOR * 1.5; // Scaling for possession logic
     
     // Skill Delta
     toChance -= (handleSkill - 70) * 0.002; // Better handle = less TOV
@@ -331,8 +349,19 @@ export function resolvePossession(state: GameState): PossessionResult {
     if (press > 5) toChance += (press - 5) * 0.01;
 
     if (Math.random() < toChance) {
-        // [New] Check for Steal (Defensive Play)
-        const isSteal = Math.random() < (defender.attr.stl / 100);
+        // [New] Check for Steal (Defensive Play) linked to SIM_CONFIG
+        // Core: stlBase = stlAttr * (mp/48) * 0.036
+        // PBP: Probability check. 
+        // 0.036 (3.6%) per game -> approx 0.05% per possession?? No, that's too low.
+        // Factor 0.036 is per minute-weighted unit.
+        // Let's use attribute relative to constant to derive "Steal on Turnover" probability.
+        // If a turnover happens, what is the chance it was a steal? ~50-60%.
+        
+        const stlFactor = SIM_CONFIG.STATS.STL_BASE_FACTOR; // 0.036
+        const stlAttr = defender.attr.stl;
+        const stealProb = (stlAttr / 100) * (stlFactor * 15); // Calibration to get ~50%
+        
+        const isSteal = Math.random() < stealProb;
         const logText = isSteal 
             ? `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다!` 
             : `${actor.playerName}, ${playType} 시도 중 턴오버.`;
@@ -438,10 +467,17 @@ export function resolvePossession(state: GameState): PossessionResult {
         // MISSED SHOT
         
         // [New] Check Block (Event)
-        // Blocker needs good Block rating, Vert, and Height
-        // Base chance ~6-10% of misses
-        const blkChance = (defender.attr.blk * 0.5 + defender.attr.vertical * 0.2 + (defender.attr.height - 180) * 0.5) / 800;
-        
+        // [Fix] Connect to SIM_CONFIG.STATS.BLK_*_FACTOR
+        let blkFactor = SIM_CONFIG.STATS.BLK_GUARD_FACTOR;
+        if (defender.position === 'C') blkFactor = SIM_CONFIG.STATS.BLK_BIG_FACTOR;
+        else if (defender.position === 'PF') blkFactor = SIM_CONFIG.STATS.BLK_BIG_FACTOR * 0.8;
+
+        // Base chance derived from attribute & factor
+        // Factor 0.055 -> ~5.5% block rate per game? No, it's relative.
+        // We calibrate to typical block % (approx 3-8% of shots)
+        const blkAttr = defender.attr.blk * 0.6 + defender.attr.vertical * 0.2 + (defender.attr.height - 180) * 0.5;
+        const blkChance = (blkAttr / 100) * (blkFactor * 3.0); // Multiplier to map factor to probability
+
         if (Math.random() < blkChance) {
              return {
                 type: 'block',
@@ -457,9 +493,9 @@ export function resolvePossession(state: GameState): PossessionResult {
         }
 
         // Rebound Battle
-        // Create pool of all players on court
-        const homeReb = selectRebounder(state.home.onCourt, state.possession === 'home');
-        const awayReb = selectRebounder(state.away.onCourt, state.possession === 'away');
+        // [Fix] Passed Sliders to selectRebounder for Config Impact
+        const homeReb = selectRebounder(state.home.onCourt, state.possession === 'home', state.home.tactics.sliders);
+        const awayReb = selectRebounder(state.away.onCourt, state.possession === 'away', state.away.tactics.sliders);
         
         // Compare weights (with some randomness already baked in selectRebounder)
         // Defensive rebound is generally easier (Positioning) -> Bonus to DefTeam
