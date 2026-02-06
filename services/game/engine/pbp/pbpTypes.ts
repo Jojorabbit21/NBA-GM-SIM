@@ -5,6 +5,7 @@ import { ArchetypeRatings } from './archetypeSystem';
 export interface LivePlayer extends PlayerBoxScore {
     // Current runtime attributes
     currentCondition: number;
+    startCondition: number; // [New] To calculate fatigue used
     position: string;
     ovr: number;
     isStarter: boolean; 
