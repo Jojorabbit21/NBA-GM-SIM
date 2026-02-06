@@ -56,15 +56,17 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     }, [box]);
 
     const statCellClass = "py-2.5 px-2 text-right text-xs font-bold text-slate-300 font-mono tabular-nums";
-    const totalCellClass = "py-3 px-2 text-right text-xs font-black text-white font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
+    const totalCellClass = "py-3 px-2 text-right text-xs font-black text-slate-300 font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
 
     const formatPct = (m: number, a: number) => {
         if (a === 0) return '-';
         return ((m / a) * 100).toFixed(1) + '%';
     };
 
+    // [UI Change] Removed 'rounded-3xl' and 'shadow-2xl' to flatten the look
+    // Removed margins to make them stick together in parent container
     return (
-        <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
+        <div className="w-full bg-slate-900 border border-slate-800 overflow-hidden">
             <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
@@ -79,9 +81,11 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <th className="py-3 px-4 sticky left-0 bg-slate-950 z-20 w-40 text-left shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</th>
                             <th className="py-3 px-2 text-center w-12">POS</th>
                             <th className="py-3 px-2 text-center w-10">OVR</th>
+                            {/* [UI Change] Center align FAT column */}
                             <th className="py-3 px-2 text-center w-10">FAT</th>
                             <th className="py-3 px-2 text-right w-12">MIN</th>
-                            <th className="py-3 px-2 text-right w-12 text-white">PTS</th>
+                            {/* [UI Change] Changed PTS color to slate-300 */}
+                            <th className="py-3 px-2 text-right w-12 text-slate-300">PTS</th>
                             <th className="py-3 px-2 text-right w-12">REB</th>
                             <th className="py-3 px-2 text-right w-12">AST</th>
                             <th className="py-3 px-2 text-right w-12">STL</th>
@@ -147,11 +151,15 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                     <td className={`${statCellClass} text-center`}>
                                         <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div>
                                     </td>
+                                    {/* [UI Change] Center align FAT column */}
                                     <td className={`${statCellClass} text-center`}>
                                         <span className={`text-xs font-black ${fatColor}`}>{fatigue}</span>
                                     </td>
                                     <td className={statCellClass}>{Math.round(p.mp)}</td>
-                                    <td className={`${statCellClass} text-white`}>{p.pts}</td>
+                                    
+                                    {/* [UI Change] Unified Text Color to Slate-300 */}
+                                    <td className={`${statCellClass} text-slate-300`}>{p.pts}</td>
+                                    
                                     <td className={statCellClass}>{p.reb}</td>
                                     <td className={statCellClass}>{p.ast}</td>
                                     <td className={statCellClass}>{p.stl}</td>

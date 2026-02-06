@@ -27,22 +27,25 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
 
     return (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            {/* Away Team Box Score */}
-            <BoxScoreTable 
-                team={awayTeam} 
-                box={activeAwayBox} 
-                isFirst 
-                mvpId={mvpId} 
-                leaders={leaders} 
-            />
-            
-            {/* Home Team Box Score */}
-            <BoxScoreTable 
-                team={homeTeam} 
-                box={activeHomeBox} 
-                mvpId={mvpId} 
-                leaders={leaders} 
-            />
+            {/* Box Scores Container - Removed vertical gap */}
+            <div className="flex flex-col gap-0">
+                {/* Away Team Box Score */}
+                <BoxScoreTable 
+                    team={awayTeam} 
+                    box={activeAwayBox} 
+                    isFirst 
+                    mvpId={mvpId} 
+                    leaders={leaders} 
+                />
+                
+                {/* Home Team Box Score */}
+                <BoxScoreTable 
+                    team={homeTeam} 
+                    box={activeHomeBox} 
+                    mvpId={mvpId} 
+                    leaders={leaders} 
+                />
+            </div>
             
             {/* Around the League */}
             {otherGames && otherGames.length > 0 && (
