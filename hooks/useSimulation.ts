@@ -1,10 +1,10 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Game, Team, PlayerBoxScore, TacticStatRecord, TacticalSnapshot, GameTactics, SimulationResult, PlayoffGameResultDB, Transaction, TradeAlertContent } from '../types';
+import { Game, Team, SimulationResult, PlayoffGameResultDB, Transaction, TradeAlertContent, DepthChart, GameTactics } from '../types';
 import { simulateGame } from '../services/gameEngine';
-import { generateGameRecapNews, generateCPUTradeNews } from '../services/geminiService';
+import { generateGameRecapNews } from '../services/geminiService';
 import { simulateCPUTrades } from '../services/tradeEngine';
-import { INITIAL_STATS, TRADE_DEADLINE, SEASON_START_DATE } from '../utils/constants';
+import { TRADE_DEADLINE, SEASON_START_DATE } from '../utils/constants';
 import { saveGameResults, saveUserTransaction } from '../services/queries';
 import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
 import { sendMessage } from '../services/messageService';
@@ -24,7 +24,8 @@ export const useSimulation = (
     triggerSave: (overrides?: any) => void,
     session: any,
     isGuestMode: boolean,
-    refreshUnreadCount: () => void
+    refreshUnreadCount: () => void,
+    userDepthChart?: DepthChart | null
 ) => {
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
@@ -152,8 +153,8 @@ export const useSimulation = (
                         team1Name: team1?.name || t.teamId,
                         team2Id: t.details?.partnerTeamId || '',
                         team2Name: partnerTeamName,
-                        team1Acquired: t.details?.acquired?.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 0 })) || [],
-                        team2Acquired: t.details?.traded?.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 0 })) || [],
+                        team1Acquired: t.details?.acquired?.map((p: any) => ({ id: p.id, name: p.name, ovr: p.ovr || 0 })) || [],
+                        team2Acquired: t.details?.traded?.map((p: any) => ({ id: p.id, name: p.name, ovr: p.ovr || 0 })) || [],
                     };
                 })
             };
@@ -216,7 +217,6 @@ export const useSimulation = (
                 }
 
                 // Apply recovery
-                // [CRITICAL FIX] Use ?? 100 instead of || 100 to allow low condition values (e.g. 0) to recover properly
                 const currentCond = updatedPlayer.condition !== undefined ? updatedPlayer.condition : 100;
                 updatedPlayer.condition = Math.min(100, Math.round(currentCond + totalRecovery));
                 
@@ -278,7 +278,7 @@ export const useSimulation = (
             let allPlayedToday: Game[] = [];
             const regularGameResultsToInsert: any[] = [];
             const playoffGameResultsToInsert: PlayoffGameResultDB[] = [];
-            const injuryTransactionsToInsert: Transaction[] = [];
+            // const injuryTransactionsToInsert: Transaction[] = []; // Not used yet
             
             const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
 
@@ -288,7 +288,20 @@ export const useSimulation = (
                 
                 if (!home || !away) continue;
 
-                const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(home, away, myTeamId, isUserGame ? tactics : undefined, playedYesterday(home.id), playedYesterday(away.id));
+                const homeDepth = home.id === myTeamId ? userDepthChart : null;
+                const awayDepth = away.id === myTeamId ? userDepthChart : null;
+
+                const result = (isUserGame && precalcUserResult) ? precalcUserResult : simulateGame(
+                    home, 
+                    away, 
+                    myTeamId, 
+                    isUserGame ? tactics : undefined, 
+                    playedYesterday(home.id), 
+                    playedYesterday(away.id),
+                    homeDepth,
+                    awayDepth
+                );
+                
                 const homeIdx = updatedTeams.findIndex(t => t.id === home.id); const awayIdx = updatedTeams.findIndex(t => t.id === away.id);
                 const homeWin = result.homeScore > result.awayScore;
 
@@ -306,266 +319,148 @@ export const useSimulation = (
                     tacticHistory: updateTeamTacticHistory(away, result.awayBox, result.homeBox, result.awayTactics, !homeWin) 
                 };
 
-                const updateRosterStats = (teamIdx: number, boxScore: PlayerBoxScore[], rosterUpdates: any) => {
-                    const t = updatedTeams[teamIdx];
-                    t.roster = t.roster.map(p => {
-                        const update = rosterUpdates[p.id]; const box = boxScore.find(b => b.playerId === p.id);
-                        
-                        let targetStats = game.isPlayoff 
-                            ? { ...(p.playoffStats || INITIAL_STATS()) } 
-                            : { ...(p.stats || INITIAL_STATS()) };
-
-                        if (box) { 
-                            targetStats.g += 1; targetStats.gs += box.gs; targetStats.mp += box.mp; targetStats.pts += box.pts; targetStats.reb += box.reb; targetStats.ast += box.ast; targetStats.stl += box.stl; targetStats.blk += box.blk; targetStats.tov += box.tov; targetStats.fgm += box.fgm; targetStats.fga += box.fga; targetStats.p3m += box.p3m; targetStats.p3a += box.p3a; targetStats.ftm += box.ftm; targetStats.fta += box.fta; 
-                            targetStats.rimM = (targetStats.rimM || 0) + (box.rimM || 0); targetStats.rimA = (targetStats.rimA || 0) + (box.rimA || 0); targetStats.midM = (targetStats.midM || 0) + (box.midM || 0); targetStats.midA = (targetStats.midA || 0) + (box.midA || 0);
-                            targetStats.pf = (targetStats.pf || 0) + (box.pf || 0);
-
-                            if (box.zoneData) {
-                                targetStats.zone_rim_m = (targetStats.zone_rim_m || 0) + (box.zoneData.zone_rim_m || 0);
-                                targetStats.zone_rim_a = (targetStats.zone_rim_a || 0) + (box.zoneData.zone_rim_a || 0);
-                                targetStats.zone_paint_m = (targetStats.zone_paint_m || 0) + (box.zoneData.zone_paint_m || 0);
-                                targetStats.zone_paint_a = (targetStats.zone_paint_a || 0) + (box.zoneData.zone_paint_a || 0);
-                                targetStats.zone_mid_l_m = (targetStats.zone_mid_l_m || 0) + (box.zoneData.zone_mid_l_m || 0);
-                                targetStats.zone_mid_l_a = (targetStats.zone_mid_l_a || 0) + (box.zoneData.zone_mid_l_a || 0);
-                                targetStats.zone_mid_c_m = (targetStats.zone_mid_c_m || 0) + (box.zoneData.zone_mid_c_m || 0);
-                                targetStats.zone_mid_c_a = (targetStats.zone_mid_c_a || 0) + (box.zoneData.zone_mid_c_a || 0);
-                                targetStats.zone_mid_r_m = (targetStats.zone_mid_r_m || 0) + (box.zoneData.zone_mid_r_m || 0);
-                                targetStats.zone_mid_r_a = (targetStats.zone_mid_r_a || 0) + (box.zoneData.zone_mid_r_a || 0);
-                                targetStats.zone_c3_l_m = (targetStats.zone_c3_l_m || 0) + (box.zoneData.zone_c3_l_m || 0);
-                                targetStats.zone_c3_l_a = (targetStats.zone_c3_l_a || 0) + (box.zoneData.zone_c3_l_a || 0);
-                                targetStats.zone_c3_r_m = (targetStats.zone_c3_r_m || 0) + (box.zoneData.zone_c3_r_m || 0);
-                                targetStats.zone_c3_r_a = (targetStats.zone_c3_r_a || 0) + (box.zoneData.zone_c3_r_a || 0);
-                                targetStats.zone_atb3_l_m = (targetStats.zone_atb3_l_m || 0) + (box.zoneData.zone_atb3_l_m || 0);
-                                targetStats.zone_atb3_l_a = (targetStats.zone_atb3_l_a || 0) + (box.zoneData.zone_atb3_l_a || 0);
-                                targetStats.zone_atb3_c_m = (targetStats.zone_atb3_c_m || 0) + (box.zoneData.zone_atb3_c_m || 0);
-                                targetStats.zone_atb3_c_a = (targetStats.zone_atb3_c_a || 0) + (box.zoneData.zone_atb3_c_a || 0);
-                                targetStats.zone_atb3_r_m = (targetStats.zone_atb3_r_m || 0) + (box.zoneData.zone_atb3_r_m || 0);
-                                targetStats.zone_atb3_r_a = (targetStats.zone_atb3_r_a || 0) + (box.zoneData.zone_atb3_r_a || 0);
-                            }
+                // Update Roster Conditions
+                Object.entries(result.rosterUpdates).forEach(([pid, update]: [string, any]) => {
+                    const t = updatedTeams.find(tm => tm.roster.some(p => p.id === pid));
+                    if (t) {
+                        const p = t.roster.find(rp => rp.id === pid);
+                        if (p) {
+                            if (update.condition !== undefined) p.condition = update.condition;
+                            if (update.health) p.health = update.health;
+                            if (update.injuryType) p.injuryType = update.injuryType;
+                            if (update.returnDate) p.returnDate = update.returnDate;
                         }
+                    }
+                });
 
-                        if (update && update.health === 'Injured' && p.health !== 'Injured') {
-                            const isMyPlayer = t.id === myTeamId;
-                            const tx: Transaction = {
-                                id: crypto.randomUUID(),
-                                date: game.date,
-                                type: 'InjuryUpdate',
-                                teamId: t.id,
-                                description: `${p.name} 부상: ${update.injuryType} (${update.returnDate} 복귀 예상)`,
-                                details: {
-                                    playerId: p.id,
-                                    playerName: p.name,
-                                    health: 'Injured',
-                                    injuryType: update.injuryType,
-                                    returnDate: update.returnDate
-                                }
-                            };
-                            injuryTransactionsToInsert.push(tx);
-                            
-                            if (isMyPlayer) {
-                                setToastMessage(`🚑 부상 발생: ${p.name} (${update.injuryType})`);
-                                
-                                if (session?.user && !isGuestMode) {
-                                    const rDate = new Date(update.returnDate!);
-                                    const cDate = new Date(game.date);
-                                    const diffTime = Math.abs(rDate.getTime() - cDate.getTime());
-                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-                                    
-                                    const isMajor = diffDays > 14;
-                                    const titlePrefix = isMajor ? "[중요] " : "";
-                                    
-                                    sendMessage(
-                                        session.user.id,
-                                        myTeamId,
-                                        game.date,
-                                        'INJURY_REPORT',
-                                        `${titlePrefix}부상 리포트: ${p.name}`,
-                                        {
-                                            playerId: p.id,
-                                            playerName: p.name,
-                                            injuryType: update.injuryType,
-                                            duration: `${diffDays}일 결장 예상`,
-                                            returnDate: update.returnDate,
-                                            severity: isMajor ? 'Major' : 'Minor'
-                                        }
-                                    );
-                                    refreshUnreadCount();
-                                }
-                            }
-                        }
-
-                        // Apply Condition Update (Fatigue)
-                        // [CRITICAL FIX] Use ?? instead of || to correctly handle 0 condition
-                        const newCondition = update?.condition !== undefined ? Math.round(update.condition) : (p.condition ?? 100);
-                        
-                        const returnObj = { 
-                            ...p, 
-                            condition: newCondition, 
-                            health: update?.health ?? p.health, 
-                            injuryType: update?.injuryType ?? p.injuryType, 
-                            returnDate: update?.returnDate ?? p.returnDate 
-                        };
-                        
-                        if (game.isPlayoff) returnObj.playoffStats = targetStats; else returnObj.stats = targetStats;
-                        return returnObj;
-                    });
+                // Save Game Result logic
+                const gameResultDB = {
+                    user_id: session?.user?.id,
+                    game_id: game.id,
+                    date: game.date,
+                    series_id: game.seriesId,
+                    round_number: 0,
+                    game_number: 0,
+                    home_team_id: game.homeTeamId,
+                    away_team_id: game.awayTeamId,
+                    home_score: result.homeScore,
+                    away_score: result.awayScore,
+                    box_score: { home: result.homeBox, away: result.awayBox },
+                    tactics: { home: result.homeTactics, away: result.awayTactics },
+                    is_playoff: game.isPlayoff
                 };
-                updateRosterStats(homeIdx, result.homeBox, result.rosterUpdates); updateRosterStats(awayIdx, result.awayBox, result.rosterUpdates);
 
-                const updatedGame: Game = { ...game, played: true, homeScore: result.homeScore, awayScore: result.awayScore, tactics: { home: result.homeTactics, away: result.awayTactics } };
-                const schIdx = updatedSchedule.findIndex(g => g.id === game.id); if (schIdx !== -1) updatedSchedule[schIdx] = updatedGame;
-                
                 if (game.isPlayoff && game.seriesId) {
-                    const sIdx = updatedSeries.findIndex(s => s.id === game.seriesId);
-                    if (sIdx !== -1) {
-                        const series = updatedSeries[sIdx]; 
-                        const winnerId = result.homeScore > result.awayScore ? home.id : away.id;
-                        const isHigherWinner = winnerId === series.higherSeedId;
-                        const newH = series.higherSeedWins + (isHigherWinner ? 1 : 0); 
-                        const newL = series.lowerSeedWins + (!isHigherWinner ? 1 : 0);
-                        const target = series.targetWins || 4; 
-                        const finished = newH >= target || newL >= target;
-                        updatedSeries[sIdx] = { ...series, higherSeedWins: newH, lowerSeedWins: newL, finished, winnerId: finished ? (newH >= target ? series.higherSeedId : series.lowerSeedId) : undefined };
-
-                        if (session?.user && !isGuestMode) {
-                            playoffGameResultsToInsert.push({
-                                user_id: session.user.id,
-                                game_id: game.id,
-                                date: game.date,
-                                series_id: game.seriesId,
-                                round_number: series.round,
-                                game_number: newH + newL,
-                                home_team_id: game.homeTeamId,
-                                away_team_id: game.awayTeamId,
-                                home_score: result.homeScore,
-                                away_score: result.awayScore,
-                                box_score: { home: result.homeBox, away: result.awayBox },
-                                tactics: { home: result.homeTactics, away: result.awayTactics }
-                            });
+                    const series = updatedSeries.find(s => s.id === game.seriesId);
+                    if (series) {
+                        gameResultDB.round_number = series.round;
+                        gameResultDB.game_number = series.higherSeedWins + series.lowerSeedWins + 1;
+                        if (homeWin) {
+                            if (home.id === series.higherSeedId) series.higherSeedWins++;
+                            else series.lowerSeedWins++;
+                        } else {
+                            if (away.id === series.higherSeedId) series.higherSeedWins++;
+                            else series.lowerSeedWins++;
                         }
+                        playoffGameResultsToInsert.push(gameResultDB);
                     }
+                } else {
+                    regularGameResultsToInsert.push(gameResultDB);
                 }
 
-                if (session?.user && !isGuestMode && !game.isPlayoff) {
-                    regularGameResultsToInsert.push({ 
-                        user_id: session.user.id, 
-                        game_id: game.id, 
-                        date: game.date, 
-                        home_team_id: game.homeTeamId, 
-                        away_team_id: game.awayTeamId, 
-                        home_score: result.homeScore, 
-                        away_score: result.awayScore, 
-                        box_score: { home: result.homeBox, away: result.awayBox },
-                        is_playoff: false, 
-                        series_id: undefined,
-                        tactics: { home: result.homeTactics, away: result.awayTactics } 
+                // Update Schedule
+                const schedIdx = updatedSchedule.findIndex(g => g.id === game.id);
+                if (schedIdx !== -1) {
+                    updatedSchedule[schedIdx] = {
+                        ...game,
+                        played: true,
+                        homeScore: result.homeScore,
+                        awayScore: result.awayScore
+                    };
+                    allPlayedToday.push(updatedSchedule[schedIdx]);
+                }
+
+                if (isUserGame) {
+                    const recap = await generateGameRecapNews({
+                        home, away, homeScore: result.homeScore, awayScore: result.awayScore,
+                        homeBox: result.homeBox, awayBox: result.awayBox,
+                        userTactics: tactics, myTeamId
                     });
+                    
+                    userGameResultOutput = {
+                        home, away, homeScore: result.homeScore, awayScore: result.awayScore,
+                        homeBox: result.homeBox, awayBox: result.awayBox,
+                        recap: recap || ["경기 결과 요약을 불러올 수 없습니다."],
+                        homeTactics: result.homeTactics, awayTactics: result.awayTactics,
+                        pbpLogs: result.pbpLogs,
+                        rotationData: result.rotationData,
+                        otherGames: [] // Will fill later
+                    };
                 }
-                allPlayedToday.push(updatedGame);
-                if (isUserGame) userGameResultOutput = { ...result, home: updatedTeams[homeIdx], away: updatedTeams[awayIdx], userTactics: tactics, myTeamId }; 
             }
 
-            if (injuryTransactionsToInsert.length > 0) {
-                setTransactions(prev => [...injuryTransactionsToInsert, ...prev]);
-                if (session?.user && !isGuestMode) {
-                    for (const tx of injuryTransactionsToInsert) {
-                        saveUserTransaction(session.user.id, tx);
-                    }
-                }
+            // Fill other games for user result
+            if (userGameResultOutput) {
+                userGameResultOutput.otherGames = allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId);
             }
 
-            if (regularGameResultsToInsert.length > 0) { saveGameResults(regularGameResultsToInsert); }
-            
-            if (playoffGameResultsToInsert.length > 0) {
+            // DB Saves
+            if (session?.user && !isGuestMode) {
+                if (regularGameResultsToInsert.length > 0) await saveGameResults(regularGameResultsToInsert);
                 for (const res of playoffGameResultsToInsert) {
                     await savePlayoffGameResult(res);
                 }
-                if (updatedSeries.length > 0 && session?.user && !isGuestMode) {
-                     savePlayoffState(session.user.id, myTeamId, updatedSeries);
-                }
             }
 
-            setTeams(updatedTeams); 
-            setSchedule(updatedSchedule); 
-            setPlayoffSeries(updatedSeries); 
+            // State Updates
+            setTeams(updatedTeams);
+            setSchedule(updatedSchedule);
+            setPlayoffSeries(updatedSeries);
             
-            if (userGameResultOutput && session?.user && !isGuestMode) {
-                const isHome = userGameResultOutput.myTeamId === userGameResultOutput.home.id;
-                const userScore = isHome ? userGameResultOutput.homeScore : userGameResultOutput.awayScore;
-                const oppScore = isHome ? userGameResultOutput.awayScore : userGameResultOutput.homeScore;
-                const userWon = userScore > oppScore;
-                const oppName = isHome ? userGameResultOutput.away.name : userGameResultOutput.home.name;
-                
-                const userBox = isHome ? userGameResultOutput.homeBox : userGameResultOutput.awayBox;
-                const roundedUserBox = userBox.map(p => ({
-                    ...p,
-                    mp: Math.round(p.mp)
-                }));
-                
-                const allPlayers = [...userGameResultOutput.homeBox, ...userGameResultOutput.awayBox];
-                const mvp = allPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), allPlayers[0]);
-
-                await sendMessage(
-                    session.user.id,
-                    myTeamId,
-                    targetSimDate,
-                    'GAME_RECAP',
-                    `[경기보고서] ${targetSimDate} vs ${oppName}`,
-                    {
-                        gameId: activeGame?.id || `g_${targetSimDate}`,
-                        homeTeamId: userGameResultOutput.home.id,
-                        awayTeamId: userGameResultOutput.away.id,
-                        homeScore: userGameResultOutput.homeScore,
-                        awayScore: userGameResultOutput.awayScore,
-                        userWon: userWon,
-                        mvp: {
-                            playerId: mvp.playerId,
-                            name: mvp.playerName,
-                            stats: `${mvp.pts} PTS, ${mvp.reb} REB, ${mvp.ast} AST`
-                        },
-                        userBoxScore: roundedUserBox 
-                    }
-                );
-                refreshUnreadCount();
-
-                const recap = await generateGameRecapNews(userGameResultOutput);
-                setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
-                
-                triggerSave({ teams: updatedTeams, schedule: updatedSchedule, playoffSeries: updatedSeries });
-            } else if (userGameResultOutput) {
-                const recap = await generateGameRecapNews(userGameResultOutput);
-                setLastGameResult({ ...userGameResultOutput, recap: recap || [], otherGames: allPlayedToday.filter(g => g.homeTeamId !== myTeamId && g.awayTeamId !== myTeamId) });
-            } else { 
-                setIsSimulating(false); 
-                // [CRITICAL FIX] Pass updated teams to advanceDate to prevent stale closure state (resetting condition)
-                await advanceDate(updatedTeams); 
+            if (userGameResultOutput) {
+                setLastGameResult(userGameResultOutput);
             }
+
+            // Advance Date Logic (After all games processed)
+            await advanceDate(updatedTeams);
         };
-        
-        if (userGameToday) {
-            const home = updatedTeamsRef.current.find(t => t.id === userGameToday.homeTeamId);
-            const away = updatedTeamsRef.current.find(t => t.id === userGameToday.awayTeamId);
 
-            if (home && away) {
-                const precalculatedUserResult = simulateGame(home, away, myTeamId, tactics, playedYesterday(home.id), playedYesterday(away.id));
-                setActiveGame({ ...userGameToday, homeScore: precalculatedUserResult.homeScore, awayScore: precalculatedUserResult.awayScore }); 
-                finalizeSimRef.current = () => processSimulation(precalculatedUserResult);
-            } else {
-                setIsSimulating(true);
-                setTimeout(() => processSimulation(), 2000);
-            }
-        } else { 
-            setIsSimulating(true); 
-            setTimeout(() => processSimulation(), 2000); 
+        if (userGameToday) {
+            // Visual Simulation Pre-Calculation
+            const home = teams.find(t => t.id === userGameToday.homeTeamId)!;
+            const away = teams.find(t => t.id === userGameToday.awayTeamId)!;
+            const homeDepth = home.id === myTeamId ? userDepthChart : null;
+            const awayDepth = away.id === myTeamId ? userDepthChart : null;
+
+            const preResult = simulateGame(
+                home, away, myTeamId, tactics, 
+                playedYesterday(home.id), playedYesterday(away.id),
+                homeDepth, awayDepth
+            );
+            
+            setActiveGame({ ...userGameToday, homeScore: preResult.homeScore, awayScore: preResult.awayScore });
+            
+            finalizeSimRef.current = () => {
+                processSimulation(preResult);
+                setActiveGame(null);
+            };
+
+        } else {
+            // Sim all quickly
+            setIsSimulating(true);
+            setTimeout(async () => {
+                await processSimulation();
+                setIsSimulating(false);
+            }, 100);
         }
     };
 
     return {
-        isSimulating, setIsSimulating,
-        activeGame, setActiveGame,
-        lastGameResult, setLastGameResult,
-        finalizeSimRef,
+        isSimulating,
+        setIsSimulating,
+        activeGame,
+        lastGameResult,
         handleExecuteSim,
-        advanceDate
+        finalizeSimRef
     };
 };

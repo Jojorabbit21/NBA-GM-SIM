@@ -99,7 +99,8 @@ const App: React.FC = () => {
         // [New] Pass forceSave for Event-Driven Saves (Playoff Init, Game Finish)
         gameData.forceSave,
         session, isGuestMode,
-        refreshUnreadCount // Passed to update badge
+        refreshUnreadCount, // Passed to update badge
+        gameData.depthChart // [Fix] Pass depth chart to simulation engine
     );
 
     // Initialize GA
