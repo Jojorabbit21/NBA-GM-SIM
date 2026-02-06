@@ -2,12 +2,45 @@
 import { GameState, PossessionResult, TeamState, LivePlayer } from './pbpTypes';
 import { calculatePossessionTime } from './timeEngine';
 import { OFFENSE_STRATEGY_CONFIG, DEFENSE_STRATEGY_CONFIG } from './strategyMap';
-import { OffenseTactic, DefenseTactic, PlayType } from '../../../../types';
+import { OffenseTactic, DefenseTactic, PlayType, Player } from '../../../../types';
 import { resolvePlayAction, PlayContext } from './playTypes';
+import { calculateAceStopperImpact } from '../aceStopperSystem';
+import { SIM_CONFIG } from '../config/constants';
+import { FOUL_CONFIG } from '../foulSystem';
 
 // --- Text Generator Interfaces ---
 type ShotZone = 'Rim' | 'Paint' | 'Mid-L' | 'Mid-C' | 'Mid-R' | '3PT-L' | '3PT-C' | '3PT-R' | '3PT-Corn';
-type ShotType = 'Dunk' | 'Layup' | 'Hook' | 'Floater' | 'Jumper' | 'Fadeaway' | 'CatchShoot' | 'Pullup';
+
+// --- Adapter: LivePlayer to Player (for Legacy Systems) ---
+function flattenPlayer(lp: LivePlayer): Player {
+    // [Integration Fix] Calculate missing aggregate stats 'ath' and 'plm' required by Ace Stopper & Core logic
+    const ath = Math.round((lp.attr.speed + lp.attr.agility + lp.attr.strength + lp.attr.vertical + lp.attr.stamina + lp.attr.hustle + lp.attr.durability) / 7);
+    const plm = Math.round((lp.attr.passAcc + lp.attr.handling + lp.attr.speed + lp.attr.passVision + lp.attr.passIq) / 5);
+
+    return {
+        id: lp.playerId,
+        name: lp.playerName,
+        position: lp.position,
+        ...lp.attr, // Spread attributes to root
+        ath,
+        plm,
+        condition: lp.currentCondition,
+        // Mock stats needed for Ace Stopper type checking
+        stats: {} as any,
+        playoffStats: {} as any,
+        age: 0, height: lp.attr.height, weight: lp.attr.weight, salary: 0, contractYears: 0, ovr: lp.ovr, potential: 0, health: lp.health,
+        tendencies: { hand: 'Right', lateralBias: 0 },
+        // Essential stats mapping for consistency with Core Engine
+        closeShot: lp.attr.ins, midRange: lp.attr.mid, threeCorner: lp.attr.out, three45: lp.attr.out, threeTop: lp.attr.out,
+        ft: lp.attr.ft, shotIq: lp.attr.shotIq, offConsist: lp.attr.offConsist,
+        layup: lp.attr.ins, dunk: lp.attr.ins, postPlay: lp.attr.postPlay, drawFoul: lp.attr.drFoul, hands: lp.attr.hands,
+        passAcc: lp.attr.pas, handling: lp.attr.handling, spdBall: lp.attr.speed, passIq: lp.attr.passIq, passVision: lp.attr.passVision,
+        intDef: lp.attr.intDef, perDef: lp.attr.perDef, steal: lp.attr.stl, blk: lp.attr.blk, helpDefIq: lp.attr.helpDefIq, passPerc: lp.attr.def, defConsist: lp.attr.defConsist,
+        offReb: lp.attr.reb, defReb: lp.attr.reb,
+        speed: lp.attr.speed, agility: lp.attr.agility, strength: lp.attr.strength, vertical: lp.attr.vertical, stamina: lp.attr.stamina, hustle: lp.attr.hustle, durability: lp.attr.durability,
+        intangibles: 50, revealedPotential: 50
+    };
+}
 
 // --- Helper: Calculate Team Tactical Fit Score (0.8 ~ 1.2) ---
 function calculateOffensiveEfficiency(team: TeamState): number {
@@ -37,6 +70,28 @@ function calculateEfficiency(team: TeamState, fitWeights: Partial<Record<string,
     return 0.8 + (rawRatio * 0.4);
 }
 
+// --- Helper: Calculate Real-time Team Defensive Metrics ---
+function calculateTeamDefensiveRating(team: TeamState): { intDef: number, perDef: number, pressure: number, help: number } {
+    let intSum = 0, perSum = 0, pressSum = 0, helpSum = 0;
+    const count = team.onCourt.length || 1;
+    
+    team.onCourt.forEach(p => {
+        // Fatigue affects team defense coordination
+        const cond = Math.max(0.5, p.currentCondition / 100);
+        intSum += p.attr.intDef * cond;
+        perSum += p.attr.perDef * cond;
+        pressSum += p.attr.def * cond;
+        helpSum += p.attr.helpDefIq * cond;
+    });
+
+    return {
+        intDef: intSum / count,
+        perDef: perSum / count,
+        pressure: pressSum / count,
+        help: helpSum / count
+    };
+}
+
 // --- Helper: Select Play Type based on Strategy Distribution ---
 function selectPlayType(tactic: OffenseTactic): PlayType {
     const config = OFFENSE_STRATEGY_CONFIG[tactic || 'Balance'];
@@ -52,41 +107,24 @@ function selectPlayType(tactic: OffenseTactic): PlayType {
 }
 
 // --- Helper: Select Rebounder (Weighted Random) ---
-function selectRebounder(players: LivePlayer[]): LivePlayer {
-    // 1. Calculate weighted score for each player
+function selectRebounder(players: LivePlayer[], isOffensive: boolean = false): LivePlayer {
     const weightedPool = players.map(p => {
-        // Base: Attribute + Archetype
-        let weight = p.attr.reb;
-        if (p.archetypes) {
-            // Mix raw stat with calculated archetype (which includes hustle/vertical)
-            weight = (weight * 0.4) + (p.archetypes.rebounder * 0.6);
-        }
+        const fatigue = Math.max(0.5, p.currentCondition / 100);
+        const baseReb = p.attr.reb * 0.6;
+        const physical = (p.attr.strength * 0.2) + (p.attr.vertical * 0.1) + (p.attr.hustle * 0.1);
+        
+        let weight = (baseReb + physical) * fatigue;
 
-        // Positional Bias
-        // Center: King of boards
-        // PF: Secondary rebounder
-        // PG: Primary Handlers often hunt long rebounds for transition
-        if (p.position === 'C') weight *= 1.6;
-        else if (p.position === 'PF') weight *= 1.35;
-        else if (p.position === 'PG') weight *= 1.25; 
-        else weight *= 1.0;
+        if (p.position === 'C') weight *= 1.5;
+        else if (p.position === 'PF') weight *= 1.3;
+        else if (p.position === 'PG') weight *= 0.8;
 
-        // Fatigue Factor: Tired players react slower
-        // Condition 100 -> 1.0, Condition 50 -> 0.75, Condition 0 -> 0.5
-        const fatigueMod = 0.5 + (Math.max(0, p.currentCondition) / 200);
-        weight *= fatigueMod;
-
-        // Random Noise (Positioning/Luck)
-        // Adds +/- 15% variance to prevent stats from being too deterministic
-        weight *= (0.85 + Math.random() * 0.3);
+        weight *= (0.8 + Math.random() * 0.4);
 
         return { player: p, weight: Math.max(1, weight) };
     });
 
-    // 2. Sum Total Weight
     const totalWeight = weightedPool.reduce((sum, item) => sum + item.weight, 0);
-
-    // 3. Roulette Wheel Selection
     let randomVal = Math.random() * totalWeight;
     
     for (const item of weightedPool) {
@@ -96,8 +134,7 @@ function selectRebounder(players: LivePlayer[]): LivePlayer {
         }
     }
 
-    // Fallback: Return player with highest weight if loop finishes (rounding errors)
-    return weightedPool.sort((a, b) => b.weight - a.weight)[0].player;
+    return weightedPool[0].player;
 }
 
 // --- Helper: Generate Flavor Text ---
@@ -106,8 +143,6 @@ function generateScoreLog(context: PlayContext): string {
     const pName = actor.playerName;
     const sName = secondaryActor ? secondaryActor.playerName : '';
     
-    // Template system
-    // We can expand this indefinitely
     const logs: string[] = [];
 
     switch (playType) {
@@ -160,26 +195,27 @@ function getLocationName(zone: string): string {
     return names[zone] || '외곽';
 }
 
-// [Fix] New Helper to determine exact zone ID for tracking
 function determineShotZoneId(preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): string {
     const rand = Math.random();
+
+    // [Update] Simple Bias simulation (Left/Right/Center)
+    // Most players are Right-handed, slight bias to Right or Center
+    const bias = Math.random(); 
 
     if (preferredZone === 'Rim') return 'zone_rim';
     if (preferredZone === 'Paint') return 'zone_paint';
     
     if (preferredZone === 'Mid') {
-        // Simple distribution: 33% Left, 34% Center, 33% Right
-        if (rand < 0.33) return 'zone_mid_l';
-        if (rand < 0.67) return 'zone_mid_c';
+        if (bias < 0.3) return 'zone_mid_l';
+        if (bias < 0.6) return 'zone_mid_c';
         return 'zone_mid_r';
     }
 
     if (preferredZone === '3PT') {
-        // Distribution: 10% L-Corner, 25% L-Wing, 30% Top, 25% R-Wing, 10% R-Corner
-        if (rand < 0.10) return 'zone_c3_l';
-        if (rand < 0.35) return 'zone_atb3_l';
-        if (rand < 0.65) return 'zone_atb3_c';
-        if (rand < 0.90) return 'zone_atb3_r';
+        if (bias < 0.15) return 'zone_c3_l';
+        if (bias < 0.40) return 'zone_atb3_l';
+        if (bias < 0.60) return 'zone_atb3_c';
+        if (bias < 0.85) return 'zone_atb3_r';
         return 'zone_c3_r';
     }
 
@@ -198,9 +234,12 @@ export function resolvePossession(state: GameState): PossessionResult {
     const playContext = resolvePlayAction(attTeam, playType);
     
     const { actor, secondaryActor, preferredZone, shotType, bonusHitRate } = playContext;
-    const defender = defTeam.onCourt.sort((a, b) => b.attr.def - a.attr.def)[0]; // Simplified defender selection for now
+    
+    // 1-1. Select Defender (Weighted by Matchup/Position)
+    // Find defender playing same position OR best defender on court
+    const defender = defTeam.onCourt.find(p => p.position === actor.position) || 
+                     defTeam.onCourt.sort((a, b) => b.attr.def - a.attr.def)[0];
 
-    // [Fix] Determine specific zone ID (e.g. 'zone_c3_l') for tracking
     const shotZoneId = determineShotZoneId(preferredZone);
 
     // 2. Calculate Time
@@ -210,48 +249,163 @@ export function resolvePossession(state: GameState): PossessionResult {
     const attEfficiency = calculateOffensiveEfficiency(attTeam); 
     const defEfficiency = calculateDefensiveEfficiency(defTeam);
     
-    // --- Turnover Check ---
-    let toChance = 0.12;
-    if (playType === 'Iso') toChance = 0.10; // Less passing, fewer TOs
-    if (playType === 'PnR_Handler') toChance = 0.14; // Traffic
+    // --- INTEGRATED FOUL LOGIC (from foulSystem.ts) ---
+    // Calculates foul probability based on Defender's Discipline (Consist, Hustle, Stamina)
+    const C = FOUL_CONFIG;
     
-    toChance -= (actor.archetypes.connector - 50) * 0.001; 
-    toChance /= attEfficiency; 
-    
-    const pressure = (defTeam.tactics.sliders.defIntensity + defTeam.tactics.sliders.fullCourtPress) / 20; 
-    toChance += (pressure * 0.05);
+    // Discipline Rating (Higher is better)
+    // Using simple weights: Consistency 35%, Hustle 10%, Stamina 15%, Positional IQ 40%
+    const defDiscipline = (defender.attr.defConsist * C.WEIGHTS.COMMON.DEF_CONSISTENCY) + 
+                          (defender.attr.hustle * C.WEIGHTS.COMMON.HUSTLE) + 
+                          (defender.currentCondition * 0.15) + // Real-time stamina
+                          (defender.attr.def * 0.4);
 
-    if (Math.random() < toChance) {
+    // Base Propensity + Skill Gap
+    // Average 75 -> Gap 25 -> 25/17 = ~1.5 extra fouls
+    let foulPropensity = C.BASE_FOUL_RATE + ((100 - defDiscipline) / C.PROPENSITY_SCALE);
+
+    // Matchup: Attacker's Draw Foul
+    foulPropensity += (actor.attr.drFoul - 50) * C.DRAW_FOUL_FACTOR;
+
+    // Sliders: Defense Intensity
+    const intensity = defTeam.tactics.sliders.defIntensity;
+    if (intensity > 5) {
+        foulPropensity *= (1 + (intensity - 5) * C.SLIDERS.DEF_INTENSITY_IMPACT);
+    }
+
+    // Convert Propensity to Probability per Possession (Approximate)
+    // Propensity is per 36 mins. ~75 poss per 36 mins.
+    let foulChance = foulPropensity / 75; 
+
+    // Cap probability (Max 15% per possession to avoid absurdity)
+    foulChance = Math.min(0.15, Math.max(0.01, foulChance));
+
+    if (Math.random() < foulChance) {
+        // Shooting foul logic: if close to rim, higher chance of FTs
+        const isShootingFoul = Math.random() < (preferredZone === 'Rim' ? 0.7 : 0.3);
+        
         return {
-            type: 'turnover',
-            player: actor,
-            secondaryPlayer: defender, // Credited with steal roughly
-            timeTaken,
-            logText: `${actor.playerName}, ${playType} 시도 중 턴오버.`,
-            nextPossession: state.possession === 'home' ? 'away' : 'home',
-            isDeadBall: false,
-            playType: playType // Log info
+            type: 'foul',
+            player: actor,       // The one drawn the foul
+            secondaryPlayer: defender, // The fouler
+            timeTaken: Math.min(timeTaken, 3), // Foul stops clock early
+            logText: `${defender.playerName}, ${actor.playerName}에게 파울 범함.`,
+            nextPossession: isShootingFoul ? 'free_throw' : state.possession, // Simple logic
+            isDeadBall: true,
+            playType
         };
     }
 
-    // --- Shot Success Calculation ---
-    // Base Rates
-    let hitRate = 0.45; 
-    if (preferredZone === 'Rim') hitRate = 0.60;
-    if (preferredZone === '3PT') hitRate = 0.36;
-    if (preferredZone === 'Mid') hitRate = 0.42;
+    // --- INTEGRATED TURNOVER LOGIC (from playmakingSystem.ts) ---
+    // Handle vs Pressure
+    const handleSkill = actor.attr.handling * (actor.currentCondition / 100);
+    const pressureSkill = defender.attr.def * (defender.currentCondition / 100);
+    
+    // Base TOV rate ~13%
+    let toChance = 0.13; 
+    
+    // Skill Delta
+    toChance -= (handleSkill - 70) * 0.002; // Better handle = less TOV
+    toChance += (pressureSkill - 70) * 0.0015; // Better defense = more TOV
+    
+    // Pass Risk
+    if (['PnR_Roll', 'Cut', 'CatchShoot'].includes(playType)) {
+        toChance += 0.03; // Passing lanes
+        // Passer IQ reduces risk
+        if (secondaryActor) {
+            toChance -= (secondaryActor.attr.passIq - 70) * 0.002;
+        }
+    }
 
-    // Apply Play Bonus
-    hitRate += bonusHitRate;
+    // Full Court Press Slider
+    const press = defTeam.tactics.sliders.fullCourtPress;
+    if (press > 5) toChance += (press - 5) * 0.01;
 
-    // Attribute Modifier
-    const offRating = preferredZone === '3PT' ? actor.attr.out : actor.attr.ins;
-    const defRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
-    hitRate += (offRating - defRating) * 0.002;
+    if (Math.random() < toChance) {
+        // [New] Check for Steal (Defensive Play)
+        const isSteal = Math.random() < (defender.attr.stl / 100);
+        const logText = isSteal 
+            ? `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다!` 
+            : `${actor.playerName}, ${playType} 시도 중 턴오버.`;
 
-    // Efficiency Modifiers
-    hitRate *= attEfficiency;
-    hitRate *= (2.0 - defEfficiency); 
+        return {
+            type: 'turnover',
+            player: actor,
+            secondaryPlayer: isSteal ? defender : undefined, // Credited with steal if forced
+            timeTaken,
+            logText,
+            nextPossession: state.possession === 'home' ? 'away' : 'home',
+            isDeadBall: false,
+            playType
+        };
+    }
+
+    // --- INTEGRATED SHOOTING LOGIC (from shootingSystem.ts) ---
+    const S = SIM_CONFIG.SHOOTING;
+    let hitRate = 0.45;
+
+    // 1. Base Percentages from Constants
+    if (preferredZone === 'Rim') hitRate = S.INSIDE_BASE_PCT; // 0.58
+    else if (preferredZone === 'Mid') hitRate = S.MID_BASE_PCT; // 0.40
+    else if (preferredZone === '3PT') hitRate = S.THREE_BASE_PCT; // 0.35
+    else hitRate = 0.45; 
+
+    // 2. Attribute Delta (Offense vs Defense)
+    // Fatigue applied
+    const fatigueOff = actor.currentCondition / 100;
+    const fatigueDef = defender.currentCondition / 100;
+
+    const offRating = preferredZone === '3PT' ? (actor.attr.out * fatigueOff) : (actor.attr.ins * fatigueOff);
+    
+    // Defensive Stat Selection (Perimeter vs Interior)
+    let defStat = defender.attr.perDef;
+    let defImpactFactor = S.MID_DEF_IMPACT;
+
+    if (preferredZone === 'Rim') {
+        defStat = (defender.attr.intDef * 0.7) + (defender.attr.blk * 0.3);
+        defImpactFactor = S.INSIDE_DEF_IMPACT;
+    } else if (preferredZone === '3PT') {
+        defStat = defender.attr.perDef;
+        defImpactFactor = S.THREE_DEF_IMPACT;
+    }
+
+    const defRating = defStat * fatigueDef;
+    
+    // Apply Delta (Individual Matchup)
+    // e.g. (90 - 70) * 0.004 = +0.08 (+8%)
+    hitRate += (offRating - defRating) * defImpactFactor;
+
+    // [New] Apply Team Defensive Metrics (Help Defense)
+    const teamDefMetrics = calculateTeamDefensiveRating(defTeam);
+    let helpImpact = 0;
+    if (preferredZone === 'Rim' || preferredZone === 'Paint') {
+        // Interior Help: IntDef + HelpIQ
+        helpImpact = (teamDefMetrics.intDef + teamDefMetrics.help - 140) * 0.002;
+    } else {
+        // Perimeter Pressure: PerDef + Pressure + HelpIQ
+        helpImpact = (teamDefMetrics.perDef + teamDefMetrics.pressure + teamDefMetrics.help - 210) * 0.001;
+    }
+    hitRate -= helpImpact; // Higher team defense reduces hit rate
+
+    // 3. Tactical & Ace Stopper Impact
+    const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && 
+                            defTeam.tactics.stopperId === defender.playerId;
+    
+    if (isStopperActive) {
+        // Calculate detailed impact from AceStopper System
+        const flatAce = flattenPlayer(actor);
+        const flatStopper = flattenPlayer(defender);
+        const stopperMp = defender.mp; 
+
+        // calculateAceStopperImpact returns percentage (e.g. -15 for -15%)
+        const impactPercent = calculateAceStopperImpact(flatAce, flatStopper, stopperMp);
+        hitRate = hitRate * (1 + (impactPercent / 100));
+    }
+
+    // 4. Efficiency Modifiers
+    hitRate += bonusHitRate; // From PlayType (e.g. +15% for Dunk)
+    hitRate *= attEfficiency; // Team spacing/fit bonus
+    hitRate *= (2.0 - defEfficiency); // Defense coordination penalty
 
     const points = preferredZone === '3PT' ? 3 : 2;
 
@@ -269,24 +423,66 @@ export function resolvePossession(state: GameState): PossessionResult {
             nextPossession: state.possession === 'home' ? 'away' : 'home',
             isDeadBall: false,
             playType: playType,
-            shotZoneId // [Fix] Return ID
+            shotZoneId
         };
     } else {
         // MISSED SHOT
-        // Rebound logic (Weighted Random)
-        // Determine which player on the defensive team grabs the board
-        const rebounder = selectRebounder(defTeam.onCourt);
         
+        // [New] Check Block (Event)
+        // Blocker needs good Block rating, Vert, and Height
+        // Base chance ~6-10% of misses
+        const blkChance = (defender.attr.blk * 0.5 + defender.attr.vertical * 0.2 + (defender.attr.height - 180) * 0.5) / 800;
+        
+        if (Math.random() < blkChance) {
+             return {
+                type: 'block',
+                player: actor, // The one who missed
+                secondaryPlayer: defender, // The blocker
+                timeTaken,
+                logText: `${defender.playerName}, ${actor.playerName}의 슛을 블록해냅니다!`,
+                nextPossession: state.possession === 'home' ? 'away' : 'home', // Usually blocks turnover, simplified
+                isDeadBall: false,
+                playType,
+                shotZoneId
+            };
+        }
+
+        // Rebound Battle
+        // Create pool of all players on court
+        const homeReb = selectRebounder(state.home.onCourt, state.possession === 'home');
+        const awayReb = selectRebounder(state.away.onCourt, state.possession === 'away');
+        
+        // Compare weights (with some randomness already baked in selectRebounder)
+        // Defensive rebound is generally easier (Positioning) -> Bonus to DefTeam
+        let homeWeight = homeReb.attr.reb; 
+        let awayWeight = awayReb.attr.reb;
+
+        if (state.possession === 'away') homeWeight *= 2.0; // Home is defending
+        else awayWeight *= 2.0; // Away is defending
+
+        const totalW = homeWeight + awayWeight;
+        const roll = Math.random() * totalW;
+        
+        const rebounder = roll < homeWeight ? homeReb : awayReb;
+        const isOffReb = (rebounder.playerId === actor.playerId) || 
+                         (state.possession === 'home' && rebounder.playerId === state.home.onCourt.find(p=>p.playerId===rebounder.playerId)?.playerId) ||
+                         (state.possession === 'away' && rebounder.playerId === state.away.onCourt.find(p=>p.playerId===rebounder.playerId)?.playerId);
+
+        // If OffReb -> Keep Possession
+        // If DefReb -> Switch Possession
+        let nextPoss = state.possession === 'home' ? 'away' : 'home';
+        if (isOffReb) nextPoss = 'keep'; // Reset shot clock handled in main loop if needed
+
         return {
             type: 'miss',
             player: actor,
             rebounder: rebounder,
             timeTaken,
             logText: `${actor.playerName}, ${getLocationName(preferredZone)} 슛 실패.`,
-            nextPossession: state.possession === 'home' ? 'away' : 'home', // Defensive rebound usually
+            nextPossession: nextPoss as any,
             isDeadBall: false,
             playType: playType,
-            shotZoneId // [Fix] Return ID
+            shotZoneId
         };
     }
 }
