@@ -281,7 +281,6 @@ export const useSimulation = (
             let allPlayedToday: Game[] = [];
             const regularGameResultsToInsert: any[] = [];
             const playoffGameResultsToInsert: PlayoffGameResultDB[] = [];
-            // const injuryTransactionsToInsert: Transaction[] = []; // Not used yet
             
             const getTeam = (id: string) => updatedTeams.find(t => t.id === id);
 
@@ -336,28 +335,33 @@ export const useSimulation = (
                     }
                 });
 
-                // Save Game Result logic - [Fix] Sanitize values for DB insert
-                const gameResultDB = {
+                // [Fix] Save Game Result Logic - Separate Logic for Regular vs Playoff to match DB Schema
+                // Base Result object (fields common to both tables)
+                const baseGameResult = {
                     user_id: session?.user?.id,
                     game_id: game.id,
                     date: game.date,
-                    series_id: game.seriesId || null, // [Fix] Default to null if undefined
-                    round_number: 0,
-                    game_number: 0,
                     home_team_id: game.homeTeamId,
                     away_team_id: game.awayTeamId,
-                    home_score: Math.round(result.homeScore), // [Fix] Ensure Integer
-                    away_score: Math.round(result.awayScore), // [Fix] Ensure Integer
+                    home_score: Math.round(result.homeScore), 
+                    away_score: Math.round(result.awayScore), 
                     box_score: { home: result.homeBox, away: result.awayBox },
                     tactics: { home: result.homeTactics, away: result.awayTactics },
-                    is_playoff: game.isPlayoff || false // [Fix] Ensure Boolean
+                    is_playoff: game.isPlayoff || false,
+                    series_id: game.seriesId || null
                 };
 
                 if (game.isPlayoff && game.seriesId) {
                     const series = updatedSeries.find(s => s.id === game.seriesId);
                     if (series) {
-                        gameResultDB.round_number = series.round;
-                        gameResultDB.game_number = series.higherSeedWins + series.lowerSeedWins + 1;
+                        // Playoff Result includes extra fields: round_number, game_number
+                        const playoffResult: PlayoffGameResultDB = {
+                            ...baseGameResult,
+                            series_id: game.seriesId, // Ensure non-null for playoffs
+                            round_number: series.round,
+                            game_number: series.higherSeedWins + series.lowerSeedWins + 1
+                        };
+
                         if (homeWin) {
                             if (home.id === series.higherSeedId) series.higherSeedWins++;
                             else series.lowerSeedWins++;
@@ -365,10 +369,11 @@ export const useSimulation = (
                             if (away.id === series.higherSeedId) series.higherSeedWins++;
                             else series.lowerSeedWins++;
                         }
-                        playoffGameResultsToInsert.push(gameResultDB);
+                        playoffGameResultsToInsert.push(playoffResult);
                     }
                 } else {
-                    regularGameResultsToInsert.push(gameResultDB);
+                    // Regular Season Result (Exclude round_number/game_number)
+                    regularGameResultsToInsert.push(baseGameResult);
                 }
 
                 // Update Schedule
