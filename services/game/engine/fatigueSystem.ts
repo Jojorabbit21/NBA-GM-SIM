@@ -87,3 +87,28 @@ export function calculateIncrementalFatigue(
 
     return { drain, injuryOccurred, injuryDetails };
 }
+
+/**
+ * Recovers condition for bench players.
+ * Should be called every simulation tick.
+ */
+export function recoverBenchPlayers(bench: LivePlayer[], secondsElapsed: number) {
+    const minutes = secondsElapsed / 60;
+    // Base recovery rate: ~4% per minute
+    const baseRecovery = 4.0 * minutes;
+
+    bench.forEach(p => {
+        if (p.health === 'Healthy' && p.currentCondition < 100) {
+            // Stamina bonus to recovery
+            const staminaBonus = (p.attr.stamina - 70) * 0.05 * minutes; 
+            const totalRecovery = baseRecovery + Math.max(0, staminaBonus);
+            
+            p.currentCondition = Math.min(100, p.currentCondition + totalRecovery);
+
+            // Release Deep Recovery Lock if recovered enough
+            if (p.needsDeepRecovery && p.currentCondition > 70) {
+                p.needsDeepRecovery = false;
+            }
+        }
+    });
+}

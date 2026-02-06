@@ -38,25 +38,33 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
     }
 
     const requests: SubRequest[] = [];
-    const bench = team.bench.filter(p => p.health !== 'Injured' && !p.isShutdown && !p.needsDeepRecovery);
+    
+    // Two pools of bench players:
+    // 1. Preferred: Healthy and Rested
+    // 2. Available: Healthy but might be tired (fallback for minutes limits)
+    const availableBench = team.bench.filter(p => p.health !== 'Injured' && !p.isShutdown);
+    const preferredBench = availableBench.filter(p => !p.needsDeepRecovery);
 
     // Helper to find best sub
-    const findSub = (pos: string, excludeIds: string[]) => {
+    const findSub = (pos: string, excludeIds: string[], forceFallback: boolean = false) => {
+        // Decide which pool to use
+        const pool = forceFallback ? availableBench : preferredBench;
+
         // 1. Check Depth Chart
         if (team.depthChart) {
             const row = team.depthChart[pos as keyof DepthChart] || [];
             for (const id of row) {
                 if (!id) continue;
-                const candidate = bench.find(b => b.playerId === id && !excludeIds.includes(b.playerId));
+                const candidate = pool.find(b => b.playerId === id && !excludeIds.includes(b.playerId));
                 if (candidate) return candidate;
             }
         }
         
         // 2. Fallback: Best available matching position
-        let candidates = bench.filter(b => b.position === pos && !excludeIds.includes(b.playerId));
+        let candidates = pool.filter(b => b.position === pos && !excludeIds.includes(b.playerId));
         if (candidates.length === 0) {
             // 3. Fallback: Best available any position
-            candidates = bench.filter(b => !excludeIds.includes(b.playerId));
+            candidates = pool.filter(b => !excludeIds.includes(b.playerId));
         }
         
         return candidates.sort((a, b) => b.ovr - a.ovr)[0];
@@ -66,10 +74,11 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
 
     team.onCourt.forEach(p => {
         let shouldSub = false;
+        let isMandatory = false; // If true, we relax the bench filter (allow tired players)
         let reason = '';
         
         const stintDuration = p.lastSubInTime - state.gameClock;
-        // Ignore lock at start of quarter to allow immediate subs (Double Check)
+        // Ignore lock at start of quarter to allow immediate subs
         const isStintLocked = state.gameClock !== 720 && state.gameClock !== 300 && stintDuration < MIN_STINT_SECONDS;
         const energyConsumed = p.conditionAtSubIn - p.currentCondition;
 
@@ -80,11 +89,11 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
 
         // --- Priority 1: Emergencies (Override Lock) ---
         if (p.health === 'Injured') { 
-            shouldSub = true; reason = '부상'; 
+            shouldSub = true; isMandatory = true; reason = '부상'; 
         } else if (p.pf >= 6) { 
-            shouldSub = true; reason = '퇴장'; 
+            shouldSub = true; isMandatory = true; reason = '퇴장'; 
         } else if (p.currentCondition <= HARD_FLOOR) { 
-            shouldSub = true; reason = '탈진(Shutdown)';
+            shouldSub = true; isMandatory = true; reason = '탈진(Shutdown)';
             p.isShutdown = true; 
         } 
         
@@ -110,7 +119,9 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
             
              // Minutes Limit
              else if (minutesLimits[p.playerId] !== undefined && p.mp >= minutesLimits[p.playerId] + 0.5) {
-                 shouldSub = true; reason = '시간 제한';
+                 shouldSub = true; 
+                 isMandatory = true; // Minutes limit forces a sub even if bench is tired
+                 reason = '시간 제한';
              }
 
              // Stint Limit (Delta) - Only Non-Strict
@@ -120,7 +131,14 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
         }
         
         if (shouldSub) {
-            const sub = findSub(p.position, [...currentOnCourtIds, ...requests.map(r => r.inPlayer.playerId)]);
+            // Try preferred bench first
+            let sub = findSub(p.position, [...currentOnCourtIds, ...requests.map(r => r.inPlayer.playerId)], false);
+            
+            // If mandatory (Injury/Foul/Minutes) and no preferred sub, broaden search
+            if (!sub && isMandatory) {
+                 sub = findSub(p.position, [...currentOnCourtIds, ...requests.map(r => r.inPlayer.playerId)], true);
+            }
+
             if (sub) {
                 requests.push({ outPlayer: p, inPlayer: sub, reason });
             }
@@ -144,7 +162,7 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
         const currentQTime = 720 - state.gameClock;
         const isLockedPeriod = (state.quarter === 2 || state.quarter === 4) && currentQTime < staggerLockSeconds;
 
-        bench.forEach(b => {
+        team.bench.forEach(b => {
             if (b.isStarter && !b.isShutdown && !b.needsDeepRecovery && b.pf < 6 && b.health === 'Healthy') {
                 
                 // If in locked period (early Q2/Q4), do not bring starters back yet
