@@ -4,8 +4,6 @@ import { resolvePossession } from './flowEngine';
 import { processTeamRotation } from './substitutionSystem';
 import { calculateIncrementalFatigue } from '../fatigueSystem';
 import { calculatePlayerArchetypes } from './archetypeSystem';
-import { distributeAssists } from '../playmakingSystem';
-import { distributeRebounds } from '../defenseSystem';
 import { INITIAL_STATS } from '../../../../utils/constants';
 
 // --- Initialization Helpers ---
@@ -41,7 +39,7 @@ function initializeLivePlayer(p: Player, isStarter: boolean): LivePlayer {
         pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
         fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
         offReb: 0, defReb: 0, pf: 0,
-        mp: 0, gs: isStarter ? 1 : 0, plusMinus: 0,
+        mp: 0, gs: isStarter ? 1 : 0, g: 0, plusMinus: 0,
         
         // Detailed Shooting
         rimM: 0, rimA: 0, midM: 0, midA: 0,
@@ -161,9 +159,6 @@ export function runFullGameSimulation(
     // Init Rotation History for Starters
     [...homeState.onCourt, ...awayState.onCourt].forEach(p => {
         if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
-        // Note: For visualization, absolute time starts at 0.
-        // We will push segments when they sub OUT.
-        // Current 'in' time is tracked in live player object (lastSubInTime relative to quarter)
     });
 
     // --- GAME LOOP ---
@@ -206,8 +201,6 @@ export function runFullGameSimulation(
         }
 
         // Substitution Check (Dead Ball or Timeout)
-        // In real PBPs, subs happen at dead balls. We simulate this by checking periodically or after events.
-        // For simplicity in this engine, we check every possession start.
         processTeamRotation(state.home, state);
         processTeamRotation(state.away, state);
 
@@ -231,16 +224,87 @@ export function runFullGameSimulation(
             type: result.type
         });
 
+        // --- STATS UPDATE LOGIC ---
+        
+        // 1. Team Score & DeadBall Status
         if (result.type === 'score') {
             attTeam.score += (result.points || 0);
+            
+            // Plus/Minus
+            attTeam.onCourt.forEach(p => p.plusMinus += result.points!);
+            defTeam.onCourt.forEach(p => p.plusMinus -= result.points!);
+            
             state.isDeadBall = true;
         } else if (result.type === 'turnover' || result.type === 'miss') {
-            // Live ball or dead ball depends on rebound/steal type, simplified here
             state.isDeadBall = false; 
         } else if (result.type === 'foul') {
             defTeam.fouls++;
-            // Bonus logic omitted for brevity in this fix, assumed implemented or simplified
+            // Bonus logic simplified
             state.isDeadBall = true;
+        }
+
+        // 2. Player Stats Accumulation
+        if (result.player) {
+            const p = result.player;
+            if (result.type === 'score') {
+                p.pts += result.points!;
+                p.fgm++; p.fga++;
+                if (result.points === 3) { 
+                    p.p3m++; p.p3a++; 
+                }
+                
+                // Detailed Shooting Stats (Zone) - Make
+                if (result.shotZoneId) {
+                    const zM = `${result.shotZoneId}_m` as keyof LivePlayer;
+                    const zA = `${result.shotZoneId}_a` as keyof LivePlayer;
+                    if (typeof p[zM] === 'number') (p[zM] as number)++;
+                    if (typeof p[zA] === 'number') (p[zA] as number)++;
+                }
+
+            } else if (result.type === 'miss') {
+                p.fga++;
+                // 3PT attempt check
+                if (result.shotZoneId && (result.shotZoneId.includes('c3') || result.shotZoneId.includes('atb3'))) {
+                     p.p3a++;
+                } else if (result.logText.includes('3점')) {
+                     p.p3a++;
+                }
+                
+                // Detailed Shooting Stats (Zone) - Attempt
+                if (result.shotZoneId) {
+                    const zA = `${result.shotZoneId}_a` as keyof LivePlayer;
+                    if (typeof p[zA] === 'number') (p[zA] as number)++;
+                }
+
+            } else if (result.type === 'turnover') {
+                p.tov++;
+            } else if (result.type === 'freethrow') {
+                if (result.points) {
+                    p.pts += result.points;
+                    p.ftm += result.points;
+                }
+                if (result.attempts) {
+                    p.fta += result.attempts;
+                }
+            }
+        }
+
+        // Secondary Stats (Assist, Steal, Block, Foul)
+        if (result.secondaryPlayer) {
+            if (result.type === 'score') result.secondaryPlayer.ast++;
+            if (result.type === 'turnover') result.secondaryPlayer.stl++;
+            if (result.type === 'miss' && result.logText.includes('블록')) result.secondaryPlayer.blk++; 
+            if (result.type === 'foul') result.secondaryPlayer.pf++;
+        }
+
+        // Rebound
+        if (result.rebounder) {
+            result.rebounder.reb++;
+            const rebounderTeam = state.home.onCourt.includes(result.rebounder) ? 'home' : 'away';
+            // Determine OFF vs DEF rebound
+            // Note: state.possession is currently the attacking team (shooter's team)
+            if (rebounderTeam === state.possession) result.rebounder.offReb++; 
+            else result.rebounder.defReb++;
         }
 
         // Apply Fatigue to ALL players on court
@@ -256,9 +320,8 @@ export function runFullGameSimulation(
                 );
                 p.currentCondition = Math.max(0, p.currentCondition - fatigue.drain);
                 
-                // Injury Check logic handled inside calculateIncrementalFatigue return
                 if (fatigue.injuryOccurred && p.health === 'Healthy') {
-                    p.health = fatigue.injuryDetails.health; // Injured or DTD
+                    p.health = fatigue.injuryDetails.health; 
                     state.logs.push({ 
                         quarter: state.quarter, timeRemaining: '0:00', teamId: t.id, 
                         text: `🚑 ${p.playerName} 부상 발생! (${fatigue.injuryDetails.type})`, type: 'info' 
@@ -272,62 +335,59 @@ export function runFullGameSimulation(
         // Switch Possession
         if (result.nextPossession === 'home') state.possession = 'home';
         else if (result.nextPossession === 'away') state.possession = 'away';
-        // 'keep' or 'free_throw' logic handled implicitly by not switching or loop logic
     }
 
     // --- End of Game Processing ---
     
-    // Aggregate Stats
-    const aggregateTeamStats = (t: TeamState, isOpp: TeamState) => {
-        // Distribute Assists based on FGM
-        const teamFGM = t.onCourt.concat(t.bench).reduce((sum, p) => sum + p.fgm, 0);
-        const allPlayers = t.onCourt.concat(t.bench);
-        
-        // Convert to PlayerSimContext for helper functions
-        const simContexts = allPlayers.map(p => ({ playerId: p.playerId, stats: p, updates: {}, playerName: p.playerName })); // Mock context
-        
-        distributeAssists(simContexts as any, teamFGM, t.tactics as any); // Cast for compatibility
-        
-        // Distribute Rebounds (Team total vs Opponent misses)
-        const oppMisses = isOpp.onCourt.concat(isOpp.bench).reduce((sum, p) => sum + (p.fga - p.fgm), 0);
-        const realMyMisses = allPlayers.reduce((sum, p) => sum + (p.fga - p.fgm), 0);
-        
-        const oppContexts = isOpp.onCourt.concat(isOpp.bench).map(p => ({ playerId: p.playerId, stats: p, updates: {}, playerName: p.playerName }));
-
-        distributeRebounds(simContexts as any, oppContexts as any, realMyMisses, oppMisses);
-
-        return allPlayers.map(p => {
-            // Apply updates to roster
-            const rosterUpdate = {
-                condition: p.currentCondition,
-                health: p.health,
-                // injury details...
+    // Package Zone Data for persistence (flattened props -> object)
+    const packageZoneData = (p: LivePlayer) => {
+        if (!p.zoneData) {
+            p.zoneData = {
+                zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
+                zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
+                zone_mid_l_m: p.zone_mid_l_m, zone_mid_l_a: p.zone_mid_l_a,
+                zone_mid_c_m: p.zone_mid_c_m, zone_mid_c_a: p.zone_mid_c_a,
+                zone_mid_r_m: p.zone_mid_r_m, zone_mid_r_a: p.zone_mid_r_a,
+                zone_c3_l_m: p.zone_c3_l_m, zone_c3_l_a: p.zone_c3_l_a,
+                zone_c3_r_m: p.zone_c3_r_m, zone_c3_r_a: p.zone_c3_r_a,
+                zone_atb3_l_m: p.zone_atb3_l_m, zone_atb3_l_a: p.zone_atb3_l_a,
+                zone_atb3_c_m: p.zone_atb3_c_m, zone_atb3_c_a: p.zone_atb3_c_a,
+                zone_atb3_r_m: p.zone_atb3_r_m, zone_atb3_r_a: p.zone_atb3_r_a,
             };
-            return {
-                box: p as PlayerBoxScore,
-                update: rosterUpdate
-            };
-        });
+        }
     };
 
-    const homeResults = aggregateTeamStats(state.home, state.away);
-    const awayResults = aggregateTeamStats(state.away, state.home);
-
-    const homeBox = homeResults.map(r => r.box);
-    const awayBox = awayResults.map(r => r.box);
+    const finalHomeBox = [...state.home.onCourt, ...state.home.bench];
+    const finalAwayBox = [...state.away.onCourt, ...state.away.bench];
+    
+    finalHomeBox.forEach(packageZoneData);
+    finalAwayBox.forEach(packageZoneData);
     
     const rosterUpdates: any = {};
-    homeResults.forEach(r => rosterUpdates[r.box.playerId] = r.update);
-    awayResults.forEach(r => rosterUpdates[r.box.playerId] = r.update);
+    [...finalHomeBox, ...finalAwayBox].forEach(p => {
+        rosterUpdates[p.playerId] = { 
+            condition: p.currentCondition,
+            health: p.health
+        };
+    });
 
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
-        homeBox,
-        awayBox,
+        homeBox: finalHomeBox,
+        awayBox: finalAwayBox,
         rosterUpdates,
-        homeTactics: { offense: state.home.tactics.offenseTactics[0], defense: state.home.tactics.defenseTactics[0] },
-        awayTactics: { offense: state.away.tactics.offenseTactics[0], defense: state.away.tactics.defenseTactics[0] },
+        // [Fix] Include sliders in tactics snapshot so UI can render them
+        homeTactics: { 
+            offense: state.home.tactics.offenseTactics[0], 
+            defense: state.home.tactics.defenseTactics[0],
+            sliders: state.home.tactics.sliders
+        },
+        awayTactics: { 
+            offense: state.away.tactics.offenseTactics[0], 
+            defense: state.away.tactics.defenseTactics[0],
+            sliders: state.away.tactics.sliders
+        },
         pbpLogs: state.logs,
         rotationData: state.rotationHistory
     };
