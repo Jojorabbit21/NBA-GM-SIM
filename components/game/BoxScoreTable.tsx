@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { Team, PlayerBoxScore } from '../../types';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
@@ -47,6 +48,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <th className="py-3 px-4 sticky left-0 bg-slate-950 z-20 w-40 text-left shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</th>
                             <th className="py-3 px-2 text-center w-12">POS</th>
                             <th className="py-3 px-2 text-center w-10">OVR</th>
+                            <th className="py-3 px-2 text-center w-10">COND</th>
                             <th className="py-3 px-2 text-right w-12">MIN</th>
                             <th className="py-3 px-2 text-right w-12 text-white">PTS</th>
                             <th className="py-3 px-2 text-right w-12">REB</th>
@@ -71,6 +73,12 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             const effect = p.matchupEffect || 0;
                             const isBuff = effect > 0;
                             const isDebuff = effect < 0;
+
+                            // Condition Color Logic
+                            const cond = p.condition !== undefined ? Math.round(p.condition) : 100;
+                            let condColor = 'text-emerald-500';
+                            if (cond < 60) condColor = 'text-red-500';
+                            else if (cond < 85) condColor = 'text-amber-500';
 
                             return (
                                 <tr key={p.playerId} className={`group hover:bg-white/5 transition-colors ${isMvp ? 'bg-amber-900/10' : ''}`}>
@@ -101,22 +109,10 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                     </td>
                                     <td className={`${statCellClass} text-center text-slate-500`}>{playerInfo?.position || '-'}</td>
                                     <td className={`${statCellClass} text-center`}>
-                                        <div className="flex items-center justify-center gap-1">
-                                            <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-0"}>{ovr}</div>
-                                            {/* Condition Pill */}
-                                            {p.mp > 0 && p.condition !== undefined && (
-                                                <div 
-                                                    className={`w-7 h-7 rounded flex items-center justify-center text-[10px] font-black border ${
-                                                        p.condition < 60 ? 'bg-red-900/50 border-red-500 text-red-400' : 
-                                                        p.condition < 80 ? 'bg-amber-900/50 border-amber-500 text-amber-400' : 
-                                                        'bg-emerald-900/50 border-emerald-500 text-emerald-400'
-                                                    }`}
-                                                    title="경기 종료 시 체력 (Remaining Stamina)"
-                                                >
-                                                    {p.condition}
-                                                </div>
-                                            )}
-                                        </div>
+                                        <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div>
+                                    </td>
+                                    <td className={`${statCellClass} text-center`}>
+                                        <span className={`text-xs font-black ${condColor}`}>{cond}</span>
                                     </td>
                                     <td className={statCellClass}>{Math.round(p.mp)}</td>
                                     <td className={`${statCellClass} text-white`}>{p.pts}</td>
