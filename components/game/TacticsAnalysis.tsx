@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Target, Sliders } from 'lucide-react';
+import { Target, Sliders, Clock, Activity } from 'lucide-react';
 import { Team, TacticalSnapshot, PlayerBoxScore, TacticalSliders } from '../../types';
 
 const OFFENSE_LABELS: Record<string, string> = {
@@ -101,6 +101,23 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
     const homeGrade = getTacticGrade(homeTactics?.offense || 'Balance', homeBox, awayBox, homeTactics?.pace || 5);
     const awayGrade = getTacticGrade(awayTactics?.offense || 'Balance', awayBox, homeBox, awayTactics?.pace || 5);
 
+    // Calculate Average Possession Time
+    const calculateAvgPossTime = (box: PlayerBoxScore[]) => {
+        // Possessions = FGA + 0.44*FTA + TOV - OREB
+        const stats = box.reduce((acc, p) => ({
+            fga: acc.fga + p.fga,
+            fta: acc.fta + p.fta,
+            tov: acc.tov + p.tov,
+            offReb: acc.offReb + (p.offReb || 0)
+        }), { fga: 0, fta: 0, tov: 0, offReb: 0 });
+
+        const possessions = stats.fga + (0.44 * stats.fta) + stats.tov - stats.offReb;
+        
+        // Game is 48 mins = 2880 seconds. Each team has ball roughly 50% of time (24 mins = 1440s)
+        if (possessions <= 0) return 0;
+        return (1440 / possessions).toFixed(1);
+    };
+
     const SliderBar = ({ label, value }: { label: string, value: number }) => (
         <div className="flex items-center gap-2 text-[10px]">
             <span className="text-slate-500 font-bold w-24 truncate">{label}</span>
@@ -114,56 +131,64 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
         </div>
     );
 
-    const TacticalCard: React.FC<{ team: Team, tactics?: TacticalSnapshot, grade: any, isHome: boolean }> = ({ team, tactics, grade, isHome }) => (
-        <div className={`flex flex-col gap-4 p-5 rounded-2xl border ${isHome ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-900/40 border-slate-800'}`}>
-            <div className="flex items-center gap-3 border-b border-white/5 pb-3">
-                <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
-                <div className="flex-1">
-                    <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{isHome ? 'HOME' : 'AWAY'} STRATEGY</div>
-                    <div className="font-black text-white uppercase">{OFFENSE_LABELS[tactics?.offense || 'Balance']}</div>
-                </div>
-                <div className={`text-2xl font-black oswald ${grade.score >= 80 ? 'text-emerald-400' : grade.score >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
-                    {grade.grade}
-                </div>
-            </div>
-            <div className="space-y-2 text-xs">
-                <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Defensive Scheme</span>
-                    <span className="text-slate-300 font-bold">{DEFENSE_LABELS[tactics?.defense || 'ManToManPerimeter']}</span>
-                </div>
-                <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Game Pace</span>
-                    <div className="flex gap-1">
-                        {Array.from({length: 10}).map((_, i) => (
-                            <div key={i} className={`w-1 h-2 rounded-full ${i < (tactics?.pace || 5) ? 'bg-indigo-500' : 'bg-slate-800'}`}></div>
-                        ))}
+    const TacticalCard: React.FC<{ team: Team, tactics?: TacticalSnapshot, grade: any, isHome: boolean, box: PlayerBoxScore[] }> = ({ team, tactics, grade, isHome, box }) => {
+        const avgTime = calculateAvgPossTime(box);
+        
+        return (
+            <div className={`flex flex-col gap-4 p-5 rounded-2xl border ${isHome ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-900/40 border-slate-800'}`}>
+                <div className="flex items-center gap-3 border-b border-white/5 pb-3">
+                    <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
+                    <div className="flex-1">
+                        <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{isHome ? 'HOME' : 'AWAY'} STRATEGY</div>
+                        <div className="font-black text-white uppercase">{OFFENSE_LABELS[tactics?.offense || 'Balance']}</div>
+                    </div>
+                    <div className={`text-2xl font-black oswald ${grade.score >= 80 ? 'text-emerald-400' : grade.score >= 70 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        {grade.grade}
                     </div>
                 </div>
-            </div>
-
-            {/* Slider Section */}
-            {tactics?.sliders && (
-                <div className="pt-3 border-t border-white/5 space-y-2">
-                    <div className="flex items-center gap-2 mb-1">
-                        <Sliders size={12} className="text-slate-600" />
-                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Tactical Sliders</span>
+                
+                {/* Secondary Info Row: Defense & Avg Time */}
+                <div className="flex justify-between items-center bg-slate-950/30 p-2.5 rounded-xl border border-white/5">
+                    <div className="flex flex-col">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">Defensive Scheme</span>
+                        <span className="text-xs font-bold text-slate-300">{DEFENSE_LABELS[tactics?.defense || 'ManToManPerimeter']}</span>
                     </div>
-                    <SliderBar label="로테이션 유연성" value={tactics.sliders.rotationFlexibility || 5} />
-                    <SliderBar label="공격 리바운드" value={tactics.sliders.offReb} />
-                    <SliderBar label="수비 리바운드" value={tactics.sliders.defReb} />
-                    <SliderBar label="수비 강도" value={tactics.sliders.defIntensity} />
-                    <SliderBar label="풀 코트 프레스" value={tactics.sliders.fullCourtPress} />
-                    <SliderBar label="존 디펜스 빈도" value={tactics.sliders.zoneUsage} />
+                    <div className="w-px h-6 bg-white/10"></div>
+                    <div className="flex flex-col items-end">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5 flex items-center gap-1">
+                            <Clock size={10} /> Avg. Time
+                        </span>
+                        <span className="text-xs font-black text-white font-mono">{avgTime}s <span className="text-[9px] text-slate-500 font-bold">/ Poss</span></span>
+                    </div>
                 </div>
-            )}
 
-            <div className="pt-2 border-t border-white/5">
-                <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
-                    "<span className="text-white font-bold">{grade.feedback}</span>"
-                </p>
+                {/* Slider Section */}
+                {tactics?.sliders && (
+                    <div className="pt-2 space-y-2">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Sliders size={12} className="text-slate-600" />
+                            <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Tactical Sliders</span>
+                        </div>
+                        {/* Game Pace moved here */}
+                        <SliderBar label="공격 페이스 (Pace)" value={tactics.pace || 5} />
+                        <SliderBar label="로테이션 유연성" value={tactics.sliders.rotationFlexibility || 5} />
+                        <SliderBar label="공격 리바운드" value={tactics.sliders.offReb} />
+                        <SliderBar label="수비 리바운드" value={tactics.sliders.defReb} />
+                        <SliderBar label="수비 강도" value={tactics.sliders.defIntensity} />
+                        <SliderBar label="풀 코트 프레스" value={tactics.sliders.fullCourtPress} />
+                        <SliderBar label="존 디펜스 빈도" value={tactics.sliders.zoneUsage} />
+                    </div>
+                )}
+
+                <div className="pt-2 border-t border-white/5">
+                    <p className="text-[11px] text-slate-400 font-medium leading-relaxed flex gap-2">
+                        <Activity size={14} className="text-indigo-400 flex-shrink-0 mt-0.5" />
+                        <span>"<span className="text-white font-bold">{grade.feedback}</span>"</span>
+                    </p>
+                </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     if (!homeTactics || !awayTactics) return null;
 
@@ -175,8 +200,8 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Away (Left) vs Home (Right) Layout Order */}
-                <TacticalCard team={awayTeam} tactics={awayTactics} grade={awayGrade} isHome={false} />
-                <TacticalCard team={homeTeam} tactics={homeTactics} grade={homeGrade} isHome={true} />
+                <TacticalCard team={awayTeam} tactics={awayTactics} grade={awayGrade} isHome={false} box={awayBox} />
+                <TacticalCard team={homeTeam} tactics={homeTactics} grade={homeGrade} isHome={true} box={homeBox} />
             </div>
         </div>
     );
