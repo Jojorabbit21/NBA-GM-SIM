@@ -188,6 +188,7 @@ export interface TacticalSnapshot {
   defense?: string; // or DefenseTactic
   pace?: number;
   stopperId?: string;
+  sliders?: TacticalSliders; // [Added] To display sliders in result
 }
 
 export interface Game {

@@ -21,12 +21,15 @@ const PlayerRow: React.FC<{
     if (!segments || segments.length === 0) return null;
 
     return (
-        <div className="flex items-center h-8 hover:bg-white/5 transition-colors border-b border-slate-800/30 relative z-10">
-            <div className="w-32 md:w-40 flex-shrink-0 px-3 truncate text-xs font-bold text-slate-300 border-r border-slate-800/50 flex items-center justify-between bg-slate-900/10">
-                <span className="truncate">{player.playerName}</span>
+        <div className="grid grid-cols-[140px_1fr] h-8 border-b border-slate-800/30 relative z-10 hover:bg-white/5 transition-colors">
+            {/* Name Column */}
+            <div className="flex items-center justify-between px-3 text-xs font-bold text-slate-300 border-r border-slate-800/50 bg-slate-900/20 truncate">
+                <span className="truncate mr-2">{player.playerName}</span>
                 <span className="text-[10px] text-slate-500 font-mono">{Math.round(player.mp)}m</span>
             </div>
-            <div className="flex-1 relative h-full">
+            
+            {/* Timeline Column */}
+            <div className="relative h-full">
                 {segments.map((seg, i) => {
                     const startPct = (seg.in / GAME_DURATION_SECONDS) * 100;
                     const widthPct = ((seg.out - seg.in) / GAME_DURATION_SECONDS) * 100;
@@ -69,32 +72,38 @@ export const RotationChart: React.FC<RotationChartProps> = ({
     return (
         <div className="w-full bg-slate-950 border border-slate-800 rounded-3xl p-6 mb-8 shadow-2xl relative overflow-hidden">
             
-            {/* Background Quarter Markers (Spanning full height) */}
-            <div className="absolute inset-0 left-32 md:left-46 right-6 pointer-events-none z-0">
-                <div className="absolute top-0 bottom-0 left-0 w-full flex">
-                    <div className="flex-1 border-l border-slate-800/40"></div>
-                    <div className="flex-1 border-l border-slate-800/40"></div>
-                    <div className="flex-1 border-l border-slate-800/40"></div>
-                    <div className="flex-1 border-l border-slate-800/40 border-r"></div>
-                </div>
-            </div>
-
-            <div className="relative z-10">
-                {/* Quarter Labels Header */}
-                <div className="flex pl-32 md:pl-40 mb-2 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
-                    <div className="flex-1">Q1</div>
-                    <div className="flex-1">Q2</div>
-                    <div className="flex-1">Q3</div>
-                    <div className="flex-1">Q4</div>
+            <div className="relative z-10 w-full">
+                {/* Header Grid */}
+                <div className="grid grid-cols-[140px_1fr] mb-2">
+                    <div></div> {/* Spacer for Name Column */}
+                    <div className="grid grid-cols-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center">
+                        <div className="border-l border-slate-800/40">Q1</div>
+                        <div className="border-l border-slate-800/40">Q2</div>
+                        <div className="border-l border-slate-800/40">Q3</div>
+                        <div className="border-l border-slate-800/40 border-r border-slate-800/40">Q4</div>
+                    </div>
                 </div>
 
                 {/* Away Team Section */}
-                <div className="mb-6">
+                <div className="mb-6 relative">
                     <div className="flex items-center gap-2 mb-2 px-2">
                         <img src={awayTeam.logo} className="w-5 h-5 object-contain" alt="" />
                         <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{awayTeam.name}</span>
                     </div>
-                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm">
+                    
+                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm relative">
+                        {/* Background Grid Lines Layer */}
+                        <div className="absolute inset-0 grid grid-cols-[140px_1fr] pointer-events-none z-0">
+                            <div></div>
+                            <div className="grid grid-cols-4 h-full border-r border-slate-800/30">
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                            </div>
+                        </div>
+                        
+                        {/* Player Rows */}
                         {sortedAway.map(p => (
                             <PlayerRow 
                                 key={p.playerId} 
@@ -107,12 +116,24 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                 </div>
 
                 {/* Home Team Section */}
-                <div>
+                <div className="relative">
                     <div className="flex items-center gap-2 mb-2 px-2">
                         <img src={homeTeam.logo} className="w-5 h-5 object-contain" alt="" />
                         <span className="text-xs font-black text-slate-400 uppercase tracking-wider">{homeTeam.name}</span>
                     </div>
-                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm">
+                    
+                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/60 backdrop-blur-sm relative">
+                         {/* Background Grid Lines Layer */}
+                         <div className="absolute inset-0 grid grid-cols-[140px_1fr] pointer-events-none z-0">
+                            <div></div>
+                            <div className="grid grid-cols-4 h-full border-r border-slate-800/30">
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                                <div className="border-l border-slate-800/30 h-full"></div>
+                            </div>
+                        </div>
+
                         {sortedHome.map(p => (
                             <PlayerRow 
                                 key={p.playerId} 

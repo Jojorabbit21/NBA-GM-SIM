@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { PbpLog, Team } from '../../../types';
+import { PbpLog, Team, PlayerBoxScore } from '../../../types';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
@@ -29,10 +29,6 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
         let hScore = 0;
         let aScore = 0;
         
-        // Ensure logs are sorted by time? Assuming API returns chronological or we sort them?
-        // Usually logs come in order. If reversed, we'd need to reverse first.
-        // Assuming `logs` array is in order of occurrence (Q1 start -> Q4 end).
-        
         return logs.map(log => {
             if (log.type === 'score' || log.type === 'freethrow') {
                 let points = 2;
@@ -59,6 +55,56 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
         if (selectedQuarter === 0) return processedLogs;
         return processedLogs.filter(l => l.quarter === selectedQuarter);
     }, [processedLogs, selectedQuarter]);
+
+    // Helper to format log text
+    const formatLogText = (text: string, homeTeam: Team, awayTeam: Team) => {
+        // Remove [score-score] prefix if exists
+        let cleanText = text.replace(/^\[\d+-\d+\]\s*/, '');
+        
+        // Remove decorative dashes/dots from Quarter End/Start messages
+        cleanText = cleanText.replace(/^[-\.]+\s*(.*?)\s*[-\.]+$/, '$1');
+
+        // Remove explicit score text if it exists at the end like "(24 : 22)"
+        cleanText = cleanText.replace(/\s*\(\d+\s*:\s*\d+\)$/, '');
+
+        // Collect all player names for highlighting
+        const playerNames = new Set<string>();
+        [...homeTeam.roster, ...awayTeam.roster].forEach(p => playerNames.add(p.name));
+
+        // Find names in text and wrap with underline span
+        // We use split/map to avoid dangerous HTML injection
+        const parts: React.ReactNode[] = [];
+        let remaining = cleanText;
+
+        // Simple matching: check if text starts with a known player name
+        // (This handles the typical "PlayerName, doing something" format)
+        // For more complex sentences, a regex with all names joined by | would be better but expensive
+        // Let's try matching known names present in the string.
+        
+        // Find matched names sorted by length desc to match full names first
+        const matchedNames = Array.from(playerNames)
+            .filter(name => cleanText.includes(name))
+            .sort((a, b) => b.length - a.length);
+
+        if (matchedNames.length > 0) {
+            // Very basic replacement for the first occurrence of known names
+            // Note: This simple approach might act weird if multiple names overlap or appear multiple times
+            // But sufficient for "PlayerName, action" logs.
+            
+            const regex = new RegExp(`(${matchedNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
+            const split = cleanText.split(regex);
+            
+            return (
+                <span>
+                    {split.map((part, i) => 
+                        playerNames.has(part) ? <span key={i} className="underline decoration-slate-500 underline-offset-2">{part}</span> : part
+                    )}
+                </span>
+            );
+        }
+
+        return cleanText;
+    };
 
     if (!logs || logs.length === 0) return (
         <div className="w-full h-64 flex items-center justify-center text-slate-500 font-bold bg-slate-900/50 rounded-xl border border-slate-800">
@@ -102,7 +148,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         // Text Color
                         let textColor = 'text-slate-400';
                         if (isImportant) textColor = 'text-yellow-400 font-bold';
-                        else if (isScore) textColor = 'text-white font-bold'; // Unified color for scores
+                        else if (isScore) textColor = 'text-white font-bold'; 
                         else if (isFT) textColor = 'text-cyan-400';
                         else if (isFoul) textColor = 'text-orange-400';
                         else if (isTurnover) textColor = 'text-red-400';
@@ -111,31 +157,45 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         let bgClass = 'hover:bg-white/5 transition-colors';
                         if (isImportant) bgClass = 'bg-yellow-900/10 border-y border-yellow-500/10';
                         
+                        // Quarter & Time Display Logic
+                        // Even info logs should have time if possible, otherwise '-'
+                        const qDisplay = isImportant && log.text.includes('종료') ? '-' : `${log.quarter}Q`;
+                        const timeDisplay = isImportant && log.text.includes('종료') ? 'End' : (log.timeRemaining || '-');
+
                         return (
                             <div key={idx} className={`flex items-center py-2.5 px-4 gap-4 ${bgClass}`}>
-                                {/* 1. Time (Horizontal) */}
-                                <div className="flex-shrink-0 w-16 text-slate-500 font-bold text-xs text-center">
-                                    {isImportant ? (
-                                        <span>INFO</span>
-                                    ) : (
-                                        <span>{log.quarter}Q {log.timeRemaining}</span>
-                                    )}
+                                {/* 1. Quarter */}
+                                <div className="flex-shrink-0 w-8 text-slate-600 font-bold text-xs text-center">
+                                    {qDisplay}
                                 </div>
 
-                                {/* 2. Score Board (Away Logo | Score - Score | Home Logo) */}
-                                <div className="flex-shrink-0 w-32 flex items-center justify-center gap-2 bg-slate-950/50 rounded-lg py-1 px-2 border border-slate-800/50">
+                                {/* 2. Time */}
+                                <div className="flex-shrink-0 w-12 text-slate-500 font-bold text-xs text-center">
+                                    {timeDisplay}
+                                </div>
+
+                                {/* 3. Away Logo */}
+                                <div className="flex-shrink-0 w-8 flex justify-center">
                                     <img src={awayTeam.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                    <div className="font-black text-slate-300 text-xs tracking-tight">
+                                </div>
+
+                                {/* 4. Score (Text Only) */}
+                                <div className="flex-shrink-0 w-16 text-center">
+                                    <div className="font-black text-slate-500 text-xs tracking-tight">
                                         <span className={!isHome && (isScore || isFT) ? 'text-white' : ''}>{log.awayScore}</span>
-                                        <span className="mx-1 text-slate-600">-</span>
+                                        <span className="mx-1 text-slate-700">:</span>
                                         <span className={isHome && (isScore || isFT) ? 'text-white' : ''}>{log.homeScore}</span>
                                     </div>
+                                </div>
+
+                                {/* 5. Home Logo */}
+                                <div className="flex-shrink-0 w-8 flex justify-center">
                                     <img src={homeTeam.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
                                 </div>
 
-                                {/* 3. Message */}
-                                <div className={`flex-1 break-words leading-relaxed ${textColor}`}>
-                                    {log.text}
+                                {/* 6. Message */}
+                                <div className={`flex-1 break-words leading-relaxed pl-2 ${textColor}`}>
+                                    {formatLogText(log.text, homeTeam, awayTeam)}
                                 </div>
                             </div>
                         );

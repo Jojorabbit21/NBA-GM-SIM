@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Target } from 'lucide-react';
-import { Team, TacticalSnapshot, PlayerBoxScore } from '../../types';
+import { Target, Sliders } from 'lucide-react';
+import { Team, TacticalSnapshot, PlayerBoxScore, TacticalSliders } from '../../types';
 
 const OFFENSE_LABELS: Record<string, string> = {
     'Balance': '밸런스',
@@ -101,6 +101,19 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
     const homeGrade = getTacticGrade(homeTactics?.offense || 'Balance', homeBox, awayBox, homeTactics?.pace || 5);
     const awayGrade = getTacticGrade(awayTactics?.offense || 'Balance', awayBox, homeBox, awayTactics?.pace || 5);
 
+    const SliderBar = ({ label, value }: { label: string, value: number }) => (
+        <div className="flex items-center gap-2 text-[10px]">
+            <span className="text-slate-500 font-bold w-24 truncate">{label}</span>
+            <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                    className="h-full bg-indigo-500 rounded-full" 
+                    style={{ width: `${(value / 10) * 100}%` }}
+                ></div>
+            </div>
+            <span className="text-white font-mono font-bold w-4 text-right">{value}</span>
+        </div>
+    );
+
     const TacticalCard: React.FC<{ team: Team, tactics?: TacticalSnapshot, grade: any, isHome: boolean }> = ({ team, tactics, grade, isHome }) => (
         <div className={`flex flex-col gap-4 p-5 rounded-2xl border ${isHome ? 'bg-slate-900/40 border-slate-800' : 'bg-slate-900/40 border-slate-800'}`}>
             <div className="flex items-center gap-3 border-b border-white/5 pb-3">
@@ -127,6 +140,23 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                     </div>
                 </div>
             </div>
+
+            {/* Slider Section */}
+            {tactics?.sliders && (
+                <div className="pt-3 border-t border-white/5 space-y-2">
+                    <div className="flex items-center gap-2 mb-1">
+                        <Sliders size={12} className="text-slate-600" />
+                        <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Tactical Sliders</span>
+                    </div>
+                    <SliderBar label="로테이션 유연성" value={tactics.sliders.rotationFlexibility || 5} />
+                    <SliderBar label="공격 리바운드" value={tactics.sliders.offReb} />
+                    <SliderBar label="수비 리바운드" value={tactics.sliders.defReb} />
+                    <SliderBar label="수비 강도" value={tactics.sliders.defIntensity} />
+                    <SliderBar label="풀 코트 프레스" value={tactics.sliders.fullCourtPress} />
+                    <SliderBar label="존 디펜스 빈도" value={tactics.sliders.zoneUsage} />
+                </div>
+            )}
+
             <div className="pt-2 border-t border-white/5">
                 <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
                     "<span className="text-white font-bold">{grade.feedback}</span>"

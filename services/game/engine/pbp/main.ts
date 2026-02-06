@@ -265,7 +265,7 @@ export function runFullGameSimulation(
         if (state.gameClock <= 0) {
             state.logs.push({
                 quarter: state.quarter, timeRemaining: '0:00', teamId: '', type: 'info',
-                text: `--- ${state.quarter}쿼터 종료 (${state.home.score} : ${state.away.score}) ---`
+                text: `${state.quarter}쿼터 종료`
             });
 
             if (state.quarter === 2) {
@@ -404,7 +404,7 @@ export function runFullGameSimulation(
                         timeRemaining: formatTime(Math.max(0, state.gameClock)),
                         teamId: homeNeedsSub ? state.home.id : state.away.id,
                         type: 'info',
-                        text: `[작전 타임] 선수 교체를 위해 작전 타임을 요청합니다.`
+                        text: `[작전 타임]`
                     });
                 }
             }
@@ -537,7 +537,8 @@ export function runFullGameSimulation(
         offense: t.offenseTactics[0],
         defense: t.defenseTactics[0],
         pace: t.sliders.pace,
-        stopperId: t.stopperId
+        stopperId: t.stopperId,
+        sliders: t.sliders // [Added] Include sliders in snapshot for result view
     });
 
     return {
