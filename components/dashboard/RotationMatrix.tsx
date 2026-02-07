@@ -125,9 +125,9 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
              {/* Rotation Chart Title */}
              {/* [Design Update] Added top indigo border to distinguish from depth chart */}
-             <div className="px-6 py-2 bg-slate-900 border-t-2 border-t-indigo-500 border-b border-slate-800 flex items-center gap-2 flex-shrink-0">
-                 <Timer size={16} className="text-indigo-400"/>
-                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest oswald">로테이션 차트 (Rotation Matrix)</span>
+             <div className="px-6 py-4 bg-slate-900 border-t-2 border-t-indigo-500 border-b border-slate-800 flex items-center gap-3 flex-shrink-0">
+                 <Timer size={20} className="text-indigo-400"/>
+                 <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
             </div>
 
             {/* Rotation Grid Table */}
@@ -229,10 +229,10 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                 >
                                                     {active && (
                                                         <div className={`
-                                                            absolute inset-[2px] rounded-sm
+                                                            absolute inset-0
                                                             ${isError 
-                                                                ? 'bg-red-500/30 border border-red-500' 
-                                                                : 'bg-emerald-500/30 border border-emerald-500'}
+                                                                ? 'bg-red-500/20' 
+                                                                : 'bg-emerald-500/20'}
                                                         `}></div>
                                                     )}
                                                 </td>
