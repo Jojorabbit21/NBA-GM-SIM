@@ -144,9 +144,9 @@ export const RosterTable: React.FC<RosterTableProps> = ({
 
                 {/* Depth Chart Editor */}
                 <div className="flex-col flex">
-                    <div className="px-6 py-2 bg-slate-900 border-b border-slate-800 flex items-center gap-2">
-                        <GanttChartSquare size={16} className="text-indigo-400"/>
-                        <span className="text-xs font-black text-slate-300 uppercase tracking-widest oswald">뎁스 차트 (Depth Chart)</span>
+                    <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex items-center gap-3">
+                        <GanttChartSquare size={20} className="text-indigo-400"/>
+                        <span className="text-base font-black text-white uppercase tracking-widest oswald">뎁스 차트</span>
                     </div>
                     <DepthChartEditor 
                         team={team} 
