@@ -41,11 +41,19 @@ export const RosterTable: React.FC<RosterTableProps> = ({
             });
         });
         
+        // Add remaining healthy players not in depth chart
+        healthySorted.forEach(p => {
+             if (!pids.includes(p.id)) pids.push(p.id);
+        });
+        
         return pids.map(id => team.roster.find(p => p.id === id)!);
     }, [depthChart, team.roster, healthySorted, mode]);
 
     const handleToggleMinute = (playerId: string, minute: number) => {
-        const newMap = { ...tactics.rotationMap };
+        // [Safety Fix] Ensure rotationMap exists
+        const currentMap = tactics.rotationMap || {};
+        const newMap = { ...currentMap };
+        
         if (!newMap[playerId]) newMap[playerId] = Array(48).fill(false);
         const playerMap = [...newMap[playerId]];
 
@@ -82,7 +90,10 @@ export const RosterTable: React.FC<RosterTableProps> = ({
         const under5: number[] = [];
         const over5: number[] = [];
 
-        Object.entries(tactics.rotationMap).forEach(([pid, map]) => {
+        // [Safety Fix] Default to empty object if rotationMap is undefined (Legacy Save Support)
+        const mapData = tactics.rotationMap || {};
+
+        Object.entries(mapData).forEach(([pid, map]) => {
             const playerMins = map.filter(Boolean).length;
             if (playerMins > 42) over42.push(team.roster.find(p => p.id === pid)?.name || pid);
             
@@ -122,7 +133,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
 
             {/* Validation Bar */}
             {validation && (validation.under5.length > 0 || validation.over5.length > 0 || validation.over42.length > 0) && (
-                <div className="bg-red-500/10 border-b border-red-500/20 px-8 py-3 flex flex-wrap gap-4 items-center">
+                <div className="bg-red-500/10 border-b border-red-500/20 px-8 py-3 flex flex-wrap gap-4 items-center animate-in slide-in-from-top-2">
                     <AlertCircle size={16} className="text-red-500" />
                     {validation.under5.length > 0 && (
                         <span className="text-[10px] font-bold text-red-400 uppercase">인원 부족: {validation.under5[0]}분~</span>
@@ -154,7 +165,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                     <tbody className="divide-y divide-white/5">
                         {rotationRows.map(p => {
                             const ovr = calculatePlayerOvr(p);
-                            const playerMap = tactics.rotationMap[p.id] || Array(48).fill(false);
+                            // [Safety Fix] Safe access
+                            const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
                             const totalMins = playerMap.filter(Boolean).length;
 
                             return (
