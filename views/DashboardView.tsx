@@ -1,11 +1,11 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries, GameTactics } from '../types';
+import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries, GameTactics, DepthChart } from '../types';
 import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
-import { logEvent } from '../services/analytics'; 
 import { calculateTacticScore } from '../utils/tacticUtils';
+import { Users, Shield, Target, Eye, ClipboardList } from 'lucide-react';
 
 // Import sub-components
 import { DashboardHeader, DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
@@ -25,16 +25,20 @@ interface DashboardViewProps {
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
   playoffSeries?: PlayoffSeries[];
-  depthChart?: any; 
-  onUpdateDepthChart?: (dc: any) => void;
+  depthChart?: DepthChart | null; 
+  onUpdateDepthChart?: (dc: DepthChart) => void;
 }
+
+type DashboardTab = 'rotation' | 'tactics' | 'opponent';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ 
   team, teams, schedule, onSim, tactics, onUpdateTactics, 
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
   playoffSeries = [], depthChart, onUpdateDepthChart
 }) => {
-  // 1. Find the next game for the user's team
+  const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
+  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
+
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
       const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
@@ -46,19 +50,16 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const opponentId = isHome ? nextGameDisplay?.awayTeamId : nextGameDisplay?.homeTeamId;
   const opponent = useMemo(() => teams.find(t => t.id === opponentId), [teams, opponentId]);
 
-  // 2. Check if the NEXT game is actually TODAY
   const userHasGameToday = useMemo(() => {
       if (!nextGameDisplay || !currentSimDate) return false;
       return nextGameDisplay.date === currentSimDate && !nextGameDisplay.played;
   }, [nextGameDisplay, currentSimDate]);
 
-  // 3. Determine Current Playoff Series
   const currentSeries = useMemo(() => {
       if (!nextGameDisplay?.isPlayoff || !nextGameDisplay.seriesId || !playoffSeries) return undefined;
       return playoffSeries.find(s => s.id === nextGameDisplay.seriesId);
   }, [nextGameDisplay, playoffSeries]);
 
-  // 4. Banner Visibility Logic
   const isRegularSeasonFinished = useMemo(() => {
       if (!team?.id) return false;
       const myRegularGames = schedule.filter(g => !g.isPlayoff && (g.homeTeamId === team.id || g.awayTeamId === team.id));
@@ -77,24 +78,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return latest.round === 4;
   }, [playoffSeries, team?.id]);
 
-  const [activeRosterTab, setActiveRosterTab] = useState<'mine' | 'opponent'>('mine');
-  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
-  
-  const { starters } = tactics;
-  
   const effectiveRoster = team?.roster || [];
   const effectiveOppRoster = opponent?.roster || [];
 
-  // [Fix] Calculate Sort OVR dynamically
   const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
   const injuredSorted = useMemo(() => effectiveRoster.filter(p => p.health === 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
-  
-  // [Fix] Calculate Sort OVR dynamically
   const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
   
-  // Auto-Fill Starters if Empty
   useEffect(() => {
-    if (healthySorted.length >= 5 && Object.values(starters).every(v => v === '')) {
+    if (healthySorted.length >= 5 && Object.values(tactics.starters).every(v => v === '')) {
       const newStarters = {
         PG: healthySorted.find(p => p.position.includes('PG'))?.id || healthySorted[0]?.id || '',
         SG: healthySorted.find(p => p.position.includes('SG') && !['PG'].includes(p.position))?.id || healthySorted[1]?.id || '',
@@ -104,7 +96,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       };
       onUpdateTactics({ ...tactics, starters: newStarters });
     }
-  }, [healthySorted, starters, tactics, onUpdateTactics]);
+  }, [healthySorted, tactics.starters, tactics, onUpdateTactics]);
 
   const myOvr = useMemo(() => {
     if (!effectiveRoster.length) return 0;
@@ -125,19 +117,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     onUpdateTactics(autoTactics);
   };
 
-  const handleSimClick = () => {
-    onSim(tactics);
-  };
+  if (!team) return null;
 
   const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : opponent) : null;
 
-  if (!team) return null;
-
   return (
-    <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-10">
+    <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-6">
       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
       
-      {/* Review Banners */}
       <DashboardReviewBanners 
         onShowSeasonReview={onShowSeasonReview} 
         onShowPlayoffReview={onShowPlayoffReview} 
@@ -155,35 +142,89 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         opponentOvrValue={opponentOvrValue}
         isGameToday={userHasGameToday} 
         isSimulating={isSimulating}
-        onSimClick={handleSimClick}
+        onSimClick={() => onSim(tactics)}
         onShowSeasonReview={onShowSeasonReview}
         onShowPlayoffReview={onShowPlayoffReview}
         hasPlayoffHistory={hasPlayoffHistory}
         currentSeries={currentSeries}
       />
 
-      <div className="w-full max-w-[1900px] grid grid-cols-1 lg:grid-cols-12 min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
-          <RosterTable 
-            activeRosterTab={activeRosterTab}
-            setActiveRosterTab={setActiveRosterTab}
-            team={team}
-            opponent={opponent}
-            healthySorted={healthySorted}
-            injuredSorted={injuredSorted}
-            oppHealthySorted={oppHealthySorted}
-            tactics={tactics}
-            onUpdateTactics={onUpdateTactics}
-            onViewPlayer={setViewPlayer}
-            depthChart={depthChart}
-            onUpdateDepthChart={onUpdateDepthChart}
-          />
-          <TacticsBoard 
-            tactics={tactics}
-            roster={effectiveRoster}
-            onUpdateTactics={onUpdateTactics}
-            onAutoSet={handleAutoSet}
-            calculateTacticScore={handleCalculateTacticScore}
-          />
+      {/* Main Content Area with Navigation */}
+      <div className="w-full max-w-[1900px] flex flex-col min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
+          
+          {/* Internal Tab Navigation */}
+          <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-20 flex-shrink-0">
+                <div className="flex items-center gap-10 h-full">
+                    <button 
+                        onClick={() => setActiveTab('rotation')}
+                        className={`flex items-center gap-3 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        <Users size={20} />
+                        <span className="text-lg">로테이션 관리</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('tactics')}
+                        className={`flex items-center gap-3 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        <Target size={20} />
+                        <span className="text-lg">전술 관리</span>
+                    </button>
+                    <button 
+                        onClick={() => setActiveTab('opponent')}
+                        disabled={!opponent}
+                        className={`flex items-center gap-3 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} ${!opponent ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                        <Eye size={20} />
+                        <span className="text-lg">상대 전력 분석</span>
+                    </button>
+                </div>
+          </div>
+
+          <div className="flex-1 min-h-[600px]">
+              {activeTab === 'rotation' && (
+                  <RosterTable 
+                    mode="mine"
+                    team={team}
+                    opponent={opponent}
+                    healthySorted={healthySorted}
+                    injuredSorted={injuredSorted}
+                    oppHealthySorted={oppHealthySorted}
+                    tactics={tactics}
+                    onUpdateTactics={onUpdateTactics}
+                    onViewPlayer={setViewPlayer}
+                    depthChart={depthChart}
+                    onUpdateDepthChart={onUpdateDepthChart}
+                  />
+              )}
+              
+              {activeTab === 'tactics' && (
+                  <div className="animate-in fade-in duration-500">
+                    <TacticsBoard 
+                        tactics={tactics}
+                        roster={effectiveRoster}
+                        onUpdateTactics={onUpdateTactics}
+                        onAutoSet={handleAutoSet}
+                        calculateTacticScore={handleCalculateTacticScore}
+                    />
+                  </div>
+              )}
+
+              {activeTab === 'opponent' && (
+                  <RosterTable 
+                    mode="opponent"
+                    team={team}
+                    opponent={opponent}
+                    healthySorted={healthySorted}
+                    injuredSorted={injuredSorted}
+                    oppHealthySorted={oppHealthySorted}
+                    tactics={tactics}
+                    onUpdateTactics={onUpdateTactics}
+                    onViewPlayer={setViewPlayer}
+                    depthChart={depthChart}
+                    onUpdateDepthChart={onUpdateDepthChart}
+                  />
+              )}
+          </div>
       </div>
     </div>
   );
