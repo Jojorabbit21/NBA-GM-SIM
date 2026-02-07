@@ -5,7 +5,7 @@ import { calculateAceStopperImpact } from '../aceStopperSystem';
 import { Player, PlayType } from '../../../../types';
 
 // Helper to convert LivePlayer to Player (flat structure)
-function flattenPlayer(lp: LivePlayer): Player {
+export function flattenPlayer(lp: LivePlayer): Player {
     return {
         id: lp.playerId,
         name: lp.playerName,

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Game, Team, SimulationResult, PlayoffGameResultDB, Transaction, TradeAlertContent, DepthChart, GameTactics } from '../types';
+import { Game, Team, SimulationResult, PlayoffGameResultDB, Transaction, TradeAlertContent, DepthChart, GameTactics, GameRecapContent } from '../types';
 import { simulateGame } from '../services/gameEngine';
 import { generateGameRecapNews } from '../services/geminiService';
 import { simulateCPUTrades } from '../services/tradeEngine';
@@ -402,6 +402,44 @@ export const useSimulation = (
                         rotationData: result.rotationData,
                         otherGames: [] 
                     };
+
+                    // [Fix] Send Game Recap to Inbox with Try/Catch safety
+                    if (session?.user && !isGuestMode) {
+                        try {
+                            const isHome = myTeamId === home.id;
+                            const userWon = isHome ? result.homeScore > result.awayScore : result.awayScore > result.homeScore;
+                            const opponent = isHome ? away : home;
+                            
+                            const title = `[경기 결과] ${userWon ? '승리' : '패배'} vs ${opponent.name} (${Math.round(result.homeScore)} : ${Math.round(result.awayScore)})`;
+                            
+                            const recapContent: GameRecapContent = {
+                                gameId: game.id,
+                                homeTeamId: home.id,
+                                awayTeamId: away.id,
+                                homeScore: Math.round(result.homeScore),
+                                awayScore: Math.round(result.awayScore),
+                                userBoxScore: isHome ? result.homeBox : result.awayBox
+                            };
+
+                            const sent = await sendMessage(
+                                session.user.id,
+                                myTeamId,
+                                game.date,
+                                'GAME_RECAP',
+                                title,
+                                recapContent
+                            );
+                            
+                            if (sent) {
+                                console.log("📩 Game recap message sent successfully.");
+                                refreshUnreadCount();
+                            } else {
+                                console.warn("📩 Failed to send game recap message.");
+                            }
+                        } catch (msgErr) {
+                            console.error("❌ Error sending game recap message:", msgErr);
+                        }
+                    }
                 }
             }
 

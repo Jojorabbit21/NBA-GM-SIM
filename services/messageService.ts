@@ -73,6 +73,7 @@ export const markAllMessagesAsRead = async (userId: string, teamId: string) => {
 
 /**
  * Send a new message (System -> User)
+ * Returns true if successful, false otherwise.
  */
 export const sendMessage = async (
     userId: string,
@@ -81,7 +82,12 @@ export const sendMessage = async (
     type: MessageType,
     title: string,
     content: any
-) => {
+): Promise<boolean> => {
+    if (!userId || !teamId) {
+        console.error("sendMessage: Missing userId or teamId");
+        return false;
+    }
+
     const { error } = await supabase
         .from('user_messages')
         .insert({
@@ -94,5 +100,9 @@ export const sendMessage = async (
             is_read: false
         });
 
-    if (error) console.error("Error creating message:", error);
+    if (error) {
+        console.error("Error creating message:", error);
+        return false;
+    }
+    return true;
 };
