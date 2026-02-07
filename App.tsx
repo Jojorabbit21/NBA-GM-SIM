@@ -22,22 +22,40 @@ import { AuthView } from './views/AuthView';
 import { TeamSelectView } from './views/TeamSelectView';
 import { OnboardingView } from './views/OnboardingView';
 
-// Views - Lazy Imports
-const DashboardView = lazy(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
-const RosterView = lazy(() => import('./views/RosterView').then(m => ({ default: m.RosterView })));
-const ScheduleView = lazy(() => import('./views/ScheduleView').then(m => ({ default: m.ScheduleView })));
-const StandingsView = lazy(() => import('./views/StandingsView').then(m => ({ default: m.StandingsView })));
-const LeaderboardView = lazy(() => import('./views/LeaderboardView').then(m => ({ default: m.LeaderboardView })));
-const TransactionsView = lazy(() => import('./views/TransactionsView').then(m => ({ default: m.TransactionsView })));
-const PlayoffsView = lazy(() => import('./views/PlayoffsView').then(m => ({ default: m.PlayoffsView })));
-const SeasonReviewView = lazy(() => import('./views/SeasonReviewView').then(m => ({ default: m.SeasonReviewView })));
-const PlayoffReviewView = lazy(() => import('./views/PlayoffReviewView').then(m => ({ default: m.PlayoffReviewView })));
-const DraftView = lazy(() => import('./views/DraftView').then(m => ({ default: m.DraftView })));
-const HelpView = lazy(() => import('./views/HelpView').then(m => ({ default: m.HelpView })));
-const OvrCalculatorView = lazy(() => import('./views/OvrCalculatorView').then(m => ({ default: m.OvrCalculatorView })));
-const GameSimulatingView = lazy(() => import('./views/GameSimulationView').then(m => ({ default: m.GameSimulatingView })));
-const GameResultView = lazy(() => import('./views/GameResultView').then(m => ({ default: m.GameResultView })));
-const InboxView = lazy(() => import('./views/InboxView').then(m => ({ default: m.InboxView }))); // Added
+// [Fix] Chunk Load Error Retry Helper
+// 배포 후 버전 불일치로 인한 청크 로드 에러(MIME type error) 발생 시 자동 새로고침
+const lazyWithRetry = (componentImport: () => Promise<any>) => 
+    lazy(async () => {
+        try {
+            return await componentImport();
+        } catch (error: any) {
+            console.error("Chunk load failed, attempting auto-reload:", error);
+            // 무한 루프 방지를 위해 세션 스토리지 사용
+            const storageKey = `retry_chunk_${window.location.pathname}`;
+            if (!sessionStorage.getItem(storageKey)) {
+                sessionStorage.setItem(storageKey, 'true');
+                window.location.reload();
+            }
+            throw error;
+        }
+    });
+
+// Views - Lazy Imports (Wrapped with Retry Logic)
+const DashboardView = lazyWithRetry(() => import('./views/DashboardView').then(m => ({ default: m.DashboardView })));
+const RosterView = lazyWithRetry(() => import('./views/RosterView').then(m => ({ default: m.RosterView })));
+const ScheduleView = lazyWithRetry(() => import('./views/ScheduleView').then(m => ({ default: m.ScheduleView })));
+const StandingsView = lazyWithRetry(() => import('./views/StandingsView').then(m => ({ default: m.StandingsView })));
+const LeaderboardView = lazyWithRetry(() => import('./views/LeaderboardView').then(m => ({ default: m.LeaderboardView })));
+const TransactionsView = lazyWithRetry(() => import('./views/TransactionsView').then(m => ({ default: m.TransactionsView })));
+const PlayoffsView = lazyWithRetry(() => import('./views/PlayoffsView').then(m => ({ default: m.PlayoffsView })));
+const SeasonReviewView = lazyWithRetry(() => import('./views/SeasonReviewView').then(m => ({ default: m.SeasonReviewView })));
+const PlayoffReviewView = lazyWithRetry(() => import('./views/PlayoffReviewView').then(m => ({ default: m.PlayoffReviewView })));
+const DraftView = lazyWithRetry(() => import('./views/DraftView').then(m => ({ default: m.DraftView })));
+const HelpView = lazyWithRetry(() => import('./views/HelpView').then(m => ({ default: m.HelpView })));
+const OvrCalculatorView = lazyWithRetry(() => import('./views/OvrCalculatorView').then(m => ({ default: m.OvrCalculatorView })));
+const GameSimulatingView = lazyWithRetry(() => import('./views/GameSimulationView').then(m => ({ default: m.GameSimulatingView })));
+const GameResultView = lazyWithRetry(() => import('./views/GameResultView').then(m => ({ default: m.GameResultView })));
+const InboxView = lazyWithRetry(() => import('./views/InboxView').then(m => ({ default: m.InboxView })));
 
 const LOADING_MESSAGES = [
     "라커룸을 청소하는 중...", "농구공에 바람 넣는 중...", "림에 새 그물을 다는 중...", "전술 보드를 닦는 중...",
@@ -129,6 +147,12 @@ const App: React.FC = () => {
     useEffect(() => {
         if (sim.lastGameResult) setView('GameResult');
     }, [sim.lastGameResult]);
+
+    // Clear Chunk Retry Flag on successful load
+    useEffect(() => {
+        const storageKey = `retry_chunk_${window.location.pathname}`;
+        sessionStorage.removeItem(storageKey);
+    }, []);
 
     // Loading Message Cycler
     useEffect(() => {
