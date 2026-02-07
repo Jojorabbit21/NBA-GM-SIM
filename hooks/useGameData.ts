@@ -103,7 +103,12 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     setCurrentSimDate(replayedState.currentSimDate);
                     
                     if (checkpoint.tactics) {
-                        setUserTactics(checkpoint.tactics);
+                        // [Migration Fix] Ensure rotationMap exists for legacy saves
+                        const tactics = { ...checkpoint.tactics };
+                        if (!tactics.rotationMap) {
+                            tactics.rotationMap = {};
+                        }
+                        setUserTactics(tactics);
                     }
 
                     // [New] Load Depth Chart

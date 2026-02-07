@@ -11,7 +11,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         defenseTactics: ['ManToManPerimeter'],
         sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2, rotationFlexibility: 5 },
         starters: { PG: '', SG: '', SF: '', PF: '', C: '' },
-        minutesLimits: {}
+        minutesLimits: {},
+        rotationMap: {}
     };
 
     // Sort Roster by OVR to auto-fill empty slots

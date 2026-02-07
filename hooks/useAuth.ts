@@ -15,12 +15,20 @@ export const useAuth = () => {
         // 1. 초기 세션 확인 (안전하게 처리)
         const initSession = async () => {
             try {
-                const { data: { session }, error } = await supabase.auth.getSession();
-                if (error) throw error;
+                const { data, error } = await supabase.auth.getSession();
+                if (error) {
+                    console.error("Auth Session Error:", error.message);
+                    // Force signOut if refresh token is invalid
+                    if (error.message.includes("Refresh Token") || error.status === 400) {
+                        await supabase.auth.signOut();
+                        setSession(null);
+                    }
+                    throw error;
+                }
                 
                 if (mounted) {
-                    if (session) {
-                        setSession(session);
+                    if (data.session) {
+                        setSession(data.session);
                     }
                 }
             } catch (e) {

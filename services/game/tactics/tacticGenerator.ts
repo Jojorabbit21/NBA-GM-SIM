@@ -69,6 +69,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
 
     // 5. Minutes Distribution
     const minutesLimits: Record<string, number> = {};
+    const rotationMap: Record<string, boolean[]> = {}; // [New] Initialize rotation map
     const starterIds = Object.values(starters);
     
     healthy.forEach((p, idx) => {
@@ -87,6 +88,10 @@ export const generateAutoTactics = (team: Team): GameTactics => {
             mins = 0;
         }
         minutesLimits[p.id] = Math.round(mins);
+        
+        // Initialize basic rotation map (Empty for now, user configures it)
+        // Or could implement logic to fill based on minutes
+        rotationMap[p.id] = Array(48).fill(false);
     });
 
     return {
@@ -95,6 +100,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         sliders,
         starters,
         minutesLimits,
-        stopperId: undefined
+        stopperId: undefined,
+        rotationMap: rotationMap // [New] Added field
     };
 };
