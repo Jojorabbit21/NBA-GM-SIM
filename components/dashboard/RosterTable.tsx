@@ -25,31 +25,43 @@ export const RosterTable: React.FC<RosterTableProps> = ({
 }) => {
     const [lastSelected, setLastSelected] = useState<{pid: string, min: number} | null>(null);
 
-    // 1. Determine Row Order based on Depth Chart (PG1, PG2, PG3, SG1...)
-    const rotationRows = useMemo(() => {
-        if (!depthChart || mode !== 'mine') return healthySorted;
-        const pids: string[] = [];
-        const posOrder: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
-        
-        posOrder.forEach(pos => {
+    // 1. Group Players by Position based on Depth Chart
+    const groupedRotation = useMemo(() => {
+        if (!depthChart || mode !== 'mine') {
+            // Fallback if no depth chart: Just put everyone in a single list or by pos
+            return { 'ALL': healthySorted };
+        }
+
+        const groups: Record<string, Player[]> = {
+            'PG': [], 'SG': [], 'SF': [], 'PF': [], 'C': [], 'RES': []
+        };
+        const usedIds = new Set<string>();
+
+        // Fill Positions from Depth Chart
+        const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
+        positions.forEach(pos => {
             depthChart[pos].forEach(id => {
-                if (id && !pids.includes(id)) {
+                if (id) {
                     const p = team.roster.find(rp => rp.id === id);
-                    if (p && p.health !== 'Injured') pids.push(id);
+                    if (p && p.health !== 'Injured') {
+                        groups[pos].push(p);
+                        usedIds.add(id);
+                    }
                 }
             });
         });
-        
-        // Add remaining healthy players not in depth chart
+
+        // Add remaining healthy players to Reserves
         healthySorted.forEach(p => {
-             if (!pids.includes(p.id)) pids.push(p.id);
+             if (!usedIds.has(p.id)) {
+                 groups['RES'].push(p);
+             }
         });
-        
-        return pids.map(id => team.roster.find(p => p.id === id)!);
+
+        return groups;
     }, [depthChart, team.roster, healthySorted, mode]);
 
     const handleToggleMinute = (playerId: string, minute: number) => {
-        // [Safety Fix] Ensure rotationMap exists
         const currentMap = tactics.rotationMap || {};
         const newMap = { ...currentMap };
         
@@ -58,7 +70,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
 
         const quarter = Math.floor(minute / 12);
         
-        // Range Selection Logic (within same quarter)
+        // Range Selection Logic
         if (lastSelected && lastSelected.pid === playerId && 
             Math.floor(lastSelected.min / 12) === quarter && lastSelected.min !== minute) {
             
@@ -87,7 +99,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
         const under5: number[] = [];
         const over5: number[] = [];
 
-        // [Safety Fix] Default to empty object if rotationMap is undefined (Legacy Save Support)
         const mapData = tactics.rotationMap || {};
 
         Object.entries(mapData).forEach(([pid, map]) => {
@@ -114,6 +125,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
             </div>
         );
     }
+
+    const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
@@ -149,97 +162,93 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                 <table className="w-full text-left border-separate border-spacing-0">
                     <thead className="sticky top-0 z-30 bg-slate-900 shadow-lg">
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                            {/* Position Columns */}
-                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-0 bg-slate-900 z-40 border-r border-slate-800">PG</th>
-                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-6 bg-slate-900 z-40 border-r border-slate-800">SG</th>
-                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-12 bg-slate-900 z-40 border-r border-slate-800">SF</th>
-                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-[4.5rem] bg-slate-900 z-40 border-r border-slate-800">PF</th>
-                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-[6rem] bg-slate-900 z-40 border-r border-slate-800">C</th>
+                            {/* POS Column */}
+                            <th className="py-3 px-0 w-12 text-center border-b border-r border-slate-800 border-white/10 sticky left-0 bg-slate-900 z-40">POS</th>
                             
                             {/* Player Info */}
-                            <th className="py-3 px-3 w-[150px] bg-slate-900 border-b border-white/10 sticky left-[7.5rem] z-40 border-r border-slate-800">PLAYER</th>
-                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(7.5rem+150px)] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
-                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(7.5rem+190px)] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
+                            <th className="py-3 px-3 w-[160px] bg-slate-900 border-b border-white/10 sticky left-12 z-40 border-r border-slate-800">PLAYER</th>
+                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(3rem+160px)] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
+                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(3rem+200px)] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
                             
                             {/* Minutes Header */}
                             {Array.from({length: 48}).map((_, i) => (
-                                <th key={i} className={`w-8 text-center border-b border-white/10 text-[8px] ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}`}>
+                                <th key={i} className={`w-8 min-w-[2rem] text-center border-b border-white/10 text-[8px] ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}`}>
                                     {i + 1}
                                 </th>
                             ))}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
-                        {rotationRows.map(p => {
-                            const ovr = calculatePlayerOvr(p);
-                            const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
-                            const totalMins = playerMap.filter(Boolean).length;
-                            const posList = p.position.split('/');
-                            
-                            return (
-                                <tr key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
-                                    {/* Position Indicators */}
-                                    <td className="py-2 text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800">
-                                        {posList.includes('PG') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
-                                    </td>
-                                    <td className="py-2 text-center sticky left-6 bg-slate-900/95 z-20 border-r border-slate-800">
-                                        {posList.includes('SG') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
-                                    </td>
-                                    <td className="py-2 text-center sticky left-12 bg-slate-900/95 z-20 border-r border-slate-800">
-                                        {posList.includes('SF') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
-                                    </td>
-                                    <td className="py-2 text-center sticky left-[4.5rem] bg-slate-900/95 z-20 border-r border-slate-800">
-                                        {posList.includes('PF') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
-                                    </td>
-                                    <td className="py-2 text-center sticky left-[6rem] bg-slate-900/95 z-20 border-r border-slate-800">
-                                        {posList.includes('C') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
-                                    </td>
+                        {posKeys.map(pos => {
+                            const players = groupedRotation[pos];
+                            if (!players || players.length === 0) return null;
 
-                                    {/* Name */}
-                                    <td className="py-2 px-3 sticky left-[7.5rem] bg-slate-900/95 z-20 border-r border-slate-800 cursor-pointer" onClick={() => onViewPlayer(p)}>
-                                        <span className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 truncate block">
-                                            {p.name}
-                                        </span>
-                                    </td>
+                            return players.map((p, index) => {
+                                const ovr = calculatePlayerOvr(p);
+                                const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
+                                const totalMins = playerMap.filter(Boolean).length;
+                                const isRes = pos === 'RES';
 
-                                    {/* OVR (Text Style) */}
-                                    <td className="text-center sticky left-[calc(7.5rem+150px)] bg-slate-900/95 z-20 border-r border-slate-800">
-                                        <span className="text-xs font-black text-slate-400 font-mono">{ovr}</span>
-                                    </td>
-
-                                    {/* Total Minutes */}
-                                    <td className="text-center sticky left-[calc(7.5rem+190px)] bg-slate-900/95 z-20 border-r border-slate-800">
-                                        <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : 'text-indigo-400'}`}>
-                                            {totalMins}
-                                        </span>
-                                    </td>
-
-                                    {/* Minute Grid */}
-                                    {playerMap.map((active, i) => {
-                                        const countAtMin = validation?.minuteCounts[i] || 0;
-                                        const isError = countAtMin !== 5;
-                                        
-                                        return (
+                                return (
+                                    <tr key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
+                                        {/* Merged Position Column */}
+                                        {index === 0 && (
                                             <td 
-                                                key={i} 
-                                                onClick={() => handleToggleMinute(p.id, i)}
-                                                className={`
-                                                    h-8 w-8 min-w-[2rem] border-l border-white/5 cursor-pointer transition-all relative
-                                                    ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}
-                                                    hover:bg-white/10
-                                                `}
+                                                rowSpan={players.length} 
+                                                className="text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800 align-middle border-b border-slate-800"
                                             >
-                                                {active && (
-                                                    <div className={`
-                                                        absolute inset-1 rounded-md shadow-sm
-                                                        ${isError ? 'bg-red-500/80' : 'bg-emerald-500'}
-                                                    `}></div>
-                                                )}
+                                                <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
+                                                    {pos}
+                                                </span>
                                             </td>
-                                        );
-                                    })}
-                                </tr>
-                            );
+                                        )}
+
+                                        {/* Name */}
+                                        <td className="py-2 px-3 sticky left-12 bg-slate-900/95 z-20 border-r border-slate-800 cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                            <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
+                                                {p.name}
+                                            </span>
+                                        </td>
+
+                                        {/* OVR */}
+                                        <td className="text-center sticky left-[calc(3rem+160px)] bg-slate-900/95 z-20 border-r border-slate-800">
+                                            <span className={`text-xs font-black font-mono ${isRes ? 'text-slate-600' : 'text-slate-400'}`}>{ovr}</span>
+                                        </td>
+
+                                        {/* Total Minutes */}
+                                        <td className="text-center sticky left-[calc(3rem+200px)] bg-slate-900/95 z-20 border-r border-slate-800">
+                                            <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
+                                                {totalMins}
+                                            </span>
+                                        </td>
+
+                                        {/* Minute Grid */}
+                                        {playerMap.map((active, i) => {
+                                            const countAtMin = validation?.minuteCounts[i] || 0;
+                                            const isError = countAtMin !== 5;
+                                            
+                                            return (
+                                                <td 
+                                                    key={i} 
+                                                    onClick={() => handleToggleMinute(p.id, i)}
+                                                    className={`
+                                                        h-8 w-8 min-w-[2rem] border-l border-white/5 cursor-pointer transition-all relative
+                                                        ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}
+                                                        hover:bg-white/10
+                                                    `}
+                                                >
+                                                    {active && (
+                                                        <div className={`
+                                                            absolute inset-1 rounded-md shadow-sm
+                                                            ${isError ? 'bg-red-500/80' : 'bg-emerald-500'}
+                                                        `}></div>
+                                                    )}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                );
+                            });
                         })}
                     </tbody>
                 </table>
