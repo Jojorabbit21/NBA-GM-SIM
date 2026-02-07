@@ -4,6 +4,7 @@ import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { getOvrBadgeStyle } from '../SharedComponents';
 import { DepthChartEditor } from './DepthChartEditor';
+import { StartingLineup } from '../roster/StartingLineup';
 import { AlertCircle } from 'lucide-react';
 
 interface RosterTableProps {
@@ -131,6 +132,11 @@ export const RosterTable: React.FC<RosterTableProps> = ({
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
+            {/* Visual Starting Lineup (Player Cards) */}
+            <div className="flex-shrink-0 p-6 border-b border-white/5 bg-slate-900/40">
+                <StartingLineup team={team} tactics={tactics} roster={team.roster} />
+            </div>
+
             {/* Header: Depth Chart Editor */}
             <div className="flex-shrink-0 border-b border-white/5">
                 <DepthChartEditor 
