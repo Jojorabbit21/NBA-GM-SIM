@@ -229,7 +229,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                 >
                                                     {active && (
                                                         <div className={`
-                                                            absolute inset-0 
+                                                            absolute inset-[2px] rounded-sm
                                                             ${isError 
                                                                 ? 'bg-red-500/30 border border-red-500' 
                                                                 : 'bg-emerald-500/30 border border-emerald-500'}
