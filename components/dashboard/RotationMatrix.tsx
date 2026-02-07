@@ -249,15 +249,15 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
             {/* Validation Bar - Moved to Bottom */}
             {validation && (validation.under5.length > 0 || validation.over5.length > 0 || validation.over42.length > 0) && (
                 <div className="bg-red-500/10 border-t border-red-500/20 px-8 py-3 flex flex-wrap gap-4 items-center animate-in slide-in-from-bottom-2">
-                    <AlertCircle size={16} className="text-red-500" />
+                    <AlertCircle size={20} className="text-red-500" />
                     {validation.under5.length > 0 && (
-                        <span className="text-[10px] font-bold text-red-400 uppercase">인원 부족: {validation.under5[0]}분~</span>
+                        <span className="text-xs font-bold text-red-400">출전 선수가 5명 미만인 구간이 있습니다.</span>
                     )}
                     {validation.over5.length > 0 && (
-                        <span className="text-[10px] font-bold text-orange-400 uppercase">인원 초과: {validation.over5[0]}분~</span>
+                        <span className="text-xs font-bold text-orange-400">출전 선수가 5명 이상인 구간이 있습니다.</span>
                     )}
                     {validation.over42.length > 0 && (
-                        <span className="text-[10px] font-bold text-red-500 uppercase">42분 초과: {validation.over42[0]}</span>
+                        <span className="text-xs font-bold text-red-500 uppercase">42분 초과: {validation.over42[0]}</span>
                     )}
                 </div>
             )}

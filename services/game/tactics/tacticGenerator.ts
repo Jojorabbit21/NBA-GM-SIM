@@ -63,8 +63,8 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         defIntensity: 5,
         defReb: 5,
         fullCourtPress: 1,
-        zoneUsage: defTactics[0] === 'ZoneDefense' ? 8 : 2,
-        rotationFlexibility: 5
+        zoneUsage: defTactics[0] === 'ZoneDefense' ? 8 : 2
+        // Rotation flexibility removed
     };
 
     // 5. Minutes Distribution
@@ -90,7 +90,6 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         minutesLimits[p.id] = Math.round(mins);
         
         // Initialize basic rotation map (Empty for now, user configures it)
-        // Or could implement logic to fill based on minutes
         rotationMap[p.id] = Array(48).fill(false);
     });
 
@@ -101,6 +100,6 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         starters,
         minutesLimits,
         stopperId: undefined,
-        rotationMap: rotationMap // [New] Added field
+        rotationMap: rotationMap
     };
 };

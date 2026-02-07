@@ -120,7 +120,7 @@ export interface Team {
 export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds';
 export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper';
 
-// Added rotationFlexibility
+// Removed rotationFlexibility from TacticalSliders
 export interface TacticalSliders {
     pace: number;
     offReb: number;
@@ -128,7 +128,6 @@ export interface TacticalSliders {
     defReb: number;
     fullCourtPress: number;
     zoneUsage: number;
-    rotationFlexibility: number;
 }
 
 // Added minutesLimits

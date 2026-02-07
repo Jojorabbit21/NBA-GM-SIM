@@ -32,10 +32,19 @@ export function runFullGameSimulation(
         rotationHistory: {}
     };
 
-    // Initialize Rotation History
+    // Initialize Rotation History & Record Starters
     [...state.home.onCourt, ...state.home.bench, ...state.away.onCourt, ...state.away.bench].forEach(p => {
         state.rotationHistory[p.playerId] = [];
     });
+
+    // [Fix] Record initial entry time (0s) for all starters currently on court
+    const recordStarters = (team: TeamState) => {
+        team.onCourt.forEach(p => {
+            state.rotationHistory[p.playerId].push({ in: 0, out: 0 }); // 'out' will be updated on sub or game end
+        });
+    };
+    recordStarters(state.home);
+    recordStarters(state.away);
 
     const checkManualRotation = (teamState: TeamState, currentTotalSec: number) => {
         const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
@@ -119,7 +128,7 @@ export function runFullGameSimulation(
         }
 
         // Sync onCourt with finalRequiredIds (Perform Substitutions)
-        // If finalRequiredIds < 5 (e.g. roster shortage), keep existing players to maintain 5
+        // If finalRequiredIds < 5 (e.g. roster shortage or user config error), keep existing players to maintain 5
         if (finalRequiredIds.length > 0) {
             const currentOnCourtIds = teamState.onCourt.map(p => p.playerId);
             
@@ -135,13 +144,6 @@ export function runFullGameSimulation(
                 const toAdd = teamState.bench.filter(p => finalRequiredIds.includes(p.playerId));
 
                 // Execute Subs
-                // We process removals first, but we must ensure we don't drop below 5 temporarily if possible, 
-                // or just swap one-for-one.
-                // Simpler approach: Dump 'toRemove' to bench, pull 'toAdd' to court.
-                // Constraint: Court must end up with 5 players if possible.
-                
-                // Safety: If we require 5 players but only have 4 valid ones, the loop below handles available ones.
-                // The issue is if finalRequiredIds has < 5.
                 
                 toRemove.forEach(p => {
                     const idx = teamState.onCourt.indexOf(p);
@@ -149,6 +151,7 @@ export function runFullGameSimulation(
                         teamState.onCourt.splice(idx, 1);
                         teamState.bench.push(p);
                         const hist = state.rotationHistory[p.playerId];
+                        // Close the current stint
                         if (hist.length > 0) hist[hist.length - 1].out = currentTotalSec;
                     }
                 });
@@ -158,6 +161,7 @@ export function runFullGameSimulation(
                     if (idx > -1) {
                         teamState.bench.splice(idx, 1);
                         teamState.onCourt.push(p);
+                        // Start new stint
                         state.rotationHistory[p.playerId].push({ in: currentTotalSec, out: currentTotalSec });
                     }
                 });
@@ -178,7 +182,7 @@ export function runFullGameSimulation(
     while (state.quarter <= 4 || state.home.score === state.away.score) {
         const totalElapsedSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
         
-        // Manual Rotation Check (Check every 60 seconds or on possession start)
+        // Manual Rotation Check (Check every possession to allow minute-precise changes)
         checkManualRotation(state.home, totalElapsedSec);
         checkManualRotation(state.away, totalElapsedSec);
 
@@ -189,7 +193,7 @@ export function runFullGameSimulation(
         const actor = attTeam.onCourt[Math.floor(Math.random() * attTeam.onCourt.length)] || attTeam.onCourt[0];
         if (!actor) break; // Emergency bail
 
-        // Event Resolution (Simplified placeholder)
+        // Event Resolution (Simplified placeholder - detailed logic handles in flowEngine)
         const isMake = Math.random() < (actor.attr.ins / 200 + 0.2);
         if (isMake) {
             const pts = Math.random() < 0.3 ? 3 : 2;
@@ -212,6 +216,19 @@ export function runFullGameSimulation(
             state.possession = state.possession === 'home' ? 'away' : 'home';
         }
     }
+
+    // [Fix] Close rotation segments for players still on court at game end
+    const finalTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const closeFinalSegments = (team: TeamState) => {
+        team.onCourt.forEach(p => {
+            const hist = state.rotationHistory[p.playerId];
+            if (hist && hist.length > 0) {
+                hist[hist.length - 1].out = finalTotalSec;
+            }
+        });
+    };
+    closeFinalSegments(state.home);
+    closeFinalSegments(state.away);
 
     // [Fix] Map Box Score correctly to PlayerBoxScore interface
     const mapBox = (teamState: TeamState): PlayerBoxScore[] => {
