@@ -340,13 +340,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     </div>
                     <div className="grid grid-cols-1 gap-10 bg-slate-950/40 p-10 rounded-[2rem] border border-slate-800/50 shadow-inner">
                         <SliderControl 
-                            label="로테이션 유연성" 
-                            value={sliders.rotationFlexibility ?? 5} 
-                            onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, rotationFlexibility: v } })}
-                            leftLabel="주전 중심" rightLabel="벤치 활용" 
-                            tooltip="수치가 낮을수록 소수의 주전급 선수들을 길게 기용하며, 높을수록 벤치 자원들을 폭넓게 활용하여 체력을 안배합니다." 
-                        />
-                        <SliderControl 
                             label="공격 페이스" 
                             value={sliders.pace} 
                             onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, pace: v } })}

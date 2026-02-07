@@ -105,11 +105,6 @@ export function recoverBenchPlayers(bench: LivePlayer[], secondsElapsed: number)
             const totalRecovery = baseRecovery + Math.max(0, staminaBonus);
             
             p.currentCondition = Math.min(100, p.currentCondition + totalRecovery);
-
-            // Release Deep Recovery Lock if recovered enough
-            if (p.needsDeepRecovery && p.currentCondition > 70) {
-                p.needsDeepRecovery = false;
-            }
         }
     });
 }

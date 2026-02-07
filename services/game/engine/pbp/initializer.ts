@@ -9,7 +9,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     const safeTactics: GameTactics = tactics || {
         offenseTactics: ['Balance'],
         defenseTactics: ['ManToManPerimeter'],
-        sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2, rotationFlexibility: 5 },
+        sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2 },
         starters: { PG: '', SG: '', SF: '', PF: '', C: '' },
         minutesLimits: {},
         rotationMap: {}
@@ -60,8 +60,6 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             
             lastSubInTime: 0,
             conditionAtSubIn: currentCondition,
-            isShutdown: false,
-            needsDeepRecovery: false,
             
             attr,
             archetypes: calculatePlayerArchetypes(attr, currentCondition), // Initial calc

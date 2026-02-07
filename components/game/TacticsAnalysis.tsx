@@ -169,9 +169,7 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                             <Sliders size={12} className="text-slate-600" />
                             <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Tactical Sliders</span>
                         </div>
-                        {/* Game Pace moved here */}
                         <SliderBar label="공격 페이스 (Pace)" value={tactics.pace || 5} />
-                        <SliderBar label="로테이션 유연성" value={tactics.sliders.rotationFlexibility || 5} />
                         <SliderBar label="공격 리바운드" value={tactics.sliders.offReb} />
                         <SliderBar label="수비 리바운드" value={tactics.sliders.defReb} />
                         <SliderBar label="수비 강도" value={tactics.sliders.defIntensity} />
