@@ -2,9 +2,8 @@
 import React, { useMemo, useState } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { getOvrBadgeStyle } from '../SharedComponents';
 import { DepthChartEditor } from './DepthChartEditor';
-import { AlertCircle, ChevronRight, UserMinus } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 
 interface RosterTableProps {
   mode: 'mine' | 'opponent';
@@ -58,9 +57,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
         const playerMap = [...newMap[playerId]];
 
         const quarter = Math.floor(minute / 12);
-        const qStart = quarter * 12;
-        const qEnd = qStart + 11;
-
+        
         // Range Selection Logic (within same quarter)
         if (lastSelected && lastSelected.pid === playerId && 
             Math.floor(lastSelected.min / 12) === quarter && lastSelected.min !== minute) {
@@ -150,39 +147,74 @@ export const RosterTable: React.FC<RosterTableProps> = ({
             {/* Rotation Grid Table */}
             <div className="flex-1 overflow-auto custom-scrollbar">
                 <table className="w-full text-left border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-30 bg-slate-900 shadow-md">
+                    <thead className="sticky top-0 z-30 bg-slate-900 shadow-lg">
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                            <th className="py-3 px-6 w-[180px] bg-slate-900 border-b border-white/10 sticky left-0 z-40">선수 (뎁스순)</th>
-                            <th className="py-3 px-1 w-10 text-center border-b border-white/10">OVR</th>
+                            {/* Position Columns */}
+                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-0 bg-slate-900 z-40 border-r border-slate-800">PG</th>
+                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-6 bg-slate-900 z-40 border-r border-slate-800">SG</th>
+                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-12 bg-slate-900 z-40 border-r border-slate-800">SF</th>
+                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-[4.5rem] bg-slate-900 z-40 border-r border-slate-800">PF</th>
+                            <th className="py-3 px-2 w-6 text-center border-b border-white/10 sticky left-[6rem] bg-slate-900 z-40 border-r border-slate-800">C</th>
+                            
+                            {/* Player Info */}
+                            <th className="py-3 px-3 w-[150px] bg-slate-900 border-b border-white/10 sticky left-[7.5rem] z-40 border-r border-slate-800">PLAYER</th>
+                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(7.5rem+150px)] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
+                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(7.5rem+190px)] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
+                            
                             {/* Minutes Header */}
                             {Array.from({length: 48}).map((_, i) => (
-                                <th key={i} className={`w-6 text-center border-b border-white/10 text-[8px] ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}`}>
+                                <th key={i} className={`w-8 text-center border-b border-white/10 text-[8px] ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}`}>
                                     {i + 1}
                                 </th>
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className="divide-y divide-slate-800/50">
                         {rotationRows.map(p => {
                             const ovr = calculatePlayerOvr(p);
-                            // [Safety Fix] Safe access
                             const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
                             const totalMins = playerMap.filter(Boolean).length;
-
+                            const posList = p.position.split('/');
+                            
                             return (
-                                <tr key={p.id} className="hover:bg-white/5 group">
-                                    <td className="py-2 px-6 sticky left-0 bg-slate-900 z-20 shadow-lg border-r border-white/5 cursor-pointer" onClick={() => onViewPlayer(p)}>
-                                        <div className="flex flex-col">
-                                            <span className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 truncate">{p.name}</span>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-[8px] text-slate-500 font-black">{p.position}</span>
-                                                <span className={`text-[10px] font-mono font-black ${totalMins > 42 ? 'text-red-500' : 'text-indigo-400'}`}>{totalMins}m</span>
-                                            </div>
-                                        </div>
+                                <tr key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
+                                    {/* Position Indicators */}
+                                    <td className="py-2 text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800">
+                                        {posList.includes('PG') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
                                     </td>
-                                    <td className="text-center">
-                                        <div className={getOvrBadgeStyle(ovr) + " !w-6 !h-6 !text-[10px]"}>{ovr}</div>
+                                    <td className="py-2 text-center sticky left-6 bg-slate-900/95 z-20 border-r border-slate-800">
+                                        {posList.includes('SG') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
                                     </td>
+                                    <td className="py-2 text-center sticky left-12 bg-slate-900/95 z-20 border-r border-slate-800">
+                                        {posList.includes('SF') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
+                                    </td>
+                                    <td className="py-2 text-center sticky left-[4.5rem] bg-slate-900/95 z-20 border-r border-slate-800">
+                                        {posList.includes('PF') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
+                                    </td>
+                                    <td className="py-2 text-center sticky left-[6rem] bg-slate-900/95 z-20 border-r border-slate-800">
+                                        {posList.includes('C') && <div className="w-1.5 h-1.5 rounded-full bg-slate-400 mx-auto"></div>}
+                                    </td>
+
+                                    {/* Name */}
+                                    <td className="py-2 px-3 sticky left-[7.5rem] bg-slate-900/95 z-20 border-r border-slate-800 cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                        <span className="text-xs font-bold text-slate-200 group-hover:text-indigo-400 truncate block">
+                                            {p.name}
+                                        </span>
+                                    </td>
+
+                                    {/* OVR (Text Style) */}
+                                    <td className="text-center sticky left-[calc(7.5rem+150px)] bg-slate-900/95 z-20 border-r border-slate-800">
+                                        <span className="text-xs font-black text-slate-400 font-mono">{ovr}</span>
+                                    </td>
+
+                                    {/* Total Minutes */}
+                                    <td className="text-center sticky left-[calc(7.5rem+190px)] bg-slate-900/95 z-20 border-r border-slate-800">
+                                        <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : 'text-indigo-400'}`}>
+                                            {totalMins}
+                                        </span>
+                                    </td>
+
+                                    {/* Minute Grid */}
                                     {playerMap.map((active, i) => {
                                         const countAtMin = validation?.minuteCounts[i] || 0;
                                         const isError = countAtMin !== 5;
@@ -192,12 +224,17 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                                 key={i} 
                                                 onClick={() => handleToggleMinute(p.id, i)}
                                                 className={`
-                                                    h-10 w-6 border-l border-white/5 cursor-pointer transition-all relative
-                                                    ${active ? (isError ? 'bg-red-500/40' : 'bg-indigo-500/60') : 'hover:bg-white/10'}
+                                                    h-8 w-8 min-w-[2rem] border-l border-white/5 cursor-pointer transition-all relative
                                                     ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}
+                                                    hover:bg-white/10
                                                 `}
                                             >
-                                                {active && <div className="absolute inset-1 bg-white/20 rounded-sm"></div>}
+                                                {active && (
+                                                    <div className={`
+                                                        absolute inset-1 rounded-md shadow-sm
+                                                        ${isError ? 'bg-red-500/80' : 'bg-emerald-500'}
+                                                    `}></div>
+                                                )}
                                             </td>
                                         );
                                     })}

@@ -103,7 +103,7 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                         {positions.map(pos => (
                             <tr key={pos} className="hover:bg-slate-900/40 transition-colors">
                                 <td className="py-1.5 px-4 text-center border-r border-slate-800/50 bg-slate-950/20">
-                                    <span className="text-sm font-black text-white">{pos}</span>
+                                    <span className="text-xs font-bold text-slate-500">{pos}</span>
                                 </td>
                                 {[0, 1, 2].map(depthIndex => {
                                     const selectedId = depthChart[pos][depthIndex];
