@@ -64,6 +64,7 @@ export function runFullGameSimulation(
     awayDepthChart?: DepthChart | null
 ): SimulationResult {
     
+    // [Fix] Ensure we preserve user tactics if present
     const homeT = userTeamId === homeTeam.id && userTactics ? userTactics : undefined; 
     const awayT = userTeamId === awayTeam.id && userTactics ? userTactics : undefined;
 
@@ -210,18 +211,22 @@ export function runFullGameSimulation(
 
         // 2. Foul Check
         // Use foulSystem
+        // [FIX] Calculate Foul Prob based on standardized 36 min rate, NOT current MP
+        // calculateFoulStats returns projected fouls for `minutesPlanned`.
+        // We pass 36 to get "Per 36" rate.
         const foulStats = calculateFoulStats(
             flattenPlayer(defender), 
-            defender.mp, 
+            36, // Standardize to 36 mins for rate calculation
             defTeam.tactics, 
             attTeam.tactics, 
             defTeam.tactics.sliders,
             flattenPlayer(actor)
         );
         
-        // Probability of foul in this possession based on projected fouls per 36
-        // e.g. 4 PF/36m -> 4 / (36*60/15 sec poss) -> low chance per poss
-        const foulProb = (foulStats.pf / 100) * 0.8; // Simplified probability
+        // [FIX] Convert per-36 rate to per-possession probability
+        // Approx 75 defensive possessions per 36 mins (100 per 48)
+        // e.g. 4.5 PF/36m -> 4.5 / 75 = 0.06 (6%) chance per possession
+        const foulProb = (foulStats.pf / 75); 
         
         if (Math.random() < foulProb) {
             defender.pf++;
@@ -357,7 +362,15 @@ export function runFullGameSimulation(
             }
             
             const assistText = (secondaryActor && secondaryActor.playerId !== actor.playerId) ? ` (Ast: ${secondaryActor.playerName})` : '';
-            const shotDesc = isThree ? '3점슛' : (shotType === 'Dunk' ? '덩크' : '점프슛');
+            
+            // [FIX] Map PlayType to Korean Description
+            let shotDesc = '점프슛';
+            if (isThree) shotDesc = '3점슛';
+            else if (shotType === 'Dunk') shotDesc = '덩크';
+            else if (shotType === 'Layup') shotDesc = '레이업';
+            else if (shotType === 'Hook') shotDesc = '훅슛';
+            else if (shotType === 'Pullup') shotDesc = '풀업 점퍼';
+            else if (shotType === 'CatchShoot') shotDesc = '캐치앤슛';
 
             state.logs.push({ 
                 quarter: state.quarter, 
@@ -376,11 +389,20 @@ export function runFullGameSimulation(
             actor.fga++;
             if (isThree) actor.p3a++;
             
+            // [FIX] Map PlayType to Korean Description for Miss
+            let shotDesc = '점프슛';
+            if (isThree) shotDesc = '3점슛';
+            else if (shotType === 'Dunk') shotDesc = '덩크';
+            else if (shotType === 'Layup') shotDesc = '레이업';
+            else if (shotType === 'Hook') shotDesc = '훅슛';
+            else if (shotType === 'Pullup') shotDesc = '풀업 점퍼';
+            else if (shotType === 'CatchShoot') shotDesc = '캐치앤슛';
+            
             state.logs.push({
                 quarter: state.quarter,
                 timeRemaining: formatTime(state.gameClock),
                 teamId: attTeam.id,
-                text: `${actor.playerName} ${isThree ? '3점' : ''} 슛 실패`,
+                text: `${actor.playerName} ${shotDesc} 실패`,
                 type: 'miss'
             });
 
@@ -530,8 +552,9 @@ export function runFullGameSimulation(
         awayScore: state.away.score,
         homeBox: mapBox(state.home),
         awayBox: mapBox(state.away),
-        homeTactics: {},
-        awayTactics: {},
+        // [FIX] Return Actual Tactics used
+        homeTactics: state.home.tactics,
+        awayTactics: state.away.tactics,
         rosterUpdates: rosterUpdates,
         pbpLogs: state.logs,
         rotationData: state.rotationHistory

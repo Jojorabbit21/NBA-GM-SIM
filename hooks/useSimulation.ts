@@ -35,6 +35,11 @@ export const useSimulation = (
     const updatedTeamsRef = useRef(teams);
     useEffect(() => { updatedTeamsRef.current = teams; }, [teams]);
 
+    // [New] Explicitly clear last game result to prevent navigation loops
+    const clearLastGameResult = useCallback(() => {
+        setLastGameResult(null);
+    }, []);
+
     // [Playoff Hook] Generate Schedule & Advance Rounds Automatically
     useEffect(() => {
         if (!teams || teams.length === 0 || !schedule || schedule.length === 0) return;
@@ -505,6 +510,7 @@ export const useSimulation = (
         setIsSimulating,
         activeGame,
         lastGameResult,
+        clearLastGameResult, // [Added] Export clear function
         handleExecuteSim,
         finalizeSimRef
     };

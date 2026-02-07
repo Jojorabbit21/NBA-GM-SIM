@@ -114,7 +114,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
                             // Condition Color Logic
                             // Use fatigue if available, otherwise calculate estimate or default to 0
-                            const fatigue = p.fatigue !== undefined ? p.fatigue : (p.condition !== undefined ? Math.max(0, 100 - p.condition) : 0);
+                            // [FIX] Round the fatigue value
+                            const fatigue = Math.round(p.fatigue !== undefined ? p.fatigue : (p.condition !== undefined ? Math.max(0, 100 - p.condition) : 0));
                             
                             let fatColor = 'text-emerald-500';
                             if (fatigue > 25) fatColor = 'text-red-500';
