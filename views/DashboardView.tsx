@@ -5,7 +5,6 @@ import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
 import { calculateTacticScore } from '../utils/tacticUtils';
-import { Users, Shield, Target, Eye, ClipboardList } from 'lucide-react';
 
 // Import sub-components
 import { DashboardHeader, DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
@@ -153,29 +152,26 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       <div className="w-full max-w-[1900px] flex flex-col min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
           
           {/* Internal Tab Navigation */}
-          <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-20 flex-shrink-0">
-                <div className="flex items-center gap-10 h-full">
+          <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-14 flex-shrink-0">
+                <div className="flex items-center gap-8 h-full">
                     <button 
                         onClick={() => setActiveTab('rotation')}
-                        className={`flex items-center gap-3 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
-                        <Users size={20} />
-                        <span className="text-lg">로테이션 관리</span>
+                        <span>뎁스차트 & 로테이션</span>
                     </button>
                     <button 
                         onClick={() => setActiveTab('tactics')}
-                        className={`flex items-center gap-3 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
-                        <Target size={20} />
-                        <span className="text-lg">전술 관리</span>
+                        <span>전술 관리</span>
                     </button>
                     <button 
                         onClick={() => setActiveTab('opponent')}
                         disabled={!opponent}
-                        className={`flex items-center gap-3 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} ${!opponent ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} ${!opponent ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        <Eye size={20} />
-                        <span className="text-lg">상대 전력 분석</span>
+                        <span>상대 전력 분석</span>
                     </button>
                 </div>
           </div>
