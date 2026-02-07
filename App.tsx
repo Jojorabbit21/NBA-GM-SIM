@@ -336,7 +336,9 @@ const App: React.FC = () => {
 
                 <Suspense fallback={<FullScreenLoader />}>
                     {view === 'GameSim' && sim.activeGame && <GameSimulatingView homeTeam={gameData.teams.find(t => t.id === sim.activeGame!.homeTeamId)!} awayTeam={gameData.teams.find(t => t.id === sim.activeGame!.awayTeamId)!} userTeamId={gameData.myTeamId} finalHomeScore={sim.activeGame.homeScore} finalAwayScore={sim.activeGame.awayScore} onSimulationComplete={() => sim.finalizeSimRef.current?.()} />}
-                    {view === 'GameResult' && sim.lastGameResult && <GameResultView result={sim.lastGameResult} myTeamId={gameData.myTeamId!} teams={gameData.teams} onFinish={() => { sim.setIsSimulating(false); setView('Dashboard'); }} />}
+                    
+                    {/* [FIX] Use clearLastGameResult to clear state when finishing view */}
+                    {view === 'GameResult' && sim.lastGameResult && <GameResultView result={sim.lastGameResult} myTeamId={gameData.myTeamId!} teams={gameData.teams} onFinish={() => { sim.clearLastGameResult(); sim.setIsSimulating(false); setView('Dashboard'); }} />}
                 </Suspense>
             </div>
         </div>
