@@ -31,14 +31,16 @@ export const RosterTable: React.FC<RosterTableProps> = ({
     if (mode === 'opponent') {
         if (!opponent) return <div className="p-8 text-slate-500 text-center">상대 팀 데이터가 없습니다.</div>;
 
-        const ATTR_COLS = [
-            { key: 'ins', label: 'INS', color: 'text-amber-400' },
-            { key: 'out', label: 'OUT', color: 'text-orange-400' },
-            { key: 'threeCorner', label: '3PT', color: 'text-orange-300' }, // Approximation for 3PT rating
-            { key: 'plm', label: 'PLM', color: 'text-yellow-400' },
-            { key: 'def', label: 'DEF', color: 'text-blue-400' },
-            { key: 'reb', label: 'REB', color: 'text-emerald-400' },
-            { key: 'ath', label: 'ATH', color: 'text-fuchsia-400' },
+        const STAT_COLS = [
+            { label: 'MIN', width: 'w-10', color: 'text-slate-400' },
+            { label: 'PTS', width: 'w-12', color: 'text-white' },
+            { label: 'REB', width: 'w-10', color: 'text-slate-300' },
+            { label: 'AST', width: 'w-10', color: 'text-slate-300' },
+            { label: 'STL', width: 'w-10', color: 'text-slate-400' },
+            { label: 'BLK', width: 'w-10', color: 'text-slate-400' },
+            { label: 'FG%', width: 'w-14', color: 'text-amber-400' },
+            { label: '3P%', width: 'w-14', color: 'text-orange-400' },
+            { label: 'TS%', width: 'w-14', color: 'text-emerald-400' },
         ];
 
         return (
@@ -49,7 +51,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                          <img src={opponent.logo} className="w-8 h-8 object-contain" alt="" />
                          <div>
                              <h4 className="text-sm font-black text-white uppercase tracking-tight">{opponent.city} {opponent.name}</h4>
-                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">ROSTER BREAKDOWN</span>
+                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">SEASON STATS</span>
                          </div>
                      </div>
                      <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700/50">
@@ -66,17 +68,34 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 <th className="py-3 px-4 w-16 text-center border-r border-slate-800/50">POS</th>
                                 <th className="py-3 px-4 text-left">PLAYER</th>
                                 <th className="py-3 px-2 w-14 text-center border-r border-slate-800/50">OVR</th>
-                                <th className="py-3 px-2 w-16 text-center text-slate-400">HGT</th>
-                                <th className="py-3 px-2 w-12 text-center text-slate-400 border-r border-slate-800/50">AGE</th>
-                                {ATTR_COLS.map(col => (
-                                    <th key={col.key} className={`py-3 px-2 w-12 text-center ${col.color}`}>{col.label}</th>
+                                <th className="py-3 px-2 w-10 text-center text-slate-400 border-r border-slate-800/50">GP</th>
+                                {STAT_COLS.map(col => (
+                                    <th key={col.label} className={`py-3 px-2 text-center ${col.width} ${col.color}`}>{col.label}</th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/50">
                             {oppHealthySorted.map((p, i) => {
                                 const ovr = calculatePlayerOvr(p);
-                                const isStarter = i < 5; // Simple assumption for display, actual starters are in tactics
+                                const isStarter = i < 5; 
+                                
+                                const s = p.stats;
+                                const g = s.g || 1;
+                                
+                                const val_min = (s.mp / g).toFixed(1);
+                                const val_pts = (s.pts / g).toFixed(1);
+                                const val_reb = (s.reb / g).toFixed(1);
+                                const val_ast = (s.ast / g).toFixed(1);
+                                const val_stl = (s.stl / g).toFixed(1);
+                                const val_blk = (s.blk / g).toFixed(1);
+                                
+                                const val_fg = s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '-';
+                                const val_3p = s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '-';
+                                
+                                const tsa = s.fga + 0.44 * s.fta;
+                                const val_ts = tsa > 0 ? ((s.pts / (2 * tsa)) * 100).toFixed(1) + '%' : '-';
+
+                                const values = [val_min, val_pts, val_reb, val_ast, val_stl, val_blk, val_fg, val_3p, val_ts];
 
                                 return (
                                     <tr key={p.id} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => onViewPlayer(p)}>
@@ -94,27 +113,13 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <td className="py-2.5 px-2 text-center border-r border-slate-800/50">
                                             <div className={`${getOvrBadgeStyle(ovr)} !w-7 !h-7 !text-[10px] !mx-auto`}>{ovr}</div>
                                         </td>
-                                        <td className="py-2.5 px-2 text-center text-xs font-mono text-slate-500">{p.height}</td>
-                                        <td className="py-2.5 px-2 text-center text-xs font-mono text-slate-500 border-r border-slate-800/50">{p.age}</td>
+                                        <td className="py-2.5 px-2 text-center text-xs font-mono text-slate-500 border-r border-slate-800/50">{s.g}</td>
                                         
-                                        {ATTR_COLS.map(col => {
-                                            // Handle 3PT specially since it's mapped to threeCorner in simplified view or calculate avg
-                                            let val = p[col.key as keyof Player] as number;
-                                            if (col.key === 'threeCorner') {
-                                                val = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
-                                            }
-
-                                            let valColor = 'text-slate-600';
-                                            if (val >= 90) valColor = 'text-fuchsia-400 font-black';
-                                            else if (val >= 80) valColor = 'text-emerald-400 font-bold';
-                                            else if (val >= 70) valColor = 'text-slate-300';
-
-                                            return (
-                                                <td key={col.key} className={`py-2.5 px-2 text-center text-xs font-mono ${valColor}`}>
-                                                    {val}
-                                                </td>
-                                            );
-                                        })}
+                                        {values.map((val, idx) => (
+                                            <td key={idx} className={`py-2.5 px-2 text-center text-xs font-mono font-bold ${STAT_COLS[idx].color}`}>
+                                                {val}
+                                            </td>
+                                        ))}
                                     </tr>
                                 );
                             })}

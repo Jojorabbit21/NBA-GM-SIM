@@ -116,12 +116,16 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     }, [tactics.rotationMap, team.roster]);
 
     const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
-    const quarterBorder = "border-r-2 border-r-indigo-500/50"; 
+    
+    // [Design Update] Quarter borders are now thinner (border-r instead of border-r-2) and Slate-600
+    const quarterBorder = "border-r border-slate-600"; 
+    const headerBottomBorder = "border-b border-slate-600";
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
              {/* Rotation Chart Title */}
-             <div className="px-6 py-2 bg-slate-900 border-y border-slate-800 flex items-center gap-2 flex-shrink-0">
+             {/* [Design Update] Added top indigo border to distinguish from depth chart */}
+             <div className="px-6 py-2 bg-slate-900 border-t-2 border-t-indigo-500 border-b border-slate-800 flex items-center gap-2 flex-shrink-0">
                  <Timer size={16} className="text-indigo-400"/>
                  <span className="text-xs font-black text-slate-300 uppercase tracking-widest oswald">로테이션 차트 (Rotation Matrix)</span>
             </div>
@@ -133,10 +137,11 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                         {/* 1st Header Row: Sticky Info & Quarter Labels */}
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
                             {/* Sticky Left Columns (RowSpan 2) */}
-                            <th rowSpan={2} className="py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center border-b-2 border-b-indigo-500/50 border-r border-slate-800 sticky left-0 bg-slate-900 z-40">POS</th>
-                            <th rowSpan={2} className="py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 border-b-2 border-b-indigo-500/50 sticky left-[50px] z-40 border-r border-slate-800">PLAYER</th>
-                            <th rowSpan={2} className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b-2 border-b-indigo-500/50 border-slate-800 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
-                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b-2 border-b-indigo-500/50 border-slate-800 sticky left-[250px] bg-slate-900 z-40 ${quarterBorder}`}>MIN</th>
+                            {/* [Design Update] Changed border colors to slate-600 and width to 1px */}
+                            <th rowSpan={2} className={`py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center ${headerBottomBorder} border-r border-slate-800 sticky left-0 bg-slate-900 z-40`}>POS</th>
+                            <th rowSpan={2} className={`py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 ${headerBottomBorder} sticky left-[50px] z-40 border-r border-slate-800`}>PLAYER</th>
+                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800`}>OVR</th>
+                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[250px] bg-slate-900 z-40 ${quarterBorder}`}>MIN</th>
                             
                             {/* Quarter Headers */}
                             <th colSpan={12} className={`text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-700 ${quarterBorder}`}>1Q</th>
@@ -145,13 +150,13 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                             <th colSpan={12} className="text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-800">4Q</th>
                         </tr>
                         {/* 2nd Header Row: Minutes */}
-                        <tr className="text-[8px] font-black text-slate-600 uppercase tracking-tighter bg-slate-900 border-b-2 border-b-indigo-500/50">
+                        <tr className={`text-[8px] font-black text-slate-600 uppercase tracking-tighter bg-slate-900 ${headerBottomBorder}`}>
                              {Array.from({length: 48}).map((_, i) => {
                                 const isQuarterEnd = (i+1)%12 === 0 && (i+1) !== 48;
                                 return (
                                     <th 
                                         key={i} 
-                                        className={`w-8 min-w-[2rem] h-6 text-center border-b-2 border-b-indigo-500/50 ${isQuarterEnd ? quarterBorder : 'border-r border-r-slate-800/50'}`}
+                                        className={`w-8 min-w-[2rem] h-6 text-center ${headerBottomBorder} ${isQuarterEnd ? quarterBorder : 'border-r border-r-slate-800/50'}`}
                                     >
                                         {i + 1}
                                     </th>
@@ -225,7 +230,9 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                     {active && (
                                                         <div className={`
                                                             absolute inset-0 
-                                                            ${isError ? 'bg-red-600' : 'bg-emerald-600'}
+                                                            ${isError 
+                                                                ? 'bg-red-500/30 border border-red-500' 
+                                                                : 'bg-emerald-500/30 border border-emerald-500'}
                                                         `}></div>
                                                     )}
                                                 </td>
