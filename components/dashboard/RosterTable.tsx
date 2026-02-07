@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { getOvrBadgeStyle } from '../SharedComponents';
 import { DepthChartEditor } from './DepthChartEditor';
 import { AlertCircle } from 'lucide-react';
 
@@ -161,22 +162,27 @@ export const RosterTable: React.FC<RosterTableProps> = ({
             <div className="flex-1 overflow-auto custom-scrollbar">
                 <table className="w-full text-left border-separate border-spacing-0">
                     <thead className="sticky top-0 z-30 bg-slate-900 shadow-lg">
+                        {/* 1st Header Row: Sticky Info & Quarter Labels */}
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                            {/* POS Column - Fixed 50px */}
-                            <th className="py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center border-b border-r border-slate-800 border-white/10 sticky left-0 bg-slate-900 z-40">POS</th>
+                            {/* Sticky Left Columns (RowSpan 2) */}
+                            <th rowSpan={2} className="py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center border-b border-r border-slate-800 border-slate-800 sticky left-0 bg-slate-900 z-40">POS</th>
+                            <th rowSpan={2} className="py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 border-b border-slate-800 sticky left-[50px] z-40 border-r border-slate-800">PLAYER</th>
+                            <th rowSpan={2} className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b border-slate-800 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
+                            <th rowSpan={2} className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b border-slate-800 sticky left-[250px] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
                             
-                            {/* Player Info - Fixed 160px */}
-                            <th className="py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 border-b border-white/10 sticky left-[50px] z-40 border-r border-slate-800">PLAYER</th>
-                            
-                            {/* OVR - Fixed 40px */}
-                            <th className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b border-white/10 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
-                            
-                            {/* MIN - Fixed 40px */}
-                            <th className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b border-white/10 sticky left-[250px] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
-                            
-                            {/* Minutes Header */}
-                            {Array.from({length: 48}).map((_, i) => (
-                                <th key={i} className={`w-8 min-w-[2rem] text-center border-b border-white/10 text-[8px] ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}`}>
+                            {/* Quarter Headers */}
+                            <th colSpan={12} className="text-center py-1 bg-slate-800/50 text-slate-400 border-b border-r border-slate-700">1Q</th>
+                            <th colSpan={12} className="text-center py-1 bg-slate-800/50 text-slate-400 border-b border-r border-slate-700">2Q</th>
+                            <th colSpan={12} className="text-center py-1 bg-slate-800/50 text-slate-400 border-b border-r border-slate-700">3Q</th>
+                            <th colSpan={12} className="text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-800">4Q</th>
+                        </tr>
+                        {/* 2nd Header Row: Minutes */}
+                        <tr className="text-[8px] font-black text-slate-600 uppercase tracking-tighter bg-slate-900">
+                             {Array.from({length: 48}).map((_, i) => (
+                                <th 
+                                    key={i} 
+                                    className={`w-8 min-w-[2rem] h-6 text-center border-b border-slate-800 ${(i+1)%12 === 0 ? 'border-r border-slate-600' : 'border-r border-slate-800/50'}`}
+                                >
                                     {i + 1}
                                 </th>
                             ))}
@@ -208,19 +214,21 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         )}
 
                                         {/* Name */}
-                                        <td className="py-2 px-3 sticky left-[50px] bg-slate-900/95 z-20 border-r border-slate-800 cursor-pointer w-[160px] min-w-[160px] max-w-[160px]" onClick={() => onViewPlayer(p)}>
+                                        <td className="py-2 px-3 sticky left-[50px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 cursor-pointer w-[160px] min-w-[160px] max-w-[160px]" onClick={() => onViewPlayer(p)}>
                                             <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
                                                 {p.name}
                                             </span>
                                         </td>
 
                                         {/* OVR */}
-                                        <td className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
-                                            <span className={`text-xs font-black font-mono ${isRes ? 'text-slate-600' : 'text-slate-400'}`}>{ovr}</span>
+                                        <td className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                            <div className={`${getOvrBadgeStyle(ovr)} !w-6 !h-6 !text-[10px] !rounded-md !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`}>
+                                                {ovr}
+                                            </div>
                                         </td>
 
                                         {/* Total Minutes */}
-                                        <td className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                        <td className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
@@ -230,21 +238,23 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         {playerMap.map((active, i) => {
                                             const countAtMin = validation?.minuteCounts[i] || 0;
                                             const isError = countAtMin !== 5;
+                                            // 12, 24, 36 min separators
+                                            const isQuarterEnd = (i+1)%12 === 0;
                                             
                                             return (
                                                 <td 
                                                     key={i} 
                                                     onClick={() => handleToggleMinute(p.id, i)}
                                                     className={`
-                                                        h-8 w-8 min-w-[2rem] border-l border-white/5 cursor-pointer transition-all relative
-                                                        ${(i+1)%12 === 0 ? 'border-r border-white/20' : ''}
+                                                        h-8 w-8 min-w-[2rem] cursor-pointer transition-all relative border-b border-slate-800
+                                                        ${isQuarterEnd ? 'border-r border-slate-600' : 'border-r border-slate-800/50'}
                                                         hover:bg-white/10
                                                     `}
                                                 >
                                                     {active && (
                                                         <div className={`
-                                                            absolute inset-1 rounded-md shadow-sm
-                                                            ${isError ? 'bg-red-500/80' : 'bg-emerald-500'}
+                                                            absolute inset-0 
+                                                            ${isError ? 'bg-red-600' : 'bg-emerald-600'}
                                                         `}></div>
                                                     )}
                                                 </td>
