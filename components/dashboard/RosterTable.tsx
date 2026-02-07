@@ -162,13 +162,17 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                 <table className="w-full text-left border-separate border-spacing-0">
                     <thead className="sticky top-0 z-30 bg-slate-900 shadow-lg">
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                            {/* POS Column */}
-                            <th className="py-3 px-0 w-12 text-center border-b border-r border-slate-800 border-white/10 sticky left-0 bg-slate-900 z-40">POS</th>
+                            {/* POS Column - Fixed 50px */}
+                            <th className="py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center border-b border-r border-slate-800 border-white/10 sticky left-0 bg-slate-900 z-40">POS</th>
                             
-                            {/* Player Info */}
-                            <th className="py-3 px-3 w-[160px] bg-slate-900 border-b border-white/10 sticky left-12 z-40 border-r border-slate-800">PLAYER</th>
-                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(3rem+160px)] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
-                            <th className="py-3 px-1 w-10 text-center border-b border-white/10 sticky left-[calc(3rem+200px)] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
+                            {/* Player Info - Fixed 160px */}
+                            <th className="py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 border-b border-white/10 sticky left-[50px] z-40 border-r border-slate-800">PLAYER</th>
+                            
+                            {/* OVR - Fixed 40px */}
+                            <th className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b border-white/10 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800">OVR</th>
+                            
+                            {/* MIN - Fixed 40px */}
+                            <th className="py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center border-b border-white/10 sticky left-[250px] bg-slate-900 z-40 border-r border-slate-800">MIN</th>
                             
                             {/* Minutes Header */}
                             {Array.from({length: 48}).map((_, i) => (
@@ -195,7 +199,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         {index === 0 && (
                                             <td 
                                                 rowSpan={players.length} 
-                                                className="text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800 align-middle border-b border-slate-800"
+                                                className="text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800 align-middle border-b border-slate-800 w-[50px] min-w-[50px] max-w-[50px]"
                                             >
                                                 <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
                                                     {pos}
@@ -204,19 +208,19 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         )}
 
                                         {/* Name */}
-                                        <td className="py-2 px-3 sticky left-12 bg-slate-900/95 z-20 border-r border-slate-800 cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                        <td className="py-2 px-3 sticky left-[50px] bg-slate-900/95 z-20 border-r border-slate-800 cursor-pointer w-[160px] min-w-[160px] max-w-[160px]" onClick={() => onViewPlayer(p)}>
                                             <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
                                                 {p.name}
                                             </span>
                                         </td>
 
                                         {/* OVR */}
-                                        <td className="text-center sticky left-[calc(3rem+160px)] bg-slate-900/95 z-20 border-r border-slate-800">
+                                        <td className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
                                             <span className={`text-xs font-black font-mono ${isRes ? 'text-slate-600' : 'text-slate-400'}`}>{ovr}</span>
                                         </td>
 
                                         {/* Total Minutes */}
-                                        <td className="text-center sticky left-[calc(3rem+200px)] bg-slate-900/95 z-20 border-r border-slate-800">
+                                        <td className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
