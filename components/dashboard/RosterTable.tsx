@@ -4,7 +4,9 @@ import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { DepthChartEditor } from './DepthChartEditor';
 import { StartingLineup } from '../roster/StartingLineup';
 import { RotationMatrix } from './RotationMatrix';
-import { GanttChartSquare } from 'lucide-react';
+import { GanttChartSquare, Users } from 'lucide-react';
+import { calculatePlayerOvr } from '../../utils/constants';
+import { getOvrBadgeStyle } from '../SharedComponents';
 
 interface RosterTableProps {
   mode: 'mine' | 'opponent';
@@ -22,17 +24,108 @@ interface RosterTableProps {
 
 export const RosterTable: React.FC<RosterTableProps> = ({ 
   mode, team, healthySorted, tactics, onUpdateTactics, onViewPlayer,
-  depthChart, onUpdateDepthChart
+  depthChart, onUpdateDepthChart, oppHealthySorted, opponent
 }) => {
     
+    // 상대 전력 분석 모드 (Opponent Analysis)
     if (mode === 'opponent') {
+        if (!opponent) return <div className="p-8 text-slate-500 text-center">상대 팀 데이터가 없습니다.</div>;
+
+        const ATTR_COLS = [
+            { key: 'ins', label: 'INS', color: 'text-amber-400' },
+            { key: 'out', label: 'OUT', color: 'text-orange-400' },
+            { key: 'threeCorner', label: '3PT', color: 'text-orange-300' }, // Approximation for 3PT rating
+            { key: 'plm', label: 'PLM', color: 'text-yellow-400' },
+            { key: 'def', label: 'DEF', color: 'text-blue-400' },
+            { key: 'reb', label: 'REB', color: 'text-emerald-400' },
+            { key: 'ath', label: 'ATH', color: 'text-fuchsia-400' },
+        ];
+
         return (
-            <div className="p-8 text-slate-500 text-center uppercase oswald tracking-widest py-32">
-                상대 전력 데이터는 기록 탭에서 확인 가능합니다.
+            <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden animate-in fade-in duration-500">
+                {/* Header Info */}
+                <div className="flex-shrink-0 px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                         <img src={opponent.logo} className="w-8 h-8 object-contain" alt="" />
+                         <div>
+                             <h4 className="text-sm font-black text-white uppercase tracking-tight">{opponent.city} {opponent.name}</h4>
+                             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">ROSTER BREAKDOWN</span>
+                         </div>
+                     </div>
+                     <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700/50">
+                         <Users size={14} className="text-slate-400" />
+                         <span className="text-xs font-bold text-slate-300">{oppHealthySorted.length} Active Players</span>
+                     </div>
+                </div>
+
+                {/* Table */}
+                <div className="flex-1 overflow-auto custom-scrollbar">
+                    <table className="w-full text-left border-collapse">
+                        <thead className="sticky top-0 z-20 bg-slate-900 shadow-md">
+                            <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
+                                <th className="py-3 px-4 w-16 text-center border-r border-slate-800/50">POS</th>
+                                <th className="py-3 px-4 text-left">PLAYER</th>
+                                <th className="py-3 px-2 w-14 text-center border-r border-slate-800/50">OVR</th>
+                                <th className="py-3 px-2 w-16 text-center text-slate-400">HGT</th>
+                                <th className="py-3 px-2 w-12 text-center text-slate-400 border-r border-slate-800/50">AGE</th>
+                                {ATTR_COLS.map(col => (
+                                    <th key={col.key} className={`py-3 px-2 w-12 text-center ${col.color}`}>{col.label}</th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/50">
+                            {oppHealthySorted.map((p, i) => {
+                                const ovr = calculatePlayerOvr(p);
+                                const isStarter = i < 5; // Simple assumption for display, actual starters are in tactics
+
+                                return (
+                                    <tr key={p.id} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => onViewPlayer(p)}>
+                                        <td className="py-2.5 px-4 text-center border-r border-slate-800/50">
+                                            <span className={`text-xs font-bold ${isStarter ? 'text-indigo-400' : 'text-slate-500'}`}>{p.position}</span>
+                                        </td>
+                                        <td className="py-2.5 px-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-slate-200 group-hover:text-white group-hover:underline truncate">{p.name}</span>
+                                                {p.health !== 'Healthy' && (
+                                                    <span className="text-[9px] font-black text-red-500 uppercase">{p.health}</span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center border-r border-slate-800/50">
+                                            <div className={`${getOvrBadgeStyle(ovr)} !w-7 !h-7 !text-[10px] !mx-auto`}>{ovr}</div>
+                                        </td>
+                                        <td className="py-2.5 px-2 text-center text-xs font-mono text-slate-500">{p.height}</td>
+                                        <td className="py-2.5 px-2 text-center text-xs font-mono text-slate-500 border-r border-slate-800/50">{p.age}</td>
+                                        
+                                        {ATTR_COLS.map(col => {
+                                            // Handle 3PT specially since it's mapped to threeCorner in simplified view or calculate avg
+                                            let val = p[col.key as keyof Player] as number;
+                                            if (col.key === 'threeCorner') {
+                                                val = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
+                                            }
+
+                                            let valColor = 'text-slate-600';
+                                            if (val >= 90) valColor = 'text-fuchsia-400 font-black';
+                                            else if (val >= 80) valColor = 'text-emerald-400 font-bold';
+                                            else if (val >= 70) valColor = 'text-slate-300';
+
+                                            return (
+                                                <td key={col.key} className={`py-2.5 px-2 text-center text-xs font-mono ${valColor}`}>
+                                                    {val}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
         );
     }
 
+    // 내 팀 관리 모드 (My Team Management)
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
             
