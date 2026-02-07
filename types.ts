@@ -176,6 +176,7 @@ export interface PbpLog {
   teamId: string;
   text: string;
   type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info';
+  points?: number;
 }
 
 // Added RotationData

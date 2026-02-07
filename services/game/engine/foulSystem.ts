@@ -30,7 +30,7 @@ export const FOUL_CONFIG = {
 
     // How to convert Discipline Rating (0-100) to EXTRA Fouls.
     // Higher scale = Less extra fouls for bad defenders.
-    // Rating 75 (Avg) -> Gap 25 -> 25 / 17 = ~1.47 + 0.8 = 2.27 Fouls/36m
+    // Rating 75 (Avg) -> Gap 25 / 17 = ~1.47 + 0.8 = 2.27 Fouls/36m
     PROPENSITY_SCALE: 17, 
 
     // 3. Matchup Modifier
@@ -94,8 +94,8 @@ export const FOUL_CONFIG = {
 export function calculateFoulStats(
     defender: Player,
     minutesPlanned: number,
-    defTactics: { defense: DefenseTactic[] },
-    oppOffTactics: { offense: OffenseTactic[] },
+    defTactics: { defenseTactics: DefenseTactic[] }, // FIXED: Match GameTactics property
+    oppOffTactics: { offenseTactics: OffenseTactic[] }, // FIXED: Match GameTactics property
     sliders: TacticalSliders,
     matchupOpponent?: Player,
     isStopper: boolean = false
@@ -166,11 +166,11 @@ export function calculateFoulStats(
     // ==================================================================
 
     // 4-A. Defensive Tactics (Static Tactic Bonus)
-    if (defTactics.defense.includes('ManToManPerimeter')) {
+    if (defTactics.defenseTactics.includes('ManToManPerimeter')) { // FIXED
         // Aggressive perimeter defense leads to reach-ins for guards/wings
         if (['PG', 'SG', 'SF', 'G', 'F'].includes(pos)) foulPropensity *= C.TACTICS.DEF_AGGRESSIVE;
     }
-    if (defTactics.defense.includes('ZoneDefense')) {
+    if (defTactics.defenseTactics.includes('ZoneDefense')) { // FIXED
         // Zone defense exposes bigs to more contest situations
         if (['PF', 'C'].includes(pos)) foulPropensity *= C.TACTICS.DEF_AGGRESSIVE;
     }
@@ -202,7 +202,7 @@ export function calculateFoulStats(
     }
 
     // 4-B. Opponent Offensive Tactics (Pressure Points)
-    const oppTacticsList = oppOffTactics.offense;
+    const oppTacticsList = oppOffTactics.offenseTactics; // FIXED
     if (oppTacticsList.includes('PostFocus')) {
         // Opponent pounding inside -> Bigs foul more
         if (['PF', 'C'].includes(pos)) foulPropensity *= C.TACTICS.OFF_MISMATCH;
