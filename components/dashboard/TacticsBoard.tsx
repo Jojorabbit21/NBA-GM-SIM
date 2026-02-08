@@ -26,10 +26,11 @@ const getStatColor = (val: number) => {
     return 'text-slate-500';
 };
 
-const StatBadge: React.FC<{ label: string, value: number }> = ({ label, value }) => (
-    <div className="flex flex-col items-center justify-center bg-slate-900/80 border border-slate-700/50 rounded-lg p-1.5 shadow-lg backdrop-blur-sm min-w-[60px]">
-        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</span>
-        <span className={`text-sm font-black font-mono ${getStatColor(value)}`}>{value}</span>
+// [Design Update] New Stat Item without container background
+const CourtStatItem: React.FC<{ label: string, value: number, top: string, left: string }> = ({ label, value, top, left }) => (
+    <div className="absolute flex flex-col items-center justify-center transform -translate-x-1/2 -translate-y-1/2 text-center select-none" style={{ top, left }}>
+        <span className="text-[10px] font-black text-slate-500/80 uppercase tracking-widest mb-0.5">{label}</span>
+        <span className={`text-xl font-black font-mono ${getStatColor(value)} drop-shadow-md`}>{value}</span>
     </div>
 );
 
@@ -67,88 +68,74 @@ const TacticalCourt: React.FC<{ starters: Player[] }> = ({ starters }) => {
 
     if (!stats) return <div className="h-full flex items-center justify-center text-slate-500 text-xs">주전 정보 없음</div>;
 
+    // SVG Coordinate System: 500 x 940 (1 unit = 0.1 ft approx, Standard NBA Court 50ft x 94ft)
     return (
-        // [Design Fix] Removed h-full, added aspect-[3/5] to maintain ratio. 
-        <div className="w-full aspect-[3/5] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden relative flex flex-col shadow-inner">
+        <div className="w-full aspect-[50/94] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden relative shadow-inner">
             {/* Court SVG Layer */}
-            <div className="absolute inset-0 p-4">
-                {/* [Design Fix] Removed preserveAspectRatio="none" to keep aspect ratio */}
-                <svg viewBox="0 0 300 500" className="w-full h-full opacity-30">
-                    {/* Floor */}
-                    <rect x="0" y="0" width="300" height="500" fill="#1e293b" />
+            <svg viewBox="0 0 500 940" className="w-full h-full opacity-50">
+                {/* Floor */}
+                <rect x="0" y="0" width="500" height="940" fill="#0f172a" />
+                
+                {/* Lines Style */}
+                <g stroke="#475569" strokeWidth="3" fill="none">
+                    {/* Center Court */}
+                    <line x1="0" y1="470" x2="500" y2="470" />
+                    <circle cx="250" cy="470" r="60" />
                     
-                    {/* Lines Style */}
-                    <g stroke="#64748b" strokeWidth="2" fill="none">
-                        {/* Center Line */}
-                        <line x1="0" y1="250" x2="300" y2="250" />
-                        <circle cx="150" cy="250" r="30" />
+                    {/* --- Top Half (Offense) --- */}
+                    {/* 3PT Line: Straight lines (14ft) then Arc */}
+                    {/* Corner 3 is 3ft from sideline, so x=30 and x=470. Straight for 14ft (140 units) */}
+                    <path d="M 30,0 V 140 Q 30,290 250,290 Q 470,290 470,140 V 0" />
+                    
+                    {/* Key (Paint): 16ft wide (160 units), 19ft long (190 units) */}
+                    <rect x="170" y="0" width="160" height="190" />
+                    
+                    {/* Free Throw Circle (Top of Key): Radius 6ft (60 units) at y=190 */}
+                    <circle cx="250" cy="190" r="60" />
+                    
+                    {/* Backboard & Hoop: Center is 4ft from baseline -> y=40, Hoop center ~5.25ft -> y=52.5 */}
+                    <line x1="220" y1="40" x2="280" y2="40" strokeWidth="3" />
+                    <circle cx="250" cy="52.5" r="7.5" stroke="#94a3b8" />
 
-                        {/* Top Half (Offense) */}
-                        <path d="M 30,0 V 47" /> {/* Left Corner */}
-                        <path d="M 270,0 V 47" /> {/* Right Corner */}
-                        <path d="M 30,47 Q 150,140 270,47" /> {/* 3PT Arc */}
-                        <rect x="110" y="0" width="80" height="110" /> {/* Key */}
-                        <path d="M 110,110 A 40,40 0 0,0 190,110" /> {/* Free Throw Circle */}
-                        <circle cx="150" cy="30" r="5" stroke="#94a3b8" fill="none"/> {/* Hoop */}
 
-                        {/* Bottom Half (Defense) */}
-                        <path d="M 30,500 V 453" /> {/* Left Corner */}
-                        <path d="M 270,500 V 453" /> {/* Right Corner */}
-                        <path d="M 30,453 Q 150,360 270,453" /> {/* 3PT Arc */}
-                        <rect x="110" y="390" width="80" height="110" /> {/* Key */}
-                        <path d="M 110,390 A 40,40 0 0,1 190,390" /> {/* Free Throw Circle */}
-                        <circle cx="150" cy="470" r="5" stroke="#94a3b8" fill="none"/> {/* Hoop */}
-                    </g>
-                </svg>
-            </div>
+                    {/* --- Bottom Half (Defense) --- */}
+                    {/* 3PT Line */}
+                    <path d="M 30,940 V 800 Q 30,650 250,650 Q 470,650 470,800 V 940" />
+                    
+                    {/* Key */}
+                    <rect x="170" y="750" width="160" height="190" />
+                    
+                    {/* Free Throw Circle */}
+                    <circle cx="250" cy="750" r="60" />
+                    
+                    {/* Backboard & Hoop */}
+                    <line x1="220" y1="900" x2="280" y2="900" strokeWidth="3" />
+                    <circle cx="250" cy="887.5" r="7.5" stroke="#94a3b8" />
+                </g>
+            </svg>
 
-            {/* Overlays Layer */}
-            <div className="absolute inset-0 flex flex-col z-10">
-                {/* Top Half: OFFENSE */}
-                <div className="flex-1 relative">
-                    <div className="absolute top-2 left-0 w-full text-center">
-                        <span className="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] bg-slate-950/80 px-3 py-1 rounded-full border border-orange-500/30 flex items-center justify-center gap-2 w-fit mx-auto">
-                            <Target size={10} /> Offense Potential
-                        </span>
-                    </div>
+            {/* Stats Overlays Layer */}
+            <div className="absolute inset-0">
+                {/* --- OFFENSE (Top) --- */}
+                {/* Rim: Near Basket */}
+                <CourtStatItem label="Rim Finish" value={stats.rim} top="9%" left="50%" />
+                
+                {/* Paint: Inside Key */}
+                <CourtStatItem label="Paint" value={stats.paint} top="17%" left="50%" />
+                
+                {/* Mid-Range: Between Paint and 3PT */}
+                <CourtStatItem label="Mid-Range" value={stats.mid} top="27%" left="50%" />
+                
+                {/* 3PT: Outside Arc */}
+                <CourtStatItem label="3PT Shot" value={stats.three} top="37%" left="50%" />
 
-                    {/* Stats Positioning */}
-                    <div className="absolute top-[18%] left-1/2 -translate-x-1/2">
-                        <StatBadge label="3PT Shot" value={stats.three} />
-                    </div>
-                    <div className="absolute top-[35%] left-1/2 -translate-x-1/2">
-                        <StatBadge label="Mid-Range" value={stats.mid} />
-                    </div>
-                    <div className="absolute top-[8%] left-[20%]">
-                        <StatBadge label="Paint" value={stats.paint} />
-                    </div>
-                     <div className="absolute top-[8%] right-[20%]">
-                        <StatBadge label="Rim Finish" value={stats.rim} />
-                    </div>
-                </div>
 
-                {/* Divider */}
-                <div className="h-px bg-slate-700/50 w-full relative">
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 px-2 text-[9px] font-bold text-slate-600">
-                        STARTERS AVERAGE
-                    </div>
-                </div>
-
-                {/* Bottom Half: DEFENSE */}
-                <div className="flex-1 relative">
-                    <div className="absolute bottom-2 left-0 w-full text-center">
-                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] bg-slate-950/80 px-3 py-1 rounded-full border border-blue-500/30 flex items-center justify-center gap-2 w-fit mx-auto">
-                            <Shield size={10} /> Defense Potential
-                        </span>
-                    </div>
-
-                    <div className="absolute top-[25%] left-1/2 -translate-x-1/2">
-                        <StatBadge label="Perimeter Def" value={stats.perDef} />
-                    </div>
-                    <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2">
-                        <StatBadge label="Interior Def" value={stats.intDef} />
-                    </div>
-                </div>
+                {/* --- DEFENSE (Bottom) --- */}
+                {/* Perimeter Def: High outside arc */}
+                <CourtStatItem label="Perimeter Def" value={stats.perDef} top="63%" left="50%" />
+                
+                {/* Interior Def: Inside Key */}
+                <CourtStatItem label="Interior Def" value={stats.intDef} top="83%" left="50%" />
             </div>
         </div>
     );
@@ -406,11 +393,10 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     </div>
 
                     {/* Center Column: Strategy Selectors (5 cols) */}
-                    <div className="lg:col-span-5 space-y-4"> {/* [Design Fix] Changed space-y-8 to space-y-4 to tighten vertical layout matching right col */}
+                    <div className="lg:col-span-5 space-y-4">
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 text-indigo-400 px-2">
                                 <Target size={24} />
-                                {/* [Design Fix] Reduced title font size */}
                                 <span className="font-black text-sm uppercase tracking-widest oswald">공격 시스템</span>
                             </div>
                             <div className="relative group">
@@ -437,7 +423,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 text-indigo-400 px-2">
                                 <Shield size={24} />
-                                {/* [Design Fix] Reduced title font size */}
                                 <span className="font-black text-sm uppercase tracking-widest oswald">수비 시스템</span>
                             </div>
                             <div className="relative group">
@@ -479,14 +464,11 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     </div>
 
                     {/* Right Column: Sliders (4 cols, 1 per row) */}
-                    {/* [Design Fix] space-y-4 to align with center col spacing structure */}
                     <div className="lg:col-span-4 flex flex-col space-y-4">
                         <div className="flex items-center gap-3 text-indigo-400 px-2">
                             <Sliders size={24} />
-                            {/* [Design Fix] Reduced title font size */}
                             <span className="font-black text-sm uppercase tracking-widest oswald">디테일 전술 조정</span>
                         </div>
-                        {/* [Design Fix] Removed h-full, changed rounded-[2rem] to rounded-2xl, changed p-8 to p-6 */}
                         <div className="flex flex-col gap-8 bg-slate-950/40 p-6 rounded-2xl border border-slate-800/50 shadow-inner">
                             <SliderControl 
                                 label="공격 페이스" 
