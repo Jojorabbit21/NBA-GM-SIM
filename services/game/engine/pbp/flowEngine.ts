@@ -46,6 +46,8 @@ export function flattenPlayer(lp: LivePlayer): Player {
         stats: {} as any,
         
         age: 25, salary: 0, contractYears: 0, potential: 0,
+        // [Fix] Add revealedPotential to satisfy Player interface
+        revealedPotential: lp.ovr,
         ins: lp.attr.ins, out: lp.attr.out, midRange: lp.attr.mid, ft: lp.attr.ft,
         threeCorner: lp.attr.threeVal, three45: lp.attr.threeVal, threeTop: lp.attr.threeVal,
         closeShot: lp.attr.ins, layup: lp.attr.ins, dunk: lp.attr.ins,

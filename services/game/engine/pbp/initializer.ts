@@ -44,6 +44,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             rimM: 0, rimA: 0, midM: 0, midA: 0,
             pf: 0, plusMinus: 0, mp: 0, g: 1, gs: 0,
             zoneData: { ...INITIAL_STATS() },
+            // [Fix] Add condition to satisfy PlayerBoxScore interface
+            condition: currentCondition,
             currentCondition,
             startCondition: currentCondition,
             position: p.position,
