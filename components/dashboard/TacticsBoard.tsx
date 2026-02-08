@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, ChevronDown, Edit3, Trash2 } from 'lucide-react';
+import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, ChevronDown, Edit3, Trash2, TrendingUp, Lock } from 'lucide-react';
 import { OffenseTactic, DefenseTactic, GameTactics, TacticPreset, Player } from '../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../utils/tacticUtils';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
@@ -16,11 +16,148 @@ interface TacticsBoardProps {
   calculateTacticScore: (type: OffenseTactic | DefenseTactic) => number;
 }
 
+// Helper for Color Coding Stats
+const getStatColor = (val: number) => {
+    if (val >= 90) return 'text-fuchsia-400';
+    if (val >= 85) return 'text-purple-400';
+    if (val >= 80) return 'text-indigo-400';
+    if (val >= 75) return 'text-emerald-400';
+    if (val >= 70) return 'text-amber-400';
+    return 'text-slate-500';
+};
+
+const StatBadge: React.FC<{ label: string, value: number }> = ({ label, value }) => (
+    <div className="flex flex-col items-center justify-center bg-slate-900/80 border border-slate-700/50 rounded-lg p-1.5 shadow-lg backdrop-blur-sm min-w-[60px]">
+        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-0.5">{label}</span>
+        <span className={`text-sm font-black font-mono ${getStatColor(value)}`}>{value}</span>
+    </div>
+);
+
+// Vertical Court Visualization Component
+const TacticalCourt: React.FC<{ starters: Player[] }> = ({ starters }) => {
+    // Calculate Averages
+    const stats = useMemo(() => {
+        if (starters.length === 0) return null;
+        
+        const sum = (key: keyof Player) => starters.reduce((acc, p) => acc + (p[key] as number || 0), 0);
+        const avg = (val: number) => Math.round(val / starters.length);
+
+        // Offense
+        const layup = sum('layup');
+        const dunk = sum('dunk');
+        const close = sum('closeShot');
+        const mid = sum('midRange');
+        
+        // 3PT Avg Calculation per player then sum
+        const threeSum = starters.reduce((acc, p) => acc + ((p.threeCorner + p.three45 + p.threeTop) / 3), 0);
+        
+        // Defense
+        const perDef = sum('perDef');
+        const intDef = sum('intDef');
+
+        return {
+            rim: avg((layup + dunk) / 2),
+            paint: avg(close),
+            mid: avg(mid),
+            three: Math.round(threeSum / starters.length),
+            perDef: avg(perDef),
+            intDef: avg(intDef)
+        };
+    }, [starters]);
+
+    if (!stats) return <div className="h-full flex items-center justify-center text-slate-500 text-xs">주전 정보 없음</div>;
+
+    return (
+        <div className="w-full h-full bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden relative flex flex-col shadow-inner">
+            {/* Court SVG Layer */}
+            <div className="absolute inset-0 p-4">
+                <svg viewBox="0 0 300 500" className="w-full h-full opacity-30" preserveAspectRatio="none">
+                    {/* Floor */}
+                    <rect x="0" y="0" width="300" height="500" fill="#1e293b" />
+                    
+                    {/* Lines Style */}
+                    <g stroke="#64748b" strokeWidth="2" fill="none">
+                        {/* Center Line */}
+                        <line x1="0" y1="250" x2="300" y2="250" />
+                        <circle cx="150" cy="250" r="30" />
+
+                        {/* Top Half (Offense) */}
+                        <path d="M 30,0 V 47" /> {/* Left Corner */}
+                        <path d="M 270,0 V 47" /> {/* Right Corner */}
+                        <path d="M 30,47 Q 150,140 270,47" /> {/* 3PT Arc */}
+                        <rect x="110" y="0" width="80" height="110" /> {/* Key */}
+                        <path d="M 110,110 A 40,40 0 0,0 190,110" /> {/* Free Throw Circle */}
+                        <circle cx="150" cy="30" r="5" stroke="#94a3b8" fill="none"/> {/* Hoop */}
+
+                        {/* Bottom Half (Defense) */}
+                        <path d="M 30,500 V 453" /> {/* Left Corner */}
+                        <path d="M 270,500 V 453" /> {/* Right Corner */}
+                        <path d="M 30,453 Q 150,360 270,453" /> {/* 3PT Arc */}
+                        <rect x="110" y="390" width="80" height="110" /> {/* Key */}
+                        <path d="M 110,390 A 40,40 0 0,1 190,390" /> {/* Free Throw Circle */}
+                        <circle cx="150" cy="470" r="5" stroke="#94a3b8" fill="none"/> {/* Hoop */}
+                    </g>
+                </svg>
+            </div>
+
+            {/* Overlays Layer */}
+            <div className="absolute inset-0 flex flex-col z-10">
+                {/* Top Half: OFFENSE */}
+                <div className="flex-1 relative">
+                    <div className="absolute top-2 left-0 w-full text-center">
+                        <span className="text-[10px] font-black text-orange-500 uppercase tracking-[0.2em] bg-slate-950/80 px-3 py-1 rounded-full border border-orange-500/30 flex items-center justify-center gap-2 w-fit mx-auto">
+                            <Target size={10} /> Offense Potential
+                        </span>
+                    </div>
+
+                    {/* Stats Positioning */}
+                    <div className="absolute top-[18%] left-1/2 -translate-x-1/2">
+                        <StatBadge label="3PT Shot" value={stats.three} />
+                    </div>
+                    <div className="absolute top-[35%] left-1/2 -translate-x-1/2">
+                        <StatBadge label="Mid-Range" value={stats.mid} />
+                    </div>
+                    <div className="absolute top-[8%] left-[20%]">
+                        <StatBadge label="Paint" value={stats.paint} />
+                    </div>
+                     <div className="absolute top-[8%] right-[20%]">
+                        <StatBadge label="Rim Finish" value={stats.rim} />
+                    </div>
+                </div>
+
+                {/* Divider */}
+                <div className="h-px bg-slate-700/50 w-full relative">
+                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-slate-900 px-2 text-[9px] font-bold text-slate-600">
+                        STARTERS AVERAGE
+                    </div>
+                </div>
+
+                {/* Bottom Half: DEFENSE */}
+                <div className="flex-1 relative">
+                    <div className="absolute bottom-2 left-0 w-full text-center">
+                        <span className="text-[10px] font-black text-blue-500 uppercase tracking-[0.2em] bg-slate-950/80 px-3 py-1 rounded-full border border-blue-500/30 flex items-center justify-center gap-2 w-fit mx-auto">
+                            <Shield size={10} /> Defense Potential
+                        </span>
+                    </div>
+
+                    <div className="absolute top-[25%] left-1/2 -translate-x-1/2">
+                        <StatBadge label="Perimeter Def" value={stats.perDef} />
+                    </div>
+                    <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2">
+                        <StatBadge label="Interior Def" value={stats.intDef} />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
 const SliderControl: React.FC<{ label: string, value: number, onChange: (val: number) => void, min?: number, max?: number, leftLabel?: string, rightLabel?: string, tooltip?: string }> = ({ label, value, onChange, min=1, max=10, leftLabel, rightLabel, tooltip }) => (
-  <div className="space-y-2 group/slider">
+  <div className="space-y-2 group/slider w-full">
     <div className="flex justify-between items-end">
       <div className="flex items-center gap-1.5 relative">
-        <span className="text-sm font-black text-slate-400 uppercase tracking-tight cursor-help">{label}</span>
+        <span className="text-xs font-black text-slate-400 uppercase tracking-tight cursor-help">{label}</span>
         {tooltip && (
             <div className="relative group/tooltip">
                 <HelpCircle size={12} className="text-slate-600 hover:text-indigo-400 transition-colors cursor-help" />
@@ -31,7 +168,7 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
             </div>
         )}
       </div>
-      <span className="text-base font-black text-indigo-400 font-mono">{value}</span>
+      <span className="text-sm font-black text-indigo-400 font-mono">{value}</span>
     </div>
     <div className="relative flex items-center h-6">
        <input 
@@ -43,7 +180,7 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30"
        />
     </div>
-    <div className="flex justify-between text-[11px] font-bold text-slate-600 uppercase tracking-tighter">
+    <div className="flex justify-between text-[10px] font-bold text-slate-600 uppercase tracking-tighter">
        <span>{leftLabel || 'Low'}</span>
        <span>{rightLabel || 'High'}</span>
     </div>
@@ -88,6 +225,12 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
     const [renameModalOpen, setRenameModalOpen] = useState(false);
     const [targetRenameSlot, setTargetRenameSlot] = useState<number | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    // Identify Starters for Court View
+    const starters = useMemo(() => {
+        const starterIds = Object.values(tactics.starters).filter(id => id !== '');
+        return roster.filter(p => starterIds.includes(p.id));
+    }, [tactics.starters, roster]);
 
     useEffect(() => {
         const init = async () => {
@@ -198,7 +341,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
             />
 
             {/* Header Controls */}
-            <div className="px-8 py-5 bg-slate-950/40 border-b border-white/5 flex items-center justify-between">
+            <div className="px-8 py-5 bg-slate-950/40 border-b border-white/5 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-6">
                     <div className="relative w-64" ref={dropdownRef}>
                         <button 
@@ -251,109 +394,108 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                 </button>
             </div>
             
-            <div className="p-10 grid grid-cols-1 lg:grid-cols-2 gap-12 overflow-y-auto custom-scrollbar">
-                
-                {/* Left Column: Strategy Selection */}
-                <div className="space-y-10">
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3 text-indigo-400 px-2">
-                            <Target size={24} />
-                            <span className="font-black text-lg uppercase tracking-widest oswald">공격 시스템</span>
-                        </div>
-                        <div className="relative group">
-                            <select value={currentOffense} onChange={handleOffenseChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all">
-                                {(['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => (
-                                    <option key={t} value={t}>{OFFENSE_TACTIC_INFO[t].label}</option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400" size={20} />
-                        </div>
-                        <div className="bg-slate-950/40 border border-slate-800/50 rounded-2xl p-6 space-y-4">
-                            <div className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5 pb-2">{OFFENSE_TACTIC_INFO[currentOffense].desc}</div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
+            {/* 3-Column Layout */}
+            <div className="p-6 lg:p-10 flex-1 overflow-y-auto custom-scrollbar">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+                    
+                    {/* Left Column: Court Visualization (3 cols) */}
+                    <div className="lg:col-span-3 min-h-[500px]">
+                        <TacticalCourt starters={starters} />
+                    </div>
+
+                    {/* Center Column: Strategy Selectors (5 cols) */}
+                    <div className="lg:col-span-5 space-y-8">
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 text-indigo-400 px-2">
+                                <Target size={24} />
+                                <span className="font-black text-lg uppercase tracking-widest oswald">공격 시스템</span>
+                            </div>
+                            <div className="relative group">
+                                <select value={currentOffense} onChange={handleOffenseChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all shadow-lg">
+                                    {(['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => (
+                                        <option key={t} value={t}>{OFFENSE_TACTIC_INFO[t].label}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400" size={20} />
+                            </div>
+                            <div className="bg-slate-950/40 border border-slate-800/50 rounded-2xl p-6 space-y-4 shadow-sm">
+                                <div className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5 pb-2">{OFFENSE_TACTIC_INFO[currentOffense].desc}</div>
+                                <div className="grid grid-cols-1 gap-2">
                                     {OFFENSE_TACTIC_INFO[currentOffense].pros.map((pro, i) => (
                                         <div key={i} className="flex items-start gap-2.5 text-xs text-slate-300"><span className="text-emerald-500 text-sm mt-0.5">✅</span><span className="leading-relaxed">{pro}</span></div>
                                     ))}
-                                </div>
-                                <div className="space-y-2">
                                     {OFFENSE_TACTIC_INFO[currentOffense].cons.map((con, i) => (
                                         <div key={i} className="flex items-start gap-2.5 text-xs text-slate-300"><span className="text-red-500 text-sm mt-0.5">❌</span><span className="leading-relaxed">{con}</span></div>
                                     ))}
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3 text-indigo-400 px-2">
-                            <Shield size={24} />
-                            <span className="font-black text-lg uppercase tracking-widest oswald">수비 시스템</span>
-                        </div>
-                        <div className="relative group">
-                            <select value={currentDefense} onChange={handleDefenseChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all">
-                                {(['ManToManPerimeter', 'ZoneDefense'] as DefenseTactic[]).map(t => (
-                                    <option key={t} value={t}>{DEFENSE_TACTIC_INFO[t].label}</option>
-                                ))}
-                            </select>
-                            <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400" size={20} />
-                        </div>
-                        <div className="bg-slate-950/40 border border-slate-800/50 rounded-2xl p-6 space-y-4">
-                            <div className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5 pb-2">{DEFENSE_TACTIC_INFO[currentDefense].desc}</div>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-2">
+                        
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-3 text-indigo-400 px-2">
+                                <Shield size={24} />
+                                <span className="font-black text-lg uppercase tracking-widest oswald">수비 시스템</span>
+                            </div>
+                            <div className="relative group">
+                                <select value={currentDefense} onChange={handleDefenseChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all shadow-lg">
+                                    {(['ManToManPerimeter', 'ZoneDefense'] as DefenseTactic[]).map(t => (
+                                        <option key={t} value={t}>{DEFENSE_TACTIC_INFO[t].label}</option>
+                                    ))}
+                                </select>
+                                <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400" size={20} />
+                            </div>
+                            <div className="bg-slate-950/40 border border-slate-800/50 rounded-2xl p-6 space-y-4 shadow-sm">
+                                <div className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-white/5 pb-2">{DEFENSE_TACTIC_INFO[currentDefense].desc}</div>
+                                <div className="grid grid-cols-1 gap-2">
                                     {DEFENSE_TACTIC_INFO[currentDefense].pros.map((pro, i) => (
                                         <div key={i} className="flex items-start gap-2.5 text-xs text-slate-300"><span className="text-emerald-500 text-sm mt-0.5">✅</span><span className="leading-relaxed">{pro}</span></div>
                                     ))}
-                                </div>
-                                <div className="space-y-2">
                                     {DEFENSE_TACTIC_INFO[currentDefense].cons.map((con, i) => (
                                         <div key={i} className="flex items-start gap-2.5 text-xs text-slate-300"><span className="text-red-500 text-sm mt-0.5">❌</span><span className="leading-relaxed">{con}</span></div>
                                     ))}
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="pt-4">
-                             <div className="flex items-center gap-2 mb-3 px-1">
-                                <ShieldAlert size={18} className="text-indigo-400" />
-                                <span className="text-sm font-black text-slate-400 uppercase tracking-widest">에이스 스토퍼 (Lockdown Defender)</span>
-                             </div>
-                             <div className="relative">
-                                <select value={stopperId || ""} onChange={handleStopperChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all">
-                                    <option value="">지정 안함 (팀 수비 모드)</option>
-                                    {sortedRoster.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name} ({p.position}) - OVR {calculatePlayerOvr(p)}</option>
-                                    ))}
-                                </select>
-                                <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                            <div className="pt-2">
+                                <div className="flex items-center gap-2 mb-3 px-1">
+                                    <ShieldAlert size={18} className="text-indigo-400" />
+                                    <span className="text-sm font-black text-slate-400 uppercase tracking-widest">에이스 스토퍼 (Lockdown)</span>
+                                </div>
+                                <div className="relative">
+                                    <select value={stopperId || ""} onChange={handleStopperChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all shadow-lg">
+                                        <option value="">지정 안함 (팀 수비 모드)</option>
+                                        {sortedRoster.map(p => (
+                                            <option key={p.id} value={p.id}>{p.name} ({p.position}) - OVR {calculatePlayerOvr(p)}</option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="absolute right-6 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
 
-                {/* Right Column: Sliders */}
-                <div className="space-y-8">
-                    <div className="flex items-center gap-3 text-indigo-400 px-2">
-                        <Sliders size={24} />
-                        <span className="font-black text-lg uppercase tracking-widest oswald">디테일 전술 조정 (Sliders)</span>
-                    </div>
-                    <div className="grid grid-cols-1 gap-10 bg-slate-950/40 p-10 rounded-[2rem] border border-slate-800/50 shadow-inner">
-                        <SliderControl 
-                            label="공격 페이스" 
-                            value={sliders.pace} 
-                            onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, pace: v } })}
-                            leftLabel="슬로우 템포" rightLabel="런앤건" 
-                            tooltip="수치가 높을수록 빠른 공수 전환과 얼리 오펜스를 시도하지만, 턴오버 위험과 체력 소모가 커집니다." 
-                        />
-                        <SliderControl 
-                            label="수비 강도" 
-                            value={sliders.defIntensity} 
-                            onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, defIntensity: v } })}
-                            leftLabel="안정적 수비" rightLabel="강한 압박" 
-                            tooltip="수치가 높을수록 상대 야투 억제와 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." 
-                        />
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
+                    {/* Right Column: Sliders (4 cols, 1 per row) */}
+                    <div className="lg:col-span-4 flex flex-col gap-6">
+                        <div className="flex items-center gap-3 text-indigo-400 px-2 pb-2">
+                            <Sliders size={24} />
+                            <span className="font-black text-lg uppercase tracking-widest oswald">디테일 전술 조정</span>
+                        </div>
+                        <div className="flex flex-col gap-8 bg-slate-950/40 p-8 rounded-[2rem] border border-slate-800/50 shadow-inner h-full">
+                            <SliderControl 
+                                label="공격 페이스" 
+                                value={sliders.pace} 
+                                onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, pace: v } })}
+                                leftLabel="슬로우 템포" rightLabel="런앤건" 
+                                tooltip="수치가 높을수록 빠른 공수 전환과 얼리 오펜스를 시도하지만, 턴오버 위험과 체력 소모가 커집니다." 
+                            />
+                            <SliderControl 
+                                label="수비 강도" 
+                                value={sliders.defIntensity} 
+                                onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, defIntensity: v } })}
+                                leftLabel="안정적 수비" rightLabel="강한 압박" 
+                                tooltip="수치가 높을수록 상대 야투 억제와 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." 
+                            />
+                            {/* 1 Column Layout for Sliders */}
                             <SliderControl 
                                 label="공격 리바운드" value={sliders.offReb} 
                                 onChange={v => onUpdateTactics({ ...tactics, sliders: { ...sliders, offReb: v } })}
