@@ -4,6 +4,7 @@ import { initTeamState } from './initializer';
 import { calculatePossessionTime, formatTime } from './timeEngine';
 import { calculateIncrementalFatigue } from '../fatigueSystem';
 import { checkAndApplyRotation } from './rotationLogic';
+import { calculateFoulStats } from '../foulSystem';
 
 /**
  * Executes a full Play-by-Play game simulation.
@@ -36,16 +37,22 @@ export function runFullGameSimulation(
             const timeTaken = calculatePossessionTime(state as any, state.home.tactics.sliders);
             state.gameClock -= timeTaken;
 
+            // [Process Both Teams]
             [state.home, state.away].forEach(team => {
                 const isB2B = team.id === homeTeam.id ? isHomeB2B : isAwayB2B;
+                
                 team.onCourt.forEach(p => {
+                    // 1. MP & Fatigue
                     p.mp += timeTaken / 60;
                     const isStopper = team.tactics.defenseTactics.includes('AceStopper') && team.tactics.stopperId === p.playerId;
                     const fatigue = calculateIncrementalFatigue(p, timeTaken, team.tactics.sliders, isB2B, isStopper, team.tactics.offenseTactics[0], team.tactics.defenseTactics[0]);
-                    
-                    // [Fix] 체력이 0 미만으로 떨어지지 않도록 물리적 하한선 적용
                     p.currentCondition = Math.max(0, p.currentCondition - fatigue.drain);
                     
+                    // 2. Foul Simulation
+                    const foulRes = calculateFoulStats(p as any, p.mp, team.tactics, team.tactics, team.tactics.sliders);
+                    p.pf = foulRes.pf;
+                    
+                    // 3. Injury Check
                     if (fatigue.injuryOccurred) {
                         p.health = 'Injured';
                         state.logs.push({
@@ -58,30 +65,41 @@ export function runFullGameSimulation(
                     }
                 });
                 
+                // 4. Substitution Logic
                 checkAndApplyRotation(state as any, team, ((state.quarter - 1) * 720) + (720 - state.gameClock));
             });
 
-            // Baseline scoring for simulation flow
-            if (Math.random() > 0.5) state.home.score += Math.random() > 0.7 ? 3 : 2;
-            else state.away.score += Math.random() > 0.7 ? 3 : 2;
+            // 5. Scoring Resolution (Simulated per possession)
+            const attackingTeam = Math.random() > 0.5 ? state.home : state.away;
+            const shooter = attackingTeam.onCourt[Math.floor(Math.random() * 5)];
+            
+            const isThree = Math.random() > 0.7;
+            const hitRate = isThree ? 0.35 : 0.45;
+            
+            shooter.fga += 1;
+            if (isThree) shooter.p3a += 1;
+
+            if (Math.random() < hitRate) {
+                const pts = isThree ? 3 : 2;
+                shooter.pts += pts;
+                shooter.fgm += 1;
+                if (isThree) shooter.p3m += 1;
+                attackingTeam.score += pts;
+            }
         }
     }
 
-    const homeBox: PlayerBoxScore[] = [...state.home.onCourt, ...state.home.bench].map(p => ({
-        ...p,
-        plusMinus: state.home.score - state.away.score
-    }));
-
-    const awayBox: PlayerBoxScore[] = [...state.away.onCourt, ...state.away.bench].map(p => ({
-        ...p,
-        plusMinus: state.away.score - state.home.score
-    }));
+    const mapToBox = (teamState: any): PlayerBoxScore[] => 
+        [...teamState.onCourt, ...teamState.bench].map(p => ({
+            ...p,
+            plusMinus: teamState.score - (teamState === state.home ? state.away.score : state.home.score)
+        }));
 
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
-        homeBox,
-        awayBox,
+        homeBox: mapToBox(state.home),
+        awayBox: mapToBox(state.away),
         homeTactics: {},
         awayTactics: {},
         rosterUpdates: {},

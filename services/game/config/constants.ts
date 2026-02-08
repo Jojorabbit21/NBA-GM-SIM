@@ -7,7 +7,6 @@ export const SIM_CONFIG = {
         SCORING_MODIFIER: 1.05, 
     },
     FATIGUE: {
-        // [Balance Patch] 3.5 -> 1.8로 하향 (36분 출전 시 기본 64.8 소모)
         DRAIN_BASE: 1.8, 
         STAMINA_SAVE_FACTOR: 0.015,
         DURABILITY_FACTOR: 0.005,
