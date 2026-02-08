@@ -210,9 +210,9 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                             </span>
                                         </td>
 
-                                        {/* OVR */}
+                                        {/* OVR - Font Size Increased to text-xs */}
                                         <td className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
-                                            <div className={`${getOvrBadgeStyle(ovr)} !w-6 !h-6 !text-[10px] !rounded-md !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`}>
+                                            <div className={`${getOvrBadgeStyle(ovr)} !w-6 !h-6 !text-xs !rounded-md !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`}>
                                                 {ovr}
                                             </div>
                                         </td>
