@@ -138,10 +138,19 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
                             {/* Sticky Left Columns (RowSpan 2) */}
                             {/* [Design Update] Changed border colors to slate-600 and width to 1px */}
+                            {/* Widths: POS(50) + PLAYER(160) + OVR(40) + COND(40) = 290px -> MIN starts at 290px */}
+                            
                             <th rowSpan={2} className={`py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center ${headerBottomBorder} border-r border-slate-800 sticky left-0 bg-slate-900 z-40`}>POS</th>
+                            
                             <th rowSpan={2} className={`py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 ${headerBottomBorder} sticky left-[50px] z-40 border-r border-slate-800`}>PLAYER</th>
+                            
                             <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800`}>OVR</th>
-                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[250px] bg-slate-900 z-40 ${quarterBorder}`}>MIN</th>
+                            
+                            {/* [NEW] COND Column */}
+                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[250px] bg-slate-900 z-40 border-r border-slate-800`}>COND</th>
+                            
+                            {/* MIN Column - Shifted Left to 290px */}
+                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[290px] bg-slate-900 z-40 ${quarterBorder}`}>MIN</th>
                             
                             {/* Quarter Headers */}
                             <th colSpan={12} className={`text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-700 ${quarterBorder}`}>1Q</th>
@@ -174,6 +183,11 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                 const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
                                 const totalMins = playerMap.filter(Boolean).length;
                                 const isRes = pos === 'RES';
+                                
+                                const condition = p.condition ?? 100;
+                                let condColor = 'text-emerald-500';
+                                if (condition < 70) condColor = 'text-red-500';
+                                else if (condition < 90) condColor = 'text-amber-500';
 
                                 return (
                                     <tr key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
@@ -202,9 +216,16 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                 {ovr}
                                             </div>
                                         </td>
+                                        
+                                        {/* [NEW] COND */}
+                                        <td className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                            <span className={`text-[10px] font-black ${condColor}`}>
+                                                {condition}%
+                                            </span>
+                                        </td>
 
-                                        {/* Total Minutes */}
-                                        <td className={`text-center sticky left-[250px] bg-slate-900/95 z-20 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px] ${quarterBorder}`}>
+                                        {/* Total Minutes (Sticky pos shifted) */}
+                                        <td className={`text-center sticky left-[290px] bg-slate-900/95 z-20 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px] ${quarterBorder}`}>
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
