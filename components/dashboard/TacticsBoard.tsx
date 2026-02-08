@@ -32,7 +32,7 @@ const getStatColor = (val: number) => {
     if (val >= 80) return 'text-indigo-400';
     if (val >= 75) return 'text-emerald-400';
     if (val >= 70) return 'text-amber-400';
-    return 'text-slate-500';
+    return 'text-slate-400';
 };
 
 // Helper for Color Coding Stats (Hex for SVG Fill)
@@ -46,7 +46,7 @@ const getStatHex = (val: number) => {
 };
 
 const CourtStatItem: React.FC<{ label: string, value: number, top: string, left: string, align?: 'left'|'center'|'right' }> = ({ label, value, top, left, align='center' }) => (
-    <div className={`absolute flex flex-col items-center justify-center transform -translate-y-1/2 z-10 bg-slate-900/90 border border-slate-700/50 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-lg min-w-[60px]`} style={{ top, left, transform: `translate(${align === 'center' ? '-50%' : align === 'left' ? '0' : '-100%'}, -50%)` }}>
+    <div className={`absolute flex flex-col items-center justify-center transform -translate-y-1/2 z-10 bg-slate-800 border border-slate-600 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-lg min-w-[60px]`} style={{ top, left, transform: `translate(${align === 'center' ? '-50%' : align === 'left' ? '0' : '-100%'}, -50%)` }}>
         <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-0.5">{label}</span>
         <span className={`text-lg font-black font-mono leading-none ${getStatColor(value)}`}>{value}</span>
     </div>
@@ -105,24 +105,9 @@ const TacticalHalfCourt: React.FC<{ starters: Player[], type: 'offense' | 'defen
                 {/* 1. Background Fill (Base) - Original Dark Blue */}
                 <rect x="0" y="0" width="435" height="403" fill="#0f172a" />
                 
-                {/* 2. Zone Fills (Layered from largest to smallest) - Keep zones but remove base background tint */}
-                {type === 'offense' && (
-                    <>
-                         {/* Mid-Range (Inside 3PT Arc) */}
-                         <path d={COURT_LINES[4]} fill={getStatHex(stats.mid)} fillOpacity="0.25" stroke="none" />
-                         {/* Paint (Key) */}
-                         <path d={COURT_LINES[0]} fill={getStatHex(stats.paint)} fillOpacity="0.3" stroke="none" />
-                         {/* Rim (Restricted) */}
-                         <path d={COURT_LINES[3]} fill={getStatHex(stats.rim)} fillOpacity="0.4" stroke="none" />
-                    </>
-                )}
-                
-                {type === 'defense' && (
-                    <>
-                        {/* Interior (Paint/Key) */}
-                         <path d={COURT_LINES[0]} fill={getStatHex(stats.intDef)} fillOpacity="0.3" stroke="none" />
-                    </>
-                )}
+                {/* 2. Zone Fills (Layered from largest to smallest) */}
+                {/* Unified Paint Zone Color (using Interior Def color logic for both to maintain consistency) */}
+                <path d={COURT_LINES[0]} fill={getStatHex(stats.intDef)} fillOpacity="0.3" stroke="none" />
 
                 {/* 3. Lines */}
                 <g fill="none" stroke="#475569" strokeWidth="2">
@@ -509,7 +494,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     {/* Right Column: Sliders (4 cols) */}
                     <div className="lg:col-span-4 flex flex-col space-y-4">
                         {/* Removed isolated Title, moved inside container */}
-                        <div className="flex flex-col gap-8 bg-slate-950/40 p-6 pt-6 rounded-2xl border border-slate-800/50 shadow-inner h-full">
+                        <div className="flex flex-col gap-8 bg-slate-950/20 p-6 pt-6 rounded-2xl border border-slate-800/50 h-full">
                             {/* Title moved here */}
                             <div className="flex items-center gap-3 text-indigo-400 px-1 mb-2">
                                 <Sliders size={24} />
