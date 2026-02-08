@@ -146,6 +146,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         onShowPlayoffReview={onShowPlayoffReview}
         hasPlayoffHistory={hasPlayoffHistory}
         currentSeries={currentSeries}
+        currentSimDate={currentSimDate}
       />
 
       {/* Main Content Area with Navigation */}

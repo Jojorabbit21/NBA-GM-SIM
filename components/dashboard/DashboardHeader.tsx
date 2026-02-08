@@ -19,6 +19,7 @@ interface DashboardHeaderProps {
   onShowPlayoffReview: () => void;
   hasPlayoffHistory: boolean;
   currentSeries?: PlayoffSeries;
+  currentSimDate?: string;
 }
 
 // Export DashboardReviewBanners as it's used in DashboardView
@@ -71,7 +72,7 @@ export const DashboardReviewBanners: React.FC<{
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, 
-  onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory, currentSeries
+  onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory, currentSeries, currentSimDate
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -80,6 +81,25 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   // Placeholder for rotation validation logic (usually passed or calculated from tactics)
   const isRotationValid = true; 
+
+  const dDayDisplay = useMemo(() => {
+      if (!nextGame || !currentSimDate) return null;
+      if (nextGame.played) return null;
+      
+      const target = new Date(nextGame.date);
+      const current = new Date(currentSimDate);
+      
+      // Reset hours for accurate day calc
+      target.setHours(0,0,0,0);
+      current.setHours(0,0,0,0);
+      
+      const diffTime = target.getTime() - current.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (diffDays === 0) return null; // Game Day
+      if (diffDays > 0) return `D-${diffDays}`;
+      return null;
+  }, [nextGame, currentSimDate]);
 
   return (
     <div className="w-full max-w-[1900px] bg-slate-900/80 border border-white/10 rounded-3xl shadow-2xl backdrop-blur-md overflow-hidden flex flex-col mb-6">
@@ -98,7 +118,18 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         </>
                     )}
                 </div>
-                <div className="text-3xl font-black text-slate-500 oswald">VS</div>
+                
+                {/* VS Center Display with Date */}
+                <div className="flex flex-col items-center justify-center min-w-[100px]">
+                    {nextGame && (
+                        <div className="flex flex-col items-center mb-1.5 gap-1">
+                            <span className="text-[10px] font-bold text-slate-500 tracking-wider">{nextGame.date}</span>
+                            {dDayDisplay && <span className="text-[9px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded uppercase tracking-tight">{dDayDisplay}</span>}
+                        </div>
+                    )}
+                    <div className="text-3xl font-black text-slate-600 oswald leading-none">VS</div>
+                </div>
+
                 <div className="flex items-center gap-6">
                     {homeTeam && (
                         <>
