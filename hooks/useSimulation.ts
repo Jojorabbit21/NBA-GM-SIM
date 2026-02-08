@@ -1,6 +1,7 @@
 
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player } from '../types';
+import { simulateGame } from '../services/gameEngine';
 
 /**
  * Hook to manage game simulation flow and season progression.
@@ -23,23 +24,71 @@ export const useSimulation = (
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any>(null);
-    // [Fix] useRef 초기값 추가
     const finalizeSimRef = useRef<() => void>(undefined);
+
+    // [Fix] 날짜 증가 헬퍼
+    const getNextDate = (dateStr: string) => {
+        const d = new Date(dateStr);
+        d.setDate(d.getDate() + 1);
+        return d.toISOString().split('T')[0];
+    };
+
+    // [Fix] 실제 시뮬레이션 결과 처리 로직 (애니메이션 종료 후 실행)
+    useEffect(() => {
+        finalizeSimRef.current = () => {
+            if (!activeGame) return;
+
+            const userGame = activeGame;
+            const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
+            const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
+
+            // 1. 사용자 경기 시뮬레이션
+            const result = simulateGame(homeTeam, awayTeam, myTeamId, undefined, false, false, depthChart);
+
+            // 2. 같은 날짜의 나머지 리그 경기 시뮬레이션
+            const otherGames = schedule.filter(g => g.date === currentSimDate && !g.played && g.id !== userGame.id);
+            const updatedSchedule = [...schedule];
+            
+            // 사용자 경기 결과 반영
+            const userGameIdx = updatedSchedule.findIndex(g => g.id === userGame.id);
+            updatedSchedule[userGameIdx] = { 
+                ...userGame, 
+                played: true, 
+                homeScore: result.homeScore, 
+                awayScore: result.awayScore 
+            };
+
+            // 리그 경기들 시뮬레이션 및 결과 반영
+            otherGames.forEach(og => {
+                const h = teams.find(t => t.id === og.homeTeamId)!;
+                const a = teams.find(t => t.id === og.awayTeamId)!;
+                const res = simulateGame(h, a, null);
+                const idx = updatedSchedule.findIndex(g => g.id === og.id);
+                updatedSchedule[idx] = { ...og, played: true, homeScore: res.homeScore, awayScore: res.awayScore };
+            });
+
+            // 3. 상태 업데이트 및 결과창 진입
+            setSchedule(updatedSchedule);
+            setLastGameResult({
+                ...result,
+                home: homeTeam,
+                away: awayTeam,
+                myTeamId,
+                otherGames: updatedSchedule.filter(g => g.date === currentSimDate && g.id !== userGame.id)
+            });
+            setActiveGame(null);
+        };
+    }, [activeGame, teams, schedule, currentSimDate, myTeamId, depthChart, setSchedule]);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics) => {
         setIsSimulating(true);
         
-        // Handle Inter-day Recovery
-        const totalRecovery = 15;
+        // 선수 체력 회복
         const updatedTeams = teams.map(team => ({
             ...team,
             roster: team.roster.map(player => {
-                const updatedPlayer = { ...player };
-                // [Fix] 체력 음수 보정 후 회복
-                const currentCond = Math.max(0, updatedPlayer.condition !== undefined ? updatedPlayer.condition : 100);
-                updatedPlayer.condition = Math.min(100, Math.round(currentCond + totalRecovery));
-                
-                return updatedPlayer;
+                const currentCond = Math.max(0, player.condition !== undefined ? player.condition : 100);
+                return { ...player, condition: Math.min(100, Math.round(currentCond + 15)) };
             })
         }));
         setTeams(updatedTeams);
@@ -49,11 +98,25 @@ export const useSimulation = (
         if (userGame) {
             setActiveGame(userGame);
         } else {
-            advanceDate(currentSimDate, { teams: updatedTeams });
+            // [Fix] 사용자의 경기가 없는 경우, 리그 전체 경기 시뮬레이션 후 날짜 증가
+            const dailyGames = schedule.filter(g => g.date === currentSimDate && !g.played);
+            const updatedSchedule = [...schedule];
+            
+            dailyGames.forEach(og => {
+                const h = updatedTeams.find(t => t.id === og.homeTeamId)!;
+                const a = updatedTeams.find(t => t.id === og.awayTeamId)!;
+                const res = simulateGame(h, a, null);
+                const idx = updatedSchedule.findIndex(g => g.id === og.id);
+                updatedSchedule[idx] = { ...og, played: true, homeScore: res.homeScore, awayScore: res.awayScore };
+            });
+
+            setSchedule(updatedSchedule);
+            const nextDay = getNextDate(currentSimDate);
+            advanceDate(nextDay, { teams: updatedTeams, schedule: updatedSchedule });
         }
         
         setIsSimulating(false);
-    }, [teams, schedule, currentSimDate, myTeamId, advanceDate, setTeams]);
+    }, [teams, schedule, currentSimDate, myTeamId, advanceDate, setTeams, setSchedule]);
 
     const clearLastGameResult = () => setLastGameResult(null);
 

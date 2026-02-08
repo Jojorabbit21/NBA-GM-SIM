@@ -265,7 +265,8 @@ export interface SimulationResult {
 
 export type RotationData = Record<string, { in: number, out: number }[]>;
 
-export type AppView = 'TeamSelect' | 'Onboarding' | 'Dashboard' | 'Roster' | 'Schedule' | 'Standings' | 'Leaderboard' | 'Transactions' | 'Playoffs' | 'Help' | 'OvrCalculator' | 'Inbox';
+/* [Fix] Added missing view states to AppView to resolve component naming errors */
+export type AppView = 'Auth' | 'TeamSelect' | 'Onboarding' | 'Dashboard' | 'Roster' | 'Schedule' | 'Standings' | 'Leaderboard' | 'Transactions' | 'Playoffs' | 'Help' | 'OvrCalculator' | 'Inbox' | 'GameSim' | 'GameResult' | 'SeasonReview' | 'PlayoffReview';
 
 export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SYSTEM';
 
