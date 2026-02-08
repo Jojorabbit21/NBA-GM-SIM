@@ -18,7 +18,7 @@ interface TacticsBoardProps {
 
 // SVG Paths from VisualShotChart (Standard NBA Half Court)
 const COURT_LINES = [
-  "M149.6,238.4h135.4v162.7h-135.4v-162.7M148.2,236.9v165.6h138.2v-165.6h-138.2Z", // Key (Index 0)
+  "M149.6,403 V238.4 H285 V403", // Key (Modified: Open Bottom)
   "M269.2,237.7h-1.4c0-27.8-22.6-50.4-50.4-50.4s-50.4,22.6-50.4,50.4h-1.4c0-28.6,23.3-51.8,51.8-51.8s51.8,23.3,51.8,51.8Z", // Free Throw Circle
   "M269.1,237.7c0,2.6-.2,5.3-.6,7.9l-1.4-.2c.6-3.6.7-7.3.5-11h1.4c0,1,.1,2.2.1,3.3ZM267.1,223.2l-1.4.4c-1-3.5-2.4-6.9-4.2-10.1l1.3-.7c1.8,3.3,3.3,6.8,4.3,10.4ZM265.6,256.5c-1.4,3.5-3.1,6.9-5.2,10l-1.2-.8c2-3,3.7-6.3,5.1-9.7l1.3.5ZM256.3,203.5l-1.1.9c-2.4-2.7-5.1-5.2-8.1-7.4l.9-1.2c3,2.2,5.8,4.8,8.3,7.6ZM253.1,275.1c-2.7,2.6-5.7,4.9-9,6.9l-.7-1.2c3.1-1.9,6.1-4.1,8.7-6.7l1,1ZM238.2,190.2l-.6,1.3c-3.4-1.5-6.9-2.6-10.5-3.3l.3-1.4c3.7.7,7.3,1.9,10.8,3.4ZM233.9,286.8c-1.4.5-2.8.9-4.3,1.2-2.2.5-4.5,1-6.8,1.2l-.2-1.4c2.2-.2,4.4-.6,6.6-1.2,1.4-.3,2.8-.7,4.1-1.2l.5,1.4ZM216.2,187.3c-3.6,0-7.3.6-10.9,1.5-2.8.7-5.5,1.6-8.2,2.7l-.6-1.3c2.7-1.2,5.5-2.1,8.4-2.8,3.7-.9,7.4-1.4,11.2-1.5v1.4ZM211.8,287.8l-.2,1.4c-3.7-.4-7.5-1.2-11-2.5l.5-1.4c3.5,1.2,7.1,2,10.7,2.4ZM191.1,280.7l-.7,1.2c-3.2-2-6.2-4.3-9-6.9l1-1c2.6,2.5,5.6,4.8,8.7,6.7ZM187.6,196.9c-3,2.2-5.7,4.6-8.1,7.4l-1.1-1c2.5-2.8,5.3-5.4,8.3-7.6l.8,1.2ZM175.4,265.6l-1.2.8c-2.1-3.1-3.8-6.5-5.2-10l1.3-.5c1.3,3.4,3,6.7,5,9.8ZM173.2,213.3c-1.8,3.2-3.2,6.6-4.2,10.1l-1.4-.4c1.1-3.6,2.5-7.1,4.4-10.4l1.3.7ZM167.5,245.2l-1.4.2c-.6-3.7-.7-7.5-.5-11.3h1.4c-.2,3.7,0,7.4.5,11.1Z",
   "M252.9,355.9v10.7h-1.4v-10.7c0-18.9-15.3-34.2-34.2-34.2s-34.2,15.3-34.2,34.2v10.7h-1.4v-10.7c0-19.6,16-35.6,35.6-35.6s35.6,16,35.6,35.6Z", // Restricted Area Arc (Index 3)
@@ -46,9 +46,9 @@ const getStatHex = (val: number) => {
 };
 
 const CourtStatItem: React.FC<{ label: string, value: number, top: string, left: string, align?: 'left'|'center'|'right' }> = ({ label, value, top, left, align='center' }) => (
-    <div className={`absolute flex flex-col ${align === 'left' ? 'items-start' : align === 'right' ? 'items-end' : 'items-center'} justify-center transform -translate-y-1/2 z-10`} style={{ top, left, transform: `translate(${align === 'center' ? '-50%' : align === 'left' ? '0' : '-100%'}, -50%)` }}>
-        <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest mb-0.5 bg-slate-900/80 px-1.5 py-0.5 rounded shadow-sm border border-white/5">{label}</span>
-        <span className={`text-lg font-black font-mono ${getStatColor(value)} drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)]`}>{value}</span>
+    <div className={`absolute flex flex-col items-center justify-center transform -translate-y-1/2 z-10 bg-slate-900/90 border border-slate-700/50 backdrop-blur-sm rounded-lg px-2.5 py-1.5 shadow-lg min-w-[60px]`} style={{ top, left, transform: `translate(${align === 'center' ? '-50%' : align === 'left' ? '0' : '-100%'}, -50%)` }}>
+        <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tight mb-0.5">{label}</span>
+        <span className={`text-lg font-black font-mono leading-none ${getStatColor(value)}`}>{value}</span>
     </div>
 );
 
@@ -102,10 +102,10 @@ const TacticalHalfCourt: React.FC<{ starters: Player[], type: 'offense' | 'defen
         <div className="w-full aspect-[435/403] bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden relative shadow-inner group">
             {/* Court SVG Layer */}
             <svg viewBox="0 0 435 403" className="w-full h-full">
-                {/* 1. Background Fill (Base) */}
-                <rect x="0" y="0" width="435" height="403" fill={getStatHex(type === 'offense' ? stats.three : stats.perDef)} fillOpacity="0.2" />
+                {/* 1. Background Fill (Base) - Original Dark Blue */}
+                <rect x="0" y="0" width="435" height="403" fill="#0f172a" />
                 
-                {/* 2. Zone Fills (Layered from largest to smallest) */}
+                {/* 2. Zone Fills (Layered from largest to smallest) - Keep zones but remove base background tint */}
                 {type === 'offense' && (
                     <>
                          {/* Mid-Range (Inside 3PT Arc) */}
@@ -137,26 +137,20 @@ const TacticalHalfCourt: React.FC<{ starters: Player[], type: 'offense' | 'defen
             <div className="absolute inset-0">
                 {type === 'offense' ? (
                     <>
-                        <CourtStatItem label="3PT Shot" value={stats.three} top="20%" left="50%" />
-                        <CourtStatItem label="Mid-Range" value={stats.mid} top="45%" left="50%" />
-                        <CourtStatItem label="Paint" value={stats.paint} top="70%" left="50%" />
-                        <CourtStatItem label="Rim" value={stats.rim} top="88%" left="50%" />
+                        <CourtStatItem label="3PT" value={stats.three} top="20%" left="50%" />
+                        <CourtStatItem label="MID" value={stats.mid} top="48%" left="50%" />
+                        <CourtStatItem label="PAINT" value={stats.paint} top="75%" left="50%" />
+                        <CourtStatItem label="RIM" value={stats.rim} top="88%" left="25%" align="left" />
                     </>
                 ) : (
                     <>
                         {/* Perimeter & Steal (Guard/Wing Focus) - Upper/Mid Court */}
-                        <CourtStatItem label="Perimeter Def" value={stats.perDef} top="35%" left="45%" align="right" />
-                        <CourtStatItem label="Steal" value={stats.steal} top="35%" left="55%" align="left" />
+                        <CourtStatItem label="PER. DEF" value={stats.perDef} top="35%" left="30%" align="right" />
+                        <CourtStatItem label="STEAL" value={stats.steal} top="35%" left="70%" align="left" />
                         
                         {/* Interior & Block (Big Focus) - Lower Court */}
-                        <CourtStatItem label="Interior Def" value={stats.intDef} top="75%" left="45%" align="right" />
-                        <CourtStatItem label="Block" value={stats.block} top="75%" left="55%" align="left" />
-                        
-                        <div className="absolute top-4 left-4">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-900/50 px-2 py-1 rounded border border-white/5">
-                                Defense Ratings
-                            </span>
-                        </div>
+                        <CourtStatItem label="INT. DEF" value={stats.intDef} top="75%" left="30%" align="right" />
+                        <CourtStatItem label="BLOCK" value={stats.block} top="75%" left="70%" align="left" />
                     </>
                 )}
             </div>
@@ -491,7 +485,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                                     </div>
                                     
                                     {/* Ace Stopper Section inside Defense Container */}
-                                    <div className="px-6 py-4 border-t border-white/5 bg-slate-900/30">
+                                    <div className="px-6 py-4 border-t border-white/5 bg-slate-950/20">
                                         <div className="flex items-center gap-2 mb-2">
                                             <ShieldAlert size={16} className="text-indigo-400" />
                                             <span className="text-xs font-black text-slate-400 uppercase tracking-widest">에이스 스토퍼 (Lockdown)</span>
