@@ -138,10 +138,6 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">OPPONENT SCOUTING</span>
                          </div>
                      </div>
-                     <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-lg border border-slate-700/50">
-                         <Users size={14} className="text-slate-400" />
-                         <span className="text-xs font-bold text-slate-300">{oppHealthySorted.length} Active Players</span>
-                     </div>
                 </div>
 
                 {/* Table */}
@@ -213,7 +209,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                             </div>
                                         </td>
                                         <td className="py-2.5 px-2 text-center border-r border-slate-800/50">
-                                            <div className={`${getOvrBadgeStyle(ovr)} !w-7 !h-7 !text-[10px] !mx-auto`}>{ovr}</div>
+                                            <div className={`${getOvrBadgeStyle(ovr)} !w-7 !h-7 !text-sm !mx-auto`}>{ovr}</div>
                                         </td>
 
                                         {/* Attributes Cells */}
@@ -238,13 +234,12 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             <tfoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                                 <tr>
                                     <td className="py-3 px-4 text-center border-r border-slate-800/50">
-                                        <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">AVG</span>
                                     </td>
                                     <td className="py-3 px-4 text-left">
                                         <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM AVERAGE</span>
                                     </td>
                                     <td className="py-3 px-2 text-center border-r border-slate-800/50">
-                                        <div className={`${getOvrBadgeStyle(teamAverages.ovr)} !w-7 !h-7 !text-[10px] !mx-auto`}>{teamAverages.ovr}</div>
+                                        <div className={`${getOvrBadgeStyle(teamAverages.ovr)} !w-7 !h-7 !text-sm !mx-auto`}>{teamAverages.ovr}</div>
                                     </td>
                                     
                                     {/* Attributes Avg */}
