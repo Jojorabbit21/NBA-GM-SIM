@@ -1,39 +1,20 @@
 
-import React, { Suspense, useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useGameData } from './hooks/useGameData';
 import { useSimulation } from './hooks/useSimulation';
-import { GameSimulatingView } from './views/GameSimulationView';
-import { GameResultView } from './views/GameResultView';
-import { DashboardView } from './views/DashboardView';
 import { TeamSelectView } from './views/TeamSelectView';
-import { OnboardingView } from './views/OnboardingView';
-import { RosterView } from './views/RosterView';
-import { ScheduleView } from './views/ScheduleView';
-import { StandingsView } from './views/StandingsView';
-import { LeaderboardView } from './views/LeaderboardView';
-import { TransactionsView } from './views/TransactionsView';
-import { PlayoffsView } from './views/PlayoffsView';
-import { HelpView } from './views/HelpView';
-import { OvrCalculatorView } from './views/OvrCalculatorView';
-import { InboxView } from './views/InboxView';
-import { Sidebar } from './components/Sidebar';
+import { AuthView } from './views/AuthView';
 import { Toast } from './components/SharedComponents';
 import { AppView } from './types';
-import { Loader2 } from 'lucide-react';
-import { AuthView } from './views/AuthView';
 import { fetchUnreadMessageCount } from './services/messageService';
 
-/* [Fix] Added FullScreenLoader component which was missing */
-const FullScreenLoader = () => (
-    <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center z-[1000] backdrop-blur-md">
-        <Loader2 size={64} className="text-indigo-500 animate-spin mb-4 opacity-50" />
-        <p className="text-slate-400 font-bold tracking-widest uppercase text-xs animate-pulse">Loading Simulation...</p>
-    </div>
-);
+// 신규 생성된 모듈 모듈 임포트
+import FullScreenLoader from './components/FullScreenLoader';
+import MainLayout from './components/MainLayout';
+import AppRouter from './components/AppRouter';
 
 const App: React.FC = () => {
-    /* [Fix] Declared view, setView, sim, gameData, session, etc. inside the component body */
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
     const gameData = useGameData(session, isGuestMode);
     const [view, setView] = useState<AppView>('Dashboard');
@@ -54,21 +35,14 @@ const App: React.FC = () => {
     }, [session, gameData.myTeamId]);
 
     const sim = useSimulation(
-        gameData.teams, gameData.setTeams,
-        gameData.schedule, gameData.setSchedule,
-        gameData.myTeamId,
-        gameData.currentSimDate,
-        advanceDate,
-        gameData.playoffSeries, gameData.setPlayoffSeries,
-        gameData.setTransactions,
-        gameData.setNews,
-        setToastMessage,
-        gameData.forceSave,
-        session, isGuestMode,
-        refreshUnreadCount,
-        gameData.depthChart
+        gameData.teams, gameData.setTeams, gameData.schedule, gameData.setSchedule,
+        gameData.myTeamId, gameData.currentSimDate, advanceDate,
+        gameData.playoffSeries, gameData.setPlayoffSeries, gameData.setTransactions,
+        gameData.setNews, setToastMessage, gameData.forceSave,
+        session, isGuestMode, refreshUnreadCount, gameData.depthChart
     );
 
+    // 인증 및 라우팅 상태 감시
     useEffect(() => {
         if (!authLoading && !session && !isGuestMode) {
             setView('Auth' as any);
@@ -77,176 +51,36 @@ const App: React.FC = () => {
         }
     }, [authLoading, session, isGuestMode, gameData.myTeamId, view]);
 
-    useEffect(() => {
-        refreshUnreadCount();
-    }, [refreshUnreadCount, gameData.currentSimDate]);
+    useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
+    useEffect(() => { if (sim.activeGame) setView('GameSim' as any); }, [sim.activeGame]);
+    useEffect(() => { if (sim.lastGameResult) setView('GameResult' as any); }, [sim.lastGameResult]);
 
-    // Switch view to simulation or result automatically
-    useEffect(() => {
-        if (sim.activeGame) setView('GameSim' as any);
-    }, [sim.activeGame]);
-
-    useEffect(() => {
-        if (sim.lastGameResult) setView('GameResult' as any);
-    }, [sim.lastGameResult]);
-
+    // 전역 상태에 따른 가드 렌더링
     if (authLoading || gameData.isSaveLoading) return <FullScreenLoader />;
-    
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
-
-    if (!gameData.myTeamId) {
-        return (
-            <TeamSelectView 
-                teams={gameData.teams} 
-                isInitializing={gameData.isBaseDataLoading} 
-                onSelectTeam={gameData.handleSelectTeam} 
-            />
-        );
-    }
-
-    const myTeam = gameData.teams.find(t => t.id === gameData.myTeamId);
+    if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={gameData.handleSelectTeam} />;
 
     return (
-        <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">
-            <Sidebar 
-                team={myTeam}
-                currentSimDate={gameData.currentSimDate}
-                currentView={view}
-                isGuestMode={isGuestMode}
-                unreadMessagesCount={unreadCount}
-                onNavigate={setView}
-                onResetClick={gameData.handleResetData}
-                onLogout={handleLogout}
+        <MainLayout 
+            sidebarProps={{
+                team: gameData.teams.find(t => t.id === gameData.myTeamId),
+                currentSimDate: gameData.currentSimDate,
+                currentView: view,
+                isGuestMode,
+                unreadMessagesCount: unreadCount,
+                onNavigate: setView,
+                onResetClick: gameData.handleResetData,
+                onLogout: handleLogout
+            }}
+        >
+            <AppRouter 
+                view={view} setView={setView} gameData={gameData}
+                sim={sim} session={session} unreadCount={unreadCount}
+                refreshUnreadCount={refreshUnreadCount} setToastMessage={setToastMessage}
             />
-            
-            <main className="flex-1 overflow-y-auto custom-scrollbar relative p-8 lg:p-12">
-                <Suspense fallback={<FullScreenLoader />}>
-                    {/* [Fix] Restored GameSim logic from the provided snippet */}
-                    {view === ('GameSim' as any) && sim.activeGame && (
-                        <GameSimulatingView 
-                            homeTeam={gameData.teams.find(t => t.id === sim.activeGame!.homeTeamId)!} 
-                            awayTeam={gameData.teams.find(t => t.id === sim.activeGame!.awayTeamId)!} 
-                            userTeamId={gameData.myTeamId} 
-                            finalHomeScore={sim.activeGame.homeScore} 
-                            finalAwayScore={sim.activeGame.awayScore} 
-                            onSimulationComplete={() => sim.finalizeSimRef.current?.()} 
-                        />
-                    )}
-                    
-                    {/* [Fix] Restored GameResult logic from the provided snippet with automatic date advancement */}
-                    {view === ('GameResult' as any) && sim.lastGameResult && (
-                        <GameResultView 
-                            result={sim.lastGameResult} 
-                            myTeamId={gameData.myTeamId!} 
-                            teams={gameData.teams} 
-                            onFinish={() => { 
-                                const d = new Date(gameData.currentSimDate);
-                                d.setDate(d.getDate() + 1);
-                                const nextDate = d.toISOString().split('T')[0];
-                                
-                                gameData.setCurrentSimDate(nextDate);
-                                sim.clearLastGameResult(); 
-                                sim.setIsSimulating(false); 
-                                setView('Dashboard'); 
-                                gameData.forceSave({ currentSimDate: nextDate });
-                            }} 
-                        />
-                    )}
-
-                    {/* Basic App Views */}
-                    {view === 'Dashboard' && myTeam && (
-                        <DashboardView 
-                            team={myTeam}
-                            teams={gameData.teams}
-                            schedule={gameData.schedule}
-                            onSim={sim.handleExecuteSim}
-                            tactics={gameData.userTactics || { offenseTactics: ['Balance'], defenseTactics: ['ManToManPerimeter'], sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2 }, starters: { PG: '', SG: '', SF: '', PF: '', C: '' }, rotationMap: {}, minutesLimits: {} }}
-                            onUpdateTactics={gameData.setUserTactics}
-                            currentSimDate={gameData.currentSimDate}
-                            isSimulating={sim.isSimulating}
-                            onShowSeasonReview={() => setView('SeasonReview' as any)}
-                            onShowPlayoffReview={() => setView('PlayoffReview' as any)}
-                            depthChart={gameData.depthChart}
-                            onUpdateDepthChart={gameData.setDepthChart}
-                        />
-                    )}
-
-                    {view === 'Roster' && (
-                        <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} />
-                    )}
-
-                    {view === 'Schedule' && (
-                        <ScheduleView 
-                            schedule={gameData.schedule} 
-                            teamId={gameData.myTeamId!} 
-                            teams={gameData.teams} 
-                            onExport={() => {}} 
-                            currentSimDate={gameData.currentSimDate} 
-                        />
-                    )}
-
-                    {view === 'Standings' && (
-                        <StandingsView teams={gameData.teams} onTeamClick={(id) => {}} />
-                    )}
-
-                    {view === 'Leaderboard' && (
-                        <LeaderboardView teams={gameData.teams} />
-                    )}
-
-                    {view === 'Transactions' && (
-                        <TransactionsView 
-                            team={myTeam!} 
-                            teams={gameData.teams} 
-                            setTeams={gameData.setTeams} 
-                            addNews={(n) => {}} 
-                            onShowToast={setToastMessage} 
-                            currentSimDate={gameData.currentSimDate}
-                            transactions={gameData.transactions}
-                            onAddTransaction={(tx) => gameData.setTransactions(prev => [tx, ...prev])}
-                            onForceSave={gameData.forceSave}
-                            userId={session?.user?.id}
-                            refreshUnreadCount={refreshUnreadCount}
-                        />
-                    )}
-
-                    {view === 'Playoffs' && (
-                        <PlayoffsView 
-                            teams={gameData.teams} 
-                            schedule={gameData.schedule} 
-                            series={gameData.playoffSeries} 
-                            setSeries={gameData.setPlayoffSeries}
-                            setSchedule={gameData.setSchedule}
-                            myTeamId={gameData.myTeamId!}
-                        />
-                    )}
-
-                    {view === 'Help' && (
-                        <HelpView onBack={() => setView('Dashboard')} />
-                    )}
-
-                    {view === 'OvrCalculator' && (
-                        <OvrCalculatorView teams={gameData.teams} />
-                    )}
-
-                    {view === 'Inbox' && (
-                        <InboxView 
-                            myTeamId={gameData.myTeamId!} 
-                            userId={session?.user?.id} 
-                            teams={gameData.teams} 
-                            onUpdateUnreadCount={refreshUnreadCount} 
-                        />
-                    )}
-
-                    {view === 'Onboarding' && myTeam && (
-                        <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} />
-                    )}
-                </Suspense>
-                
-                {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-            </main>
-        </div>
+            {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+        </MainLayout>
     );
 };
 
-/* [Fix] Added default export for App component to resolve index.tsx import error */
 export default App;
