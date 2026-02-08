@@ -68,10 +68,12 @@ const TacticalCourt: React.FC<{ starters: Player[] }> = ({ starters }) => {
     if (!stats) return <div className="h-full flex items-center justify-center text-slate-500 text-xs">주전 정보 없음</div>;
 
     return (
-        <div className="w-full h-full bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden relative flex flex-col shadow-inner">
+        // [Design Fix] Removed h-full, added aspect-[3/5] to maintain ratio. 
+        <div className="w-full aspect-[3/5] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden relative flex flex-col shadow-inner">
             {/* Court SVG Layer */}
             <div className="absolute inset-0 p-4">
-                <svg viewBox="0 0 300 500" className="w-full h-full opacity-30" preserveAspectRatio="none">
+                {/* [Design Fix] Removed preserveAspectRatio="none" to keep aspect ratio */}
+                <svg viewBox="0 0 300 500" className="w-full h-full opacity-30">
                     {/* Floor */}
                     <rect x="0" y="0" width="300" height="500" fill="#1e293b" />
                     
@@ -404,11 +406,12 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     </div>
 
                     {/* Center Column: Strategy Selectors (5 cols) */}
-                    <div className="lg:col-span-5 space-y-8">
+                    <div className="lg:col-span-5 space-y-4"> {/* [Design Fix] Changed space-y-8 to space-y-4 to tighten vertical layout matching right col */}
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 text-indigo-400 px-2">
                                 <Target size={24} />
-                                <span className="font-black text-lg uppercase tracking-widest oswald">공격 시스템</span>
+                                {/* [Design Fix] Reduced title font size */}
+                                <span className="font-black text-sm uppercase tracking-widest oswald">공격 시스템</span>
                             </div>
                             <div className="relative group">
                                 <select value={currentOffense} onChange={handleOffenseChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all shadow-lg">
@@ -434,7 +437,8 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                         <div className="space-y-4">
                             <div className="flex items-center gap-3 text-indigo-400 px-2">
                                 <Shield size={24} />
-                                <span className="font-black text-lg uppercase tracking-widest oswald">수비 시스템</span>
+                                {/* [Design Fix] Reduced title font size */}
+                                <span className="font-black text-sm uppercase tracking-widest oswald">수비 시스템</span>
                             </div>
                             <div className="relative group">
                                 <select value={currentDefense} onChange={handleDefenseChange} className="w-full bg-slate-950/60 border border-slate-800 rounded-2xl px-6 py-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-900/80 transition-all shadow-lg">
@@ -475,12 +479,15 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                     </div>
 
                     {/* Right Column: Sliders (4 cols, 1 per row) */}
-                    <div className="lg:col-span-4 flex flex-col gap-6">
-                        <div className="flex items-center gap-3 text-indigo-400 px-2 pb-2">
+                    {/* [Design Fix] space-y-4 to align with center col spacing structure */}
+                    <div className="lg:col-span-4 flex flex-col space-y-4">
+                        <div className="flex items-center gap-3 text-indigo-400 px-2">
                             <Sliders size={24} />
-                            <span className="font-black text-lg uppercase tracking-widest oswald">디테일 전술 조정</span>
+                            {/* [Design Fix] Reduced title font size */}
+                            <span className="font-black text-sm uppercase tracking-widest oswald">디테일 전술 조정</span>
                         </div>
-                        <div className="flex flex-col gap-8 bg-slate-950/40 p-8 rounded-[2rem] border border-slate-800/50 shadow-inner h-full">
+                        {/* [Design Fix] Removed h-full, changed rounded-[2rem] to rounded-2xl, changed p-8 to p-6 */}
+                        <div className="flex flex-col gap-8 bg-slate-950/40 p-6 rounded-2xl border border-slate-800/50 shadow-inner">
                             <SliderControl 
                                 label="공격 페이스" 
                                 value={sliders.pace} 
