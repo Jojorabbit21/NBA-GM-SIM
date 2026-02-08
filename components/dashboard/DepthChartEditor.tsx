@@ -101,15 +101,16 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                         {positions.map(pos => (
-                            <tr key={pos} className="hover:bg-slate-900/40 transition-colors">
+                            // Use String(pos) to ensure key and display are strings and avoid symbol errors
+                            <tr key={String(pos)} className="hover:bg-slate-900/40 transition-colors">
                                 <td className="py-1.5 px-4 text-center border-r border-slate-800/50 bg-slate-950/20">
-                                    <span className="text-xs font-bold text-slate-500">{pos}</span>
+                                    <span className="text-xs font-bold text-slate-500">{String(pos)}</span>
                                 </td>
                                 {[0, 1, 2].map(depthIndex => {
                                     const selectedId = depthChart[pos][depthIndex];
                                     
                                     return (
-                                        <td key={`${pos}-${depthIndex}`} className={`p-0 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
+                                        <td key={`${String(pos)}-${depthIndex}`} className={`p-0 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
                                             <div className="relative group w-full h-full">
                                                 <select 
                                                     className={`w-full h-full appearance-none bg-transparent border-none rounded-none pl-4 pr-10 py-1.5 text-xs font-bold text-white focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all ${!selectedId ? 'text-slate-500' : ''}`}

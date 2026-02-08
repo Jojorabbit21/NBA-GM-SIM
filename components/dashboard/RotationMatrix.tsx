@@ -175,7 +175,8 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                     </thead>
                     <tbody className="divide-y divide-slate-800/50">
                         {posKeys.map(pos => {
-                            const players = groupedRotation[pos];
+                            // Ensure pos is a string for Record index access to avoid symbol errors
+                            const players = (groupedRotation as Record<string, Player[]>)[pos];
                             if (!players || players.length === 0) return null;
 
                             return players.map((p, index) => {
@@ -198,7 +199,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                 className="text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800 align-middle border-b border-slate-800 w-[50px] min-w-[50px] max-w-[50px]"
                                             >
                                                 <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
-                                                    {pos}
+                                                    {String(pos)}
                                                 </span>
                                             </td>
                                         )}
