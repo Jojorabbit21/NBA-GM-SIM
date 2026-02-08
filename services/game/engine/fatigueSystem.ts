@@ -24,7 +24,7 @@ export function calculateIncrementalFatigue(
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.3;
 
-    // [Fix] player.currentCondition이 0 미만일 때 가중치가 폭발하지 않도록 보정
+    // [Fix] player.currentCondition이 0 미만으로 계산에 참여하지 않도록 Math.max 처리
     const effectiveCondition = Math.max(0, player.currentCondition);
     const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - effectiveCondition) * 0.012);
     drain *= cumulativeFatiguePenalty;

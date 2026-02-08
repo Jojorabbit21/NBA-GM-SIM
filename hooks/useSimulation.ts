@@ -1,5 +1,4 @@
 
-
 import { useState, useRef, useCallback } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player } from '../types';
 
@@ -24,7 +23,7 @@ export const useSimulation = (
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any>(null);
-    // [Fix] Added initial value 'undefined' to useRef to satisfy TypeScript requirements and fix "Expected 1 arguments, but got 0" error.
+    // [Fix] useRef 초기값 추가
     const finalizeSimRef = useRef<() => void>(undefined);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics) => {
@@ -36,7 +35,7 @@ export const useSimulation = (
             ...team,
             roster: team.roster.map(player => {
                 const updatedPlayer = { ...player };
-                // [Fix] 기존 체력이 버그로 인해 음수였다면 0부터 시작하도록 보정
+                // [Fix] 체력 음수 보정 후 회복
                 const currentCond = Math.max(0, updatedPlayer.condition !== undefined ? updatedPlayer.condition : 100);
                 updatedPlayer.condition = Math.min(100, Math.round(currentCond + totalRecovery));
                 
