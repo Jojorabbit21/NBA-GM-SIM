@@ -20,15 +20,6 @@ const getGradeColor = (val: number) => {
     return 'text-slate-500';
 };
 
-// [Fix] Define strict column widths to ensure Header and Body align perfectly
-const COL_WIDTHS = {
-    POS: "w-[60px] min-w-[60px]",
-    PLAYER: "w-[180px] min-w-[180px]",
-    OVR: "w-[50px] min-w-[50px]",
-    ATTR: "w-[45px] min-w-[45px]",
-    STAT: "w-[55px] min-w-[55px]",
-};
-
 export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({ 
     opponent, 
     oppHealthySorted, 
@@ -37,7 +28,16 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
     
     if (!opponent) return <div className="p-8 text-slate-500 text-center">상대 팀 데이터가 없습니다.</div>;
 
-    // 1. Define Columns
+    // 1. Define Columns & Widths
+    // Total Width Calculation: 60 + 180 + 50 + (6 * 45) + (9 * 55) = 1055px
+    const WIDTHS = {
+        POS: 60,
+        PLAYER: 180,
+        OVR: 50,
+        ATTR: 45,
+        STAT: 55
+    };
+
     const ATTR_COLS = [
         { label: 'INS', key: 'ins', tooltip: 'Inside Scoring' },
         { label: 'OUT', key: 'out', tooltip: 'Outside Scoring' },
@@ -134,36 +134,45 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
             {/* Table Area */}
             <div className="flex-1 min-h-0 p-0">
-                <Table className="border-0 rounded-none shadow-none">
+                <Table 
+                    className="border-0 rounded-none shadow-none" 
+                    // Enforce fixed layout to respect colgroup widths
+                    style={{ tableLayout: 'fixed', minWidth: '1055px' }} 
+                >
+                    {/* Explicit Column Definition for Layout Stability */}
+                    <colgroup>
+                        <col style={{ width: WIDTHS.POS }} />
+                        <col style={{ width: WIDTHS.PLAYER }} />
+                        <col style={{ width: WIDTHS.OVR }} />
+                        {ATTR_COLS.map((_, i) => <col key={`c-attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
+                        {STAT_COLS.map((_, i) => <col key={`c-stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
+                    </colgroup>
+
                     <TableHead>
                         {/* Group Header Row */}
                         <tr className="border-b border-slate-800 bg-slate-950 h-8">
-                            {/* POS + PLAYER + OVR = 3 columns */}
                             <th colSpan={3} className="py-1 px-4 border-r border-slate-800/50"></th>
-                            {/* Attributes = 6 columns */}
                             <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-800/50 bg-slate-900/50">
                                 <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">KEY ATTRIBUTES</span>
                             </th>
-                            {/* Stats = 9 columns */}
                             <th colSpan={9} className="py-1 px-2 text-center bg-slate-900/30">
                                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">SEASON STATS (AVG)</span>
                             </th>
                         </tr>
                         {/* Column Header Row */}
                         <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 h-10">
-                            <TableHeaderCell align="center" className={`${COL_WIDTHS.POS} border-r border-slate-800/50`}>POS</TableHeaderCell>
-                            {/* Note: stickyLeft removed from PLAYER to prevent overlapping POS when scrolling */}
-                            <TableHeaderCell align="left" className={`${COL_WIDTHS.PLAYER} px-4 border-r border-slate-800/50`}>PLAYER</TableHeaderCell>
-                            <TableHeaderCell align="center" className={`${COL_WIDTHS.OVR} border-r border-slate-800/50`}>OVR</TableHeaderCell>
+                            <TableHeaderCell align="center" className="border-r border-slate-800/50">POS</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-4 border-r border-slate-800/50">PLAYER</TableHeaderCell>
+                            <TableHeaderCell align="center" className="border-r border-slate-800/50">OVR</TableHeaderCell>
                             
                             {/* Attributes */}
                             {ATTR_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className={`${COL_WIDTHS.ATTR} border-r border-slate-800/30 last:border-r-slate-800/50`} title={col.tooltip}>{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="border-r border-slate-800/30 last:border-r-slate-800/50" title={col.tooltip}>{col.label}</TableHeaderCell>
                             ))}
 
                             {/* Stats */}
                             {STAT_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className={`${COL_WIDTHS.STAT} text-slate-400`}>{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="text-slate-400">{col.label}</TableHeaderCell>
                             ))}
                         </tr>
                     </TableHead>
@@ -193,10 +202,10 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                             return (
                                 <TableRow key={p.id} onClick={() => onViewPlayer(p)}>
-                                    <TableCell align="center" className={`${COL_WIDTHS.POS} border-r border-slate-800/50`}>
+                                    <TableCell align="center" className="border-r border-slate-800/50">
                                         <span className={`text-xs font-bold ${isStarter ? 'text-indigo-400' : 'text-slate-500'}`}>{p.position}</span>
                                     </TableCell>
-                                    <TableCell className={`${COL_WIDTHS.PLAYER} px-4 border-r border-slate-800/50`}>
+                                    <TableCell className="px-4 border-r border-slate-800/50">
                                         <div className="flex flex-col min-w-0">
                                             <span className="text-sm font-bold text-slate-200 group-hover:text-white group-hover:underline truncate">{p.name}</span>
                                             {p.health !== 'Healthy' && (
@@ -204,7 +213,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                             )}
                                         </div>
                                     </TableCell>
-                                    <TableCell align="center" className={`${COL_WIDTHS.OVR} border-r border-slate-800/50`}>
+                                    <TableCell align="center" className="border-r border-slate-800/50">
                                         <div className="flex justify-center">
                                             <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
                                         </div>
@@ -212,14 +221,14 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                                     {/* Attributes Cells */}
                                     {attrValues.map((val, idx) => (
-                                        <TableCell key={`attr-${idx}`} align="center" className={`${COL_WIDTHS.ATTR} text-xs font-black font-mono border-r border-slate-800/30 last:border-r-slate-800/50 ${getGradeColor(val)}`}>
+                                        <TableCell key={`attr-${idx}`} align="center" className={`text-xs font-black font-mono border-r border-slate-800/30 last:border-r-slate-800/50 ${getGradeColor(val)}`}>
                                             {val}
                                         </TableCell>
                                     ))}
                                     
                                     {/* Stats Cells */}
                                     {statValues.map((val, idx) => (
-                                        <TableCell key={`stat-${idx}`} align="center" className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`}>
+                                        <TableCell key={`stat-${idx}`} align="center" className="font-mono font-bold text-slate-300">
                                             {val}
                                         </TableCell>
                                     ))}
@@ -231,11 +240,11 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                     {teamAverages && (
                         <tfoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr>
-                                <td className={`${COL_WIDTHS.POS} border-r border-slate-800/50`}></td>
-                                <td className={`${COL_WIDTHS.PLAYER} px-4 text-left border-r border-slate-800/50`}>
+                                <td className="border-r border-slate-800/50"></td>
+                                <td className="px-4 text-left border-r border-slate-800/50">
                                     <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM AVERAGE</span>
                                 </td>
-                                <td className={`${COL_WIDTHS.OVR} text-center border-r border-slate-800/50`}>
+                                <td className="text-center border-r border-slate-800/50">
                                     <div className="flex justify-center">
                                         <OvrBadge value={teamAverages.ovr} size="sm" className="!w-7 !h-7 !text-xs" />
                                     </div>
@@ -250,15 +259,15 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                 <td className={`py-2.5 px-2 text-center text-xs font-black font-mono border-r border-slate-800/50 ${getGradeColor(teamAverages.ath)}`}>{teamAverages.ath}</td>
 
                                 {/* Stats Avg */}
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.mp}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.pts}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.rebs}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.ast}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.stl}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.blk}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.fg}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.p3}</td>
-                                <td className={`${COL_WIDTHS.STAT} font-mono font-bold text-slate-300`} align="center">{teamAverages.ts}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.mp}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.pts}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.rebs}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.ast}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.stl}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.blk}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.fg}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.p3}</td>
+                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.ts}</td>
                             </tr>
                         </tfoot>
                     )}
