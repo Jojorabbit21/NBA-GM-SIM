@@ -12,7 +12,6 @@ export const useBaseData = () => {
         queryFn: async () => {
             console.log("🔄 Fetching Base Data from Supabase...");
             
-            // 1. Fetch Players
             let playersData = [];
             const { data: metaPlayers, error: metaError } = await supabase.from('meta_players').select('*');
             
@@ -24,7 +23,6 @@ export const useBaseData = () => {
                 if (backupPlayers) playersData = backupPlayers;
             }
 
-            // 2. Fetch Schedule
             let scheduleData = [];
             const { data: metaSchedule, error: schError } = await supabase.from('meta_schedule').select('*');
             
@@ -36,7 +34,6 @@ export const useBaseData = () => {
                  if (backupSchedule) scheduleData = backupSchedule;
             }
 
-            // 3. Map Data
             const teams: Team[] = mapPlayersToTeams(playersData);
             let schedule: Game[] = [];
             if (scheduleData && scheduleData.length > 0) {
@@ -97,14 +94,18 @@ export const useScoutingReport = (player: Player | null) => {
 export const saveGameResults = async (results: any[]) => {
     if (!results || results.length === 0) return;
     const { error } = await supabase.from('user_game_results').insert(results);
-    if (error) console.error("❌ Save Game Results Error:", error);
+    if (error) {
+        console.error("❌ Save Game Results Error:", error);
+        console.error("Payload:", results);
+    } else {
+        console.log(`✅ Saved ${results.length} game results to DB.`);
+    }
 };
 
 export const saveUserTransaction = async (userId: string, tx: Transaction) => {
     console.log("💾 Saving Transaction:", { userId, tx }); 
-    // [Fix] 'transaction_id' -> 'id' (DB Column Name Mismatch Fix)
     const { data, error } = await supabase.from('user_transactions').insert({
-        id: tx.id,              // Corrected column name
+        id: tx.id,
         user_id: userId,
         date: tx.date,
         type: tx.type,
@@ -115,7 +116,6 @@ export const saveUserTransaction = async (userId: string, tx: Transaction) => {
     
     if (error) {
         console.error("❌ Save Transaction Error DETAILS:", error);
-        console.error("❌ Failed TX Payload:", tx);
     } else {
         console.log("✅ Transaction Saved Successfully:", data);
     }

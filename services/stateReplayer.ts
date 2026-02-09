@@ -18,30 +18,24 @@ export const replayGameState = (
     const teams: Team[] = JSON.parse(JSON.stringify(baseTeams));
     let schedule: Game[] = JSON.parse(JSON.stringify(baseSchedule));
     
-    // Determine the latest date from history or save
-    let calculatedDate = savedSimDate || '2025-10-20';
+    // Create Map for O(1) Lookup
+    const teamMap = new Map<string, Team>();
+    teams.forEach(t => teamMap.set(t.id, t));
 
     // 2. Replay Transactions (Trades & Injuries)
-    // Sort transactions by date ensures correct order of injury/recovery
     const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
     sortedTransactions.forEach((tx) => {
         if (tx.type === 'Trade' && tx.details) {
             applyTrade(teams, tx);
         } else if (tx.type === 'InjuryUpdate' && tx.details) {
             applyInjuryUpdate(teams, tx);
         }
-        
-        // Update date if transaction is newer (Optional, usually guided by save file)
-        if (tx.date > calculatedDate) calculatedDate = tx.date;
     });
 
     // 3. Replay Game Results
-    // Create Map for O(1) Lookup
-    const teamMap = new Map<string, Team>();
-    teams.forEach(t => teamMap.set(t.id, t));
-
-    gameResults.forEach((res) => {
+    const sortedResults = [...gameResults].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    sortedResults.forEach((res) => {
         // A. Update Schedule Status
         const gameIdx = schedule.findIndex(g => g.id === res.game_id);
         if (gameIdx !== -1) {
@@ -77,7 +71,6 @@ export const replayGameState = (
                 awayTeam.wins++;
             }
 
-            // [FIX] Update Tactic History if data available
             if (res.tactics && res.box_score) {
                  homeTeam.tacticHistory = updateTeamTacticHistory(homeTeam, res.box_score.home, res.box_score.away, res.tactics.home || {}, homeWon);
                  awayTeam.tacticHistory = updateTeamTacticHistory(awayTeam, res.box_score.away, res.box_score.home, res.tactics.away || {}, !homeWon);
@@ -89,15 +82,12 @@ export const replayGameState = (
             if (res.box_score.home) applyBoxScore(teamMap, res.home_team_id, res.box_score.home);
             if (res.box_score.away) applyBoxScore(teamMap, res.away_team_id, res.box_score.away);
         }
-
-        // Update Date
-        if (res.date > calculatedDate) calculatedDate = res.date;
     });
 
     return {
         teams,
         schedule,
-        currentSimDate: calculatedDate
+        currentSimDate: savedSimDate || '2025-10-20'
     };
 };
 
@@ -109,7 +99,6 @@ function applyTrade(teams: Team[], tx: any) {
     const partnerIdx = teams.findIndex(t => t.id === partnerTeamId);
 
     if (myTeamIdx !== -1 && partnerIdx !== -1) {
-        // Move Traded Players (My -> Partner)
         traded.forEach((p: any) => {
             const pIndex = teams[myTeamIdx].roster.findIndex(rp => rp.id === p.id);
             if (pIndex !== -1) {
@@ -117,7 +106,6 @@ function applyTrade(teams: Team[], tx: any) {
                 teams[partnerIdx].roster.push(playerObj);
             }
         });
-        // Move Acquired Players (Partner -> My)
         acquired.forEach((p: any) => {
             const pIndex = teams[partnerIdx].roster.findIndex(rp => rp.id === p.id);
             if (pIndex !== -1) {
@@ -130,13 +118,10 @@ function applyTrade(teams: Team[], tx: any) {
 
 function applyInjuryUpdate(teams: Team[], tx: any) {
     const { playerId, health, injuryType, returnDate } = tx.details;
-    
-    // Find player across all teams (since they might have been traded)
     for (const team of teams) {
         const player = team.roster.find(p => p.id === playerId);
         if (player) {
             player.health = health;
-            // Only update details if Injured, otherwise clear them
             if (health === 'Injured' || health === 'Day-to-Day') {
                 player.injuryType = injuryType;
                 player.returnDate = returnDate;
@@ -144,7 +129,7 @@ function applyInjuryUpdate(teams: Team[], tx: any) {
                 player.injuryType = undefined;
                 player.returnDate = undefined;
             }
-            return; // Stop searching once found
+            return;
         }
     }
 }
@@ -157,8 +142,6 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
         const player = team.roster.find(p => p.id === statLine.playerId);
         if (player) {
             if (!player.stats) player.stats = INITIAL_STATS();
-            
-            // Stats Accumulation
             player.stats.g += 1;
             player.stats.gs += statLine.gs || 0;
             player.stats.mp += statLine.mp || 0;
@@ -176,41 +159,12 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.p3a += statLine.p3a || 0;
             player.stats.ftm += statLine.ftm || 0;
             player.stats.fta += statLine.fta || 0;
-
-            // [FIX] Add Missing Detailed Shooting Stats & Fouls
             player.stats.rimM += statLine.rimM || 0;
             player.stats.rimA += statLine.rimA || 0;
             player.stats.midM += statLine.midM || 0;
             player.stats.midA += statLine.midA || 0;
             player.stats.pf += statLine.pf || 0;
-
-            // [FIX] Add Missing 10-Zone Shooting Stats
-            if (statLine.zoneData) {
-                // Manually map to avoid TS errors or missing keys
-                player.stats.zone_rim_m = (player.stats.zone_rim_m || 0) + (statLine.zoneData.zone_rim_m || 0);
-                player.stats.zone_rim_a = (player.stats.zone_rim_a || 0) + (statLine.zoneData.zone_rim_a || 0);
-                player.stats.zone_paint_m = (player.stats.zone_paint_m || 0) + (statLine.zoneData.zone_paint_m || 0);
-                player.stats.zone_paint_a = (player.stats.zone_paint_a || 0) + (statLine.zoneData.zone_paint_a || 0);
-                
-                player.stats.zone_mid_l_m = (player.stats.zone_mid_l_m || 0) + (statLine.zoneData.zone_mid_l_m || 0);
-                player.stats.zone_mid_l_a = (player.stats.zone_mid_l_a || 0) + (statLine.zoneData.zone_mid_l_a || 0);
-                player.stats.zone_mid_c_m = (player.stats.zone_mid_c_m || 0) + (statLine.zoneData.zone_mid_c_m || 0);
-                player.stats.zone_mid_c_a = (player.stats.zone_mid_c_a || 0) + (statLine.zoneData.zone_mid_c_a || 0);
-                player.stats.zone_mid_r_m = (player.stats.zone_mid_r_m || 0) + (statLine.zoneData.zone_mid_r_m || 0);
-                player.stats.zone_mid_r_a = (player.stats.zone_mid_r_a || 0) + (statLine.zoneData.zone_mid_r_a || 0);
-                
-                player.stats.zone_c3_l_m = (player.stats.zone_c3_l_m || 0) + (statLine.zoneData.zone_c3_l_m || 0);
-                player.stats.zone_c3_l_a = (player.stats.zone_c3_l_a || 0) + (statLine.zoneData.zone_c3_l_a || 0);
-                player.stats.zone_c3_r_m = (player.stats.zone_c3_r_m || 0) + (statLine.zoneData.zone_c3_r_m || 0);
-                player.stats.zone_c3_r_a = (player.stats.zone_c3_r_a || 0) + (statLine.zoneData.zone_c3_r_a || 0);
-                
-                player.stats.zone_atb3_l_m = (player.stats.zone_atb3_l_m || 0) + (statLine.zoneData.zone_atb3_l_m || 0);
-                player.stats.zone_atb3_l_a = (player.stats.zone_atb3_l_a || 0) + (statLine.zoneData.zone_atb3_l_a || 0);
-                player.stats.zone_atb3_c_m = (player.stats.zone_atb3_c_m || 0) + (statLine.zoneData.zone_atb3_c_m || 0);
-                player.stats.zone_atb3_c_a = (player.stats.zone_atb3_c_a || 0) + (statLine.zoneData.zone_atb3_c_a || 0);
-                player.stats.zone_atb3_r_m = (player.stats.zone_atb3_r_m || 0) + (statLine.zoneData.zone_atb3_r_m || 0);
-                player.stats.zone_atb3_r_a = (player.stats.zone_atb3_r_a || 0) + (statLine.zoneData.zone_atb3_r_a || 0);
-            }
+            player.stats.plusMinus += statLine.plusMinus || 0;
         }
     });
 }
