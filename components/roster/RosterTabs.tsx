@@ -8,9 +8,9 @@ interface RosterTabsProps {
 
 export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => {
     const tabs = [
-        { id: 'roster', label: '능력치 (Attributes)' },
-        { id: 'stats', label: '시즌 기록 (Stats)' },
-        { id: 'salary', label: '계약 현황 (Salary)' }
+        { id: 'roster', label: '능력치' },
+        { id: 'stats', label: '시즌 기록' },
+        { id: 'salary', label: '계약 현황' }
     ];
 
     return (
