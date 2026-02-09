@@ -1,6 +1,7 @@
 
 import React, { useCallback } from 'react';
 import { Team } from '../../types';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface StandingTableProps {
     teamList: Team[];
@@ -72,7 +73,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                         <td className="pl-6 pr-2 py-3 font-semibold text-slate-400 text-base group-hover:text-slate-100">{i + 1}</td>
                                         <td className="px-2 py-3 cursor-pointer" onClick={() => onTeamClick(t.id)}>
                                             <div className="flex items-center gap-2 max-w-[180px] group-hover:translate-x-1 transition-transform">
-                                                <img src={t.logo} className="w-6 h-6 object-contain" alt="" />
+                                                <TeamLogo teamId={t.id} size="sm" />
                                                 <span className="font-bold text-slate-100 text-sm truncate group-hover:text-indigo-400 transition-colors">{t.name}</span>
                                                 {statusEmoji && <span className="text-xs ml-1 filter drop-shadow-md select-none">{statusEmoji}</span>}
                                             </div>

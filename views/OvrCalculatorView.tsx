@@ -4,6 +4,7 @@ import { Settings2, User, ChevronRight, RefreshCw, FlaskConical, Info, ArrowUp, 
 import { Team, Player } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface OvrCalculatorViewProps {
   teams: Team[];
@@ -113,29 +114,28 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6 overflow-hidden">
-      <div className="flex flex-col md:flex-row justify-between items-end gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
-        <div>
-          <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight flex items-center gap-4">
-            <FlaskConical className="text-indigo-500" size={40} /> OVR 실험실
-          </h2>
-        </div>
-        <div className="flex gap-4">
-            <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 shadow-lg">
-                {(['PG', 'SG', 'SF', 'PF', 'C'] as PositionType[]).map(pos => (
-                    <button 
-                        key={pos} 
-                        onClick={() => handlePosChange(pos)}
-                        className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${selectedPos === pos ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                        {pos}
-                    </button>
-                ))}
+      <PageHeader 
+        title="OVR 실험실" 
+        icon={<FlaskConical size={24} />}
+        actions={
+            <div className="flex gap-4">
+                <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 shadow-lg">
+                    {(['PG', 'SG', 'SF', 'PF', 'C'] as PositionType[]).map(pos => (
+                        <button 
+                            key={pos} 
+                            onClick={() => handlePosChange(pos)}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${selectedPos === pos ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                            {pos}
+                        </button>
+                    ))}
+                </div>
+                <button onClick={resetWeights} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 border border-slate-700 transition-all active:scale-95">
+                    <RefreshCw size={14} /> 기본값 복원
+                </button>
             </div>
-            <button onClick={resetWeights} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 border border-slate-700 transition-all active:scale-95">
-                <RefreshCw size={14} /> 기본값 복원
-            </button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
         {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}

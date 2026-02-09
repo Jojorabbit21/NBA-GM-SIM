@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, ChevronDown, Edit3, Trash2, TrendingUp, Lock } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Activity, Wand2, Target, Shield, ShieldAlert, Sliders, HelpCircle, ChevronDown, Edit3, Trash2 } from 'lucide-react';
 import { OffenseTactic, DefenseTactic, GameTactics, TacticPreset, Player } from '../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../utils/tacticUtils';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
 import { supabase } from '../../services/supabaseClient';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { Modal } from '../common/Modal'; // Import Modal
+import { Dropdown } from '../common/Dropdown'; // Import Dropdown
 
 interface TacticsBoardProps {
   tactics: GameTactics;
@@ -181,26 +182,37 @@ const SliderControl: React.FC<{ label: string, value: number, onChange: (val: nu
 const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onConfirm: (name: string) => void; initialName: string }> = ({ isOpen, onClose, onConfirm, initialName }) => {
     const [name, setName] = useState(initialName);
     useEffect(() => { setName(initialName); }, [initialName, isOpen]);
-    if (!isOpen) return null;
-    return createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-in zoom-in-95">
-                <h3 className="text-lg font-black text-white uppercase tracking-tight mb-4">프리셋 이름 변경</h3>
-                <input 
+    
+    // Header for Modal
+    const header = <h3 className="text-lg font-black text-white uppercase tracking-tight">프리셋 이름 변경</h3>;
+    
+    // Footer for Modal
+    const footer = (
+        <div className="flex justify-end gap-3 w-full">
+            <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">취소</button>
+            <button onClick={() => { if(name.trim()) onConfirm(name.trim()); onClose(); }} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all">확인</button>
+        </div>
+    );
+
+    return (
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={header}
+            footer={footer}
+            size="sm"
+        >
+            <div className="p-6">
+                 <input 
                     type="text" 
                     value={name} 
                     onChange={(e) => setName(e.target.value)} 
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold focus:outline-none focus:border-indigo-500 transition-colors mb-6"
+                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-white font-bold focus:outline-none focus:border-indigo-500 transition-colors"
                     placeholder="전술 이름을 입력하세요"
                     autoFocus
                 />
-                <div className="flex justify-end gap-3">
-                    <button onClick={onClose} className="px-4 py-2 text-xs font-bold text-slate-400 hover:text-white transition-colors">취소</button>
-                    <button onClick={() => { if(name.trim()) onConfirm(name.trim()); onClose(); }} className="px-6 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all">확인</button>
-                </div>
             </div>
-        </div>,
-        document.body
+        </Modal>
     );
 };
 
@@ -212,7 +224,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
     const [presets, setPresets] = useState<Record<number, TacticPreset>>({});
     const [activeSlot, setActiveSlot] = useState<number>(1);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
+    
     const [renameModalOpen, setRenameModalOpen] = useState(false);
     const [targetRenameSlot, setTargetRenameSlot] = useState<number | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -236,11 +248,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
             }
         };
         init();
-        const handleClickOutside = (e: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) setIsDropdownOpen(false);
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     const loadPresetsFromDB = async (uid: string, tid: string) => {
@@ -334,39 +341,40 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
             {/* Header Controls */}
             <div className="px-8 py-5 bg-slate-950/40 border-b border-white/5 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-6">
-                    <div className="relative w-64" ref={dropdownRef}>
-                        <button 
-                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                            className="w-full flex items-center justify-between gap-2 bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-4 py-2.5 rounded-xl transition-all shadow-sm group"
-                        >
-                            <span className="text-sm font-bold truncate">
-                                {presets[activeSlot] ? presets[activeSlot].name : `프리셋 ${activeSlot}`}
-                            </span>
-                            <ChevronDown size={16} className={`text-slate-500 transition-transform group-hover:text-indigo-400 ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-
-                        {isDropdownOpen && (
-                            <div className="absolute top-full left-0 right-0 mt-2 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-200">
-                                {[1, 2, 3].map(slot => {
-                                    const hasData = !!presets[slot];
-                                    return (
-                                        <div key={slot} className="flex items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/50 transition-colors">
-                                            <button onClick={() => handleSlotSelect(slot)} className="flex-1 flex items-center gap-3 px-5 py-3 text-left min-w-0">
-                                                <div className={`w-2 h-2 rounded-full ${activeSlot === slot ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]' : 'bg-slate-700'}`}></div>
-                                                <span className={`text-sm font-bold truncate ${activeSlot === slot ? 'text-white' : 'text-slate-400'}`}>
-                                                    {hasData ? presets[slot].name : `프리셋 ${slot} (비어있음)`}
-                                                </span>
-                                            </button>
-                                            <div className="flex items-center gap-1 pr-3">
-                                                <button onClick={(e) => openRenameModal(e, slot)} className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"><Edit3 size={14} /></button>
-                                                {hasData && <button onClick={(e) => handleDeletePreset(e, slot)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"><Trash2 size={14} /></button>}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
+                    <Dropdown
+                        isOpen={isDropdownOpen}
+                        onOpenChange={setIsDropdownOpen}
+                        width="w-64"
+                        trigger={
+                            <button 
+                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                className="w-full flex items-center justify-between gap-2 bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-4 py-2.5 rounded-xl transition-all shadow-sm group w-64"
+                            >
+                                <span className="text-sm font-bold truncate">
+                                    {presets[activeSlot] ? presets[activeSlot].name : `프리셋 ${activeSlot}`}
+                                </span>
+                                <ChevronDown size={16} className={`text-slate-500 transition-transform group-hover:text-indigo-400 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                        }
+                    >
+                        {[1, 2, 3].map(slot => {
+                            const hasData = !!presets[slot];
+                            return (
+                                <div key={slot} className="flex items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/50 transition-colors">
+                                    <button onClick={() => handleSlotSelect(slot)} className="flex-1 flex items-center gap-3 px-5 py-3 text-left min-w-0">
+                                        <div className={`w-2 h-2 rounded-full ${activeSlot === slot ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]' : 'bg-slate-700'}`}></div>
+                                        <span className={`text-sm font-bold truncate ${activeSlot === slot ? 'text-white' : 'text-slate-400'}`}>
+                                            {hasData ? presets[slot].name : `프리셋 ${slot} (비어있음)`}
+                                        </span>
+                                    </button>
+                                    <div className="flex items-center gap-1 pr-3">
+                                        <button onClick={(e) => openRenameModal(e, slot)} className="p-2 text-slate-500 hover:text-white hover:bg-slate-700 rounded-lg transition-all"><Edit3 size={14} /></button>
+                                        {hasData && <button onClick={(e) => handleDeletePreset(e, slot)} className="p-2 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"><Trash2 size={14} /></button>}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </Dropdown>
 
                     <button 
                         onClick={handleSaveCurrent}

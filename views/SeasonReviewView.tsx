@@ -6,6 +6,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { getTeamLogoUrl } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
+import { TeamLogo } from '../components/common/TeamLogo';
 
 interface SeasonReviewViewProps {
   team: Team;
@@ -154,7 +155,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
               <h1 className="text-xl font-black uppercase tracking-widest text-white oswald drop-shadow-md">2025-26 Season Report</h1>
           </div>
           <div className="flex items-center gap-3">
-              <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
+              <TeamLogo teamId={team.id} size="md" />
               <span className="font-bold text-slate-400 uppercase text-sm tracking-wider hidden md:block">{team.city} {team.name}</span>
           </div>
       </div>
@@ -316,7 +317,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                       <div className="text-xs font-bold text-slate-500">{t.date}</div>
                                       <div className="h-4 w-[1px] bg-slate-800"></div>
                                       <div className="flex items-center gap-2">
-                                          <img src={getTeamLogoUrl(partnerId)} className="w-6 h-6 object-contain opacity-70" alt="" />
+                                          <TeamLogo teamId={partnerId} size="custom" className="w-6 h-6 object-contain opacity-70" />
                                           <span className="text-sm font-black text-white uppercase">{partnerName}</span>
                                       </div>
                                   </div>
@@ -333,7 +334,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                               ))}
                                           </div>
                                       </div>
-                                      <div className="bg-slate-950/50 rounded-xl p-3 border border-slate-800/50">
+                                      <div className="bg-slate-900/50 rounded-xl p-3 border border-slate-800/50">
                                           <div className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2">Departed</div>
                                           <div className="space-y-1">
                                               {t.details?.traded.map((p, i) => (

@@ -2,6 +2,7 @@
 import React from 'react';
 import { Search, ChevronDown, CheckCircle2 } from 'lucide-react';
 import { Team } from '../../types';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface RosterHeaderProps {
   selectedTeam: Team;
@@ -38,7 +39,7 @@ export const RosterHeader: React.FC<RosterHeaderProps> = ({
           className="w-72 h-14 bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-2xl px-5 flex items-center justify-between transition-all shadow-lg group"
         >
           <div className="flex items-center gap-3 min-w-0">
-            <img src={selectedTeam.logo} className="w-8 h-8 object-contain" alt={selectedTeam.name} />
+            <TeamLogo teamId={selectedTeam.id} size="md" />
             <span className="font-bold text-white text-lg uppercase truncate mt-0.5">{selectedTeam.city} {selectedTeam.name}</span>
           </div>
           <ChevronDown size={20} className={`text-slate-500 transition-transform group-hover:text-white ${isDropdownOpen ? 'rotate-180' : ''}`} />
@@ -66,7 +67,7 @@ export const RosterHeader: React.FC<RosterHeaderProps> = ({
                   onClick={() => { onSelectTeam(t.id); setIsDropdownOpen(false); setSearchTerm(''); }}
                   className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg hover:bg-slate-800 transition-all group ${selectedTeam.id === t.id ? 'bg-indigo-900/20' : ''}`}
                 >
-                  <img src={t.logo} className="w-6 h-6 object-contain opacity-70 group-hover:opacity-100" alt="" />
+                  <TeamLogo teamId={t.id} size="sm" className="opacity-70 group-hover:opacity-100" />
                   <span className={`text-sm font-bold uppercase truncate ${selectedTeam.id === t.id ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.city} {t.name}</span>
                   {t.id === myTeamId && (
                     <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase">MY TEAM</span>

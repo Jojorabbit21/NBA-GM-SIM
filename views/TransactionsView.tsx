@@ -1,9 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
-import { Users, Loader2, X, Clock, Search, Lock, Activity, Handshake, Target, Trash2, ListFilter, Send, History, ArrowLeftRight } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Users, Loader2, X, Clock, Search, Lock, Activity, Handshake, Target, Trash2, ListFilter, Send, History, ChevronDown, CheckCircle2, ArrowLeftRight } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { getTeamLogoUrl, TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
+import { TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
 
 // New Components & Hooks
 import { TradeConfirmModal } from '../components/transactions/TradeConfirmModal';
@@ -13,6 +13,9 @@ import { PositionFilter } from '../components/transactions/PositionFilter';
 import { TradeRosterList } from '../components/transactions/TradeRosterList';
 import { TradeHistoryTable } from '../components/transactions/TradeHistoryTable';
 import { useTradeSystem } from '../hooks/useTradeSystem';
+import { TeamLogo } from '../components/common/TeamLogo';
+import { PageHeader } from '../components/common/PageHeader';
+import { Dropdown, DropdownButton } from '../components/common/Dropdown';
 
 interface TransactionsViewProps {
   team: Team;
@@ -24,8 +27,8 @@ interface TransactionsViewProps {
   transactions?: Transaction[];
   onAddTransaction?: (t: Transaction) => void;
   onForceSave?: (overrides?: any) => Promise<void>;
-  userId?: string; // [Added]
-  refreshUnreadCount?: () => void; // [Added]
+  userId?: string; 
+  refreshUnreadCount?: () => void; 
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ 
@@ -35,9 +38,12 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'mine'>('all');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
+  
+  // Dropdown state
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Use Custom Hook for Business Logic
-  // [Fix] Pass userId and refreshUnreadCount to ensure DB save and badge update
   const tradeSystem = useTradeSystem(
       team, teams, setTeams, currentSimDate, 
       userId, 
@@ -65,9 +71,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   const filteredHistory = useMemo(() => {
     if (!transactions) return [];
-    
-    // [CRITICAL FIX] Filter only 'Trade' type transactions.
-    // Exclude 'InjuryUpdate', 'Sign', etc. to prevent empty rows in the table.
     const tradeTransactions = transactions.filter(t => t.type === 'Trade');
 
     if (historyFilter === 'all') return tradeTransactions;
@@ -83,7 +86,6 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       setViewPlayer(fullPlayer || partialPlayer);
   };
 
-  // [Fix] Sort using calculatePlayerOvr to ensure consistency with weights
   const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [team?.roster]);
   
   const targetTeamRoster = useMemo(() => {
@@ -93,18 +95,22 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   const allOtherTeamsSorted = useMemo(() => {
     if (!team) return [];
-    return teams.filter(t => t.id !== team.id).sort((a, b) => b.city.localeCompare(a.city));
-  }, [teams, team?.id]);
+    return teams
+        .filter(t => t.id !== team.id)
+        .filter(t => (t.city + t.name).toLowerCase().includes(searchTerm.toLowerCase()))
+        .sort((a, b) => a.city.localeCompare(b.city));
+  }, [teams, team?.id, searchTerm]);
 
   const getPlayerTeam = (p: Player) => teams.find(t => t.roster.some(rp => rp.id === p.id));
   const playerTeam = viewPlayer ? getPlayerTeam(viewPlayer) : null;
+  
+  const selectedTargetTeam = teams.find(t => t.id === proposalTargetTeamId);
 
   if (!team) return null;
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
-       {/* [Fix] Pass calculated OVR to PlayerDetailModal */}
-       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} />}
+       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
        {pendingTrade && (
          <div className="relative z-[200]">
              {isExecutingTrade && (
@@ -125,24 +131,27 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
          </div>
        )}
        
-       <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
-           <div>
-               <div className="flex items-center gap-4">
-                   <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">트레이드 센터</h2>
-                   <div className="hidden md:flex px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 items-center gap-2 shadow-inner">
-                       <Clock size={12} className="text-red-500" />
-                       <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">
-                           Deadline: {TRADE_DEADLINE}
-                       </span>
-                   </div>
-               </div>
-           </div>
-           <div className="flex gap-3">
-              <button onClick={() => setActiveTab('Block')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><ListFilter size={16} /> 트레이드 블록</button>
-              <button onClick={() => setActiveTab('Proposal')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><Send size={16} /> 직접 트레이드 제안</button>
-              <button onClick={() => setActiveTab('History')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><History size={16} /> 이력</button>
-           </div>
-      </div>
+       <PageHeader 
+         title={
+             <div className="flex items-center gap-4">
+                 <span>트레이드 센터</span>
+                 <div className="hidden md:flex px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 items-center gap-2 shadow-inner text-base tracking-normal">
+                    <Clock size={12} className="text-red-500" />
+                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">
+                        Deadline: {TRADE_DEADLINE}
+                    </span>
+                 </div>
+             </div>
+         }
+         icon={<ArrowLeftRight size={24} />}
+         actions={
+             <div className="flex gap-3">
+               <button onClick={() => setActiveTab('Block')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><ListFilter size={16} /> 트레이드 블록</button>
+               <button onClick={() => setActiveTab('Proposal')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><Send size={16} /> 직접 트레이드 제안</button>
+               <button onClick={() => setActiveTab('History')} className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-400/50' : 'bg-slate-900 text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><History size={16} /> 이력</button>
+            </div>
+         }
+       />
 
       <div className="flex-1 bg-slate-900/95 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden shadow-2xl min-h-0">
          <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/20 flex flex-col gap-6">
@@ -159,129 +168,217 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                         <button onClick={() => setHistoryFilter('mine')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${historyFilter === 'mine' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>내 팀</button>
                      </div>
                  ) : isTradeDeadlinePassed ? (
-                    <div className="px-8 py-4 bg-red-950/50 border border-red-500/50 text-red-400 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-3 min-w-[200px] justify-center shadow-[0_0_20px_rgba(220,38,38,0.2)]">
-                        <Lock size={18} /> TRADE DEADLINE PASSED
+                    <div className="px-8 py-4 bg-red-950/50 border border-red-500/50 text-red-400 rounded-2xl font-black uppercase text-xs tracking-widest flex items-center gap-3 min-w-[200px] justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+                        <Lock size={16} /> Deadline Passed
                     </div>
-                 ) : activeTab === 'Block' ? (
-                    <>
+                 ) : (
+                     <>
                         <TradeLimitChip />
-                        <PositionFilter selected={targetPositions} onToggle={toggleTargetPosition} />
-                        <button onClick={handleSearchBlockOffers} disabled={blockSelectedIds.size === 0 || blockIsProcessing} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!blockSearchPerformed && blockSelectedIds.size > 0 && !blockIsProcessing ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={blockIsProcessing ? 'animate-spin' : ''} />{blockIsProcessing ? '협상 중...' : `오퍼 탐색`}</button>
-                    </>
-                 ) : activeTab === 'Proposal' ? (
-                    <>
-                        <TradeLimitChip />
-                        <button onClick={() => { setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false); }} className="px-8 py-4 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center" disabled={proposalSelectedIds.size === 0}><Trash2 size={18} /> 전체 해제</button>
-                        <button onClick={handleRequestRequirements} disabled={proposalSelectedIds.size === 0 || proposalIsProcessing || !proposalTargetTeamId} className={`px-8 py-4 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${!proposalSearchPerformed && proposalSelectedIds.size > 0 && !proposalIsProcessing && proposalTargetTeamId ? 'shadow-[0_4px_20px_rgba(79,70,229,0.3)]' : ''}`}><Activity size={18} className={proposalIsProcessing ? 'animate-spin' : ''} />{proposalIsProcessing ? '조건 분석 중...' : `제안 요청`}</button>
-                    </>
-                 ) : null}
+                        {activeTab === 'Block' && (
+                             <>
+                                <PositionFilter selected={targetPositions} onToggle={toggleTargetPosition} />
+                                <button 
+                                    onClick={handleSearchBlockOffers}
+                                    disabled={blockSelectedIds.size === 0 || blockIsProcessing}
+                                    className="px-8 py-4 bg-white hover:bg-slate-200 text-slate-900 rounded-2xl font-black uppercase text-xs tracking-widest transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] flex items-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {blockIsProcessing ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
+                                    <span>오퍼 검색</span>
+                                </button>
+                             </>
+                        )}
+                        {activeTab === 'Proposal' && (
+                             <div className="flex items-center gap-3">
+                                <Dropdown
+                                    isOpen={isDropdownOpen}
+                                    onOpenChange={setIsDropdownOpen}
+                                    width="w-80"
+                                    trigger={
+                                        <DropdownButton 
+                                            isOpen={isDropdownOpen}
+                                            label={selectedTargetTeam ? `${selectedTargetTeam.city} ${selectedTargetTeam.name}` : '상대 팀 선택...'}
+                                            icon={selectedTargetTeam ? <TeamLogo teamId={selectedTargetTeam.id} size="sm" /> : undefined}
+                                            className="w-64 h-12"
+                                        />
+                                    }
+                                >
+                                    <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+                                        <div className="relative">
+                                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                            <input 
+                                                autoFocus
+                                                type="text" 
+                                                placeholder="팀 검색..." 
+                                                className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 pl-9 pr-3 text-xs font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 transition-all"
+                                                value={searchTerm}
+                                                onChange={e => setSearchTerm(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="max-h-64 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                                        {allOtherTeamsSorted.map(t => (
+                                            <button
+                                                key={t.id}
+                                                onClick={() => { setProposalTargetTeamId(t.id); setIsDropdownOpen(false); setSearchTerm(''); setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false); }}
+                                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800 transition-all group ${proposalTargetTeamId === t.id ? 'bg-indigo-900/20' : ''}`}
+                                            >
+                                                <TeamLogo teamId={t.id} size="xs" className="opacity-70 group-hover:opacity-100" />
+                                                <span className={`text-xs font-bold uppercase truncate ${proposalTargetTeamId === t.id ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.city} {t.name}</span>
+                                                {proposalTargetTeamId === t.id && <CheckCircle2 size={14} className="ml-auto text-indigo-500 flex-shrink-0" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </Dropdown>
+
+                                <button 
+                                    onClick={handleRequestRequirements}
+                                    disabled={!proposalTargetTeamId || proposalSelectedIds.size === 0 || proposalIsProcessing}
+                                    className="px-8 py-4 bg-white hover:bg-slate-200 text-slate-900 rounded-2xl font-black uppercase text-xs tracking-widest transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)] flex items-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {proposalIsProcessing ? <Loader2 className="animate-spin" size={16} /> : <Handshake size={16} />}
+                                    <span>협상 시도</span>
+                                </button>
+                             </div>
+                        )}
+                     </>
+                 )}
               </div>
             </div>
-            {activeTab === 'Proposal' && (
-              <div className="px-6 pb-2 overflow-x-auto custom-scrollbar-hide">
-                 <div className="flex flex-col gap-3 min-w-max md:min-w-0">
-                    <span className="text-[9px] font-black uppercase text-indigo-500 tracking-widest border-b border-indigo-500/20 pb-1 mb-1 oswald">ALL NBA TEAMS (Z-A)</span>
-                    <div className="flex flex-wrap gap-2.5">
-                       {allOtherTeamsSorted.map(t => (
-                         <button key={t.id} onClick={() => { setProposalTargetTeamId(t.id); setProposalSelectedIds(new Set()); setProposalRequirements([]); setProposalSearchPerformed(false); }} className={`flex items-center justify-center p-2 rounded-full border transition-all w-11 h-11 flex-shrink-0 ${proposalTargetTeamId === t.id ? 'bg-indigo-600 border-indigo-400 shadow-[0_0_15px_rgba(79,70,229,0.5)] scale-110 z-10' : 'bg-slate-950/40 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60'}`} title={`${t.city} ${t.name}`}><img src={getTeamLogoUrl(t.id)} className="w-full h-full object-contain" alt={t.name} /></button>
-                       ))}
-                    </div>
-                 </div>
-              </div>
-            )}
          </div>
 
-         <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-0">
-            {activeTab !== 'History' ? (
-                <>
-                    <div className="lg:col-span-5 border-r border-slate-800 flex flex-col overflow-hidden">
-                        {activeTab === 'Block' ? (
-                            <TradeRosterList 
-                                roster={sortedUserRoster} 
-                                selectedIds={blockSelectedIds} 
-                                onToggle={toggleBlockPlayer} 
-                                onViewPlayer={handleViewPlayer} 
-                                isTradeDeadlinePassed={isTradeDeadlinePassed}
-                                mode="Block"
-                                emptyMessage={{ title: "Market is Idle", desc: "트레이드할 선수가 없습니다.", icon: <ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /> }}
-                            />
-                        ) : (
-                            !proposalTargetTeamId ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-600 text-center px-12 space-y-4"><div className="p-8 bg-slate-800/20 rounded-full"><Users size={48} className="opacity-20" /></div><p className="text-sm font-bold uppercase tracking-widest oswald italic">Please select a team from the header to view roster</p></div>
-                            ) : (
-                                <TradeRosterList 
-                                    roster={targetTeamRoster} 
-                                    selectedIds={proposalSelectedIds} 
-                                    onToggle={toggleProposalPlayer} 
-                                    onViewPlayer={handleViewPlayer} 
-                                    isTradeDeadlinePassed={isTradeDeadlinePassed}
-                                    mode="Proposal"
-                                />
-                            )
-                        )}
-                    </div>
-                    <div className="lg:col-span-7 flex flex-col overflow-hidden bg-slate-950/40 relative">
-                        <div className="flex-1 overflow-y-auto custom-scrollbar p-8 z-10 relative">
-                            {isTradeDeadlinePassed ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-6">
-                                    <div className="p-8 bg-red-950/20 rounded-full border border-red-900/50 shadow-inner">
-                                        <Clock size={64} strokeWidth={1} className="text-red-800" />
-                                    </div>
-                                    <div className="text-center space-y-2">
-                                        <p className="font-black text-xl text-red-500 uppercase oswald tracking-widest">Trade Market Closed</p>
-                                        <p className="font-bold text-sm text-slate-600">2026년 2월 6일 트레이드 데드라인이 지났습니다.<br/>더 이상 트레이드를 진행할 수 없습니다.</p>
-                                    </div>
-                                </div>
-                            ) : activeTab === 'Block' ? (
-                                blockSelectedIds.size === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6"><div className="p-8 bg-slate-800/20 rounded-full border border-slate-800 shadow-inner"><ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /></div><div className="text-center space-y-2"><p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Market is Idle</p><p className="font-bold text-sm text-slate-600">좌측 로스터에서 협상 테이블에 올릴 선수를 선택하세요.</p></div></div>
-                                ) : blockIsProcessing ? (
-                                <div className="h-full flex flex-col items-center justify-center space-y-6"><Loader2 size={48} className="text-indigo-500 animate-spin" /><div className="text-center space-y-1"><p className="font-black text-indigo-400 animate-pulse text-sm uppercase tracking-[0.3em] oswald">Negotiating Packages</p><p className="text-xs text-slate-500 font-bold">리그 전체 구단과 트레이드 가능성을 타진 중입니다...</p></div></div>
-                                ) : !blockSearchPerformed ? (
-                                <div className="h-full flex flex-col items-center justify-center text-indigo-500 space-y-6 animate-in fade-in duration-500"><div className="p-10 bg-indigo-600/10 rounded-full border border-indigo-500/30 relative"><div className="absolute inset-0 bg-indigo-600/5 rounded-full animate-ping opacity-20" /><Search size={64} strokeWidth={1.5} className="relative z-10" /></div><div className="text-center space-y-2"><p className="font-black text-xl text-indigo-400 uppercase oswald tracking-widest">Negotiation Ready</p><p className="font-bold text-sm text-slate-400">협상 준비 완료! 상단의 <span className="text-indigo-400">'오퍼 탐색'</span> 버튼을 클릭하여<br/>리그 전체 구단의 제안을 확인하세요.</p></div></div>
-                                ) : blockOffers.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Valid Offers</p><p className="text-xs font-bold text-slate-600">제시한 선수들의 가치나 샐러리가 맞는 오퍼가 없습니다.</p></div>
-                                ) : (
-                                <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2">
-                                <Handshake size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">Best Offers from the League</h4></div>{blockOffers.map((offer, idx) => (<OfferCard key={idx} offer={offer} onAccept={() => setPendingTrade({ userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)), targetAssets: offer.players, targetTeam: teams.find(t => t.id === offer.teamId)! })} onPlayerClick={handleViewPlayer} />))}</div>
-                                )
-                            ) : (
-                                proposalSelectedIds.size === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-6"><div className="p-8 bg-slate-800/20 rounded-full border border-slate-800 shadow-inner"><ArrowLeftRight size={64} strokeWidth={1} className="opacity-20" /></div><div className="text-center space-y-2"><p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Awaiting Direct Proposal</p><p className="font-bold text-sm text-slate-600">좌측 상대 팀 로스터에서 영입하고 싶은 선수를 선택하세요.</p></div></div>
-                                ) : proposalIsProcessing ? (
-                                <div className="h-full flex flex-col items-center justify-center space-y-6"><Loader2 size={48} className="text-indigo-500 animate-spin" /><div className="text-center space-y-1"><p className="font-black text-indigo-400 animate-pulse text-sm uppercase tracking-[0.3em] oswald">Analyzing Proposal</p><p className="text-xs text-slate-500 font-bold">상대 구단이 수락할 만한 우리 팀의 대가 패키지를 구성 중입니다...</p></div></div>
-                                ) : !proposalSearchPerformed ? (
-                                <div className="h-full flex flex-col items-center justify-center text-indigo-500 space-y-6 animate-in fade-in duration-500"><div className="p-10 bg-indigo-600/10 rounded-full border border-indigo-500/30 relative"><div className="absolute inset-0 bg-indigo-600/5 rounded-full animate-ping opacity-20" /><Send size={64} strokeWidth={1.5} className="relative z-10" /></div><div className="text-center space-y-2"><p className="font-black text-xl text-indigo-400 uppercase oswald tracking-widest">Proposal Ready</p><p className="font-bold text-sm text-slate-400">조건 타진 준비 완료! 상단의 <span className="text-indigo-400">'제안 요청'</span> 버튼을 클릭하여<br/>상대 팀이 원하는 반대급부를 확인하세요.</p></div></div>
-                                ) : proposalRequirements.length === 0 ? (
-                                <div className="h-full flex flex-col items-center justify-center text-slate-500 space-y-4"><X size={48} className="text-red-900/50" /><p className="font-black text-lg text-slate-400 uppercase oswald">No Matching Trade</p><p className="text-xs font-bold text-slate-600">상대 팀이 만족할 만한 가치나 샐러리 구조를 맞출 수 없습니다.</p></div>
-                                ) : (
-                                <div className="grid grid-cols-1 gap-6 pb-8"><div className="flex items-center gap-3 mb-2 px-2">
-                                <Target size={20} className="text-emerald-400" /><h4 className="text-sm font-black uppercase text-slate-400 tracking-widest oswald">AI Counter Proposals</h4></div>
-                                {proposalRequirements.map((offer, idx) => (
-                                    <RequirementCard 
-                                        key={idx} 
-                                        requirement={offer} 
-                                        targetPlayers={teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || []} 
-                                        onAccept={() => setPendingTrade({ userAssets: offer.players, targetAssets: teams.find(t => t.id === proposalTargetTeamId)?.roster.filter(p => proposalSelectedIds.has(p.id)) || [], targetTeam: teams.find(t => t.id === proposalTargetTeamId)! })} 
-                                        onPlayerClick={handleViewPlayer} 
-                                    />
-                                ))}</div>
-                                )
-                            )}
+         {/* Content Area */}
+         <div className="flex-1 overflow-hidden relative">
+            {activeTab === 'Block' && (
+                <div className="flex h-full">
+                    <div className="w-[400px] border-r border-slate-800 bg-slate-950/30 flex flex-col">
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">내 로스터</span>
+                            <span className="text-[10px] font-bold text-slate-500">{blockSelectedIds.size} selected</span>
                         </div>
-                    </div>
-                </>
-            ) : (
-                <div className="col-span-12 flex flex-col h-full overflow-hidden p-8">
-                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/40 rounded-3xl border border-slate-800 p-6">
-                        <TradeHistoryTable 
-                            transactions={filteredHistory} 
-                            historyFilter={historyFilter} 
-                            teamId={team.id} 
-                            teams={teams}
-                            currentSimDate={currentSimDate}
+                        <TradeRosterList 
+                            roster={sortedUserRoster} 
+                            selectedIds={blockSelectedIds} 
+                            onToggle={toggleBlockPlayer} 
+                            onViewPlayer={handleViewPlayer} 
+                            isTradeDeadlinePassed={isTradeDeadlinePassed}
+                            mode="Block"
                         />
                     </div>
+                    <div className="flex-1 bg-slate-900/50 p-8 overflow-y-auto custom-scrollbar">
+                        {!blockSearchPerformed ? (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
+                                <Search size={48} className="opacity-20" />
+                                <div className="text-center">
+                                    <p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Ready to Search</p>
+                                    <p className="text-xs font-bold text-slate-600 mt-2">좌측에서 트레이드 카드로 활용할 선수를 선택하고<br/>오퍼 검색 버튼을 눌러주세요.</p>
+                                </div>
+                            </div>
+                        ) : blockOffers.length > 0 ? (
+                            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
+                                {blockOffers.map((offer, idx) => (
+                                    <OfferCard 
+                                        key={idx} 
+                                        offer={offer} 
+                                        onPlayerClick={handleViewPlayer}
+                                        onAccept={() => setPendingTrade({
+                                            userAssets: (team?.roster || []).filter(p => blockSelectedIds.has(p.id)),
+                                            targetAssets: offer.players,
+                                            targetTeam: teams.find(t => t.id === offer.teamId)!
+                                        })}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
+                                <div className="p-6 bg-slate-800/20 rounded-full">
+                                    <Trash2 size={32} className="opacity-30" />
+                                </div>
+                                <p className="font-bold text-sm">조건에 맞는 제안이 없습니다.</p>
+                                <p className="text-xs">다른 선수나 포지션을 선택해보세요.</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'Proposal' && (
+                 <div className="flex h-full">
+                    {/* Left: Target Team Roster */}
+                    <div className="flex-1 flex flex-col border-r border-slate-800 bg-slate-950/30">
+                        <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+                            <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                                {selectedTargetTeam ? `${selectedTargetTeam.name} Roster` : 'Target Roster'}
+                            </span>
+                            <span className="text-[10px] font-bold text-slate-500">{proposalSelectedIds.size} wanted</span>
+                        </div>
+                        {selectedTargetTeam ? (
+                            <TradeRosterList 
+                                roster={targetTeamRoster} 
+                                selectedIds={proposalSelectedIds} 
+                                onToggle={toggleProposalPlayer} 
+                                onViewPlayer={handleViewPlayer} 
+                                isTradeDeadlinePassed={isTradeDeadlinePassed}
+                                mode="Proposal"
+                            />
+                        ) : (
+                            <div className="flex-1 flex flex-col items-center justify-center text-slate-600">
+                                <Target size={40} className="opacity-20 mb-4" />
+                                <p className="text-xs font-bold uppercase tracking-widest">상대 팀을 먼저 선택해주세요</p>
+                            </div>
+                        )}
+                    </div>
+                    
+                    {/* Right: Counter Offers */}
+                    <div className="w-[500px] bg-slate-900/50 p-6 overflow-y-auto custom-scrollbar border-l border-slate-800">
+                        <div className="mb-6 flex items-center gap-3 text-slate-400">
+                             <Handshake size={20} />
+                             <h4 className="font-black uppercase text-sm tracking-widest">상대방의 요구 조건</h4>
+                        </div>
+
+                        {!proposalSearchPerformed ? (
+                            <div className="h-64 flex flex-col items-center justify-center text-slate-600 text-center">
+                                <p className="text-xs font-bold mb-2">영입하고 싶은 선수를 선택 후<br/>협상을 시도하세요.</p>
+                            </div>
+                        ) : proposalRequirements.length > 0 ? (
+                            <div className="space-y-4">
+                                {proposalRequirements.map((req, idx) => (
+                                    <RequirementCard 
+                                        key={idx} 
+                                        requirement={req}
+                                        targetPlayers={targetTeamRoster.filter(p => proposalSelectedIds.has(p.id))}
+                                        onPlayerClick={handleViewPlayer}
+                                        onAccept={() => setPendingTrade({
+                                            userAssets: req.players, // Players MY team gives up
+                                            targetAssets: targetTeamRoster.filter(p => proposalSelectedIds.has(p.id)),
+                                            targetTeam: teams.find(t => t.id === proposalTargetTeamId)!
+                                        })}
+                                    />
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="h-64 flex flex-col items-center justify-center text-slate-600 text-center space-y-4">
+                                <div className="p-6 bg-red-500/10 rounded-full border border-red-500/20">
+                                    <X size={32} className="text-red-500/50" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-sm text-slate-500">협상 결렬</p>
+                                    <p className="text-xs mt-1">상대방이 트레이드에 관심이 없거나,<br/>샐러리 캡 조건을 맞출 수 없습니다.</p>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                 </div>
+            )}
+
+            {activeTab === 'History' && (
+                <div className="h-full bg-slate-950/30">
+                    <TradeHistoryTable 
+                        transactions={filteredHistory} 
+                        historyFilter={historyFilter} 
+                        teamId={team.id} 
+                        teams={teams}
+                        currentSimDate={currentSimDate}
+                    />
                 </div>
             )}
          </div>

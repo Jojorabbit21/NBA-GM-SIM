@@ -8,8 +8,9 @@ interface ModalProps {
     onClose: () => void;
     children: React.ReactNode;
     title?: React.ReactNode;
+    footer?: React.ReactNode; // Added Footer Support
     size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
-    headerColor?: string; // Optional accent color for header
+    headerColor?: string;
     className?: string;
 }
 
@@ -18,6 +19,7 @@ export const Modal: React.FC<ModalProps> = ({
     onClose, 
     children, 
     title, 
+    footer,
     size = 'lg', 
     headerColor,
     className = ''
@@ -34,8 +36,6 @@ export const Modal: React.FC<ModalProps> = ({
     // Close on outside click
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
-            // Only close if the click target is the backdrop itself (modal-backdrop)
-            // This prevents closing when dragging inside modal or clicking elements that might be removed from DOM
             const target = event.target as HTMLElement;
             if (target.id === 'modal-backdrop') {
                 onClose();
@@ -76,8 +76,8 @@ export const Modal: React.FC<ModalProps> = ({
 
                 {/* Header */}
                 {(title) && (
-                    <div className="px-8 py-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center relative z-10">
-                        <div className="flex-1">{title}</div>
+                    <div className="px-8 py-6 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center relative z-10 shrink-0">
+                        <div className="flex-1 text-xl font-bold text-white">{title}</div>
                         <button 
                             onClick={onClose} 
                             className="p-2 ml-4 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
@@ -98,9 +98,16 @@ export const Modal: React.FC<ModalProps> = ({
                 )}
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar relative z-10">
+                <div className="flex-1 overflow-y-auto custom-scrollbar relative z-10 p-0">
                     {children}
                 </div>
+
+                {/* Footer (Optional) */}
+                {footer && (
+                    <div className="px-8 py-5 border-t border-slate-800 bg-slate-900/90 relative z-10 shrink-0">
+                        {footer}
+                    </div>
+                )}
             </div>
         </div>,
         document.body

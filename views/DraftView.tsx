@@ -5,6 +5,7 @@ import { Team, Player } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { getRankStyle } from '../components/SharedComponents';
 import { useScoutingReport } from '../services/queries';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface DraftViewProps {
   prospects: Player[];
@@ -44,21 +45,22 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6 flex-shrink-0">
-        <div>
-          <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">드래프트 보드</h2>
-        </div>
-        <div className="relative w-full md:w-80">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
-          <input 
-            type="text" 
-            placeholder="유망주 이름 검색..." 
-            className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-12 pr-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-all"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-          />
-        </div>
-      </div>
+      <PageHeader 
+        title="드래프트 보드" 
+        icon={<UserPlus size={24} />}
+        actions={
+            <div className="relative w-full md:w-80">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                <input 
+                    type="text" 
+                    placeholder="유망주 이름 검색..." 
+                    className="w-full bg-slate-900 border border-slate-800 rounded-2xl py-3 pl-12 pr-4 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 transition-all"
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                />
+            </div>
+        }
+      />
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 overflow-hidden">
         {/* Left: Prospect List */}

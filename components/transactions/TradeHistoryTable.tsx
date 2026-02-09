@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { Transaction, Team } from '../../types';
 import { History, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 import { OvrBadge } from '../common/OvrBadge';
-import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr } from '../../utils/constants';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface TradeHistoryTableProps {
   transactions: Transaction[];
@@ -101,14 +102,14 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                 <td className="py-4 px-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         <div className="flex items-center gap-2">
-                                            <img src={getTeamLogoUrl(t.teamId)} className="w-6 h-6 object-contain" alt="" />
+                                            <TeamLogo teamId={t.teamId} size="sm" />
                                             <span className={`text-xs font-black uppercase ${t.teamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team1Name}</span>
                                         </div>
                                         <div className="pl-2">
                                              <ArrowRightLeft size={12} className="text-slate-600" />
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <img src={getTeamLogoUrl(t.details?.partnerTeamId || '')} className="w-6 h-6 object-contain" alt="" />
+                                            <TeamLogo teamId={t.details?.partnerTeamId || ''} size="sm" />
                                             <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
                                         </div>
                                     </div>

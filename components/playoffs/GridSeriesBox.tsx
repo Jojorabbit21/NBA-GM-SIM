@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Team, PlayoffSeries } from '../../types';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface GridSeriesBoxProps {
     series?: PlayoffSeries;
@@ -55,13 +56,10 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
                 <span className={`w-3 md:w-4 text-center font-mono text-[9px] md:text-[10px] ${isUser ? 'text-emerald-400' : 'text-slate-600'}`}>{seed}</span>
                 
                 {team && (
-                    <img 
-                      src={team.logo} 
-                      alt="" 
-                      className={`
-                          w-4 h-4 md:w-5 md:h-5 object-contain flex-shrink-0 
-                          ${isEliminated ? 'opacity-40 grayscale' : ''}
-                      `} 
+                    <TeamLogo 
+                      teamId={team.id} 
+                      size="custom" 
+                      className={`w-4 h-4 md:w-5 md:h-5 object-contain flex-shrink-0 ${isEliminated ? 'opacity-40 grayscale' : ''}`}
                     />
                 )}
                 

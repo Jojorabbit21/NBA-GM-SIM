@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { Modal } from './common/Modal';
 
 interface ResetDataModalProps {
   isOpen: boolean;
@@ -15,11 +16,14 @@ export const ResetDataModal: React.FC<ResetDataModalProps> = ({
   onClose, 
   onConfirm 
 }) => {
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/80 z-[300] flex items-center justify-center p-4 backdrop-blur-md">
-        <div className="bg-slate-900 border border-slate-700 p-8 rounded-3xl max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+    <Modal 
+        isOpen={isOpen} 
+        onClose={onClose} 
+        size="sm"
+        // No Header Title, using custom body content
+    >
+        <div className="p-8 text-center flex flex-col items-center">
             <div className="bg-red-500/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-red-500/30">
                 <AlertTriangle className="text-red-500" size={32} />
             </div>
@@ -28,7 +32,7 @@ export const ResetDataModal: React.FC<ResetDataModalProps> = ({
                 현재 진행 중인 모든 시즌 데이터와 세이브 파일이 영구적으로 삭제됩니다.<br/>
                 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?
             </p>
-            <div className="flex gap-4">
+            <div className="flex gap-4 w-full">
                 <button 
                     onClick={onClose} 
                     disabled={isLoading}
@@ -46,6 +50,6 @@ export const ResetDataModal: React.FC<ResetDataModalProps> = ({
                 </button>
             </div>
         </div>
-    </div>
+    </Modal>
   );
 };

@@ -5,6 +5,7 @@ import { Team, PlayoffSeries, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 import { TEAM_DATA } from '../data/teamData';
+import { TeamLogo } from '../components/common/TeamLogo';
 
 interface PlayoffReviewViewProps {
   team: Team;
@@ -202,7 +203,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
               <h1 className="text-xl font-black uppercase tracking-widest text-white oswald">2026 Playoff Report</h1>
           </div>
           <div className="flex items-center gap-3">
-              <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
+              <TeamLogo teamId={team.id} size="md" />
               <span className="font-bold text-slate-400 uppercase text-sm tracking-wider hidden md:block">{team.city} {team.name}</span>
           </div>
       </div>

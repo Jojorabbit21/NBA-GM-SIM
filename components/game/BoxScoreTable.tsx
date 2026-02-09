@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { OvrBadge } from '../common/OvrBadge';
+import { TeamLogo } from '../common/TeamLogo';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
 
@@ -73,7 +74,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
 
             <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between mt-1">
                 <div className="flex items-center gap-3">
-                    <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
+                    <TeamLogo teamId={team.id} size="md" />
                     <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
                 </div>
             </div>

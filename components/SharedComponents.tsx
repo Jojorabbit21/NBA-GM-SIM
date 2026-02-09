@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, X, RefreshCw } from 'lucide-react';
 import { Team } from '../types';
+import { TeamLogo } from './common/TeamLogo';
 
 export const getOvrBadgeStyle = (ovr: number) => {
   const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
@@ -114,7 +115,7 @@ export const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: 
 export const TeamCard: React.FC<{ team: Team, onSelect: () => void }> = ({ team, onSelect }) => (
   <button onClick={onSelect} className="group bg-slate-900/80 border border-slate-800 p-6 rounded-[2rem] hover:border-slate-400 transition-all flex flex-col items-center justify-center shadow-xl w-full aspect-[4/5] overflow-hidden">
     <div className="flex-1 flex items-center justify-center w-full mb-4">
-      <img src={team.logo} className="max-w-[70%] max-h-full group-hover:scale-110 transition-transform object-contain drop-shadow-lg" alt={team.name} />
+      <TeamLogo teamId={team.id} size="custom" className="max-w-[70%] max-h-full group-hover:scale-110 transition-transform drop-shadow-lg" />
     </div>
     <div className="w-full px-3 text-center">
       <div className="text-lg font-semibold pretendard text-white ko-tight uppercase leading-tight break-keep">

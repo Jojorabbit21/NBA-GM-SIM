@@ -1,9 +1,10 @@
 
 import React, { useMemo } from 'react';
-import { Briefcase, X, Info, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
+import { Briefcase, AlertCircle, CheckCircle2, ShieldAlert, Info } from 'lucide-react';
 import { Player, Team } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr, LEAGUE_FINANCIALS } from '../../utils/constants';
+import { Modal } from '../common/Modal';
 
 const { TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
@@ -78,38 +79,28 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
   const validationResult = useMemo(() => {
       // 1. Second Apron Rules
       if (currentTotalCap >= SECOND_APRON) {
-          // Rule A: Aggregation Ban (Cannot package multiple players to get one)
-          // Simplified: If sending > 1 player and receiving 1 player, it's aggregation.
-          // (Technically aggregation applies if combining salaries to match a larger salary)
           if (userAssets.length > 1 && targetAssets.length === 1) {
               return { valid: false, reason: "2차 에이프런 초과 팀은 샐러리 집계(Aggregation) 트레이드가 금지됩니다. (다수 선수를 묶어 1명 영입 불가)" };
           }
-          // Rule B: Cannot take back more salary than sent out (100% Match)
           if (userSalaryIn > userSalaryOut) {
               return { valid: false, reason: `2차 에이프런 초과 팀은 나가는 연봉($${userSalaryOut.toFixed(1)}M)보다 더 많은 연봉($${userSalaryIn.toFixed(1)}M)을 받을 수 없습니다.` };
           }
       }
-      
       // 2. First Apron Rules
       else if (currentTotalCap >= FIRST_APRON) {
-          // Rule: Cannot take back more salary than sent out (100% Match)
           if (userSalaryIn > userSalaryOut) {
               return { valid: false, reason: `1차 에이프런 초과 팀은 나가는 연봉($${userSalaryOut.toFixed(1)}M)보다 더 많은 연봉($${userSalaryIn.toFixed(1)}M)을 받을 수 없습니다.` };
           }
       }
-
       // 3. Taxpayer Rules
       else if (currentTotalCap >= TAX_LEVEL) {
-          // Rule: 110% Matching
           const limit = userSalaryOut * 1.10; // Simplified
           if (userSalaryIn > limit) {
               return { valid: false, reason: `사치세 납부 팀은 나가는 연봉의 110%($${limit.toFixed(1)}M)까지만 받을 수 있습니다.` };
           }
       }
-
       // 4. Non-Taxpayer Rules
       else {
-          // Rule: 125% Matching (Standard)
           const limit = (userSalaryOut * 1.25) + 0.25; // +250k simplified
           if (userSalaryIn > limit) {
               return { valid: false, reason: `샐러리 매칭 실패: 나가는 연봉의 125%($${limit.toFixed(1)}M)를 초과하여 받을 수 없습니다.` };
@@ -119,17 +110,38 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
       return { valid: true, reason: null };
   }, [currentTotalCap, userAssets, targetAssets, userSalaryIn, userSalaryOut]);
 
+  const header = (
+      <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3 oswald tracking-tight">
+        <Briefcase className="text-indigo-400" size={28} /> 최종 결정 전 확인
+      </h3>
+  );
+
+  const footer = (
+    <div className="flex justify-end gap-6 w-full">
+        <button onClick={onCancel} className="px-10 py-4 rounded-2xl font-black text-slate-400 hover:bg-slate-800 uppercase text-xs tracking-widest transition-all">협상 취소</button>
+        <button 
+          onClick={onConfirm} 
+          disabled={!validationResult.valid}
+          className={`px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] flex items-center gap-4 text-lg transition-all ${
+              validationResult.valid 
+              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_10px_40px_rgba(79,70,229,0.4)] active:scale-95' 
+              : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
+          }`}
+        >
+           <CheckCircle2 size={24} /> {validationResult.valid ? '트레이드 실행' : '규정 위반'}
+        </button>
+    </div>
+  );
+
   return (
-    <div className="fixed inset-0 bg-slate-950/95 z-[200] flex items-center justify-center p-4 animate-in fade-in zoom-in duration-300 backdrop-blur-md">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-5xl shadow-2xl flex flex-col overflow-hidden max-h-[95vh] ko-normal">
-        <div className="px-8 py-6 border-b border-slate-800 bg-slate-800/40 flex justify-between items-center">
-          <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3 oswald tracking-tight">
-            <Briefcase className="text-indigo-400" size={28} /> 최종 결정 전 확인
-          </h3>
-          <button onClick={onCancel} className="p-2 hover:bg-slate-700 rounded-full text-slate-400 transition-colors"><X size={24} /></button>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-8 space-y-8">
+    <Modal 
+        isOpen={true} 
+        onClose={onCancel} 
+        title={header} 
+        footer={footer} 
+        size="xl"
+    >
+        <div className="p-8 space-y-8">
             <div className="bg-slate-950/40 border border-slate-800 rounded-3xl overflow-hidden shadow-lg">
                 <table className="w-full text-left border-collapse">
                     <thead>
@@ -144,7 +156,6 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                     </thead>
                     <tbody>
                         {userAssets.map(p => {
-                            // [Fix] Real-time OVR
                             const ovr = calculatePlayerOvr(p);
                             return (
                             <tr key={p.id} className="border-b border-slate-800/30 hover:bg-red-500/5 transition-colors group">
@@ -160,7 +171,6 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                             );
                         })}
                         {targetAssets.map(p => {
-                            // [Fix] Real-time OVR
                             const ovr = calculatePlayerOvr(p);
                             return (
                             <tr key={p.id} className="border-b border-slate-800/30 hover:bg-emerald-500/5 transition-colors group">
@@ -240,22 +250,6 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                 </div>
             </div>
         </div>
-
-        <div className="p-8 flex justify-end gap-6 bg-slate-900 border-t border-slate-800">
-          <button onClick={onCancel} className="px-10 py-4 rounded-2xl font-black text-slate-400 hover:bg-slate-800 uppercase text-xs tracking-widest transition-all">협상 취소</button>
-          <button 
-            onClick={onConfirm} 
-            disabled={!validationResult.valid}
-            className={`px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] flex items-center gap-4 text-lg transition-all ${
-                validationResult.valid 
-                ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-[0_10px_40px_rgba(79,70,229,0.4)] active:scale-95' 
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
-            }`}
-          >
-             <CheckCircle2 size={24} /> {validationResult.valid ? '트레이드 실행' : '규정 위반'}
-          </button>
-        </div>
-      </div>
-    </div>
+    </Modal>
   );
 };

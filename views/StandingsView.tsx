@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
 import { Team } from '../types';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Trophy } from 'lucide-react';
 import { StandingTable } from '../components/standings/StandingTable';
 import { DIVISION_KOREAN } from '../data/mappings';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface StandingsViewProps {
   teams: Team[];
@@ -38,18 +39,19 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pretendard pb-12">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 border-b border-slate-800 pb-8">
-        <div>
-          <h2 className="text-5xl font-black ko-tight uppercase tracking-tight text-slate-100">리그 순위표</h2>
-        </div>
-        <div className="flex p-1 bg-slate-900 rounded-2xl border border-slate-800">
-          {(['Conference', 'Division'] as const).map(m => (
-            <button key={m} onClick={() => setMode(m)} className={`px-10 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${mode === m ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'text-slate-500 hover:text-slate-300'}`}>
-              {m === 'Conference' ? '컨퍼런스 & 전체' : '디비전 상세'}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader 
+        title="리그 순위표" 
+        icon={<Trophy size={24} />}
+        actions={
+            <div className="flex p-1 bg-slate-900 rounded-2xl border border-slate-800">
+                {(['Conference', 'Division'] as const).map(m => (
+                    <button key={m} onClick={() => setMode(m)} className={`px-10 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${mode === m ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'text-slate-500 hover:text-slate-300'}`}>
+                        {m === 'Conference' ? '컨퍼런스 & 전체' : '디비전 상세'}
+                    </button>
+                ))}
+            </div>
+        }
+      />
 
       {mode === 'Conference' && (
         <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8 items-start animate-in slide-in-from-bottom-4 duration-500">
