@@ -6,6 +6,7 @@ import {
   RotateCcw, LogOut, FlaskConical, Mail 
 } from 'lucide-react';
 import { Team, AppView } from '../types';
+import { TEAM_DATA } from '../data/teamData';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -17,46 +18,6 @@ interface SidebarProps {
   onResetClick: () => void;
   onLogout: () => void;
 }
-
-/* DO NOT CHANGE: This logic is fixed for specific requirement */
-// 1. Team Info Section Background Colors
-const TEAM_INFO_BG_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#000000', 'cha': '#00778B', 'chi': '#BA0C2F', 'cle': '#6F263D',
-  'dal': '#0050B5', 'den': '#1D4289', 'det': '#1d42ba', 'gsw': '#1D428A', 'hou': '#BA0C2F', 'ind': '#FFCD00',
-  'lac': '#C8102E', 'lal': '#330072', 'mem': '#5D76A9', 'mia': '#862633', 'mil': '#2C5234', 'min': '#236192',
-  'nop': '#C8102E', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0050B5', 'phi': '#1D4289', 'phx': '#1D1160',
-  'por': '#C8102E', 'sac': '#5A2D81', 'sas': '#010101', 'tor': '#010101', 'uta': '#010101', 'was': '#0C2340'
-};
-
-/* DO NOT CHANGE: This logic is fixed for specific requirement */
-// 2. Team Info Section Text Colors (New)
-const TEAM_INFO_TEXT_COLORS: Record<string, string> = {
-  'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#FFFFFF', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
-  'dal': '#FFFFFF', 'den': '#FFC72C', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#0C2340',
-  'lac': '#FFFFFF', 'lal': '#FFC72C', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
-  'nop': '#FFFFFF', 'nyk': '#FFFFFF', 'okc': '#FFFFFF', 'orl': '#FFFFFF', 'phi': '#FFFFFF', 'phx': '#FFFFFF',
-  'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#FFFFFF', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
-};
-
-/* DO NOT CHANGE: This logic is fixed for specific requirement */
-// 3. Navigation Active State Background Colors
-const TEAM_NAV_ACTIVE_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#00778B', 'chi': '#BA0C2F', 'cle': '#6F263D',
-  'dal': '#0050B5', 'den': '#1D4289', 'det': '#1d42ba', 'gsw': '#1D428A', 'hou': '#BA0C2F', 'ind': '#FFCD00',
-  'lac': '#C8102E', 'lal': '#330072', 'mem': '#5D76A9', 'mia': '#862633', 'mil': '#2C5234', 'min': '#236192',
-  'nop': '#C8102E', 'nyk': '#006bb6', 'okc': '#F9423A', 'orl': '#0050B5', 'phi': '#C8102E', 'phx': '#1D1160',
-  'por': '#C8102E', 'sac': '#5A2D81', 'sas': '#9EA2A2', 'tor': '#BA0C2F', 'uta': '#330072', 'was': '#0C2340'
-};
-
-/* DO NOT CHANGE: This logic is fixed for specific requirement */
-// 4. Navigation Active State Text Colors (New)
-const TEAM_NAV_TEXT_COLORS: Record<string, string> = {
-  'atl': '#FFFFFF', 'bos': '#FFFFFF', 'bkn': '#000000', 'cha': '#FFFFFF', 'chi': '#FFFFFF', 'cle': '#FFFFFF',
-  'dal': '#FFFFFF', 'den': '#FFC72C', 'det': '#FFFFFF', 'gsw': '#FFFFFF', 'hou': '#FFFFFF', 'ind': '#0C2340',
-  'lac': '#FFFFFF', 'lal': '#FFC72C', 'mem': '#FFFFFF', 'mia': '#FFFFFF', 'mil': '#FFFFFF', 'min': '#FFFFFF',
-  'nop': '#FFFFFF', 'nyk': '#FFFFFF', 'okc': '#FFFFFF', 'orl': '#FFFFFF', 'phi': '#FFFFFF', 'phx': '#FFFFFF',
-  'por': '#FFFFFF', 'sac': '#FFFFFF', 'sas': '#010101', 'tor': '#FFFFFF', 'uta': '#FFFFFF', 'was': '#FFFFFF'
-};
 
 const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string, badge?: number }> = ({ active, icon, label, onClick, color, textColor, badge }) => {
   // Convert Hex to RGB for opacity handling in shadows/hovers
@@ -123,12 +84,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onResetClick, 
   onLogout 
 }) => {
-  // Determine Colors
-  const infoBgColor = team ? (TEAM_INFO_BG_COLORS[team.id] || '#4f46e5') : '#4f46e5';
-  const infoTextColor = team ? (TEAM_INFO_TEXT_COLORS[team.id] || '#FFFFFF') : '#FFFFFF';
   
-  const navActiveColor = team ? (TEAM_NAV_ACTIVE_COLORS[team.id] || '#4f46e5') : '#4f46e5';
-  const navTextColor = team ? (TEAM_NAV_TEXT_COLORS[team.id] || '#FFFFFF') : '#FFFFFF';
+  const teamStatic = team ? TEAM_DATA[team.id] : null;
+
+  // Determine Colors using unified TEAM_DATA
+  const infoBgColor = teamStatic ? teamStatic.colors.primary : '#4f46e5';
+  const infoTextColor = teamStatic ? teamStatic.colors.text : '#FFFFFF';
+  
+  // Use same primary color for Nav active state, or fallback
+  const navActiveColor = teamStatic ? teamStatic.colors.primary : '#4f46e5';
+  const navTextColor = teamStatic ? teamStatic.colors.text : '#FFFFFF';
 
   return (
     <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500">

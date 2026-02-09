@@ -4,8 +4,9 @@ import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert } from 'luci
 import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, Team, Player } from '../types';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
-import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
+import { TEAM_DATA } from '../data/teamData';
 
 interface InboxViewProps {
   myTeamId: string;
@@ -214,12 +215,24 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
             const homeTeam = teams.find(t => t.id === gameData.homeTeamId);
             const awayTeam = teams.find(t => t.id === gameData.awayTeamId);
             
+            const hColor = TEAM_DATA[homeTeam?.id || '']?.colors.primary || '#ffffff';
+            const aColor = TEAM_DATA[awayTeam?.id || '']?.colors.primary || '#ffffff';
+            
+            // Safe check for black color to fallback to white for visibility
+            const hText = hColor === '#000000' ? '#ffffff' : hColor;
+            const aText = aColor === '#000000' ? '#ffffff' : aColor;
+
             return (
                 <div className="space-y-10 max-w-5xl mx-auto">
                     {/* 1. Centered Scoreboard */}
                     <div className="flex items-center justify-center gap-12 py-4">
                         <div className="flex items-center gap-4">
-                            <span className="text-2xl font-black text-white uppercase oswald tracking-tight">{homeTeam?.name}</span>
+                            <span 
+                                className="text-2xl font-black uppercase oswald tracking-tight"
+                                style={{ color: hText }}
+                            >
+                                {homeTeam?.name}
+                            </span>
                             <img src={homeTeam?.logo} className="w-16 h-16 object-contain drop-shadow-md" alt="" />
                         </div>
                         
@@ -231,7 +244,12 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
 
                         <div className="flex items-center gap-4">
                             <img src={awayTeam?.logo} className="w-16 h-16 object-contain drop-shadow-md" alt="" />
-                            <span className="text-2xl font-black text-white uppercase oswald tracking-tight">{awayTeam?.name}</span>
+                            <span 
+                                className="text-2xl font-black uppercase oswald tracking-tight"
+                                style={{ color: aText }}
+                            >
+                                {awayTeam?.name}
+                            </span>
                         </div>
                     </div>
                     
@@ -337,7 +355,7 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                     const snap = getSnapshot(p.id, p.ovr);
                                                     return (
                                                         <div key={i} className="flex items-center gap-3 cursor-pointer hover:bg-slate-800 p-1 rounded" onClick={() => onPlayerClick(p.id)}>
-                                                            <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0`}>{snap.ovr || '-'}</div>
+                                                            <OvrBadge value={snap.ovr || 70} size="sm" className="!w-6 !h-6 !text-xs !mx-0" />
                                                             <span className="text-sm font-bold text-emerald-300">{p.name}</span>
                                                             <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                         </div>
@@ -351,7 +369,7 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                     const snap = getSnapshot(p.id, p.ovr);
                                                     return (
                                                         <div key={i} className="flex items-center gap-3 cursor-pointer hover:bg-slate-800 p-1 rounded" onClick={() => onPlayerClick(p.id)}>
-                                                            <div className={`${getOvrBadgeStyle(snap.ovr || 70)} !w-6 !h-6 !text-xs !mx-0 grayscale opacity-70`}>{snap.ovr || '-'}</div>
+                                                            <OvrBadge value={snap.ovr || 70} size="sm" className="!w-6 !h-6 !text-xs !mx-0 grayscale opacity-70" />
                                                             <span className="text-sm font-bold text-red-300/80">{p.name}</span>
                                                             <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                         </div>

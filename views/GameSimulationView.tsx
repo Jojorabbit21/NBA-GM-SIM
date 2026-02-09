@@ -3,15 +3,8 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { X } from 'lucide-react';
 import { Team } from '../types';
 import { ScoreGraph } from '../components/game/ScoreGraph';
-
-// Team Colors Mapping
-const TEAM_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#FFFFFF', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
-  'dal': '#00538C', 'den': '#FEC524', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#FDBB30',
-  'lac': '#1D428A', 'lal': '#FDB927', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#236192',
-  'nop': '#85714D', 'nyk': '#F58426', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
-  'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
-};
+import { TEAM_DATA } from '../data/teamData';
+import { GAME_SIMULATION_MESSAGES } from '../data/uiConstants';
 
 // [Config] Simulation Speed Control
 // Lower increment / Higher delay = Slower game
@@ -21,63 +14,6 @@ export const SIMULATION_SPEED = {
     CLUTCH: { INC: 0.2, DELAY: 400 },     // Last minute close game (94%+)
     GARBAGE: { INC: 1.5, DELAY: 30 }      // Blowout games
 };
-
-const GENERAL_MESSAGES = [
-    "코칭 스태프가 머리를 맞대는 중...",
-    "선수들이 작전 타임에 물 마시는 중...",
-    "심판이 애매한 판정을 비디오 판독 중...",
-    "관중들이 파도를 타는 중...",
-    "마스코트가 하프코트 슛을 시도 중...",
-    "치어리더가 분위기를 띄우는 중...",
-    "벤치 멤버들이 수건을 돌리는 중...",
-    "감독이 작전판에 열정적으로 그림 그리는 중...",
-    "전력분석관이 태블릿을 두드리는 중...",
-    "양 팀 선수들이 거친 몸싸움을 벌입니다...",
-    "빠른 템포로 공수 전환이 이루어집니다...",
-];
-
-const CLUTCH_MESSAGES = [
-    "4쿼터 막판, 수비 집중력이 높아집니다!",
-    "승부처! 감독이 에이스를 호출합니다.",
-    "관중석이 숨을 죽이고 지켜봅니다...",
-    "한 골 싸움! 치열한 공방전!",
-    "타임아웃! 마지막 작전을 지시합니다.",
-    "상대 팀 감독이 심판에게 거칠게 항의합니다!",
-    "선수들의 눈빛이 달라졌습니다.",
-    "에이스가 공을 잡았습니다. 아이솔레이션 시도...",
-    "경기장 분위기가 최고조에 달합니다!",
-];
-
-const SUPER_CLUTCH_MESSAGES = [
-    "운명의 시간이 다가옵니다...",
-    "마지막 10초! 원 포제션 게임!",
-    "버저비터가 터질 것인가!",
-    "심장이 멎을 듯한 초접전...",
-    "공이 허공을 가릅니다...",
-    "승부를 결정짓는 슛이 림을 향합니다!",
-    "기적 같은 플레이가 나올 수 있을까요?",
-    "모든 관중이 기립했습니다!",
-    "파울 작전! 자유투가 중요합니다.",
-    "역사에 남을 명승부...",
-];
-
-const BUZZER_BEATER_MESSAGES = [
-    "버저비터! 믿을 수 없는 기적입니다!",
-    "종료 부저와 함께 림을 가릅니다!",
-    "경기를 끝내는 위닝샷! 스타디움이 폭발합니다!",
-    "드라마 같은 역전승! 영웅이 탄생합니다!"
-];
-
-const GARBAGE_MESSAGES = [
-    "점수 차가 많이 벌어졌습니다.",
-    "주전 선수들이 벤치로 물러나 휴식을 취합니다.",
-    "가비지 타임, 유망주들이 코트를 밟습니다.",
-    "승부의 추는 이미 기운 것 같습니다.",
-    "일방적인 경기 흐름이 계속됩니다.",
-    "관중들이 하나둘 경기장을 빠져나갑니다...",
-    "감독이 벤치 멤버들이게 기회를 줍니다.",
-    "사실상 승패가 결정되었습니다.",
-];
 
 // WP Calculation Logic: Score diff + Time remaining
 // 50% is the baseline (Tie).
@@ -168,7 +104,7 @@ export const GameSimulatingView: React.FC<{
 }> = ({ homeTeam, awayTeam, userTeamId, finalHomeScore = 110, finalAwayScore = 105, onSimulationComplete }) => {
   const [progress, setProgress] = useState(0);
   const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
-  const [currentMessage, setCurrentMessage] = useState(GENERAL_MESSAGES[0]);
+  const [currentMessage, setCurrentMessage] = useState(GAME_SIMULATION_MESSAGES.GENERAL[0]);
   const [isBuzzerBeaterActive, setIsBuzzerBeaterActive] = useState(false);
   
   const isFinishedRef = useRef(false);
@@ -187,8 +123,6 @@ export const GameSimulatingView: React.FC<{
   const [displayScore, setDisplayScore] = useState({ h: 0, a: 0 });
 
   // [Update] Simulation Speed Logic (Fixed Jumping Bug)
-  // Reason for fix: `displayScore` dependency caused rapid re-renders and potential race conditions.
-  // Now speed is determined by looking up the timeline directly using progress.
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     
@@ -207,8 +141,6 @@ export const GameSimulatingView: React.FC<{
                 return 100;
             }
             
-            // Calculate current score from timeline based on current progress
-            // Using direct timeline lookup avoids state synchronization lag
             const currentIndex = Math.floor((prev / 100) * (scoreTimeline.length - 1));
             const currentData = scoreTimeline[currentIndex] || { h: 0, a: 0 };
             const scoreDiff = Math.abs(currentData.h - currentData.a);
@@ -223,7 +155,6 @@ export const GameSimulatingView: React.FC<{
                 ? currentData.h <= currentData.a 
                 : currentData.a <= currentData.h;
 
-            // [Fix] Calculate remaining points to ensure we don't jump over multiple possessions
             const remainingHomePoints = finalHomeScore - currentData.h;
             const remainingAwayPoints = finalAwayScore - currentData.a;
             const totalRemainingPoints = remainingHomePoints + remainingAwayPoints;
@@ -232,23 +163,22 @@ export const GameSimulatingView: React.FC<{
                 !isBuzzerBeaterTriggeredRef.current && 
                 prev > 96 && 
                 prev < 99 && 
-                scoreDiff <= 3 && // Relaxed slightly to 3 for a tie-game 3pt buzzer beater scenario
+                scoreDiff <= 3 && 
                 isWinnerTrailingOrTied &&
-                totalRemainingPoints > 0 && // Must be a scoring play left
-                totalRemainingPoints <= 3   // Must be a SINGLE possession (2 or 3 pts, or 1 FT)
+                totalRemainingPoints > 0 && 
+                totalRemainingPoints <= 3   
             ) {
                  // 30% Chance to trigger the event for drama
                  if (Math.random() < 0.30) {
                      isBuzzerBeaterTriggeredRef.current = true;
                      setIsBuzzerBeaterActive(true);
                      
-                     // [Visual Fix] Immediately update message to avoid spoiling with flashing effect on old text
-                     setCurrentMessage(BUZZER_BEATER_MESSAGES[Math.floor(Math.random() * BUZZER_BEATER_MESSAGES.length)]);
+                     // [Visual Fix] Immediately update message
+                     const buzzerMsgs = GAME_SIMULATION_MESSAGES.BUZZER_BEATER;
+                     setCurrentMessage(buzzerMsgs[Math.floor(Math.random() * buzzerMsgs.length)]);
                      
-                     // Pause specifically for the "Shot in the air" effect
-                     // The next tick will hit the block above and force 100%
                      timeoutId = setTimeout(runSimulationStep, 2000); 
-                     return prev; // Stay at current progress for drama
+                     return prev; 
                  }
             }
 
@@ -266,7 +196,7 @@ export const GameSimulatingView: React.FC<{
     };
     runSimulationStep();
     return () => clearTimeout(timeoutId);
-  }, [scoreTimeline, finalHomeScore, finalAwayScore]); // Added final scores to deps
+  }, [scoreTimeline, finalHomeScore, finalAwayScore]); 
 
   useEffect(() => {
       if (scoreTimeline.length === 0) return;
@@ -307,9 +237,10 @@ export const GameSimulatingView: React.FC<{
             return;
         }
         
-        // [Fix] If Buzzer Beater triggered, lock the message pool and don't random cycle
+        // [Fix] If Buzzer Beater triggered, lock the message pool
         if (isBuzzerBeaterActive) {
-             const nextMsg = BUZZER_BEATER_MESSAGES[Math.floor(Math.random() * BUZZER_BEATER_MESSAGES.length)];
+             const buzzerMsgs = GAME_SIMULATION_MESSAGES.BUZZER_BEATER;
+             const nextMsg = buzzerMsgs[Math.floor(Math.random() * buzzerMsgs.length)];
              setCurrentMessage(nextMsg);
              return; 
         }
@@ -319,11 +250,11 @@ export const GameSimulatingView: React.FC<{
         const currentScore = scoreTimeline[approxIdx] || { h: 0, a: 0 };
         const scoreDiff = Math.abs(currentScore.h - currentScore.a);
         
-        let targetPool = GENERAL_MESSAGES;
+        let targetPool = GAME_SIMULATION_MESSAGES.GENERAL;
         
-        if (currentProgress > 60 && scoreDiff >= 20) targetPool = GARBAGE_MESSAGES;
-        else if (currentProgress > 94 && scoreDiff <= 3) targetPool = SUPER_CLUTCH_MESSAGES;
-        else if (currentProgress > 85 && scoreDiff <= 10) targetPool = CLUTCH_MESSAGES;
+        if (currentProgress > 60 && scoreDiff >= 20) targetPool = GAME_SIMULATION_MESSAGES.GARBAGE;
+        else if (currentProgress > 94 && scoreDiff <= 3) targetPool = GAME_SIMULATION_MESSAGES.SUPER_CLUTCH;
+        else if (currentProgress > 85 && scoreDiff <= 10) targetPool = GAME_SIMULATION_MESSAGES.CLUTCH;
 
         setCurrentMessage(prev => {
             if (targetPool.length <= 1) return targetPool[0];
@@ -341,30 +272,28 @@ export const GameSimulatingView: React.FC<{
 
   if (!homeTeam || !awayTeam) return null;
 
-  const homeColor = TEAM_COLORS[homeTeam.id] || '#ffffff';
-  const awayColor = TEAM_COLORS[awayTeam.id] || '#94a3b8';
+  const homeData = TEAM_DATA[homeTeam.id];
+  const awayData = TEAM_DATA[awayTeam.id];
+
+  const homeColor = homeData ? homeData.colors.primary : '#ffffff';
+  const awayColor = awayData ? awayData.colors.primary : '#94a3b8';
 
   const scoreDiff = Math.abs(displayScore.h - displayScore.a);
   const isGarbage = progress > 60 && scoreDiff >= 20;
   const isSuperClutch = progress > 94 && scoreDiff <= 3;
   const isClutch = progress > 85 && scoreDiff <= 10;
   
-  // [Visual Fix] Check if current message is actually a buzzer beater message
-  const isBuzzerBeaterMessage = BUZZER_BEATER_MESSAGES.includes(currentMessage);
+  const isBuzzerBeaterMessage = GAME_SIMULATION_MESSAGES.BUZZER_BEATER.includes(currentMessage);
 
   // Dynamic Message Classes
   let messageClass = "text-indigo-300";
   if (isGarbage) {
       messageClass = "text-slate-500 font-medium";
   } else if (isBuzzerBeaterActive && isBuzzerBeaterMessage) {
-      // [Update] Buzzer Beater Visuals: Flash White/Red, Scale 1.35
-      // Only apply when the message matches to prevent spoiling
       messageClass = "text-red-500 font-black text-2xl animate-buzzer-beater scale-[1.35] drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]";
   } else if (isSuperClutch || (isBuzzerBeaterActive && !isBuzzerBeaterMessage)) {
-      // 부글부글 끓는 효과 (진동 + 커짐 + 붉은색)
       messageClass = "text-red-500 font-black text-2xl animate-shake-intense drop-shadow-[0_0_15px_rgba(239,68,68,0.9)] scale-125";
   } else if (isClutch) {
-      // 심장 박동 효과
       messageClass = "text-orange-400 font-black text-xl animate-pulse-fast drop-shadow-[0_0_8px_rgba(249,115,22,0.6)] scale-110";
   }
 

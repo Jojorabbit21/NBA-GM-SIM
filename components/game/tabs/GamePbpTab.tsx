@@ -1,6 +1,7 @@
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { PbpLog, Team, PlayerBoxScore } from '../../../types';
+import { TEAM_DATA } from '../../../data/teamData';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
@@ -139,6 +140,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                 <div className="divide-y divide-slate-800/50">
                     {displayLogs.map((log, idx) => {
                         const isHome = log.teamId === homeTeam.id;
+                        const teamColor = isHome ? TEAM_DATA[homeTeam.id]?.colors.primary : TEAM_DATA[awayTeam.id]?.colors.primary;
                         const isScore = log.type === 'score';
                         const isImportant = log.type === 'info';
                         const isFT = log.type === 'freethrow';
@@ -154,7 +156,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         else if (isTurnover) textColor = 'text-red-400';
 
                         // Background
-                        let bgClass = 'hover:bg-white/5 transition-colors';
+                        let bgClass = 'hover:bg-white/5 transition-colors relative';
                         if (isImportant) bgClass = 'bg-yellow-900/10 border-y border-yellow-500/10';
                         
                         // Quarter & Time Display Logic
@@ -164,8 +166,13 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                         return (
                             <div key={idx} className={`flex items-center py-2.5 px-4 gap-4 ${bgClass}`}>
+                                {/* Team Color Indicator */}
+                                {!isImportant && (
+                                    <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: teamColor || 'transparent' }}></div>
+                                )}
+
                                 {/* 1. Quarter */}
-                                <div className="flex-shrink-0 w-8 text-slate-600 font-bold text-xs text-center">
+                                <div className="flex-shrink-0 w-8 text-slate-600 font-bold text-xs text-center pl-1">
                                     {qDisplay}
                                 </div>
 

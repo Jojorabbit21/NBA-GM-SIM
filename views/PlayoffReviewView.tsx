@@ -2,8 +2,9 @@
 import React, { useMemo } from 'react';
 import { Trophy, ArrowLeft, CalendarDays, BarChart3, Users, Crown, Medal, Star, Activity } from 'lucide-react';
 import { Team, PlayoffSeries, Game } from '../types';
-import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { OvrBadge } from '../components/common/OvrBadge';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
+import { TEAM_DATA } from '../data/teamData';
 
 interface PlayoffReviewViewProps {
   team: Team;
@@ -185,6 +186,8 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
           return { series: s, opponent, roundName, games, result, score };
       });
   }, [mySeries, teams, schedule, team.id]);
+
+  const ownerName = TEAM_DATA[team.id]?.owner || "The Ownership Group";
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[150] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-20">
@@ -375,7 +378,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                       <tr key={p.id} className={`group hover:bg-white/5 transition-colors ${isMvp ? 'bg-amber-900/10' : ''}`}>
                                           <td className="py-3 px-6 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">
                                               <div className="flex items-center gap-3">
-                                                  <div className={getOvrBadgeStyle(p.ovr) + " !w-8 !h-8 !text-xs !mx-0 flex-shrink-0"}>{p.ovr}</div>
+                                                  <OvrBadge value={p.ovr} size="md" className="!w-8 !h-8 !text-xs !mx-0 flex-shrink-0" />
                                                   <div>
                                                       <div className="flex items-center gap-1.5">
                                                           <span className={`font-bold text-sm ${isMvp ? 'text-amber-100' : 'text-slate-200'} group-hover:text-white`}>{p.name}</span>
@@ -416,7 +419,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
           {/* Section 5: Owner's Message - Using Shared Component */}
           <div className="animate-in slide-in-from-bottom-4 duration-700 delay-300 pb-8">
               <ReviewOwnerMessage 
-                  ownerName={"The Ownership Group"}
+                  ownerName={ownerName}
                   title="Season Debrief"
                   msg="수고 많았습니다. 이번 플레이오프는 우리 팀에게 많은 것을 시사했습니다. 결과를 겸허히 받아들이고, 내년에는 더 높은 곳을 향해 나아갑시다."
                   mood={{ color: "text-slate-400", borderColor: "border-slate-700", bg: "bg-slate-900" }}

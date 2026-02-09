@@ -2,8 +2,9 @@
 import React, { useMemo } from 'react';
 import { Team, PlayerBoxScore } from '../../types';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
-import { getOvrBadgeStyle } from '../SharedComponents';
+import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { TEAM_DATA } from '../../data/teamData';
 
 export interface GameStatLeaders {
     pts: number;
@@ -63,11 +64,14 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
         return ((m / a) * 100).toFixed(1) + '%';
     };
 
-    // [UI Change] Removed 'rounded-3xl' and 'shadow-2xl' to flatten the look
-    // Removed margins to make them stick together in parent container
+    const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
+
     return (
-        <div className="w-full bg-slate-900 border border-slate-800 overflow-hidden">
-            <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+        <div className="w-full bg-slate-900 border border-slate-800 overflow-hidden relative">
+            {/* Team Color Top Border */}
+            <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: teamColor }}></div>
+
+            <div className="px-6 py-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between mt-1">
                 <div className="flex items-center gap-3">
                     <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
                     <span className="text-sm font-black text-white uppercase tracking-wider">{team.name}</span>
@@ -113,8 +117,6 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             const isDebuff = effect < 0;
 
                             // Condition Color Logic
-                            // Use fatigue if available, otherwise calculate estimate or default to 0
-                            // [FIX] Round the fatigue value
                             const fatigue = Math.round(p.fatigue !== undefined ? p.fatigue : (p.condition !== undefined ? Math.max(0, 100 - p.condition) : 0));
                             
                             let fatColor = 'text-emerald-500';
@@ -150,7 +152,9 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                     </td>
                                     <td className={`${statCellClass} text-center text-slate-500`}>{playerInfo?.position || '-'}</td>
                                     <td className={`${statCellClass} text-center`}>
-                                        <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-auto"}>{ovr}</div>
+                                        <div className="flex justify-center">
+                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
+                                        </div>
                                     </td>
                                     {/* [UI Change] Center align FAT column */}
                                     <td className={`${statCellClass} text-center`}>

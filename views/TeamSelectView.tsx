@@ -4,6 +4,7 @@ import { Loader2, Wifi, WifiOff } from 'lucide-react';
 import { Team } from '../types';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { logEvent } from '../services/analytics'; // Analytics Import
+import { LOADING_MESSAGES } from '../data/uiConstants';
 
 interface TeamSelectViewProps {
   teams: Team[];
@@ -12,19 +13,6 @@ interface TeamSelectViewProps {
   onReload?: () => void;
   dataSource?: 'DB' | 'CSV';
 }
-
-const LOADING_MESSAGES = [
-    "라커룸을 청소하는 중...",
-    "농구공에 바람 넣는 중...",
-    "림에 새 그물을 다는 중...",
-    "전술 보드를 닦는 중...",
-    "선수들 유니폼 다림질 중...",
-    "스카우팅 리포트 인쇄 중...",
-    "경기장 조명 예열 중...",
-    "마스코트 춤 연습 시키는 중...",
-    "치어리더 대형 맞추는 중...",
-    "단장님 명패 닦는 중..."
-];
 
 const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: string) => void }> = ({ team, colorClass, onSelect }) => (
   <button 

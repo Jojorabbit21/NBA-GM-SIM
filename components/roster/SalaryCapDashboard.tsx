@@ -1,15 +1,13 @@
 
 import React from 'react';
 import { AlertCircle, Info } from 'lucide-react';
+import { LEAGUE_FINANCIALS } from '../../utils/constants';
 
 interface SalaryCapDashboardProps {
   currentTotalSalary: number;
 }
 
-const TAX_LEVEL = 170;
-const FIRST_APRON = 178;
-const SECOND_APRON = 189;
-const SALARY_CAP = 140;
+const { TAX_LEVEL, FIRST_APRON, SECOND_APRON, SALARY_CAP } = LEAGUE_FINANCIALS;
 
 const getCapStatus = (cap: number) => {
   if (cap >= SECOND_APRON) return { 
@@ -125,16 +123,16 @@ export const SalaryCapDashboard: React.FC<SalaryCapDashboardProps> = ({ currentT
         <div className="flex text-[10px] font-black text-slate-500 uppercase tracking-widest relative h-8">
           <div className="absolute" style={{ left: '0%' }}>$0</div>
           <div className="absolute text-center" style={{ left: '20%', transform: 'translateX(-50%)' }}>
-            <div className="text-slate-400 border-x border-slate-800 px-2">CAP: $140M</div>
+            <div className="text-slate-400 border-x border-slate-800 px-2">CAP: ${SALARY_CAP}M</div>
           </div>
           <div className="absolute text-center" style={{ left: '50%', transform: 'translateX(-50%)' }}>
-            <div className="text-amber-500 border-x border-slate-800 px-2">TAX: $170M</div>
+            <div className="text-amber-500 border-x border-slate-800 px-2">TAX: ${TAX_LEVEL}M</div>
           </div>
           <div className="absolute text-center" style={{ left: '70%', transform: 'translateX(-50%)' }}>
-            <div className="text-orange-500 border-x border-slate-800 px-2">APR1: $178M</div>
+            <div className="text-orange-500 border-x border-slate-800 px-2">APR1: ${FIRST_APRON}M</div>
           </div>
           <div className="absolute text-center" style={{ left: '90%', transform: 'translateX(-50%)' }}>
-            <div className="text-red-500 border-x border-slate-800 px-2">APR2: $189M</div>
+            <div className="text-red-500 border-x border-slate-800 px-2">APR2: ${SECOND_APRON}M</div>
           </div>
         </div>
       </div>

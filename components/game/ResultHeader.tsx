@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Team, PbpLog } from '../../types';
+import { TEAM_DATA } from '../../data/teamData';
 
 interface ResultHeaderProps {
     homeTeam: Team;
@@ -28,8 +29,11 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
             if (log.type === 'score' || log.type === 'freethrow') {
                 let points = 2;
                 if (log.text.includes('3점')) points = 3;
-                else if (log.type === 'freethrow') points = 1;
-
+                else if (log.type === 'freethrow') {
+                    if (log.text.includes('앤드원')) points = 1;
+                    else points = 1;
+                }
+                
                 // Handle And-1 logic if text implies it (simplified)
                 if (log.text.includes('앤드원')) points = 1; // Usually logged separately
 
@@ -55,10 +59,21 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
         return scores;
     }, [pbpLogs, homeTeam.id, homeScore, awayScore]);
+    
+    const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#ffffff';
+    const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#ffffff';
 
     return (
         <div className="bg-slate-950 border-b border-slate-800 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl z-20">
-            <div className={`absolute inset-0 opacity-10 pointer-events-none bg-gradient-to-b ${isWin ? 'from-emerald-900 to-slate-900' : 'from-red-900 to-slate-900'}`}></div>
+            {/* Dynamic Background Gradient using Team Colors + Win/Loss Tint */}
+            <div className="absolute inset-0 pointer-events-none opacity-20" style={{
+                background: isWin 
+                    ? `linear-gradient(to right, ${awayColor}00, ${homeColor}66)` // Fade to Home Color
+                    : `linear-gradient(to right, ${awayColor}66, ${homeColor}00)` // Fade to Away Color
+            }}></div>
+            
+            {/* Win/Loss Status Overlay */}
+             <div className={`absolute inset-0 opacity-10 pointer-events-none bg-gradient-to-b ${isWin ? 'from-emerald-900 to-slate-900' : 'from-red-900 to-slate-900'}`}></div>
             
             <div className="relative z-10 flex flex-col w-full max-w-7xl px-6 py-6">
                 
@@ -66,12 +81,17 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                 <div className="flex items-center justify-between w-full gap-4 md:gap-12">
                     
                     {/* Away Team (Left) */}
-                    <div className="flex items-center gap-4 flex-1 justify-end">
+                    <div className="flex items-center gap-4 flex-1 justify-end group">
                         <div className="text-right">
-                            <div className="text-xl md:text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{awayTeam.name}</div>
-                            <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${awayScore > homeScore ? 'text-white' : 'text-slate-500'}`}>{Math.round(awayScore)}</div>
+                            <div 
+                                className="text-xl md:text-3xl font-black text-slate-300 oswald uppercase tracking-tight leading-none group-hover:brightness-125 transition-all"
+                                style={{ color: awayColor !== '#000000' ? awayColor : '#ffffff' }}
+                            >
+                                {awayTeam.name}
+                            </div>
+                            <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${awayScore > homeScore ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-slate-500'}`}>{Math.round(awayScore)}</div>
                         </div>
-                        <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl" alt={awayTeam.name} />
+                        <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl group-hover:scale-105 transition-transform" alt={awayTeam.name} />
                     </div>
 
                     {/* Center Info */}
@@ -84,7 +104,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                         )}
                         
                         {/* Quarter Score Table */}
-                        <div className="bg-slate-900/80 border border-slate-700/50 rounded-lg overflow-hidden">
+                        <div className="bg-slate-900/80 border border-slate-700/50 rounded-lg overflow-hidden backdrop-blur-sm shadow-lg">
                             <table className="text-[10px] md:text-xs font-mono tabular-nums">
                                 <thead>
                                     <tr className="bg-slate-800/50 text-slate-400">
@@ -116,11 +136,16 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                     </div>
 
                     {/* Home Team (Right) */}
-                    <div className="flex items-center gap-4 flex-1 justify-start">
-                        <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl" alt={homeTeam.name} />
+                    <div className="flex items-center gap-4 flex-1 justify-start group">
+                        <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl group-hover:scale-105 transition-transform" alt={homeTeam.name} />
                         <div className="text-left">
-                            <div className="text-xl md:text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{homeTeam.name}</div>
-                            <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${homeScore > awayScore ? 'text-white' : 'text-slate-600'}`}>{Math.round(homeScore)}</div>
+                            <div 
+                                className="text-xl md:text-3xl font-black text-slate-300 oswald uppercase tracking-tight leading-none group-hover:brightness-125 transition-all"
+                                style={{ color: homeColor !== '#000000' ? homeColor : '#ffffff' }}
+                            >
+                                {homeTeam.name}
+                            </div>
+                            <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${homeScore > awayScore ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-slate-600'}`}>{Math.round(homeScore)}</div>
                         </div>
                     </div>
                 </div>

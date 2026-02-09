@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { ChevronDown, BarChart3, Trophy, Medal } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -143,7 +143,7 @@ const LeaderboardCard: React.FC<{
                                     </td>
                                     <td className="py-2 px-2 cursor-pointer" onClick={() => onPlayerClick(p)}>
                                         <div className="flex items-center gap-3">
-                                            <div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-xs !mx-0"}>{ovr}</div>
+                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !mx-0" />
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span className={`text-xs font-bold truncate group-hover:text-indigo-400 group-hover:underline ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
                                                 <span className="text-[10px] text-slate-600">|</span>
