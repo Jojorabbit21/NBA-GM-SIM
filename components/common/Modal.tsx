@@ -63,7 +63,7 @@ export const Modal: React.FC<ModalProps> = ({
         >
             <div 
                 ref={modalRef}
-                className={`bg-slate-900 border border-slate-700 rounded-[2rem] w-full ${maxWidthClass[size]} flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden ${className}`}
+                className={`bg-slate-900 border border-slate-700 rounded-[2rem] w-full ${maxWidthClass[size]} max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 relative overflow-hidden ${className}`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Optional Header Accent */}

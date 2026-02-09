@@ -119,9 +119,10 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
     
     // Styling Constants
-    // Sticky Columns: Header stays Slate-950, Body uses Slate-900 (Opaque) to match Depth Chart feel without transparency issues
+    // Sticky Columns: Header stays Slate-950
+    // Body uses Slate-900 (Opaque) to ensure text doesn't bleed through on scroll, matching Depth Chart aesthetic.
     const stickyHeaderBg = "bg-slate-950";
-    const stickyBodyBg = "bg-slate-900";
+    const stickyBodyBg = "bg-slate-900"; 
     
     const stickyBorder = "border-r border-slate-800"; 
     const stickyBottom = "border-b border-slate-800";
@@ -133,7 +134,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
              {/* Rotation Chart Title */}
-             <div className="px-6 py-4 bg-slate-900 border-t-2 border-t-indigo-500 border-b border-slate-800 flex items-center gap-3 flex-shrink-0">
+             <div className="px-6 py-4 bg-slate-800 border-t-2 border-t-indigo-500 border-b border-slate-700 flex items-center gap-3 flex-shrink-0">
                  <Timer size={20} className="text-indigo-400"/>
                  <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
             </div>

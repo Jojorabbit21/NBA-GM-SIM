@@ -38,7 +38,7 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
 
                 {/* Depth Chart Editor */}
                 <div className="flex-col flex">
-                    <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex items-center gap-3">
+                    <div className="px-6 py-4 bg-slate-800 border-b border-slate-700 flex items-center gap-3">
                         <GanttChartSquare size={20} className="text-indigo-400"/>
                         <span className="text-base font-black text-white uppercase tracking-widest oswald">뎁스 차트</span>
                     </div>
