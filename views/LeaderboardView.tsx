@@ -80,18 +80,18 @@ const LeaderboardCard: React.FC<{
     })), [currentStat]);
 
     return (
-        <div className="flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-xl h-full">
-            {/* Card Header with Dropdown */}
-            <div className="px-4 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30">
+        <div className="flex flex-col bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-xl h-full">
+            {/* Card Header with Dropdown (Matched with StandingTable Title Bar) */}
+            <div className="bg-slate-800/40 px-5 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30 rounded-t-xl">
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-white uppercase tracking-tight">{statDef.label}</span>
+                    <span className="text-sm font-black text-white uppercase tracking-wider oswald">{statDef.label}</span>
                 </div>
                 
                 <Dropdown
                     items={dropdownItems}
                     width="w-48"
                     trigger={
-                        <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors border border-slate-700">
+                        <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/60 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-black uppercase transition-colors border border-slate-700/50">
                             <span>카테고리</span>
                             <ChevronDown size={12} />
                         </button>
@@ -101,11 +101,13 @@ const LeaderboardCard: React.FC<{
 
             {/* Table Body */}
             <div className="flex-1">
-                <Table>
-                    <TableHead>
-                        <TableHeaderCell align="center" className="pl-4 w-10">#</TableHeaderCell>
-                        <TableHeaderCell align="left" className="px-2">선수 이름</TableHeaderCell>
-                        <TableHeaderCell align="right" className="pr-4">{statDef.id}</TableHeaderCell>
+                <Table className="rounded-none border-0 shadow-none">
+                    <TableHead className="rounded-none bg-slate-950/50">
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                            <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none">#</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-2 border-none">TEAM / PLAYER</TableHeaderCell>
+                            <TableHeaderCell align="right" className="pr-4 border-none">{statDef.id}</TableHeaderCell>
+                        </tr>
                     </TableHead>
                     <TableBody>
                         {sortedData.map((p, i) => {
@@ -152,8 +154,8 @@ const LeaderboardCard: React.FC<{
                         })}
                         {sortedData.length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={3} className="py-12 text-center text-slate-600 text-xs font-bold">
-                                    데이터가 없습니다.
+                                <TableCell colSpan={3} className="py-12 text-center text-slate-600 text-xs font-bold uppercase tracking-widest">
+                                    No Data Recorded
                                 </TableCell>
                             </TableRow>
                         )}
@@ -182,8 +184,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
         icon={<BarChart3 size={24} />}
       />
 
-      {/* Grid of 3 Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+      {/* Grid of 3 Cards - Added margin top to match StandingsView */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start mt-8">
           <LeaderboardCard 
               defaultStat="PTS" 
               players={flatPlayers} 
