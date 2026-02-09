@@ -98,18 +98,20 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     };
 
     const getSortValue = (p: Player, key: string): number | string => {
+        // 1. Basic Metadata
         if (key === 'name') return p.name;
         if (key === 'position') return p.position;
         if (key === 'age') return p.age;
         if (key === 'ovr') return calculatePlayerOvr(p);
-        if (key in p) return (p as any)[key];
-        if (key === 'salary') return p.salary;
-        if (key === 'contractYears') return p.contractYears;
-        if (key === 'totalValue') return p.salary * p.contractYears;
 
+        // 2. Statistics Logic (p.stats)
         const s = p.stats;
         const g = s.g || 1;
-        if (['pts','reb','ast','stl','blk','tov','pf'].includes(key)) return s[key as keyof typeof s] / g;
+        
+        // Season Totals/Averages - Prioritize p.stats over root property names (like 'reb', 'blk')
+        if (['pts','reb','ast','stl','blk','tov','pf'].includes(key)) {
+            return s[key as keyof typeof s] / g;
+        }
         if (key === 'mp') return s.mp / g;
         if (key === 'pm') return s.plusMinus / g;
         if (key === 'g') return s.g;
@@ -117,7 +119,19 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         if (key === 'fg%') return s.fga > 0 ? s.fgm / s.fga : 0;
         if (key === '3p%') return s.p3m > 0 && s.p3a > 0 ? s.p3m / s.p3a : 0;
         if (key === 'ft%') return s.fta > 0 ? s.ftm / s.fta : 0;
-        if (key === 'ts%') { const tsa = s.fga + 0.44 * s.fta; return tsa > 0 ? s.pts / (2 * tsa) : 0; }
+        if (key === 'ts%') { 
+            const tsa = s.fga + 0.44 * s.fta; 
+            return tsa > 0 ? s.pts / (2 * tsa) : 0; 
+        }
+
+        // 3. Salary Logic
+        if (key === 'salary') return p.salary;
+        if (key === 'contractYears') return p.contractYears;
+        if (key === 'totalValue') return p.salary * p.contractYears;
+
+        // 4. Attribute Fallback (Root properties like 'ins', 'out', 'speed', etc.)
+        if (key in p) return (p as any)[key];
+
         return 0;
     };
 
@@ -130,7 +144,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             }
             return sortConfig.direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
         });
-    }, [team.roster, sortConfig]);
+    }, [team.roster, sortConfig, tab]); // Depend on tab to re-calc when switching views
 
     const averages = useMemo(() => {
         const count = team.roster.length || 1;
