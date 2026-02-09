@@ -1,0 +1,34 @@
+
+import React from 'react';
+
+interface RosterTabsProps {
+    activeTab: 'roster' | 'stats' | 'salary';
+    onTabChange: (tab: 'roster' | 'stats' | 'salary') => void;
+}
+
+export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => {
+    const tabs = [
+        { id: 'roster', label: '능력치 (Attributes)' },
+        { id: 'stats', label: '시즌 기록 (Stats)' },
+        { id: 'salary', label: '계약 현황 (Salary)' }
+    ];
+
+    return (
+        <div className="flex bg-slate-900 rounded-xl p-1.5 border border-slate-800 w-fit shadow-sm">
+            {tabs.map((t) => (
+                <button 
+                    key={t.id}
+                    onClick={() => onTabChange(t.id as any)} 
+                    className={`
+                        px-6 py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all duration-300
+                        ${activeTab === t.id 
+                            ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-500/50' 
+                            : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}
+                    `}
+                >
+                    {t.label}
+                </button>
+            ))}
+        </div>
+    );
+};
