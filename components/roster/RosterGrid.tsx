@@ -19,7 +19,7 @@ const WIDTHS = {
     POS: 60,
     AGE: 50,
     OVR: 60,
-    ATTR: 45,
+    ATTR: 54, // [Fix] Increased from 45 to 54 to prevent text cut-off in headers
     STAT: 55,
     SALARY: 100
 };
