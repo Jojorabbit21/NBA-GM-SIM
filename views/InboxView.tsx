@@ -7,6 +7,8 @@ import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { TEAM_DATA } from '../data/teamData';
+import { TeamLogo } from '../components/common/TeamLogo';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface InboxViewProps {
   myTeamId: string;
@@ -94,26 +96,26 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-4">
        {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
        
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-4 flex-shrink-0">
-        <div className="flex items-center gap-4">
-          <h2 className="text-3xl font-black ko-tight text-slate-100 uppercase tracking-tight">받은 메세지함</h2>
-        </div>
-        <div className="flex gap-3">
-             <button 
-                onClick={handleMarkAllRead}
-                className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-bold text-slate-300 transition-all active:scale-95"
-             >
-                 <CheckCircle2 size={14} /> 모두 읽음 처리
-             </button>
-             <button 
-                onClick={() => { setPage(0); setSelectedMessage(null); loadMessages(); }}
-                className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-lg shadow-indigo-900/30"
-             >
-                 <RefreshCw size={14} /> 새로고침
-             </button>
-        </div>
-      </div>
+      <PageHeader 
+        title="받은 메세지함" 
+        icon={<Mail size={24} />}
+        actions={
+            <div className="flex gap-3">
+                <button 
+                    onClick={handleMarkAllRead}
+                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-bold text-slate-300 transition-all active:scale-95"
+                >
+                    <CheckCircle2 size={14} /> 모두 읽음 처리
+                </button>
+                <button 
+                    onClick={() => { setPage(0); setSelectedMessage(null); loadMessages(); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-lg shadow-indigo-900/30"
+                >
+                    <RefreshCw size={14} /> 새로고침
+                </button>
+            </div>
+        }
+      />
 
       {/* Main Layout: 250px Left Sidebar, Rest Body */}
       <div className="flex-1 flex gap-0 min-h-0 overflow-hidden bg-slate-900/40 border border-slate-800 rounded-3xl shadow-2xl">
@@ -233,7 +235,7 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                             >
                                 {homeTeam?.name}
                             </span>
-                            <img src={homeTeam?.logo} className="w-16 h-16 object-contain drop-shadow-md" alt="" />
+                            <TeamLogo teamId={homeTeam?.id || ''} size="xl" className="drop-shadow-md" />
                         </div>
                         
                         <div className="flex items-center gap-6">
@@ -243,7 +245,7 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                         </div>
 
                         <div className="flex items-center gap-4">
-                            <img src={awayTeam?.logo} className="w-16 h-16 object-contain drop-shadow-md" alt="" />
+                            <TeamLogo teamId={awayTeam?.id || ''} size="xl" className="drop-shadow-md" />
                             <span 
                                 className="text-2xl font-black uppercase oswald tracking-tight"
                                 style={{ color: aText }}
@@ -337,14 +339,14 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                         <td className="py-4 px-6 align-top">
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-2">
-                                                    <img src={getTeamLogoUrl(trade.team1Id)} className="w-6 h-6 object-contain" alt="" />
+                                                    <TeamLogo teamId={trade.team1Id} size="sm" />
                                                     <span className="text-xs font-black uppercase text-white">{trade.team1Name}</span>
                                                 </div>
                                                 <div className="flex items-center gap-2">
                                                     <ArrowRightLeft size={12} className="text-slate-600" />
                                                 </div>
                                                 <div className="flex items-center gap-2">
-                                                    <img src={getTeamLogoUrl(trade.team2Id)} className="w-6 h-6 object-contain" alt="" />
+                                                    <TeamLogo teamId={trade.team2Id} size="sm" />
                                                     <span className="text-xs font-black uppercase text-white">{trade.team2Name}</span>
                                                 </div>
                                             </div>

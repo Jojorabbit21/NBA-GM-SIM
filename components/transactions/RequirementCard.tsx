@@ -3,8 +3,9 @@ import React from 'react';
 import { ChevronRight } from 'lucide-react';
 import { Player, TradeOffer } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
-import { getTeamLogoUrl, calculatePlayerOvr } from '../../utils/constants';
+import { calculatePlayerOvr } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface RequirementCardProps {
   requirement: TradeOffer;
@@ -35,7 +36,7 @@ export const RequirementCard: React.FC<RequirementCardProps> = ({ requirement, t
           <div className="flex items-center justify-between border-b border-slate-800 pb-4">
               <div className="flex items-center gap-4">
                  <div className="p-2 bg-slate-950 rounded-xl border border-slate-800 shadow-md flex-shrink-0">
-                    <img src={getTeamLogoUrl(requirement.teamId)} className="w-12 h-12 object-contain" alt={requirement.teamName} />
+                    <TeamLogo teamId={requirement.teamId} size="lg" />
                  </div>
                  <div className="min-w-0">
                     <h4 

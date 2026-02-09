@@ -1,9 +1,10 @@
 
 import React, { useMemo } from 'react';
-import { Zap, BarChart3 } from 'lucide-react';
+import { Zap, BarChart3, Trophy } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../types';
 import { GridSeriesBox } from '../components/playoffs/GridSeriesBox';
 import { TEAM_DATA } from '../data/teamData';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface PlayoffsViewProps {
   teams: Team[];
@@ -135,32 +136,26 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
   return (
     <div className="space-y-6 animate-in fade-in duration-700 pb-20 w-full flex flex-col h-full">
-      <div className="flex flex-col lg:flex-row justify-between items-end gap-4 border-b border-slate-800 pb-4 min-w-[300px] flex-shrink-0 bg-slate-950">
-        <div>
-           <div className="flex items-center gap-3">
-             <h2 className="text-5xl font-black ko-tight text-slate-100 uppercase tracking-tighter">
-                플레이오프
-             </h2>
-           </div>
-        </div>
-        
-        {regularSeasonFinished && (
+      <PageHeader 
+        title="플레이오프" 
+        icon={<Trophy size={24} />}
+        actions={
             <div className="flex gap-2">
-                {hasPlayInStarted && !isPlayInFinished && (
+                {regularSeasonFinished && hasPlayInStarted && !isPlayInFinished && (
                     <div className="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
                         <Zap size={14} className="text-yellow-400 animate-pulse" />
                         <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Play-In Active</span>
                     </div>
                 )}
+                {!regularSeasonFinished && (
+                    <div className="px-4 py-2 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-3">
+                        <BarChart3 size={14} className="text-emerald-400" />
+                        <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">실시간 시드 예측</span>
+                    </div>
+                )}
             </div>
-        )}
-        {!regularSeasonFinished && (
-            <div className="px-4 py-2 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-3">
-                <BarChart3 size={14} className="text-emerald-400" />
-                <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">실시간 시드 예측</span>
-            </div>
-        )}
-      </div>
+        }
+      />
 
       <div className="w-full border border-slate-800 bg-slate-900 shadow-2xl rounded-sm">
           <div className="grid grid-cols-[30px_repeat(4,minmax(0,1fr))_1.2fr] w-full">

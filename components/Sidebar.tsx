@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
+import { TeamLogo } from './common/TeamLogo';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -104,10 +105,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         style={{ backgroundColor: infoBgColor }}
       >
         <div className="flex items-center gap-5 relative z-10">
-          <img 
-            src={team?.logo} 
-            className="w-16 h-16 object-contain drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300" 
-            alt="" 
+          <TeamLogo 
+            teamId={team?.id || ''} 
+            size="custom"
+            className="w-16 h-16 drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300" 
           />
           <div className="min-w-0">
             <h2 

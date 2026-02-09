@@ -6,6 +6,7 @@ import { Card } from '../common/Card';
 import { Button } from '../common/Button';
 import { Badge } from '../common/Badge';
 import { OvrBadge } from '../common/OvrBadge';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -107,7 +108,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 <div className="flex items-center gap-6">
                     {awayTeam && (
                         <>
-                            <img src={awayTeam.logo} className="w-16 h-16 object-contain" alt="" />
+                            <TeamLogo teamId={awayTeam.id} size="xl" />
                             <div className="flex flex-col">
                                 <span className="text-2xl font-black text-white oswald uppercase leading-none">{awayTeam.name}</span>
                                 <span className="text-xs font-bold text-slate-500 mt-1">{awayTeam.wins}W - {awayTeam.losses}L</span>
@@ -136,7 +137,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                                 <span className="text-2xl font-black text-white oswald uppercase leading-none">{homeTeam.name}</span>
                                 <span className="text-xs font-bold text-slate-500 mt-1">{homeTeam.wins}W - {homeTeam.losses}L</span>
                             </div>
-                            <img src={homeTeam.logo} className="w-16 h-16 object-contain" alt="" />
+                            <TeamLogo teamId={homeTeam.id} size="xl" />
                         </>
                     )}
                 </div>

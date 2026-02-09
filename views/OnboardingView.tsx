@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Team } from '../types';
 import { Briefcase, Trophy, ArrowRight, PenTool } from 'lucide-react';
 import { TEAM_DATA } from '../data/teamData';
+import { TeamLogo } from '../components/common/TeamLogo';
 
 interface OnboardingViewProps {
   team: Team;
@@ -44,13 +45,13 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
         <div className="p-8 lg:p-12 relative">
             {/* Watermark Logo */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 opacity-[0.03] pointer-events-none">
-                <img src={team.logo} className="w-[500px] h-[500px] object-contain grayscale" alt="" />
+                <TeamLogo teamId={team.id} size="custom" className="w-[500px] h-[500px] object-contain grayscale" />
             </div>
 
             {/* Header */}
             <div className="flex justify-between items-start mb-12 border-b border-slate-300 pb-6">
                 <div className="flex items-center gap-4">
-                    <img src={team.logo} className="w-16 h-16 object-contain drop-shadow-md" alt={team.name} />
+                    <TeamLogo teamId={team.id} size="xl" className="drop-shadow-md" />
                     <div>
                         <h1 className="text-3xl font-black uppercase tracking-tight oswald text-slate-900 leading-none">{team.city} {team.name}</h1>
                         <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">Front Office Memorandum</p>

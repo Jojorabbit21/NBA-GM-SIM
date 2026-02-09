@@ -5,6 +5,7 @@ import { Team } from '../types';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { logEvent } from '../services/analytics'; // Analytics Import
 import { LOADING_MESSAGES } from '../data/uiConstants';
+import { TeamLogo } from '../components/common/TeamLogo';
 
 interface TeamSelectViewProps {
   teams: Team[];
@@ -23,7 +24,11 @@ const LogoTeamButton: React.FC<{ team: Team, colorClass: string, onSelect: (id: 
     className={`group relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 xl:w-20 xl:h-20 2xl:w-24 2xl:h-24 rounded-full bg-slate-900/40 border-2 border-slate-800 transition-all duration-300 hover:scale-125 hover:bg-slate-900 hover:z-50 hover:shadow-[0_0_30px_rgba(0,0,0,0.5)] ${colorClass}`}
     title={`${team.city} ${team.name}`}
   >
-    <img src={team.logo} className="w-9 h-9 lg:w-10 lg:h-10 xl:w-12 xl:h-12 2xl:w-16 2xl:h-16 object-contain drop-shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" alt={team.name} />
+    <TeamLogo 
+        teamId={team.id} 
+        size="custom"
+        className="w-9 h-9 lg:w-10 lg:h-10 xl:w-12 xl:h-12 2xl:w-16 2xl:h-16 drop-shadow-md transition-transform duration-300 group-hover:scale-110 group-hover:drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]" 
+    />
   </button>
 );
 

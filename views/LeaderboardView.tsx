@@ -1,10 +1,12 @@
 
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Team, Player } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { ChevronDown, BarChart3, Trophy, Medal } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
+import { PageHeader } from '../components/common/PageHeader';
+import { Dropdown } from '../components/common/Dropdown';
 
 interface LeaderboardViewProps {
   teams: Team[];
@@ -49,18 +51,6 @@ const LeaderboardCard: React.FC<{
     onPlayerClick: (p: ExtendedPlayer) => void;
 }> = ({ defaultStat, players, onPlayerClick }) => {
     const [currentStat, setCurrentStat] = useState<StatCategory>(defaultStat);
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsDropdownOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
 
     const statDef = STAT_CATS.find(s => s.id === currentStat)!;
 
@@ -76,6 +66,18 @@ const LeaderboardCard: React.FC<{
         return filtered.sort((a, b) => statDef.getValue(b) - statDef.getValue(a)).slice(0, 50);
     }, [players, currentStat, statDef]);
 
+    const dropdownItems = useMemo(() => STAT_CATS.map(cat => ({
+        id: cat.id,
+        label: (
+             <div className="flex justify-between items-center w-full">
+                <span>{cat.label}</span>
+                {currentStat === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}
+            </div>
+        ),
+        onClick: () => setCurrentStat(cat.id),
+        active: currentStat === cat.id
+    })), [currentStat]);
+
     return (
         <div className="flex flex-col bg-slate-950 border border-slate-800 rounded-xl overflow-hidden shadow-xl h-full">
             {/* Card Header with Dropdown */}
@@ -84,30 +86,16 @@ const LeaderboardCard: React.FC<{
                     <span className="text-sm font-black text-white uppercase tracking-tight">{statDef.label}</span>
                 </div>
                 
-                <div className="relative" ref={dropdownRef}>
-                    <button 
-                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors border border-slate-700"
-                    >
-                        <span>카테고리</span>
-                        <ChevronDown size={12} />
-                    </button>
-                    
-                    {isDropdownOpen && (
-                        <div className="absolute right-0 top-full mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto custom-scrollbar p-1">
-                            {STAT_CATS.map(cat => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => { setCurrentStat(cat.id); setIsDropdownOpen(false); }}
-                                    className={`w-full text-left px-3 py-2.5 rounded-lg text-[11px] font-bold uppercase transition-colors flex justify-between items-center ${currentStat === cat.id ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}`}
-                                >
-                                    <span>{cat.label}</span>
-                                    {currentStat === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                <Dropdown
+                    items={dropdownItems}
+                    width="w-48"
+                    trigger={
+                        <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition-colors border border-slate-700">
+                            <span>카테고리</span>
+                            <ChevronDown size={12} />
+                        </button>
+                    }
+                />
             </div>
 
             {/* Table Body */}
@@ -185,13 +173,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
     <div className="flex flex-col animate-in fade-in duration-500 ko-normal pb-20">
       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={viewPlayer.teamName} teamId={viewPlayer.teamId} onClose={() => setViewPlayer(null)} allTeams={teams} />}
       
-      {/* Header - Simple Title */}
-      <div className="flex flex-col mb-8 border-b border-slate-800 pb-6">
-           <div className="flex items-center gap-3">
-             <h2 className="text-4xl lg:text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight">리그 리더보드</h2>
-           </div>
-           <p className="text-sm font-bold text-slate-500 mt-2 ml-1">2025-26 시즌 카테고리별 선수 순위 (Top 50)</p>
-      </div>
+      <PageHeader 
+        title="리그 리더보드" 
+        description="2025-26 시즌 카테고리별 선수 순위 (Top 50)"
+        icon={<BarChart3 size={24} />}
+      />
 
       {/* Grid of 3 Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">

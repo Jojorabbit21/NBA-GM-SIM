@@ -3,6 +3,7 @@ import React from 'react';
 import { Target, Sliders, Clock, Activity } from 'lucide-react';
 import { Team, TacticalSnapshot, PlayerBoxScore, TacticalSliders } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
+import { TeamLogo } from '../common/TeamLogo';
 
 const OFFENSE_LABELS: Record<string, string> = {
     'Balance': '밸런스',
@@ -145,7 +146,7 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                 <div className="absolute top-0 right-0 w-32 h-32 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }}></div>
 
                 <div className="flex items-center gap-3 border-b border-white/5 pb-3 relative z-10">
-                    <img src={team.logo} className="w-8 h-8 object-contain" alt="" />
+                    <TeamLogo teamId={team.id} size="md" />
                     <div className="flex-1">
                         <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{isHome ? 'HOME' : 'AWAY'} STRATEGY</div>
                         <div className="font-black text-white uppercase">{OFFENSE_LABELS[tactics?.offense || 'Balance']}</div>

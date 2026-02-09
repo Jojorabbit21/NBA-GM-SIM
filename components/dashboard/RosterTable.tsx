@@ -7,6 +7,7 @@ import { RotationMatrix } from './RotationMatrix';
 import { GanttChartSquare, Users } from 'lucide-react';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface RosterTableProps {
   mode: 'mine' | 'opponent';
@@ -132,7 +133,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                 {/* Header Info */}
                 <div className="flex-shrink-0 px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                      <div className="flex items-center gap-3">
-                         <img src={opponent.logo} className="w-8 h-8 object-contain" alt="" />
+                         <TeamLogo teamId={opponent.id} size="md" />
                          <div>
                              <h4 className="text-sm font-black text-white uppercase tracking-tight">{opponent.city} {opponent.name}</h4>
                              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">OPPONENT SCOUTING</span>

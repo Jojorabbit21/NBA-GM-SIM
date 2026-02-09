@@ -9,6 +9,7 @@ import {
 import { Card } from '../components/common/Card';
 import { Badge } from '../components/common/Badge';
 import { Button } from '../components/common/Button';
+import { PageHeader } from '../components/common/PageHeader';
 
 interface HelpViewProps {
     onBack: () => void;
@@ -123,20 +124,16 @@ export const HelpView: React.FC<HelpViewProps> = ({ onBack }) => {
 
     return (
         <div className="flex flex-col min-h-full animate-in fade-in duration-500 ko-normal gap-8 pb-20 w-full">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-8 flex-shrink-0">
-                <div className="flex items-center gap-6">
-                    <button onClick={onBack} className="p-3 hover:bg-slate-800 rounded-full transition-colors group">
-                        <ArrowLeft size={32} className="text-slate-400 group-hover:text-white" />
+            <PageHeader 
+                title="운영 매뉴얼" 
+                description="NBA General Manager Guide"
+                icon={<HelpCircle size={24} />}
+                actions={
+                    <button onClick={onBack} className="p-3 hover:bg-slate-800 rounded-full transition-colors group border border-slate-800">
+                        <ArrowLeft size={20} className="text-slate-400 group-hover:text-white" />
                     </button>
-                    <div>
-                        <h2 className="text-5xl font-black ko-tight text-slate-100 uppercase tracking-tight flex items-center gap-4">
-                            <HelpCircle className="text-indigo-500" size={40} /> 운영 매뉴얼
-                        </h2>
-                        <p className="text-slate-500 text-base font-bold mt-2 uppercase tracking-widest">NBA General Manager Guide</p>
-                    </div>
-                </div>
-            </div>
+                }
+            />
 
             {/* Content Area */}
             <div className="w-full space-y-6">

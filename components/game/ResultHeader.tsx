@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { Team, PbpLog } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface ResultHeaderProps {
     homeTeam: Team;
@@ -91,7 +92,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
                             </div>
                             <div className={`text-4xl md:text-5xl font-black oswald mt-1 leading-none ${awayScore > homeScore ? 'text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]' : 'text-slate-500'}`}>{Math.round(awayScore)}</div>
                         </div>
-                        <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl group-hover:scale-105 transition-transform" alt={awayTeam.name} />
+                        <TeamLogo teamId={awayTeam.id} size="custom" className="w-16 h-16 md:w-20 md:h-20 drop-shadow-2xl group-hover:scale-105 transition-transform" />
                     </div>
 
                     {/* Center Info */}
@@ -137,7 +138,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
                     {/* Home Team (Right) */}
                     <div className="flex items-center gap-4 flex-1 justify-start group">
-                        <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl group-hover:scale-105 transition-transform" alt={homeTeam.name} />
+                        <TeamLogo teamId={homeTeam.id} size="custom" className="w-16 h-16 md:w-20 md:h-20 drop-shadow-2xl group-hover:scale-105 transition-transform" />
                         <div className="text-left">
                             <div 
                                 className="text-xl md:text-3xl font-black text-slate-300 oswald uppercase tracking-tight leading-none group-hover:brightness-125 transition-all"
