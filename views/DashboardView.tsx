@@ -8,7 +8,8 @@ import { calculateTacticScore } from '../utils/tacticUtils';
 
 // Import sub-components
 import { DashboardHeader, DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
-import { RosterTable } from '../components/dashboard/RosterTable';
+import { RotationManager } from '../components/dashboard/RotationManager';
+import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
 
 interface DashboardViewProps {
@@ -81,7 +82,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const effectiveOppRoster = opponent?.roster || [];
 
   const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
-  const injuredSorted = useMemo(() => effectiveRoster.filter(p => p.health === 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
+  // injuredSorted was removed as it wasn't effectively used in the new components yet, can be added to RotationManager if needed
   const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
   
   useEffect(() => {
@@ -179,18 +180,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="flex-1 min-h-[600px]">
               {activeTab === 'rotation' && (
-                  <RosterTable 
-                    mode="mine"
-                    team={team}
-                    opponent={opponent}
-                    healthySorted={healthySorted}
-                    injuredSorted={injuredSorted}
-                    oppHealthySorted={oppHealthySorted}
-                    tactics={tactics}
-                    onUpdateTactics={onUpdateTactics}
-                    onViewPlayer={setViewPlayer}
-                    depthChart={depthChart}
-                    onUpdateDepthChart={onUpdateDepthChart}
+                  <RotationManager 
+                      team={team}
+                      tactics={tactics}
+                      depthChart={depthChart || null}
+                      healthySorted={healthySorted}
+                      onUpdateTactics={onUpdateTactics}
+                      onViewPlayer={setViewPlayer}
+                      onUpdateDepthChart={onUpdateDepthChart}
                   />
               )}
               
@@ -207,18 +204,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
 
               {activeTab === 'opponent' && (
-                  <RosterTable 
-                    mode="opponent"
-                    team={team}
-                    opponent={opponent}
-                    healthySorted={healthySorted}
-                    injuredSorted={injuredSorted}
-                    oppHealthySorted={oppHealthySorted}
-                    tactics={tactics}
-                    onUpdateTactics={onUpdateTactics}
-                    onViewPlayer={setViewPlayer}
-                    depthChart={depthChart}
-                    onUpdateDepthChart={onUpdateDepthChart}
+                  <OpponentScoutPanel 
+                      opponent={opponent}
+                      oppHealthySorted={oppHealthySorted}
+                      onViewPlayer={setViewPlayer}
                   />
               )}
           </div>
