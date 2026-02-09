@@ -51,7 +51,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
     ];
     
     // Unified Stat Style
-    const statCellClass = "py-2.5 px-2 text-center text-xs font-mono font-bold text-slate-300 w-11";
+    const statCellClass = "font-mono font-bold text-slate-300 w-11";
 
     // 2. Calculate Averages
     const teamAverages = useMemo(() => {
@@ -116,7 +116,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden animate-in fade-in duration-500">
             {/* Header Info */}
-            <div className="flex-shrink-0 px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex-shrink-0 px-6 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                  <div className="flex items-center gap-3">
                      <TeamLogo teamId={opponent.id} size="md" />
                      <div>
@@ -126,34 +126,34 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                  </div>
             </div>
 
-            {/* Table */}
-            <div className="flex-1 overflow-auto custom-scrollbar">
-                <Table>
+            {/* Table Area - Removed overflow-auto from here, Table handles it now */}
+            <div className="flex-1 min-h-0 p-0">
+                <Table className="border-0 rounded-none shadow-none">
                     <TableHead>
                         {/* Group Header Row */}
-                        <tr className="border-b border-slate-800 bg-slate-950">
+                        <tr className="border-b border-slate-800 bg-slate-950 h-8">
                             <th colSpan={3} className="py-1 px-4 border-r border-slate-800/50"></th>
-                            <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-800/50">
+                            <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-800/50 bg-slate-900/50">
                                 <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">KEY ATTRIBUTES</span>
                             </th>
-                            <th colSpan={9} className="py-1 px-2 text-center bg-slate-900/50">
+                            <th colSpan={9} className="py-1 px-2 text-center bg-slate-900/30">
                                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">SEASON STATS (AVG)</span>
                             </th>
                         </tr>
                         {/* Column Header Row */}
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                            <TableHeaderCell align="center" className="w-16 border-r border-slate-800/50 py-3">POS</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-4 min-w-[140px] py-3">PLAYER</TableHeaderCell>
-                            <TableHeaderCell align="center" className="w-14 border-r border-slate-800/50 py-3">OVR</TableHeaderCell>
+                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 h-10">
+                            <TableHeaderCell align="center" className="w-16 border-r border-slate-800/50">POS</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-4 min-w-[140px]" stickyLeft>PLAYER</TableHeaderCell>
+                            <TableHeaderCell align="center" className="w-14 border-r border-slate-800/50">OVR</TableHeaderCell>
                             
                             {/* Attributes */}
                             {ATTR_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className="w-10 border-r border-slate-800/30 last:border-r-slate-800/50 py-3" title={col.tooltip}>{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="w-10 border-r border-slate-800/30 last:border-r-slate-800/50" title={col.tooltip}>{col.label}</TableHeaderCell>
                             ))}
 
                             {/* Stats */}
                             {STAT_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className="w-11 text-slate-400 py-3">{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="w-14 text-slate-400">{col.label}</TableHeaderCell>
                             ))}
                         </tr>
                     </TableHead>
@@ -183,10 +183,10 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                             return (
                                 <TableRow key={p.id} onClick={() => onViewPlayer(p)}>
-                                    <TableCell align="center" className="px-4 border-r border-slate-800/50 py-2.5">
+                                    <TableCell align="center" className="px-4 border-r border-slate-800/50">
                                         <span className={`text-xs font-bold ${isStarter ? 'text-indigo-400' : 'text-slate-500'}`}>{p.position}</span>
                                     </TableCell>
-                                    <TableCell className="px-4 py-2.5">
+                                    <TableCell className="px-4" stickyLeft>
                                         <div className="flex flex-col">
                                             <span className="text-sm font-bold text-slate-200 group-hover:text-white group-hover:underline truncate">{p.name}</span>
                                             {p.health !== 'Healthy' && (
@@ -194,7 +194,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                             )}
                                         </div>
                                     </TableCell>
-                                    <TableCell align="center" className="px-2 border-r border-slate-800/50 py-2.5">
+                                    <TableCell align="center" className="px-2 border-r border-slate-800/50">
                                         <div className="flex justify-center">
                                             <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
                                         </div>
@@ -202,14 +202,14 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                                     {/* Attributes Cells */}
                                     {attrValues.map((val, idx) => (
-                                        <TableCell key={`attr-${idx}`} align="center" className={`px-2 text-xs font-black font-mono border-r border-slate-800/30 last:border-r-slate-800/50 py-2.5 ${getGradeColor(val)}`}>
+                                        <TableCell key={`attr-${idx}`} align="center" className={`px-2 text-xs font-black font-mono border-r border-slate-800/30 last:border-r-slate-800/50 ${getGradeColor(val)}`}>
                                             {val}
                                         </TableCell>
                                     ))}
                                     
                                     {/* Stats Cells */}
                                     {statValues.map((val, idx) => (
-                                        <TableCell key={`stat-${idx}`} align="center" className={`${statCellClass} py-2.5`}>
+                                        <TableCell key={`stat-${idx}`} align="center" className={statCellClass}>
                                             {val}
                                         </TableCell>
                                     ))}
@@ -219,11 +219,11 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                     </TableBody>
                     {/* Footer: Team Averages */}
                     {teamAverages && (
-                        <tfoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+                        <tfoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr>
                                 <td className="py-3 px-4 text-center border-r border-slate-800/50">
                                 </td>
-                                <td className="py-3 px-4 text-left">
+                                <td className="py-3 px-4 text-left sticky left-0 bg-slate-900 z-50 border-r border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
                                     <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM AVERAGE</span>
                                 </td>
                                 <td className="py-3 px-2 text-center border-r border-slate-800/50">
@@ -241,15 +241,15 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                 <td className={`py-2.5 px-2 text-center text-xs font-black font-mono border-r border-slate-800/50 ${getGradeColor(teamAverages.ath)}`}>{teamAverages.ath}</td>
 
                                 {/* Stats Avg */}
-                                <td className={statCellClass}>{teamAverages.mp}</td>
-                                <td className={statCellClass}>{teamAverages.pts}</td>
-                                <td className={statCellClass}>{teamAverages.rebs}</td>
-                                <td className={statCellClass}>{teamAverages.ast}</td>
-                                <td className={statCellClass}>{teamAverages.stl}</td>
-                                <td className={statCellClass}>{teamAverages.blk}</td>
-                                <td className={statCellClass}>{teamAverages.fg}</td>
-                                <td className={statCellClass}>{teamAverages.p3}</td>
-                                <td className={statCellClass}>{teamAverages.ts}</td>
+                                <td className={statCellClass} align="center">{teamAverages.mp}</td>
+                                <td className={statCellClass} align="center">{teamAverages.pts}</td>
+                                <td className={statCellClass} align="center">{teamAverages.rebs}</td>
+                                <td className={statCellClass} align="center">{teamAverages.ast}</td>
+                                <td className={statCellClass} align="center">{teamAverages.stl}</td>
+                                <td className={statCellClass} align="center">{teamAverages.blk}</td>
+                                <td className={statCellClass} align="center">{teamAverages.fg}</td>
+                                <td className={statCellClass} align="center">{teamAverages.p3}</td>
+                                <td className={statCellClass} align="center">{teamAverages.ts}</td>
                             </tr>
                         </tfoot>
                     )}
