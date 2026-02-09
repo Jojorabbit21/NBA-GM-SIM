@@ -81,8 +81,8 @@ const LeaderboardCard: React.FC<{
 
     return (
         <div className="flex flex-col bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-xl h-full">
-            {/* Card Header with Dropdown (Matched with StandingTable Title Bar) */}
-            <div className="bg-slate-800/40 px-5 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30 rounded-t-xl">
+            {/* Card Header with Dropdown */}
+            <div className="bg-slate-800/40 px-5 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30">
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-black text-white uppercase tracking-wider oswald">{statDef.label}</span>
                 </div>
@@ -101,12 +101,12 @@ const LeaderboardCard: React.FC<{
 
             {/* Table Body */}
             <div className="flex-1">
-                <Table className="rounded-none border-0 shadow-none">
-                    <TableHead className="rounded-none bg-slate-950/50">
+                <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
+                    <TableHead className="rounded-none bg-slate-950">
                         <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                            <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none">#</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-2 border-none">TEAM / PLAYER</TableHeaderCell>
-                            <TableHeaderCell align="right" className="pr-4 border-none">{statDef.id}</TableHeaderCell>
+                            <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM / PLAYER</TableHeaderCell>
+                            <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950">{statDef.id}</TableHeaderCell>
                         </tr>
                     </TableHead>
                     <TableBody>
@@ -134,7 +134,7 @@ const LeaderboardCard: React.FC<{
                                     </TableCell>
                                     <TableCell className="px-2" onClick={() => onPlayerClick(p)}>
                                         <div className="flex items-center gap-3">
-                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !mx-0" />
+                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !mx-0 shadow-none" />
                                             <div className="flex items-center gap-2 min-w-0">
                                                 <span className={`text-xs font-bold truncate group-hover:text-indigo-400 group-hover:underline ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
                                                 <span className="text-[10px] text-slate-600">|</span>
@@ -184,7 +184,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
         icon={<BarChart3 size={24} />}
       />
 
-      {/* Grid of 3 Cards - Added margin top to match StandingsView */}
+      {/* Grid of 3 Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start mt-8">
           <LeaderboardCard 
               defaultStat="PTS" 

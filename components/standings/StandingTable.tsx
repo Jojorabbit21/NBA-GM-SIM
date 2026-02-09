@@ -35,7 +35,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
     const sorted = getFilteredAndSortedTeams(teamList);
     const leader = sorted.length > 0 ? sorted[0] : null;
 
-    // Data column text styles: SF Mono vibe, sm size, slate-300 color
+    // Data column text styles
     const dataTextClass = "font-mono text-sm text-slate-300";
 
     return (
@@ -45,15 +45,15 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                 <h3 className={`text-lg font-black oswald uppercase tracking-wider text-${highlightColor}-400`}>{title}</h3>
             </div>
             
-            <Table className="rounded-none border-0 shadow-none">
-                <TableHead className="rounded-none bg-slate-950/50">
+            <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
+                <TableHead className="rounded-none bg-slate-950">
                     <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none">#</TableHeaderCell>
-                        <TableHeaderCell align="left" className="px-2 border-none">TEAM</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-2 w-10 border-none">W</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-2 w-10 border-none">L</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-2 w-16 border-none">PCT</TableHeaderCell>
-                        <TableHeaderCell align="center" className="pl-2 pr-6 w-14 !rounded-none border-none">GB</TableHeaderCell>
+                        <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">W</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">L</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 w-16 border-none bg-slate-950">PCT</TableHeaderCell>
+                        <TableHeaderCell align="center" className="pl-2 pr-6 w-14 !rounded-none border-none bg-slate-950">GB</TableHeaderCell>
                     </tr>
                 </TableHead>
                 <TableBody>
