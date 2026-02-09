@@ -22,7 +22,7 @@ export interface ZoneAttempts {
  * 1. Archetype Scores (High Spacer = More 3s, High PostScorer = More Paint)
  * 2. Lateral Bias (Left/Right preference)
  */
-function calculateZoneWeights(player: Player, tendency: HiddenTendencies) {
+export function calculateZoneWeights(player: Player, tendency: HiddenTendencies) {
     const { lateralBias } = tendency;
 
     // Convert raw attributes to Archetype Ratings on the fly if not present
@@ -148,6 +148,43 @@ export function distributeAttemptsToZones(
     result.zone_c3_r_a = total3PA - result.zone_c3_l_a - result.zone_atb3_l_a - result.zone_atb3_c_a - result.zone_atb3_r_a;
 
     return result;
+}
+
+/**
+ * Resolves a specific sub-zone (e.g. 'zone_mid_l') from a broad zone (e.g. 'Mid')
+ * based on the player's biases and archetypes.
+ */
+export function resolveDynamicZone(player: any, broadZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): string {
+    const id = player.id || player.playerId;
+    const name = player.name || player.playerName;
+
+    // Generate tendencies on the fly using stable ID
+    const tendency = generateHiddenTendencies({ id, name } as Player);
+    const { midWeights, threeWeights } = calculateZoneWeights(player, tendency);
+    
+    const rand = Math.random();
+
+    if (broadZone === 'Mid') {
+        // midWeights: l, c, r
+        if (rand < midWeights.l) return 'zone_mid_l';
+        if (rand < midWeights.l + midWeights.c) return 'zone_mid_c';
+        return 'zone_mid_r';
+    }
+    
+    if (broadZone === '3PT') {
+        // threeWeights: l_corn, l_wing, c_top, r_wing, r_corn
+        let accum = 0;
+        accum += threeWeights.l_corn; if (rand < accum) return 'zone_c3_l';
+        accum += threeWeights.l_wing; if (rand < accum) return 'zone_atb3_l';
+        accum += threeWeights.c_top; if (rand < accum) return 'zone_atb3_c';
+        accum += threeWeights.r_wing; if (rand < accum) return 'zone_atb3_r';
+        return 'zone_c3_r';
+    }
+    
+    if (broadZone === 'Rim') return 'zone_rim';
+    if (broadZone === 'Paint') return 'zone_paint';
+    
+    return 'zone_paint'; // Fallback
 }
 
 /**
