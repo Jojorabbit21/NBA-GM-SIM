@@ -55,41 +55,23 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
 
       {mode === 'Conference' && (
         <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8 items-start animate-in slide-in-from-bottom-4 duration-500">
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 px-2">
-                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Total League Rank</h4>
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-slate-800 to-transparent"></div>
-            </div>
-            <StandingTable teamList={teams} title="정규시즌 통합 순위" highlightColor="emerald" onTeamClick={onTeamClick} />
-          </div>
+          <StandingTable teamList={teams} title="정규시즌 통합 순위" highlightColor="emerald" onTeamClick={onTeamClick} />
 
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 px-2">
-                <h4 className="text-[10px] font-black text-blue-500/50 uppercase tracking-[0.3em]">Eastern Conference</h4>
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-slate-800 to-transparent"></div>
-            </div>
-            <StandingTable 
-              teamList={teams.filter(t => t.conference === 'East')} 
-              title="동부 컨퍼런스" 
-              isConference={true}
-              highlightColor="blue"
-              onTeamClick={onTeamClick}
-            />
-          </div>
+          <StandingTable 
+            teamList={teams.filter(t => t.conference === 'East')} 
+            title="동부 컨퍼런스" 
+            isConference={true}
+            highlightColor="blue"
+            onTeamClick={onTeamClick}
+          />
 
-          <div className="space-y-4">
-            <div className="flex items-center gap-4 px-2">
-                <h4 className="text-[10px] font-black text-red-500/50 uppercase tracking-[0.3em]">Western Conference</h4>
-                <div className="h-[1px] flex-1 bg-gradient-to-r from-slate-800 to-transparent"></div>
-            </div>
-            <StandingTable 
-              teamList={teams.filter(t => t.conference === 'West')} 
-              title="서부 컨퍼런스" 
-              isConference={true}
-              highlightColor="red"
-              onTeamClick={onTeamClick}
-            />
-          </div>
+          <StandingTable 
+            teamList={teams.filter(t => t.conference === 'West')} 
+            title="서부 컨퍼런스" 
+            isConference={true}
+            highlightColor="red"
+            onTeamClick={onTeamClick}
+          />
         </div>
       )}
 
