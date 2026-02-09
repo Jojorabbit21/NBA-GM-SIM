@@ -102,12 +102,11 @@ const LeaderboardCard: React.FC<{
             {/* Table Body */}
             <div className="flex-1">
                 <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
-                    <TableHead className="rounded-none bg-slate-950">
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                            <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM / PLAYER</TableHeaderCell>
-                            <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950">{statDef.id}</TableHeaderCell>
-                        </tr>
+                    {/* [Fix] Removed nested tr to prevent alignment gap */}
+                    <TableHead className="bg-slate-950">
+                        <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM / PLAYER</TableHeaderCell>
+                        <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950">{statDef.id}</TableHeaderCell>
                     </TableHead>
                     <TableBody>
                         {sortedData.map((p, i) => {

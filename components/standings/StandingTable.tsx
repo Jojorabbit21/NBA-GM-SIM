@@ -46,15 +46,15 @@ export const StandingTable: React.FC<StandingTableProps> = ({
             </div>
             
             <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
-                <TableHead className="rounded-none bg-slate-950">
-                    <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
-                        <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">W</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">L</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-2 w-16 border-none bg-slate-950">PCT</TableHeaderCell>
-                        <TableHeaderCell align="center" className="pl-2 pr-6 w-14 !rounded-none border-none bg-slate-950">GB</TableHeaderCell>
-                    </tr>
+                {/* [Fix] Removed internal <tr> and added noRow={true} to use custom tr styling if needed, 
+                    or simply rely on TableHead's default row generation */}
+                <TableHead className="bg-slate-950">
+                    <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
+                    <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM</TableHeaderCell>
+                    <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">W</TableHeaderCell>
+                    <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">L</TableHeaderCell>
+                    <TableHeaderCell align="center" className="px-2 w-16 border-none bg-slate-950">PCT</TableHeaderCell>
+                    <TableHeaderCell align="center" className="pl-2 pr-6 w-14 !rounded-none border-none bg-slate-950">GB</TableHeaderCell>
                 </TableHead>
                 <TableBody>
                     {sorted.length > 0 ? sorted.map((t, i) => {
