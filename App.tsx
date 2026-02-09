@@ -72,6 +72,14 @@ const App: React.FC = () => {
                 onResetClick: gameData.handleResetData,
                 onLogout: handleLogout
             }}
+            gameHeaderProps={{
+                schedule: gameData.schedule,
+                teams: gameData.teams,
+                onSim: sim.handleExecuteSim,
+                isSimulating: sim.isSimulating,
+                playoffSeries: gameData.playoffSeries,
+                userTactics: gameData.userTactics
+            }}
         >
             <AppRouter 
                 view={view} setView={setView} gameData={gameData}

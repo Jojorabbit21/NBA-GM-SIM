@@ -1,13 +1,13 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import { Team, Game, Player, OffenseTactic, DefenseTactic, PlayoffSeries, GameTactics, DepthChart } from '../types';
+import { Team, Game, Player, PlayoffSeries, GameTactics, DepthChart, OffenseTactic, DefenseTactic } from '../types';
 import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
 import { calculateTacticScore } from '../utils/tacticUtils';
 
 // Import sub-components
-import { DashboardHeader, DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
+import { DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
 import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
@@ -46,20 +46,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       return myGames.find(g => !g.played) || myGames[myGames.length - 1];
   }, [schedule, team?.id]);
 
-  const isHome = nextGameDisplay?.homeTeamId === team?.id;
-  const opponentId = isHome ? nextGameDisplay?.awayTeamId : nextGameDisplay?.homeTeamId;
-  const opponent = useMemo(() => teams.find(t => t.id === opponentId), [teams, opponentId]);
-
-  const userHasGameToday = useMemo(() => {
-      if (!nextGameDisplay || !currentSimDate) return false;
-      return nextGameDisplay.date === currentSimDate && !nextGameDisplay.played;
-  }, [nextGameDisplay, currentSimDate]);
-
-  const currentSeries = useMemo(() => {
-      if (!nextGameDisplay?.isPlayoff || !nextGameDisplay.seriesId || !playoffSeries) return undefined;
-      return playoffSeries.find(s => s.id === nextGameDisplay.seriesId);
-  }, [nextGameDisplay, playoffSeries]);
-
   const isRegularSeasonFinished = useMemo(() => {
       if (!team?.id) return false;
       const myRegularGames = schedule.filter(g => !g.isPlayoff && (g.homeTeamId === team.id || g.awayTeamId === team.id));
@@ -79,10 +65,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [playoffSeries, team?.id]);
 
   const effectiveRoster = team?.roster || [];
-  const effectiveOppRoster = opponent?.roster || [];
+  const effectiveOppRoster = useMemo(() => {
+      if (!nextGameDisplay) return [];
+      const isHome = nextGameDisplay.homeTeamId === team?.id;
+      const oppId = isHome ? nextGameDisplay.awayTeamId : nextGameDisplay.homeTeamId;
+      return teams.find(t => t.id === oppId)?.roster || [];
+  }, [nextGameDisplay, team?.id, teams]);
 
   const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
-  // injuredSorted was removed as it wasn't effectively used in the new components yet, can be added to RotationManager if needed
   const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
   
   useEffect(() => {
@@ -98,16 +88,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [healthySorted, tactics.starters, tactics, onUpdateTactics]);
 
-  const myOvr = useMemo(() => {
-    if (!effectiveRoster.length) return 0;
-    return Math.round(effectiveRoster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / effectiveRoster.length);
-  }, [effectiveRoster]);
-
-  const opponentOvrValue = useMemo(() => {
-    if (!effectiveOppRoster.length) return 0;
-    return Math.round(effectiveOppRoster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / effectiveOppRoster.length);
-  }, [effectiveOppRoster]);
-
+  // [Fix] Added missing OffenseTactic and DefenseTactic to imports to fix "Cannot find name" errors
   const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
       return calculateTacticScore(type, { ...team, roster: effectiveRoster }, tactics);
   };
@@ -119,7 +100,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   if (!team) return null;
 
-  const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : opponent) : null;
+  const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : teams.find(t => t.roster.some(rp => rp.id === viewPlayer.id))) : null;
 
   return (
     <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-6">
@@ -131,23 +112,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         hasPlayoffHistory={hasPlayoffHistory}
         showSeasonBanner={isRegularSeasonFinished}
         showPlayoffBanner={isPostseasonOver}
-      />
-
-      <DashboardHeader 
-        team={team}
-        nextGame={nextGameDisplay}
-        opponent={opponent}
-        isHome={isHome}
-        myOvr={myOvr}
-        opponentOvrValue={opponentOvrValue}
-        isGameToday={userHasGameToday} 
-        isSimulating={isSimulating}
-        onSimClick={() => onSim(tactics)}
-        onShowSeasonReview={onShowSeasonReview}
-        onShowPlayoffReview={onShowPlayoffReview}
-        hasPlayoffHistory={hasPlayoffHistory}
-        currentSeries={currentSeries}
-        currentSimDate={currentSimDate}
       />
 
       {/* Main Content Area with Navigation */}
@@ -170,8 +134,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     </button>
                     <button 
                         onClick={() => setActiveTab('opponent')}
-                        disabled={!opponent}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'} ${!opponent ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>상대 전력 분석</span>
                     </button>
@@ -205,7 +168,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               {activeTab === 'opponent' && (
                   <OpponentScoutPanel 
-                      opponent={opponent}
+                      opponent={teams.find(t => t.id !== team.id && t.roster.some(rp => rp.id === oppHealthySorted[0]?.id))}
                       oppHealthySorted={oppHealthySorted}
                       onViewPlayer={setViewPlayer}
                   />
