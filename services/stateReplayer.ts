@@ -5,7 +5,6 @@ import { updateTeamTacticHistory } from '../utils/tacticUtils';
 
 /**
  * Replays history to reconstruct the current game state.
- * This function is PURE. It does not depend on React or Supabase.
  */
 export const replayGameState = (
     baseTeams: Team[],
@@ -14,15 +13,12 @@ export const replayGameState = (
     gameResults: any[],
     savedSimDate: string | null
 ) => {
-    // 1. Deep Copy Base Data
     const teams: Team[] = JSON.parse(JSON.stringify(baseTeams));
     let schedule: Game[] = JSON.parse(JSON.stringify(baseSchedule));
     
-    // Create Map for O(1) Lookup
     const teamMap = new Map<string, Team>();
     teams.forEach(t => teamMap.set(t.id, t));
 
-    // 2. Replay Transactions (Trades & Injuries)
     const sortedTransactions = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     sortedTransactions.forEach((tx) => {
         if (tx.type === 'Trade' && tx.details) {
@@ -32,18 +28,15 @@ export const replayGameState = (
         }
     });
 
-    // 3. Replay Game Results
     const sortedResults = [...gameResults].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     
     sortedResults.forEach((res) => {
-        // A. Update Schedule Status
         const gameIdx = schedule.findIndex(g => g.id === res.game_id);
         if (gameIdx !== -1) {
             schedule[gameIdx].played = true;
             schedule[gameIdx].homeScore = res.home_score;
             schedule[gameIdx].awayScore = res.away_score;
         } else if (res.is_playoff) {
-            // Dynamically add playoff games if not in base schedule
             schedule.push({
                 id: res.game_id,
                 homeTeamId: res.home_team_id,
@@ -60,7 +53,6 @@ export const replayGameState = (
         const homeTeam = teamMap.get(res.home_team_id);
         const awayTeam = teamMap.get(res.away_team_id);
         
-        // B. Update Standings & Tactics History
         if (homeTeam && awayTeam) {
             const homeWon = res.home_score > res.away_score;
             if (homeWon) {
@@ -77,7 +69,6 @@ export const replayGameState = (
             }
         }
 
-        // C. Aggregate Player Stats
         if (res.box_score) {
             if (res.box_score.home) applyBoxScore(teamMap, res.home_team_id, res.box_score.home);
             if (res.box_score.away) applyBoxScore(teamMap, res.away_team_id, res.box_score.away);
@@ -91,7 +82,36 @@ export const replayGameState = (
     };
 };
 
-// --- Helper Functions ---
+function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[]) {
+    const team = teamMap.get(teamId);
+    if (!team) return;
+
+    box.forEach(statLine => {
+        const player = team.roster.find(p => p.id === statLine.playerId);
+        if (player) {
+            if (!player.stats) player.stats = INITIAL_STATS();
+            player.stats.g += 1;
+            player.stats.gs += (statLine.gs || 0);
+            player.stats.mp += (statLine.mp || 0);
+            player.stats.pts += (statLine.pts || 0);
+            player.stats.reb += (statLine.reb || 0);
+            player.stats.offReb += (statLine.offReb || 0);
+            player.stats.defReb += (statLine.defReb || 0);
+            player.stats.ast += (statLine.ast || 0);
+            player.stats.stl += (statLine.stl || 0);
+            player.stats.blk += (statLine.blk || 0);
+            player.stats.tov += (statLine.tov || 0);
+            player.stats.fgm += (statLine.fgm || 0);
+            player.stats.fga += (statLine.fga || 0);
+            player.stats.p3m += (statLine.p3m || 0);
+            player.stats.p3a += (statLine.p3a || 0);
+            player.stats.ftm += (statLine.ftm || 0);
+            player.stats.fta += (statLine.fta || 0);
+            player.stats.pf += (statLine.pf || 0);
+            player.stats.plusMinus += (statLine.plusMinus || 0);
+        }
+    });
+}
 
 function applyTrade(teams: Team[], tx: any) {
     const { acquired, traded, partnerTeamId } = tx.details;
@@ -132,39 +152,4 @@ function applyInjuryUpdate(teams: Team[], tx: any) {
             return;
         }
     }
-}
-
-function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[]) {
-    const team = teamMap.get(teamId);
-    if (!team) return;
-
-    box.forEach(statLine => {
-        const player = team.roster.find(p => p.id === statLine.playerId);
-        if (player) {
-            if (!player.stats) player.stats = INITIAL_STATS();
-            player.stats.g += 1;
-            player.stats.gs += statLine.gs || 0;
-            player.stats.mp += statLine.mp || 0;
-            player.stats.pts += statLine.pts || 0;
-            player.stats.reb += statLine.reb || 0;
-            player.stats.offReb += statLine.offReb || 0;
-            player.stats.defReb += statLine.defReb || 0;
-            player.stats.ast += statLine.ast || 0;
-            player.stats.stl += statLine.stl || 0;
-            player.stats.blk += statLine.blk || 0;
-            player.stats.tov += statLine.tov || 0;
-            player.stats.fgm += statLine.fgm || 0;
-            player.stats.fga += statLine.fga || 0;
-            player.stats.p3m += statLine.p3m || 0;
-            player.stats.p3a += statLine.p3a || 0;
-            player.stats.ftm += statLine.ftm || 0;
-            player.stats.fta += statLine.fta || 0;
-            player.stats.rimM += statLine.rimM || 0;
-            player.stats.rimA += statLine.rimA || 0;
-            player.stats.midM += statLine.midM || 0;
-            player.stats.midA += statLine.midA || 0;
-            player.stats.pf += statLine.pf || 0;
-            player.stats.plusMinus += statLine.plusMinus || 0;
-        }
-    });
 }
