@@ -4,7 +4,7 @@ import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
+import { Table, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface OpponentScoutPanelProps {
     opponent?: Team;
@@ -151,7 +151,8 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                         {STAT_COLS.map((_, i) => <col key={`c-stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
                     </colgroup>
 
-                    <TableHead>
+                    {/* Use native thead instead of TableHead component to avoid nested tr issue */}
+                    <thead className="bg-slate-950/95 backdrop-blur-sm sticky top-0 z-40 border-b border-slate-800 shadow-sm">
                         {/* Group Header Row */}
                         <tr className="border-b border-slate-800 bg-slate-950 h-8">
                             <th colSpan={3} className="py-1 px-4 border-r border-slate-800/50"></th>
@@ -178,7 +179,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                 <TableHeaderCell key={col.label} align="center" className="text-slate-400">{col.label}</TableHeaderCell>
                             ))}
                         </tr>
-                    </TableHead>
+                    </thead>
                     <TableBody>
                         {oppHealthySorted.map((p, i) => {
                             const ovr = calculatePlayerOvr(p);
@@ -229,9 +230,9 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                         </TableCell>
                                     ))}
                                     
-                                    {/* Stats Cells */}
+                                    {/* Stats Cells - Added text-xs */}
                                     {statValues.map((val, idx) => (
-                                        <TableCell key={`stat-${idx}`} align="center" className="font-mono font-bold text-slate-300">
+                                        <TableCell key={`stat-${idx}`} align="center" className="font-mono font-bold text-xs text-slate-300">
                                             {val}
                                         </TableCell>
                                     ))}
@@ -261,16 +262,16 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                                 <td className={`py-2.5 px-2 text-center text-xs font-black font-mono border-r border-slate-800/30 ${getGradeColor(teamAverages.reb)}`}>{teamAverages.reb}</td>
                                 <td className={`py-2.5 px-2 text-center text-xs font-black font-mono border-r border-slate-800/50 ${getGradeColor(teamAverages.ath)}`}>{teamAverages.ath}</td>
 
-                                {/* Stats Avg */}
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.mp}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.pts}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.rebs}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.ast}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.stl}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.blk}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.fg}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.p3}</td>
-                                <td className="font-mono font-bold text-slate-300" align="center">{teamAverages.ts}</td>
+                                {/* Stats Avg - Added text-xs */}
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.mp}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.pts}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.rebs}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.ast}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.stl}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.blk}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.fg}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.p3}</td>
+                                <td className="font-mono font-bold text-xs text-slate-300 py-2.5 px-2" align="center">{teamAverages.ts}</td>
                             </tr>
                         </tfoot>
                     )}
