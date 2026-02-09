@@ -11,7 +11,7 @@ interface PageHeaderProps {
 
 export const PageHeader: React.FC<PageHeaderProps> = ({ title, description, icon, actions, className = '' }) => {
     return (
-        <div className={`flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0 relative z-30 ${className}`}>
+        <div className={`flex flex-col md:flex-row justify-between items-center gap-6 border-b border-slate-800 pb-6 flex-shrink-0 relative z-[70] ${className}`}>
             <div className="flex-1">
                 <div className="flex items-center gap-4">
                     {icon && (

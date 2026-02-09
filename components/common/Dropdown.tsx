@@ -65,7 +65,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
 
             {isExpanded && (
                 <div 
-                    className={`absolute top-full mt-2 ${align === 'right' ? 'right-0' : 'left-0'} ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-150`}
+                    className={`absolute top-full mt-2 ${align === 'right' ? 'right-0' : 'left-0'} ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[200] animate-in fade-in zoom-in-95 duration-150`}
                 >
                     {items ? (
                         <div className="p-1 max-h-80 overflow-y-auto custom-scrollbar">
