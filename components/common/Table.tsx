@@ -129,16 +129,16 @@ export const TableHeaderCell = ({
             {...props}
         >
             <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
-                {/* [Improvement] Smaller spacer (12px) for better text availability on small screens */}
-                {sortable && align === 'center' && <div className="w-[12px] flex-shrink-0"></div>}
-                
+                {/* 
+                  [Update] Removed ghost spacer to maximize text area for inactive columns.
+                  The arrow only appears when sortDirection is active.
+                */}
                 <span className="truncate min-w-0">{children}</span>
                 
-                {sortable && (
-                    <span className="w-[12px] flex items-center justify-center flex-shrink-0">
+                {sortable && sortDirection && (
+                    <span className="flex-shrink-0">
                         {sortDirection === 'asc' && <ArrowUp size={10} className="text-indigo-400" strokeWidth={3} />}
                         {sortDirection === 'desc' && <ArrowDown size={10} className="text-indigo-400" strokeWidth={3} />}
-                        {!sortDirection && <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-40 transition-opacity" />}
                     </span>
                 )}
             </div>
