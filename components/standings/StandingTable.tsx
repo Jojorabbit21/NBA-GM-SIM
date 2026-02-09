@@ -35,21 +35,26 @@ export const StandingTable: React.FC<StandingTableProps> = ({
     const sorted = getFilteredAndSortedTeams(teamList);
     const leader = sorted.length > 0 ? sorted[0] : null;
 
+    // Data column text styles: SF Mono vibe, sm size, slate-300 color
+    const dataTextClass = "font-mono text-sm text-slate-300";
+
     return (
         <div className="bg-slate-900/90 rounded-xl border border-slate-800 overflow-hidden shadow-xl flex flex-col">
             {/* Table Title Bar */}
-            <div className="bg-slate-800/40 px-6 py-4 border-b border-slate-800 rounded-t-xl">
+            <div className="bg-slate-800/40 px-6 py-4 border-b border-slate-800">
                 <h3 className={`text-lg font-black oswald uppercase tracking-wider text-${highlightColor}-400`}>{title}</h3>
             </div>
             
             <Table className="rounded-none border-0 shadow-none">
-                <TableHead className="rounded-none">
-                    <TableHeaderCell align="left" className="pl-6 pr-2 w-12 rounded-none">#</TableHeaderCell>
-                    <TableHeaderCell align="left" className="px-2">Team</TableHeaderCell>
-                    <TableHeaderCell align="center" className="px-2 w-10">W</TableHeaderCell>
-                    <TableHeaderCell align="center" className="px-2 w-10">L</TableHeaderCell>
-                    <TableHeaderCell align="center" className="px-2 w-16">PCT</TableHeaderCell>
-                    <TableHeaderCell align="center" className="pl-2 pr-6 w-14">GB</TableHeaderCell>
+                <TableHead className="rounded-none bg-slate-950/50">
+                    <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                        <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none">#</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 border-none">TEAM</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 w-10 border-none">W</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 w-10 border-none">L</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 w-16 border-none">PCT</TableHeaderCell>
+                        <TableHeaderCell align="center" className="pl-2 pr-6 w-14 !rounded-none border-none">GB</TableHeaderCell>
+                    </tr>
                 </TableHead>
                 <TableBody>
                     {sorted.length > 0 ? sorted.map((t, i) => {
@@ -63,6 +68,8 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                         }
 
                         const rankVal = i + 1;
+                        const winsVal = t.wins ?? 0;
+                        const lossesVal = t.losses ?? 0;
                         const pctVal = (t.wins + t.losses === 0 ? 0 : t.wins / (t.wins + t.losses)).toFixed(3).replace(/^0/, '');
                         const gbVal = leader ? calculateGB(t, leader) : '-';
 
@@ -71,13 +78,10 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                             ${isConference && i >= 6 && i <= 9 ? 'bg-fuchsia-900/10' : ''}
                         `;
 
-                        // Data column text styles: SF Mono vibe, sm size, slate-300 color
-                        const dataTextClass = "font-mono text-sm text-slate-300";
-
                         return (
                             <React.Fragment key={t.id}>
                                 <TableRow className={rowClass}>
-                                    <TableCell className={`pl-6 pr-2 font-mono text-sm text-slate-400 group-hover:text-slate-100`}>{rankVal}</TableCell>
+                                    <TableCell className={`pl-6 pr-2 ${dataTextClass} !text-slate-400 group-hover:text-slate-100`}>{rankVal}</TableCell>
                                     <TableCell 
                                         className="px-2 cursor-pointer" 
                                         onClick={() => onTeamClick(t.id)}
@@ -88,8 +92,8 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                             {statusEmoji && <span className="text-xs ml-1 filter drop-shadow-md select-none">{statusEmoji}</span>}
                                         </div>
                                     </TableCell>
-                                    <TableCell align="center" className={`px-2 ${dataTextClass} font-bold !text-white`}>{t.wins || 0}</TableCell>
-                                    <TableCell align="center" className={`px-2 ${dataTextClass}`}>{t.losses || 0}</TableCell>
+                                    <TableCell align="center" className={`px-2 ${dataTextClass} font-bold !text-white`}>{winsVal}</TableCell>
+                                    <TableCell align="center" className={`px-2 ${dataTextClass}`}>{lossesVal}</TableCell>
                                     <TableCell align="center" className={`px-2 ${dataTextClass} !text-slate-400`}>{pctVal}</TableCell>
                                     <TableCell align="center" className={`pl-2 pr-6 ${dataTextClass} ${i === 0 ? '!text-slate-500' : `!text-${highlightColor}-400/80`}`}>{gbVal}</TableCell>
                                 </TableRow>
