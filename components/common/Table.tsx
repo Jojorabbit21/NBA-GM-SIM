@@ -15,7 +15,7 @@ interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
 interface TableHeadProps extends React.HTMLAttributes<HTMLTableSectionElement> {
     children: React.ReactNode;
     className?: string;
-    noRow?: boolean; // If true, renders children directly without wrapping in <tr>
+    noRow?: boolean; 
 }
 
 interface TableBodyProps extends React.HTMLAttributes<HTMLTableSectionElement> {
@@ -46,27 +46,23 @@ interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellEleme
 
 interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
     children?: React.ReactNode;
-    value?: any; // For smart rendering
+    value?: any; 
     variant?: CellVariant;
     align?: 'left' | 'center' | 'right';
     className?: string;
-    // Variant specific props
     subText?: string;
     image?: string;
     onClick?: () => void;
-    colorScale?: boolean; // For attributes (70/80/90 colors)
+    colorScale?: boolean; 
     stickyLeft?: boolean;
 }
 
-// --- Helper for Attribute Colors ---
 const getAttrColor = (val: number) => {
     if (val >= 90) return 'text-fuchsia-400';
     if (val >= 80) return 'text-emerald-400';
     if (val >= 70) return 'text-amber-400';
     return 'text-slate-500';
 };
-
-// --- Components ---
 
 export const Table = ({ children, className = '', fullHeight = true, ...props }: TableProps) => (
     <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`}>
@@ -122,26 +118,27 @@ export const TableHeaderCell = ({
 }: TableHeaderCellProps) => {
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
+    const stickyClass = stickyLeft ? 'sticky left-0 z-50' : '';
     const cellStyle = { ...style, width: width, minWidth: width };
 
     return (
         <th 
-            className={`py-3 px-3 whitespace-nowrap bg-slate-950 ${alignClass} ${cursorClass} ${className}`}
+            className={`py-3 px-3 whitespace-nowrap bg-slate-950 ${alignClass} ${cursorClass} ${stickyClass} ${className}`}
             style={cellStyle}
             onClick={sortable ? onSort : undefined}
             {...props}
         >
-            <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
-                {/* Ghost Spacer for perfect centering when an icon exists on the right */}
-                {sortable && align === 'center' && <div className="w-[12px]"></div>}
+            <div className={`flex items-center gap-1.5 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                {/* Perfect centering spacer */}
+                {sortable && align === 'center' && <div className="w-[16px]"></div>}
                 
-                <span>{children}</span>
+                <span className="truncate">{children}</span>
                 
                 {sortable && (
-                    <span className="text-slate-600 flex-shrink-0">
+                    <span className="w-[16px] flex items-center justify-center flex-shrink-0">
                         {sortDirection === 'asc' && <ArrowUp size={12} className="text-indigo-400" strokeWidth={3} />}
                         {sortDirection === 'desc' && <ArrowDown size={12} className="text-indigo-400" strokeWidth={3} />}
-                        {!sortDirection && <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-40" />}
+                        {!sortDirection && <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-40 transition-opacity" />}
                     </span>
                 )}
             </div>
@@ -175,6 +172,7 @@ export const TableCell = ({
     
     const finalAlign = getAlign();
     const alignClass = finalAlign === 'left' ? 'text-left' : finalAlign === 'right' ? 'text-right' : 'text-center';
+    const stickyClass = stickyLeft ? 'sticky left-0 z-30' : '';
     
     const renderContent = () => {
         if (children) return children;
@@ -209,7 +207,7 @@ export const TableCell = ({
                     </span>
                 );
             case 'ovr':
-                return <OvrBadge value={Number(value)} size="sm" />;
+                return <OvrBadge value={Number(value)} size="sm" className="shadow-none" />;
             case 'badge':
                 return (
                     <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${className}`}>
@@ -222,7 +220,7 @@ export const TableCell = ({
     };
 
     return (
-        <td className={`py-2 px-3 whitespace-nowrap ${alignClass} ${className}`} style={style} {...props}>
+        <td className={`py-2 px-3 whitespace-nowrap ${alignClass} ${stickyClass} ${className}`} style={style} {...props}>
             {renderContent()}
         </td>
     );

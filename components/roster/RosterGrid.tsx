@@ -171,6 +171,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         return { attr: attrAvg, stat: statAvg, salary: team.roster.reduce((s, p) => s + p.salary, 0) };
     }, [team.roster]);
 
+    // Calculate left positions for sticky columns
     const LEFT_POS = WIDTHS.NAME;
     const LEFT_AGE = WIDTHS.NAME + WIDTHS.POS;
     const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
@@ -219,10 +220,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     </tr>
                     {/* Header Row 2: Labels */}
                     <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                        <TableHeaderCell style={{ left: 0, width: WIDTHS.NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800/50" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_POS, width: WIDTHS.POS }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_AGE, width: WIDTHS.AGE }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_OVR, width: WIDTHS.OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
+                        <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800/50" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
                         
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
                             g.keys.map((k, idx) => {
@@ -254,20 +255,20 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 <TableBody>
                     {sortedRoster.map(p => (
                         <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
-                            <TableCell style={{ left: 0, width: WIDTHS.NAME }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
+                            <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                 <div className="flex flex-col">
                                     <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     {p.health !== 'Healthy' && <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>{p.health}</span>}
                                 </div>
                             </TableCell>
-                            <TableCell style={{ left: LEFT_POS, width: WIDTHS.POS }} stickyLeft className="border-r border-slate-800/50 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
-                            <TableCell style={{ left: LEFT_AGE, width: WIDTHS.AGE }} stickyLeft className="border-r border-slate-800/50 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
-                            <TableCell style={{ left: LEFT_OVR, width: WIDTHS.OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
+                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800/50 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800/50 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
+                            <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
 
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                                <TableCell key={k} align="center" className={`font-black font-mono border-r border-slate-800/30 text-xs ${getGradeColor(Number((p as any)[k] || 0))}`} value={(p as any)[k]} variant="text" colorScale />
+                                <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => (
                                 <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300" value={getSortValue(p, c.key)} variant="stat" />
@@ -284,15 +285,15 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 </TableBody>
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
-                        <TableCell style={{ left: 0, width: WIDTHS.NAME }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
-                        <TableCell style={{ left: LEFT_POS, width: WIDTHS.POS }} stickyLeft className="border-r border-slate-800/50 bg-slate-950 z-30"></TableCell>
-                        <TableCell style={{ left: LEFT_AGE, width: WIDTHS.AGE }} stickyLeft className="border-r border-slate-800/50 bg-slate-950 text-center font-bold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
-                        <TableCell style={{ left: LEFT_OVR, width: WIDTHS.OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_10px_rgba(0,0,0,0.3)] z-30 text-center">
+                        <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
+                        <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800/50 bg-slate-950 z-30"></TableCell>
+                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800/50 bg-slate-950 text-center font-bold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
+                        <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_10px_rgba(0,0,0,0.3)] z-30 text-center">
                             <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
                         </TableCell>
 
                         {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                            <TableCell key={k} align="center" className={`font-black font-mono border-r border-slate-800/30 text-xs ${getGradeColor(averages.attr[k])}`} value={averages.attr[k]} variant="text" colorScale />
+                            <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             let val = averages.stat[c.key];
