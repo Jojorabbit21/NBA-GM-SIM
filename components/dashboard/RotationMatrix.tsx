@@ -117,8 +117,11 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
     const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
     
-    // Borders
-    const borderClass = "border-r border-slate-700/50";
+    // Styling Constants
+    // [Fix] Use solid opaque borders for sticky columns to prevent content bleeding through
+    const stickyBorder = "border-r border-slate-800"; 
+    // Keep transparent borders for scrollable area for softer look
+    const gridBorder = "border-r border-slate-700/50"; 
     const bottomBorder = "border-b border-slate-700/50";
 
     return (
@@ -137,16 +140,16 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
                             {/* Sticky Columns Header Block */}
                             {/* Z-Index 50 to stay on top of everything */}
-                            <th rowSpan={2} className={`sticky left-0 z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[50px] min-w-[50px] text-center`}>POS</th>
-                            <th rowSpan={2} className={`sticky left-[50px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
-                            <th rowSpan={2} className={`sticky left-[210px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>OVR</th>
-                            <th rowSpan={2} className={`sticky left-[250px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[290px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-0 z-50 bg-slate-900 ${stickyBorder} ${bottomBorder} w-[50px] min-w-[50px] text-center`}>POS</th>
+                            <th rowSpan={2} className={`sticky left-[50px] z-50 bg-slate-900 ${stickyBorder} ${bottomBorder} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
+                            <th rowSpan={2} className={`sticky left-[210px] z-50 bg-slate-900 ${stickyBorder} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>OVR</th>
+                            <th rowSpan={2} className={`sticky left-[250px] z-50 bg-slate-900 ${stickyBorder} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>COND</th>
+                            <th rowSpan={2} className={`sticky left-[290px] z-50 bg-slate-900 ${stickyBorder} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>MIN</th>
                             
                             {/* Scrollable Quarter Headers */}
-                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${borderClass} ${bottomBorder}`}>1Q</th>
-                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${borderClass} ${bottomBorder}`}>2Q</th>
-                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${borderClass} ${bottomBorder}`}>3Q</th>
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${gridBorder} ${bottomBorder}`}>1Q</th>
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${gridBorder} ${bottomBorder}`}>2Q</th>
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${gridBorder} ${bottomBorder}`}>3Q</th>
                             <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${bottomBorder}`}>4Q</th>
                         </tr>
 
@@ -157,7 +160,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                 return (
                                     <th 
                                         key={i} 
-                                        className={`w-8 min-w-[2rem] text-center bg-slate-900 ${isQuarterEnd ? borderClass : 'border-r border-slate-800/30'}`}
+                                        className={`w-8 min-w-[2rem] text-center bg-slate-900 ${isQuarterEnd ? gridBorder : 'border-r border-slate-800/30'}`}
                                     >
                                         {i + 1}
                                     </th>
@@ -190,7 +193,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                         {index === 0 && (
                                             <td 
                                                 rowSpan={players.length} 
-                                                className={`sticky left-0 z-30 bg-slate-900 text-center align-middle ${borderClass} ${bottomBorder}`}
+                                                className={`sticky left-0 z-30 bg-slate-900 text-center align-middle ${stickyBorder} ${bottomBorder}`}
                                             >
                                                 <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
                                                     {String(pos)}
@@ -200,7 +203,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
                                         {/* Player Name */}
                                         <td 
-                                            className={`sticky left-[50px] z-30 bg-slate-900 px-3 cursor-pointer ${borderClass} ${bottomBorder}`}
+                                            className={`sticky left-[50px] z-30 bg-slate-900 px-3 cursor-pointer ${stickyBorder} ${bottomBorder}`}
                                             onClick={() => onViewPlayer(p)}
                                         >
                                             <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
@@ -209,21 +212,21 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                         </td>
 
                                         {/* OVR */}
-                                        <td className={`sticky left-[210px] z-30 bg-slate-900 text-center ${borderClass} ${bottomBorder}`}>
+                                        <td className={`sticky left-[210px] z-30 bg-slate-900 text-center ${stickyBorder} ${bottomBorder}`}>
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className={`!w-6 !h-6 !text-xs !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`} />
                                             </div>
                                         </td>
                                         
                                         {/* Condition */}
-                                        <td className={`sticky left-[250px] z-30 bg-slate-900 text-center ${borderClass} ${bottomBorder}`}>
+                                        <td className={`sticky left-[250px] z-30 bg-slate-900 text-center ${stickyBorder} ${bottomBorder}`}>
                                             <span className={`text-[10px] font-black ${condColor}`}>
                                                 {condition}%
                                             </span>
                                         </td>
 
                                         {/* Total Minutes */}
-                                        <td className={`sticky left-[290px] z-30 bg-slate-900 text-center ${borderClass} ${bottomBorder}`}>
+                                        <td className={`sticky left-[290px] z-30 bg-slate-900 text-center ${stickyBorder} ${bottomBorder}`}>
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
@@ -241,7 +244,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                     onClick={() => handleToggleMinute(p.id, i)}
                                                     className={`
                                                         p-0 cursor-pointer relative transition-all ${bottomBorder}
-                                                        ${isQuarterEnd ? borderClass : 'border-r border-slate-800/30'}
+                                                        ${isQuarterEnd ? gridBorder : 'border-r border-slate-800/30'}
                                                         hover:bg-white/10
                                                     `}
                                                 >
