@@ -5,6 +5,7 @@ import { Team, Player } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
 import { PageHeader } from '../components/common/PageHeader';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface OvrCalculatorViewProps {
   teams: Team[];
@@ -193,41 +194,39 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
                 </div>
             </div>
             <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/10">
-                <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 bg-slate-900 z-10 shadow-md">
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                            <th className="py-4 px-8">Player Name</th>
-                            <th className="py-4 px-4 text-center cursor-pointer hover:text-white" onClick={() => toggleSort('oldOvr')}>Base OVR</th>
-                            <th className="py-4 px-4 text-center cursor-pointer hover:text-white bg-indigo-600/10" onClick={() => toggleSort('newOvr')}>New OVR</th>
-                            <th className="py-4 px-8 text-center cursor-pointer hover:text-white" onClick={() => toggleSort('delta')}>Change</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
+                <Table>
+                    <TableHead>
+                        <TableHeaderCell align="left" className="px-8 py-4">Player Name</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-4 py-4 cursor-pointer hover:text-white" onClick={() => toggleSort('oldOvr')}>Base OVR</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-4 py-4 cursor-pointer hover:text-white bg-indigo-600/10" onClick={() => toggleSort('newOvr')}>New OVR</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-8 py-4 cursor-pointer hover:text-white" onClick={() => toggleSort('delta')}>Change</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
                         {tableData.map(p => (
-                            <tr key={p.id} className="hover:bg-white/5 transition-colors group">
-                                <td className="py-4 px-8">
+                            <TableRow key={p.id} className="hover:bg-white/5 transition-colors group">
+                                <TableCell className="px-8 py-4">
                                     <span className="text-base font-black text-slate-200 group-hover:text-indigo-400 transition-colors">{p.name}</span>
-                                </td>
-                                <td className="py-4 px-4 text-center">
+                                </TableCell>
+                                <TableCell className="px-4 py-4" align="center">
                                     <div className="flex justify-center items-center gap-2">
                                         <OvrBadge value={p.oldOvr} size="md" className="!w-9 !h-9 !text-lg !mx-0 opacity-60" />
                                     </div>
-                                </td>
-                                <td className="py-4 px-4 text-center bg-indigo-600/5">
+                                </TableCell>
+                                <TableCell className="px-4 py-4 bg-indigo-600/5" align="center">
                                     <div className="flex justify-center items-center gap-2">
                                         <OvrBadge value={p.newOvr} size="md" className="!w-10 !h-10 !text-xl !mx-0" />
                                     </div>
-                                </td>
-                                <td className="py-4 px-8 text-center">
+                                </TableCell>
+                                <TableCell className="px-8 py-4" align="center">
                                     <div className={`flex items-center justify-center gap-1.5 font-black text-sm ${p.newOvr > p.oldOvr ? 'text-emerald-400' : p.newOvr < p.oldOvr ? 'text-red-400' : 'text-slate-500'}`}>
                                         {p.newOvr > p.oldOvr ? <ArrowUp size={14} /> : p.newOvr < p.oldOvr ? <ArrowDown size={14} /> : null}
                                         {Math.abs(p.newOvr - p.oldOvr)}
                                     </div>
-                                </td>
-                            </tr>
+                                </TableCell>
+                            </TableRow>
                         ))}
-                    </tbody>
-                </table>
+                    </TableBody>
+                </Table>
             </div>
         </div>
       </div>

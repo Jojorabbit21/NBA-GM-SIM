@@ -5,6 +5,7 @@ import { History, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { TeamLogo } from '../common/TeamLogo';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface TradeHistoryTableProps {
   transactions: Transaction[];
@@ -72,16 +73,14 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
     return (
         <div className="flex flex-col h-full">
             <div className="flex-1 overflow-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest sticky top-0 bg-slate-900 z-10">
-                            <th className="py-4 px-4 w-32">일자</th>
-                            <th className="py-4 px-4 w-60">참여 구단</th>
-                            <th className="py-4 px-4">IN Assets (to Team 1)</th>
-                            <th className="py-4 px-4">OUT Assets (to Team 2)</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
+                <Table>
+                    <TableHead>
+                        <TableHeaderCell align="left" className="w-32 px-4 sticky top-0 z-10">일자</TableHeaderCell>
+                        <TableHeaderCell align="left" className="w-60 px-4 sticky top-0 z-10">참여 구단</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-4 sticky top-0 z-10">IN Assets (to Team 1)</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-4 sticky top-0 z-10">OUT Assets (to Team 2)</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
                         {paginatedTransactions.map(t => {
                             if (!t) return null;
                             
@@ -94,12 +93,12 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                             const txId = (t.id && typeof t.id === 'string') ? t.id.slice(-6) : '??????';
                             
                             return (
-                            <tr key={t.id || Math.random()} className="hover:bg-white/5 transition-colors">
-                                <td className="py-4 px-4 align-top">
+                            <TableRow key={t.id || Math.random()} className="hover:bg-white/5 transition-colors">
+                                <TableCell className="px-4 py-4 align-top">
                                     <div className="text-xs font-bold text-slate-400">{t.date === 'TODAY' ? currentSimDate : t.date}</div>
                                     <div className="text-[10px] text-slate-600 font-mono mt-1">ID: {txId}</div>
-                                </td>
-                                <td className="py-4 px-4 align-top">
+                                </TableCell>
+                                <TableCell className="px-4 py-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         <div className="flex items-center gap-2">
                                             <TeamLogo teamId={t.teamId} size="sm" />
@@ -113,8 +112,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                             <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
                                         </div>
                                     </div>
-                                </td>
-                                <td className="py-4 px-4 align-top">
+                                </TableCell>
+                                <TableCell className="px-4 py-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         {(t.details?.acquired || []).map((p, i) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
@@ -128,8 +127,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                         })}
                                         {(t.details?.acquired || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
-                                </td>
-                                <td className="py-4 px-4 align-top">
+                                </TableCell>
+                                <TableCell className="px-4 py-4 align-top">
                                     <div className="flex flex-col gap-2">
                                         {(t.details?.traded || []).map((p, i) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
@@ -143,12 +142,12 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                         })}
                                         {(t.details?.traded || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
-                                </td>
-                            </tr>
+                                </TableCell>
+                            </TableRow>
                             );
                         })}
-                    </tbody>
-                </table>
+                    </TableBody>
+                </Table>
             </div>
 
             {/* Pagination Controls */}

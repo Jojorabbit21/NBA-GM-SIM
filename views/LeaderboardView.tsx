@@ -7,6 +7,7 @@ import { ChevronDown, BarChart3, Trophy, Medal } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { Dropdown } from '../components/common/Dropdown';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface LeaderboardViewProps {
   teams: Team[];
@@ -100,15 +101,13 @@ const LeaderboardCard: React.FC<{
 
             {/* Table Body */}
             <div className="flex-1">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-950/50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5">
-                        <tr>
-                            <th className="py-2 pl-4 w-10 text-center">#</th>
-                            <th className="py-2 px-2">선수 이름</th>
-                            <th className="py-2 pr-4 text-right">{statDef.id}</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
+                <Table>
+                    <TableHead>
+                        <TableHeaderCell align="center" className="pl-4 w-10">#</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2">선수 이름</TableHeaderCell>
+                        <TableHeaderCell align="right" className="pr-4">{statDef.id}</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
                         {sortedData.map((p, i) => {
                             const rank = i + 1;
                             const ovr = calculatePlayerOvr(p);
@@ -121,15 +120,17 @@ const LeaderboardCard: React.FC<{
                             else if (rank === 2) { rankColor = 'text-slate-300'; rankIcon = <Medal size={10} className="text-slate-300 fill-slate-300 mb-0.5" />; }
                             else if (rank === 3) { rankColor = 'text-amber-600'; rankIcon = <Medal size={10} className="text-amber-700 fill-amber-700 mb-0.5" />; }
 
+                            const rowClass = isTop3 ? 'bg-slate-900/40' : '';
+
                             return (
-                                <tr key={p.id} className={`group transition-colors ${isTop3 ? 'bg-slate-900/40 hover:bg-slate-800/60' : 'hover:bg-slate-900'}`}>
-                                    <td className="py-2 pl-4 text-center">
+                                <TableRow key={p.id} className={rowClass}>
+                                    <TableCell align="center" className="pl-4">
                                         <div className="flex flex-col items-center justify-center">
                                             {rankIcon}
                                             <span className={`text-xs font-black ${rankColor} font-mono leading-none`}>{rank}</span>
                                         </div>
-                                    </td>
-                                    <td className="py-2 px-2 cursor-pointer" onClick={() => onPlayerClick(p)}>
+                                    </TableCell>
+                                    <TableCell className="px-2" onClick={() => onPlayerClick(p)}>
                                         <div className="flex items-center gap-3">
                                             <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !mx-0" />
                                             <div className="flex items-center gap-2 min-w-0">
@@ -140,22 +141,24 @@ const LeaderboardCard: React.FC<{
                                                 <span className="text-[10px] font-bold text-slate-500 truncate max-w-[80px]">{p.teamName}</span>
                                             </div>
                                         </div>
-                                    </td>
-                                    <td className="py-2 pr-4 text-right">
+                                    </TableCell>
+                                    <TableCell align="right" className="pr-4">
                                         <span className={`text-sm font-black font-mono tabular-nums ${isTop3 ? 'text-white' : 'text-slate-400'}`}>
                                             {statDef.format(statDef.getValue(p))}
                                         </span>
-                                    </td>
-                                </tr>
+                                    </TableCell>
+                                </TableRow>
                             );
                         })}
-                    </tbody>
-                </table>
-                {sortedData.length === 0 && (
-                    <div className="py-12 text-center text-slate-600 text-xs font-bold">
-                        데이터가 없습니다.
-                    </div>
-                )}
+                        {sortedData.length === 0 && (
+                            <TableRow>
+                                <TableCell colSpan={3} className="py-12 text-center text-slate-600 text-xs font-bold">
+                                    데이터가 없습니다.
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
             </div>
         </div>
     );

@@ -6,6 +6,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { TEAM_DATA } from '../../data/teamData';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 export interface GameStatLeaders {
     pts: number;
@@ -79,145 +80,131 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                 </div>
             </div>
             
-            <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead>
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/50">
-                            <th className="py-3 px-4 sticky left-0 bg-slate-950 z-20 w-40 text-left shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</th>
-                            <th className="py-3 px-2 text-center w-12">POS</th>
-                            <th className="py-3 px-2 text-center w-10">OVR</th>
-                            {/* [UI Change] Center align FAT column */}
-                            <th className="py-3 px-2 text-center w-10">FAT</th>
-                            <th className="py-3 px-2 text-right w-12">MIN</th>
-                            {/* [UI Change] Changed PTS color to slate-300 */}
-                            <th className="py-3 px-2 text-right w-12 text-slate-300">PTS</th>
-                            <th className="py-3 px-2 text-right w-12">REB</th>
-                            <th className="py-3 px-2 text-right w-12">AST</th>
-                            <th className="py-3 px-2 text-right w-12">STL</th>
-                            <th className="py-3 px-2 text-right w-12">BLK</th>
-                            <th className="py-3 px-2 text-right w-12">TOV</th>
-                            <th className="py-3 px-2 text-right w-12">PF</th>
-                            <th className="py-3 px-2 text-right w-16">FG</th>
-                            <th className="py-3 px-2 text-right w-14">FG%</th>
-                            <th className="py-3 px-2 text-right w-16">3P</th>
-                            <th className="py-3 px-2 text-right w-14">3P%</th>
-                            <th className="py-3 px-2 text-right w-16">FT</th>
-                            <th className="py-3 px-2 text-right w-14">FT%</th>
-                            <th className="py-3 px-4 text-right w-14">+/-</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                        {sortedBox.map(p => {
-                            // Helper to find player details
-                            const playerInfo = team.roster.find(rp => rp.id === p.playerId);
-                            const ovr = playerInfo ? calculatePlayerOvr(playerInfo) : 70;
-                            const isMvp = p.playerId === mvpId;
-                            
-                            const effect = p.matchupEffect || 0;
-                            const isBuff = effect > 0;
-                            const isDebuff = effect < 0;
+            <Table>
+                <TableHead>
+                    <TableHeaderCell align="left" className="px-4 sticky left-0 bg-slate-950 z-20 w-40 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</TableHeaderCell>
+                    <TableHeaderCell align="center" className="w-12">POS</TableHeaderCell>
+                    <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
+                    <TableHeaderCell align="center" className="w-10">FAT</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">MIN</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12 text-slate-300">PTS</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">REB</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">AST</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">STL</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">BLK</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">TOV</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">PF</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">FG</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-14">FG%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">3P</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-14">3P%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">FT</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-14">FT%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-14 pr-4">+/-</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {sortedBox.map(p => {
+                        // Helper to find player details
+                        const playerInfo = team.roster.find(rp => rp.id === p.playerId);
+                        const ovr = playerInfo ? calculatePlayerOvr(playerInfo) : 70;
+                        const isMvp = p.playerId === mvpId;
+                        
+                        const effect = p.matchupEffect || 0;
+                        const isBuff = effect > 0;
+                        const isDebuff = effect < 0;
 
-                            // Condition Color Logic
-                            const fatigue = Math.round(p.fatigue !== undefined ? p.fatigue : (p.condition !== undefined ? Math.max(0, 100 - p.condition) : 0));
-                            
-                            let fatColor = 'text-emerald-500';
-                            if (fatigue > 25) fatColor = 'text-red-500';
-                            else if (fatigue > 12) fatColor = 'text-amber-500';
+                        // Condition Color Logic
+                        const fatigue = Math.round(p.fatigue !== undefined ? p.fatigue : (p.condition !== undefined ? Math.max(0, 100 - p.condition) : 0));
+                        
+                        let fatColor = 'text-emerald-500';
+                        if (fatigue > 25) fatColor = 'text-red-500';
+                        else if (fatigue > 12) fatColor = 'text-amber-500';
 
-                            return (
-                                <tr key={p.playerId} className={`group hover:bg-white/5 transition-colors ${isMvp ? 'bg-amber-900/10' : ''}`}>
-                                    <td className="py-2.5 px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-sm font-bold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-slate-200'}`}>{p.playerName}</span>
-                                            <div className="flex items-center gap-1 flex-shrink-0">
-                                                {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
-                                                {p.isStopper && (
-                                                    <div className="flex items-center justify-center" title="Ace Stopper">
-                                                        <Shield size={12} className="text-cyan-400 fill-cyan-900" />
-                                                    </div>
-                                                )}
-                                                {p.isAceTarget && (
-                                                    <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${isDebuff ? 'bg-red-950/50 border-red-500/30' : isBuff ? 'bg-emerald-950/50 border-emerald-500/30' : 'bg-slate-800 border-slate-600/30'}`}>
-                                                        {isDebuff ? (
-                                                            <Lock size={10} className="text-red-400" />
-                                                        ) : (
-                                                            <Unlock size={10} className={isBuff ? "text-emerald-400" : "text-slate-400"} />
-                                                        )}
-                                                        <span className={`text-[9px] font-black leading-none ${isDebuff ? 'text-red-400' : isBuff ? 'text-emerald-400' : 'text-slate-400'}`}>
-                                                            {effect > 0 ? '+' : ''}{effect}%
-                                                        </span>
-                                                    </div>
-                                                )}
-                                            </div>
+                        return (
+                            <TableRow key={p.playerId} className={isMvp ? 'bg-amber-900/10' : ''}>
+                                <TableCell className="px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                                    <div className="flex items-center gap-2">
+                                        <span className={`text-sm font-bold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-slate-200'}`}>{p.playerName}</span>
+                                        <div className="flex items-center gap-1 flex-shrink-0">
+                                            {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
+                                            {p.isStopper && (
+                                                <div className="flex items-center justify-center" title="Ace Stopper">
+                                                    <Shield size={12} className="text-cyan-400 fill-cyan-900" />
+                                                </div>
+                                            )}
+                                            {p.isAceTarget && (
+                                                <div className={`flex items-center gap-1 px-1.5 py-0.5 rounded border ${isDebuff ? 'bg-red-950/50 border-red-500/30' : isBuff ? 'bg-emerald-950/50 border-emerald-500/30' : 'bg-slate-800 border-slate-600/30'}`}>
+                                                    {isDebuff ? (
+                                                        <Lock size={10} className="text-red-400" />
+                                                    ) : (
+                                                        <Unlock size={10} className={isBuff ? "text-emerald-400" : "text-slate-400"} />
+                                                    )}
+                                                    <span className={`text-[9px] font-black leading-none ${isDebuff ? 'text-red-400' : isBuff ? 'text-emerald-400' : 'text-slate-400'}`}>
+                                                        {effect > 0 ? '+' : ''}{effect}%
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
-                                    </td>
-                                    <td className={`${statCellClass} text-center text-slate-500`}>{playerInfo?.position || '-'}</td>
-                                    <td className={`${statCellClass} text-center`}>
-                                        <div className="flex justify-center">
-                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
-                                        </div>
-                                    </td>
-                                    {/* [UI Change] Center align FAT column */}
-                                    <td className={`${statCellClass} text-center`}>
-                                        <span className={`text-xs font-black ${fatColor}`}>{fatigue}</span>
-                                    </td>
-                                    <td className={statCellClass}>{Math.round(p.mp)}</td>
-                                    
-                                    {/* [UI Change] Unified Text Color to Slate-300 */}
-                                    <td className={`${statCellClass} text-slate-300`}>{p.pts}</td>
-                                    
-                                    <td className={statCellClass}>{p.reb}</td>
-                                    <td className={statCellClass}>{p.ast}</td>
-                                    <td className={statCellClass}>{p.stl}</td>
-                                    <td className={statCellClass}>{p.blk}</td>
-                                    <td className={statCellClass}>{p.tov}</td>
-                                    <td className={statCellClass}>{p.pf}</td>
-                                    
-                                    <td className={statCellClass}>{p.fgm}/{p.fga}</td>
-                                    <td className={`${statCellClass} text-slate-400`}>{formatPct(p.fgm, p.fga)}</td>
-                                    
-                                    <td className={statCellClass}>{p.p3m}/{p.p3a}</td>
-                                    <td className={`${statCellClass} text-slate-400`}>{formatPct(p.p3m, p.p3a)}</td>
-                                    
-                                    <td className={statCellClass}>{p.ftm}/{p.fta}</td>
-                                    <td className={`${statCellClass} text-slate-400`}>{formatPct(p.ftm, p.fta)}</td>
-                                    
-                                    <td className={`py-2.5 px-4 text-right text-xs font-bold font-mono tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-                                        {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                    <tfoot>
-                        <tr>
-                            <td className="py-3 px-4 sticky left-0 bg-slate-800 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-t border-slate-700">
-                                <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
-                            </td>
-                            <td className={totalCellClass} colSpan={3}></td>
-                            <td className={totalCellClass}>{Math.round(totals.mp)}</td>
-                            <td className={totalCellClass}>{totals.pts}</td>
-                            <td className={totalCellClass}>{totals.reb}</td>
-                            <td className={totalCellClass}>{totals.ast}</td>
-                            <td className={totalCellClass}>{totals.stl}</td>
-                            <td className={totalCellClass}>{totals.blk}</td>
-                            <td className={totalCellClass}>{totals.tov}</td>
-                            <td className={totalCellClass}>{totals.pf}</td>
-                            
-                            <td className={totalCellClass}>{totals.fgm}/{totals.fga}</td>
-                            <td className={totalCellClass}>{formatPct(totals.fgm, totals.fga)}</td>
-                            
-                            <td className={totalCellClass}>{totals.p3m}/{totals.p3a}</td>
-                            <td className={totalCellClass}>{formatPct(totals.p3m, totals.p3a)}</td>
-                            
-                            <td className={totalCellClass}>{totals.ftm}/{totals.fta}</td>
-                            <td className={totalCellClass}>{formatPct(totals.ftm, totals.fta)}</td>
-                            
-                            <td className={totalCellClass}>-</td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
+                                    </div>
+                                </TableCell>
+                                <TableCell align="center" className="text-slate-500">{playerInfo?.position || '-'}</TableCell>
+                                <TableCell align="center">
+                                    <div className="flex justify-center">
+                                        <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
+                                    </div>
+                                </TableCell>
+                                <TableCell align="center">
+                                    <span className={`text-xs font-black ${fatColor}`}>{fatigue}</span>
+                                </TableCell>
+                                <TableCell variant="stat" value={Math.round(p.mp)} />
+                                <TableCell variant="stat" className="text-slate-300" value={p.pts} />
+                                <TableCell variant="stat" value={p.reb} />
+                                <TableCell variant="stat" value={p.ast} />
+                                <TableCell variant="stat" value={p.stl} />
+                                <TableCell variant="stat" value={p.blk} />
+                                <TableCell variant="stat" value={p.tov} />
+                                <TableCell variant="stat" value={p.pf} />
+                                <TableCell variant="stat" value={`${p.fgm}/${p.fga}`} />
+                                <TableCell variant="stat" className="text-slate-400" value={formatPct(p.fgm, p.fga)} />
+                                <TableCell variant="stat" value={`${p.p3m}/${p.p3a}`} />
+                                <TableCell variant="stat" className="text-slate-400" value={formatPct(p.p3m, p.p3a)} />
+                                <TableCell variant="stat" value={`${p.ftm}/${p.fta}`} />
+                                <TableCell variant="stat" className="text-slate-400" value={formatPct(p.ftm, p.fta)} />
+                                <TableCell align="right" className={`pr-4 font-bold font-mono tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
+                                </TableCell>
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+                <tfoot>
+                    <tr>
+                        <td className="py-3 px-4 sticky left-0 bg-slate-800 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-t border-slate-700">
+                            <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
+                        </td>
+                        <td className={totalCellClass} colSpan={3}></td>
+                        <td className={totalCellClass}>{Math.round(totals.mp)}</td>
+                        <td className={totalCellClass}>{totals.pts}</td>
+                        <td className={totalCellClass}>{totals.reb}</td>
+                        <td className={totalCellClass}>{totals.ast}</td>
+                        <td className={totalCellClass}>{totals.stl}</td>
+                        <td className={totalCellClass}>{totals.blk}</td>
+                        <td className={totalCellClass}>{totals.tov}</td>
+                        <td className={totalCellClass}>{totals.pf}</td>
+                        
+                        <td className={totalCellClass}>{totals.fgm}/{totals.fga}</td>
+                        <td className={totalCellClass}>{formatPct(totals.fgm, totals.fga)}</td>
+                        
+                        <td className={totalCellClass}>{totals.p3m}/{totals.p3a}</td>
+                        <td className={totalCellClass}>{formatPct(totals.p3m, totals.p3a)}</td>
+                        
+                        <td className={totalCellClass}>{totals.ftm}/{totals.fta}</td>
+                        <td className={totalCellClass}>{formatPct(totals.ftm, totals.fta)}</td>
+                        
+                        <td className={totalCellClass}>-</td>
+                    </tr>
+                </tfoot>
+            </Table>
         </div>
     );
 };
