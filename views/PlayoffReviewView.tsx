@@ -6,6 +6,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface PlayoffReviewViewProps {
   team: Team;
@@ -339,32 +340,30 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
 
               <div className="bg-slate-900 border border-slate-800 rounded-[2rem] overflow-hidden shadow-xl">
                   <div className="overflow-x-auto custom-scrollbar">
-                      <table className="w-full text-left border-collapse whitespace-nowrap">
-                          <thead className="bg-slate-950/80 backdrop-blur-sm sticky top-0 z-20">
-                              <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                                  <th className="py-4 px-6 text-left sticky left-0 bg-slate-950 z-20 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">Player</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">G</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">GS</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">MP</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">PTS</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">REB</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">AST</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">STL</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">BLK</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">TOV</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">3PM</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">3PA</th>
-                                  <th className="py-4 px-2 text-right min-w-[50px]">3P%</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">FGM</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">FGA</th>
-                                  <th className="py-4 px-2 text-right min-w-[50px]">FG%</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">FTM</th>
-                                  <th className="py-4 px-2 text-right min-w-[40px]">FTA</th>
-                                  <th className="py-4 px-2 text-right min-w-[50px]">FT%</th>
-                                  <th className="py-4 px-6 text-right min-w-[60px]">TS%</th>
-                              </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-800/50">
+                      <Table>
+                          <TableHead>
+                              <TableHeaderCell align="left" className="px-6 text-left sticky left-0 bg-slate-950 z-20 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">Player</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">G</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">GS</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">MP</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">PTS</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">REB</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">AST</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">STL</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">BLK</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">TOV</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">3PM</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">3PA</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[50px]">3P%</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">FGM</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">FGA</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[50px]">FG%</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">FTM</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[40px]">FTA</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-2 min-w-[50px]">FT%</TableHeaderCell>
+                              <TableHeaderCell align="right" className="px-6 min-w-[60px]">TS%</TableHeaderCell>
+                          </TableHead>
+                          <TableBody>
                               {sortedByPlayoffPts.map(p => {
                                   const s = p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fga: 0, fgm: 0, p3a: 0, p3m: 0, fta: 0, ftm: 0 };
                                   const g = s.g || 1;
@@ -373,11 +372,10 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                   const isMvp = p.id === mvp?.id;
                                   const tsa = s.fga + 0.44 * s.fta;
                                   const tsPct = tsa > 0 ? (s.pts / (2 * tsa)) * 100 : 0;
-                                  const statClass = "py-3 px-2 text-right text-sm font-medium text-white tabular-nums";
-
+                                  
                                   return (
-                                      <tr key={p.id} className={`group hover:bg-white/5 transition-colors ${isMvp ? 'bg-amber-900/10' : ''}`}>
-                                          <td className="py-3 px-6 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">
+                                      <TableRow key={p.id} className={isMvp ? 'bg-amber-900/10' : ''}>
+                                          <TableCell className="px-6 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">
                                               <div className="flex items-center gap-3">
                                                   <OvrBadge value={p.ovr} size="md" className="!w-8 !h-8 !text-xs !mx-0 flex-shrink-0" />
                                                   <div>
@@ -388,31 +386,31 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                                       <div className="text-[10px] font-black text-slate-500">{p.position}</div>
                                                   </div>
                                               </div>
-                                          </td>
-                                          <td className={statClass}>{s.g}</td>
-                                          <td className={statClass}>{s.gs}</td>
-                                          <td className={statClass}>{(s.mp/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.pts/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.reb/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.ast/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.stl/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.blk/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.tov/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.p3m/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.p3a/g).toFixed(1)}</td>
-                                          <td className={statClass}>{s.p3a > 0 ? ((s.p3m/s.p3a)*100).toFixed(1) : '0.0'}%</td>
-                                          <td className={statClass}>{(s.fgm/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.fga/g).toFixed(1)}</td>
-                                          <td className={statClass}>{s.fga > 0 ? ((s.fgm/s.fga)*100).toFixed(1) : '0.0'}%</td>
-                                          <td className={statClass}>{(s.ftm/g).toFixed(1)}</td>
-                                          <td className={statClass}>{(s.fta/g).toFixed(1)}</td>
-                                          <td className={statClass}>{s.fta > 0 ? ((s.ftm/s.fta)*100).toFixed(1) : '0.0'}%</td>
-                                          <td className={`${statClass} pr-6`}>{tsPct.toFixed(1)}%</td>
-                                      </tr>
+                                          </TableCell>
+                                          <TableCell variant="stat" value={s.g} className="text-white" />
+                                          <TableCell variant="stat" value={s.gs} className="text-white" />
+                                          <TableCell variant="stat" value={(s.mp/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.pts/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.reb/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.ast/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.stl/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.blk/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.tov/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.p3m/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.p3a/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={s.p3a > 0 ? ((s.p3m/s.p3a)*100).toFixed(1) : '0.0' + '%'} className="text-white" />
+                                          <TableCell variant="stat" value={(s.fgm/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.fga/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={s.fga > 0 ? ((s.fgm/s.fga)*100).toFixed(1) : '0.0' + '%'} className="text-white" />
+                                          <TableCell variant="stat" value={(s.ftm/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={(s.fta/g).toFixed(1)} className="text-white" />
+                                          <TableCell variant="stat" value={s.fta > 0 ? ((s.ftm/s.fta)*100).toFixed(1) : '0.0' + '%'} className="text-white" />
+                                          <TableCell variant="stat" className="pr-6 text-white" value={tsPct.toFixed(1) + '%'} />
+                                      </TableRow>
                                   );
                               })}
-                          </tbody>
-                      </table>
+                          </TableBody>
+                      </Table>
                   </div>
               </div>
           </div>

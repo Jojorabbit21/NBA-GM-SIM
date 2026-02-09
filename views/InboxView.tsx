@@ -9,6 +9,7 @@ import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { PageHeader } from '../components/common/PageHeader';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface InboxViewProps {
   myTeamId: string;
@@ -260,59 +261,55 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                         <div className="space-y-4">
                             <h4 className="text-sm font-bold text-slate-400 px-2">Team Box Score</h4>
                             <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left text-sm whitespace-nowrap">
-                                        <thead className="bg-slate-950 text-xs text-slate-500 font-bold border-b border-slate-800">
-                                            <tr>
-                                                <th className="p-3 w-40 pl-6">Player</th>
-                                                <th className="p-3 text-center">POS</th>
-                                                <th className="p-3 text-right">MIN</th>
-                                                <th className="p-3 text-right">PTS</th>
-                                                <th className="p-3 text-right">REB</th>
-                                                <th className="p-3 text-right">AST</th>
-                                                <th className="p-3 text-right">STL</th>
-                                                <th className="p-3 text-right">BLK</th>
-                                                <th className="p-3 text-right">TOV</th>
-                                                <th className="p-3 text-right">FG</th>
-                                                <th className="p-3 text-right">3P</th>
-                                                <th className="p-3 text-right">FT</th>
-                                                <th className="p-3 text-right pr-6">+/-</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-800/50">
-                                            {[...gameData.userBoxScore]
-                                                .filter(p => p.mp > 0) // Filter out DNPs
-                                                // Sort: MP -> PTS -> REB -> AST -> STL -> BLK
-                                                .sort((a, b) => {
-                                                    if (b.mp !== a.mp) return b.mp - a.mp;
-                                                    if (b.pts !== a.pts) return b.pts - a.pts;
-                                                    if (b.reb !== a.reb) return b.reb - a.reb;
-                                                    if (b.ast !== a.ast) return b.ast - a.ast;
-                                                    if (b.stl !== a.stl) return b.stl - a.stl;
-                                                    return b.blk - a.blk;
-                                                })
-                                                .map(p => (
-                                                <tr key={p.playerId} className="hover:bg-white/5 transition-colors cursor-pointer group" onClick={() => onPlayerClick(p.playerId)}>
-                                                    <td className="p-3 pl-6 font-medium text-slate-300 pretendard group-hover:text-white transition-colors">{p.playerName}</td>
-                                                    <td className="p-3 text-center font-medium text-slate-300 pretendard">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{Math.round(p.mp)}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.pts}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.reb}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.ast}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.stl}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.blk}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.tov}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.fgm}/{p.fga}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.p3m}/{p.p3a}</td>
-                                                    <td className="p-3 text-right font-medium text-slate-300 pretendard">{p.ftm}/{p.fta}</td>
-                                                    <td className={`p-3 text-right font-medium pretendard pr-6 ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-300'}`}>
-                                                        {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
-                                                    </td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <Table>
+                                    <TableHead>
+                                        <TableHeaderCell align="left" className="pl-6 w-40">Player</TableHeaderCell>
+                                        <TableHeaderCell align="center">POS</TableHeaderCell>
+                                        <TableHeaderCell align="right">MIN</TableHeaderCell>
+                                        <TableHeaderCell align="right">PTS</TableHeaderCell>
+                                        <TableHeaderCell align="right">REB</TableHeaderCell>
+                                        <TableHeaderCell align="right">AST</TableHeaderCell>
+                                        <TableHeaderCell align="right">STL</TableHeaderCell>
+                                        <TableHeaderCell align="right">BLK</TableHeaderCell>
+                                        <TableHeaderCell align="right">TOV</TableHeaderCell>
+                                        <TableHeaderCell align="right">FG</TableHeaderCell>
+                                        <TableHeaderCell align="right">3P</TableHeaderCell>
+                                        <TableHeaderCell align="right">FT</TableHeaderCell>
+                                        <TableHeaderCell align="right" className="pr-6">+/-</TableHeaderCell>
+                                    </TableHead>
+                                    <TableBody>
+                                        {[...gameData.userBoxScore]
+                                            .filter(p => p.mp > 0) // Filter out DNPs
+                                            // Sort: MP -> PTS -> REB -> AST -> STL -> BLK
+                                            .sort((a, b) => {
+                                                if (b.mp !== a.mp) return b.mp - a.mp;
+                                                if (b.pts !== a.pts) return b.pts - a.pts;
+                                                if (b.reb !== a.reb) return b.reb - a.reb;
+                                                if (b.ast !== a.ast) return b.ast - a.ast;
+                                                if (b.stl !== a.stl) return b.stl - a.stl;
+                                                return b.blk - a.blk;
+                                            })
+                                            .map(p => (
+                                            <TableRow key={p.playerId} onClick={() => onPlayerClick(p.playerId)}>
+                                                <TableCell className="pl-6 font-medium text-slate-300 pretendard group-hover:text-white transition-colors">{p.playerName}</TableCell>
+                                                <TableCell align="center" className="font-medium text-slate-300 pretendard">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{Math.round(p.mp)}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.pts}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.reb}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.ast}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.stl}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.blk}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.tov}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.fgm}/{p.fga}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.p3m}/{p.p3a}</TableCell>
+                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.ftm}/{p.fta}</TableCell>
+                                                <TableCell align="right" className={`pr-6 font-medium pretendard ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                                                    {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
                             </div>
                         </div>
                     )}
@@ -325,18 +322,16 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                 <div className="space-y-6">
                     {/* Using TradeHistoryTable Style */}
                     <div className="border border-slate-800 rounded-xl overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-950/50 border-b border-slate-800 text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                    <th className="py-4 px-6 w-60">참여 구단</th>
-                                    <th className="py-4 px-4">IN Assets</th>
-                                    <th className="py-4 px-4">OUT Assets</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-800/50">
+                        <Table>
+                            <TableHead>
+                                <TableHeaderCell align="left" className="px-6 w-60">참여 구단</TableHeaderCell>
+                                <TableHeaderCell align="left" className="px-4">IN Assets</TableHeaderCell>
+                                <TableHeaderCell align="left" className="px-4">OUT Assets</TableHeaderCell>
+                            </TableHead>
+                            <TableBody>
                                 {tradeData.trades.map((trade, idx) => (
-                                    <tr key={idx} className="hover:bg-white/5 transition-colors">
-                                        <td className="py-4 px-6 align-top">
+                                    <TableRow key={idx}>
+                                        <TableCell align="left" className="px-6 align-top">
                                             <div className="flex flex-col gap-2">
                                                 <div className="flex items-center gap-2">
                                                     <TeamLogo teamId={trade.team1Id} size="sm" />
@@ -350,8 +345,8 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                     <span className="text-xs font-black uppercase text-white">{trade.team2Name}</span>
                                                 </div>
                                             </div>
-                                        </td>
-                                        <td className="py-4 px-4 align-top">
+                                        </TableCell>
+                                        <TableCell align="left" className="px-4 align-top">
                                             <div className="flex flex-col gap-2">
                                                 {trade.team1Acquired.map((p, i) => {
                                                     const snap = getSnapshot(p.id, p.ovr);
@@ -364,8 +359,8 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                     );
                                                 })}
                                             </div>
-                                        </td>
-                                        <td className="py-4 px-4 align-top">
+                                        </TableCell>
+                                        <TableCell align="left" className="px-4 align-top">
                                             <div className="flex flex-col gap-2">
                                                 {trade.team2Acquired.map((p, i) => {
                                                     const snap = getSnapshot(p.id, p.ovr);
@@ -378,11 +373,11 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                                     );
                                                 })}
                                             </div>
-                                        </td>
-                                    </tr>
+                                        </TableCell>
+                                    </TableRow>
                                 ))}
-                            </tbody>
-                        </table>
+                            </TableBody>
+                        </Table>
                     </div>
                 </div>
             );

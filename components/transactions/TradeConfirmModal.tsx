@@ -5,6 +5,7 @@ import { Player, Team } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr, LEAGUE_FINANCIALS } from '../../utils/constants';
 import { Modal } from '../common/Modal';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 const { TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
@@ -143,49 +144,47 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
     >
         <div className="p-8 space-y-8">
             <div className="bg-slate-950/40 border border-slate-800 rounded-3xl overflow-hidden shadow-lg">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-slate-900/50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                            <th className="py-4 px-6">유형</th>
-                            <th className="py-4 px-2">구단</th>
-                            <th className="py-4 px-2">선수</th>
-                            <th className="py-4 px-2 text-center">OVR</th>
-                            <th className="py-4 px-2 text-center">POS</th>
-                            <th className="py-4 px-6 text-right">샐러리</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+                <Table>
+                    <TableHead>
+                        <TableHeaderCell align="left" className="px-6 py-4">유형</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 py-4">구단</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 py-4">선수</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 py-4">OVR</TableHeaderCell>
+                        <TableHeaderCell align="center" className="px-2 py-4">POS</TableHeaderCell>
+                        <TableHeaderCell align="right" className="px-6 py-4">샐러리</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
                         {userAssets.map(p => {
                             const ovr = calculatePlayerOvr(p);
                             return (
-                            <tr key={p.id} className="border-b border-slate-800/30 hover:bg-red-500/5 transition-colors group">
-                                <td className="py-3 px-6"><span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[9px] font-black rounded uppercase">OUT</span></td>
-                                <td className="py-3 px-2 text-xs font-bold text-slate-400">{userTeam.name}</td>
-                                <td className="py-3 px-2 text-sm font-black text-slate-200">{p.name}</td>
-                                <td className="py-3 px-2 text-center">
+                            <TableRow key={p.id} className="border-b border-slate-800/30 hover:bg-red-500/5 transition-colors group">
+                                <TableCell className="px-6 py-3"><span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[9px] font-black rounded uppercase">OUT</span></TableCell>
+                                <TableCell className="px-2 py-3 text-xs font-bold text-slate-400">{userTeam.name}</TableCell>
+                                <TableCell className="px-2 py-3 text-sm font-black text-slate-200">{p.name}</TableCell>
+                                <TableCell align="center" className="px-2 py-3">
                                     <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
-                                </td>
-                                <td className="py-3 px-2 text-center text-[10px] font-bold text-slate-500">{p.position}</td>
-                                <td className="py-3 px-6 text-right font-mono text-xs font-black text-red-400">-${p.salary.toFixed(1)}M</td>
-                            </tr>
+                                </TableCell>
+                                <TableCell align="center" className="px-2 py-3 text-[10px] font-bold text-slate-500">{p.position}</TableCell>
+                                <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-red-400">-${p.salary.toFixed(1)}M</TableCell>
+                            </TableRow>
                             );
                         })}
                         {targetAssets.map(p => {
                             const ovr = calculatePlayerOvr(p);
                             return (
-                            <tr key={p.id} className="border-b border-slate-800/30 hover:bg-emerald-500/5 transition-colors group">
-                                <td className="py-3 px-6"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-black rounded uppercase">IN</span></td>
-                                <td className="py-3 px-2 text-xs font-bold text-slate-400">{targetTeam.name}</td>
-                                <td className="py-3 px-2 text-sm font-black text-slate-200">{p.name}</td>
-                                <td className="py-3 px-2 text-center">
+                            <TableRow key={p.id} className="border-b border-slate-800/30 hover:bg-emerald-500/5 transition-colors group">
+                                <TableCell className="px-6 py-3"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-black rounded uppercase">IN</span></TableCell>
+                                <TableCell className="px-2 py-3 text-xs font-bold text-slate-400">{targetTeam.name}</TableCell>
+                                <TableCell className="px-2 py-3 text-sm font-black text-slate-200">{p.name}</TableCell>
+                                <TableCell align="center" className="px-2 py-3">
                                     <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
-                                </td>
-                                <td className="py-3 px-2 text-center text-[10px] font-bold text-slate-500">{p.position}</td>
-                                <td className="py-3 px-6 text-right font-mono text-xs font-black text-emerald-400">+${p.salary.toFixed(1)}M</td>
-                            </tr>
+                                </TableCell>
+                                <TableCell align="center" className="px-2 py-3 text-[10px] font-bold text-slate-500">{p.position}</TableCell>
+                                <TableCell align="right" className="px-6 py-3 font-mono text-xs font-black text-emerald-400">+${p.salary.toFixed(1)}M</TableCell>
+                            </TableRow>
                             );
                         })}
-                    </tbody>
+                    </TableBody>
                     <tfoot>
                         <tr className="bg-slate-900/80 font-black">
                             <td colSpan={5} className="py-4 px-6 text-xs text-slate-400 uppercase tracking-widest">총 자산 변동 합계</td>
@@ -194,7 +193,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                             </td>
                         </tr>
                     </tfoot>
-                </table>
+                </Table>
             </div>
 
             {/* Validation Info & Status Bar */}

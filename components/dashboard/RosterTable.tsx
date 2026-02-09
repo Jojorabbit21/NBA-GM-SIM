@@ -8,6 +8,7 @@ import { GanttChartSquare, Users } from 'lucide-react';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface RosterTableProps {
   mode: 'mine' | 'opponent';
@@ -143,8 +144,8 @@ export const RosterTable: React.FC<RosterTableProps> = ({
 
                 {/* Table */}
                 <div className="flex-1 overflow-auto custom-scrollbar">
-                    <table className="w-full text-left border-collapse">
-                        <thead className="sticky top-0 z-20 bg-slate-900 shadow-md">
+                    <Table>
+                        <TableHead>
                             {/* Group Header Row */}
                             <tr className="border-b border-slate-800 bg-slate-950">
                                 <th colSpan={3} className="py-1 px-4 border-r border-slate-800/50"></th>
@@ -157,22 +158,22 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                             </tr>
                             {/* Column Header Row */}
                             <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800">
-                                <th className="py-3 px-4 w-16 text-center border-r border-slate-800/50">POS</th>
-                                <th className="py-3 px-4 text-left min-w-[140px]">PLAYER</th>
-                                <th className="py-3 px-2 w-14 text-center border-r border-slate-800/50">OVR</th>
+                                <TableHeaderCell align="center" className="w-16 border-r border-slate-800/50 py-3">POS</TableHeaderCell>
+                                <TableHeaderCell align="left" className="px-4 min-w-[140px] py-3">PLAYER</TableHeaderCell>
+                                <TableHeaderCell align="center" className="w-14 border-r border-slate-800/50 py-3">OVR</TableHeaderCell>
                                 
                                 {/* Attributes */}
                                 {ATTR_COLS.map(col => (
-                                    <th key={col.label} className="py-3 px-2 text-center w-10 border-r border-slate-800/30 last:border-r-slate-800/50" title={col.tooltip}>{col.label}</th>
+                                    <TableHeaderCell key={col.label} align="center" className="w-10 border-r border-slate-800/30 last:border-r-slate-800/50 py-3" title={col.tooltip}>{col.label}</TableHeaderCell>
                                 ))}
 
                                 {/* Stats */}
                                 {STAT_COLS.map(col => (
-                                    <th key={col.label} className="py-3 px-2 text-center w-11 text-slate-400">{col.label}</th>
+                                    <TableHeaderCell key={col.label} align="center" className="w-11 text-slate-400 py-3">{col.label}</TableHeaderCell>
                                 ))}
                             </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-800/50">
+                        </TableHead>
+                        <TableBody>
                             {oppHealthySorted.map((p, i) => {
                                 const ovr = calculatePlayerOvr(p);
                                 const isStarter = i < 5; 
@@ -197,41 +198,41 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 const attrValues = [p.ins, p.out, p.plm, p.def, p.reb, p.ath];
 
                                 return (
-                                    <tr key={p.id} className="hover:bg-white/5 transition-colors group cursor-pointer" onClick={() => onViewPlayer(p)}>
-                                        <td className="py-2.5 px-4 text-center border-r border-slate-800/50">
+                                    <TableRow key={p.id} onClick={() => onViewPlayer(p)}>
+                                        <TableCell align="center" className="px-4 border-r border-slate-800/50 py-2.5">
                                             <span className={`text-xs font-bold ${isStarter ? 'text-indigo-400' : 'text-slate-500'}`}>{p.position}</span>
-                                        </td>
-                                        <td className="py-2.5 px-4">
+                                        </TableCell>
+                                        <TableCell className="px-4 py-2.5">
                                             <div className="flex flex-col">
                                                 <span className="text-sm font-bold text-slate-200 group-hover:text-white group-hover:underline truncate">{p.name}</span>
                                                 {p.health !== 'Healthy' && (
                                                     <span className="text-[9px] font-black text-red-500 uppercase">{p.health}</span>
                                                 )}
                                             </div>
-                                        </td>
-                                        <td className="py-2.5 px-2 text-center border-r border-slate-800/50">
+                                        </TableCell>
+                                        <TableCell align="center" className="px-2 border-r border-slate-800/50 py-2.5">
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
                                             </div>
-                                        </td>
+                                        </TableCell>
 
                                         {/* Attributes Cells */}
                                         {attrValues.map((val, idx) => (
-                                            <td key={`attr-${idx}`} className={`py-2.5 px-2 text-center text-xs font-black font-mono border-r border-slate-800/30 last:border-r-slate-800/50 ${getGradeColor(val)}`}>
+                                            <TableCell key={`attr-${idx}`} align="center" className={`px-2 text-xs font-black font-mono border-r border-slate-800/30 last:border-r-slate-800/50 py-2.5 ${getGradeColor(val)}`}>
                                                 {val}
-                                            </td>
+                                            </TableCell>
                                         ))}
                                         
                                         {/* Stats Cells */}
                                         {statValues.map((val, idx) => (
-                                            <td key={`stat-${idx}`} className={statCellClass}>
+                                            <TableCell key={`stat-${idx}`} align="center" className={`${statCellClass} py-2.5`}>
                                                 {val}
-                                            </td>
+                                            </TableCell>
                                         ))}
-                                    </tr>
+                                    </TableRow>
                                 );
                             })}
-                        </tbody>
+                        </TableBody>
                         {/* Footer: Team Averages */}
                         {teamAverages && (
                             <tfoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-20 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
@@ -268,7 +269,7 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                 </tr>
                             </tfoot>
                         )}
-                    </table>
+                    </Table>
                 </div>
             </div>
         );

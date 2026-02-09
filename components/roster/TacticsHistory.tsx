@@ -2,6 +2,7 @@
 import React from 'react';
 import { Target, Shield, ClipboardList, ShieldAlert, Zap } from 'lucide-react';
 import { Team, TacticStatRecord, OffenseTactic, DefenseTactic } from '../../types';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
   'Balance': { label: '밸런스 오펜스', desc: '모든 공격 루트의 조화' },
@@ -27,48 +28,46 @@ const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: an
 
     return (
         <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead>
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/50">
-                            <th className="py-4 px-6 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
-                            <th className="py-4 px-2 text-right w-12">GP</th>
-                            <th className="py-4 px-2 text-center w-16">W-L</th>
-                            <th className="py-4 px-2 text-right w-16">Win%</th>
-                            <th className="py-4 px-2 text-right w-16">PTS</th>
-                            <th className="py-4 px-2 text-right w-16">PA</th>
-                            <th className="py-4 px-2 text-right w-16">FG%</th>
-                            <th className="py-4 px-2 text-right w-16">3P%</th>
-                            <th className="py-4 px-2 text-right w-16">RIM%</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                        {sorted.map(([key, stats]) => {
-                            const s = stats as TacticStatRecord;
-                            const winPct = (s.wins / s.games * 100).toFixed(1);
-                            const avgPts = (s.ptsFor / s.games).toFixed(1);
-                            const avgPa = (s.ptsAgainst / s.games).toFixed(1);
-                            const fgPct = s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '0.0%';
-                            const p3Pct = s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '0.0%';
-                            const rimPct = s.rimA > 0 ? ((s.rimM / s.rimA) * 100).toFixed(1) + '%' : '0.0%';
+            <Table>
+                <TableHead>
+                    <TableHeaderCell align="left" className="px-6 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">GP</TableHeaderCell>
+                    <TableHeaderCell align="center" className="w-16">W-L</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">Win%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">PTS</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">PA</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">FG%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">3P%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">RIM%</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {sorted.map(([key, stats]) => {
+                        const s = stats as TacticStatRecord;
+                        const winPct = (s.wins / s.games * 100).toFixed(1);
+                        const avgPts = (s.ptsFor / s.games).toFixed(1);
+                        const avgPa = (s.ptsAgainst / s.games).toFixed(1);
+                        const fgPct = s.fga > 0 ? ((s.fgm / s.fga) * 100).toFixed(1) + '%' : '0.0%';
+                        const p3Pct = s.p3a > 0 ? ((s.p3m / s.p3a) * 100).toFixed(1) + '%' : '0.0%';
+                        const rimPct = s.rimA > 0 ? ((s.rimM / s.rimA) * 100).toFixed(1) + '%' : '0.0%';
 
-                            return (
-                                <tr key={key} className="hover:bg-white/5 transition-colors">
-                                    <td className="py-4 px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">{labels[key]?.label || key}</td>
-                                    <td className="py-4 px-2 text-right font-mono text-sm text-slate-400">{s.games}</td>
-                                    <td className="py-4 px-2 text-center font-mono text-sm text-slate-300">{s.wins}-{s.games - s.wins}</td>
-                                    <td className={`py-4 px-2 text-right font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
-                                    <td className="py-4 px-2 text-right font-mono text-sm text-white">{avgPts}</td>
-                                    <td className="py-4 px-2 text-right font-mono text-sm text-slate-400">{avgPa}</td>
-                                    <td className="py-4 px-2 text-right font-mono text-sm text-slate-300">{fgPct}</td>
-                                    <td className="py-4 px-2 text-right font-mono text-sm text-slate-300">{p3Pct}</td>
-                                    <td className="py-4 px-2 text-right font-mono text-sm text-slate-300">{rimPct}</td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
+                        return (
+                            <TableRow key={key}>
+                                <TableCell className="px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
+                                    {labels[key]?.label || key}
+                                </TableCell>
+                                <TableCell variant="stat" value={s.games} className="text-slate-400" />
+                                <TableCell align="center" className="font-mono text-sm text-slate-300">{s.wins}-{s.games - s.wins}</TableCell>
+                                <TableCell align="right" className={`font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</TableCell>
+                                <TableCell variant="stat" value={avgPts} className="text-white" />
+                                <TableCell variant="stat" value={avgPa} className="text-slate-400" />
+                                <TableCell variant="stat" value={fgPct} className="text-slate-300" />
+                                <TableCell variant="stat" value={p3Pct} className="text-slate-300" />
+                                <TableCell variant="stat" value={rimPct} className="text-slate-300" />
+                            </TableRow>
+                        );
+                    })}
+                </TableBody>
+            </Table>
         </div>
     );
 };
@@ -84,36 +83,32 @@ const StopperTacticTable: React.FC<{ stats?: TacticStatRecord }> = ({ stats }) =
 
     return (
         <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden shadow-xl animate-in slide-in-from-top-2 duration-500">
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse whitespace-nowrap">
-                    <thead>
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 bg-slate-950/50">
-                            <th className="py-4 px-6 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</th>
-                            <th className="py-4 px-2 text-right w-12">GP</th>
-                            <th className="py-4 px-2 text-center w-16">W-L</th>
-                            <th className="py-4 px-2 text-right w-16">Win%</th>
-                            <th className="py-4 px-2 text-right w-24">Opp Ace PPG</th>
-                            <th className="py-4 px-2 text-right w-24">Opp Ace FG%</th>
-                            <th className="py-4 px-2 text-right w-24">Opp Ace 3P%</th>
-                            <th className="py-4 px-6 text-right w-24">Eff. Impact</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
-                        <tr className="hover:bg-white/5 transition-colors">
-                            <td className="py-4 px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">에이스 스토퍼</td>
-                            <td className="py-4 px-2 text-right font-mono text-sm text-slate-400">{stats.games}</td>
-                            <td className="py-4 px-2 text-center font-mono text-sm text-slate-300">{stats.wins}-{stats.games - stats.wins}</td>
-                            <td className={`py-4 px-2 text-right font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</td>
-                            <td className="py-4 px-2 text-right font-mono text-sm text-white">{avgAcePts}</td>
-                            <td className="py-4 px-2 text-right font-mono text-sm text-slate-200">{aceFgPct}</td>
-                            <td className="py-4 px-2 text-right font-mono text-sm text-slate-200">{ace3pPct}</td>
-                            <td className={`py-4 px-6 text-right font-mono text-sm font-black ${Number(avgImpact) < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {Number(avgImpact) > 0 ? '+' : ''}{avgImpact}%
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+            <Table>
+                <TableHead>
+                    <TableHeaderCell align="left" className="px-6 w-40 sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-12">GP</TableHeaderCell>
+                    <TableHeaderCell align="center" className="w-16">W-L</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-16">Win%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-24">Opp Ace PPG</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-24">Opp Ace FG%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-24">Opp Ace 3P%</TableHeaderCell>
+                    <TableHeaderCell align="right" className="w-24 pr-6">Eff. Impact</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    <TableRow>
+                        <TableCell className="px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">에이스 스토퍼</TableCell>
+                        <TableCell variant="stat" value={stats.games} className="text-slate-400" />
+                        <TableCell align="center" className="font-mono text-sm text-slate-300">{stats.wins}-{stats.games - stats.wins}</TableCell>
+                        <TableCell align="right" className={`font-mono text-sm font-bold ${Number(winPct) >= 50 ? 'text-emerald-400' : 'text-red-400'}`}>{winPct}%</TableCell>
+                        <TableCell variant="stat" value={avgAcePts} className="text-white" />
+                        <TableCell variant="stat" value={aceFgPct} className="text-slate-200" />
+                        <TableCell variant="stat" value={ace3pPct} className="text-slate-200" />
+                        <TableCell align="right" className={`pr-6 font-mono text-sm font-black ${Number(avgImpact) < 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                            {Number(avgImpact) > 0 ? '+' : ''}{avgImpact}%
+                        </TableCell>
+                    </TableRow>
+                </TableBody>
+            </Table>
         </div>
     );
 };

@@ -1,9 +1,9 @@
 
 import React, { useEffect } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
-import { getOvrBadgeStyle } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { ChevronDown } from 'lucide-react';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface DepthChartEditorProps {
     team: Team;
@@ -90,27 +90,25 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
         <div className="flex flex-col w-full bg-slate-950/30 border-t border-white/5">
             {/* Table Section */}
             <div className="p-0">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="bg-slate-950 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800/80">
-                            <th className="py-2 px-4 w-16 text-center border-r border-slate-800/50">POS</th>
-                            <th className="py-2 px-4 w-1/3 text-center border-r border-slate-800/50 text-indigo-400">주전 (Starter)</th>
-                            <th className="py-2 px-4 w-1/3 text-center border-r border-slate-800/50 text-slate-300">벤치 (Bench)</th>
-                            <th className="py-2 px-4 w-1/3 text-center text-slate-500">써드 (Third)</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
+                <Table>
+                    <TableHead>
+                        <TableHeaderCell align="center" className="w-16 border-r border-slate-800/50 py-2">POS</TableHeaderCell>
+                        <TableHeaderCell align="center" className="w-1/3 border-r border-slate-800/50 py-2 text-indigo-400">주전 (Starter)</TableHeaderCell>
+                        <TableHeaderCell align="center" className="w-1/3 border-r border-slate-800/50 py-2 text-slate-300">벤치 (Bench)</TableHeaderCell>
+                        <TableHeaderCell align="center" className="w-1/3 py-2 text-slate-500">써드 (Third)</TableHeaderCell>
+                    </TableHead>
+                    <TableBody>
                         {positions.map(pos => (
                             // Use String(pos) to ensure key and display are strings and avoid symbol errors
-                            <tr key={String(pos)} className="hover:bg-slate-900/40 transition-colors">
-                                <td className="py-1.5 px-4 text-center border-r border-slate-800/50 bg-slate-950/20">
+                            <TableRow key={String(pos)} className="hover:bg-slate-900/40 transition-colors">
+                                <TableCell align="center" className="py-1.5 px-4 border-r border-slate-800/50 bg-slate-950/20">
                                     <span className="text-xs font-bold text-slate-500">{String(pos)}</span>
-                                </td>
+                                </TableCell>
                                 {[0, 1, 2].map(depthIndex => {
                                     const selectedId = depthChart[pos][depthIndex];
                                     
                                     return (
-                                        <td key={`${String(pos)}-${depthIndex}`} className={`p-0 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
+                                        <TableCell key={`${String(pos)}-${depthIndex}`} className={`p-0 border-r border-slate-800/50 last:border-0 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
                                             <div className="relative group w-full h-full">
                                                 <select 
                                                     className={`w-full h-full appearance-none bg-transparent border-none rounded-none pl-4 pr-10 py-1.5 text-xs font-bold text-white focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all ${!selectedId ? 'text-slate-500' : ''}`}
@@ -128,13 +126,13 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                                                     <ChevronDown size={14} strokeWidth={2} />
                                                 </div>
                                             </div>
-                                        </td>
+                                        </TableCell>
                                     );
                                 })}
-                            </tr>
+                            </TableRow>
                         ))}
-                    </tbody>
-                </table>
+                    </TableBody>
+                </Table>
             </div>
         </div>
     );

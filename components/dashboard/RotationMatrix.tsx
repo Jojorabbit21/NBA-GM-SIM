@@ -4,6 +4,7 @@ import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { AlertCircle, Timer } from 'lucide-react';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface RotationMatrixProps {
     team: Team;
@@ -132,8 +133,9 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
             {/* Rotation Grid Table */}
             <div className="flex-1 overflow-auto custom-scrollbar">
-                <table className="w-full text-left border-separate border-spacing-0">
-                    <thead className="sticky top-0 z-30 bg-slate-900 shadow-lg">
+                {/* Note: Using native table elements for complex sticky headers and rowSpans where Table component is too restrictive */}
+                <Table>
+                    <TableHead>
                         {/* 1st Header Row: Sticky Info & Quarter Labels */}
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
                             {/* Sticky Left Columns (RowSpan 2) */}
@@ -172,8 +174,8 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                 );
                             })}
                         </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/50">
+                    </TableHead>
+                    <TableBody>
                         {posKeys.map(pos => {
                             // Ensure pos is a string for Record index access to avoid symbol errors
                             const players = (groupedRotation as Record<string, Player[]>)[pos];
@@ -191,46 +193,46 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                 else if (condition < 90) condColor = 'text-amber-500';
 
                                 return (
-                                    <tr key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
+                                    <TableRow key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
                                         {/* Merged Position Column */}
                                         {index === 0 && (
-                                            <td 
+                                            <TableCell 
                                                 rowSpan={players.length} 
                                                 className="text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800 align-middle border-b border-slate-800 w-[50px] min-w-[50px] max-w-[50px]"
                                             >
                                                 <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
                                                     {String(pos)}
                                                 </span>
-                                            </td>
+                                            </TableCell>
                                         )}
 
                                         {/* Name */}
-                                        <td className="py-2 px-3 sticky left-[50px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 cursor-pointer w-[160px] min-w-[160px] max-w-[160px]" onClick={() => onViewPlayer(p)}>
+                                        <TableCell className="py-2 px-3 sticky left-[50px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 cursor-pointer w-[160px] min-w-[160px] max-w-[160px]" onClick={() => onViewPlayer(p)}>
                                             <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
                                                 {p.name}
                                             </span>
-                                        </td>
+                                        </TableCell>
 
                                         {/* OVR */}
-                                        <td className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                        <TableCell className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className={`!w-6 !h-6 !text-xs !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`} />
                                             </div>
-                                        </td>
+                                        </TableCell>
                                         
                                         {/* [NEW] COND */}
-                                        <td className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                        <TableCell className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
                                             <span className={`text-[10px] font-black ${condColor}`}>
                                                 {condition}%
                                             </span>
-                                        </td>
+                                        </TableCell>
 
                                         {/* Total Minutes (Sticky pos shifted) */}
-                                        <td className={`text-center sticky left-[290px] bg-slate-900/95 z-20 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px] ${quarterBorder}`}>
+                                        <TableCell className={`text-center sticky left-[290px] bg-slate-900/95 z-20 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px] ${quarterBorder}`}>
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
-                                        </td>
+                                        </TableCell>
 
                                         {/* Minute Grid */}
                                         {playerMap.map((active, i) => {
@@ -240,7 +242,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                             const isQuarterEnd = (i+1)%12 === 0 && (i+1) !== 48;
                                             
                                             return (
-                                                <td 
+                                                <TableCell 
                                                     key={i} 
                                                     onClick={() => handleToggleMinute(p.id, i)}
                                                     className={`
@@ -257,15 +259,15 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                                 : 'bg-emerald-500/20'}
                                                         `}></div>
                                                     )}
-                                                </td>
+                                                </TableCell>
                                             );
                                         })}
-                                    </tr>
+                                    </TableRow>
                                 );
                             });
                         })}
-                    </tbody>
-                </table>
+                    </TableBody>
+                </Table>
             </div>
 
             {/* Validation Bar - Moved to Bottom */}

@@ -2,6 +2,7 @@
 import React, { useCallback } from 'react';
 import { Team } from '../../types';
 import { TeamLogo } from '../common/TeamLogo';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface StandingTableProps {
     teamList: Team[];
@@ -40,89 +41,93 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                 <h3 className={`text-lg font-black oswald uppercase tracking-wider text-${highlightColor}-400`}>{title}</h3>
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{teamList.length} TEAMS</span>
             </div>
-            <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest border-b border-slate-800/50">
-                            <th className="pl-6 pr-2 py-3 w-12">#</th>
-                            <th className="px-2 py-3">Team</th>
-                            <th className="px-2 py-3 text-center w-10">W</th>
-                            <th className="px-2 py-3 text-center w-10">L</th>
-                            <th className="px-2 py-3 text-center w-16">PCT</th>
-                            <th className="pl-2 pr-6 py-3 text-center w-14">GB</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {sorted.length > 0 ? sorted.map((t, i) => {
-                            let statusEmoji = null;
-                            if (mode === 'Division' && confRankMap) {
-                                const rank = confRankMap[t.id];
-                                if (i === 0) statusEmoji = '🏆'; 
-                                else if (rank <= 6) statusEmoji = '🔒'; 
-                                else if (rank <= 10) statusEmoji = '🎟️'; 
-                                else statusEmoji = '❌'; 
-                            }
+            <Table>
+                <TableHead>
+                    <TableHeaderCell align="left" className="pl-6 pr-2 w-12">#</TableHeaderCell>
+                    <TableHeaderCell align="left" className="px-2">Team</TableHeaderCell>
+                    <TableHeaderCell align="center" className="px-2 w-10">W</TableHeaderCell>
+                    <TableHeaderCell align="center" className="px-2 w-10">L</TableHeaderCell>
+                    <TableHeaderCell align="center" className="px-2 w-16">PCT</TableHeaderCell>
+                    <TableHeaderCell align="center" className="pl-2 pr-6 w-14">GB</TableHeaderCell>
+                </TableHead>
+                <TableBody>
+                    {sorted.length > 0 ? sorted.map((t, i) => {
+                        let statusEmoji = null;
+                        if (mode === 'Division' && confRankMap) {
+                            const rank = confRankMap[t.id];
+                            if (i === 0) statusEmoji = '🏆'; 
+                            else if (rank <= 6) statusEmoji = '🔒'; 
+                            else if (rank <= 10) statusEmoji = '🎟️'; 
+                            else statusEmoji = '❌'; 
+                        }
 
-                            return (
-                                <React.Fragment key={t.id}>
-                                    <tr className={`
-                                        hover:bg-slate-800/20 transition-all border-b border-slate-800/30 group
-                                        ${isConference && i >= 0 && i <= 5 ? 'bg-indigo-900/10' : ''}
-                                        ${isConference && i >= 6 && i <= 9 ? 'bg-fuchsia-900/10' : ''}
-                                    `}>
-                                        <td className="pl-6 pr-2 py-3 font-semibold text-slate-400 text-base group-hover:text-slate-100">{i + 1}</td>
-                                        <td className="px-2 py-3 cursor-pointer" onClick={() => onTeamClick(t.id)}>
-                                            <div className="flex items-center gap-2 max-w-[180px] group-hover:translate-x-1 transition-transform">
-                                                <TeamLogo teamId={t.id} size="sm" />
-                                                <span className="font-bold text-slate-100 text-sm truncate group-hover:text-indigo-400 transition-colors">{t.name}</span>
-                                                {statusEmoji && <span className="text-xs ml-1 filter drop-shadow-md select-none">{statusEmoji}</span>}
+                        const rankVal = i + 1;
+                        const pctVal = (t.wins + t.losses === 0 ? 0 : t.wins / (t.wins + t.losses)).toFixed(3).replace(/^0/, '');
+                        const gbVal = leader ? calculateGB(t, leader) : '-';
+
+                        const rowClass = `
+                            ${isConference && i >= 0 && i <= 5 ? 'bg-indigo-900/10' : ''}
+                            ${isConference && i >= 6 && i <= 9 ? 'bg-fuchsia-900/10' : ''}
+                        `;
+
+                        return (
+                            <React.Fragment key={t.id}>
+                                <TableRow className={rowClass}>
+                                    <TableCell className="pl-6 pr-2 font-semibold text-slate-400 text-base group-hover:text-slate-100">{rankVal}</TableCell>
+                                    <TableCell 
+                                        className="px-2 cursor-pointer" 
+                                        onClick={() => onTeamClick(t.id)}
+                                    >
+                                        <div className="flex items-center gap-2 max-w-[180px] group-hover:translate-x-1 transition-transform">
+                                            <TeamLogo teamId={t.id} size="sm" />
+                                            <span className="font-bold text-slate-100 text-sm truncate group-hover:text-indigo-400 transition-colors">{t.name}</span>
+                                            {statusEmoji && <span className="text-xs ml-1 filter drop-shadow-md select-none">{statusEmoji}</span>}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell align="center" className="px-2 font-semibold text-sm text-white">{t.wins}</TableCell>
+                                    <TableCell align="center" className="px-2 font-semibold text-sm text-slate-500">{t.losses}</TableCell>
+                                    <TableCell align="center" className="px-2 font-semibold text-slate-400 text-[11px]">{pctVal}</TableCell>
+                                    <TableCell align="center" className={`pl-2 pr-6 font-semibold text-sm ${i === 0 ? 'text-slate-500' : `text-${highlightColor}-400/80`}`}>{gbVal}</TableCell>
+                                </TableRow>
+
+                                {/* Playoff Guarantee Separator */}
+                                {isConference && i === 5 && (
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableCell colSpan={6} className="p-0 border-b border-slate-800/50">
+                                            <div className="flex items-center justify-center relative h-8 bg-slate-900/50">
+                                                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-slate-800"></div>
+                                                <span className="relative z-10 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-slate-950 border border-emerald-500/30 rounded-full shadow-sm">
+                                                    Playoffs Guaranteed
+                                                </span>
                                             </div>
-                                        </td>
-                                        <td className="px-2 py-3 text-center font-semibold text-sm text-white">{t.wins}</td>
-                                        <td className="px-2 py-3 text-center font-semibold text-sm text-slate-500">{t.losses}</td>
-                                        <td className="px-2 py-3 text-center font-semibold text-slate-400 text-[11px]">{(t.wins + t.losses === 0 ? 0 : t.wins / (t.wins + t.losses)).toFixed(3).replace(/^0/, '')}</td>
-                                        <td className={`pl-2 pr-6 py-3 text-center font-semibold text-sm ${i === 0 ? 'text-slate-500' : `text-${highlightColor}-400/80`}`}>{leader ? calculateGB(t, leader) : '-'}</td>
-                                    </tr>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
 
-                                    {/* Playoff Guarantee Separator */}
-                                    {isConference && i === 5 && (
-                                        <tr className="border-b border-slate-800/50">
-                                            <td colSpan={6} className="p-0">
-                                                <div className="flex items-center justify-center relative h-8 bg-slate-900/50">
-                                                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-slate-800"></div>
-                                                    <span className="relative z-10 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-slate-950 border border-emerald-500/30 rounded-full shadow-sm">
-                                                        Playoffs Guaranteed
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-
-                                    {/* Play-In Cutoff Separator */}
-                                    {isConference && i === 9 && (
-                                        <tr className="border-b border-slate-800/50">
-                                            <td colSpan={6} className="p-0">
-                                                <div className="flex items-center justify-center relative h-8 bg-slate-900/50">
-                                                    <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-slate-800"></div>
-                                                    <span className="relative z-10 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-amber-400 bg-slate-950 border border-amber-500/30 rounded-full shadow-sm">
-                                                        Play-In Cutoff
-                                                    </span>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
-                            );
-                        }) : (
-                            <tr>
-                                <td colSpan={6} className="py-12 text-center text-slate-600 text-xs font-black uppercase tracking-widest">
-                                    No data available
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
-            </div>
+                                {/* Play-In Cutoff Separator */}
+                                {isConference && i === 9 && (
+                                    <TableRow className="hover:bg-transparent">
+                                        <TableCell colSpan={6} className="p-0 border-b border-slate-800/50">
+                                            <div className="flex items-center justify-center relative h-8 bg-slate-900/50">
+                                                <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-slate-800"></div>
+                                                <span className="relative z-10 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-amber-400 bg-slate-950 border border-amber-500/30 rounded-full shadow-sm">
+                                                    Play-In Cutoff
+                                                </span>
+                                            </div>
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </React.Fragment>
+                        );
+                    }) : (
+                        <TableRow>
+                            <TableCell colSpan={6} className="py-12 text-center text-slate-600 text-xs font-black uppercase tracking-widest">
+                                No data available
+                            </TableCell>
+                        </TableRow>
+                    )}
+                </TableBody>
+            </Table>
         </div>
     );
 };

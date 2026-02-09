@@ -6,28 +6,28 @@ import { OvrBadge } from './OvrBadge';
 // --- Types ---
 export type CellVariant = 'text' | 'player' | 'stat' | 'attribute' | 'ovr' | 'rank' | 'badge';
 
-interface TableProps {
+interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
     children: React.ReactNode;
     className?: string;
 }
 
-interface TableHeadProps {
+interface TableHeadProps extends React.HTMLAttributes<HTMLTableSectionElement> {
     children: React.ReactNode;
     sticky?: boolean;
     className?: string;
 }
 
-interface TableBodyProps {
+interface TableBodyProps extends React.HTMLAttributes<HTMLTableSectionElement> {
     children: React.ReactNode;
 }
 
-interface TableRowProps {
+interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
     children: React.ReactNode;
     className?: string;
     onClick?: () => void;
 }
 
-interface TableHeaderCellProps {
+interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
     children: React.ReactNode;
     align?: 'left' | 'center' | 'right';
     width?: string;
@@ -37,7 +37,7 @@ interface TableHeaderCellProps {
     className?: string;
 }
 
-interface TableCellProps {
+interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
     children?: React.ReactNode;
     value?: any; // For smart rendering
     variant?: CellVariant;
@@ -60,32 +60,33 @@ const getAttrColor = (val: number) => {
 
 // --- Components ---
 
-export const Table = ({ children, className = '' }: TableProps) => (
+export const Table = ({ children, className = '', ...props }: TableProps) => (
     <div className={`w-full overflow-x-auto custom-scrollbar ${className}`}>
-        <table className="w-full text-left border-collapse table-auto">
+        <table className="w-full text-left border-collapse table-auto" {...props}>
             {children}
         </table>
     </div>
 );
 
-export const TableHead = ({ children, sticky = true, className = '' }: TableHeadProps) => (
-    <thead className={`${sticky ? 'sticky top-0 z-20' : ''} bg-slate-950 border-b border-slate-800 ${className}`}>
+export const TableHead = ({ children, sticky = true, className = '', ...props }: TableHeadProps) => (
+    <thead className={`${sticky ? 'sticky top-0 z-20' : ''} bg-slate-950 border-b border-slate-800 ${className}`} {...props}>
         <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
             {children}
         </tr>
     </thead>
 );
 
-export const TableBody = ({ children }: TableBodyProps) => (
-    <tbody className="divide-y divide-slate-800/50">
+export const TableBody = ({ children, ...props }: TableBodyProps) => (
+    <tbody className="divide-y divide-slate-800/50" {...props}>
         {children}
     </tbody>
 );
 
-export const TableRow = ({ children, className = '', onClick }: TableRowProps) => (
+export const TableRow = ({ children, className = '', onClick, ...props }: TableRowProps) => (
     <tr 
         onClick={onClick}
         className={`transition-colors hover:bg-slate-900/60 ${onClick ? 'cursor-pointer group' : ''} ${className}`}
+        {...props}
     >
         {children}
     </tr>
@@ -98,7 +99,8 @@ export const TableHeaderCell = ({
     sortable = false, 
     sortDirection = null, 
     onSort,
-    className = '' 
+    className = '',
+    ...props
 }: TableHeaderCellProps) => {
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
@@ -108,6 +110,7 @@ export const TableHeaderCell = ({
             className={`py-3 px-2 ${alignClass} ${cursorClass} ${className}`}
             style={{ width }}
             onClick={sortable ? onSort : undefined}
+            {...props}
         >
             <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
                 <span>{children}</span>
@@ -132,7 +135,8 @@ export const TableCell = ({
     subText,
     image,
     onClick,
-    colorScale = false
+    colorScale = false,
+    ...props
 }: TableCellProps) => {
     
     // Default Alignments based on variant
@@ -195,7 +199,7 @@ export const TableCell = ({
     };
 
     return (
-        <td className={`py-2 px-2 ${alignClass} ${className}`}>
+        <td className={`py-2 px-2 ${alignClass} ${className}`} {...props}>
             {renderContent()}
         </td>
     );
