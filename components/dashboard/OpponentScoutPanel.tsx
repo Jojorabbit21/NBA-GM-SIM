@@ -28,11 +28,10 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
     
     if (!opponent) return <div className="p-8 text-slate-500 text-center">상대 팀 데이터가 없습니다.</div>;
 
-    // 1. Define Columns & Widths
-    // Total Width Calculation: 60 + 180 + 50 + (6 * 45) + (9 * 55) = 1055px
+    // 1. Define Columns & Fixed Widths for Data Columns
+    // Player Name column will be fluid (take remaining space)
     const WIDTHS = {
         POS: 60,
-        PLAYER: 180,
         OVR: 50,
         ATTR: 45,
         STAT: 55
@@ -136,13 +135,17 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
             <div className="flex-1 min-h-0 p-0">
                 <Table 
                     className="border-0 rounded-none shadow-none" 
-                    // Enforce fixed layout to respect colgroup widths
-                    style={{ tableLayout: 'fixed', minWidth: '1055px' }} 
+                    // [Layout Strategy] Fixed Layout + Min Width ensures alignment. 
+                    // 'w-full' makes it stretch on large screens, 'min-w' triggers scroll on small screens.
+                    style={{ tableLayout: 'fixed', width: '100%', minWidth: '1050px' }} 
                 >
-                    {/* Explicit Column Definition for Layout Stability */}
+                    {/* [Hybrid Colgroup] 
+                        - Stat columns have fixed widths to prevent crushing.
+                        - Player column has NO width set here, so it consumes all remaining space (Fluid). 
+                    */}
                     <colgroup>
                         <col style={{ width: WIDTHS.POS }} />
-                        <col style={{ width: WIDTHS.PLAYER }} />
+                        <col /> {/* PLAYER Name: Fluid (Takes remaining space) */}
                         <col style={{ width: WIDTHS.OVR }} />
                         {ATTR_COLS.map((_, i) => <col key={`c-attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
                         {STAT_COLS.map((_, i) => <col key={`c-stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
