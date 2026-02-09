@@ -122,7 +122,6 @@ export const TableHeaderCell = ({
 }: TableHeaderCellProps) => {
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
-    // Use style for width if provided to handle both string and number
     const cellStyle = { ...style, width: width, minWidth: width };
 
     return (
@@ -133,12 +132,16 @@ export const TableHeaderCell = ({
             {...props}
         >
             <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+                {/* Ghost Spacer for perfect centering when an icon exists on the right */}
+                {sortable && align === 'center' && <div className="w-[12px]"></div>}
+                
                 <span>{children}</span>
+                
                 {sortable && (
-                    <span className="text-slate-600">
+                    <span className="text-slate-600 flex-shrink-0">
                         {sortDirection === 'asc' && <ArrowUp size={12} className="text-indigo-400" strokeWidth={3} />}
                         {sortDirection === 'desc' && <ArrowDown size={12} className="text-indigo-400" strokeWidth={3} />}
-                        {!sortDirection && <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-50" />}
+                        {!sortDirection && <ArrowUpDown size={12} className="opacity-0 group-hover:opacity-40" />}
                     </span>
                 )}
             </div>
@@ -161,7 +164,6 @@ export const TableCell = ({
     ...props
 }: TableCellProps) => {
     
-    // Default Alignments based on variant
     const getAlign = () => {
         if (align) return align;
         if (variant === 'player') return 'left';
@@ -181,7 +183,6 @@ export const TableCell = ({
             case 'player':
                 return (
                     <div className="flex items-center gap-3">
-                        {/* {image && <img src={image} className="w-8 h-8 rounded-full object-cover bg-slate-800" alt="" />} */}
                         <div className="flex flex-col min-w-0">
                             <span 
                                 className={`text-xs font-bold text-slate-200 truncate ${onClick ? 'group-hover:text-indigo-400 group-hover:underline cursor-pointer' : ''}`}
