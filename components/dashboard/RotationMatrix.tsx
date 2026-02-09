@@ -119,16 +119,13 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
     
     // Styling Constants
-    // [Fix] Use box-shadow for the right border of sticky columns.
-    // This avoids border-collapse transparency issues where scrolling content bleeds through.
-    // #334155 is slate-700
-    const stickyRightShadow = "shadow-[1px_0_0_0_#334155]"; 
-    
-    // Solid bottom border for sticky rows/cells is usually fine, but consistent shadow usage is safer for stacking contexts.
-    // We stick to border-b for vertical separation as it doesn't suffer the same horizontal bleed issue.
+    // [Fix] Use Solid Borders + Border Separate Model
+    // We switched from 'border-collapse' to 'border-separate' (via style prop) to ensure sticky borders
+    // are owned by the sticky element and don't scroll away.
+    const stickyBorder = "border-r border-slate-700"; 
     const stickyBottom = "border-b border-slate-700";
     
-    // Grid borders (Scrollable area) - Semi-transparent for aesthetics
+    // Grid borders
     const gridBorder = "border-r border-slate-700/50"; 
     const gridBottom = "border-b border-slate-700/50";
 
@@ -141,20 +138,23 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
             </div>
 
             {/* Rotation Grid Table */}
-            {/* Using shared Table wrapper for consistent styling */}
             <div className="flex-1 min-h-0">
-                <Table className="border-0 rounded-none shadow-none">
+                {/* [Fix] Force border-separate to prevent sticky border blending issues */}
+                <Table 
+                    className="border-0 rounded-none shadow-none" 
+                    style={{ borderCollapse: 'separate', borderSpacing: 0 }}
+                >
                     <thead className="bg-slate-900 sticky top-0 z-50">
                         {/* 1st Header Row: Info & Quarters */}
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
-                            {/* Sticky Columns Header Block - Using Box Shadow for Right Edge */}
-                            <th rowSpan={2} className={`sticky left-0 z-50 bg-slate-900 ${stickyRightShadow} ${stickyBottom} w-[50px] min-w-[50px] text-center`}>POS</th>
-                            <th rowSpan={2} className={`sticky left-[50px] z-50 bg-slate-900 ${stickyRightShadow} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
-                            <th rowSpan={2} className={`sticky left-[210px] z-50 bg-slate-900 ${stickyRightShadow} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>OVR</th>
-                            <th rowSpan={2} className={`sticky left-[250px] z-50 bg-slate-900 ${stickyRightShadow} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[290px] z-50 bg-slate-900 ${stickyRightShadow} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>MIN</th>
+                            {/* Sticky Columns Header Block */}
+                            <th rowSpan={2} className={`sticky left-0 z-50 bg-slate-900 ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center`}>POS</th>
+                            <th rowSpan={2} className={`sticky left-[50px] z-50 bg-slate-900 ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
+                            <th rowSpan={2} className={`sticky left-[210px] z-50 bg-slate-900 ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>OVR</th>
+                            <th rowSpan={2} className={`sticky left-[250px] z-50 bg-slate-900 ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>COND</th>
+                            <th rowSpan={2} className={`sticky left-[290px] z-50 bg-slate-900 ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>MIN</th>
                             
-                            {/* Scrollable Quarter Headers - Transparent Borders */}
+                            {/* Scrollable Quarter Headers */}
                             <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${gridBorder} ${gridBottom}`}>1Q</th>
                             <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${gridBorder} ${gridBottom}`}>2Q</th>
                             <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${gridBorder} ${gridBottom}`}>3Q</th>
@@ -195,13 +195,13 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
                                 return (
                                     <TableRow key={p.id} className="hover:bg-white/5 group h-9">
-                                        {/* Sticky Columns Body Block - Using Box Shadow */}
+                                        {/* Sticky Columns Body Block - Opaque Borders */}
                                         
                                         {/* Merged Position Cell */}
                                         {index === 0 && (
                                             <td 
                                                 rowSpan={players.length} 
-                                                className={`sticky left-0 z-30 bg-slate-900 text-center align-middle ${stickyRightShadow} ${stickyBottom}`}
+                                                className={`sticky left-0 z-30 bg-slate-900 text-center align-middle ${stickyBorder} ${stickyBottom}`}
                                             >
                                                 <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
                                                     {String(pos)}
@@ -211,7 +211,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
                                         {/* Player Name */}
                                         <td 
-                                            className={`sticky left-[50px] z-30 bg-slate-900 px-3 cursor-pointer ${stickyRightShadow} ${stickyBottom}`}
+                                            className={`sticky left-[50px] z-30 bg-slate-900 px-3 cursor-pointer ${stickyBorder} ${stickyBottom}`}
                                             onClick={() => onViewPlayer(p)}
                                         >
                                             <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
@@ -220,21 +220,21 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                         </td>
 
                                         {/* OVR */}
-                                        <td className={`sticky left-[210px] z-30 bg-slate-900 text-center ${stickyRightShadow} ${stickyBottom}`}>
+                                        <td className={`sticky left-[210px] z-30 bg-slate-900 text-center ${stickyBorder} ${stickyBottom}`}>
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className={`!w-6 !h-6 !text-xs !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`} />
                                             </div>
                                         </td>
                                         
                                         {/* Condition */}
-                                        <td className={`sticky left-[250px] z-30 bg-slate-900 text-center ${stickyRightShadow} ${stickyBottom}`}>
+                                        <td className={`sticky left-[250px] z-30 bg-slate-900 text-center ${stickyBorder} ${stickyBottom}`}>
                                             <span className={`text-[10px] font-black ${condColor}`}>
                                                 {condition}%
                                             </span>
                                         </td>
 
                                         {/* Total Minutes */}
-                                        <td className={`sticky left-[290px] z-30 bg-slate-900 text-center ${stickyRightShadow} ${stickyBottom}`}>
+                                        <td className={`sticky left-[290px] z-30 bg-slate-900 text-center ${stickyBorder} ${stickyBottom}`}>
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
