@@ -1,12 +1,11 @@
 
 import React, { useMemo } from 'react';
-import { ArrowLeft, Users, Crown, TrendingUp, AlertTriangle, Hash, ArrowRightLeft } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, AlertTriangle, TrendingUp, Hash, Crown } from 'lucide-react';
 import { Team, Transaction, Player } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
-import { getTeamLogoUrl } from '../utils/constants';
-import { TEAM_DATA } from '../data/teamData';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { generateSeasonReport } from '../services/reportGenerator';
 
 interface SeasonReviewViewProps {
   team: Team;
@@ -16,131 +15,24 @@ interface SeasonReviewViewProps {
 }
 
 export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams, transactions = [], onBack }) => {
-  // 1. Calculate Ranks & Basic Info
-  const confTeams = teams.filter(t => t.conference === team.conference).sort((a, b) => b.wins - a.wins);
-  const confRank = confTeams.findIndex(t => t.id === team.id) + 1;
-  const leagueRank = [...teams].sort((a, b) => b.wins - a.wins).findIndex(t => t.id === team.id) + 1;
-  const totalGames = team.wins + team.losses || 82;
-  const winPct = team.wins / totalGames;
-  const winPctStr = winPct.toFixed(3).replace(/^0/, ''); 
+  // Use Service to generate all display data
+  const report = useMemo(() => generateSeasonReport(team, teams, transactions), [team, teams, transactions]);
 
-  // 2. Identify Team MVP
-  const sortedByPts = [...team.roster].sort((a, b) => {
-      const pA = a.stats.g > 0 ? a.stats.pts / a.stats.g : 0;
-      const pB = b.stats.g > 0 ? b.stats.pts / b.stats.g : 0;
-      return pB - pA;
-  });
-  const mvp = sortedByPts[0];
+  const { 
+      confRank, leagueRank, winPct, winPctStr, mvp, 
+      seasonTrades, teamStats, leagueRanks, 
+      ownerMood, ownerName 
+  } = report;
 
-  // 3. Filter Season Trades (Safe Filter)
-  const seasonTrades = useMemo(() => {
-      if (!transactions || !Array.isArray(transactions)) return [];
-      return transactions
-        .filter(t => t && t.teamId === team.id && t.type === 'Trade')
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, team.id]);
-
-  // Helper to get player snapshot (OVR/POS) from transaction history or current roster
-  const getSnapshot = (id: string, savedOvr?: number, savedPos?: string) => {
-      if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
+  // Helper to get player snapshot (OVR/POS) from current roster
+  // (Note: Using current stats for snapshot simplicity)
+  const getSnapshot = (id: string) => {
       for (const t of teams) {
           const p = t.roster.find(rp => rp.id === id);
           if (p) return { ovr: p.ovr, pos: p.position };
       }
       return { ovr: 0, pos: '-' };
   };
-
-  // 4. Advanced Team Stats & League Ranking Logic
-  const getTeamAggregates = (t: Team) => {
-      const g = t.wins + t.losses || 1;
-      const totals = t.roster.reduce((acc, p) => ({
-          pts: acc.pts + p.stats.pts,
-          reb: acc.reb + p.stats.reb,
-          ast: acc.ast + p.stats.ast,
-          stl: acc.stl + p.stats.stl,
-          blk: acc.blk + p.stats.blk,
-          tov: acc.tov + p.stats.tov,
-          fgm: acc.fgm + p.stats.fgm,
-          fga: acc.fga + p.stats.fga,
-          p3m: acc.p3m + p.stats.p3m,
-          p3a: acc.p3a + p.stats.p3a,
-          ftm: acc.ftm + p.stats.ftm,
-          fta: acc.fta + p.stats.fta,
-      }), { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
-
-      const tsa = totals.fga + 0.44 * totals.fta;
-      
-      return {
-          id: t.id,
-          pts: totals.pts / g,
-          reb: totals.reb / g,
-          ast: totals.ast / g,
-          stl: totals.stl / g,
-          blk: totals.blk / g,
-          tov: totals.tov / g,
-          fgPct: totals.fga > 0 ? totals.fgm / totals.fga : 0,
-          p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
-          ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
-          tsPct: tsa > 0 ? totals.pts / (2 * tsa) : 0,
-      };
-  };
-
-  const allTeamStats = useMemo(() => teams.map(getTeamAggregates), [teams]);
-  const myTeamStats = allTeamStats.find(s => s.id === team.id)!;
-
-  const getLeagueRank = (key: keyof typeof myTeamStats, asc: boolean = false) => {
-      const sorted = [...allTeamStats].sort((a, b) => {
-          const valA = a[key] as number;
-          const valB = b[key] as number;
-          return asc ? valA - valB : valB - valA;
-      });
-      return sorted.findIndex(s => s.id === team.id) + 1;
-  };
-
-  // 5. Determine Owner's Message
-  let ownerMood = { 
-      title: "만족스러운 시즌", 
-      msg: "수고 많았습니다, 단장. 우리 팀의 성과는 기대 이상이었습니다. 다음 시즌엔 우승을 노려봅시다.", 
-      color: "text-emerald-400", 
-      borderColor: "border-emerald-500/50",
-      bg: "bg-emerald-500/5" 
-  };
-  
-  if (winPct >= 0.65) {
-      ownerMood = { 
-          title: "압도적인 성과", 
-          msg: "환상적입니다! 리그 최고의 팀을 만들었군요. 팬들과 보드진 모두 당신을 찬양하고 있습니다. 내년에도 이 기세를 이어가야 합니다.", 
-          color: "text-amber-400", 
-          borderColor: "border-amber-500/50",
-          bg: "bg-amber-500/5"
-      };
-  } else if (winPct >= 0.5) {
-      ownerMood = { 
-          title: "준수한 시즌", 
-          msg: "플레이오프 경쟁력을 입증했습니다. 하지만 진정한 컨텐더가 되기 위해선 한 단계 더 도약해야 합니다. 오프시즌 보강에 힘써주세요.", 
-          color: "text-blue-400", 
-          borderColor: "border-blue-500/50",
-          bg: "bg-blue-500/5"
-      };
-  } else if (winPct >= 0.35) {
-      ownerMood = { 
-          title: "실망스러운 결과", 
-          msg: "솔직히 말해 기대 이하입니다. 리빌딩 과정이라 믿고 싶지만, 팬들의 인내심이 바닥나고 있습니다. 변화가 필요합니다.", 
-          color: "text-orange-400", 
-          borderColor: "border-orange-500/50",
-          bg: "bg-orange-500/5"
-      };
-  } else {
-      ownerMood = { 
-          title: "최악의 시즌", 
-          msg: "이런 성적을 위해 당신을 고용한 게 아닙니다. 당장 획기적인 변화가 없다면, 내년엔 이 자리에 없을 겁니다. 각오하십시오.", 
-          color: "text-red-500", 
-          borderColor: "border-red-500/50",
-          bg: "bg-red-500/5"
-      };
-  }
-
-  const ownerName = TEAM_DATA[team.id]?.owner || "The Ownership Group";
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[150] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-20">
@@ -236,17 +128,17 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
               </div>
               
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                  <ReviewStatBox label="Points" value={myTeamStats.pts} rank={getLeagueRank('pts')} />
-                  <ReviewStatBox label="Rebounds" value={myTeamStats.reb} rank={getLeagueRank('reb')} />
-                  <ReviewStatBox label="Assists" value={myTeamStats.ast} rank={getLeagueRank('ast')} />
-                  <ReviewStatBox label="Steals" value={myTeamStats.stl} rank={getLeagueRank('stl')} />
-                  <ReviewStatBox label="Blocks" value={myTeamStats.blk} rank={getLeagueRank('blk')} />
-                  <ReviewStatBox label="Turnovers" value={myTeamStats.tov} rank={getLeagueRank('tov', true)} inverse />
+                  <ReviewStatBox label="Points" value={leagueRanks.pts.value} rank={leagueRanks.pts.rank} />
+                  <ReviewStatBox label="Rebounds" value={leagueRanks.reb.value} rank={leagueRanks.reb.rank} />
+                  <ReviewStatBox label="Assists" value={leagueRanks.ast.value} rank={leagueRanks.ast.rank} />
+                  <ReviewStatBox label="Steals" value={leagueRanks.stl.value} rank={leagueRanks.stl.rank} />
+                  <ReviewStatBox label="Blocks" value={leagueRanks.blk.value} rank={leagueRanks.blk.rank} />
+                  <ReviewStatBox label="Turnovers" value={leagueRanks.tov.value} rank={leagueRanks.tov.rank} inverse />
                   
-                  <ReviewStatBox label="FG%" value={myTeamStats.fgPct} rank={getLeagueRank('fgPct')} isPercent />
-                  <ReviewStatBox label="3P%" value={myTeamStats.p3Pct} rank={getLeagueRank('p3Pct')} isPercent />
-                  <ReviewStatBox label="FT%" value={myTeamStats.ftPct} rank={getLeagueRank('ftPct')} isPercent />
-                  <ReviewStatBox label="True Shooting" value={myTeamStats.tsPct} rank={getLeagueRank('tsPct')} isPercent />
+                  <ReviewStatBox label="FG%" value={leagueRanks.fgPct.value} rank={leagueRanks.fgPct.rank} isPercent />
+                  <ReviewStatBox label="3P%" value={leagueRanks.p3Pct.value} rank={leagueRanks.p3Pct.rank} isPercent />
+                  <ReviewStatBox label="FT%" value={leagueRanks.ftPct.value} rank={leagueRanks.ftPct.rank} isPercent />
+                  <ReviewStatBox label="True Shooting" value={leagueRanks.tsPct.value} rank={leagueRanks.tsPct.rank} isPercent />
               </div>
           </div>
 
@@ -329,7 +221,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                               {t.details?.acquired.map((p, i) => (
                                                   <div key={i} className="flex items-center justify-between">
                                                       <span className="text-xs font-bold text-white">{p.name}</span>
-                                                      <OvrBadge value={getSnapshot(p.id, p.ovr, p.position).ovr} size="sm" className="!w-5 !h-5 !text-[10px] !mx-0" />
+                                                      <OvrBadge value={getSnapshot(p.id).ovr} size="sm" className="!w-5 !h-5 !text-[10px] !mx-0" />
                                                   </div>
                                               ))}
                                           </div>
@@ -340,7 +232,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                               {t.details?.traded.map((p, i) => (
                                                   <div key={i} className="flex items-center justify-between">
                                                       <span className="text-xs font-bold text-slate-400">{p.name}</span>
-                                                      <OvrBadge value={getSnapshot(p.id, p.ovr, p.position).ovr} size="sm" className="!w-5 !h-5 !text-[10px] !mx-0 grayscale opacity-50" />
+                                                      <OvrBadge value={getSnapshot(p.id).ovr} size="sm" className="!w-5 !h-5 !text-[10px] !mx-0 grayscale opacity-50" />
                                                   </div>
                                               ))}
                                           </div>
