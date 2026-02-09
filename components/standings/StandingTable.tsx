@@ -46,8 +46,6 @@ export const StandingTable: React.FC<StandingTableProps> = ({
             </div>
             
             <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
-                {/* [Fix] Removed internal <tr> and added noRow={true} to use custom tr styling if needed, 
-                    or simply rely on TableHead's default row generation */}
                 <TableHead className="bg-slate-950">
                     <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
                     <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM</TableHeaderCell>

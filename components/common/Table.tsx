@@ -66,7 +66,6 @@ const getAttrColor = (val: number) => {
 
 export const Table = ({ children, className = '', fullHeight = true, ...props }: TableProps) => (
     <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`}>
-        {/* [Fix] Use border-separate and border-spacing-0 for correct sticky rendering */}
         <table className="w-full text-left border-separate border-spacing-0" {...props}>
             {children}
         </table>
@@ -119,7 +118,6 @@ export const TableHeaderCell = ({
 }: TableHeaderCellProps) => {
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
-    // [Fix] Fully opaque background for sticky headers
     const stickyClass = stickyLeft ? 'sticky left-0 z-50 bg-slate-950' : '';
     const cellStyle = { ...style, width: width, minWidth: width };
 
@@ -173,7 +171,8 @@ export const TableCell = ({
     const stickyClass = stickyLeft ? 'sticky left-0 z-30' : '';
     
     const renderContent = () => {
-        if (children) return children;
+        // [Critical Fix] Handle numeric 0 correctly by checking against null/undefined
+        if (children !== undefined && children !== null) return children;
 
         switch (variant) {
             case 'player':
