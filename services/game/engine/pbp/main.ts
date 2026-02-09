@@ -1,13 +1,16 @@
 
 import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, PbpLog, RotationData } from '../../../../types';
 import { initTeamState } from './initializer';
-import { calculatePossessionTime, formatTime } from './timeEngine';
-import { calculateIncrementalFatigue } from '../fatigueSystem';
+import { calculatePossessionTime } from './timeEngine';
 import { checkAndApplyRotation } from './rotationLogic';
-import { calculateFoulStats } from '../foulSystem';
+import { simulatePossession } from './possessionHandler';
+import { updateOnCourtStates } from './stateUpdater';
+import { applyPossessionResult } from './statsMappers';
+import { checkSubstitutions } from './substitutionSystem';
 
 /**
  * Executes a full Play-by-Play game simulation.
+ * REFACTORED: Now uses a modular pipeline architecture.
  */
 export function runFullGameSimulation(
     homeTeam: Team,
@@ -20,75 +23,75 @@ export function runFullGameSimulation(
     awayDepthChart?: DepthChart | null
 ): SimulationResult {
     
+    // 1. Initialization Phase
     const state = {
         home: initTeamState(homeTeam, userTeamId === homeTeam.id ? userTactics : undefined, homeDepthChart),
         away: initTeamState(awayTeam, userTeamId === awayTeam.id ? userTactics : undefined, awayDepthChart),
         quarter: 1,
         gameClock: 720,
+        shotClock: 24,
+        possession: 'home' as 'home' | 'away',
+        isDeadBall: false,
         logs: [] as PbpLog[],
-        rotationHistory: {} as RotationData
+        rotationHistory: {} as RotationData,
+        isHomeB2B,
+        isAwayB2B
     };
 
     // Main Simulation Loop
     for (state.quarter = 1; state.quarter <= 4; state.quarter++) {
         state.gameClock = 720;
-        
+        state.possession = (state.quarter === 2 || state.quarter === 3) ? 'away' : 'home'; // Simple alt possession
+
         while (state.gameClock > 0) {
-            const timeTaken = calculatePossessionTime(state as any, state.home.tactics.sliders);
+            // [A] Time Phase
+            // Determine who has possession (simple toggle for now, handled at end of loop or by rebound)
+            const offTeamState = state.possession === 'home' ? state.home : state.away;
+            const timeTaken = calculatePossessionTime(state as any, offTeamState.tactics.sliders);
+            
+            // Tick Clock
             state.gameClock -= timeTaken;
+            if (state.gameClock < 0) state.gameClock = 0;
 
-            // [Process Both Teams]
-            [state.home, state.away].forEach(team => {
-                const isB2B = team.id === homeTeam.id ? isHomeB2B : isAwayB2B;
-                
-                team.onCourt.forEach(p => {
-                    // 1. MP & Fatigue
-                    p.mp += timeTaken / 60;
-                    const isStopper = team.tactics.defenseTactics.includes('AceStopper') && team.tactics.stopperId === p.playerId;
-                    const fatigue = calculateIncrementalFatigue(p, timeTaken, team.tactics.sliders, isB2B, isStopper, team.tactics.offenseTactics[0], team.tactics.defenseTactics[0]);
-                    p.currentCondition = Math.max(0, p.currentCondition - fatigue.drain);
-                    
-                    // 2. Foul Simulation
-                    const foulRes = calculateFoulStats(p as any, p.mp, team.tactics, team.tactics, team.tactics.sliders);
-                    p.pf = foulRes.pf;
-                    
-                    // 3. Injury Check
-                    if (fatigue.injuryOccurred) {
-                        p.health = 'Injured';
-                        state.logs.push({
-                            quarter: state.quarter,
-                            timeRemaining: formatTime(state.gameClock),
-                            teamId: team.id,
-                            text: `${p.playerName} 선수가 부상으로 퇴장합니다.`,
-                            type: 'info'
-                        });
-                    }
-                });
-                
-                // 4. Substitution Logic
-                checkAndApplyRotation(state as any, team, ((state.quarter - 1) * 720) + (720 - state.gameClock));
-            });
-
-            // 5. Scoring Resolution (Simulated per possession)
-            const attackingTeam = Math.random() > 0.5 ? state.home : state.away;
-            const shooter = attackingTeam.onCourt[Math.floor(Math.random() * 5)];
+            // [B] Player Phase (Fatigue, Injuries)
+            updateOnCourtStates(state as any, timeTaken);
             
-            const isThree = Math.random() > 0.7;
-            const hitRate = isThree ? 0.35 : 0.45;
+            // [C] Coaching Phase (Rotation)
+            // 1. Standard Rotation Map check
+            checkAndApplyRotation(state as any, state.home, ((state.quarter - 1) * 720) + (720 - state.gameClock));
+            checkAndApplyRotation(state as any, state.away, ((state.quarter - 1) * 720) + (720 - state.gameClock));
             
-            shooter.fga += 1;
-            if (isThree) shooter.p3a += 1;
+            // 2. Emergency Subs (Injury/Fouls) - checkSubstitutions returns requests, need to apply them
+            // For now, we rely on checkAndApplyRotation which has fallback logic for unavailable players.
+            // To be explicit:
+            // const homeSubs = checkSubstitutions(state as any, state.home);
+            // applySubs(homeSubs)... (Future expansion)
 
-            if (Math.random() < hitRate) {
-                const pts = isThree ? 3 : 2;
-                shooter.pts += pts;
-                shooter.fgm += 1;
-                if (isThree) shooter.p3m += 1;
-                attackingTeam.score += pts;
+            // [D] Action Phase (The Play)
+            const result = simulatePossession(state as any);
+
+            // [E] Commit Phase (Stats & Logs)
+            applyPossessionResult(state as any, result);
+
+            // [F] Flow Control (Next Possession)
+            // If Off Rebound, keep possession. Else toggle.
+            // Check result.rebounder
+            let nextPossession = state.possession === 'home' ? 'away' : 'home';
+            
+            if (result.type === 'miss' && result.rebounder) {
+                // Determine which team the rebounder belongs to
+                const isHomeRebound = state.home.onCourt.some(p => p.playerId === result.rebounder?.playerId);
+                nextPossession = isHomeRebound ? 'home' : 'away';
+            } else if (result.type === 'score' || result.type === 'turnover' || result.type === 'freethrow') {
+                // Standard swap
+                nextPossession = state.possession === 'home' ? 'away' : 'home';
             }
+            
+            state.possession = nextPossession as 'home' | 'away';
         }
     }
 
+    // Post-Game: Map to Output Format
     const mapToBox = (teamState: any): PlayerBoxScore[] => 
         [...teamState.onCourt, ...teamState.bench].map(p => ({
             ...p,

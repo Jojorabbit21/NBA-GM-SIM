@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -100,18 +100,24 @@ export interface GameState {
 }
 
 export interface PossessionResult {
-    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow';
-    points?: 1 | 2 | 3;
-    attempts?: number; 
-    player?: LivePlayer; // Main actor
-    secondaryPlayer?: LivePlayer; // Assister, Fouler, Blocker
-    rebounder?: LivePlayer;
-    timeTaken: number;
-    logText: string;
-    nextPossession: 'home' | 'away' | 'keep' | 'free_throw'; 
-    isDeadBall?: boolean;
-    playType?: string; // Developer Log Info (added)
+    type: 'score' | 'miss' | 'turnover' | 'foul' | 'freethrow' | 'rebound'; // 'block' is part of miss
     
-    // [Fix] Zone Tracking ID
-    shotZoneId?: string; // e.g. 'zone_mid_c'
+    // Actors
+    offTeam: TeamState;
+    defTeam: TeamState;
+    actor: LivePlayer; // The one who shot, turned it over, or got fouled
+    defender?: LivePlayer; // The primary defender (or stealer/blocker)
+    assister?: LivePlayer; // If scored
+    rebounder?: LivePlayer; // If missed
+
+    // Details
+    playType?: PlayType;
+    zone?: 'Rim' | 'Paint' | 'Mid' | '3PT';
+    points: 0 | 1 | 2 | 3;
+    isAndOne: boolean;
+    
+    // Stats for logs
+    shotType?: string; // "Jump Shot", "Dunk", "Layup"
+    isBlock?: boolean;
+    isSteal?: boolean;
 }
