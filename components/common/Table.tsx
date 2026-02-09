@@ -66,14 +66,15 @@ const getAttrColor = (val: number) => {
 
 export const Table = ({ children, className = '', fullHeight = true, ...props }: TableProps) => (
     <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`}>
-        <table className="w-full text-left border-collapse border-spacing-0" {...props}>
+        {/* [Fix] Use border-separate and border-spacing-0 for correct sticky rendering */}
+        <table className="w-full text-left border-separate border-spacing-0" {...props}>
             {children}
         </table>
     </div>
 );
 
 export const TableHead = ({ children, className = '', noRow = false, ...props }: TableHeadProps) => (
-    <thead className={`bg-slate-950/95 backdrop-blur-sm sticky top-0 z-40 border-b border-slate-800 shadow-sm ${className}`} {...props}>
+    <thead className={`bg-slate-950 sticky top-0 z-40 border-b border-slate-800 shadow-sm ${className}`} {...props}>
         {noRow ? children : (
             <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
                 {children}
@@ -83,7 +84,7 @@ export const TableHead = ({ children, className = '', noRow = false, ...props }:
 );
 
 export const TableBody = ({ children, ...props }: TableBodyProps) => (
-    <tbody className="divide-y divide-slate-800/50 bg-slate-900/30" {...props}>
+    <tbody className="bg-slate-900" {...props}>
         {children}
     </tbody>
 );
@@ -118,21 +119,18 @@ export const TableHeaderCell = ({
 }: TableHeaderCellProps) => {
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
-    const stickyClass = stickyLeft ? 'sticky left-0 z-50' : '';
+    // [Fix] Fully opaque background for sticky headers
+    const stickyClass = stickyLeft ? 'sticky left-0 z-50 bg-slate-950' : '';
     const cellStyle = { ...style, width: width, minWidth: width };
 
     return (
         <th 
-            className={`py-3 px-1.5 whitespace-nowrap bg-slate-950 ${alignClass} ${cursorClass} ${stickyClass} ${className}`}
+            className={`py-3 px-1.5 whitespace-nowrap border-b border-slate-800 ${alignClass} ${cursorClass} ${stickyClass} ${className}`}
             style={cellStyle}
             onClick={sortable ? onSort : undefined}
             {...props}
         >
             <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
-                {/* 
-                  [Update] Removed ghost spacer to maximize text area for inactive columns.
-                  The arrow only appears when sortDirection is active.
-                */}
                 <span className="truncate min-w-0">{children}</span>
                 
                 {sortable && sortDirection && (
@@ -220,7 +218,7 @@ export const TableCell = ({
     };
 
     return (
-        <td className={`py-2 px-3 whitespace-nowrap ${alignClass} ${stickyClass} ${className}`} style={style} {...props}>
+        <td className={`py-2 px-3 whitespace-nowrap border-b border-slate-800/50 ${alignClass} ${stickyClass} ${className}`} style={style} {...props}>
             {renderContent()}
         </td>
     );
