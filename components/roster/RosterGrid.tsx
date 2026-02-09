@@ -13,7 +13,7 @@ interface RosterGridProps {
 
 type SortConfig = { key: string; direction: 'asc' | 'desc'; };
 
-// --- Styling Constants (Matching Opponent Scout Panel) ---
+// --- Styling Constants ---
 const WIDTHS = {
     NAME: 180,
     POS: 60,
@@ -22,6 +22,48 @@ const WIDTHS = {
     ATTR: 45,
     STAT: 55,
     SALARY: 100
+};
+
+// Full name mapping for tooltips
+const ATTR_NAME_MAP: Record<string, string> = {
+    ins: '인사이드 득점 평균 (Inside Scoring Avg)',
+    closeShot: '근접 슛 (Close Shot)',
+    layup: '레이업 (Layup)',
+    dunk: '덩크 (Dunk)',
+    postPlay: '포스트 플레이 (Post Play)',
+    drawFoul: '파울 유도 (Draw Foul)',
+    hands: '핸즈 (Hands)',
+    out: '외곽 득점 평균 (Outside Scoring Avg)',
+    midRange: '중거리 슛 (Mid-Range)',
+    threeCorner: '3점 슛 (3pt)',
+    ft: '자유투 (Free Throw)',
+    shotIq: '슛 지능 (Shot IQ)',
+    offConsist: '공격 기복 (Offensive Consistency)',
+    plm: '플레이메이킹 평균 (Playmaking Avg)',
+    passAcc: '패스 정확도 (Pass Accuracy)',
+    handling: '볼 핸들링 (Ball Handling)',
+    spdBall: '볼 핸들링 속도 (Speed with Ball)',
+    passVision: '시야 (Pass Vision)',
+    passIq: '패스 지능 (Pass IQ)',
+    def: '수비 평균 (Defense Avg)',
+    intDef: '내곽 수비 (Interior Defense)',
+    perDef: '외곽 수비 (Perimeter Defense)',
+    steal: '스틸 (Steal)',
+    blk: '블록 (Block)',
+    helpDefIq: '헬프 수비 지능 (Help Def IQ)',
+    passPerc: '패스 차단 (Pass Perception)',
+    defConsist: '수비 기복 (Defensive Consistency)',
+    reb: '리바운드 평균 (Rebound Avg)',
+    offReb: '공격 리바운드 (Offensive Rebound)',
+    defReb: '수비 리바운드 (Defensive Rebound)',
+    ath: '운동 능력 평균 (Athleticism Avg)',
+    speed: '속도 (Speed)',
+    agility: '민첩성 (Agility)',
+    strength: '힘 (Strength)',
+    vertical: '점프력 (Vertical)',
+    stamina: '체력 (Stamina)',
+    hustle: '허슬 (Hustle)',
+    durability: '내구도 (Durability)'
 };
 
 const getGradeColor = (val: number) => {
@@ -33,12 +75,12 @@ const getGradeColor = (val: number) => {
 
 // Attribute Groups Configuration
 const ATTR_GROUPS = [
-    { id: 'INS', label: 'INSIDE', color: 'text-orange-400', keys: ['ins', 'closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
-    { id: 'OUT', label: 'OUTSIDE', color: 'text-indigo-400', keys: ['out', 'midRange', 'threeCorner', 'ft', 'shotIq', 'offConsist'] },
-    { id: 'PLM', label: 'PLAYMAKING', color: 'text-yellow-400', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
-    { id: 'DEF', label: 'DEFENSE', color: 'text-slate-300', keys: ['def', 'intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
-    { id: 'REB', label: 'REBOUND', color: 'text-emerald-400', keys: ['reb', 'offReb', 'defReb'] },
-    { id: 'ATH', label: 'ATHLETIC', color: 'text-teal-400', keys: ['ath', 'speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] }
+    { id: 'INS', label: 'INSIDE', keys: ['ins', 'closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
+    { id: 'OUT', label: 'OUTSIDE', keys: ['out', 'midRange', 'threeCorner', 'ft', 'shotIq', 'offConsist'] },
+    { id: 'PLM', label: 'PLAYMAKING', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
+    { id: 'DEF', label: 'DEFENSE', keys: ['def', 'intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
+    { id: 'REB', label: 'REBOUND', keys: ['reb', 'offReb', 'defReb'] },
+    { id: 'ATH', label: 'ATHLETIC', keys: ['ath', 'speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] }
 ];
 
 const STATS_COLS = [
@@ -80,7 +122,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         if (key === 'g') return s.g;
         if (key === 'gs') return s.gs;
         if (key === 'fg%') return s.fga > 0 ? s.fgm / s.fga : 0;
-        if (key === '3p%') return s.p3a > 0 ? s.p3m / s.p3a : 0;
+        if (key === '3p%') return s.p3m > 0 && s.p3a > 0 ? s.p3m / s.p3a : 0;
         if (key === 'ft%') return s.fta > 0 ? s.ftm / s.fta : 0;
         if (key === 'ts%') { const tsa = s.fga + 0.44 * s.fta; return tsa > 0 ? s.pts / (2 * tsa) : 0; }
         return 0;
@@ -147,23 +189,31 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 </colgroup>
                 <thead className="bg-slate-950/95 backdrop-blur-sm sticky top-0 z-40 border-b border-slate-800 shadow-sm">
                     {/* Header Row 1: Groups */}
-                    <tr className="h-8 border-b border-slate-800/50">
-                        <th colSpan={4} className="bg-slate-950 border-r border-slate-800/50 sticky left-0 z-50">
-                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Basic Information</span>
+                    <tr className="h-10 border-b border-slate-800/50">
+                        <th colSpan={4} className="bg-slate-950 border-r border-slate-800/50 sticky left-0 z-50 align-middle">
+                            <div className="h-full flex items-center justify-center">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Basic Information</span>
+                            </div>
                         </th>
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
-                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-900/50 border-r border-slate-800/50 px-2">
-                                <span className={`text-[9px] font-black uppercase tracking-widest ${g.color}`}>{g.label}</span>
+                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-900/50 border-r border-slate-800/50 px-2 align-middle">
+                                <div className="h-full flex items-center justify-center">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{g.label}</span>
+                                </div>
                             </th>
                         ))}
                         {tab === 'stats' && (
-                            <th colSpan={STATS_COLS.length} className="bg-slate-900/30 px-2">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
+                            <th colSpan={STATS_COLS.length} className="bg-slate-900/30 px-2 align-middle">
+                                <div className="h-full flex items-center justify-center">
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
+                                </div>
                             </th>
                         )}
                         {tab === 'salary' && (
-                            <th colSpan={SALARY_COLS.length} className="bg-slate-900/30 px-2">
-                                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Contract & Financials</span>
+                            <th colSpan={SALARY_COLS.length} className="bg-slate-900/30 px-2 align-middle">
+                                <div className="h-full flex items-center justify-center">
+                                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Contract & Financials</span>
+                                </div>
                             </th>
                         )}
                     </tr>
@@ -174,10 +224,24 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableHeaderCell style={{ left: LEFT_AGE, width: WIDTHS.AGE }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
                         <TableHeaderCell style={{ left: LEFT_OVR, width: WIDTHS.OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
                         
-                        {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                            <TableHeaderCell key={k} width={WIDTHS.ATTR} className="border-r border-slate-800/30" sortable onSort={() => handleSort(k)} sortDirection={sortConfig.key === k ? sortConfig.direction : null}>
-                                {k === 'threeAvg' ? '3PT' : k.slice(0, 3).toUpperCase()}
-                            </TableHeaderCell>
+                        {tab === 'roster' && ATTR_GROUPS.map(g => (
+                            g.keys.map((k, idx) => {
+                                const isGroupStart = idx === 0;
+                                const label = isGroupStart ? 'AVG' : (k === 'threeAvg' || k === 'threeCorner' ? '3PT' : k.slice(0, 3).toUpperCase());
+                                return (
+                                    <TableHeaderCell 
+                                        key={k} 
+                                        width={WIDTHS.ATTR} 
+                                        className="border-r border-slate-800/30" 
+                                        sortable 
+                                        onSort={() => handleSort(k)} 
+                                        sortDirection={sortConfig.key === k ? sortConfig.direction : null}
+                                        title={ATTR_NAME_MAP[k] || k}
+                                    >
+                                        {label}
+                                    </TableHeaderCell>
+                                );
+                            })
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => (
                             <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800/30" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
@@ -203,7 +267,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             </TableCell>
 
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                                <TableCell key={k} align="center" className={`font-black font-mono border-r border-slate-800/30 text-xs ${getGradeColor(Number((p as any)[k] || 0))}`} value={(p as any)[k]} variant="text" />
+                                <TableCell key={k} align="center" className={`font-black font-mono border-r border-slate-800/30 text-xs ${getGradeColor(Number((p as any)[k] || 0))}`} value={(p as any)[k]} variant="text" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => (
                                 <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300" value={getSortValue(p, c.key)} variant="stat" />
@@ -228,7 +292,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </TableCell>
 
                         {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                            <TableCell key={k} align="center" className={`font-black font-mono border-r border-slate-800/30 text-xs ${getGradeColor(averages.attr[k])}`} value={averages.attr[k]} variant="text" />
+                            <TableCell key={k} align="center" className={`font-black font-mono border-r border-slate-800/30 text-xs ${getGradeColor(averages.attr[k])}`} value={averages.attr[k]} variant="text" colorScale />
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             let val = averages.stat[c.key];
