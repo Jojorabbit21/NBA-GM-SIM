@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from 'react';
 import { Team } from '../types';
 import { Briefcase, Trophy, ArrowRight, PenTool } from 'lucide-react';
-import { TEAM_OWNERS } from '../utils/constants';
+import { TEAM_DATA } from '../data/teamData';
 
 interface OnboardingViewProps {
   team: Team;
@@ -26,7 +26,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
     return () => clearInterval(timer);
   }, []);
 
-  const ownerName = TEAM_OWNERS[team.id] || "The Ownership Group";
+  const ownerName = TEAM_DATA[team.id]?.owner || "The Ownership Group";
 
   return (
     <div className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center p-4 lg:p-8 relative overflow-hidden ko-normal pretendard">

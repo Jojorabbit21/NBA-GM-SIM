@@ -6,7 +6,7 @@ import { StartingLineup } from '../roster/StartingLineup';
 import { RotationMatrix } from './RotationMatrix';
 import { GanttChartSquare, Users } from 'lucide-react';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { getOvrBadgeStyle } from '../SharedComponents';
+import { OvrBadge } from '../common/OvrBadge';
 
 interface RosterTableProps {
   mode: 'mine' | 'opponent';
@@ -209,7 +209,9 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                             </div>
                                         </td>
                                         <td className="py-2.5 px-2 text-center border-r border-slate-800/50">
-                                            <div className={`${getOvrBadgeStyle(ovr)} !w-7 !h-7 !text-sm !mx-auto`}>{ovr}</div>
+                                            <div className="flex justify-center">
+                                                <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs" />
+                                            </div>
                                         </td>
 
                                         {/* Attributes Cells */}
@@ -239,7 +241,9 @@ export const RosterTable: React.FC<RosterTableProps> = ({
                                         <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM AVERAGE</span>
                                     </td>
                                     <td className="py-3 px-2 text-center border-r border-slate-800/50">
-                                        <div className={`${getOvrBadgeStyle(teamAverages.ovr)} !w-7 !h-7 !text-sm !mx-auto`}>{teamAverages.ovr}</div>
+                                        <div className="flex justify-center">
+                                            <OvrBadge value={teamAverages.ovr} size="sm" className="!w-7 !h-7 !text-xs" />
+                                        </div>
                                     </td>
                                     
                                     {/* Attributes Avg */}

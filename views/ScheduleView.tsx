@@ -1,8 +1,10 @@
+
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronLeft, ChevronRight, Save, Calendar, CheckCircle2, Search, ChevronDown, Loader2 } from 'lucide-react';
 import { Team, Game } from '../types';
 import { useMonthlySchedule } from '../services/queries';
 import { supabase } from '../services/supabaseClient';
+import { CALENDAR_EVENTS } from '../utils/constants';
 
 interface ScheduleViewProps {
   schedule: Game[]; // From App state (Local Source of Truth)
@@ -54,13 +56,11 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   }, [currentSimDate]);
 
   // [Optimization] Instant Rendering Strategy
-  // 1. Calculate base schedule from 'localSchedule' (Memory) -> INSTANT display
-  // 2. Overlay 'userResults' (DB) when they arrive -> Updates scores/played status
   const monthlyGames = useMemo(() => {
       const y = currentDate.getFullYear();
       const m = currentDate.getMonth();
 
-      // 1. Filter games for current month from full local schedule (O(N) but N=1230 is fast)
+      // 1. Filter games for current month from full local schedule
       const baseGames = localSchedule.filter(g => {
           const d = new Date(g.date);
           return d.getFullYear() === y && d.getMonth() === m;
@@ -68,19 +68,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
 
       // 2. Create Map for DB Results (if available)
       const resultMap = new Map<string, any>();
-      // Fix: Error in file views/ScheduleView.tsx on line 73: Property 'forEach' does not exist on type 'unknown'.
-      // Added Array.isArray check to narrow type and allow forEach.
       if (userResults && Array.isArray(userResults)) {
           userResults.forEach((r: any) => resultMap.set(r.game_id, r));
       }
 
       // 3. Merge Local + DB
-      // Priority: Local "Played" status (most recent sim) > DB Result > Base
       const mergedGames = baseGames.map(g => {
-          // If local state says played (just simulated), rely on it.
           if (g.played) return g;
 
-          // Otherwise check DB for historical results
           const dbResult = resultMap.get(g.id);
           if (dbResult) {
               return {
@@ -150,8 +145,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   };
 
   const selectedTeam = teams.find(t => t.id === selectedTeamId);
-  const asbStart = new Date(2026, 1, 13); 
-  const asbEnd = new Date(2026, 1, 18);
+  const asbStart = new Date(CALENDAR_EVENTS.ALL_STAR_START); 
+  const asbEnd = new Date(CALENDAR_EVENTS.ALL_STAR_END);
 
   const filteredTeamsList = useMemo(() => {
     return teams

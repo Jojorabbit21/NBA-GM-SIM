@@ -2,12 +2,10 @@
 import React, { useMemo } from 'react';
 import { Briefcase, X, Info, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
 import { Player, Team } from '../../types';
-import { getOvrBadgeStyle } from '../SharedComponents';
-import { calculatePlayerOvr } from '../../utils/constants';
+import { OvrBadge } from '../common/OvrBadge';
+import { calculatePlayerOvr, LEAGUE_FINANCIALS } from '../../utils/constants';
 
-const TAX_LEVEL = 170;
-const FIRST_APRON = 178;
-const SECOND_APRON = 189;
+const { TAX_LEVEL, FIRST_APRON, SECOND_APRON } = LEAGUE_FINANCIALS;
 
 const getCapStatus = (cap: number) => {
   if (cap >= SECOND_APRON) return { 
@@ -153,7 +151,9 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                                 <td className="py-3 px-6"><span className="px-2 py-0.5 bg-red-500/10 text-red-500 text-[9px] font-black rounded uppercase">OUT</span></td>
                                 <td className="py-3 px-2 text-xs font-bold text-slate-400">{userTeam.name}</td>
                                 <td className="py-3 px-2 text-sm font-black text-slate-200">{p.name}</td>
-                                <td className="py-3 px-2 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-sm"}>{ovr}</div></td>
+                                <td className="py-3 px-2 text-center">
+                                    <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
+                                </td>
                                 <td className="py-3 px-2 text-center text-[10px] font-bold text-slate-500">{p.position}</td>
                                 <td className="py-3 px-6 text-right font-mono text-xs font-black text-red-400">-${p.salary.toFixed(1)}M</td>
                             </tr>
@@ -167,7 +167,9 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                                 <td className="py-3 px-6"><span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[9px] font-black rounded uppercase">IN</span></td>
                                 <td className="py-3 px-2 text-xs font-bold text-slate-400">{targetTeam.name}</td>
                                 <td className="py-3 px-2 text-sm font-black text-slate-200">{p.name}</td>
-                                <td className="py-3 px-2 text-center"><div className={getOvrBadgeStyle(ovr) + " !w-7 !h-7 !text-sm"}>{ovr}</div></td>
+                                <td className="py-3 px-2 text-center">
+                                    <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-sm" />
+                                </td>
                                 <td className="py-3 px-2 text-center text-[10px] font-bold text-slate-500">{p.position}</td>
                                 <td className="py-3 px-6 text-right font-mono text-xs font-black text-emerald-400">+${p.salary.toFixed(1)}M</td>
                             </tr>
@@ -185,6 +187,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                 </table>
             </div>
 
+            {/* Validation Info & Status Bar */}
             <div className="space-y-6">
                 <div className="flex items-center gap-2 text-slate-400 uppercase font-black text-[10px] tracking-widest">
                     <AlertCircle size={14} /> 샐러리 캡 예측 및 상태 분석

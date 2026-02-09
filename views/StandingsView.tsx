@@ -3,20 +3,12 @@ import React, { useState, useMemo } from 'react';
 import { Team } from '../types';
 import { Loader2 } from 'lucide-react';
 import { StandingTable } from '../components/standings/StandingTable';
+import { DIVISION_KOREAN } from '../data/mappings';
 
 interface StandingsViewProps {
   teams: Team[];
   onTeamClick: (id: string) => void;
 }
-
-const DIVISION_KOREAN: Record<string, string> = {
-  'Atlantic': '애틀랜틱 디비전',
-  'Central': '센트럴 디비전',
-  'Southeast': '사우스이스트 디비전',
-  'Northwest': '노스웨스트 디비전',
-  'Pacific': '퍼시픽 디비전',
-  'Southwest': '사우스웨스트 디비전'
-};
 
 export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick }) => {
   const [mode, setMode] = useState<'Conference' | 'Division'>('Conference');

@@ -1,8 +1,11 @@
 
 import React, { useMemo } from 'react';
-import { Trophy, CalendarClock, Loader2, AlertTriangle, ArrowRight } from 'lucide-react';
-import { Team, Game, GameTactics, PlayoffSeries } from '../../types';
-import { getOvrBadgeStyle } from '../SharedComponents';
+import { Trophy, CalendarClock, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Team, Game, PlayoffSeries } from '../../types';
+import { Card } from '../common/Card';
+import { Button } from '../common/Button';
+import { Badge } from '../common/Badge';
+import { OvrBadge } from '../common/OvrBadge';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -14,7 +17,6 @@ interface DashboardHeaderProps {
   isGameToday: boolean;
   isSimulating?: boolean;
   onSimClick: () => void;
-  // Added missing props required by DashboardView
   onShowSeasonReview: () => void;
   onShowPlayoffReview: () => void;
   hasPlayoffHistory: boolean;
@@ -22,7 +24,6 @@ interface DashboardHeaderProps {
   currentSimDate?: string;
 }
 
-// Export DashboardReviewBanners as it's used in DashboardView
 export const DashboardReviewBanners: React.FC<{
     onShowSeasonReview: () => void;
     onShowPlayoffReview: () => void;
@@ -72,15 +73,14 @@ export const DashboardReviewBanners: React.FC<{
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, 
-  onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory, currentSeries, currentSimDate
+  currentSeries, currentSimDate
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
   const homeOvr = isHome ? myOvr : opponentOvrValue;
   const awayOvr = isHome ? opponentOvrValue : myOvr;
 
-  // Placeholder for rotation validation logic (usually passed or calculated from tactics)
-  const isRotationValid = true; 
+  const isRotationValid = true; // Placeholder logic
 
   const dDayDisplay = useMemo(() => {
       if (!nextGame || !currentSimDate) return null;
@@ -88,21 +88,19 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       
       const target = new Date(nextGame.date);
       const current = new Date(currentSimDate);
-      
-      // Reset hours for accurate day calc
       target.setHours(0,0,0,0);
       current.setHours(0,0,0,0);
       
       const diffTime = target.getTime() - current.getTime();
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       
-      if (diffDays === 0) return null; // Game Day
+      if (diffDays === 0) return null;
       if (diffDays > 0) return `D-${diffDays}`;
       return null;
   }, [nextGame, currentSimDate]);
 
   return (
-    <div className="w-full max-w-[1900px] bg-slate-900/80 border border-white/10 rounded-3xl shadow-2xl backdrop-blur-md overflow-hidden flex flex-col mb-6">
+    <Card variant="glass" padding="none" className="w-full max-w-[1900px] mb-6">
         <div className="px-8 py-8 border-b border-white/5 bg-white/5 flex flex-col lg:flex-row items-center justify-between gap-8">
             <div className="flex items-center gap-12 flex-1 justify-center lg:justify-start">
                 {/* Team Logos Section */}
@@ -114,17 +112,17 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                                 <span className="text-2xl font-black text-white oswald uppercase leading-none">{awayTeam.name}</span>
                                 <span className="text-xs font-bold text-slate-500 mt-1">{awayTeam.wins}W - {awayTeam.losses}L</span>
                             </div>
-                            <div className={getOvrBadgeStyle(awayOvr) + " !w-11 !h-11 !text-2xl"}>{awayOvr}</div>
+                            <OvrBadge value={awayOvr} size="lg" className="!text-2xl" />
                         </>
                     )}
                 </div>
                 
-                {/* VS Center Display with Date */}
+                {/* VS Center Display */}
                 <div className="flex flex-col items-center justify-center min-w-[100px]">
                     {nextGame && (
                         <div className="flex flex-col items-center mb-1.5 gap-1">
                             <span className="text-[10px] font-bold text-slate-500 tracking-wider">{nextGame.date}</span>
-                            {dDayDisplay && <span className="text-[9px] font-black text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded uppercase tracking-tight">{dDayDisplay}</span>}
+                            {dDayDisplay && <Badge variant="brand" size="sm">{dDayDisplay}</Badge>}
                         </div>
                     )}
                     <div className="text-3xl font-black text-slate-600 oswald leading-none">VS</div>
@@ -133,7 +131,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 <div className="flex items-center gap-6">
                     {homeTeam && (
                         <>
-                            <div className={getOvrBadgeStyle(homeOvr) + " !w-11 !h-11 !text-2xl"}>{homeOvr}</div>
+                            <OvrBadge value={homeOvr} size="lg" className="!text-2xl" />
                             <div className="flex flex-col items-end">
                                 <span className="text-2xl font-black text-white oswald uppercase leading-none">{homeTeam.name}</span>
                                 <span className="text-xs font-bold text-slate-500 mt-1">{homeTeam.wins}W - {homeTeam.losses}L</span>
@@ -151,24 +149,22 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         <span className="text-[10px] font-black uppercase">로테이션 설정 오류 (인원수/시간)</span>
                     </div>
                 )}
-                <button 
+                <Button 
                     onClick={onSimClick} 
                     disabled={isSimulating || (isGameToday && !isRotationValid)} 
-                    className={`px-12 py-4 rounded-3xl font-black flex items-center justify-center gap-4 transition-all active:scale-95 min-w-[280px]
-                        ${isGameToday 
-                            ? (isRotationValid ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/40' : 'bg-slate-800 text-slate-500 cursor-not-allowed')
-                            : 'bg-slate-700 hover:bg-blue-600'
-                        }`}
+                    variant={isGameToday ? (isRotationValid ? 'brand' : 'secondary') : 'secondary'}
+                    size="lg"
+                    isLoading={isSimulating}
+                    loadingText="이동 중..."
+                    icon={!isSimulating && <CalendarClock size={20} />}
+                    className="min-w-[280px]"
                 >
-                    {isSimulating ? <Loader2 size={22} className="animate-spin" /> : <CalendarClock size={22} />}
-                    <span className="text-xl oswald uppercase tracking-widest text-white">
-                        {isSimulating ? '이동 중...' : (isGameToday ? '경기 시작' : '내일로 이동')}
-                    </span>
-                </button>
+                    {isGameToday ? '경기 시작' : '내일로 이동'}
+                </Button>
             </div>
         </div>
         
-        {/* Playoff Series Info Sub-header if active */}
+        {/* Playoff Info */}
         {currentSeries && (
              <div className="px-8 py-3 bg-indigo-950/40 flex items-center justify-center gap-4 border-t border-indigo-500/10">
                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] oswald">Playoff Series Status</span>
@@ -178,11 +174,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                      currentSeries.round === 4 ? "NBA Finals" : 
                      `Round ${currentSeries.round}`}
                 </span>
-                <div className="px-3 py-0.5 bg-indigo-600 rounded-full text-[11px] font-black text-white">
-                    {currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}
-                </div>
+                <Badge variant="brand">{currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}</Badge>
              </div>
         )}
-    </div>
+    </Card>
   );
 };

@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Settings2, User, ChevronRight, RefreshCw, FlaskConical, Info, ArrowUp, ArrowDown, Target, Zap, Shield, Activity, Share2, Brain } from 'lucide-react';
 import { Team, Player } from '../types';
-import { getOvrBadgeStyle } from '../components/SharedComponents';
+import { OvrBadge } from '../components/common/OvrBadge';
 import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
 
 interface OvrCalculatorViewProps {
@@ -210,12 +210,12 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
                                 </td>
                                 <td className="py-4 px-4 text-center">
                                     <div className="flex justify-center items-center gap-2">
-                                        <div className={getOvrBadgeStyle(p.oldOvr) + " !w-9 !h-9 !text-lg !mx-0 opacity-60"}>{p.oldOvr}</div>
+                                        <OvrBadge value={p.oldOvr} size="md" className="!w-9 !h-9 !text-lg !mx-0 opacity-60" />
                                     </div>
                                 </td>
                                 <td className="py-4 px-4 text-center bg-indigo-600/5">
                                     <div className="flex justify-center items-center gap-2">
-                                        <div className={getOvrBadgeStyle(p.newOvr) + " !w-10 !h-10 !text-xl !mx-0"}>{p.newOvr}</div>
+                                        <OvrBadge value={p.newOvr} size="md" className="!w-10 !h-10 !text-xl !mx-0" />
                                     </div>
                                 </td>
                                 <td className="py-4 px-8 text-center">

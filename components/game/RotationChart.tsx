@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Team, PlayerBoxScore, RotationData } from '../../types';
+import { TEAM_DATA } from '../../data/teamData';
 
 interface RotationChartProps {
     homeTeam: Team;
@@ -15,8 +16,8 @@ const GAME_DURATION_SECONDS = 48 * 60; // 2880
 const PlayerRow: React.FC<{ 
     player: PlayerBoxScore, 
     segments: { in: number, out: number }[],
-    teamColorClass: string 
-}> = ({ player, segments, teamColorClass }) => {
+    teamColor: string 
+}> = ({ player, segments, teamColor }) => {
     // Only render if player played at least 1 second
     if (!segments || segments.length === 0) return null;
 
@@ -40,11 +41,12 @@ const PlayerRow: React.FC<{
                     return (
                         <div
                             key={i}
-                            className={`absolute top-2 bottom-2 rounded-sm ${teamColorClass} opacity-80 hover:opacity-100 transition-opacity`}
+                            className={`absolute top-2 bottom-2 rounded-sm opacity-80 hover:opacity-100 transition-opacity`}
                             style={{ 
                                 left: `${startPct}%`, 
                                 width: `${cappedWidth}%`,
-                                minWidth: '2px' 
+                                minWidth: '2px',
+                                backgroundColor: teamColor
                             }}
                             title={`${Math.floor(seg.in/60)}' - ${Math.floor(seg.out/60)}'`}
                         />
@@ -68,6 +70,9 @@ export const RotationChart: React.FC<RotationChartProps> = ({
 
     const sortedHome = [...homeBox].sort(sortPlayers);
     const sortedAway = [...awayBox].sort(sortPlayers);
+
+    const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#6366f1';
+    const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#94a3b8';
 
     return (
         <div className="w-full bg-slate-950 border border-slate-800 rounded-3xl p-6 mb-8 shadow-2xl relative overflow-hidden">
@@ -109,7 +114,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                                 key={p.playerId} 
                                 player={p} 
                                 segments={rotationData[p.playerId]} 
-                                teamColorClass="bg-slate-400"
+                                teamColor={awayColor}
                             />
                         ))}
                     </div>
@@ -139,7 +144,7 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                                 key={p.playerId} 
                                 player={p} 
                                 segments={rotationData[p.playerId]} 
-                                teamColorClass="bg-indigo-500"
+                                teamColor={homeColor}
                             />
                         ))}
                     </div>

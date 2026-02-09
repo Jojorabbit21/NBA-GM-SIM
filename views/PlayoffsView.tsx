@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { Zap, BarChart3 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../types';
 import { GridSeriesBox } from '../components/playoffs/GridSeriesBox';
+import { TEAM_DATA } from '../data/teamData';
 
 interface PlayoffsViewProps {
   teams: Team[];
@@ -16,14 +17,6 @@ interface PlayoffsViewProps {
 const HEADER_STYLE = "py-3 px-2 md:px-4 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-900/90 border-r border-slate-800 text-center truncate";
 const EAST_SECTION_HEIGHT = "h-[460px]";
 const WEST_SECTION_HEIGHT = "h-[460px]";
-
-const TEAM_COLORS: Record<string, string> = {
-  'atl': '#C8102E', 'bos': '#007A33', 'bkn': '#333333', 'cha': '#1D1160', 'chi': '#CE1141', 'cle': '#860038',
-  'dal': '#00538C', 'den': '#0E2240', 'det': '#C8102E', 'gsw': '#1D428A', 'hou': '#CE1141', 'ind': '#002D62',
-  'lac': '#1D428A', 'lal': '#552583', 'mem': '#5D76A9', 'mia': '#98002E', 'mil': '#00471B', 'min': '#0C2340',
-  'nop': '#0C2340', 'nyk': '#006BB6', 'okc': '#007AC1', 'orl': '#0077C0', 'phi': '#006BB6', 'phx': '#1D1160',
-  'por': '#E03A3E', 'sac': '#5A2D81', 'sas': '#C4CED4', 'tor': '#CE1141', 'uta': '#002B5C', 'was': '#002B5C'
-};
 
 export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, series, setSeries, setSchedule, myTeamId }) => {
   const regularSeasonFinished = useMemo(() => {
@@ -132,11 +125,11 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
   const getFinalsGradient = () => {
       const defaultGradient = 'linear-gradient(to bottom right, #1d428a, #c8102e)';
       if (!finals) return defaultGradient;
-      const team1 = teams.find(t => t.id === finals.higherSeedId);
-      const team2 = teams.find(t => t.id === finals.lowerSeedId);
-      if (!team1 || !team2) return defaultGradient;
-      const c1 = TEAM_COLORS[team1.id] || '#1d428a';
-      const c2 = TEAM_COLORS[team2.id] || '#c8102e';
+      const team1 = TEAM_DATA[finals.higherSeedId];
+      const team2 = TEAM_DATA[finals.lowerSeedId];
+      
+      const c1 = team1 ? team1.colors.primary : '#1d428a';
+      const c2 = team2 ? team2.colors.primary : '#c8102e';
       return `linear-gradient(to bottom right, ${c1}, ${c2})`;
   };
 

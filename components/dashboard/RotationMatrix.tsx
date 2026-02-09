@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { getOvrBadgeStyle } from '../SharedComponents';
+import { OvrBadge } from '../common/OvrBadge';
 import { AlertCircle, Timer } from 'lucide-react';
 
 interface RotationMatrixProps {
@@ -211,10 +211,10 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                             </span>
                                         </td>
 
-                                        {/* OVR - Font Size Increased to text-sm */}
+                                        {/* OVR */}
                                         <td className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
-                                            <div className={`${getOvrBadgeStyle(ovr)} !w-6 !h-6 !text-sm !rounded-md !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`}>
-                                                {ovr}
+                                            <div className="flex justify-center">
+                                                <OvrBadge value={ovr} size="sm" className={`!w-6 !h-6 !text-xs !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`} />
                                             </div>
                                         </td>
                                         

@@ -3,8 +3,8 @@ import React, { useState } from 'react';
 import { Player, Team, GameTactics } from '../../types';
 import { User } from 'lucide-react';
 import { supabaseUrl } from '../../services/supabaseClient';
-import { getOvrBadgeStyle } from '../SharedComponents';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { OvrBadge } from '../common/OvrBadge';
 
 interface StartingLineupProps {
   team: Team;
@@ -34,13 +34,12 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   const displayOvr = calculatePlayerOvr(player);
 
   // 2. 이미지가 로드되지 않았을 때 (요청사항: 어두운 점선, 아바타, 이름)
-  // Consistently use Global OVR Badge style even in error state for uniformity
   if (imageError) {
       return (
         <div className={`${containerClass} bg-slate-900/30 border border-dashed border-slate-600`}>
-           {/* OVR Badge (Top-Left) - Even Larger Size */}
-           <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(displayOvr)} !w-24 !h-24 !text-6xl !rounded-tl-none !rounded-br-3xl`}>
-             {displayOvr}
+           {/* OVR Badge (Top-Left) */}
+           <div className="absolute top-0 left-0 z-20">
+             <OvrBadge value={displayOvr} size="xl" className="!w-24 !h-24 !text-6xl !rounded-tl-none !rounded-br-3xl !rounded-tr-none !rounded-bl-none shadow-none" />
            </div>
 
            {/* Center Content */}
@@ -64,9 +63,9 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
   return (
     <div className={`${containerClass} shadow-xl`}>
        
-       {/* OVR Badge (Top-Left) - Even Larger Size */}
-       <div className={`absolute top-0 left-0 z-20 ${getOvrBadgeStyle(displayOvr)} !w-24 !h-24 !text-6xl !rounded-tl-none !rounded-br-3xl`}>
-          {displayOvr}
+       {/* OVR Badge (Top-Left) */}
+       <div className="absolute top-0 left-0 z-20">
+          <OvrBadge value={displayOvr} size="xl" className="!w-24 !h-24 !text-6xl !rounded-tl-none !rounded-br-3xl !rounded-tr-none !rounded-bl-none shadow-none" />
        </div>
 
        {/* Image Loader */}
@@ -81,9 +80,6 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
        
        {/* Shine/Gradient Effect */}
        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-50 pointer-events-none z-10"></div>
-       
-       {/* NOTE: Name removed when image exists per request */}
-       {/* NOTE: Position Label removed per request */}
     </div>
   );
 };
