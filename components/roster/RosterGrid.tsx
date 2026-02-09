@@ -19,7 +19,7 @@ const WIDTHS = {
     POS: 60,
     AGE: 50,
     OVR: 60,
-    ATTR: 54, // [Fix] Increased from 45 to 54 to prevent text cut-off in headers
+    ATTR: 54,
     STAT: 55,
     SALARY: 100
 };
@@ -64,13 +64,6 @@ const ATTR_NAME_MAP: Record<string, string> = {
     stamina: '체력 (Stamina)',
     hustle: '허슬 (Hustle)',
     durability: '내구도 (Durability)'
-};
-
-const getGradeColor = (val: number) => {
-    if (val >= 90) return 'text-fuchsia-400';
-    if (val >= 80) return 'text-emerald-400';
-    if (val >= 70) return 'text-amber-400';
-    return 'text-slate-500';
 };
 
 // Attribute Groups Configuration
@@ -188,30 +181,30 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     {tab === 'stats' && STATS_COLS.map((_, i) => <col key={`stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
                     {tab === 'salary' && SALARY_COLS.map((_, i) => <col key={`sal-${i}`} style={{ width: WIDTHS.SALARY }} />)}
                 </colgroup>
-                <thead className="bg-slate-950/95 backdrop-blur-sm sticky top-0 z-40 border-b border-slate-800 shadow-sm">
+                <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                     {/* Header Row 1: Groups */}
-                    <tr className="h-10 border-b border-slate-800/50">
-                        <th colSpan={4} className="bg-slate-950 border-r border-slate-800/50 sticky left-0 z-50 align-middle">
+                    <tr className="h-10">
+                        <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
                             <div className="h-full flex items-center justify-center">
                                 <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Basic Information</span>
                             </div>
                         </th>
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
-                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-900/50 border-r border-slate-800/50 px-2 align-middle">
+                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-900 border-b border-r border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{g.label}</span>
                                 </div>
                             </th>
                         ))}
                         {tab === 'stats' && (
-                            <th colSpan={STATS_COLS.length} className="bg-slate-900/30 px-2 align-middle">
+                            <th colSpan={STATS_COLS.length} className="bg-slate-900 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
                                 </div>
                             </th>
                         )}
                         {tab === 'salary' && (
-                            <th colSpan={SALARY_COLS.length} className="bg-slate-900/30 px-2 align-middle">
+                            <th colSpan={SALARY_COLS.length} className="bg-slate-900 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Contract & Financials</span>
                                 </div>
@@ -220,10 +213,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     </tr>
                     {/* Header Row 2: Labels */}
                     <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                        <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800/50" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800/50" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
+                        <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
                         
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
                             g.keys.map((k, idx) => {
@@ -233,7 +226,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     <TableHeaderCell 
                                         key={k} 
                                         width={WIDTHS.ATTR} 
-                                        className="border-r border-slate-800/30" 
+                                        className="border-r border-slate-800" 
                                         sortable 
                                         onSort={() => handleSort(k)} 
                                         sortDirection={sortConfig.key === k ? sortConfig.direction : null}
@@ -245,10 +238,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             })
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => (
-                            <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800/30" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
+                            <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
                         ))}
                         {tab === 'salary' && SALARY_COLS.map(c => (
-                            <TableHeaderCell key={c.key} width={WIDTHS.SALARY} className="border-r border-slate-800/30" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
+                            <TableHeaderCell key={c.key} width={WIDTHS.SALARY} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
                         ))}
                     </tr>
                 </thead>
@@ -261,9 +254,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     {p.health !== 'Healthy' && <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>{p.health}</span>}
                                 </div>
                             </TableCell>
-                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800/50 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
-                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800/50 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
-                            <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_10px_rgba(0,0,0,0.3)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
+                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
+                            <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
 
@@ -271,13 +264,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => (
-                                <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300" value={getSortValue(p, c.key)} variant="stat" />
+                                <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={getSortValue(p, c.key)} variant="stat" />
                             ))}
                             {tab === 'salary' && (
                                 <>
-                                    <TableCell align="center" className="font-mono font-bold text-xs text-emerald-400" value={`$${p.salary.toFixed(1)}M`} />
-                                    <TableCell align="center" className="font-mono font-bold text-xs text-slate-400" value={`${p.contractYears} yrs`} />
-                                    <TableCell align="center" className="font-mono font-bold text-xs text-slate-300" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
+                                    <TableCell align="center" className="font-mono font-bold text-xs text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
+                                    <TableCell align="center" className="font-mono font-bold text-xs text-slate-400 border-r border-slate-800/30" value={`${p.contractYears} yrs`} />
+                                    <TableCell align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
                                 </>
                             )}
                         </TableRow>
@@ -286,9 +279,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
-                        <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800/50 bg-slate-950 z-30"></TableCell>
-                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800/50 bg-slate-950 text-center font-bold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
-                        <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_10px_rgba(0,0,0,0.3)] z-30 text-center">
+                        <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
+                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-bold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
+                        <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30 text-center">
                             <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
                         </TableCell>
 
@@ -301,7 +294,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 if (c.key.includes('%')) val = (val * 100).toFixed(1) + '%';
                                 else val = val.toFixed(1);
                             }
-                            return <TableCell key={c.key} align="center" className="font-mono font-black text-xs text-slate-400" value={val} variant="stat" />;
+                            return <TableCell key={c.key} align="center" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800/30" value={val} variant="stat" />;
                         })}
                         {tab === 'salary' && (
                             <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-sm" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
