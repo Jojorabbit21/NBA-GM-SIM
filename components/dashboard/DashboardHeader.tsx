@@ -1,10 +1,8 @@
 
-import React, { useMemo } from 'react';
-import { Trophy, CalendarClock, AlertTriangle, ArrowRight } from 'lucide-react';
+import React from 'react';
+import { CalendarClock } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
-import { Card } from '../common/Card';
 import { Button } from '../common/Button';
-import { Badge } from '../common/Badge';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 
@@ -18,166 +16,142 @@ interface DashboardHeaderProps {
   isGameToday: boolean;
   isSimulating?: boolean;
   onSimClick: () => void;
-  onShowSeasonReview: () => void;
-  onShowPlayoffReview: () => void;
-  hasPlayoffHistory: boolean;
   currentSeries?: PlayoffSeries;
   currentSimDate?: string;
 }
 
-export const DashboardReviewBanners: React.FC<{
-    onShowSeasonReview: () => void;
-    onShowPlayoffReview: () => void;
-    hasPlayoffHistory: boolean;
-    showSeasonBanner: boolean;
-    showPlayoffBanner: boolean;
-}> = ({ onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory, showSeasonBanner, showPlayoffBanner }) => {
-    return (
-        <div className="w-full max-w-[1900px] flex flex-col gap-4">
-            {showSeasonBanner && (
-                <button 
-                    onClick={onShowSeasonReview}
-                    className="w-full bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 p-4 rounded-2xl flex items-center justify-between shadow-lg group transition-all"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="p-2 bg-white/20 rounded-lg"><Trophy size={20} className="text-white" /></div>
-                        <div className="text-left">
-                            <h4 className="text-white font-black uppercase tracking-tight leading-none">2025-26 정규시즌 종료</h4>
-                            <p className="text-white/80 text-xs font-bold mt-1">시즌 최종 성적 및 단장님을 위한 리포트가 도착했습니다.</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-white font-black uppercase text-xs">
-                        리포트 확인 <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </div>
-                </button>
-            )}
-            {showPlayoffBanner && hasPlayoffHistory && (
-                <button 
-                    onClick={onShowPlayoffReview}
-                    className="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 p-4 rounded-2xl flex items-center justify-between shadow-lg group transition-all"
-                >
-                    <div className="flex items-center gap-4">
-                        <div className="p-2 bg-white/20 rounded-lg"><Trophy size={20} className="text-white" /></div>
-                        <div className="text-left">
-                            <h4 className="text-white font-black uppercase tracking-tight leading-none">포스트시즌 여정 종료</h4>
-                            <p className="text-white/80 text-xs font-bold mt-1">플레이오프 결과를 복기하고 다음 시즌을 준비하세요.</p>
-                        </div>
-                    </div>
-                    <div className="flex items-center gap-2 text-white font-black uppercase text-xs">
-                        결과 확인 <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                    </div>
-                </button>
-            )}
-        </div>
-    );
-};
-
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, 
-  currentSeries, currentSimDate
+  currentSeries
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
   const homeOvr = isHome ? myOvr : opponentOvrValue;
   const awayOvr = isHome ? opponentOvrValue : myOvr;
 
-  const isRotationValid = true; // Placeholder logic
-
-  const dDayDisplay = useMemo(() => {
-      if (!nextGame || !currentSimDate) return null;
-      if (nextGame.played) return null;
-      
-      const target = new Date(nextGame.date);
-      const current = new Date(currentSimDate);
-      target.setHours(0,0,0,0);
-      current.setHours(0,0,0,0);
-      
-      const diffTime = target.getTime() - current.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      
-      if (diffDays === 0) return null;
-      if (diffDays > 0) return `D-${diffDays}`;
-      return null;
-  }, [nextGame, currentSimDate]);
+  const playoffRoundName = currentSeries ? (
+      currentSeries.round === 0 ? "Play-In Tournament" : 
+      currentSeries.round === 4 ? "NBA Finals" : 
+      currentSeries.round === 3 ? `${currentSeries.conference} Conference Finals` :
+      currentSeries.round === 2 ? `${currentSeries.conference} Conference Semifinals` :
+      `${currentSeries.conference} Conference Round 1`
+  ) : null;
 
   return (
-    <Card variant="glass" padding="none" className="w-full max-w-[1900px] mb-6">
-        <div className="px-8 py-8 border-b border-white/5 bg-white/5 flex flex-col lg:flex-row items-center justify-between gap-8">
-            <div className="flex items-center gap-12 flex-1 justify-center lg:justify-start">
-                {/* Team Logos Section */}
-                <div className="flex items-center gap-6">
-                    {awayTeam && (
+    <div className="w-full bg-slate-900/90 border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col">
+        <div className="px-8 py-3 flex items-center justify-between gap-8 h-20">
+            {/* Left: Matchup & Scores */}
+            <div className="flex items-center gap-8 min-w-0">
+                {/* Away Team */}
+                <div className="flex items-center gap-3">
+                    {awayTeam ? (
                         <>
-                            <TeamLogo teamId={awayTeam.id} size="xl" />
-                            <div className="flex flex-col">
-                                <span className="text-2xl font-black text-white oswald uppercase leading-none">{awayTeam.name}</span>
-                                <span className="text-xs font-bold text-slate-500 mt-1">{awayTeam.wins}W - {awayTeam.losses}L</span>
+                            <TeamLogo teamId={awayTeam.id} size="lg" />
+                            <div className="hidden sm:flex flex-col">
+                                <span className="text-sm font-black text-white oswald uppercase leading-tight truncate max-w-[100px]">{awayTeam.name}</span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{awayTeam.wins}W-{awayTeam.losses}L</span>
                             </div>
-                            <OvrBadge value={awayOvr} size="lg" className="!text-2xl" />
+                            <OvrBadge value={awayOvr} size="md" className="!w-7 !h-7 !text-xs" />
                         </>
+                    ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-800 animate-pulse"></div>
                     )}
                 </div>
                 
-                {/* VS Center Display */}
-                <div className="flex flex-col items-center justify-center min-w-[100px]">
-                    {nextGame && (
-                        <div className="flex flex-col items-center mb-1.5 gap-1">
-                            <span className="text-[10px] font-bold text-slate-500 tracking-wider">{nextGame.date}</span>
-                            {dDayDisplay && <Badge variant="brand" size="sm">{dDayDisplay}</Badge>}
+                {/* Center: Match Info (Replaced VS with Date/Series) */}
+                <div className="flex flex-col items-center justify-center px-4 border-x border-white/5 min-w-[160px]">
+                    {currentSeries ? (
+                        <div className="flex flex-col items-center">
+                            <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest leading-none mb-1">{playoffRoundName}</span>
+                            <span className="text-sm font-black text-white oswald uppercase tracking-tighter">Series: {currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}</span>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Upcoming Game</span>
+                            <span className="text-sm font-black text-white oswald tracking-widest">{nextGame?.date || 'SCHEDULED'}</span>
                         </div>
                     )}
-                    <div className="text-3xl font-black text-slate-600 oswald leading-none">VS</div>
                 </div>
 
-                <div className="flex items-center gap-6">
-                    {homeTeam && (
+                {/* Home Team */}
+                <div className="flex items-center gap-3">
+                    {homeTeam ? (
                         <>
-                            <OvrBadge value={homeOvr} size="lg" className="!text-2xl" />
-                            <div className="flex flex-col items-end">
-                                <span className="text-2xl font-black text-white oswald uppercase leading-none">{homeTeam.name}</span>
-                                <span className="text-xs font-bold text-slate-500 mt-1">{homeTeam.wins}W - {homeTeam.losses}L</span>
+                            <OvrBadge value={homeOvr} size="md" className="!w-7 !h-7 !text-xs" />
+                            <div className="hidden sm:flex flex-col items-end">
+                                <span className="text-sm font-black text-white oswald uppercase leading-tight truncate max-w-[100px]">{homeTeam.name}</span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase">{homeTeam.wins}W-{homeTeam.losses}L</span>
                             </div>
-                            <TeamLogo teamId={homeTeam.id} size="xl" />
+                            <TeamLogo teamId={homeTeam.id} size="lg" />
                         </>
+                    ) : (
+                        <div className="w-10 h-10 rounded-full bg-slate-800 animate-pulse"></div>
                     )}
                 </div>
             </div>
 
-            <div className="flex flex-col items-center gap-2">
-                {!isRotationValid && isGameToday && (
-                    <div className="flex items-center gap-2 text-red-500 animate-pulse mb-1">
-                        <AlertTriangle size={14} />
-                        <span className="text-[10px] font-black uppercase">로테이션 설정 오류 (인원수/시간)</span>
-                    </div>
-                )}
+            {/* Right: Simulation Action */}
+            <div className="flex items-center">
                 <Button 
                     onClick={onSimClick} 
-                    disabled={isSimulating || (isGameToday && !isRotationValid)} 
-                    variant={isGameToday ? (isRotationValid ? 'brand' : 'secondary') : 'secondary'}
-                    size="lg"
+                    disabled={isSimulating} 
+                    variant={isGameToday ? 'brand' : 'secondary'}
+                    size="md"
                     isLoading={isSimulating}
-                    loadingText="이동 중..."
-                    icon={!isSimulating && <CalendarClock size={20} />}
-                    className="min-w-[280px]"
+                    loadingText="처리 중"
+                    icon={!isSimulating && <CalendarClock size={16} />}
+                    className="min-w-[180px] h-10 !rounded-xl"
                 >
                     {isGameToday ? '경기 시작' : '내일로 이동'}
                 </Button>
             </div>
         </div>
-        
-        {/* Playoff Info */}
-        {currentSeries && (
-             <div className="px-8 py-3 bg-indigo-950/40 flex items-center justify-center gap-4 border-t border-indigo-500/10">
-                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-[0.2em] oswald">Playoff Series Status</span>
-                <div className="h-4 w-px bg-indigo-500/20"></div>
-                <span className="text-sm font-black text-white">
-                    {currentSeries.round === 0 ? "Play-In Tournament" : 
-                     currentSeries.round === 4 ? "NBA Finals" : 
-                     `Round ${currentSeries.round}`}
-                </span>
-                <Badge variant="brand">{currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}</Badge>
-             </div>
-        )}
-    </Card>
+    </div>
+  );
+};
+
+// [Fix] Add missing DashboardReviewBanners component as requested by views/DashboardView.tsx
+interface DashboardReviewBannersProps {
+  onShowSeasonReview: () => void;
+  onShowPlayoffReview: () => void;
+  hasPlayoffHistory: boolean;
+  showSeasonBanner: boolean;
+  showPlayoffBanner: boolean;
+}
+
+export const DashboardReviewBanners: React.FC<DashboardReviewBannersProps> = ({
+  onShowSeasonReview,
+  onShowPlayoffReview,
+  hasPlayoffHistory,
+  showSeasonBanner,
+  showPlayoffBanner
+}) => {
+  if (!showSeasonBanner && !showPlayoffBanner) return null;
+  
+  return (
+    <div className="w-full max-w-[1900px] flex flex-col gap-4">
+      {showSeasonBanner && (
+        <div className="bg-gradient-to-r from-orange-600 to-orange-800 p-6 rounded-3xl flex items-center justify-between shadow-xl animate-in slide-in-from-top-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xl font-black text-white oswald uppercase tracking-wider">정규시즌 종료</h3>
+            <p className="text-sm font-bold text-orange-100 opacity-80">이번 시즌의 최종 성적과 통계를 확인하세요.</p>
+          </div>
+          <Button onClick={onShowSeasonReview} variant="secondary" className="!bg-white !text-orange-700 !border-none hover:!bg-orange-50 font-black">
+            시즌 리포트 보기
+          </Button>
+        </div>
+      )}
+      {showPlayoffBanner && (
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 rounded-3xl flex items-center justify-between shadow-xl animate-in slide-in-from-top-4">
+          <div className="flex flex-col gap-1">
+            <h3 className="text-xl font-black text-white oswald uppercase tracking-wider">포스트시즌 종료</h3>
+            <p className="text-sm font-bold text-indigo-100 opacity-80">플레이오프 여정의 마침표를 확인하세요.</p>
+          </div>
+          <Button onClick={onShowPlayoffReview} variant="secondary" className="!bg-white !text-indigo-700 !border-none hover:!bg-indigo-50 font-black">
+            플레이오프 리포트 보기
+          </Button>
+        </div>
+      )}
+    </div>
   );
 };
