@@ -1,195 +1,46 @@
 
 import React, { useMemo } from 'react';
-import { Trophy, ArrowLeft, CalendarDays, BarChart3, Users, Crown, Medal, Star, Activity } from 'lucide-react';
+import { ArrowLeft, CalendarDays, BarChart3, Users, Crown } from 'lucide-react';
 import { Team, PlayoffSeries, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
-import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { generatePlayoffReport } from '../services/reportGenerator';
 
 interface PlayoffReviewViewProps {
   team: Team;
   teams: Team[];
   playoffSeries: PlayoffSeries[];
-  schedule: Game[]; // Added schedule to show game logs
+  schedule: Game[];
   onBack: () => void;
 }
 
 export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, teams, playoffSeries, schedule, onBack }) => {
-  // 1. Determine Playoff Result
-  const mySeries = useMemo(() => {
-      // Filter series involving my team and sort by round (highest round first)
-      return playoffSeries
-          .filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id)
-          .sort((a, b) => b.round - a.round);
-  }, [playoffSeries, team.id]);
+  // Use Service to generate all display data
+  const report = useMemo(() => generatePlayoffReport(team, teams, playoffSeries, schedule), [team, teams, playoffSeries, schedule]);
 
-  const lastSeries = mySeries.length > 0 ? mySeries[0] : null;
-  
-  let playoffStatus = {
-      title: "Playoff Qualification",
-      desc: "팀이 플레이오프에 진출했습니다.",
-      color: "text-blue-400",
-      bg: "bg-gradient-to-r from-blue-900/40 to-slate-900",
-      border: "border-blue-500/30",
-      icon: <Trophy size={32} className="text-blue-400" />
-  };
+  const {
+      status,
+      totalWins,
+      totalLosses,
+      winPctStr,
+      teamStats,
+      mvp,
+      seriesLogs,
+      ownerName
+  } = report;
 
-  if (lastSeries) {
-      const isWinner = lastSeries.winnerId === team.id;
-      const isFinished = lastSeries.finished;
-      
-      if (lastSeries.round === 4) { // NBA Finals
-          if (isWinner && isFinished) {
-              playoffStatus = { 
-                  title: "NBA CHAMPIONS", 
-                  desc: "세계 최고의 자리에 올랐습니다! 역사에 남을 우승입니다.", 
-                  color: "text-yellow-400", 
-                  bg: "bg-gradient-to-r from-yellow-900/40 to-slate-900",
-                  border: "border-yellow-500/50",
-                  icon: <Crown size={40} className="text-yellow-400 fill-yellow-400 animate-pulse" />
-              };
-          } else if (isFinished) {
-              playoffStatus = { 
-                  title: "NBA Finalist", 
-                  desc: "아쉬운 준우승이지만, 위대한 여정이었습니다.", 
-                  color: "text-slate-200", 
-                  bg: "bg-gradient-to-r from-slate-800 to-slate-900",
-                  border: "border-slate-400/50",
-                  icon: <Medal size={40} className="text-slate-300" />
-              };
-          }
-      } else if (lastSeries.round === 3) { // Conf Finals
-          if (!isWinner && isFinished) {
-              playoffStatus = { 
-                  title: "Conference Finalist", 
-                  desc: "컨퍼런스 결승 진출. 우승 문턱에서 멈췄습니다.", 
-                  color: "text-indigo-400", 
-                  bg: "bg-gradient-to-r from-indigo-900/40 to-slate-900",
-                  border: "border-indigo-500/30",
-                  icon: <Trophy size={40} className="text-indigo-400" />
-              };
-          }
-      } else if (lastSeries.round === 2) { // Semis
-          if (!isWinner && isFinished) {
-              playoffStatus = { 
-                  title: "Semi-Finalist", 
-                  desc: "컨퍼런스 4강 진출. 다음 시즌이 기대됩니다.", 
-                  color: "text-emerald-400", 
-                  bg: "bg-gradient-to-r from-emerald-900/40 to-slate-900",
-                  border: "border-emerald-500/30",
-                  icon: <Star size={40} className="text-emerald-400" />
-              };
-          }
-      } else if (lastSeries.round === 1) { // Round 1
-          if (!isWinner && isFinished) {
-              playoffStatus = { 
-                  title: "Playoff Participant", 
-                  desc: "플레이오프 1라운드 진출. 소중한 경험을 쌓았습니다.", 
-                  color: "text-slate-400", 
-                  bg: "bg-gradient-to-r from-slate-900 to-slate-950",
-                  border: "border-slate-600/30",
-                  icon: <Activity size={40} className="text-slate-400" />
-              };
-          }
-      }
-  }
-
-  // 2. Playoff Stats Calculation
-  const getPlayoffAggregates = () => {
-      let totalGames = 0;
-      const totals = team.roster.reduce((acc, p) => {
-          const s = p.playoffStats || { g: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fga: 0, fgm: 0, fta: 0, ftm: 0, p3a: 0, p3m: 0 };
-          if (s.g > totalGames) totalGames = s.g; 
-          return {
-              pts: acc.pts + s.pts,
-              reb: acc.reb + s.reb,
-              ast: acc.ast + s.ast,
-              stl: acc.stl + s.stl,
-              blk: acc.blk + s.blk,
-              tov: acc.tov + s.tov,
-              fgm: acc.fgm + s.fgm,
-              fga: acc.fga + s.fga,
-              p3m: acc.p3m + s.p3m,
-              p3a: acc.p3a + s.p3a,
-              ftm: acc.ftm + s.ftm,
-              fta: acc.fta + s.fta,
-          };
-      }, { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
-
-      if (totalGames === 0) totalGames = 1;
-
-      const tsa = totals.fga + 0.44 * totals.fta;
-      
-      return {
-          pts: totals.pts / totalGames,
-          reb: totals.reb / totalGames,
-          ast: totals.ast / totalGames,
-          stl: totals.stl / totalGames,
-          blk: totals.blk / totalGames,
-          tov: totals.tov / totalGames,
-          fgPct: totals.fga > 0 ? totals.fgm / totals.fga : 0,
-          p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
-          ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
-          tsPct: tsa > 0 ? totals.pts / (2 * tsa) : 0,
-          games: totalGames
-      };
-  };
-
-  const teamStats = getPlayoffAggregates();
-
-  // 3. Playoff MVP Logic
-  const sortedByPlayoffPts = [...team.roster].sort((a, b) => {
-      const sA = a.playoffStats || { g: 0, pts: 0 };
-      const sB = b.playoffStats || { g: 0, pts: 0 };
-      const pA = sA.g > 0 ? sA.pts / sA.g : 0;
-      const pB = sB.g > 0 ? sB.pts / sB.g : 0;
-      return pB - pA;
-  });
-  const mvp = sortedByPlayoffPts[0];
-
-  // Calculate Win/Loss from Series
-  let totalWins = 0;
-  let totalLosses = 0;
-  mySeries.forEach(s => {
-      if (s.higherSeedId === team.id) {
-          totalWins += s.higherSeedWins;
-          totalLosses += s.lowerSeedWins;
-      } else {
-          totalWins += s.lowerSeedWins;
-          totalLosses += s.higherSeedWins;
-      }
-  });
-  const winPct = (totalWins + totalLosses) > 0 ? totalWins / (totalWins + totalLosses) : 0;
-  const winPctStr = winPct.toFixed(3).replace(/^0/, '');
-
-  // 4. Series Game Logs Logic
-  const seriesLogs = useMemo(() => {
-      const sortedSeries = [...mySeries].sort((a, b) => a.round - b.round);
-      
-      return sortedSeries.map(s => {
-          const opponentId = s.higherSeedId === team.id ? s.lowerSeedId : s.higherSeedId;
-          const opponent = teams.find(t => t.id === opponentId);
-          const roundName = s.round === 0 ? "Play-In" : s.round === 4 ? "NBA Finals" : s.round === 3 ? "Conf. Finals" : s.round === 2 ? "Semis" : "Round 1";
-          
-          const games = schedule
-              .filter(g => g.seriesId === s.id && g.played)
-              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-          const result = s.finished 
-              ? (s.winnerId === team.id ? "WON" : "LOST") 
-              : "IN PROGRESS";
-          
-          const score = s.higherSeedId === team.id 
-              ? `${s.higherSeedWins}-${s.lowerSeedWins}`
-              : `${s.lowerSeedWins}-${s.higherSeedWins}`;
-
-          return { series: s, opponent, roundName, games, result, score };
+  // Sorting for display in table
+  const sortedRoster = useMemo(() => {
+      return [...team.roster].sort((a, b) => {
+          const sA = a.playoffStats || { g: 0, pts: 0 };
+          const sB = b.playoffStats || { g: 0, pts: 0 };
+          const pA = sA.g > 0 ? sA.pts / sA.g : 0;
+          const pB = sB.g > 0 ? sB.pts / sB.g : 0;
+          return pB - pA;
       });
-  }, [mySeries, teams, schedule, team.id]);
-
-  const ownerName = TEAM_DATA[team.id]?.owner || "The Ownership Group";
+  }, [team.roster]);
 
   return (
     <div className="fixed inset-0 bg-slate-950 z-[150] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-20">
@@ -213,19 +64,19 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
           
           {/* Section 1: Compact Playoff Summary */}
           <div className="animate-in slide-in-from-bottom-4 duration-700">
-              <div className={`relative px-8 py-6 rounded-3xl border ${playoffStatus.border} ${playoffStatus.bg} shadow-2xl overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6`}>
+              <div className={`relative px-8 py-6 rounded-3xl border ${status.border} ${status.bg} shadow-2xl overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6`}>
                   
                   {/* Left: Icon & Title */}
                   <div className="flex items-center gap-6 z-10">
                       <div className="p-4 bg-slate-950/40 rounded-2xl border border-white/10 shadow-inner backdrop-blur-sm">
-                          {playoffStatus.icon}
+                          {status.icon}
                       </div>
                       <div className="text-left">
-                          <h2 className={`text-3xl font-black uppercase tracking-tight oswald ${playoffStatus.color} leading-none mb-1.5`}>
-                              {playoffStatus.title}
+                          <h2 className={`text-3xl font-black uppercase tracking-tight oswald ${status.color} leading-none mb-1.5`}>
+                              {status.title}
                           </h2>
                           <p className="text-sm font-bold text-slate-300 max-w-md leading-snug">
-                              {playoffStatus.desc}
+                              {status.desc}
                           </p>
                       </div>
                   </div>
@@ -364,7 +215,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                               <TableHeaderCell align="right" className="px-6 min-w-[60px]">TS%</TableHeaderCell>
                           </TableHead>
                           <TableBody>
-                              {sortedByPlayoffPts.map(p => {
+                              {sortedRoster.map(p => {
                                   const s = p.playoffStats || { g: 0, gs: 0, mp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fga: 0, fgm: 0, p3a: 0, p3m: 0, fta: 0, ftm: 0 };
                                   const g = s.g || 1;
                                   if (s.g === 0) return null; 
