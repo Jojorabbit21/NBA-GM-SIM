@@ -9,17 +9,22 @@ export type CellVariant = 'text' | 'player' | 'stat' | 'attribute' | 'ovr' | 'ra
 interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
     children: React.ReactNode;
     className?: string;
-    // 만약 테이블이 부모 높이를 꽉 채우지 않고 내용물만큼만 커져야 한다면 false로 설정
     fullHeight?: boolean; 
 }
 
 interface TableHeadProps extends React.HTMLAttributes<HTMLTableSectionElement> {
     children: React.ReactNode;
     className?: string;
+    noRow?: boolean; // If true, renders children directly without wrapping in <tr>
 }
 
 interface TableBodyProps extends React.HTMLAttributes<HTMLTableSectionElement> {
     children: React.ReactNode;
+}
+
+interface TableFootProps extends React.HTMLAttributes<HTMLTableSectionElement> {
+    children: React.ReactNode;
+    className?: string;
 }
 
 interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
@@ -31,12 +36,11 @@ interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
 interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
     children: React.ReactNode;
     align?: 'left' | 'center' | 'right';
-    width?: string;
+    width?: string | number;
     sortable?: boolean;
     sortDirection?: 'asc' | 'desc' | null;
     onSort?: () => void;
     className?: string;
-    // 첫 번째 컬럼 고정 등을 위해 필요시 사용
     stickyLeft?: boolean;
 }
 
@@ -64,7 +68,6 @@ const getAttrColor = (val: number) => {
 
 // --- Components ---
 
-// [Architectural Fix] Table Wrapper is now the definitive scroll container.
 export const Table = ({ children, className = '', fullHeight = true, ...props }: TableProps) => (
     <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`}>
         <table className="w-full text-left border-collapse border-spacing-0" {...props}>
@@ -73,12 +76,13 @@ export const Table = ({ children, className = '', fullHeight = true, ...props }:
     </div>
 );
 
-// [Architectural Fix] Header is sticky by default within the wrapper.
-export const TableHead = ({ children, className = '', ...props }: TableHeadProps) => (
+export const TableHead = ({ children, className = '', noRow = false, ...props }: TableHeadProps) => (
     <thead className={`bg-slate-950/95 backdrop-blur-sm sticky top-0 z-40 border-b border-slate-800 shadow-sm ${className}`} {...props}>
-        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-            {children}
-        </tr>
+        {noRow ? children : (
+            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                {children}
+            </tr>
+        )}
     </thead>
 );
 
@@ -86,6 +90,12 @@ export const TableBody = ({ children, ...props }: TableBodyProps) => (
     <tbody className="divide-y divide-slate-800/50 bg-slate-900/30" {...props}>
         {children}
     </tbody>
+);
+
+export const TableFoot = ({ children, className = '', ...props }: TableFootProps) => (
+    <tfoot className={`bg-slate-950 border-t border-slate-700 ${className}`} {...props}>
+        {children}
+    </tfoot>
 );
 
 export const TableRow = ({ children, className = '', onClick, ...props }: TableRowProps) => (
@@ -107,17 +117,18 @@ export const TableHeaderCell = ({
     onSort,
     className = '',
     stickyLeft = false,
+    style,
     ...props
 }: TableHeaderCellProps) => {
     const alignClass = align === 'left' ? 'text-left' : align === 'right' ? 'text-right' : 'text-center';
     const cursorClass = sortable ? 'cursor-pointer hover:text-white select-none' : '';
-    // [Architectural Fix] Explicit background color to prevent transparency issues when scrolling
-    const stickyClass = stickyLeft ? 'sticky left-0 z-50 bg-slate-950 border-r border-slate-800' : '';
+    // Use style for width if provided to handle both string and number
+    const cellStyle = { ...style, width: width, minWidth: width };
 
     return (
         <th 
-            className={`py-3 px-3 whitespace-nowrap bg-slate-950 ${alignClass} ${cursorClass} ${stickyClass} ${className}`}
-            style={{ width }}
+            className={`py-3 px-3 whitespace-nowrap bg-slate-950 ${alignClass} ${cursorClass} ${className}`}
+            style={cellStyle}
             onClick={sortable ? onSort : undefined}
             {...props}
         >
@@ -146,6 +157,7 @@ export const TableCell = ({
     onClick,
     colorScale = false,
     stickyLeft = false,
+    style,
     ...props
 }: TableCellProps) => {
     
@@ -161,9 +173,7 @@ export const TableCell = ({
     
     const finalAlign = getAlign();
     const alignClass = finalAlign === 'left' ? 'text-left' : finalAlign === 'right' ? 'text-right' : 'text-center';
-    // [Architectural Fix] Explicit background needed for sticky columns
-    const stickyClass = stickyLeft ? 'sticky left-0 z-30 bg-slate-900 border-r border-slate-800 shadow-[2px_0_5px_rgba(0,0,0,0.3)]' : '';
-
+    
     const renderContent = () => {
         if (children) return children;
 
@@ -211,7 +221,7 @@ export const TableCell = ({
     };
 
     return (
-        <td className={`py-2 px-3 whitespace-nowrap ${alignClass} ${stickyClass} ${className}`} {...props}>
+        <td className={`py-2 px-3 whitespace-nowrap ${alignClass} ${className}`} style={style} {...props}>
             {renderContent()}
         </td>
     );

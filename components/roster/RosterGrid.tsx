@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 
 interface RosterGridProps {
@@ -14,7 +15,6 @@ interface RosterGridProps {
 type SortConfig = { key: string; direction: 'asc' | 'desc'; };
 
 // --- Column Configurations ---
-
 // Attribute Groups
 const ATTR_GROUPS = [
     {
@@ -30,7 +30,7 @@ const ATTR_GROUPS = [
         id: 'OUT', label: 'OUTSIDE', color: 'text-indigo-400',
         main: { key: 'out', label: 'OUT' },
         subs: [
-            { key: 'midRange', label: 'MID' }, { key: 'threeCorner', label: '3PT' }, // Simplified 3PT display
+            { key: 'midRange', label: 'MID' }, { key: 'threeCorner', label: '3PT' },
             { key: 'ft', label: 'FT' }, { key: 'shotIq', label: 'IQ' }, { key: 'offConsist', label: 'CN' }
         ]
     },
@@ -94,49 +94,6 @@ const SALARY_COLS = [
     { key: 'totalValue', label: 'TOTAL REMAINING' },
 ];
 
-// --- Internal Helper Components ---
-
-const StickyHeaderCell = ({ children, left, width, onClick, sortDir, className = '' }: any) => (
-    <th 
-        className={`sticky top-0 z-50 bg-slate-950 border-b border-slate-800 py-3 px-2 text-center ${className}`}
-        style={{ left: left, width: width, minWidth: width }}
-        onClick={onClick}
-    >
-        <div className="flex items-center justify-center gap-1 cursor-pointer hover:text-white text-xs font-black text-slate-500 uppercase tracking-widest">
-            {children}
-            {sortDir && (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
-        </div>
-    </th>
-);
-
-const RegularHeaderCell = ({ children, width, onClick, sortDir, className = '' }: any) => (
-    <th 
-        className={`sticky top-0 z-40 bg-slate-950 border-b border-slate-800 py-3 px-2 text-center ${className}`}
-        style={{ width: width, minWidth: width }}
-        onClick={onClick}
-    >
-        <div className="flex items-center justify-center gap-1 cursor-pointer hover:text-white text-[10px] font-bold text-slate-500 uppercase tracking-tight">
-            {children}
-            {sortDir && (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
-        </div>
-    </th>
-);
-
-const StickyBodyCell = ({ children, left, width, className = '' }: any) => (
-    <td 
-        className={`sticky z-30 bg-slate-900 border-r border-slate-800/50 py-2 px-2 ${className}`}
-        style={{ left: left, width: width, minWidth: width }}
-    >
-        {children}
-    </td>
-);
-
-const RegularBodyCell = ({ children, className = '' }: any) => (
-    <td className={`py-2 px-2 text-center border-r border-slate-800/30 last:border-0 ${className}`}>
-        {children}
-    </td>
-);
-
 export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
@@ -178,7 +135,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         
         // Totals
         if (['fgm','fga','3pm','3pa','ftm','fta'].includes(key)) {
-            // map '3pm' -> p3m
             const map: any = { '3pm': 'p3m', '3pa': 'p3a' };
             return s[map[key] || key as keyof typeof s];
         }
@@ -203,7 +159,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         const count = team.roster.length || 1;
         const totalSalary = team.roster.reduce((s, p) => s + p.salary, 0);
 
-        // For attributes, straight average
         const attrAvg: any = {};
         const allAttrKeys = ATTR_GROUPS.flatMap(g => [g.main.key, ...g.subs.map(s => s.key)]);
         allAttrKeys.push('ovr', 'age');
@@ -212,12 +167,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             if (k === 'ovr') attrAvg[k] = Math.round(team.roster.reduce((sum, p) => sum + calculatePlayerOvr(p), 0) / count);
             else attrAvg[k] = Math.round(team.roster.reduce((sum, p) => sum + ((p as any)[k] || 0), 0) / count);
         });
-
-        // For stats, sum then divide by total games of all players (approximate team per-game)
-        // OR simply sum of averages / count? 
-        // More accurate: Sum of all stats / Sum of all games? No, that's individual efficiency.
-        // Team stats usually = Sum of player per-game averages (roughly).
-        // Let's do simple average of player per-game stats.
         
         const statAvg: any = {};
         STATS_COLS.forEach(c => {
@@ -228,7 +177,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             });
             
             if (k.includes('%')) {
-                // Re-calc percent based on totals for accuracy
                 let num=0, den=0;
                 team.roster.forEach(p => {
                     const s = p.stats;
@@ -239,9 +187,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 });
                 statAvg[k] = den > 0 ? (num/den) : 0;
             } else {
-                statAvg[k] = sum; // Display Sum for Totals? Or Avg? "Team Avg" usually means Sum for things like PTS. 
-                // Wait, Team Avg PTS = Sum of Player Avg PTS. 
-                // But G/GS should be Average?
+                statAvg[k] = sum;
                 if (k === 'g' || k === 'gs') statAvg[k] = sum / count;
             }
         });
@@ -267,175 +213,185 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     const LEFT_AGE = COL_W.NAME + COL_W.POS;
     const LEFT_OVR = COL_W.NAME + COL_W.POS + COL_W.AGE;
 
-    // --- Renderers ---
-    const renderStickyHeader = () => (
-        <>
-            <StickyHeaderCell left={0} width={COL_W.NAME} onClick={() => handleSort('name')} className="pl-4 text-left border-r border-slate-800">PLAYER NAME</StickyHeaderCell>
-            <StickyHeaderCell left={LEFT_POS} width={COL_W.POS} onClick={() => handleSort('position')} className="border-r border-slate-800">POS</StickyHeaderCell>
-            <StickyHeaderCell left={LEFT_AGE} width={COL_W.AGE} onClick={() => handleSort('age')} className="border-r border-slate-800">AGE</StickyHeaderCell>
-            <StickyHeaderCell left={LEFT_OVR} width={COL_W.OVR} onClick={() => handleSort('ovr')} className="border-r border-slate-800 shadow-[4px_0_5px_rgba(0,0,0,0.3)]">OVR</StickyHeaderCell>
-        </>
-    );
-
-    const renderStickyRow = (p: Player) => (
-        <>
-            <StickyBodyCell left={0} width={COL_W.NAME} className="pl-4 text-left border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                <div className="flex flex-col">
-                    <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
-                    {p.health !== 'Healthy' && (
-                        <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>
-                            {p.health}
-                        </span>
-                    )}
-                </div>
-            </StickyBodyCell>
-            <StickyBodyCell left={LEFT_POS} width={COL_W.POS} className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                {p.position}
-            </StickyBodyCell>
-            <StickyBodyCell left={LEFT_AGE} width={COL_W.AGE} className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                {p.age}
-            </StickyBodyCell>
-            <StickyBodyCell left={LEFT_OVR} width={COL_W.OVR} className="border-r border-slate-800 shadow-[4px_0_5px_rgba(0,0,0,0.3)] bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                <div className="flex justify-center">
-                    <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
-                </div>
-            </StickyBodyCell>
-        </>
-    );
-
-    const renderStickyFooter = (label: string = 'TEAM AVG') => (
-        <>
-            <StickyBodyCell left={0} width={COL_W.NAME} className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-slate-500 text-xs">
-                {label}
-            </StickyBodyCell>
-            <StickyBodyCell left={LEFT_POS} width={COL_W.POS} className="border-r border-slate-800 bg-slate-950 text-center text-slate-600">-</StickyBodyCell>
-            <StickyBodyCell left={LEFT_AGE} width={COL_W.AGE} className="border-r border-slate-800 bg-slate-950 text-center font-bold text-slate-500 text-xs">{averages.attr.age}</StickyBodyCell>
-            <StickyBodyCell left={LEFT_OVR} width={COL_W.OVR} className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_5px_rgba(0,0,0,0.3)]">
-                <div className="flex justify-center">
-                     <OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" />
-                </div>
-            </StickyBodyCell>
-        </>
-    );
-
     return (
         <div className="space-y-12 pb-10">
             {/* Main Table Container */}
-            <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl relative">
-                <div className="overflow-x-auto custom-scrollbar">
-                    <table className="w-full border-collapse">
-                        <thead>
-                            <tr>
-                                {renderStickyHeader()}
-                                
-                                {tab === 'roster' && ATTR_GROUPS.map(g => (
-                                    <React.Fragment key={g.id}>
-                                        {/* Main Attribute Header */}
-                                        <RegularHeaderCell width={45} onClick={() => handleSort(g.main.key)} className={`border-r border-slate-800 ${g.color}`}>
-                                            {g.main.label}
-                                        </RegularHeaderCell>
-                                        {/* Sub Attributes Header */}
-                                        {g.subs.map((sub, idx) => (
-                                            <RegularHeaderCell 
-                                                key={sub.key} width={40} onClick={() => handleSort(sub.key)} 
-                                                className={idx === g.subs.length - 1 ? 'border-r border-slate-800/60' : 'border-r border-slate-800/30 text-slate-600'}
-                                            >
-                                                {sub.label}
-                                            </RegularHeaderCell>
-                                        ))}
-                                    </React.Fragment>
+            <Table>
+                <TableHead noRow>
+                    <tr>
+                        {/* Sticky Headers */}
+                        <TableHeaderCell 
+                            style={{ left: 0, width: COL_W.NAME }} 
+                            stickyLeft 
+                            onClick={() => handleSort('name')} 
+                            sortable sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
+                            className="pl-4 text-left border-r border-slate-800"
+                        >
+                            PLAYER NAME
+                        </TableHeaderCell>
+                        <TableHeaderCell 
+                            style={{ left: LEFT_POS, width: COL_W.POS }} 
+                            stickyLeft
+                            onClick={() => handleSort('position')}
+                            sortable sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
+                            className="border-r border-slate-800"
+                        >
+                            POS
+                        </TableHeaderCell>
+                        <TableHeaderCell 
+                            style={{ left: LEFT_AGE, width: COL_W.AGE }}
+                            stickyLeft
+                            onClick={() => handleSort('age')}
+                            sortable sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
+                            className="border-r border-slate-800"
+                        >
+                            AGE
+                        </TableHeaderCell>
+                        <TableHeaderCell 
+                            style={{ left: LEFT_OVR, width: COL_W.OVR }}
+                            stickyLeft
+                            onClick={() => handleSort('ovr')}
+                            sortable sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
+                            className="border-r border-slate-800 shadow-[4px_0_5px_rgba(0,0,0,0.3)]"
+                        >
+                            OVR
+                        </TableHeaderCell>
+
+                        {/* Attribute Tabs */}
+                        {tab === 'roster' && ATTR_GROUPS.map(g => (
+                            <React.Fragment key={g.id}>
+                                <TableHeaderCell 
+                                    width={45} onClick={() => handleSort(g.main.key)} 
+                                    sortable sortDirection={sortConfig.key === g.main.key ? sortConfig.direction : null}
+                                    className={`border-r border-slate-800 ${g.color}`}
+                                >
+                                    {g.main.label}
+                                </TableHeaderCell>
+                                {g.subs.map((sub, idx) => (
+                                    <TableHeaderCell 
+                                        key={sub.key} width={40} onClick={() => handleSort(sub.key)}
+                                        sortable sortDirection={sortConfig.key === sub.key ? sortConfig.direction : null}
+                                        className={idx === g.subs.length - 1 ? 'border-r border-slate-800/60' : 'border-r border-slate-800/30 text-slate-600'}
+                                    >
+                                        {sub.label}
+                                    </TableHeaderCell>
                                 ))}
+                            </React.Fragment>
+                        ))}
 
-                                {tab === 'stats' && STATS_COLS.map(c => (
-                                    <RegularHeaderCell key={c.key} width={c.w} onClick={() => handleSort(c.key)} className="border-r border-slate-800/30">
-                                        {c.label}
-                                    </RegularHeaderCell>
-                                ))}
+                        {/* Stats Tab */}
+                        {tab === 'stats' && STATS_COLS.map(c => (
+                            <TableHeaderCell 
+                                key={c.key} width={c.w} onClick={() => handleSort(c.key)}
+                                sortable sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
+                                className="border-r border-slate-800/30"
+                            >
+                                {c.label}
+                            </TableHeaderCell>
+                        ))}
 
-                                {tab === 'salary' && SALARY_COLS.map(c => (
-                                    <RegularHeaderCell key={c.key} width={100} onClick={() => handleSort(c.key)} className="border-r border-slate-800/30">
-                                        {c.label}
-                                    </RegularHeaderCell>
-                                ))}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {sortedRoster.map(p => (
-                                <tr key={p.id} className="hover:bg-slate-800/50 transition-colors group cursor-pointer" onClick={() => onPlayerClick(p)}>
-                                    {renderStickyRow(p)}
-
-                                    {tab === 'roster' && ATTR_GROUPS.map(g => (
-                                        <React.Fragment key={g.id}>
-                                            {/* Main Attr */}
-                                            <RegularBodyCell className={`font-black font-mono border-r border-slate-800/50 ${g.color} bg-slate-900/30`}>
-                                                {(p as any)[g.main.key]}
-                                            </RegularBodyCell>
-                                            {/* Sub Attrs */}
-                                            {g.subs.map((sub, idx) => (
-                                                <RegularBodyCell key={sub.key} className={`font-bold font-mono text-slate-500 text-[11px] ${idx === g.subs.length - 1 ? 'border-r border-slate-800/50' : ''}`}>
-                                                    {(p as any)[sub.key]}
-                                                </RegularBodyCell>
-                                            ))}
-                                        </React.Fragment>
-                                    ))}
-
-                                    {tab === 'stats' && STATS_COLS.map(c => (
-                                        <RegularBodyCell key={c.key} className="font-mono font-bold text-xs text-slate-300">
-                                            {getSortValue(p, c.key)}
-                                        </RegularBodyCell>
-                                    ))}
-
-                                    {tab === 'salary' && (
-                                        <>
-                                            <RegularBodyCell className="font-mono font-bold text-xs text-emerald-400">${p.salary.toFixed(1)}M</RegularBodyCell>
-                                            <RegularBodyCell className="font-mono font-bold text-xs text-slate-400">{p.contractYears} yrs</RegularBodyCell>
-                                            <RegularBodyCell className="font-mono font-bold text-xs text-slate-300">${(p.salary * p.contractYears).toFixed(1)}M</RegularBodyCell>
-                                        </>
+                        {/* Salary Tab */}
+                        {tab === 'salary' && SALARY_COLS.map(c => (
+                            <TableHeaderCell 
+                                key={c.key} width={100} onClick={() => handleSort(c.key)}
+                                sortable sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
+                                className="border-r border-slate-800/30"
+                            >
+                                {c.label}
+                            </TableHeaderCell>
+                        ))}
+                    </tr>
+                </TableHead>
+                <TableBody>
+                    {sortedRoster.map(p => (
+                        <TableRow key={p.id} onClick={() => onPlayerClick(p)}>
+                            {/* Sticky Columns */}
+                            <TableCell style={{ left: 0, width: COL_W.NAME }} className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30" stickyLeft>
+                                <div className="flex flex-col">
+                                    <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                    {p.health !== 'Healthy' && (
+                                        <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>
+                                            {p.health}
+                                        </span>
                                     )}
-                                </tr>
+                                </div>
+                            </TableCell>
+                            <TableCell style={{ left: LEFT_POS, width: COL_W.POS }} className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center" stickyLeft>
+                                {p.position}
+                            </TableCell>
+                            <TableCell style={{ left: LEFT_AGE, width: COL_W.AGE }} className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center" stickyLeft>
+                                {p.age}
+                            </TableCell>
+                            <TableCell style={{ left: LEFT_OVR, width: COL_W.OVR }} className="border-r border-slate-800 shadow-[4px_0_5px_rgba(0,0,0,0.3)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center" stickyLeft>
+                                <div className="flex justify-center">
+                                    <OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
+                                </div>
+                            </TableCell>
+
+                            {/* Attribute Cells */}
+                            {tab === 'roster' && ATTR_GROUPS.map(g => (
+                                <React.Fragment key={g.id}>
+                                    <TableCell className={`font-black font-mono border-r border-slate-800/50 ${g.color} bg-slate-900/30 text-center`} value={(p as any)[g.main.key]} variant="attribute" />
+                                    {g.subs.map((sub, idx) => (
+                                        <TableCell key={sub.key} className={`font-bold font-mono text-slate-500 text-[11px] text-center ${idx === g.subs.length - 1 ? 'border-r border-slate-800/50' : ''}`} value={(p as any)[sub.key]} variant="text" />
+                                    ))}
+                                </React.Fragment>
                             ))}
-                        </tbody>
-                        <tfoot className="bg-slate-950 border-t border-slate-700">
-                            <tr>
-                                {renderStickyFooter(tab === 'stats' ? 'TEAM TOTAL' : 'TEAM AVG')}
 
-                                {tab === 'roster' && ATTR_GROUPS.map(g => (
-                                    <React.Fragment key={g.id}>
-                                        <RegularBodyCell className={`font-black font-mono border-r border-slate-800 ${g.color}`}>
-                                            {averages.attr[g.main.key]}
-                                        </RegularBodyCell>
-                                        {g.subs.map((sub, idx) => (
-                                            <RegularBodyCell key={sub.key} className={`font-bold font-mono text-slate-600 text-[11px] ${idx === g.subs.length - 1 ? 'border-r border-slate-800' : ''}`}>
-                                                {averages.attr[sub.key]}
-                                            </RegularBodyCell>
-                                        ))}
-                                    </React.Fragment>
+                            {/* Stats Cells */}
+                            {tab === 'stats' && STATS_COLS.map(c => (
+                                <TableCell key={c.key} className="font-mono font-bold text-xs text-slate-300 text-center" value={getSortValue(p, c.key)} variant="stat" />
+                            ))}
+
+                            {/* Salary Cells */}
+                            {tab === 'salary' && (
+                                <>
+                                    <TableCell className="font-mono font-bold text-xs text-emerald-400 text-center" value={`$${p.salary.toFixed(1)}M`} />
+                                    <TableCell className="font-mono font-bold text-xs text-slate-400 text-center" value={`${p.contractYears} yrs`} />
+                                    <TableCell className="font-mono font-bold text-xs text-slate-300 text-center" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
+                                </>
+                            )}
+                        </TableRow>
+                    ))}
+                </TableBody>
+                <TableFoot>
+                    <tr>
+                        <TableCell style={{ left: 0, width: COL_W.NAME }} className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-slate-500 text-xs z-30" stickyLeft>
+                            {tab === 'stats' ? 'TEAM TOTAL' : 'TEAM AVG'}
+                        </TableCell>
+                        <TableCell style={{ left: LEFT_POS, width: COL_W.POS }} className="border-r border-slate-800 bg-slate-950 text-center text-slate-600 z-30" stickyLeft>-</TableCell>
+                        <TableCell style={{ left: LEFT_AGE, width: COL_W.AGE }} className="border-r border-slate-800 bg-slate-950 text-center font-bold text-slate-500 text-xs z-30" stickyLeft>{averages.attr.age}</TableCell>
+                        <TableCell style={{ left: LEFT_OVR, width: COL_W.OVR }} className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_5px_rgba(0,0,0,0.3)] z-30 text-center" stickyLeft>
+                            <div className="flex justify-center">
+                                <OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" />
+                            </div>
+                        </TableCell>
+
+                        {tab === 'roster' && ATTR_GROUPS.map(g => (
+                            <React.Fragment key={g.id}>
+                                <TableCell className={`font-black font-mono border-r border-slate-800 ${g.color} text-center`} value={averages.attr[g.main.key]} variant="attribute" />
+                                {g.subs.map((sub, idx) => (
+                                    <TableCell key={sub.key} className={`font-bold font-mono text-slate-600 text-[11px] text-center ${idx === g.subs.length - 1 ? 'border-r border-slate-800' : ''}`} value={averages.attr[sub.key]} variant="text" />
                                 ))}
-                                
-                                {tab === 'stats' && STATS_COLS.map(c => {
-                                    let val = averages.stat[c.key];
-                                    if (typeof val === 'number') {
-                                         if (c.key.includes('%')) val = (val * 100).toFixed(1) + '%';
-                                         else if (c.key === 'g' || c.key === 'gs' || c.key === 'mp' || c.key === 'pm') val = val.toFixed(1);
-                                         else val = val.toFixed(1); // Sums
-                                    }
-                                    return (
-                                        <RegularBodyCell key={c.key} className="font-mono font-black text-xs text-slate-400">
-                                            {val}
-                                        </RegularBodyCell>
-                                    );
-                                })}
+                            </React.Fragment>
+                        ))}
+                        
+                        {tab === 'stats' && STATS_COLS.map(c => {
+                            let val = averages.stat[c.key];
+                            if (typeof val === 'number') {
+                                if (c.key.includes('%')) val = (val * 100).toFixed(1) + '%';
+                                else if (c.key === 'g' || c.key === 'gs' || c.key === 'mp' || c.key === 'pm') val = val.toFixed(1);
+                                else val = val.toFixed(1);
+                            }
+                            return <TableCell key={c.key} className="font-mono font-black text-xs text-slate-400 text-center" value={val} variant="stat" />;
+                        })}
 
-                                {tab === 'salary' && (
-                                    <td colSpan={3} className="py-2 px-4 text-right font-black font-mono text-emerald-400">
-                                        TOTAL: ${averages.salary.toFixed(1)}M
-                                    </td>
-                                )}
-                            </tr>
-                        </tfoot>
-                    </table>
-                </div>
-            </div>
+                        {tab === 'salary' && (
+                            <TableCell colSpan={3} className="py-2 px-4 text-right font-black font-mono text-emerald-400" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
+                        )}
+                    </tr>
+                </TableFoot>
+            </Table>
 
             {/* Zone Stats Table (Only visible in Stats Tab) */}
             {tab === 'stats' && (
@@ -445,85 +401,96 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <h3 className="text-lg font-black text-white uppercase tracking-tight">상세 야투 구역별 기록 (Zone Shooting)</h3>
                     </div>
                     
-                    <div className="bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table className="w-full border-collapse">
-                                <thead>
-                                    <tr>
-                                        {renderStickyHeader()}
-                                        {ZONE_ZONES.map(z => (
-                                            <React.Fragment key={z.id}>
-                                                <th colSpan={3} className="py-2 px-2 text-center border-r-2 border-slate-800 bg-slate-900/50">
-                                                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{z.label}</span>
-                                                </th>
-                                            </React.Fragment>
-                                        ))}
-                                    </tr>
-                                    <tr>
-                                        {/* Empty Sticky Sub-header */}
-                                        <th className="sticky left-0 z-50 bg-slate-950 border-b border-slate-800"></th>
-                                        <th className="sticky bg-slate-900 border-b border-slate-800" style={{ left: LEFT_POS }}></th>
-                                        <th className="sticky bg-slate-900 border-b border-slate-800" style={{ left: LEFT_AGE }}></th>
-                                        <th className="sticky bg-slate-900 border-b border-slate-800 shadow-[4px_0_5px_rgba(0,0,0,0.3)]" style={{ left: LEFT_OVR }}></th>
-                                        
-                                        {ZONE_ZONES.map(z => (
-                                            <React.Fragment key={z.id}>
-                                                <th className="py-1 px-1 text-[9px] font-bold text-slate-600 bg-slate-950 border-b border-r border-slate-800/30">M</th>
-                                                <th className="py-1 px-1 text-[9px] font-bold text-slate-600 bg-slate-950 border-b border-r border-slate-800/30">A</th>
-                                                <th className="py-1 px-1 text-[9px] font-bold text-slate-500 bg-slate-950 border-b border-r-2 border-slate-800">%</th>
-                                            </React.Fragment>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {sortedRoster.map(p => (
-                                        <tr key={`zone-${p.id}`} className="hover:bg-slate-800/50 transition-colors group cursor-pointer" onClick={() => onPlayerClick(p)}>
-                                            {renderStickyRow(p)}
-                                            {ZONE_ZONES.map(z => {
-                                                const m = (p.stats as any)[`zone_${z.id}_m`] || 0;
-                                                const a = (p.stats as any)[`zone_${z.id}_a`] || 0;
-                                                const pct = a > 0 ? (m / a * 100).toFixed(0) : '-';
-                                                const pctNum = a > 0 ? m/a : 0;
-                                                
-                                                let colorClass = 'text-slate-500';
-                                                if (a > 0) {
-                                                    if (pctNum >= 0.5) colorClass = 'text-emerald-400';
-                                                    else if (pctNum >= 0.35) colorClass = 'text-slate-300';
-                                                    else colorClass = 'text-red-400';
-                                                }
+                    <Table>
+                        <TableHead noRow>
+                            <tr>
+                                {/* Sticky Placeholders for Header 1 */}
+                                <TableHeaderCell style={{ left: 0, width: COL_W.NAME }} className="border-r border-slate-800 bg-slate-950 z-40" stickyLeft>{null}</TableHeaderCell>
+                                <TableHeaderCell style={{ left: LEFT_POS, width: COL_W.POS }} className="border-r border-slate-800 bg-slate-950 z-40" stickyLeft>{null}</TableHeaderCell>
+                                <TableHeaderCell style={{ left: LEFT_AGE, width: COL_W.AGE }} className="border-r border-slate-800 bg-slate-950 z-40" stickyLeft>{null}</TableHeaderCell>
+                                <TableHeaderCell style={{ left: LEFT_OVR, width: COL_W.OVR }} className="border-r border-slate-800 bg-slate-950 z-40 shadow-[4px_0_5px_rgba(0,0,0,0.3)]" stickyLeft>{null}</TableHeaderCell>
+                                
+                                {ZONE_ZONES.map(z => (
+                                    <th key={z.id} colSpan={3} className="py-2 px-2 text-center border-r-2 border-slate-800 bg-slate-900/50">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{z.label}</span>
+                                    </th>
+                                ))}
+                            </tr>
+                            <tr>
+                                {/* Sticky Headers for Row 2 */}
+                                <TableHeaderCell style={{ left: 0, width: COL_W.NAME }} className="pl-4 text-left border-r border-slate-800 bg-slate-950 z-40" stickyLeft onClick={() => handleSort('name')}>PLAYER NAME</TableHeaderCell>
+                                <TableHeaderCell style={{ left: LEFT_POS, width: COL_W.POS }} className="border-r border-slate-800 bg-slate-950 z-40" stickyLeft>POS</TableHeaderCell>
+                                <TableHeaderCell style={{ left: LEFT_AGE, width: COL_W.AGE }} className="border-r border-slate-800 bg-slate-950 z-40" stickyLeft>AGE</TableHeaderCell>
+                                <TableHeaderCell style={{ left: LEFT_OVR, width: COL_W.OVR }} className="border-r border-slate-800 bg-slate-950 z-40 shadow-[4px_0_5px_rgba(0,0,0,0.3)]" stickyLeft>OVR</TableHeaderCell>
+                                
+                                {ZONE_ZONES.map(z => (
+                                    <React.Fragment key={z.id}>
+                                        <th className="py-1 px-1 text-[9px] font-bold text-slate-600 bg-slate-950 border-b border-r border-slate-800/30">M</th>
+                                        <th className="py-1 px-1 text-[9px] font-bold text-slate-600 bg-slate-950 border-b border-r border-slate-800/30">A</th>
+                                        <th className="py-1 px-1 text-[9px] font-bold text-slate-500 bg-slate-950 border-b border-r-2 border-slate-800">%</th>
+                                    </React.Fragment>
+                                ))}
+                            </tr>
+                        </TableHead>
+                        <TableBody>
+                            {sortedRoster.map(p => (
+                                <TableRow key={`zone-${p.id}`} onClick={() => onPlayerClick(p)}>
+                                    <TableCell style={{ left: 0, width: COL_W.NAME }} className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30" stickyLeft>
+                                        <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                    </TableCell>
+                                    <TableCell style={{ left: LEFT_POS, width: COL_W.POS }} className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center" stickyLeft>{p.position}</TableCell>
+                                    <TableCell style={{ left: LEFT_AGE, width: COL_W.AGE }} className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center" stickyLeft>{p.age}</TableCell>
+                                    <TableCell style={{ left: LEFT_OVR, width: COL_W.OVR }} className="border-r border-slate-800 shadow-[4px_0_5px_rgba(0,0,0,0.3)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center" stickyLeft>
+                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
+                                    </TableCell>
 
-                                                return (
-                                                    <React.Fragment key={z.id}>
-                                                        <RegularBodyCell className="font-mono text-[10px] text-slate-400">{m}</RegularBodyCell>
-                                                        <RegularBodyCell className="font-mono text-[10px] text-slate-500">{a}</RegularBodyCell>
-                                                        <RegularBodyCell className={`font-mono font-bold text-xs border-r-2 border-slate-800/50 ${colorClass}`}>{pct}</RegularBodyCell>
-                                                    </React.Fragment>
-                                                );
-                                            })}
-                                        </tr>
-                                    ))}
-                                </tbody>
-                                <tfoot className="bg-slate-950 border-t border-slate-700">
-                                    <tr>
-                                        {renderStickyFooter('TEAM TOTAL')}
-                                        {ZONE_ZONES.map(z => {
-                                            const m = averages.zone[`zone_${z.id}_m`];
-                                            const a = averages.zone[`zone_${z.id}_a`];
-                                            const pct = a > 0 ? (m / a * 100).toFixed(0) + '%' : '-';
-                                            
-                                            return (
-                                                <React.Fragment key={z.id}>
-                                                    <RegularBodyCell className="font-mono font-bold text-[10px] text-slate-400">{m}</RegularBodyCell>
-                                                    <RegularBodyCell className="font-mono font-bold text-[10px] text-slate-500">{a}</RegularBodyCell>
-                                                    <RegularBodyCell className="font-mono font-black text-xs text-indigo-400 border-r-2 border-slate-800">{pct}</RegularBodyCell>
-                                                </React.Fragment>
-                                            );
-                                        })}
-                                    </tr>
-                                </tfoot>
-                            </table>
-                        </div>
-                    </div>
+                                    {ZONE_ZONES.map(z => {
+                                        const m = (p.stats as any)[`zone_${z.id}_m`] || 0;
+                                        const a = (p.stats as any)[`zone_${z.id}_a`] || 0;
+                                        const pct = a > 0 ? (m / a * 100).toFixed(0) : '-';
+                                        const pctNum = a > 0 ? m/a : 0;
+                                        
+                                        let colorClass = 'text-slate-500';
+                                        if (a > 0) {
+                                            if (pctNum >= 0.5) colorClass = 'text-emerald-400';
+                                            else if (pctNum >= 0.35) colorClass = 'text-slate-300';
+                                            else colorClass = 'text-red-400';
+                                        }
+
+                                        return (
+                                            <React.Fragment key={z.id}>
+                                                <TableCell className="font-mono text-[10px] text-slate-400 text-center" value={m} />
+                                                <TableCell className="font-mono text-[10px] text-slate-500 text-center" value={a} />
+                                                <TableCell className={`font-mono font-bold text-xs border-r-2 border-slate-800/50 text-center ${colorClass}`} value={pct} />
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                        <TableFoot>
+                            <tr>
+                                <TableCell style={{ left: 0, width: COL_W.NAME }} className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-slate-500 text-xs z-30" stickyLeft>TEAM TOTAL</TableCell>
+                                <TableCell style={{ left: LEFT_POS, width: COL_W.POS }} className="border-r border-slate-800 bg-slate-950 z-30" stickyLeft></TableCell>
+                                <TableCell style={{ left: LEFT_AGE, width: COL_W.AGE }} className="border-r border-slate-800 bg-slate-950 z-30" stickyLeft></TableCell>
+                                <TableCell style={{ left: LEFT_OVR, width: COL_W.OVR }} className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_5px_rgba(0,0,0,0.3)] z-30" stickyLeft></TableCell>
+                                
+                                {ZONE_ZONES.map(z => {
+                                    const m = averages.zone[`zone_${z.id}_m`];
+                                    const a = averages.zone[`zone_${z.id}_a`];
+                                    const pct = a > 0 ? (m / a * 100).toFixed(0) + '%' : '-';
+                                    
+                                    return (
+                                        <React.Fragment key={z.id}>
+                                            <TableCell className="font-mono font-bold text-[10px] text-slate-400 text-center" value={m} />
+                                            <TableCell className="font-mono font-bold text-[10px] text-slate-500 text-center" value={a} />
+                                            <TableCell className="font-mono font-black text-xs text-indigo-400 border-r-2 border-slate-800 text-center" value={pct} />
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tr>
+                        </TableFoot>
+                    </Table>
                 </div>
             )}
         </div>
