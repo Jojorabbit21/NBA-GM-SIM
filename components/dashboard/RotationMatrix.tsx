@@ -4,7 +4,6 @@ import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { AlertCircle, Timer } from 'lucide-react';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface RotationMatrixProps {
     team: Team;
@@ -118,66 +117,57 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
     const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
     
-    // [Design Update] Quarter borders are now thinner (border-r instead of border-r-2) and Slate-600
-    const quarterBorder = "border-r border-slate-600"; 
-    const headerBottomBorder = "border-b border-slate-600";
+    // Borders
+    const borderClass = "border-r border-slate-700/50";
+    const bottomBorder = "border-b border-slate-700/50";
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
              {/* Rotation Chart Title */}
-             {/* [Design Update] Added top indigo border to distinguish from depth chart */}
              <div className="px-6 py-4 bg-slate-900 border-t-2 border-t-indigo-500 border-b border-slate-800 flex items-center gap-3 flex-shrink-0">
                  <Timer size={20} className="text-indigo-400"/>
                  <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
             </div>
 
-            {/* Rotation Grid Table */}
-            <div className="flex-1 overflow-auto custom-scrollbar">
-                {/* Note: Using native table elements for complex sticky headers and rowSpans where Table component is too restrictive */}
-                <Table>
-                    <TableHead>
-                        {/* 1st Header Row: Sticky Info & Quarter Labels */}
-                        <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                            {/* Sticky Left Columns (RowSpan 2) */}
-                            {/* [Design Update] Changed border colors to slate-600 and width to 1px */}
-                            {/* Widths: POS(50) + PLAYER(160) + OVR(40) + COND(40) = 290px -> MIN starts at 290px */}
+            {/* Rotation Grid Table - Native HTML for precise sticky control */}
+            <div className="flex-1 overflow-auto custom-scrollbar relative">
+                <table className="w-full border-collapse border-spacing-0">
+                    <thead className="bg-slate-900 sticky top-0 z-50">
+                        {/* 1st Header Row: Info & Quarters */}
+                        <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
+                            {/* Sticky Columns Header Block */}
+                            {/* Z-Index 50 to stay on top of everything */}
+                            <th rowSpan={2} className={`sticky left-0 z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[50px] min-w-[50px] text-center`}>POS</th>
+                            <th rowSpan={2} className={`sticky left-[50px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
+                            <th rowSpan={2} className={`sticky left-[210px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>OVR</th>
+                            <th rowSpan={2} className={`sticky left-[250px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>COND</th>
+                            <th rowSpan={2} className={`sticky left-[290px] z-50 bg-slate-900 ${borderClass} ${bottomBorder} w-[40px] min-w-[40px] text-center`}>MIN</th>
                             
-                            <th rowSpan={2} className={`py-3 px-0 w-[50px] min-w-[50px] max-w-[50px] text-center ${headerBottomBorder} border-r border-slate-800 sticky left-0 bg-slate-900 z-40`}>POS</th>
-                            
-                            <th rowSpan={2} className={`py-3 px-3 w-[160px] min-w-[160px] max-w-[160px] bg-slate-900 ${headerBottomBorder} sticky left-[50px] z-40 border-r border-slate-800`}>PLAYER</th>
-                            
-                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[210px] bg-slate-900 z-40 border-r border-slate-800`}>OVR</th>
-                            
-                            {/* [NEW] COND Column */}
-                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[250px] bg-slate-900 z-40 border-r border-slate-800`}>COND</th>
-                            
-                            {/* MIN Column - Shifted Left to 290px */}
-                            <th rowSpan={2} className={`py-3 px-1 w-[40px] min-w-[40px] max-w-[40px] text-center ${headerBottomBorder} border-slate-800 sticky left-[290px] bg-slate-900 z-40 ${quarterBorder}`}>MIN</th>
-                            
-                            {/* Quarter Headers */}
-                            <th colSpan={12} className={`text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-700 ${quarterBorder}`}>1Q</th>
-                            <th colSpan={12} className={`text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-700 ${quarterBorder}`}>2Q</th>
-                            <th colSpan={12} className={`text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-700 ${quarterBorder}`}>3Q</th>
-                            <th colSpan={12} className="text-center py-1 bg-slate-800/50 text-slate-400 border-b border-slate-800">4Q</th>
+                            {/* Scrollable Quarter Headers */}
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${borderClass} ${bottomBorder}`}>1Q</th>
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${borderClass} ${bottomBorder}`}>2Q</th>
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${borderClass} ${bottomBorder}`}>3Q</th>
+                            <th colSpan={12} className={`text-center bg-slate-800/50 text-slate-400 ${bottomBorder}`}>4Q</th>
                         </tr>
-                        {/* 2nd Header Row: Minutes */}
-                        <tr className={`text-[8px] font-black text-slate-600 uppercase tracking-tighter bg-slate-900 ${headerBottomBorder}`}>
+
+                        {/* 2nd Header Row: Minute Numbers */}
+                        <tr className={`text-[8px] font-black text-slate-600 uppercase tracking-tighter h-6 ${bottomBorder}`}>
                              {Array.from({length: 48}).map((_, i) => {
                                 const isQuarterEnd = (i+1)%12 === 0 && (i+1) !== 48;
                                 return (
                                     <th 
                                         key={i} 
-                                        className={`w-8 min-w-[2rem] h-6 text-center ${headerBottomBorder} ${isQuarterEnd ? quarterBorder : 'border-r border-r-slate-800/50'}`}
+                                        className={`w-8 min-w-[2rem] text-center bg-slate-900 ${isQuarterEnd ? borderClass : 'border-r border-slate-800/30'}`}
                                     >
                                         {i + 1}
                                     </th>
                                 );
                             })}
                         </tr>
-                    </TableHead>
-                    <TableBody>
+                    </thead>
+
+                    <tbody className="bg-slate-900/30">
                         {posKeys.map(pos => {
-                            // Ensure pos is a string for Record index access to avoid symbol errors
                             const players = (groupedRotation as Record<string, Player[]>)[pos];
                             if (!players || players.length === 0) return null;
 
@@ -193,95 +183,97 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                 else if (condition < 90) condColor = 'text-amber-500';
 
                                 return (
-                                    <TableRow key={p.id} className="hover:bg-white/5 group border-b border-slate-800">
-                                        {/* Merged Position Column */}
+                                    <tr key={p.id} className="hover:bg-white/5 group h-9">
+                                        {/* Sticky Columns Body Block - Z-Index 30 */}
+                                        
+                                        {/* Merged Position Cell */}
                                         {index === 0 && (
-                                            <TableCell 
+                                            <td 
                                                 rowSpan={players.length} 
-                                                className="text-center sticky left-0 bg-slate-900/95 z-20 border-r border-slate-800 align-middle border-b border-slate-800 w-[50px] min-w-[50px] max-w-[50px]"
+                                                className={`sticky left-0 z-30 bg-slate-900 text-center align-middle ${borderClass} ${bottomBorder}`}
                                             >
                                                 <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
                                                     {String(pos)}
                                                 </span>
-                                            </TableCell>
+                                            </td>
                                         )}
 
-                                        {/* Name */}
-                                        <TableCell className="py-2 px-3 sticky left-[50px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 cursor-pointer w-[160px] min-w-[160px] max-w-[160px]" onClick={() => onViewPlayer(p)}>
+                                        {/* Player Name */}
+                                        <td 
+                                            className={`sticky left-[50px] z-30 bg-slate-900 px-3 cursor-pointer ${borderClass} ${bottomBorder}`}
+                                            onClick={() => onViewPlayer(p)}
+                                        >
                                             <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
                                                 {p.name}
                                             </span>
-                                        </TableCell>
+                                        </td>
 
                                         {/* OVR */}
-                                        <TableCell className="text-center sticky left-[210px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                        <td className={`sticky left-[210px] z-30 bg-slate-900 text-center ${borderClass} ${bottomBorder}`}>
                                             <div className="flex justify-center">
                                                 <OvrBadge value={ovr} size="sm" className={`!w-6 !h-6 !text-xs !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`} />
                                             </div>
-                                        </TableCell>
+                                        </td>
                                         
-                                        {/* [NEW] COND */}
-                                        <TableCell className="text-center sticky left-[250px] bg-slate-900/95 z-20 border-r border-slate-800 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px]">
+                                        {/* Condition */}
+                                        <td className={`sticky left-[250px] z-30 bg-slate-900 text-center ${borderClass} ${bottomBorder}`}>
                                             <span className={`text-[10px] font-black ${condColor}`}>
                                                 {condition}%
                                             </span>
-                                        </TableCell>
+                                        </td>
 
-                                        {/* Total Minutes (Sticky pos shifted) */}
-                                        <TableCell className={`text-center sticky left-[290px] bg-slate-900/95 z-20 border-b border-slate-800 w-[40px] min-w-[40px] max-w-[40px] ${quarterBorder}`}>
+                                        {/* Total Minutes */}
+                                        <td className={`sticky left-[290px] z-30 bg-slate-900 text-center ${borderClass} ${bottomBorder}`}>
                                             <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
                                                 {totalMins}
                                             </span>
-                                        </TableCell>
+                                        </td>
 
-                                        {/* Minute Grid */}
+                                        {/* Minute Grid Cells */}
                                         {playerMap.map((active, i) => {
                                             const countAtMin = validation?.minuteCounts[i] || 0;
                                             const isError = countAtMin !== 5;
-                                            // 12, 24, 36 min separators (Not 48)
                                             const isQuarterEnd = (i+1)%12 === 0 && (i+1) !== 48;
                                             
                                             return (
-                                                <TableCell 
+                                                <td 
                                                     key={i} 
                                                     onClick={() => handleToggleMinute(p.id, i)}
                                                     className={`
-                                                        h-8 w-8 min-w-[2rem] cursor-pointer transition-all relative border-b border-b-slate-800
-                                                        ${isQuarterEnd ? quarterBorder : 'border-r border-r-slate-800/50'}
+                                                        p-0 cursor-pointer relative transition-all ${bottomBorder}
+                                                        ${isQuarterEnd ? borderClass : 'border-r border-slate-800/30'}
                                                         hover:bg-white/10
                                                     `}
                                                 >
                                                     {active && (
                                                         <div className={`
-                                                            absolute inset-0
-                                                            ${isError 
-                                                                ? 'bg-red-500/20' 
-                                                                : 'bg-emerald-500/20'}
+                                                            w-full h-full absolute inset-0
+                                                            ${isError ? 'bg-red-500/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.5)]' : 'bg-emerald-500/30 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.5)]'}
                                                         `}></div>
                                                     )}
-                                                </TableCell>
+                                                </td>
                                             );
                                         })}
-                                    </TableRow>
+                                    </tr>
                                 );
                             });
                         })}
-                    </TableBody>
-                </Table>
+                    </tbody>
+                </table>
             </div>
 
-            {/* Validation Bar - Moved to Bottom */}
+            {/* Validation Bar */}
             {validation && (validation.under5.length > 0 || validation.over5.length > 0 || validation.over42.length > 0) && (
-                <div className="bg-red-500/10 border-t border-red-500/20 px-8 py-3 flex flex-wrap gap-4 items-center animate-in slide-in-from-bottom-2">
-                    <AlertCircle size={20} className="text-red-500" />
+                <div className="bg-red-500/10 border-t border-red-500/20 px-6 py-2 flex flex-wrap gap-4 items-center animate-in slide-in-from-bottom-2 shrink-0">
+                    <AlertCircle size={16} className="text-red-500" />
                     {validation.under5.length > 0 && (
-                        <span className="text-xs font-bold text-red-400">출전 선수가 5명 미만인 구간이 있습니다.</span>
+                        <span className="text-[10px] font-bold text-red-400">5명 미만: {validation.under5.length}개 구간</span>
                     )}
                     {validation.over5.length > 0 && (
-                        <span className="text-xs font-bold text-orange-400">출전 선수가 5명 이상인 구간이 있습니다.</span>
+                        <span className="text-[10px] font-bold text-orange-400">5명 초과: {validation.over5.length}개 구간</span>
                     )}
                     {validation.over42.length > 0 && (
-                        <span className="text-xs font-bold text-red-500 uppercase">42분 초과: {validation.over42[0]}</span>
+                        <span className="text-[10px] font-bold text-red-500 uppercase">혹사 경고: {validation.over42.join(', ')}</span>
                     )}
                 </div>
             )}
