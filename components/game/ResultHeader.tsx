@@ -28,15 +28,15 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
         pbpLogs.forEach(log => {
             if (log.type === 'score' || log.type === 'freethrow') {
-                let points = 2;
-                if (log.text.includes('3점')) points = 3;
-                else if (log.type === 'freethrow') {
-                    if (log.text.includes('앤드원')) points = 1;
-                    else points = 1;
-                }
+                // [Fix] Use explicit points property instead of text parsing
+                let points = log.points || 0;
                 
-                // Handle And-1 logic if text implies it (simplified)
-                if (log.text.includes('앤드원')) points = 1; // Usually logged separately
+                // Fallback for older logs or missing points
+                if (points === 0) {
+                    if (log.text.includes('3점')) points = 3;
+                    else if (log.type === 'freethrow') points = 1;
+                    else points = 2;
+                }
 
                 const q = Math.min(4, log.quarter) as 1|2|3|4;
                 const isHome = log.teamId === homeTeam.id;
@@ -51,7 +51,7 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
             }
         });
         
-        // Sync total with actual final score (in case of parsing diffs)
+        // Sync total with actual final score (in case of remaining small diffs)
         // We distribute the difference to Q4 to ensure totals match visual
         const homeDiff = homeScore - scores.home.total;
         const awayDiff = awayScore - scores.away.total;

@@ -57,12 +57,10 @@ export const GameSimulatingView: React.FC<{
       pbpLogs.forEach((log, index) => {
           // A. Always track score accumulation invisibly
           if (log.type === 'score' || log.type === 'freethrow') {
-             let points = 0;
-             if (log.type === 'score') points = (log.text.includes('3점') ? 3 : 2);
-             if (log.type === 'freethrow') points = 1;
-             if (log.points) points = log.points;
-             else if (log.text.includes('앤드원 성공')) points = 1;
-
+             // [Fix] Use explicit points from engine, do not parse text
+             let points = log.points || 0;
+             if (points === 0 && log.type === 'freethrow') points = 1; // Fallback for FT
+             
              if (log.teamId === homeTeam.id) currentH += points;
              else currentA += points;
           }

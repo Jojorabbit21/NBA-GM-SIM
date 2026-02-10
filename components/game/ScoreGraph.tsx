@@ -1,5 +1,4 @@
-
-import React from 'react';
+import React, { useMemo } from 'react';
 
 interface ScoreGraphProps {
     history: { h: number, a: number, wp: number }[];
@@ -101,6 +100,18 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     const headLeft = `${endX}%`;
     const headTop = `${(endY / VIEW_HEIGHT) * 100}%`;
 
+    // [Fix] Time Formatting: Ensure 00:00 format (Pad single digits)
+    const formattedTime = useMemo(() => {
+        if (!timeRemaining) return "12:00";
+        const parts = timeRemaining.split(':');
+        if (parts.length === 2) {
+            const m = parts[0].padStart(2, '0');
+            const s = parts[1].padStart(2, '0');
+            return `${m}:${s}`;
+        }
+        return timeRemaining;
+    }, [timeRemaining]);
+
     return (
         <div className="w-full relative flex flex-col mt-10 mb-2">
             {/* Header: Logos & Percentages & GAME CLOCK */}
@@ -127,9 +138,9 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                              </div>
 
                              {/* Time Section - Fixed Width for Stability */}
-                             <div className="flex flex-col items-center justify-center px-2 py-2 bg-black w-[140px]">
+                             <div className="flex flex-col items-center justify-center px-2 py-2 bg-black w-[150px]">
                                  <span className="text-5xl font-digital led-red leading-none tracking-wider tabular-nums transform translate-y-[3px]">
-                                     {timeRemaining}
+                                     {formattedTime}
                                  </span>
                              </div>
                         </div>
