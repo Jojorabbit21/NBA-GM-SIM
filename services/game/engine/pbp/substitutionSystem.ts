@@ -19,6 +19,11 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
     
     const scoreDiff = Math.abs(state.home.score - state.away.score);
     const isGarbage = state.quarter >= 4 && state.gameClock < 300 && scoreDiff > 20;
+    
+    // [New] Check if player is scheduled in rotation map for current minute
+    // If mapped, we IGNORE fatigue shutdown. (User's command is law)
+    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
     const requests: SubRequest[] = [];
     
@@ -53,19 +58,34 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
         let shouldSub = false;
         let reason = '';
 
+        // Check if user has explicitly scheduled this player right now
+        const isScheduled = tactics.rotationMap && 
+                            tactics.rotationMap[p.playerId] && 
+                            tactics.rotationMap[p.playerId][currentMinute];
+
         // --- Priority 1: Emergencies (Override Lock & Chart) ---
         if (p.health === 'Injured') { 
             shouldSub = true; reason = '부상'; 
         } else if (p.pf >= 6) { 
             shouldSub = true; reason = '퇴장'; 
-        } else if (p.currentCondition <= HARD_FLOOR) { 
-            shouldSub = true; reason = '탈진(Shutdown)';
-            p.isShutdown = true; 
+        } 
+        // --- Priority 2: Fatigue Shutdown (Only if NOT scheduled) ---
+        else if (p.currentCondition <= HARD_FLOOR) { 
+            if (isScheduled) {
+                // User wants them to play despite exhaustion. Let them play.
+                shouldSub = false; 
+            } else {
+                shouldSub = true; reason = '탈진(Shutdown)';
+                p.isShutdown = true; 
+            }
         } 
         
-        // --- Priority 2: Garbage Time ---
+        // --- Priority 3: Garbage Time ---
         else if (isGarbage && p.isStarter) { 
-            shouldSub = true; reason = '가비지 타임'; 
+            // Even in garbage time, if user scheduled a starter, they stay.
+            if (!isScheduled) {
+                shouldSub = true; reason = '가비지 타임'; 
+            }
         }
         
         if (shouldSub) {
