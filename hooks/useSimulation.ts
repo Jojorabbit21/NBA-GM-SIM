@@ -52,7 +52,7 @@ export const useSimulation = (
                         awayTeam.wins++;
                     }
 
-                    // 2. Update Player Stats
+                    // 2. Update Player Stats & Condition
                     const applyBox = (team: Team, box: PlayerBoxScore[]) => {
                         box.forEach(line => {
                             const p = team.roster.find(player => player.id === line.playerId);
@@ -80,8 +80,13 @@ export const useSimulation = (
                                 p.stats.pf += line.pf || 0;
                                 p.stats.plusMinus += (line.plusMinus || 0);
 
+                                // [Fix] Apply Post-Game Condition (Fatigue)
+                                // line.condition contains the remaining stamina after the game
+                                if (line.condition !== undefined) {
+                                    p.condition = line.condition;
+                                }
+
                                 // [Fix] Detailed Zone Stats Accumulation
-                                // Iterate over keys to capture all dynamic zone_ keys from the simulation result
                                 Object.keys(line).forEach(key => {
                                     if (key.startsWith('zone_')) {
                                         const val = (line as any)[key];
@@ -234,6 +239,7 @@ export const useSimulation = (
     const handleExecuteSim = useCallback(async (userTactics: GameTactics) => {
         setIsSimulating(true);
         
+        // [Balance] Recovery logic before game.
         const updatedTeams = teams.map(team => ({
             ...team,
             roster: team.roster.map(player => {
