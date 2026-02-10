@@ -1,5 +1,5 @@
 
-import { GameState, PossessionResult, LivePlayer } from './pbpTypes';
+import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
 import { PbpLog } from '../../../../types';
 import { formatTime } from './timeEngine';
 import { resolveDynamicZone } from '../shotDistribution';
@@ -15,7 +15,14 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     const commitFoul = (defP: LivePlayer) => {
         defP.pf += 1;
         defTeam.fouls += 1;
-        // Ejection logic handled in substitutionSystem check
+        // Ejection logic handled in substitutionSystem check called in main loop
+    };
+
+    // Helper to update Plus/Minus for players currently on court
+    const updatePlusMinus = (scoreDelta: number) => {
+        if (scoreDelta === 0) return;
+        offTeam.onCourt.forEach(p => p.plusMinus += scoreDelta);
+        defTeam.onCourt.forEach(p => p.plusMinus -= scoreDelta);
     };
 
     // 1. Base Stats
@@ -32,6 +39,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (assister) assister.ast += 1;
 
         offTeam.score += points;
+        
+        // [Update] Apply +/- for the field goal
+        updatePlusMinus(points);
 
         let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} ${points}점슛 성공`;
         if (assister) logText += ` (AST: ${assister.playerName})`;
@@ -45,6 +55,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 actor.ftm += 1;
                 actor.fta += 1;
                 offTeam.score += 1;
+                // [Update] Apply +/- for the And-1 FT
+                updatePlusMinus(1);
                 logText += ` + 앤드원 성공`;
             } else {
                 actor.fta += 1;
@@ -102,6 +114,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
             
+            // [Update] Apply +/- for Penalty FTs
+            updatePlusMinus(ftMade);
+            
             addLog(state, offTeam.id, `${actor.playerName} 자유투 ${ftMade}/2 성공`, 'freethrow', ftMade);
         }
 
@@ -117,6 +132,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         for (let i=0; i<numShots; i++) {
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
         }
+        
+        // [Update] Apply +/- for Shooting Foul FTs
+        updatePlusMinus(ftMade);
         
         addLog(state, offTeam.id, `${actor.playerName} 슛 동작 파울 - 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);
     }

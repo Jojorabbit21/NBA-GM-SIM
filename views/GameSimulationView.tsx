@@ -1,186 +1,177 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Team } from '../types';
-import { GAME_SIMULATION_MESSAGES } from '../data/uiConstants';
-import { generateRealisticGameFlow, SIMULATION_SPEED } from '../utils/simulationMath';
+import { Team, PbpLog } from '../types';
+import { calculateWinProbability } from '../utils/simulationMath';
 
 // New Sub-components
 import { LiveScoreboard } from '../components/simulation/LiveScoreboard';
 import { SimulationCourt } from '../components/simulation/SimulationCourt';
 
+// Timeline Item Structure
+interface TimelineItem {
+    h: number; // Home Score
+    a: number; // Away Score
+    q: number; // Quarter
+    t: string; // Time Remaining String (e.g. "11:45")
+    wp: number; // Win Probability (0-100)
+    text: string; // Log Text
+    isScore: boolean;
+}
+
 export const GameSimulatingView: React.FC<{ 
   homeTeam: Team, 
   awayTeam: Team, 
   userTeamId?: string | null,
-  finalHomeScore?: number,
-  finalAwayScore?: number,
+  pbpLogs: PbpLog[],
   onSimulationComplete?: () => void
-}> = ({ homeTeam, awayTeam, userTeamId, finalHomeScore = 110, finalAwayScore = 105, onSimulationComplete }) => {
-  const [progress, setProgress] = useState(0);
-  const [currentMessage, setCurrentMessage] = useState(GAME_SIMULATION_MESSAGES.GENERAL[0]);
+}> = ({ homeTeam, awayTeam, userTeamId, pbpLogs, onSimulationComplete }) => {
+  // State
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isBuzzerBeaterActive, setIsBuzzerBeaterActive] = useState(false);
-  const [displayScore, setDisplayScore] = useState({ h: 0, a: 0 });
   
-  const isFinishedRef = useRef(false);
-  const progressRef = useRef(0);
+  // Refs for loop control
+  const indexRef = useRef(0);
   const onCompleteRef = useRef(onSimulationComplete);
-  const isBuzzerBeaterTriggeredRef = useRef(false);
   
   useEffect(() => {
       onCompleteRef.current = onSimulationComplete;
   }, [onSimulationComplete]);
   
-  // 1. Generate Game Flow (Logic Extracted)
-  const scoreTimeline = useMemo(() => 
-      generateRealisticGameFlow(finalHomeScore, finalAwayScore), 
-  [finalHomeScore, finalAwayScore]);
+  // 1. Convert PBP Logs to Animation Timeline
+  // This ensures the animation strictly follows what the engine simulated.
+  const timeline = useMemo(() => {
+      const items: TimelineItem[] = [];
+      let currentH = 0;
+      let currentA = 0;
 
-  // 2. Simulation Loop (Orchestrator)
-  useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
-    
-    const runSimulationStep = () => {
-        setProgress(prev => {
-            // Game Finished
-            if (prev >= 100) {
-                progressRef.current = 100;
-                return 100;
-            }
+      // Start with 0-0
+      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "TIP-OFF", isScore: false });
 
-            if (isBuzzerBeaterTriggeredRef.current) {
-                progressRef.current = 100;
-                return 100;
-            }
-            
-            const currentIndex = Math.floor((prev / 100) * (scoreTimeline.length - 1));
-            const currentData = scoreTimeline[currentIndex] || { h: 0, a: 0 };
-            const scoreDiff = Math.abs(currentData.h - currentData.a);
+      pbpLogs.forEach(log => {
+          // Parse Score if event is a score
+          if (log.type === 'score' || log.type === 'freethrow') {
+             // For display, we accumulate score. 
+             // Note: In engine, log might not contain running score, so we accum manually.
+             let points = 0;
+             if (log.type === 'score') points = (log.text.includes('3점') ? 3 : 2);
+             if (log.type === 'freethrow') points = 1; // Simplify FTs to 1pt events or chunks for visual flow
+             
+             // Check if log has specific points info
+             if (log.points) points = log.points;
+             else if (log.text.includes('앤드원 성공')) points = 1;
 
-            const isGarbage = prev > 60 && scoreDiff >= 20;
-            const isLateGame = prev > 85;
-            const isSuperClutch = prev > 94 && scoreDiff <= 3;
-            
-            // Buzzer Beater Trigger Logic
-            const eventualWinnerIsHome = finalHomeScore > finalAwayScore;
-            const isWinnerTrailingOrTied = eventualWinnerIsHome 
-                ? currentData.h <= currentData.a 
-                : currentData.a <= currentData.h;
+             if (log.teamId === homeTeam.id) currentH += points;
+             else currentA += points;
+          }
 
-            const remainingHomePoints = finalHomeScore - currentData.h;
-            const remainingAwayPoints = finalAwayScore - currentData.a;
-            const totalRemainingPoints = remainingHomePoints + remainingAwayPoints;
+          // Parse Time to Seconds for WP Calculation
+          const [mm, ss] = log.timeRemaining.split(':').map(Number);
+          const secondsRemainingInQ = mm * 60 + ss;
+          const totalSecondsPassed = ((log.quarter - 1) * 720) + (720 - secondsRemainingInQ);
+          
+          const wp = calculateWinProbability(currentH, currentA, totalSecondsPassed / 60);
 
-            if (
-                !isBuzzerBeaterTriggeredRef.current && 
-                prev > 96 && 
-                prev < 99 && 
-                scoreDiff <= 3 && 
-                isWinnerTrailingOrTied &&
-                totalRemainingPoints > 0 && 
-                totalRemainingPoints <= 3   
-            ) {
-                 if (Math.random() < 0.30) {
-                     isBuzzerBeaterTriggeredRef.current = true;
-                     setIsBuzzerBeaterActive(true);
-                     
-                     const buzzerMsgs = GAME_SIMULATION_MESSAGES.BUZZER_BEATER;
-                     setCurrentMessage(buzzerMsgs[Math.floor(Math.random() * buzzerMsgs.length)]);
-                     
-                     timeoutId = setTimeout(runSimulationStep, 2000); 
-                     return prev; 
-                 }
-            }
-
-            let speedConfig = SIMULATION_SPEED.NORMAL;
-            if (isGarbage) speedConfig = SIMULATION_SPEED.GARBAGE;
-            else if (isSuperClutch) speedConfig = SIMULATION_SPEED.CLUTCH;
-            else if (isLateGame) speedConfig = SIMULATION_SPEED.LATE;
-
-            const next = Math.min(100, prev + speedConfig.INC);
-            progressRef.current = next;
-            
-            timeoutId = setTimeout(runSimulationStep, speedConfig.DELAY);
-            return next;
-        });
-    };
-    runSimulationStep();
-    return () => clearTimeout(timeoutId);
-  }, [scoreTimeline, finalHomeScore, finalAwayScore]); 
-
-  // 3. Sync Display Score
-  useEffect(() => {
-      if (scoreTimeline.length === 0) return;
-      const percent = progress / 100;
-      const index = Math.floor(percent * (scoreTimeline.length - 1));
-      setDisplayScore(scoreTimeline[index]);
-  }, [progress, scoreTimeline]);
-
-  // 4. Check Finish
-  useEffect(() => {
-      if (progress >= 100 && !isFinishedRef.current) {
-          isFinishedRef.current = true;
-          setDisplayScore({ h: finalHomeScore, a: finalAwayScore });
-          setTimeout(() => {
-              if (onCompleteRef.current) onCompleteRef.current();
-          }, 2000);
+          items.push({
+              h: currentH,
+              a: currentA,
+              q: log.quarter,
+              t: log.timeRemaining,
+              wp: wp,
+              text: log.text,
+              isScore: log.type === 'score'
+          });
+      });
+      
+      // Ensure final state matches exactly
+      if (items.length > 0) {
+          const last = items[items.length - 1];
+          last.t = "00:00"; // Force clock to 0 at end
       }
-  }, [progress, finalHomeScore, finalAwayScore]);
+      
+      return items;
+  }, [pbpLogs, homeTeam.id]);
 
-  // 5. Message Rotator
+  // 2. Animation Loop
   useEffect(() => {
-    const msgTimer = setInterval(() => {
-        if (isFinishedRef.current) {
-            setCurrentMessage("경기 종료 - 결과 집계 중...");
-            return;
-        }
-        
-        if (isBuzzerBeaterActive) {
-             const buzzerMsgs = GAME_SIMULATION_MESSAGES.BUZZER_BEATER;
-             const nextMsg = buzzerMsgs[Math.floor(Math.random() * buzzerMsgs.length)];
-             setCurrentMessage(nextMsg);
-             return; 
-        }
+      let timeoutId: ReturnType<typeof setTimeout>;
+      let isUnmounted = false;
 
-        const currentProgress = progressRef.current;
-        const approxIdx = Math.floor((currentProgress / 100) * (scoreTimeline.length - 1));
-        const currentScore = scoreTimeline[approxIdx] || { h: 0, a: 0 };
-        const scoreDiff = Math.abs(currentScore.h - currentScore.a);
-        
-        let targetPool = GAME_SIMULATION_MESSAGES.GENERAL;
-        
-        if (currentProgress > 60 && scoreDiff >= 20) targetPool = GAME_SIMULATION_MESSAGES.GARBAGE;
-        else if (currentProgress > 94 && scoreDiff <= 3) targetPool = GAME_SIMULATION_MESSAGES.SUPER_CLUTCH;
-        else if (currentProgress > 85 && scoreDiff <= 10) targetPool = GAME_SIMULATION_MESSAGES.CLUTCH;
+      const runLoop = () => {
+          if (isUnmounted) return;
 
-        setCurrentMessage(prev => {
-            if (targetPool.length <= 1) return targetPool[0];
-            let next;
-            do { next = targetPool[Math.floor(Math.random() * targetPool.length)]; } while (next === prev);
-            return next;
-        });
-    }, 2000); 
+          const idx = indexRef.current;
+          
+          // Finish Condition
+          if (idx >= timeline.length - 1) {
+              setTimeout(() => {
+                  if (!isUnmounted && onCompleteRef.current) onCompleteRef.current();
+              }, 1500);
+              return;
+          }
 
-    return () => clearInterval(msgTimer);
-  }, [scoreTimeline, isBuzzerBeaterActive]); 
+          const currentItem = timeline[idx];
+          const nextItem = timeline[idx + 1];
+          const scoreDiff = Math.abs(currentItem.h - currentItem.a);
 
-  if (!homeTeam || !awayTeam) return null;
+          // Determine Speed
+          let delay = 80; // Base speed (Fast)
 
-  // Visual State Calculation for Props
-  const scoreDiff = Math.abs(displayScore.h - displayScore.a);
-  const isGarbage = progress > 60 && scoreDiff >= 20;
-  const isSuperClutch = progress > 94 && scoreDiff <= 3;
-  const isClutch = progress > 85 && scoreDiff <= 10;
-  const isBuzzerBeaterMessage = GAME_SIMULATION_MESSAGES.BUZZER_BEATER.includes(currentMessage);
+          // Slow down for scores to let user see
+          if (currentItem.isScore) delay = 200;
 
+          // Clutch Logic: 4th Quarter, Close Game -> Slow down drama
+          if (currentItem.q === 4) {
+              if (scoreDiff <= 5 && parseInt(currentItem.t.split(':')[0]) < 2) {
+                  // Super Clutch (Last 2 mins, 5 pts)
+                  delay = 800; 
+                  if (idx % 2 === 0) setIsBuzzerBeaterActive(true); // Visual effect
+              } else if (scoreDiff <= 10) {
+                  delay = 400;
+                  setIsBuzzerBeaterActive(false);
+              } else {
+                  // Garbage time or blowout in 4th
+                  delay = 40; 
+                  setIsBuzzerBeaterActive(false);
+              }
+          } else {
+             // Early game fast forward
+             delay = 50; 
+             setIsBuzzerBeaterActive(false);
+          }
+
+          setCurrentIndex(idx);
+          indexRef.current = idx + 1;
+          
+          timeoutId = setTimeout(runLoop, delay);
+      };
+
+      runLoop();
+
+      return () => {
+          isUnmounted = true;
+          clearTimeout(timeoutId);
+      };
+  }, [timeline]);
+
+
+  if (!homeTeam || !awayTeam || timeline.length === 0) return null;
+
+  const currentData = timeline[currentIndex];
+  
+  // Calculate Progress % for Graph
+  // Total indices / current index
+  const progress = (currentIndex / (timeline.length - 1)) * 100;
+  
+  // Convert full timeline to WP history format for Graph
+  const wpHistory = timeline.slice(0, currentIndex + 1).map(t => ({ h: t.h, a: t.a, wp: t.wp }));
+
+  // Visual Effects
+  const scoreDiff = Math.abs(currentData.h - currentData.a);
+  const isSuperClutch = currentData.q === 4 && scoreDiff <= 3 && parseInt(currentData.t.split(':')[0]) < 1;
+  
   let messageClass = "text-indigo-300";
-  if (isGarbage) {
-      messageClass = "text-slate-500 font-medium";
-  } else if (isBuzzerBeaterActive && isBuzzerBeaterMessage) {
-      messageClass = "text-red-500 font-black text-2xl animate-buzzer-beater scale-[1.35] drop-shadow-[0_0_20px_rgba(255,255,255,0.8)]";
-  } else if (isSuperClutch || (isBuzzerBeaterActive && !isBuzzerBeaterMessage)) {
-      messageClass = "text-red-500 font-black text-2xl animate-shake-intense drop-shadow-[0_0_15px_rgba(239,68,68,0.9)] scale-125";
-  } else if (isClutch) {
-      messageClass = "text-orange-400 font-black text-xl animate-pulse-fast drop-shadow-[0_0_8px_rgba(249,115,22,0.6)] scale-110";
+  if (isSuperClutch) {
+      messageClass = "text-red-500 font-black text-xl animate-pulse";
   }
 
   return (
@@ -195,14 +186,16 @@ export const GameSimulatingView: React.FC<{
         <LiveScoreboard 
             homeTeam={homeTeam} 
             awayTeam={awayTeam} 
-            displayScore={displayScore} 
-            currentMessage={currentMessage} 
+            displayScore={{ h: currentData.h, a: currentData.a }} 
+            currentMessage={currentData.text} 
             messageClass={messageClass} 
-            scoreTimeline={scoreTimeline} 
+            scoreTimeline={wpHistory} 
             progress={progress} 
+            quarter={currentData.q}
+            timeRemaining={currentData.t}
         />
 
-        <SimulationCourt isFinished={isFinishedRef.current} />
+        <SimulationCourt isFinished={currentIndex >= timeline.length - 1} />
         
       </div>
     </div>

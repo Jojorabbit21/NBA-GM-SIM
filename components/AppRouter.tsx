@@ -33,13 +33,15 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
 
     if (view === 'GameSim' && sim.activeGame) {
+        // [Fix] Pass pbpLogs to View so animation follows actual engine events
+        const pbpLogs = sim.tempSimulationResult?.pbpLogs || [];
+        
         return (
             <GameSimulatingView 
                 homeTeam={gameData.teams.find((t: Team) => t.id === sim.activeGame.homeTeamId)!} 
                 awayTeam={gameData.teams.find((t: Team) => t.id === sim.activeGame.awayTeamId)!} 
                 userTeamId={gameData.myTeamId} 
-                finalHomeScore={sim.activeGame.homeScore} 
-                finalAwayScore={sim.activeGame.awayScore} 
+                pbpLogs={pbpLogs}
                 onSimulationComplete={() => sim.finalizeSimRef.current?.()} 
             />
         );
@@ -67,7 +69,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
 
     switch (view) {
         case 'Dashboard':
-            // [Fix] Ensure tactics exist before rendering Dashboard to prevent crash
             if (myTeam && gameData.userTactics) {
                 return (
                     <DashboardView 
