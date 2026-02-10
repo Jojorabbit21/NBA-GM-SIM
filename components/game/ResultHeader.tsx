@@ -28,16 +28,10 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
         pbpLogs.forEach(log => {
             if (log.type === 'score' || log.type === 'freethrow') {
-                // [Fix] Use explicit points property instead of text parsing
-                let points = log.points || 0;
+                // [SSOT Fix] Use explicit points property.
+                // Do NOT guess points based on text, as it leads to drift on missed FTs (0 points).
+                const points = log.points ?? 0;
                 
-                // Fallback for older logs or missing points
-                if (points === 0) {
-                    if (log.text.includes('3점')) points = 3;
-                    else if (log.type === 'freethrow') points = 1;
-                    else points = 2;
-                }
-
                 const q = Math.min(4, log.quarter) as 1|2|3|4;
                 const isHome = log.teamId === homeTeam.id;
 
@@ -51,12 +45,13 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
             }
         });
         
-        // Sync total with actual final score (in case of remaining small diffs)
+        // Sync total with actual final score (in case of buzzer beaters or engine quirks)
         // We distribute the difference to Q4 to ensure totals match visual
         const homeDiff = homeScore - scores.home.total;
         const awayDiff = awayScore - scores.away.total;
-        scores.home[4] += homeDiff;
-        scores.away[4] += awayDiff;
+        
+        if (homeDiff !== 0) scores.home[4] += homeDiff;
+        if (awayDiff !== 0) scores.away[4] += awayDiff;
 
         return scores;
     }, [pbpLogs, homeTeam.id, homeScore, awayScore]);
