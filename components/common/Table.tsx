@@ -171,7 +171,6 @@ export const TableCell = ({
     const stickyClass = stickyLeft ? 'sticky left-0 z-30' : '';
     
     const renderContent = () => {
-        // [Critical Fix] Handle numeric 0 correctly by checking against null/undefined
         if (children !== undefined && children !== null) return children;
 
         switch (variant) {
@@ -180,7 +179,7 @@ export const TableCell = ({
                     <div className="flex items-center gap-3">
                         <div className="flex flex-col min-w-0">
                             <span 
-                                className={`text-xs font-bold text-slate-200 truncate ${onClick ? 'group-hover:text-indigo-400 group-hover:underline cursor-pointer' : ''}`}
+                                className={`font-bold text-slate-200 truncate ${onClick ? 'group-hover:text-indigo-400 group-hover:underline cursor-pointer' : ''}`}
                                 onClick={onClick ? (e) => { e.stopPropagation(); onClick(); } : undefined}
                             >
                                 {value}
@@ -191,7 +190,7 @@ export const TableCell = ({
                 );
             case 'stat':
                 return (
-                    <span className="font-mono font-bold text-xs text-slate-300 tabular-nums">
+                    <span className="font-mono font-bold text-slate-300 tabular-nums">
                         {value}
                     </span>
                 );
@@ -199,7 +198,7 @@ export const TableCell = ({
                 const numVal = Number(value);
                 const colorClass = colorScale ? getAttrColor(numVal) : 'text-slate-400';
                 return (
-                    <span className={`font-mono font-black text-xs tabular-nums ${colorClass}`}>
+                    <span className={`font-mono font-black tabular-nums ${colorClass}`}>
                         {value}
                     </span>
                 );
@@ -212,7 +211,7 @@ export const TableCell = ({
                     </span>
                 );
             default:
-                return <span className="text-sm font-medium text-slate-300">{value}</span>;
+                return <span className="font-medium text-slate-300">{value}</span>;
         }
     };
 
