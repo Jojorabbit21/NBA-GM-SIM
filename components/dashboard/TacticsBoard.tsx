@@ -144,12 +144,13 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
             />
 
             {/* Header Controls */}
-            <div className="px-8 py-5 bg-slate-950/40 border-b border-white/5 flex items-center justify-between flex-shrink-0">
+            <div className="px-8 py-5 bg-slate-950/40 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20">
                 <div className="flex items-center gap-6">
                     <Dropdown
                         isOpen={isDropdownOpen}
                         onOpenChange={setIsDropdownOpen}
                         width="w-64"
+                        align="left"
                         trigger={
                             <button 
                                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}

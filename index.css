@@ -36,6 +36,19 @@ body {
 .custom-scrollbar-hide::-webkit-scrollbar { display: none; }
 .custom-scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 
+/* Seven Segment & LED Effects */
+.font-digital { font-family: 'Seven Segment', monospace; }
+
+.led-red {
+    color: #ff3333;
+    text-shadow: 0 0 5px rgba(255, 0, 0, 0.8), 0 0 10px rgba(255, 0, 0, 0.5);
+}
+
+.led-amber {
+    color: #fbbf24;
+    text-shadow: 0 0 5px rgba(251, 191, 36, 0.8), 0 0 10px rgba(251, 191, 36, 0.5);
+}
+
 ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

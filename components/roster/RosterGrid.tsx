@@ -239,14 +239,14 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             </div>
                         </th>
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
-                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-900 border-b border-r border-slate-800 px-2 align-middle">
+                            <th key={g.id} colSpan={g.keys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{g.label}</span>
                                 </div>
                             </th>
                         ))}
                         {tab === 'stats' && (
-                            <th colSpan={STATS_COLS.length} className="bg-slate-900 border-b border-slate-800 px-2 align-middle">
+                            <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
                                 </div>
@@ -381,7 +381,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     </div>
                                 </th>
                                 {ZONE_CONFIG.map(z => (
-                                    <th key={z.id} colSpan={2} className="bg-slate-900 border-b border-r border-slate-800 px-1 align-middle">
+                                    <th key={z.id} colSpan={2} className="bg-slate-950 border-b border-r border-slate-800 px-1 align-middle">
                                         <div className="h-full flex items-center justify-center">
                                             <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{z.label}</span>
                                         </div>
@@ -389,11 +389,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 ))}
                             </tr>
                             <tr className="h-10 text-slate-500 text-[9px] font-black uppercase tracking-widest">
-                                <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
-                                <TableHeaderCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                                <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
+                                <TableHeaderCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
                                 {ZONE_CONFIG.map(z => (
                                     <React.Fragment key={z.id}>
-                                        <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800/30 bg-slate-900/50">M/A</TableHeaderCell>
+                                        <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800/30 bg-slate-950">M/A</TableHeaderCell>
                                         <TableHeaderCell align="right" className="border-r border-slate-800 text-slate-300" sortable onSort={() => handleSort(`zone_pct_${z.id}`)} sortDirection={sortConfig.key === `zone_pct_${z.id}` ? sortConfig.direction : null}>%</TableHeaderCell>
                                     </React.Fragment>
                                 ))}
@@ -403,7 +403,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {sortedRoster.map(p => (
                                 <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
                                     <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
-                                        <span className="text-xs font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                        <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     </TableCell>
                                     <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
                                     
@@ -413,7 +413,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                         const pct = a > 0 ? ((m/a)*100).toFixed(0) + '%' : '-';
                                         return (
                                             <React.Fragment key={z.id}>
-                                                <TableCell align="right" className="font-mono text-[10px] text-slate-500 border-r border-slate-800/30" value={`${m}/${a}`} />
+                                                <TableCell align="right" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={`${m}/${a}`} />
                                                 <TableCell align="right" className={`font-mono font-bold text-xs border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
                                             </React.Fragment>
                                         );
@@ -430,8 +430,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
                                     return (
                                         <React.Fragment key={z.id}>
-                                            <TableCell align="right" className="font-mono text-[10px] text-slate-500 border-r border-slate-800/30" value={`${avg.m}/${avg.a}`} />
-                                            <TableCell align="right" className="font-mono font-black text-xs text-white border-r border-slate-800" value={pct} />
+                                            <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800/30" value={`${avg.m}/${avg.a}`} />
+                                            <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800" value={pct} />
                                         </React.Fragment>
                                     );
                                 })}

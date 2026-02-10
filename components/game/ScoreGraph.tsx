@@ -104,7 +104,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     return (
         <div className="w-full relative flex flex-col mt-6 mb-2">
             {/* Header: Logos & Percentages & GAME CLOCK */}
-            <div className="flex justify-between items-end px-1 mb-2 relative">
+            <div className="flex justify-between items-end px-1 mb-2 relative h-16">
                 {/* Left Side: Away Team (Top of Graph) */}
                 <div className="flex items-center gap-2">
                     <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
@@ -114,13 +114,25 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                     </div>
                 </div>
 
-                {/* Center: Game Clock */}
+                {/* Center: Game Clock (Digital LED Style) */}
                 {quarter && timeRemaining && (
-                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0.5 flex flex-col items-center">
-                        <div className="bg-slate-900 border border-slate-700/50 px-3 py-1 rounded-md shadow-lg flex items-center gap-2">
-                            <span className="text-xs font-black text-indigo-400 font-mono tracking-tighter">{quarter}Q</span>
-                            <div className="w-px h-3 bg-slate-700"></div>
-                            <span className="text-sm font-black text-white font-mono tabular-nums tracking-widest">{timeRemaining}</span>
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center">
+                        <div className="bg-black border-2 border-slate-800 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.5)] flex items-stretch overflow-hidden relative">
+                             {/* Gloss effect */}
+                             <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none z-20"></div>
+                             
+                             {/* Quarter Section */}
+                             <div className="flex flex-col items-center justify-center px-3 py-1 bg-black border-r border-slate-800/50">
+                                 <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mb-0.5">QTR</span>
+                                 <span className="text-xl font-digital led-amber leading-none transform translate-y-[2px]">{quarter}</span>
+                             </div>
+
+                             {/* Time Section */}
+                             <div className="flex flex-col items-center justify-center px-4 py-1 bg-black min-w-[80px]">
+                                 <span className="text-3xl font-digital led-red leading-none tracking-wider tabular-nums transform translate-y-[2px]">
+                                     {timeRemaining}
+                                 </span>
+                             </div>
                         </div>
                     </div>
                 )}
