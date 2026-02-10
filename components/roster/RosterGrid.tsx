@@ -63,7 +63,7 @@ const ATTR_NAME_MAP: Record<string, string> = {
     agility: '민첩성 (Agility)',
     strength: '힘 (Strength)',
     vertical: '점프력 (Vertical)',
-    stamina: '체력 (Stamina)',
+    stamina: '지구력 (Stamina)',
     hustle: '허슬 (Hustle)',
     durability: '내구도 (Durability)'
 };
@@ -136,7 +136,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         if (key === 'ft%') return s.fta > 0 ? s.ftm / s.fta : 0;
         if (key === 'ts%') { 
             const tsa = s.fga + 0.44 * s.fta; 
-            return tsa > 0 ? s.pts / (2 * tsa) : 0; 
+            return tsa > 0 ? p.stats.pts / (2 * tsa) : 0; 
         }
 
         // 3. Salary Logic
@@ -303,10 +303,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     {p.health !== 'Healthy' && <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>{p.health}</span>}
                                 </div>
                             </TableCell>
-                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
-                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
+                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
                             <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
-                                <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
+                                <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-sm !shadow-none" /></div>
                             </TableCell>
 
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
@@ -335,9 +335,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <tr className="h-10">
                         <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
                         <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
-                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-bold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
+                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-bold text-slate-500 text-sm z-30">{averages.attr.age}</TableCell>
                         <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30 text-center">
-                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
+                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-sm !shadow-none opacity-80" /></div>
                         </TableCell>
 
                         {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
@@ -405,7 +405,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                         <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     </TableCell>
-                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_8px_rgba(0,0,0,0.5)]">{p.position}</TableCell>
+                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_8px_rgba(0,0,0,0.5)]">{p.position}</TableCell>
                                     
                                     {ZONE_CONFIG.map(z => {
                                         const m = p.stats[z.keyM] || 0;
