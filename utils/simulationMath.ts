@@ -68,13 +68,9 @@ export const calculatePerMinuteStats = (logs: PbpLog[], homeTeamId: string): WPS
                 break;
             }
 
-            // Process score
+            // Process score [SSOT FIX]
             if (log.type === 'score' || log.type === 'freethrow') {
-                let points = 0;
-                if (log.type === 'score') points = (log.text.includes('3점') ? 3 : 2);
-                if (log.type === 'freethrow') points = 1;
-                if (log.points) points = log.points;
-                else if (log.text.includes('앤드원 성공')) points = 1;
+                const points = log.points ?? 0;
 
                 if (log.teamId === homeTeamId) currentH += points;
                 else currentA += points;

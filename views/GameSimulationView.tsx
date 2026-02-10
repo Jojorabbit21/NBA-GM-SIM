@@ -56,17 +56,21 @@ export const GameSimulatingView: React.FC<{
 
       pbpLogs.forEach((log, index) => {
           // A. Always track score accumulation invisibly
+          // [SSOT Fix] Strictly use log.points provided by the engine. 
+          // Do NOT fallback to text parsing or default values which causes drift.
           if (log.type === 'score' || log.type === 'freethrow') {
-             // [Fix] Use explicit points from engine, do not parse text
-             let points = log.points || 0;
-             if (points === 0 && log.type === 'freethrow') points = 1; // Fallback for FT
+             // Use nullish coalescing (??) to allow 0 points (missed FT) to be valid
+             const points = log.points ?? 0;
              
              if (log.teamId === homeTeam.id) currentH += points;
              else currentA += points;
           }
 
           // B. Determine if this log is "Show-worthy"
-          const isScore = log.type === 'score' || log.type === 'freethrow';
+          // Show scores only if points > 0, but always show 'info' events
+          const isScoreEvent = (log.type === 'score' || log.type === 'freethrow');
+          const hasPoints = (log.points ?? 0) > 0;
+          
           const isUrgent = log.type === 'info' && (
               log.text.includes('부상') || 
               log.text.includes('퇴장') || 
@@ -79,7 +83,7 @@ export const GameSimulatingView: React.FC<{
           const isLast = index === pbpLogs.length - 1; // Always show final log
 
           // Only push to timeline if it's a key event
-          if (isScore || isUrgent || isPeriodEnd || isLast) {
+          if ((isScoreEvent && hasPoints) || isUrgent || isPeriodEnd || isLast) {
               // Parse Time to Seconds for WP Calculation & Graph Sync
               const [mm, ss] = log.timeRemaining.split(':').map(Number);
               const secondsRemainingInQ = mm * 60 + ss;
