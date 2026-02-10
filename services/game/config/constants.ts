@@ -7,7 +7,7 @@ export const SIM_CONFIG = {
         SCORING_MODIFIER: 1.05, 
     },
     FATIGUE: {
-        DRAIN_BASE: 1.8, 
+        DRAIN_BASE: 1.0, // 사용자가 직접 수정하였으므로, 임의로 수정 금지.
         STAMINA_SAVE_FACTOR: 0.015,
         DURABILITY_FACTOR: 0.005,
         FATIGUE_PENALTY_LOW: 0.02,

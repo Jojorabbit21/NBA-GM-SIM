@@ -60,13 +60,12 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     const VIEW_WIDTH = 100;
     const VIEW_HEIGHT = 60;
     const MID_Y = 30; // 50% line (Center - Tie Game)
+    const TOTAL_MINUTES = 48; // Fixed X-Axis Domain
 
-    const dataIndex = Math.floor((progress / 100) * (history.length - 1));
-    const dataSlice = history.slice(0, dataIndex + 1);
-
-    // Prepare points for smooth path generation
-    const points = dataSlice.map((data, i) => ({
-        x: (i / (history.length - 1)) * VIEW_WIDTH,
+    // Prepare points with FIXED X-axis scaling (0 to 48 minutes)
+    // History contains 1-minute snapshots. i=0 is 0min, i=48 is 48min.
+    const points = history.map((data, i) => ({
+        x: (i / TOTAL_MINUTES) * VIEW_WIDTH,
         // Y Calculation:
         // WP 50 -> 30 (Mid)
         // WP 100 -> 60 (Bottom - Home Wins)
@@ -78,7 +77,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
 
     const pathData = getSmoothPath(points);
 
-    const currentData = dataSlice[dataSlice.length - 1] || { wp: 50 };
+    const currentData = history[history.length - 1] || { wp: 50 };
     const currentWP = currentData.wp;
     const startX = points[0].x;
     const startY = points[0].y;
@@ -91,6 +90,8 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
         curveCommands = pathData.substring(firstCIndex);
     }
 
+    // Fill area under curve
+    // Start at Mid-Left (0,30) -> Go to first point -> Curve -> Go to last point -> Go to Mid-Right (endX, 30) -> Close
     const fillPath = `M 0,${MID_Y} L ${startX},${startY} ${curveCommands} L ${endX},${MID_Y} Z`;
 
     const homeProb = currentWP.toFixed(0);
@@ -152,6 +153,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
 
                     <rect width="100%" height="100%" fill="#0f172a" opacity="0.8" />
                     
+                    {/* Grid Lines - Fixed at 12min (25%), 24min (50%), 36min (75%) */}
                     <line x1="25" y1="0" x2="25" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
                     <line x1="50" y1="0" x2="50" y2={VIEW_HEIGHT} stroke="#334155" strokeWidth="0.5" />
                     <line x1="75" y1="0" x2="75" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />

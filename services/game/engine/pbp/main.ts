@@ -97,6 +97,39 @@ export function runFullGameSimulation(
         }
     }
 
+    // [CTO Fix] No Overtime Rule: Break ties with a buzzer beater
+    if (state.home.score === state.away.score) {
+        // Simple heuristic: Home advantage (55%) vs Away (45%)
+        const isHomeWinner = Math.random() < 0.55;
+        const winnerTeam = isHomeWinner ? state.home : state.away;
+        const loserTeam = isHomeWinner ? state.away : state.home;
+        
+        // Pick the "Hero" (Highest OVR on court)
+        const hero = winnerTeam.onCourt.reduce((prev, current) => (prev.ovr > current.ovr) ? prev : current);
+        
+        // Add 2 points
+        winnerTeam.score += 2;
+        
+        // Update Player Stats
+        hero.pts += 2;
+        hero.fgm += 1;
+        hero.fga += 1;
+        
+        // Update Plus/Minus
+        winnerTeam.onCourt.forEach(p => p.plusMinus += 2);
+        loserTeam.onCourt.forEach(p => p.plusMinus -= 2);
+
+        // Log the dramatic finish
+        state.logs.push({
+            quarter: 4,
+            timeRemaining: '0:00',
+            teamId: winnerTeam.id,
+            text: `🚨 GAME WINNER! ${hero.playerName} 경기 종료 직전 버저비터 성공!`,
+            type: 'score',
+            points: 2
+        });
+    }
+
     const gameEndSec = 48 * 60;
     [state.home, state.away].forEach(team => {
         team.onCourt.forEach(p => {

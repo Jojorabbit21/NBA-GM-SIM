@@ -1,4 +1,6 @@
 
+import { PbpLog } from "../types";
+
 // [Config] Simulation Speed Control
 // Lower increment / Higher delay = Slower game
 export const SIMULATION_SPEED = {
@@ -16,6 +18,7 @@ export const calculateWinProbability = (homeScore: number, awayScore: number, ti
     const diff = homeScore - awayScore;
     
     // As time decreases, points lead becomes more valuable
+    // Volatility decreases as timeRemaining -> 0
     const volatility = Math.sqrt(timeRemaining + 1) * 3.0;
     
     // Normalize to 0-100 (Home 100%, Away 0%)
@@ -23,66 +26,67 @@ export const calculateWinProbability = (homeScore: number, awayScore: number, ti
     return Math.max(0.1, Math.min(99.9, wp));
 };
 
-export const generateRealisticGameFlow = (finalHome: number, finalAway: number) => {
-    let currentHome = 0;
-    let currentAway = 0;
-    // Ensure the graph starts exactly at 50%
-    const history: { h: number, a: number, wp: number }[] = [{ h: 0, a: 0, wp: 50 }];
+export interface WPSnapshot {
+    minute: number; // 0 to 48
+    h: number;
+    a: number;
+    wp: number;
+}
+
+/**
+ * Converts raw PBP logs into 49 fixed data points (Minute 0 to Minute 48).
+ * This ensures the graph doesn't jitter and fills up predictably.
+ */
+export const calculatePerMinuteStats = (logs: PbpLog[], homeTeamId: string): WPSnapshot[] => {
+    const snapshots: WPSnapshot[] = [];
     
-    const scoreDiff = Math.abs(finalHome - finalAway);
-    const isClutchGame = scoreDiff <= 5;
-    let momentum = 0;
-    const clutchTriggerHome = isClutchGame ? finalHome - (Math.floor(Math.random() * 3) + 3) : 9999;
-    const clutchTriggerAway = isClutchGame ? finalAway - (Math.floor(Math.random() * 3) + 3) : 9999;
-    let clutchModeActivated = false;
+    // Initialize Minute 0 (Start of game)
+    snapshots.push({ minute: 0, h: 0, a: 0, wp: 50 });
 
-    // Total events roughly mapped to 48 minutes
-    const totalSteps = 100; 
+    let currentH = 0;
+    let currentA = 0;
+    let logIndex = 0;
 
-    while (currentHome < finalHome || currentAway < finalAway) {
-        const timePassed = (history.length / totalSteps) * 48;
-
-        if (isClutchGame && !clutchModeActivated && currentHome >= clutchTriggerHome && currentAway >= clutchTriggerAway) {
-            clutchModeActivated = true;
-        }
-
-        const remainingHome = finalHome - currentHome;
-        const remainingAway = finalAway - currentAway;
-        let homeProb = remainingHome / (remainingHome + remainingAway || 1);
-        homeProb += (momentum * 0.05);
-
-        if (isClutchGame && !clutchModeActivated) {
-            if (currentHome > currentAway + 10) homeProb -= 0.2;
-            if (currentAway > currentHome + 10) homeProb += 0.2;
-        } else if (clutchModeActivated) {
-             if (currentHome < currentAway && remainingHome > 0) homeProb += 0.35;
-             else if (currentAway < currentHome && remainingAway > 0) homeProb -= 0.35;
-        }
-
-        homeProb = Math.max(0.05, Math.min(0.95, homeProb));
-        let scorer: 'home' | 'away';
-        if (currentHome >= finalHome) scorer = 'away';
-        else if (currentAway >= finalAway) scorer = 'home';
-        else scorer = Math.random() < homeProb ? 'home' : 'away';
-
-        let points = 2;
-        const rand = Math.random();
-        if (clutchModeActivated) points = rand > 0.7 ? 1 : 2; 
-        else points = rand > 0.35 ? 2 : 3; 
-
-        if (scorer === 'home') {
-            points = Math.min(points, remainingHome); 
-            currentHome += points;
-            momentum = Math.min(momentum + 1, 3);
-        } else {
-            points = Math.min(points, remainingAway);
-            currentAway += points;
-            momentum = Math.max(momentum - 1, -3);
-        }
-        if ((scorer === 'home' && momentum < 0) || (scorer === 'away' && momentum > 0)) momentum = 0;
+    // We need snapshots for minute 1 to 48
+    for (let m = 1; m <= 48; m++) {
+        // Find all logs that happened BEFORE or AT this minute mark
+        // Minute M corresponds to: Quarter = Math.ceil(m / 12), TimeRemaining = 12 - (m % 12) (handle 0s carefully)
         
-        const currentWP = calculateWinProbability(currentHome, currentAway, timePassed);
-        history.push({ h: currentHome, a: currentAway, wp: currentWP });
+        // Target accumulated seconds
+        const targetSeconds = m * 60;
+
+        while (logIndex < logs.length) {
+            const log = logs[logIndex];
+            
+            // Convert log time to elapsed seconds
+            const [mm, ss] = log.timeRemaining.split(':').map(Number);
+            const secondsInQuarter = 720 - (mm * 60 + ss);
+            const elapsedSeconds = ((log.quarter - 1) * 720) + secondsInQuarter;
+
+            // If this log happened after our target minute, stop processing
+            if (elapsedSeconds > targetSeconds) {
+                break;
+            }
+
+            // Process score
+            if (log.type === 'score' || log.type === 'freethrow') {
+                let points = 0;
+                if (log.type === 'score') points = (log.text.includes('3점') ? 3 : 2);
+                if (log.type === 'freethrow') points = 1;
+                if (log.points) points = log.points;
+                else if (log.text.includes('앤드원 성공')) points = 1;
+
+                if (log.teamId === homeTeamId) currentH += points;
+                else currentA += points;
+            }
+            
+            logIndex++;
+        }
+
+        // Record snapshot for this minute
+        const wp = calculateWinProbability(currentH, currentA, m); // m is minutes passed
+        snapshots.push({ minute: m, h: currentH, a: currentA, wp });
     }
-    return history;
+    
+    return snapshots;
 };
