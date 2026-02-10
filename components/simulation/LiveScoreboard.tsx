@@ -27,40 +27,37 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
 
     return (
         <div className="flex items-center justify-between px-6 py-6 md:px-10 bg-slate-950/30">
-            {/* CSS Animation Styles */}
+            {/* CSS Animation Styles - Updated for Readability */}
             <style>{`
                 @keyframes shake-gentle {
-                    0% { transform: translate(0, 0) rotate(0deg); }
-                    25% { transform: translate(1px, 1px) rotate(0.5deg); }
-                    50% { transform: translate(-1px, -1px) rotate(-0.5deg); }
-                    75% { transform: translate(1px, -1px) rotate(0.5deg); }
-                    100% { transform: translate(0, 0) rotate(0deg); }
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-2px); }
                 }
                 @keyframes shake-intense {
-                    0% { transform: translate(1px, 1px) rotate(0deg); }
-                    10% { transform: translate(-1px, -2px) rotate(-1deg); }
-                    20% { transform: translate(-3px, 0px) rotate(1deg); }
-                    30% { transform: translate(3px, 2px) rotate(0deg); }
-                    40% { transform: translate(1px, -1px) rotate(1deg); }
-                    50% { transform: translate(-1px, 2px) rotate(-1deg); }
-                    60% { transform: translate(-3px, 1px) rotate(0deg); }
-                    70% { transform: translate(3px, 1px) rotate(-1deg); }
-                    80% { transform: translate(-1px, -1px) rotate(1deg); }
-                    90% { transform: translate(1px, 2px) rotate(0deg); }
-                    100% { transform: translate(1px, -2px) rotate(-1deg); }
+                    0% { transform: translate(0, 0); }
+                    25% { transform: translate(-1px, 1px); }
+                    50% { transform: translate(1px, -1px); }
+                    75% { transform: translate(-1px, -1px); }
+                    100% { transform: translate(0, 0); }
                 }
                 @keyframes flash-text {
-                    0%, 100% { color: #ef4444; text-shadow: 0 0 10px #ef4444; transform: scale(1.1); }
-                    50% { color: #ffffff; text-shadow: 0 0 20px #ffffff; transform: scale(1.15); }
+                    0%, 100% { color: #ef4444; text-shadow: 0 0 10px rgba(239, 68, 68, 0.6); }
+                    50% { color: #ffffff; text-shadow: 0 0 20px rgba(255, 255, 255, 0.9); }
                 }
+                @keyframes pulse-scale {
+                    0%, 100% { transform: scale(1); }
+                    50% { transform: scale(1.05); }
+                }
+                
+                /* Class Mappings */
                 .animate-shake-gentle {
-                    animation: shake-gentle 0.5s infinite;
+                    animation: shake-gentle 2.0s ease-in-out infinite;
                 }
                 .animate-shake-intense {
-                    animation: shake-intense 0.1s infinite;
+                    animation: shake-intense 0.4s linear infinite;
                 }
                 .animate-buzzer-beater {
-                    animation: shake-intense 0.1s infinite, flash-text 0.15s infinite;
+                    animation: pulse-scale 0.8s ease-in-out infinite, flash-text 0.8s ease-in-out infinite;
                 }
             `}</style>
 

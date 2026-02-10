@@ -16,8 +16,8 @@ interface TimelineItem {
     t: string; // Time Remaining String (e.g. "11:45")
     wp: number; // Win Probability (0-100)
     text: string; // Log Text
-    isHighlight: boolean; // [Changed] Used for delay control
-    elapsedMinutes: number; // [New] For graph syncing
+    isHighlight: boolean; // (Legacy flag, kept for structure consistency)
+    elapsedMinutes: number; // For graph syncing
 }
 
 export const GameSimulatingView: React.FC<{ 
@@ -44,25 +44,22 @@ export const GameSimulatingView: React.FC<{
       return calculatePerMinuteStats(pbpLogs, homeTeam.id);
   }, [pbpLogs, homeTeam.id]);
 
-  // 2. Convert PBP Logs to Animation Timeline
+  // 2. [CORE UPDATE] Event-Driven Timeline Generation
+  // Instead of mapping every log, we filter ONLY important events.
   const timeline = useMemo(() => {
       const items: TimelineItem[] = [];
       let currentH = 0;
       let currentA = 0;
       
-      // [UX Improvement] Track the last meaningful message to persist it until the next one
-      let lastMessage = "TIP-OFF";
+      // Initial State
+      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "TIP-OFF", isHighlight: true, elapsedMinutes: 0 });
 
-      // Start with 0-0
-      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: lastMessage, isHighlight: true, elapsedMinutes: 0 });
-
-      pbpLogs.forEach(log => {
-          // Parse Score if event is a score
+      pbpLogs.forEach((log, index) => {
+          // A. Always track score accumulation invisibly
           if (log.type === 'score' || log.type === 'freethrow') {
              let points = 0;
              if (log.type === 'score') points = (log.text.includes('3점') ? 3 : 2);
              if (log.type === 'freethrow') points = 1;
-             
              if (log.points) points = log.points;
              else if (log.text.includes('앤드원 성공')) points = 1;
 
@@ -70,42 +67,45 @@ export const GameSimulatingView: React.FC<{
              else currentA += points;
           }
 
-          // Parse Time to Seconds for WP Calculation & Graph Sync
-          const [mm, ss] = log.timeRemaining.split(':').map(Number);
-          const secondsRemainingInQ = mm * 60 + ss;
-          const totalSecondsPassed = ((log.quarter - 1) * 720) + (720 - secondsRemainingInQ);
-          const elapsedMinutes = totalSecondsPassed / 60;
-          
-          const wp = calculateWinProbability(currentH, currentA, elapsedMinutes);
-
-          // [Filter Logic]
-          // Display only: Score, FreeThrow, Injury, Ejection
+          // B. Determine if this log is "Show-worthy"
           const isScore = log.type === 'score' || log.type === 'freethrow';
-          const isUrgent = log.type === 'info' && (log.text.includes('부상') || log.text.includes('퇴장') || log.text.includes('버저비터')); // buzzer beater is usually score type but checking just in case
-          
-          const shouldShow = isScore || isUrgent;
-          
-          if (shouldShow) {
-              lastMessage = log.text; // Update the persistent message
-          }
+          const isUrgent = log.type === 'info' && (
+              log.text.includes('부상') || 
+              log.text.includes('퇴장') || 
+              log.text.includes('6반칙') || 
+              log.text.includes('버저비터')
+          );
+          const isLast = index === pbpLogs.length - 1; // Always show final log
 
-          items.push({
-              h: currentH,
-              a: currentA,
-              q: log.quarter,
-              t: log.timeRemaining,
-              wp: wp,
-              text: lastMessage, // Always show the last valid message
-              isHighlight: shouldShow, // Slow down ONLY for new events
-              elapsedMinutes: elapsedMinutes
-          });
+          // Only push to timeline if it's a key event
+          if (isScore || isUrgent || isLast) {
+              // Parse Time to Seconds for WP Calculation & Graph Sync
+              const [mm, ss] = log.timeRemaining.split(':').map(Number);
+              const secondsRemainingInQ = mm * 60 + ss;
+              const totalSecondsPassed = ((log.quarter - 1) * 720) + (720 - secondsRemainingInQ);
+              const elapsedMinutes = totalSecondsPassed / 60;
+              
+              const wp = calculateWinProbability(currentH, currentA, elapsedMinutes);
+
+              items.push({
+                  h: currentH,
+                  a: currentA,
+                  q: log.quarter,
+                  t: log.timeRemaining,
+                  wp: wp,
+                  text: log.text,
+                  isHighlight: true,
+                  elapsedMinutes: elapsedMinutes
+              });
+          }
       });
       
-      // Ensure final state matches exactly
-      if (items.length > 0) {
-          const last = items[items.length - 1];
-          last.t = "00:00";
-          last.elapsedMinutes = 48;
+      // Ensure final state matches exactly 00:00 if not present
+      const lastItem = items[items.length - 1];
+      if (lastItem && lastItem.t !== "00:00" && lastItem.text.includes("종료") === false) {
+           // If the last log wasn't 00:00, ensure graph fills up
+           lastItem.elapsedMinutes = 48;
+           lastItem.t = "00:00";
       }
       
       return items;
@@ -123,7 +123,7 @@ export const GameSimulatingView: React.FC<{
       return pool[Math.floor(Math.random() * pool.length)];
   };
 
-  // 3. Animation Loop
+  // 3. Animation Loop (Adjusted for Event-Driven Pacing)
   useEffect(() => {
       indexRef.current = 0;
       setCurrentIndex(0);
@@ -138,7 +138,7 @@ export const GameSimulatingView: React.FC<{
           const idx = indexRef.current;
           
           // Finish Condition
-          if (idx >= timeline.length - 1) {
+          if (idx >= timeline.length) {
               // Game Over Logic
               const finalState = timeline[timeline.length - 1];
               const isBuzzerBeater = finalState.text.includes("버저비터");
@@ -154,28 +154,21 @@ export const GameSimulatingView: React.FC<{
           }
 
           const currentItem = timeline[idx];
-          // Determine Speed
-          let delay = 60; // Base speed (Slightly faster for skipped events)
+          
+          // Determine Speed based on Context
+          let delay = 1000; // Default: 1.0s per event (Readable speed)
 
           if (currentItem) {
               const scoreDiff = Math.abs(currentItem.h - currentItem.a);
-
-              // Slow down for highlighted events (Scores, Injuries, etc.)
-              if (currentItem.isHighlight) delay = 400; // Slower to read
-
-              // Clutch Logic Speed Adjustment
+              
               if (currentItem.q === 4) {
                   if (scoreDiff <= 5 && parseInt(currentItem.t.split(':')[0]) < 2) {
-                      delay = Math.max(delay, 800); // Super Clutch
-                  } else if (scoreDiff <= 10) {
-                      delay = Math.max(delay, 400);
-                  } else {
-                      // Garbage time or blowout
-                      if (!currentItem.isHighlight) delay = 30; 
+                      delay = 1500; // Super Clutch: 1.5s (Build tension)
+                  } else if (scoreDiff > 20) {
+                      delay = 200; // Garbage Time: 0.2s (Skip fast)
                   }
-              } else {
-                // Early game non-highlights fast forward
-                if (!currentItem.isHighlight) delay = 40; 
+              } else if (scoreDiff > 25) {
+                   delay = 300; // Blowout early: Fast
               }
           }
 
@@ -196,8 +189,7 @@ export const GameSimulatingView: React.FC<{
 
   if (!homeTeam || !awayTeam || timeline.length === 0) return null;
 
-  const currentData = timeline[currentIndex];
-  if (!currentData) return null; 
+  const currentData = timeline[currentIndex] || timeline[timeline.length - 1];
   
   // Calculate Graph Data
   const currentMinuteIndex = Math.floor(currentData.elapsedMinutes);
@@ -205,7 +197,7 @@ export const GameSimulatingView: React.FC<{
 
   const progress = (currentMinuteIndex / 48) * 100;
   
-  // --- Visual Effects Calculation (Restored) ---
+  // --- Visual Effects Calculation ---
   const scoreDiff = Math.abs(currentData.h - currentData.a);
   const [mStr, sStr] = currentData.t.split(':');
   const secondsRemaining = parseInt(mStr) * 60 + parseInt(sStr);
