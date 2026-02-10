@@ -8,6 +8,7 @@ import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffSer
 import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
+import { generateAutoTactics } from '../services/gameEngine';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -186,16 +187,27 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
     const handleSelectTeam = useCallback(async (teamId: string) => {
         console.log(`🏀 Team Selected: ${teamId}`);
-        setMyTeamId(teamId);
-        setCurrentSimDate(INITIAL_DATE);
-
-        await forceSave({ myTeamId: teamId, currentSimDate: INITIAL_DATE });
-
+        
         const teamData = teams.find(t => t.id === teamId);
+        let newTactics: GameTactics | null = null;
+        
         if (teamData) {
+            // [Fix] Generate default tactics for the selected team
+            newTactics = generateAutoTactics(teamData);
+            setUserTactics(newTactics);
+            
             const welcome = await generateOwnerWelcome(`${teamData.city} ${teamData.name}`);
             setNews([{ type: 'text', content: welcome }]);
         }
+
+        setMyTeamId(teamId);
+        setCurrentSimDate(INITIAL_DATE);
+
+        await forceSave({ 
+            myTeamId: teamId, 
+            currentSimDate: INITIAL_DATE,
+            userTactics: newTactics
+        });
 
         hasInitialLoadRef.current = true;
         return true;

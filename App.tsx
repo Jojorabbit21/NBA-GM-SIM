@@ -56,6 +56,7 @@ const App: React.FC = () => {
     useEffect(() => { if (sim.lastGameResult) setView('GameResult' as any); }, [sim.lastGameResult]);
 
     // 전역 상태에 따른 가드 렌더링
+    // [Updated] No props needed for FullScreenLoader to enable random messages (default behavior)
     if (authLoading || gameData.isSaveLoading) return <FullScreenLoader />;
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
     if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={gameData.handleSelectTeam} />;
