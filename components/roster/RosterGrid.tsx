@@ -3,7 +3,8 @@ import React, { useState, useMemo } from 'react';
 import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { Table, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { Target } from 'lucide-react';
 
 interface RosterGridProps {
     team: Team;
@@ -20,8 +21,9 @@ const WIDTHS = {
     AGE: 50,
     OVR: 60,
     ATTR: 54,
-    STAT: 55,
-    SALARY: 100
+    STAT: 60,
+    SALARY: 100,
+    ZONE_STAT: 70
 };
 
 // Full name mapping for tooltips
@@ -90,6 +92,19 @@ const SALARY_COLS = [
     { key: 'totalValue', label: 'TOTAL REMAINING' },
 ];
 
+const ZONE_CONFIG = [
+    { id: 'rim', label: 'RIM', keyM: 'zone_rim_m', keyA: 'zone_rim_a' },
+    { id: 'paint', label: 'PAINT', keyM: 'zone_paint_m', keyA: 'zone_paint_a' },
+    { id: 'midL', label: 'MID-L', keyM: 'zone_mid_l_m', keyA: 'zone_mid_l_a' },
+    { id: 'midC', label: 'MID-C', keyM: 'zone_mid_c_m', keyA: 'zone_mid_c_a' },
+    { id: 'midR', label: 'MID-R', keyM: 'zone_mid_r_m', keyA: 'zone_mid_r_a' },
+    { id: 'c3L', label: '3PT-LC', keyM: 'zone_c3_l_m', keyA: 'zone_c3_l_a' },
+    { id: 'atb3L', label: '3PT-LW', keyM: 'zone_atb3_l_m', keyA: 'zone_atb3_l_a' },
+    { id: 'atb3C', label: '3PT-T', keyM: 'zone_atb3_c_m', keyA: 'zone_atb3_c_a' },
+    { id: 'atb3R', label: '3PT-RW', keyM: 'zone_atb3_r_m', keyA: 'zone_atb3_r_a' },
+    { id: 'c3R', label: '3PT-RC', keyM: 'zone_c3_r_m', keyA: 'zone_c3_r_a' },
+];
+
 export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick }) => {
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'ovr', direction: 'desc' });
 
@@ -131,6 +146,17 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
 
         // 4. Attribute Fallback (Root properties like 'ins', 'out', 'speed', etc.)
         if (key in p) return (p as any)[key];
+
+        // 5. Zone Stats for Sorting
+        if (key.startsWith('zone_pct_')) {
+            const zId = key.replace('zone_pct_', '');
+            const zCfg = ZONE_CONFIG.find(z => z.id === zId);
+            if (zCfg) {
+                const m = s[zCfg.keyM] || 0;
+                const a = s[zCfg.keyA] || 0;
+                return a > 0 ? m / a : 0;
+            }
+        }
 
         return 0;
     };
@@ -175,7 +201,15 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             }
         });
 
-        return { attr: attrAvg, stat: statAvg, salary: team.roster.reduce((s, p) => s + p.salary, 0) };
+        // Zone Totals
+        const zoneAvg: any = {};
+        ZONE_CONFIG.forEach(z => {
+            const m = team.roster.reduce((sum, p) => sum + (p.stats[z.keyM] || 0), 0);
+            const a = team.roster.reduce((sum, p) => sum + (p.stats[z.keyA] || 0), 0);
+            zoneAvg[z.id] = { m, a, pct: a > 0 ? m/a : 0 };
+        });
+
+        return { attr: attrAvg, stat: statAvg, salary: team.roster.reduce((s, p) => s + p.salary, 0), zone: zoneAvg };
     }, [team.roster]);
 
     // Calculate left positions for sticky columns
@@ -184,7 +218,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     const LEFT_OVR = WIDTHS.NAME + WIDTHS.POS + WIDTHS.AGE;
 
     return (
-        <div className="space-y-4 pb-10">
+        <div className="space-y-8 pb-10">
+            {/* Table 1: Main Stats / Attributes / Salary */}
             <Table style={{ tableLayout: 'fixed', minWidth: '100%' }}>
                 <colgroup>
                     <col style={{ width: WIDTHS.NAME }} />
@@ -277,9 +312,15 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
                                 <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
                             ))}
-                            {tab === 'stats' && STATS_COLS.map(c => (
-                                <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={getSortValue(p, c.key)} variant="stat" />
-                            ))}
+                            {tab === 'stats' && STATS_COLS.map(c => {
+                                const val = getSortValue(p, c.key);
+                                let displayVal = val;
+                                if (typeof val === 'number') {
+                                    if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
+                                    else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf'].includes(c.key)) displayVal = val.toFixed(1);
+                                }
+                                return <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                            })}
                             {tab === 'salary' && (
                                 <>
                                     <TableCell align="center" className="font-mono font-bold text-xs text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
@@ -304,11 +345,12 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             let val = averages.stat[c.key];
+                            let displayVal = val;
                             if (typeof val === 'number') {
-                                if (c.key.includes('%')) val = (val * 100).toFixed(1) + '%';
-                                else val = val.toFixed(1);
+                                if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
+                                else displayVal = val.toFixed(1);
                             }
-                            return <TableCell key={c.key} align="center" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800/30" value={val} variant="stat" />;
+                            return <TableCell key={c.key} align="center" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800/30" value={displayVal} variant="stat" />;
                         })}
                         {tab === 'salary' && (
                             <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-sm" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
@@ -316,6 +358,88 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     </tr>
                 </TableFoot>
             </Table>
+            
+            {/* Table 2: 10-Zone Shooting Stats */}
+            {tab === 'stats' && (
+                <div className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                    <div className="flex items-center gap-3 mb-4 pl-1">
+                        <Target size={20} className="text-orange-400" />
+                        <h3 className="text-base font-black text-white uppercase tracking-tight">상세 구역별 야투 (10 Zones)</h3>
+                    </div>
+                    
+                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                        <colgroup>
+                            <col style={{ width: WIDTHS.NAME }} />
+                            <col style={{ width: WIDTHS.POS }} />
+                            {ZONE_CONFIG.map(z => <React.Fragment key={z.id}><col style={{ width: 70 }} /><col style={{ width: 55 }} /></React.Fragment>)}
+                        </colgroup>
+                        <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                            <tr className="h-10">
+                                <th colSpan={2} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
+                                    <div className="h-full flex items-center justify-center">
+                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Player</span>
+                                    </div>
+                                </th>
+                                {ZONE_CONFIG.map(z => (
+                                    <th key={z.id} colSpan={2} className="bg-slate-900 border-b border-r border-slate-800 px-1 align-middle">
+                                        <div className="h-full flex items-center justify-center">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest truncate">{z.label}</span>
+                                        </div>
+                                    </th>
+                                ))}
+                            </tr>
+                            <tr className="h-10 text-slate-500 text-[9px] font-black uppercase tracking-widest">
+                                <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
+                                <TableHeaderCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                                {ZONE_CONFIG.map(z => (
+                                    <React.Fragment key={z.id}>
+                                        <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800/30 bg-slate-900/50">M/A</TableHeaderCell>
+                                        <TableHeaderCell align="right" className="border-r border-slate-800 text-slate-300" sortable onSort={() => handleSort(`zone_pct_${z.id}`)} sortDirection={sortConfig.key === `zone_pct_${z.id}` ? sortConfig.direction : null}>%</TableHeaderCell>
+                                    </React.Fragment>
+                                ))}
+                            </tr>
+                        </thead>
+                        <TableBody>
+                            {sortedRoster.map(p => (
+                                <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
+                                    <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
+                                        <span className="text-xs font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                    </TableCell>
+                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                                    
+                                    {ZONE_CONFIG.map(z => {
+                                        const m = p.stats[z.keyM] || 0;
+                                        const a = p.stats[z.keyA] || 0;
+                                        const pct = a > 0 ? ((m/a)*100).toFixed(0) + '%' : '-';
+                                        return (
+                                            <React.Fragment key={z.id}>
+                                                <TableCell align="right" className="font-mono text-[10px] text-slate-500 border-r border-slate-800/30" value={`${m}/${a}`} />
+                                                <TableCell align="right" className={`font-mono font-bold text-xs border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                        <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
+                            <tr className="h-10">
+                                <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM TOTAL</TableCell>
+                                <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
+                                {ZONE_CONFIG.map(z => {
+                                    const avg = averages.zone[z.id];
+                                    const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
+                                    return (
+                                        <React.Fragment key={z.id}>
+                                            <TableCell align="right" className="font-mono text-[10px] text-slate-500 border-r border-slate-800/30" value={`${avg.m}/${avg.a}`} />
+                                            <TableCell align="right" className="font-mono font-black text-xs text-white border-r border-slate-800" value={pct} />
+                                        </React.Fragment>
+                                    );
+                                })}
+                            </tr>
+                        </TableFoot>
+                    </Table>
+                </div>
+            )}
         </div>
     );
 };
