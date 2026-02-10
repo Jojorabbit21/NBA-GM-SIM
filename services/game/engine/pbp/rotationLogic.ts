@@ -115,15 +115,21 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
                  // [Fix] Safety check
                  if (!state.rotationHistory[filler.playerId]) state.rotationHistory[filler.playerId] = [];
                  state.rotationHistory[filler.playerId].push({ in: currentTotalSec, out: currentTotalSec });
+                 
+                 // Log forced filler
+                 toAdd.push(filler);
             }
             
-            // Log rotation
+            // Log rotation with detailed names
             if (toRemove.length > 0 || toAdd.length > 0) {
+                 const inNames = toAdd.map(p => p.playerName).join(', ');
+                 const outNames = toRemove.map(p => p.playerName).join(', ');
+                 
                  state.logs.push({
                     quarter: state.quarter,
                     timeRemaining: formatTime(state.gameClock),
                     teamId: teamState.id,
-                    text: `선수 교체 진행`,
+                    text: `교체: IN [${inNames}] OUT [${outNames}]`,
                     type: 'info'
                 });
             }
@@ -178,7 +184,7 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
                 quarter: state.quarter,
                 timeRemaining: formatTime(state.gameClock),
                 teamId: team.id,
-                text: `긴급 교체: ${outPlayer.playerName} (Out) / ${inPlayer.playerName} (In) - ${reason}`,
+                text: `교체: IN [${inPlayer.playerName}] OUT [${outPlayer.playerName}] (${reason})`,
                 type: 'info'
             });
         }

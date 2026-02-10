@@ -1,5 +1,5 @@
 
-import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, PbpLog, RotationData } from '../../../../types';
+import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, PbpLog, RotationData, TacticalSnapshot } from '../../../../types';
 import { initTeamState } from './initializer';
 import { calculatePossessionTime } from './timeEngine';
 import { checkAndApplyRotation } from './rotationLogic';
@@ -118,13 +118,23 @@ export function runFullGameSimulation(
             plusMinus: teamState.score - (teamState === state.home ? state.away.score : state.home.score)
         }));
 
+    // [Fix] Map GameTactics to TacticalSnapshot for UI display
+    const mapTactics = (t: GameTactics): TacticalSnapshot => ({
+        offense: t.offenseTactics[0],
+        defense: t.defenseTactics[0],
+        stopperId: t.stopperId,
+        pace: t.sliders.pace,
+        sliders: t.sliders
+    });
+
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
         homeBox: mapToBox(state.home),
         awayBox: mapToBox(state.away),
-        homeTactics: {},
-        awayTactics: {},
+        // [Fix] Actually return the tactics used
+        homeTactics: mapTactics(state.home.tactics),
+        awayTactics: mapTactics(state.away.tactics),
         rosterUpdates: {},
         pbpLogs: state.logs,
         rotationData: state.rotationHistory
