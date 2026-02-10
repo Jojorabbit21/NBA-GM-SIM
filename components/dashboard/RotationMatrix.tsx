@@ -124,6 +124,15 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     const stickyBottom = "border-b border-slate-800";
     const gridBorder = "border-r border-slate-800/50"; 
     const gridBottom = "border-b border-slate-800/50";
+    const quarterDivider = "border-r-indigo-500/60";
+
+    const getMinColor = (mins: number) => {
+        if (mins === 0) return 'text-slate-600';
+        if (mins > 42) return 'text-red-500';
+        if (mins > 34) return 'text-amber-500';
+        if (mins > 20) return 'text-indigo-400';
+        return 'text-emerald-400';
+    };
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
@@ -152,22 +161,22 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
             </div>
 
             <div className="flex-1 min-h-0">
-                <Table className="border-0 rounded-none shadow-none" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                <Table className="!rounded-none !border-t-0 border-x-0 border-b-0 shadow-none" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead className={`${stickyHeaderBg} sticky top-0 z-50`}>
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
                             <th rowSpan={2} className={`sticky left-0 z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center`}>POS</th>
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>OVR</th>
                             <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[290px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>MIN</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBorder} ${gridBottom}`}>1Q</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBorder} ${gridBottom}`}>2Q</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBorder} ${gridBottom}`}>3Q</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBottom}`}>4Q</th>
+                            <th rowSpan={2} className={`sticky left-[290px] z-50 ${stickyHeaderBg} ${stickyBottom} w-[50px] min-w-[50px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>MIN</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800`}>1Q</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800`}>2Q</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800`}>3Q</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${stickyBottom}`}>4Q</th>
                         </tr>
-                        <tr className={`text-[8px] font-black text-slate-600 uppercase tracking-tighter h-6 ${gridBottom}`}>
+                        <tr className={`text-[10px] font-black text-slate-600 uppercase tracking-tighter h-6 ${gridBottom}`}>
                              {Array.from({length: 48}).map((_, i) => (
-                                <th key={i} className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${(i+1)%12 === 0 && (i+1) !== 48 ? gridBorder : 'border-r border-slate-800/30'}`}>{i + 1}</th>
+                                <th key={i} className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'}`}>{i + 1}</th>
                             ))}
                         </tr>
                     </thead>
@@ -192,13 +201,13 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                             <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" /></div>
                                         </td>
                                         <td className={`sticky left-[250px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <span className={`text-[10px] font-black ${(p.condition || 100) < 70 ? 'text-red-500' : (p.condition || 100) < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{Math.round(p.condition || 100)}%</span>
+                                            <span className={`text-sm font-black ${(p.condition || 100) < 70 ? 'text-red-500' : (p.condition || 100) < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{Math.round(p.condition || 100)}</span>
                                         </td>
-                                        <td className={`sticky left-[290px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : 'text-indigo-400'}`}>{totalMins}</span>
+                                        <td className={`sticky left-[290px] z-30 ${stickyBodyBg} text-center ${stickyBottom} shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
+                                            <span className={`text-sm font-mono font-black ${getMinColor(totalMins)}`}>{totalMins}</span>
                                         </td>
                                         {playerMap.map((active: boolean, i: number) => (
-                                            <td key={i} onClick={() => handleToggleMinute(p.id, i)} className={`p-0 cursor-pointer relative transition-all ${gridBottom} ${(i+1)%12 === 0 && (i+1) !== 48 ? gridBorder : 'border-r border-slate-800/30'} hover:bg-white/10`}>
+                                            <td key={i} onClick={() => handleToggleMinute(p.id, i)} className={`p-0 cursor-pointer relative transition-all ${gridBottom} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'} hover:bg-white/10`}>
                                                 {active && <div className={`w-full h-full absolute inset-0 ${validation?.minuteCounts[i] !== 5 ? 'bg-red-500/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.5)]' : 'bg-emerald-500/30 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.5)]'}`}></div>}
                                             </td>
                                         ))}
