@@ -1,7 +1,8 @@
 
 import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { PbpLog, Team, PlayerBoxScore } from '../../../types';
+import { PbpLog, Team } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
+import { ArrowRight, UserPlus, UserMinus } from 'lucide-react';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
@@ -58,47 +59,59 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
     }, [processedLogs, selectedQuarter]);
 
     // Helper to format log text
-    const formatLogText = (text: string, homeTeam: Team, awayTeam: Team) => {
-        // Remove [score-score] prefix if exists
-        let cleanText = text.replace(/^\[\d+-\d+\]\s*/, '');
-        
-        // Remove decorative dashes/dots from Quarter End/Start messages
-        cleanText = cleanText.replace(/^[-\.]+\s*(.*?)\s*[-\.]+$/, '$1');
+    const renderLogContent = (text: string, homeTeam: Team, awayTeam: Team) => {
+        // [New] Structured Substitution Parsing
+        if (text.startsWith('교체:')) {
+            // Expected format: "교체: IN [Name, Name] OUT [Name, Name]"
+            const inMatch = text.match(/IN \[(.*?)\]/);
+            const outMatch = text.match(/OUT \[(.*?)\]/);
+            
+            if (inMatch && outMatch) {
+                const inPlayers = inMatch[1].split(',').map(s => s.trim());
+                const outPlayers = outMatch[1].split(',').map(s => s.trim());
+                
+                return (
+                    <div className="flex flex-col gap-1 text-xs">
+                        <div className="flex items-center gap-2 text-emerald-400">
+                            <UserPlus size={14} />
+                            <span>IN:</span>
+                            <div className="flex flex-wrap gap-2">
+                                {inPlayers.map((p, i) => <span key={i} className="font-bold">{p}</span>)}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 text-red-400">
+                            <UserMinus size={14} />
+                            <span>OUT:</span>
+                            <div className="flex flex-wrap gap-2">
+                                {outPlayers.map((p, i) => <span key={i} className="font-bold opacity-80">{p}</span>)}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+        }
 
-        // Remove explicit score text if it exists at the end like "(24 : 22)"
+        // Standard formatting for other logs
+        let cleanText = text.replace(/^\[\d+-\d+\]\s*/, '');
+        cleanText = cleanText.replace(/^[-\.]+\s*(.*?)\s*[-\.]+$/, '$1');
         cleanText = cleanText.replace(/\s*\(\d+\s*:\s*\d+\)$/, '');
 
         // Collect all player names for highlighting
         const playerNames = new Set<string>();
         [...homeTeam.roster, ...awayTeam.roster].forEach(p => playerNames.add(p.name));
 
-        // Find names in text and wrap with underline span
-        // We use split/map to avoid dangerous HTML injection
-        const parts: React.ReactNode[] = [];
-        let remaining = cleanText;
-
-        // Simple matching: check if text starts with a known player name
-        // (This handles the typical "PlayerName, doing something" format)
-        // For more complex sentences, a regex with all names joined by | would be better but expensive
-        // Let's try matching known names present in the string.
-        
-        // Find matched names sorted by length desc to match full names first
         const matchedNames = Array.from(playerNames)
             .filter(name => cleanText.includes(name))
             .sort((a, b) => b.length - a.length);
 
         if (matchedNames.length > 0) {
-            // Very basic replacement for the first occurrence of known names
-            // Note: This simple approach might act weird if multiple names overlap or appear multiple times
-            // But sufficient for "PlayerName, action" logs.
-            
             const regex = new RegExp(`(${matchedNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'g');
             const split = cleanText.split(regex);
             
             return (
                 <span>
                     {split.map((part, i) => 
-                        playerNames.has(part) ? <span key={i} className="underline decoration-slate-500 underline-offset-2">{part}</span> : part
+                        playerNames.has(part) ? <span key={i} className="text-white font-bold">{part}</span> : part
                     )}
                 </span>
             );
@@ -149,18 +162,16 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         
                         // Text Color
                         let textColor = 'text-slate-400';
-                        if (isImportant) textColor = 'text-yellow-400 font-bold';
-                        else if (isScore) textColor = 'text-white font-bold'; 
+                        if (isImportant) textColor = 'text-slate-300';
+                        else if (isScore) textColor = 'text-slate-200'; 
                         else if (isFT) textColor = 'text-cyan-400';
                         else if (isFoul) textColor = 'text-orange-400';
                         else if (isTurnover) textColor = 'text-red-400';
 
                         // Background
                         let bgClass = 'hover:bg-white/5 transition-colors relative';
-                        if (isImportant) bgClass = 'bg-yellow-900/10 border-y border-yellow-500/10';
+                        if (isImportant) bgClass = 'bg-slate-800/30 border-y border-slate-800/50';
                         
-                        // Quarter & Time Display Logic
-                        // Even info logs should have time if possible, otherwise '-'
                         const qDisplay = isImportant && log.text.includes('종료') ? '-' : `${log.quarter}Q`;
                         const timeDisplay = isImportant && log.text.includes('종료') ? 'End' : (log.timeRemaining || '-');
 
@@ -202,7 +213,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 6. Message */}
                                 <div className={`flex-1 break-words leading-relaxed pl-2 ${textColor}`}>
-                                    {formatLogText(log.text, homeTeam, awayTeam)}
+                                    {renderLogContent(log.text, homeTeam, awayTeam)}
                                 </div>
                             </div>
                         );

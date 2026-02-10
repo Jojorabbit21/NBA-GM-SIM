@@ -16,7 +16,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
 
     const effectiveDepthChart = depthChart || safeTactics.depthChart;
 
-    // 2. 로스터 정렬
+    // 2. 로스터 정렬 및 라이브 플레이어 객체 생성
     const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
     
     const liveRoster: LivePlayer[] = sortedRoster.map(p => {
@@ -65,15 +65,62 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         };
     });
 
+    // 3. 선발 라인업 결정 로직 (Prioritize Rotation Map Minute 0)
+    // 단장님 지시사항: 로테이션 차트가 절대 법이다.
+    
     const onCourt: LivePlayer[] = [];
     const bench: LivePlayer[] = [];
-    const starterIds = Object.values(safeTactics.starters).filter(id => id !== '');
     
+    let startingIds: string[] = [];
+
+    // [Step 1] 로테이션 맵의 0분대 설정 확인
+    if (safeTactics.rotationMap) {
+        Object.entries(safeTactics.rotationMap).forEach(([playerId, schedule]) => {
+            // 0분(경기 시작)에 true로 설정된 선수 추출
+            if (schedule[0] === true) {
+                startingIds.push(playerId);
+            }
+        });
+    }
+
+    // [Step 2] 유효성 검사 및 보정 (정확히 5명이 아니면 뎁스차트/OVR순으로 채움)
+    // 로테이션 차트가 비어있거나, 5명이 안되는 경우를 대비한 안전 장치
+    if (startingIds.length !== 5) {
+        const depthChartStarters = Object.values(safeTactics.starters).filter(id => id !== '');
+        
+        // 부족하면 뎁스 차트 주전에서 충원
+        if (startingIds.length < 5) {
+            for (const id of depthChartStarters) {
+                if (startingIds.length >= 5) break;
+                // 이미 로테이션 차트로 뽑힌 선수가 아니면 추가
+                if (!startingIds.includes(id)) {
+                    startingIds.push(id);
+                }
+            }
+        }
+
+        // 그래도 부족하면(AI팀 등) OVR 높은 순으로 충원
+        if (startingIds.length < 5) {
+            for (const p of sortedRoster) {
+                if (startingIds.length >= 5) break;
+                if (!startingIds.includes(p.id)) {
+                    startingIds.push(p.id);
+                }
+            }
+        }
+
+        // 5명 초과면(실수로 6명 체크 등) 앞에서부터 5명만 자름
+        if (startingIds.length > 5) {
+            startingIds = startingIds.slice(0, 5);
+        }
+    }
+    
+    // 4. 결정된 ID를 기반으로 코트/벤치 배정
     liveRoster.forEach(p => {
-        if (starterIds.includes(p.playerId) && onCourt.length < 5) {
+        if (startingIds.includes(p.playerId)) {
             p.isStarter = true;
             p.gs = 1;
-            p.lastSubInTime = 720;
+            p.lastSubInTime = 720; // 12 mins remaining
             onCourt.push(p);
         } else {
             bench.push(p);
