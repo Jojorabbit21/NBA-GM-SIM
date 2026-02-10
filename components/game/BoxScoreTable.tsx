@@ -1,11 +1,11 @@
 
 import React, { useMemo } from 'react';
-import { Team, PlayerBoxScore } from '../../../types';
+import { Team, PlayerBoxScore } from '../../types';
 import { Crown, Shield, Lock, Unlock } from 'lucide-react';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
-import { calculatePlayerOvr } from '../../../utils/constants';
-import { TEAM_DATA } from '../../../data/teamData';
+import { calculatePlayerOvr } from '../../utils/constants';
+import { TEAM_DATA } from '../../data/teamData';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 export interface GameStatLeaders {
