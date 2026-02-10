@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { AlertCircle, Timer, RotateCcw } from 'lucide-react';
+import { AlertCircle, Timer, RotateCcw, Wand2 } from 'lucide-react';
 import { Table, TableBody, TableRow } from '../common/Table';
 
 interface RotationMatrixProps {
@@ -25,271 +25,183 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 }) => {
     const [lastSelected, setLastSelected] = useState<{pid: string, min: number} | null>(null);
 
-    // 1. Group Players by Position based on Depth Chart
     const groupedRotation = useMemo(() => {
-        if (!depthChart) {
-            return { 'ALL': healthySorted };
-        }
-
-        const groups: Record<string, Player[]> = {
-            'PG': [], 'SG': [], 'SF': [], 'PF': [], 'C': [], 'RES': []
-        };
+        if (!depthChart) return { 'ALL': healthySorted };
+        const groups: Record<string, Player[]> = { 'PG': [], 'SG': [], 'SF': [], 'PF': [], 'C': [], 'RES': [] };
         const usedIds = new Set<string>();
-
-        // Fill Positions from Depth Chart
         const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
         positions.forEach(pos => {
             depthChart[pos].forEach(id => {
                 if (id) {
                     const p = team.roster.find(rp => rp.id === id);
-                    if (p && p.health !== 'Injured') {
-                        groups[pos].push(p);
-                        usedIds.add(id);
-                    }
+                    if (p && p.health !== 'Injured') { groups[pos].push(p); usedIds.add(id); }
                 }
             });
         });
-
-        // Add remaining healthy players to Reserves
-        healthySorted.forEach(p => {
-             if (!usedIds.has(p.id)) {
-                 groups['RES'].push(p);
-             }
-        });
-
+        healthySorted.forEach(p => { if (!usedIds.has(p.id)) groups['RES'].push(p); });
         return groups;
     }, [depthChart, team.roster, healthySorted]);
+
+    const handleAutoAllocation = () => {
+        if (!depthChart) return;
+        const newMap: Record<string, boolean[]> = {};
+        const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
+        
+        team.roster.forEach(p => { newMap[p.id] = Array(48).fill(false); });
+
+        positions.forEach(pos => {
+            const starterId = depthChart[pos][0];
+            const benchId = depthChart[pos][1];
+
+            if (starterId && newMap[starterId]) {
+                const map = newMap[starterId];
+                for (let i = 0; i <= 8; i++) map[i] = true;
+                for (let i = 16; i <= 32; i++) map[i] = true;
+                for (let i = 40; i <= 47; i++) map[i] = true;
+            }
+
+            if (benchId && newMap[benchId]) {
+                const map = newMap[benchId];
+                for (let i = 9; i <= 15; i++) map[i] = true;
+                for (let i = 33; i <= 39; i++) map[i] = true;
+            } else if (starterId && !benchId) {
+                newMap[starterId] = Array(48).fill(true);
+            }
+        });
+
+        onUpdateTactics({ ...tactics, rotationMap: newMap });
+    };
 
     const handleToggleMinute = (playerId: string, minute: number) => {
         const currentMap = tactics.rotationMap || {};
         const newMap = { ...currentMap };
-        
         if (!newMap[playerId]) newMap[playerId] = Array(48).fill(false);
         const playerMap = [...newMap[playerId]];
-
         const quarter = Math.floor(minute / 12);
         
-        // Range Selection Logic
-        if (lastSelected && lastSelected.pid === playerId && 
-            Math.floor(lastSelected.min / 12) === quarter && lastSelected.min !== minute) {
-            
+        if (lastSelected && lastSelected.pid === playerId && Math.floor(lastSelected.min / 12) === quarter && lastSelected.min !== minute) {
             const start = Math.min(lastSelected.min, minute);
             const end = Math.max(lastSelected.min, minute);
             const targetVal = !playerMap[minute];
-
-            for (let i = start; i <= end; i++) {
-                playerMap[i] = targetVal;
-            }
+            for (let i = start; i <= end; i++) playerMap[i] = targetVal;
             setLastSelected(null);
         } else {
             playerMap[minute] = !playerMap[minute];
             setLastSelected({ pid: playerId, min: minute });
         }
-
         newMap[playerId] = playerMap;
         onUpdateTactics({ ...tactics, rotationMap: newMap });
     };
 
     const handleResetRotation = () => {
-        if (!window.confirm("로테이션 설정을 전부 초기화하시겠습니까?\n모든 선수의 출전 시간이 해제됩니다.")) return;
-
+        if (!window.confirm("로테이션 설정을 전부 초기화하시겠습니까?")) return;
         const newMap: Record<string, boolean[]> = {};
-        // Initialize all false for everyone in roster to verify clear state
-        team.roster.forEach(p => {
-            newMap[p.id] = Array(48).fill(false);
-        });
-
+        team.roster.forEach(p => { newMap[p.id] = Array(48).fill(false); });
         onUpdateTactics({ ...tactics, rotationMap: newMap });
     };
 
-    // Validation
     const validation = useMemo(() => {
         const minuteCounts = Array(48).fill(0);
         const over42: string[] = [];
         const under5: number[] = [];
         const over5: number[] = [];
-
         const mapData = tactics.rotationMap || {};
-
         Object.entries(mapData).forEach(([pid, map]) => {
-            const playerMins = map.filter(Boolean).length;
-            if (playerMins > 42) over42.push(team.roster.find(p => p.id === pid)?.name || pid);
-            
-            map.forEach((active, i) => {
-                if (active) minuteCounts[i]++;
-            });
+            if (map.filter(Boolean).length > 42) over42.push(team.roster.find(p => p.id === pid)?.name || pid);
+            map.forEach((active, i) => { if (active) minuteCounts[i]++; });
         });
-
         minuteCounts.forEach((count, i) => {
             if (count < 5) under5.push(i + 1);
             else if (count > 5) over5.push(i + 1);
         });
-
         return { over42, under5, over5, minuteCounts };
     }, [tactics.rotationMap, team.roster]);
 
     const posKeys = ['PG', 'SG', 'SF', 'PF', 'C', 'RES'];
-    
-    // Styling Constants
-    // Sticky Columns: Header stays Slate-950
-    // Body uses Slate-900 (Opaque) to ensure text doesn't bleed through on scroll, matching Depth Chart aesthetic.
     const stickyHeaderBg = "bg-slate-950";
     const stickyBodyBg = "bg-slate-900"; 
-    
     const stickyBorder = "border-r border-slate-800"; 
     const stickyBottom = "border-b border-slate-800";
-    
-    // Scrollable Grid
     const gridBorder = "border-r border-slate-800/50"; 
     const gridBottom = "border-b border-slate-800/50";
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
-             {/* Rotation Chart Title & Actions */}
              <div className="px-6 py-4 bg-slate-800 border-t-2 border-t-indigo-500 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
                  <div className="flex items-center gap-3">
                     <Timer size={20} className="text-indigo-400"/>
                     <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
                  </div>
                  
-                 <button 
-                    onClick={handleResetRotation}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
-                    title="모든 시간 할당 해제"
-                 >
-                    <RotateCcw size={14} />
-                    <span>초기화</span>
-                 </button>
+                 <div className="flex gap-2">
+                    <button 
+                        onClick={handleAutoAllocation}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md active:scale-95"
+                    >
+                        <Wand2 size={14} />
+                        <span>AI 자동 배분</span>
+                    </button>
+                    <button 
+                        onClick={handleResetRotation}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                    >
+                        <RotateCcw size={14} />
+                        <span>초기화</span>
+                    </button>
+                 </div>
             </div>
 
-            {/* Rotation Grid Table */}
             <div className="flex-1 min-h-0">
-                {/* Force border-separate to prevent sticky border blending issues */}
-                <Table 
-                    className="border-0 rounded-none shadow-none" 
-                    style={{ borderCollapse: 'separate', borderSpacing: 0 }}
-                >
+                <Table className="border-0 rounded-none shadow-none" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead className={`${stickyHeaderBg} sticky top-0 z-50`}>
-                        {/* 1st Header Row: Info & Quarters */}
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
-                            {/* Sticky Columns Header Block */}
                             <th rowSpan={2} className={`sticky left-0 z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center`}>POS</th>
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>OVR</th>
                             <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>COND</th>
                             <th rowSpan={2} className={`sticky left-[290px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>MIN</th>
-                            
-                            {/* Scrollable Quarter Headers */}
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBorder} ${gridBottom}`}>1Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBorder} ${gridBottom}`}>2Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBorder} ${gridBottom}`}>3Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${gridBottom}`}>4Q</th>
                         </tr>
-
-                        {/* 2nd Header Row: Minute Numbers */}
                         <tr className={`text-[8px] font-black text-slate-600 uppercase tracking-tighter h-6 ${gridBottom}`}>
-                             {Array.from({length: 48}).map((_, i) => {
-                                const isQuarterEnd = (i+1)%12 === 0 && (i+1) !== 48;
-                                return (
-                                    <th 
-                                        key={i} 
-                                        className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${isQuarterEnd ? gridBorder : 'border-r border-slate-800/30'}`}
-                                    >
-                                        {i + 1}
-                                    </th>
-                                );
-                            })}
+                             {Array.from({length: 48}).map((_, i) => (
+                                <th key={i} className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${(i+1)%12 === 0 && (i+1) !== 48 ? gridBorder : 'border-r border-slate-800/30'}`}>{i + 1}</th>
+                            ))}
                         </tr>
                     </thead>
-
                     <TableBody>
                         {posKeys.map(pos => {
-                            const players = (groupedRotation as Record<string, Player[]>)[pos];
+                            const players = (groupedRotation as any)[pos];
                             if (!players || players.length === 0) return null;
-
-                            return players.map((p, index) => {
-                                const ovr = calculatePlayerOvr(p);
+                            return players.map((p: Player, index: number) => {
                                 const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
                                 const totalMins = playerMap.filter(Boolean).length;
-                                const isRes = pos === 'RES';
-                                
-                                const condition = p.condition ?? 100;
-                                let condColor = 'text-emerald-500';
-                                if (condition < 70) condColor = 'text-red-500';
-                                else if (condition < 90) condColor = 'text-amber-500';
-
                                 return (
                                     <TableRow key={p.id} className="hover:bg-white/5 group h-9">
-                                        {/* Sticky Columns Body Block - Opaque Borders */}
-                                        
-                                        {/* Merged Position Cell */}
                                         {index === 0 && (
-                                            <td 
-                                                rowSpan={players.length} 
-                                                className={`sticky left-0 z-30 ${stickyBodyBg} text-center align-middle ${stickyBorder} ${stickyBottom}`}
-                                            >
-                                                <span className={`text-[10px] font-bold tracking-widest ${isRes ? 'text-slate-600' : 'text-slate-500'}`}>
-                                                    {String(pos)}
-                                                </span>
+                                            <td rowSpan={players.length} className={`sticky left-0 z-30 ${stickyBodyBg} text-center align-middle ${stickyBorder} ${stickyBottom}`}>
+                                                <span className="text-[10px] font-bold tracking-widest text-slate-500">{String(pos)}</span>
                                             </td>
                                         )}
-
-                                        {/* Player Name */}
-                                        <td 
-                                            className={`sticky left-[50px] z-30 ${stickyBodyBg} px-3 cursor-pointer ${stickyBorder} ${stickyBottom}`}
-                                            onClick={() => onViewPlayer(p)}
-                                        >
-                                            <span className={`text-xs font-bold truncate block ${isRes ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>
-                                                {p.name}
-                                            </span>
+                                        <td className={`sticky left-[50px] z-30 ${stickyBodyBg} px-3 cursor-pointer ${stickyBorder} ${stickyBottom}`} onClick={() => onViewPlayer(p)}>
+                                            <span className={`text-xs font-bold truncate block ${pos === 'RES' ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>{p.name}</span>
                                         </td>
-
-                                        {/* OVR */}
                                         <td className={`sticky left-[210px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <div className="flex justify-center">
-                                                <OvrBadge value={ovr} size="sm" className={`!w-6 !h-6 !text-xs !shadow-none ${isRes ? 'opacity-50 grayscale' : ''}`} />
-                                            </div>
+                                            <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" /></div>
                                         </td>
-                                        
-                                        {/* Condition */}
                                         <td className={`sticky left-[250px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <span className={`text-[10px] font-black ${condColor}`}>
-                                                {Math.round(condition)}%
-                                            </span>
+                                            <span className={`text-[10px] font-black ${(p.condition || 100) < 70 ? 'text-red-500' : (p.condition || 100) < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{Math.round(p.condition || 100)}%</span>
                                         </td>
-
-                                        {/* Total Minutes */}
                                         <td className={`sticky left-[290px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : (isRes ? 'text-slate-600' : 'text-indigo-400')}`}>
-                                                {totalMins}
-                                            </span>
+                                            <span className={`text-xs font-mono font-black ${totalMins > 42 ? 'text-red-500' : 'text-indigo-400'}`}>{totalMins}</span>
                                         </td>
-
-                                        {/* Minute Grid Cells - Transparent Borders */}
-                                        {playerMap.map((active, i) => {
-                                            const countAtMin = validation?.minuteCounts[i] || 0;
-                                            const isError = countAtMin !== 5;
-                                            const isQuarterEnd = (i+1)%12 === 0 && (i+1) !== 48;
-                                            
-                                            return (
-                                                <td 
-                                                    key={i} 
-                                                    onClick={() => handleToggleMinute(p.id, i)}
-                                                    className={`
-                                                        p-0 cursor-pointer relative transition-all ${gridBottom}
-                                                        ${isQuarterEnd ? gridBorder : 'border-r border-slate-800/30'}
-                                                        hover:bg-white/10
-                                                    `}
-                                                >
-                                                    {active && (
-                                                        <div className={`
-                                                            w-full h-full absolute inset-0
-                                                            ${isError ? 'bg-red-500/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.5)]' : 'bg-emerald-500/30 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.5)]'}
-                                                        `}></div>
-                                                    )}
-                                                </td>
-                                            );
-                                        })}
+                                        {playerMap.map((active: boolean, i: number) => (
+                                            <td key={i} onClick={() => handleToggleMinute(p.id, i)} className={`p-0 cursor-pointer relative transition-all ${gridBottom} ${(i+1)%12 === 0 && (i+1) !== 48 ? gridBorder : 'border-r border-slate-800/30'} hover:bg-white/10`}>
+                                                {active && <div className={`w-full h-full absolute inset-0 ${validation?.minuteCounts[i] !== 5 ? 'bg-red-500/30 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.5)]' : 'bg-emerald-500/30 shadow-[inset_0_0_0_1px_rgba(16,185,129,0.5)]'}`}></div>}
+                                            </td>
+                                        ))}
                                     </TableRow>
                                 );
                             });
@@ -297,20 +209,12 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                     </TableBody>
                 </Table>
             </div>
-
-            {/* Validation Bar */}
             {validation && (validation.under5.length > 0 || validation.over5.length > 0 || validation.over42.length > 0) && (
                 <div className="bg-red-500/10 border-t border-red-500/20 px-6 py-2 flex flex-wrap gap-4 items-center animate-in slide-in-from-bottom-2 shrink-0">
                     <AlertCircle size={16} className="text-red-500" />
-                    {validation.under5.length > 0 && (
-                        <span className="text-[10px] font-bold text-red-400">5명 미만: {validation.under5.length}개 구간</span>
-                    )}
-                    {validation.over5.length > 0 && (
-                        <span className="text-[10px] font-bold text-orange-400">5명 초과: {validation.over5.length}개 구간</span>
-                    )}
-                    {validation.over42.length > 0 && (
-                        <span className="text-[10px] font-bold text-red-500 uppercase">혹사 경고: {validation.over42.join(', ')}</span>
-                    )}
+                    {validation.under5.length > 0 && <span className="text-[10px] font-bold text-red-400">5명 미만: {validation.under5.length}개 구간</span>}
+                    {validation.over5.length > 0 && <span className="text-[10px] font-bold text-orange-400">5명 초과: {validation.over5.length}개 구간</span>}
+                    {validation.over42.length > 0 && <span className="text-[10px] font-bold text-red-500 uppercase">혹사 경고: {validation.over42.join(', ')}</span>}
                 </div>
             )}
         </div>
