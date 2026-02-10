@@ -102,11 +102,11 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     const headTop = `${(endY / VIEW_HEIGHT) * 100}%`;
 
     return (
-        <div className="w-full relative flex flex-col mt-6 mb-2">
+        <div className="w-full relative flex flex-col mt-10 mb-2">
             {/* Header: Logos & Percentages & GAME CLOCK */}
-            <div className="flex justify-between items-end px-1 mb-2 relative h-16">
+            <div className="flex justify-between items-end px-1 mb-2 relative h-24">
                 {/* Left Side: Away Team (Top of Graph) */}
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-2">
                     <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
                     <div>
                         <div className="text-2xl font-black oswald leading-none text-white">{awayProb}%</div>
@@ -117,19 +117,18 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 {/* Center: Game Clock (Digital LED Style) */}
                 {quarter && timeRemaining && (
                     <div className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center">
-                        <div className="bg-black border-2 border-slate-800 rounded-lg shadow-[0_0_20px_rgba(0,0,0,0.5)] flex items-stretch overflow-hidden relative">
+                        <div className="bg-black border-4 border-slate-800 rounded-xl shadow-[0_0_30px_rgba(0,0,0,0.6)] flex items-stretch overflow-hidden relative">
                              {/* Gloss effect */}
                              <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none z-20"></div>
                              
                              {/* Quarter Section */}
-                             <div className="flex flex-col items-center justify-center px-3 py-1 bg-black border-r border-slate-800/50">
-                                 <span className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mb-0.5">QTR</span>
-                                 <span className="text-xl font-digital led-amber leading-none transform translate-y-[2px]">{quarter}</span>
+                             <div className="flex flex-col items-center justify-center px-4 py-2 bg-black border-r-2 border-slate-800/50 min-w-[60px]">
+                                 <span className="text-3xl font-digital led-amber leading-none transform translate-y-[2px]">{quarter}Q</span>
                              </div>
 
-                             {/* Time Section */}
-                             <div className="flex flex-col items-center justify-center px-4 py-1 bg-black min-w-[80px]">
-                                 <span className="text-3xl font-digital led-red leading-none tracking-wider tabular-nums transform translate-y-[2px]">
+                             {/* Time Section - Fixed Width for Stability */}
+                             <div className="flex flex-col items-center justify-center px-2 py-2 bg-black w-[140px]">
+                                 <span className="text-5xl font-digital led-red leading-none tracking-wider tabular-nums transform translate-y-[3px]">
                                      {timeRemaining}
                                  </span>
                              </div>
@@ -138,7 +137,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 )}
 
                 {/* Right Side: Home Team (Bottom of Graph) */}
-                <div className="flex items-center gap-2 text-right">
+                <div className="flex items-center gap-2 text-right mb-2">
                     <div>
                         <div className="text-2xl font-black oswald leading-none text-white">{homeProb}%</div>
                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{homeTeamCode}</div>

@@ -45,14 +45,14 @@ export const GameSimulatingView: React.FC<{
   }, [pbpLogs, homeTeam.id]);
 
   // 2. [CORE UPDATE] Event-Driven Timeline Generation
-  // Instead of mapping every log, we filter ONLY important events.
+  // Instead of mapping every log, we filter ONLY important events and inject Period markers.
   const timeline = useMemo(() => {
       const items: TimelineItem[] = [];
       let currentH = 0;
       let currentA = 0;
       
       // Initial State
-      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "TIP-OFF", isHighlight: true, elapsedMinutes: 0 });
+      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "경기 시작 (TIP-OFF)", isHighlight: true, elapsedMinutes: 0 });
 
       pbpLogs.forEach((log, index) => {
           // A. Always track score accumulation invisibly
@@ -75,10 +75,13 @@ export const GameSimulatingView: React.FC<{
               log.text.includes('6반칙') || 
               log.text.includes('버저비터')
           );
+          
+          // Check for Quarter End explicitly (0:00 time remaining)
+          const isPeriodEnd = log.timeRemaining === '0:00';
           const isLast = index === pbpLogs.length - 1; // Always show final log
 
           // Only push to timeline if it's a key event
-          if (isScore || isUrgent || isLast) {
+          if (isScore || isUrgent || isPeriodEnd || isLast) {
               // Parse Time to Seconds for WP Calculation & Graph Sync
               const [mm, ss] = log.timeRemaining.split(':').map(Number);
               const secondsRemainingInQ = mm * 60 + ss;
@@ -87,13 +90,21 @@ export const GameSimulatingView: React.FC<{
               
               const wp = calculateWinProbability(currentH, currentA, elapsedMinutes);
 
+              // Use custom text for Period Ends
+              let displayText = log.text;
+              if (isPeriodEnd) {
+                  if (log.quarter === 1) displayText = "1쿼터 종료";
+                  else if (log.quarter === 2) displayText = "하프 타임 (HALF TIME)";
+                  else if (log.quarter === 3) displayText = "3쿼터 종료";
+              }
+
               items.push({
                   h: currentH,
                   a: currentA,
                   q: log.quarter,
                   t: log.timeRemaining,
                   wp: wp,
-                  text: log.text,
+                  text: displayText,
                   isHighlight: true,
                   elapsedMinutes: elapsedMinutes
               });
@@ -159,16 +170,21 @@ export const GameSimulatingView: React.FC<{
           let delay = 1000; // Default: 1.0s per event (Readable speed)
 
           if (currentItem) {
-              const scoreDiff = Math.abs(currentItem.h - currentItem.a);
-              
-              if (currentItem.q === 4) {
-                  if (scoreDiff <= 5 && parseInt(currentItem.t.split(':')[0]) < 2) {
-                      delay = 1500; // Super Clutch: 1.5s (Build tension)
-                  } else if (scoreDiff > 20) {
-                      delay = 200; // Garbage Time: 0.2s (Skip fast)
+              // Longer delay for Period Ends & Start
+              if (currentItem.text.includes("종료") || currentItem.text.includes("하프 타임") || currentItem.text.includes("경기 시작")) {
+                  delay = 1200;
+              } else {
+                  const scoreDiff = Math.abs(currentItem.h - currentItem.a);
+                  
+                  if (currentItem.q === 4) {
+                      if (scoreDiff <= 5 && parseInt(currentItem.t.split(':')[0]) < 2) {
+                          delay = 1500; // Super Clutch: 1.5s (Build tension)
+                      } else if (scoreDiff > 20) {
+                          delay = 200; // Garbage Time: 0.2s (Skip fast)
+                      }
+                  } else if (scoreDiff > 25) {
+                       delay = 300; // Blowout early: Fast
                   }
-              } else if (scoreDiff > 25) {
-                   delay = 300; // Blowout early: Fast
               }
           }
 
@@ -209,11 +225,15 @@ export const GameSimulatingView: React.FC<{
   if (currentData.text.includes("버저비터") || currentData.text.includes("GAME WINNER")) {
        messageClass = "text-red-500 font-black text-2xl animate-buzzer-beater drop-shadow-[0_0_10px_rgba(255,255,255,1)]";
   } 
-  // 2. Super Clutch (4Q, < 24s, Diff <= 3) -> Intense Shake
+  // 2. Period Ends (Important Info)
+  else if (currentData.text.includes("종료") || currentData.text.includes("하프 타임")) {
+       messageClass = "text-amber-400 font-black text-xl animate-pulse";
+  }
+  // 3. Super Clutch (4Q, < 24s, Diff <= 3) -> Intense Shake
   else if (is4Q && scoreDiff <= 3 && secondsRemaining < 24) {
        messageClass = "text-red-500 font-black text-xl animate-shake-intense";
   } 
-  // 3. Clutch (4Q, < 2m, Diff <= 5) -> Gentle Shake
+  // 4. Clutch (4Q, < 2m, Diff <= 5) -> Gentle Shake
   else if (is4Q && scoreDiff <= 5 && secondsRemaining < 120) {
        messageClass = "text-orange-400 font-bold text-lg animate-shake-gentle";
   }
