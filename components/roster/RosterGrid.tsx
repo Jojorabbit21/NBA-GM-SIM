@@ -310,7 +310,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             </TableCell>
 
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                                <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
+                                <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-sm" value={(p as any)[k]} variant="attribute" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 const val = getSortValue(p, c.key);
@@ -319,13 +319,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                     else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm'].includes(c.key)) displayVal = val.toFixed(1);
                                 }
-                                return <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                                return <TableCell key={c.key} align="center" className="font-mono font-bold text-sm text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
                             })}
                             {tab === 'salary' && (
                                 <>
-                                    <TableCell align="center" className="font-mono font-bold text-xs text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
-                                    <TableCell align="center" className="font-mono font-bold text-xs text-slate-400 border-r border-slate-800/30" value={`${p.contractYears} yrs`} />
-                                    <TableCell align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
+                                    <TableCell align="center" className="font-mono font-bold text-sm text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
+                                    <TableCell align="center" className="font-mono font-bold text-sm text-slate-400 border-r border-slate-800/30" value={`${p.contractYears} yrs`} />
+                                    <TableCell align="center" className="font-mono font-bold text-sm text-slate-300 border-r border-slate-800/30" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
                                 </>
                             )}
                         </TableRow>
@@ -341,7 +341,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </TableCell>
 
                         {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                            <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
+                            <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-sm" value={averages.attr[k]} variant="attribute" colorScale />
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             let val = averages.stat[c.key];
@@ -350,7 +350,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                 else displayVal = val.toFixed(1);
                             }
-                            return <TableCell key={c.key} align="center" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                            return <TableCell key={c.key} align="center" className="font-mono font-black text-sm text-slate-400 border-r border-slate-800/30" value={displayVal} variant="stat" />;
                         })}
                         {tab === 'salary' && (
                             <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-sm" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
@@ -413,8 +413,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                         const pct = a > 0 ? ((m/a)*100).toFixed(0) + '%' : '-';
                                         return (
                                             <React.Fragment key={z.id}>
-                                                <TableCell align="right" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800" value={`${m}/${a}`} />
-                                                <TableCell align="right" className={`font-mono font-bold text-xs border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
+                                                <TableCell align="right" className="font-mono font-bold text-sm text-slate-300 border-r border-slate-800" value={`${m}/${a}`} />
+                                                <TableCell align="right" className={`font-mono font-bold text-sm border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
                                             </React.Fragment>
                                         );
                                     })}
@@ -430,8 +430,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
                                     return (
                                         <React.Fragment key={z.id}>
-                                            <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800" value={`${avg.m}/${avg.a}`} />
-                                            <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800" value={pct} />
+                                            <TableCell align="right" className="font-mono font-black text-sm text-slate-400 border-r border-slate-800" value={`${avg.m}/${avg.a}`} />
+                                            <TableCell align="right" className="font-mono font-black text-sm text-slate-400 border-r border-slate-800" value={pct} />
                                         </React.Fragment>
                                     );
                                 })}
