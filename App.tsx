@@ -13,6 +13,7 @@ import { fetchUnreadMessageCount } from './services/messageService';
 import FullScreenLoader from './components/FullScreenLoader';
 import MainLayout from './components/MainLayout';
 import AppRouter from './components/AppRouter';
+import { ResetDataModal } from './components/ResetDataModal';
 
 const App: React.FC = () => {
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
@@ -20,6 +21,8 @@ const App: React.FC = () => {
     const [view, setView] = useState<AppView>('Dashboard');
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+    const [isResetting, setIsResetting] = useState(false);
 
     const advanceDate = useCallback((newDate: string, overrides: any) => {
         gameData.setCurrentSimDate(newDate);
@@ -55,6 +58,13 @@ const App: React.FC = () => {
     useEffect(() => { if (sim.activeGame) setView('GameSim' as any); }, [sim.activeGame]);
     useEffect(() => { if (sim.lastGameResult) setView('GameResult' as any); }, [sim.lastGameResult]);
 
+    const handleResetConfirm = async () => {
+        setIsResetting(true);
+        await gameData.handleResetData();
+        setIsResetting(false);
+        setIsResetModalOpen(false);
+    };
+
     // 전역 상태에 따른 가드 렌더링
     // [Updated] No props needed for FullScreenLoader to enable random messages (default behavior)
     if (authLoading || gameData.isSaveLoading) return <FullScreenLoader />;
@@ -70,7 +80,7 @@ const App: React.FC = () => {
                 isGuestMode,
                 unreadMessagesCount: unreadCount,
                 onNavigate: setView,
-                onResetClick: gameData.handleResetData,
+                onResetClick: () => setIsResetModalOpen(true),
                 onLogout: handleLogout
             }}
             gameHeaderProps={{
@@ -88,6 +98,13 @@ const App: React.FC = () => {
                 refreshUnreadCount={refreshUnreadCount} setToastMessage={setToastMessage}
             />
             {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+            
+            <ResetDataModal 
+                isOpen={isResetModalOpen}
+                isLoading={isResetting}
+                onClose={() => setIsResetModalOpen(false)}
+                onConfirm={handleResetConfirm}
+            />
         </MainLayout>
     );
 };
