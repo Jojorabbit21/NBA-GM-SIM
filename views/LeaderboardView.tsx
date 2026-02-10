@@ -102,8 +102,8 @@ const LeaderboardCard: React.FC<{
             {/* Table Body */}
             <div className="flex-1">
                 <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
-                    {/* [Fix] Removed nested tr to prevent alignment gap */}
-                    <TableHead className="bg-slate-950">
+                    {/* [Fix] Added border-none to override default border-b from TableHead component */}
+                    <TableHead className="bg-slate-950 border-none">
                         <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
                         <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM / PLAYER</TableHeaderCell>
                         <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950">{statDef.id}</TableHeaderCell>
