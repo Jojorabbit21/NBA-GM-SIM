@@ -169,7 +169,9 @@ export const useSimulation = (
                 away_score: result.awayScore,
                 is_playoff: userGame.isPlayoff,
                 series_id: userGame.seriesId,
-                box_score: { home: result.homeBox, away: result.awayBox }
+                box_score: { home: result.homeBox, away: result.awayBox },
+                // [Fix] Save Rotation Data
+                rotation_data: result.rotationData
             };
 
             if (!isGuestMode && session?.user?.id) {

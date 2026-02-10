@@ -4,55 +4,62 @@ import { resolvePlayAction } from './playTypes';
 import { calculateHitRate, flattenPlayer } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { calculatePlaymakingStats } from '../playmakingSystem';
+import { calculateFoulStats } from '../foulSystem'; // Import Foul System
 
 /**
  * Determines the outcome of a single possession.
- * 1. Who attacks?
- * 2. What play?
- * 3. Matchup?
- * 4. Score/Miss/TO/Foul?
  */
 export function simulatePossession(state: GameState): PossessionResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
 
     // 1. Resolve Play Action (Who does what?)
-    // Basic logic: Select play based on tactics, then select actor based on Archetypes
-    // Randomly pick a play type based on distribution
-    const tacticName = offTeam.tactics.offenseTactics[0] || 'Balance';
-    // Ideally we pass TacticConfig here, but for now we simplify PlayType selection logic in resolvePlayAction
-    // Need to select a PlayType. Let's create a simple weighted selector or rely on resolvePlayAction's internal fallback?
-    // Actually resolvePlayAction takes a specific PlayType.
-    // Let's pick a PlayType randomly first.
     const playTypes = ['Iso', 'PnR_Handler', 'PnR_Roll', 'CatchShoot', 'PostUp', 'Cut'] as const;
-    const selectedPlayType = playTypes[Math.floor(Math.random() * playTypes.length)]; // Simplified for now, can be weighted later
+    const selectedPlayType = playTypes[Math.floor(Math.random() * playTypes.length)];
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType);
     const { actor, secondaryActor, preferredZone, shotType, bonusHitRate } = playCtx;
 
-    // 2. Identify Defender (Simple positional matchup for now)
-    // Find defender with matching position or fallback
+    // 2. Identify Defender
     let defender = defTeam.onCourt.find(p => p.position === actor.position);
-    if (!defender) defender = defTeam.onCourt[Math.floor(Math.random() * 5)]; // Switch/Help
+    if (!defender) defender = defTeam.onCourt[Math.floor(Math.random() * 5)];
 
-    // 3. Turnover Check
-    // Use playmakingSystem logic
-    // We approximate "MP" influence by passing 1.0 (since this is 1 possession)
+    // 3. Defensive Foul Check (Non-Shooting / Reach-in / Illegal Screen etc.)
+    // [Fix] Re-introduced Explicit Foul Logic
+    // Base 9% chance for a defensive foul on the floor (not shooting)
+    // Adjusted by Def Intensity slider (5 is mid)
+    const defIntensity = defTeam.tactics.sliders.defIntensity;
+    const baseFoulChance = 0.08 + ((defIntensity - 5) * 0.015);
+    
+    // Individual Discipline Factor
+    // Low discipline / High aggression increases foul chance
+    const disciplineFactor = (100 - defender.attr.defConsist) / 200; // 0.0 to 0.5
+    const finalFoulChance = baseFoulChance + (disciplineFactor * 0.05);
+
+    if (Math.random() < finalFoulChance) {
+        return {
+            type: 'foul',
+            offTeam, defTeam, actor,
+            defender: defender,
+            points: 0,
+            isAndOne: false,
+            playType: selectedPlayType
+        };
+    }
+
+    // 4. Turnover Check
     const pmStats = calculatePlaymakingStats(
         flattenPlayer(actor), 
-        1.0, // normalized MP
-        1, // 1 FGA equivalent
+        1.0, 
+        1, 
         offTeam.tactics.sliders,
-        false, // Is Ace Target? (TODO: Link this)
-        undefined // Stopper
+        false, 
+        undefined 
     );
     
-    // 0.15 is arbitrary base TO chance per possession, scaled by stats
-    // This is a probabilistic check
     const tovChance = Math.max(0.05, Math.min(0.25, (pmStats.tov / 100))); 
     if (Math.random() < tovChance) {
-        // Turnover!
-        const isSteal = Math.random() < 0.6; // 60% of TOs are steals
+        const isSteal = Math.random() < 0.6;
         return {
             type: 'turnover',
             offTeam, defTeam, actor,
@@ -64,26 +71,13 @@ export function simulatePossession(state: GameState): PossessionResult {
         };
     }
 
-    // 4. Foul Check (Shooting Foul)
-    // Based on DrawFoul vs FoulTendency
-    // Base 15% foul rate roughly
-    let foulChance = (actor.attr.drFoul * 0.7 + (100 - defender.attr.foulTendency) * 0.3) / 500;
-    if (preferredZone === 'Rim') foulChance *= 1.5;
-    
-    if (Math.random() < foulChance) {
-        // Shooting Foul!
-        // Determine if it's an And-1 later in shot calc? 
-        // For simplicity, let's say 20% of fouls are And-1s if shot is made.
-        // We will proceed to shot calculation, but flag potential FTs.
-    }
-
     // 5. Shot Calculation
     const hitRate = calculateHitRate(
         actor, defender, defTeam, 
         selectedPlayType, preferredZone, 
         offTeam.tactics.sliders.pace, 
         bonusHitRate, 
-        1.0, 1.0 // Efficiencies placeholders
+        1.0, 1.0 
     );
 
     const isScore = Math.random() < hitRate;
@@ -91,20 +85,28 @@ export function simulatePossession(state: GameState): PossessionResult {
     // Check Block
     let isBlock = false;
     if (!isScore && preferredZone !== '3PT') {
-        // Block chance based on defender's block rating
-        const blockChance = (defender.attr.blk + defender.attr.vertical) / 800; // rough calc
+        const blockChance = (defender.attr.blk + defender.attr.vertical) / 800; 
         if (Math.random() < blockChance) isBlock = true;
     }
+
+    // Shooting Foul Check (And-1 or Missed Shot Foul)
+    // This is separate from the "Floor Foul" above.
+    // Higher probability if driving to rim.
+    let shootingFoulChance = (actor.attr.drFoul * 0.7 + (100 - defender.attr.foulTendency) * 0.3) / 600;
+    if (preferredZone === 'Rim') shootingFoulChance *= 2.0;
+    
+    const isShootingFoul = Math.random() < shootingFoulChance;
 
     // 6. Result Generation
     if (isScore) {
         const points = preferredZone === '3PT' ? 3 : 2;
-        // And-1 check?
-        const isAndOne = Math.random() < (foulChance * 0.3); // 30% of fouls on made shots
+        // And-1?
+        const isAndOne = isShootingFoul; 
 
         return {
             type: 'score',
             offTeam, defTeam, actor, assister: secondaryActor,
+            defender: isAndOne ? defender : undefined, // Assign defender if And-1 for PF count
             points: points as 2|3,
             zone: preferredZone,
             playType: selectedPlayType,
@@ -112,12 +114,26 @@ export function simulatePossession(state: GameState): PossessionResult {
             isAndOne
         };
     } else {
-        // Miss -> Rebound
-        // Determine Rebounder
+        // Miss
+        // If shooting foul on miss -> It's a foul result (Free Throws)
+        // For simulation simplicity in PBP log, we treat it as 'freethrow' type or just 'foul' that leads to points?
+        // Let's treat it as 'freethrow' type which implies points from line.
+        if (isShootingFoul) {
+             return {
+                type: 'freethrow',
+                offTeam, defTeam, actor,
+                defender: defender,
+                points: 0, // Points added in applyPossessionResult via FT calculation
+                isAndOne: false,
+                playType: selectedPlayType
+            };
+        }
+
+        // Clean Miss -> Rebound
         const { player: rebounder, type: rebType } = resolveRebound(state.home, state.away, actor.playerId);
         
         return {
-            type: 'miss', // Miss implies rebound will happen
+            type: 'miss', 
             offTeam, defTeam, actor,
             defender: isBlock ? defender : undefined,
             rebounder,

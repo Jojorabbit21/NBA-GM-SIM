@@ -7,11 +7,8 @@ import { simulatePossession } from './possessionHandler';
 import { updateOnCourtStates } from './stateUpdater';
 import { applyPossessionResult } from './statsMappers';
 import { checkSubstitutions } from './substitutionSystem';
+import { LivePlayer } from './pbpTypes';
 
-/**
- * Executes a full Play-by-Play game simulation.
- * REFACTORED: Now uses a modular pipeline architecture.
- */
 export function runFullGameSimulation(
     homeTeam: Team,
     awayTeam: Team,
@@ -38,63 +35,80 @@ export function runFullGameSimulation(
         isAwayB2B
     };
 
+    [state.home, state.away].forEach(team => {
+        team.onCourt.forEach(p => {
+             if (!state.rotationHistory[p.playerId]) {
+                 state.rotationHistory[p.playerId] = [];
+             }
+             state.rotationHistory[p.playerId].push({ in: 0, out: 0 });
+        });
+    });
+
     // Main Simulation Loop
     for (state.quarter = 1; state.quarter <= 4; state.quarter++) {
         state.gameClock = 720;
-        state.possession = (state.quarter === 2 || state.quarter === 3) ? 'away' : 'home'; // Simple alt possession
+        state.possession = (state.quarter === 2 || state.quarter === 3) ? 'away' : 'home'; 
+        
+        // Reset Team Fouls each quarter
+        state.home.fouls = 0;
+        state.away.fouls = 0;
 
         while (state.gameClock > 0) {
-            // [A] Time Phase
-            // Determine who has possession (simple toggle for now, handled at end of loop or by rebound)
             const offTeamState = state.possession === 'home' ? state.home : state.away;
             const timeTaken = calculatePossessionTime(state as any, offTeamState.tactics.sliders);
             
-            // Tick Clock
             state.gameClock -= timeTaken;
             if (state.gameClock < 0) state.gameClock = 0;
 
-            // [B] Player Phase (Fatigue, Injuries)
             updateOnCourtStates(state as any, timeTaken);
-            
-            // [C] Coaching Phase (Rotation)
-            // 1. Standard Rotation Map check
             checkAndApplyRotation(state as any, state.home, ((state.quarter - 1) * 720) + (720 - state.gameClock));
             checkAndApplyRotation(state as any, state.away, ((state.quarter - 1) * 720) + (720 - state.gameClock));
             
-            // 2. Emergency Subs (Injury/Fouls) - checkSubstitutions returns requests, need to apply them
-            // For now, we rely on checkAndApplyRotation which has fallback logic for unavailable players.
-            // To be explicit:
-            // const homeSubs = checkSubstitutions(state as any, state.home);
-            // applySubs(homeSubs)... (Future expansion)
+            // Check Substitutions for Fouls/Injuries
+            [state.home, state.away].forEach(team => {
+                const subs = checkSubstitutions(state as any, team);
+                // Implementation of substitution would happen here if we were using the return value
+            });
 
-            // [D] Action Phase (The Play)
             const result = simulatePossession(state as any);
-
-            // [E] Commit Phase (Stats & Logs)
             applyPossessionResult(state as any, result);
 
-            // [F] Flow Control (Next Possession)
-            // If Off Rebound, keep possession. Else toggle.
-            // Check result.rebounder
             let nextPossession = state.possession === 'home' ? 'away' : 'home';
-            
             if (result.type === 'miss' && result.rebounder) {
-                // Determine which team the rebounder belongs to
                 const isHomeRebound = state.home.onCourt.some(p => p.playerId === result.rebounder?.playerId);
                 nextPossession = isHomeRebound ? 'home' : 'away';
-            } else if (result.type === 'score' || result.type === 'turnover' || result.type === 'freethrow') {
-                // Standard swap
-                nextPossession = state.possession === 'home' ? 'away' : 'home';
+            } else if (result.type === 'score' || result.type === 'turnover' || result.type === 'freethrow' || result.type === 'foul') {
+                 // Foul without FT also changes possession if not bonus? 
+                 // For simplicity in engine, non-shooting fouls typically reset shot clock but keep possession unless bonus. 
+                 // Here we simplify: Defensive fouls keep possession, Offensive fouls (turnover) change it.
+                 if (result.type === 'foul') {
+                     // If defensive foul, offense keeps ball (unless bonus logic invoked in statsMapper)
+                     // For simplicity, let's swap for now to prevent infinite loops, or assume resets.
+                     // Better: check if it was turnover. simulatePossession returns 'foul' for defensive fouls mostly.
+                     nextPossession = state.possession; // Keep possession on def foul
+                 } else {
+                    nextPossession = state.possession === 'home' ? 'away' : 'home';
+                 }
             }
-            
             state.possession = nextPossession as 'home' | 'away';
         }
     }
 
-    // Post-Game: Map to Output Format
+    const gameEndSec = 48 * 60;
+    [state.home, state.away].forEach(team => {
+        team.onCourt.forEach(p => {
+            const hist = state.rotationHistory[p.playerId];
+            if (hist && hist.length > 0) {
+                hist[hist.length - 1].out = gameEndSec;
+            }
+        });
+    });
+
+    // [Fix] Map LivePlayer state directly to BoxScore, explicitly including currentCondition
     const mapToBox = (teamState: any): PlayerBoxScore[] => 
-        [...teamState.onCourt, ...teamState.bench].map(p => ({
+        [...teamState.onCourt, ...teamState.bench].map((p: LivePlayer) => ({
             ...p,
+            condition: p.currentCondition, // Explicitly pass the runtime condition
             plusMinus: teamState.score - (teamState === state.home ? state.away.score : state.home.score)
         }));
 
