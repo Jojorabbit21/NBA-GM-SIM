@@ -35,8 +35,8 @@ export const StandingTable: React.FC<StandingTableProps> = ({
     const sorted = getFilteredAndSortedTeams(teamList);
     const leader = sorted.length > 0 ? sorted[0] : null;
 
-    // Data column text styles
-    const dataTextClass = "font-mono text-sm text-slate-300";
+    // Data column text styles (Updated: text-xs, text-slate-400)
+    const dataTextClass = "font-mono text-xs text-slate-400";
 
     return (
         <div className="bg-slate-900/90 rounded-xl border border-slate-800 overflow-hidden shadow-xl flex flex-col">
@@ -46,7 +46,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
             </div>
             
             <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
-                <TableHead className="bg-slate-950">
+                <TableHead className="bg-slate-950 border-none">
                     <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
                     <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM</TableHeaderCell>
                     <TableHeaderCell align="center" className="px-2 w-10 border-none bg-slate-950">W</TableHeaderCell>
@@ -79,7 +79,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                         return (
                             <React.Fragment key={t.id}>
                                 <TableRow className={rowClass}>
-                                    <TableCell className={`pl-6 pr-2 ${dataTextClass} !text-slate-400 group-hover:text-slate-100`}>{rankVal}</TableCell>
+                                    <TableCell className={`pl-6 pr-2 ${dataTextClass} group-hover:text-slate-100`}>{rankVal}</TableCell>
                                     <TableCell 
                                         className="px-2 cursor-pointer" 
                                         onClick={() => onTeamClick(t.id)}
@@ -90,10 +90,10 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                             {statusEmoji && <span className="text-xs ml-1 filter drop-shadow-md select-none">{statusEmoji}</span>}
                                         </div>
                                     </TableCell>
-                                    <TableCell align="center" className={`px-2 ${dataTextClass} font-bold !text-white`}>{winsVal}</TableCell>
+                                    <TableCell align="center" className={`px-2 ${dataTextClass}`}>{winsVal}</TableCell>
                                     <TableCell align="center" className={`px-2 ${dataTextClass}`}>{lossesVal}</TableCell>
-                                    <TableCell align="center" className={`px-2 ${dataTextClass} !text-slate-400`}>{pctVal}</TableCell>
-                                    <TableCell align="center" className={`pl-2 pr-6 ${dataTextClass} ${i === 0 ? '!text-slate-500' : `!text-${highlightColor}-400/80`}`}>{gbVal}</TableCell>
+                                    <TableCell align="center" className={`px-2 ${dataTextClass}`}>{pctVal}</TableCell>
+                                    <TableCell align="center" className={`pl-2 pr-6 ${dataTextClass}`}>{gbVal}</TableCell>
                                 </TableRow>
 
                                 {/* Playoff Guarantee Separator */}
@@ -103,7 +103,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                             <div className="flex items-center justify-center relative h-8 bg-slate-900/50">
                                                 <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-slate-800"></div>
                                                 <span className="relative z-10 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-400 bg-slate-950 border border-emerald-500/30 rounded-full shadow-sm">
-                                                    Playoffs Guaranteed
+                                                    플레이오프
                                                 </span>
                                             </div>
                                         </TableCell>
@@ -117,7 +117,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                             <div className="flex items-center justify-center relative h-8 bg-slate-900/50">
                                                 <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-slate-800"></div>
                                                 <span className="relative z-10 px-4 py-1 text-[10px] font-black uppercase tracking-widest text-amber-400 bg-slate-950 border border-amber-500/30 rounded-full shadow-sm">
-                                                    Play-In Cutoff
+                                                    플레이-인 토너먼트
                                                 </span>
                                             </div>
                                         </TableCell>
