@@ -12,10 +12,12 @@ interface LiveScoreboardProps {
     messageClass: string;
     scoreTimeline: { h: number; a: number; wp: number }[];
     progress: number;
+    quarter?: number; // [New]
+    timeRemaining?: string; // [New]
 }
 
 export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
-    homeTeam, awayTeam, displayScore, currentMessage, messageClass, scoreTimeline, progress
+    homeTeam, awayTeam, displayScore, currentMessage, messageClass, scoreTimeline, progress, quarter, timeRemaining
 }) => {
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
@@ -83,6 +85,8 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
                     awayLogo={awayTeam.logo}
                     homeTeamCode={homeTeam.id.toUpperCase()}
                     awayTeamCode={awayTeam.id.toUpperCase()}
+                    quarter={quarter}
+                    timeRemaining={timeRemaining}
                  />
             </div>
 

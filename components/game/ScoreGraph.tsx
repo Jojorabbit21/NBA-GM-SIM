@@ -10,6 +10,8 @@ interface ScoreGraphProps {
     awayLogo: string;
     homeTeamCode: string;
     awayTeamCode: string;
+    quarter?: number; // [New]
+    timeRemaining?: string; // [New]
 }
 
 // Function to generate a smooth Bezier curve path from points
@@ -19,7 +21,7 @@ const getSmoothPath = (points: {x: number, y: number}[]) => {
 
     let d = `M ${points[0].x},${points[0].y}`;
     
-    // Smoothing factor (0.2 is essentially a 20% smoothing, similar to a radius)
+    // Smoothing factor
     const smoothing = 0.2;
 
     const line = (p0: any, p1: any) => {
@@ -52,7 +54,8 @@ const getSmoothPath = (points: {x: number, y: number}[]) => {
 };
 
 export const ScoreGraph: React.FC<ScoreGraphProps> = ({ 
-    history, progress, homeColor, awayColor, homeLogo, awayLogo, homeTeamCode, awayTeamCode 
+    history, progress, homeColor, awayColor, homeLogo, awayLogo, homeTeamCode, awayTeamCode,
+    quarter, timeRemaining
 }) => {
     const VIEW_WIDTH = 100;
     const VIEW_HEIGHT = 60;
@@ -82,35 +85,25 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
     const endX = points[points.length - 1].x;
     const endY = points[points.length - 1].y;
 
-    // Fix: Extract curve commands safely without malformed 'L C' syntax
-    // If path contains Curves ('C'), extract from the first 'C'. Otherwise it's just M x,y (single point)
     let curveCommands = "";
     const firstCIndex = pathData.indexOf('C');
     if (firstCIndex !== -1) {
         curveCommands = pathData.substring(firstCIndex);
     }
 
-    // Create the closed path for filling
-    // 1. Move to Start Baseline (0, 30)
-    // 2. Line to First Data Point
-    // 3. Curve through Data Points
-    // 4. Line to End Data Point (redundant if curve includes it, but safe)
-    // 5. Line to End Baseline (endX, 30)
-    // 6. Close (Z)
     const fillPath = `M 0,${MID_Y} L ${startX},${startY} ${curveCommands} L ${endX},${MID_Y} Z`;
 
     const homeProb = currentWP.toFixed(0);
     const awayProb = (100 - currentWP).toFixed(0);
 
-    // [Visual Fix] Calculate Percentage Coordinates for the Head Dot (Div)
-    // endX is 0-100 (matches %), endY is 0-60 (needs normalization to %)
+    // Head Dot Position
     const headLeft = `${endX}%`;
     const headTop = `${(endY / VIEW_HEIGHT) * 100}%`;
 
     return (
         <div className="w-full relative flex flex-col mt-6 mb-2">
-            {/* Header: Logos & Percentages */}
-            <div className="flex justify-between items-end px-1 mb-2">
+            {/* Header: Logos & Percentages & GAME CLOCK */}
+            <div className="flex justify-between items-end px-1 mb-2 relative">
                 {/* Left Side: Away Team (Top of Graph) */}
                 <div className="flex items-center gap-2">
                     <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
@@ -119,6 +112,17 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{awayTeamCode}</div>
                     </div>
                 </div>
+
+                {/* Center: Game Clock */}
+                {quarter && timeRemaining && (
+                    <div className="absolute left-1/2 -translate-x-1/2 bottom-0.5 flex flex-col items-center">
+                        <div className="bg-slate-900 border border-slate-700/50 px-3 py-1 rounded-md shadow-lg flex items-center gap-2">
+                            <span className="text-xs font-black text-indigo-400 font-mono tracking-tighter">{quarter}Q</span>
+                            <div className="w-px h-3 bg-slate-700"></div>
+                            <span className="text-sm font-black text-white font-mono tabular-nums tracking-widest">{timeRemaining}</span>
+                        </div>
+                    </div>
+                )}
 
                 {/* Right Side: Home Team (Bottom of Graph) */}
                 <div className="flex items-center gap-2 text-right">
@@ -139,28 +143,21 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 >
                     <defs>
                         <linearGradient id="wpGradient" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={VIEW_HEIGHT}>
-                            {/* Away Territory (Top half) */}
                             <stop offset="0" stopColor={awayColor} stopOpacity="0.5" />
                             <stop offset="0.5" stopColor={awayColor} stopOpacity="0" />
-                            
-                            {/* Home Territory (Bottom half) */}
                             <stop offset="0.5" stopColor={homeColor} stopOpacity="0" />
                             <stop offset="1" stopColor={homeColor} stopOpacity="0.5" />
                         </linearGradient>
                     </defs>
 
-                    {/* Background & Quarters Separators */}
                     <rect width="100%" height="100%" fill="#0f172a" opacity="0.8" />
                     
-                    {/* Quarter Lines */}
                     <line x1="25" y1="0" x2="25" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
-                    <line x1="50" y1="0" x2="50" y2={VIEW_HEIGHT} stroke="#334155" strokeWidth="0.5" /> {/* Halftime */}
+                    <line x1="50" y1="0" x2="50" y2={VIEW_HEIGHT} stroke="#334155" strokeWidth="0.5" />
                     <line x1="75" y1="0" x2="75" y2={VIEW_HEIGHT} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
 
-                    {/* 50% Baseline (The Tie Line) */}
                     <line x1="0" y1={MID_Y} x2="100" y2={MID_Y} stroke="#475569" strokeWidth="0.4" strokeDasharray="3 3" />
 
-                    {/* The Fill Area */}
                     <path 
                         d={fillPath} 
                         fill="url(#wpGradient)" 
@@ -168,20 +165,18 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                         className="transition-all duration-300"
                     />
 
-                    {/* The Curve Line (Smoothed) */}
                     <path 
                         d={pathData} 
                         fill="none" 
                         stroke="#e2e8f0" 
                         strokeWidth="0.8" 
-                        strokeLinecap="round"
+                        strokeLinecap="round" 
                         strokeLinejoin="round"
                         vectorEffect="non-scaling-stroke"
                         className="drop-shadow-md"
                     />
                 </svg>
 
-                {/* [Update] Perfect Circle Head using absolute Div */}
                 {points.length > 0 && (
                     <div 
                         className="absolute w-2 h-2 bg-white rounded-full shadow-[0_0_10px_white] z-20 transform -translate-x-1/2 -translate-y-1/2 transition-all duration-100 ease-linear"
@@ -192,7 +187,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 )}
             </div>
 
-            {/* X-Axis Labels (Q1 ~ Q4) */}
+            {/* X-Axis Labels */}
             <div className="flex px-1 mt-1.5 text-[9px] font-bold text-slate-500 uppercase tracking-wider relative h-4">
                 <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
                 <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>

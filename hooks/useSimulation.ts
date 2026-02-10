@@ -1,6 +1,6 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player, PlayerBoxScore } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player, PlayerBoxScore, SimulationResult } from '../types';
 import { simulateGame } from '../services/gameEngine';
 import { saveGameResults } from '../services/queries';
 import { checkAndInitPlayoffs, advancePlayoffState, generateNextPlayoffGames } from '../utils/playoffLogic';
@@ -26,6 +26,10 @@ export const useSimulation = (
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any>(null);
+    
+    // [Fix] Store the pre-calculated result to ensure animation matches final data
+    const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
+    
     const finalizeSimRef = useRef<() => void>(undefined);
 
     const getNextDate = (dateStr: string) => {
@@ -80,13 +84,12 @@ export const useSimulation = (
                                 p.stats.pf += line.pf || 0;
                                 p.stats.plusMinus += (line.plusMinus || 0);
 
-                                // [Fix] Apply Post-Game Condition (Fatigue)
-                                // line.condition contains the remaining stamina after the game
+                                // Apply Post-Game Condition (Fatigue)
                                 if (line.condition !== undefined) {
                                     p.condition = line.condition;
                                 }
 
-                                // [Fix] Detailed Zone Stats Accumulation
+                                // Detailed Zone Stats Accumulation
                                 Object.keys(line).forEach(key => {
                                     if (key.startsWith('zone_')) {
                                         const val = (line as any)[key];
@@ -153,16 +156,17 @@ export const useSimulation = (
         return updatedSchedule;
     }, [schedule, teams, isGuestMode, session, updateLocalStandingsAndStats]);
 
-    // Handle User Game Completion
+    // Handle User Game Completion (Actually Saving the Pre-calculated Result)
     useEffect(() => {
         finalizeSimRef.current = async () => {
-            if (!activeGame) return;
+            if (!activeGame || !tempSimulationResult) return;
 
             const userGame = activeGame;
             const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
             const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
 
-            const result = simulateGame(homeTeam, awayTeam, myTeamId, undefined, false, false, depthChart);
+            // [Fix] Use the pre-calculated result instead of simulating again
+            const result = tempSimulationResult;
 
             const userResult = {
                 user_id: session?.user?.id || 'guest',
@@ -175,14 +179,15 @@ export const useSimulation = (
                 is_playoff: userGame.isPlayoff,
                 series_id: userGame.seriesId,
                 box_score: { home: result.homeBox, away: result.awayBox },
-                // [Fix] Save Rotation Data
-                rotation_data: result.rotationData
+                rotation_data: result.rotationData,
+                // Save tactics for review
+                tactics: { home: result.homeTactics, away: result.awayTactics }
             };
 
             if (!isGuestMode && session?.user?.id) {
                 await saveGameResults([userResult]);
                 
-                // [Fix] Send Message for Game Recap
+                // Send Message for Game Recap
                 const myTeamName = homeTeam.id === myTeamId ? homeTeam.name : awayTeam.name;
                 const oppTeamName = homeTeam.id === myTeamId ? awayTeam.name : homeTeam.name;
                 const isWin = (homeTeam.id === myTeamId && result.homeScore > result.awayScore) ||
@@ -233,13 +238,14 @@ export const useSimulation = (
             }
 
             setActiveGame(null);
+            setTempSimulationResult(null); // Clear temp result
         };
-    }, [activeGame, teams, schedule, currentSimDate, myTeamId, depthChart, setSchedule, isGuestMode, session, simulateLeagueGames, playoffSeries, setPlayoffSeries, updateLocalStandingsAndStats, refreshUnreadCount]);
+    }, [activeGame, tempSimulationResult, teams, schedule, currentSimDate, myTeamId, setSchedule, isGuestMode, session, simulateLeagueGames, playoffSeries, setPlayoffSeries, updateLocalStandingsAndStats, refreshUnreadCount]);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics) => {
         setIsSimulating(true);
         
-        // [Balance] Recovery logic before game.
+        // Recovery logic before game.
         const updatedTeams = teams.map(team => ({
             ...team,
             roster: team.roster.map(player => {
@@ -252,8 +258,28 @@ export const useSimulation = (
         const userGame = schedule.find(g => g.date === currentSimDate && !g.played && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
         
         if (userGame) {
-            setActiveGame(userGame);
+            // [Fix] Run simulation IMMEDIATELY to get the result for the animation
+            const homeTeam = updatedTeams.find(t => t.id === userGame.homeTeamId)!;
+            const awayTeam = updatedTeams.find(t => t.id === userGame.awayTeamId)!;
+            
+            // Execute Physics Engine
+            const result = simulateGame(
+                homeTeam, 
+                awayTeam, 
+                myTeamId, 
+                userTactics, // Use the tactics passed from dashboard
+                false, 
+                false, 
+                depthChart
+            );
+
+            // Store result for later saving and for the View to display target score
+            setTempSimulationResult(result);
+            setActiveGame(userGame); // Triggers View Switch
+            
+            // Note: setIsSimulating remains true until View finishes animation
         } else {
+            // ... (Simulate non-user games - unchanged)
             const updatedSchedule = await simulateLeagueGames(currentSimDate, undefined, updatedTeams);
             setSchedule(updatedSchedule);
 
@@ -292,10 +318,9 @@ export const useSimulation = (
                 teams: updatedTeams,
                 userTactics: userTactics 
             });
+            setIsSimulating(false);
         }
-        
-        setIsSimulating(false);
-    }, [teams, schedule, currentSimDate, myTeamId, advanceDate, setTeams, setSchedule, simulateLeagueGames, forceSave, playoffSeries, setPlayoffSeries, isGuestMode, session]);
+    }, [teams, schedule, currentSimDate, myTeamId, advanceDate, setTeams, setSchedule, simulateLeagueGames, forceSave, playoffSeries, setPlayoffSeries, isGuestMode, session, depthChart]);
 
     const clearLastGameResult = () => setLastGameResult(null);
 
@@ -304,6 +329,7 @@ export const useSimulation = (
         activeGame, lastGameResult,
         handleExecuteSim,
         finalizeSimRef,
-        clearLastGameResult
+        clearLastGameResult,
+        tempSimulationResult // Export this for the Router
     };
 };
