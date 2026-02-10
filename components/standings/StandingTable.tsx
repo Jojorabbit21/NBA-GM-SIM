@@ -45,7 +45,8 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                 <h3 className={`text-lg font-black oswald uppercase tracking-wider text-${highlightColor}-400`}>{title}</h3>
             </div>
             
-            <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
+            {/* [Fix] Added !bg-transparent to remove the underlying default background that causes edge artifacts */}
+            <Table className="rounded-none border-0 shadow-none !bg-transparent" fullHeight={false}>
                 <TableHead className="bg-slate-950 border-none">
                     <TableHeaderCell align="left" className="pl-6 pr-2 w-12 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
                     <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM</TableHeaderCell>

@@ -6,6 +6,7 @@ import { saveGameResults } from '../services/queries';
 import { checkAndInitPlayoffs, advancePlayoffState, generateNextPlayoffGames } from '../utils/playoffLogic';
 import { savePlayoffState } from '../services/playoffService';
 import { INITIAL_STATS } from '../utils/constants';
+import { sendMessage } from '../services/messageService';
 
 export const useSimulation = (
     teams: Team[], setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
@@ -155,6 +156,30 @@ export const useSimulation = (
 
             if (!isGuestMode && session?.user?.id) {
                 await saveGameResults([userResult]);
+                
+                // [Fix] Send Message for Game Recap
+                const myTeamName = homeTeam.id === myTeamId ? homeTeam.name : awayTeam.name;
+                const oppTeamName = homeTeam.id === myTeamId ? awayTeam.name : homeTeam.name;
+                const isWin = (homeTeam.id === myTeamId && result.homeScore > result.awayScore) ||
+                              (awayTeam.id === myTeamId && result.awayScore > result.homeScore);
+                const resultText = isWin ? '승리' : '패배';
+
+                await sendMessage(
+                    session.user.id,
+                    myTeamId!,
+                    currentSimDate,
+                    'GAME_RECAP',
+                    `경기 결과: vs ${oppTeamName} (${resultText})`,
+                    {
+                        gameId: userGame.id,
+                        homeTeamId: homeTeam.id,
+                        awayTeamId: awayTeam.id,
+                        homeScore: result.homeScore,
+                        awayScore: result.awayScore,
+                        userBoxScore: myTeamId === homeTeam.id ? result.homeBox : result.awayBox
+                    }
+                );
+                refreshUnreadCount();
             }
 
             // Update local memory for user game
@@ -184,7 +209,7 @@ export const useSimulation = (
 
             setActiveGame(null);
         };
-    }, [activeGame, teams, schedule, currentSimDate, myTeamId, depthChart, setSchedule, isGuestMode, session, simulateLeagueGames, playoffSeries, setPlayoffSeries, updateLocalStandingsAndStats]);
+    }, [activeGame, teams, schedule, currentSimDate, myTeamId, depthChart, setSchedule, isGuestMode, session, simulateLeagueGames, playoffSeries, setPlayoffSeries, updateLocalStandingsAndStats, refreshUnreadCount]);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics) => {
         setIsSimulating(true);
