@@ -49,9 +49,12 @@ export const GameSimulatingView: React.FC<{
       const items: TimelineItem[] = [];
       let currentH = 0;
       let currentA = 0;
+      
+      // [UX Improvement] Track the last meaningful message to persist it until the next one
+      let lastMessage = "TIP-OFF";
 
       // Start with 0-0
-      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "TIP-OFF", isHighlight: true, elapsedMinutes: 0 });
+      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: lastMessage, isHighlight: true, elapsedMinutes: 0 });
 
       pbpLogs.forEach(log => {
           // Parse Score if event is a score
@@ -81,7 +84,10 @@ export const GameSimulatingView: React.FC<{
           const isUrgent = log.type === 'info' && (log.text.includes('부상') || log.text.includes('퇴장') || log.text.includes('버저비터')); // buzzer beater is usually score type but checking just in case
           
           const shouldShow = isScore || isUrgent;
-          const displayText = shouldShow ? log.text : "";
+          
+          if (shouldShow) {
+              lastMessage = log.text; // Update the persistent message
+          }
 
           items.push({
               h: currentH,
@@ -89,8 +95,8 @@ export const GameSimulatingView: React.FC<{
               q: log.quarter,
               t: log.timeRemaining,
               wp: wp,
-              text: displayText,
-              isHighlight: shouldShow, // Slow down for these events
+              text: lastMessage, // Always show the last valid message
+              isHighlight: shouldShow, // Slow down ONLY for new events
               elapsedMinutes: elapsedMinutes
           });
       });
