@@ -58,9 +58,15 @@ export const useSimulation = (
                             const p = team.roster.find(player => player.id === line.playerId);
                             if (p) {
                                 if (!p.stats) p.stats = INITIAL_STATS();
+                                
+                                // Basic Stats
                                 p.stats.g += 1;
+                                p.stats.gs += (line.gs || 0);
+                                p.stats.mp += (line.mp || 0);
                                 p.stats.pts += line.pts;
                                 p.stats.reb += line.reb;
+                                p.stats.offReb += (line.offReb || 0);
+                                p.stats.defReb += (line.defReb || 0);
                                 p.stats.ast += line.ast;
                                 p.stats.stl += line.stl;
                                 p.stats.blk += line.blk;
@@ -72,6 +78,18 @@ export const useSimulation = (
                                 p.stats.fta += line.fta;
                                 p.stats.ftm += line.ftm;
                                 p.stats.pf += line.pf || 0;
+                                p.stats.plusMinus += (line.plusMinus || 0);
+
+                                // [Fix] Detailed Zone Stats Accumulation
+                                // Iterate over keys to capture all dynamic zone_ keys from the simulation result
+                                Object.keys(line).forEach(key => {
+                                    if (key.startsWith('zone_')) {
+                                        const val = (line as any)[key];
+                                        if (typeof val === 'number') {
+                                            p.stats[key] = (p.stats[key] || 0) + val;
+                                        }
+                                    }
+                                });
                             }
                         });
                     };

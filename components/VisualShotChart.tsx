@@ -88,11 +88,12 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
     const projected = useMemo(() => isScoutingMode ? getProjectedZoneDensity(player) : null, [player, isScoutingMode]);
 
     // Calculate Rank Helper
+    // [Fix] Removed isScoutingMode check so ranks always show if data exists
     const getRank = (key: keyof typeof s, isTotal: boolean = false) => {
-        if (!allPlayers || isScoutingMode) return undefined;
+        if (!allPlayers) return undefined;
         
         // Filter out players with minimal games to avoid skewing average stats
-        // For totals (like FGM), no game filter needed, but for averages, filter < 3 games
+        // For totals (like FGM), no game filter needed, but for averages, filter < 1 game
         const pool = isTotal ? allPlayers : allPlayers.filter(p => p.stats.g >= 1);
         
         // Sort (Create copy with [...pool] to avoid mutating props)
@@ -108,7 +109,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
     
     // Helper for Percentage Rank (Requires minimum attempts)
     const getPctRank = (pctKey: string, attKey: keyof typeof s, minAttPerGame: number) => {
-        if (!allPlayers || isScoutingMode) return undefined;
+        if (!allPlayers) return undefined;
         
         const pool = allPlayers.filter(p => {
              if (p.stats.g < 1) return false;
@@ -208,9 +209,10 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                 <div className="flex flex-col gap-2">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between items-center">
                         <span>시즌 스탯</span>
-                        {!isScoutingMode && allPlayers && (
+                        {/* Always show legend if players are available, regardless of scouting mode (since we force ranks now) */}
+                        {allPlayers && (
                             <span className="text-[10px] text-slate-500 font-bold bg-slate-900 px-2 py-1 rounded">
-                                Rank: Per Game (Min Req Apply)
+                                Rank: Per Game (League)
                             </span>
                         )}
                     </h5>
