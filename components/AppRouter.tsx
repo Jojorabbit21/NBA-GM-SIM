@@ -14,6 +14,7 @@ import { HelpView } from '../views/HelpView';
 import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
 import { OnboardingView } from '../views/OnboardingView';
+import { Loader2 } from 'lucide-react';
 
 interface AppRouterProps {
     view: AppView;
@@ -66,17 +67,27 @@ const AppRouter: React.FC<AppRouterProps> = ({
 
     switch (view) {
         case 'Dashboard':
-            return myTeam ? (
-                <DashboardView 
-                    team={myTeam} teams={gameData.teams} schedule={gameData.schedule}
-                    onSim={sim.handleExecuteSim} tactics={gameData.userTactics}
-                    onUpdateTactics={gameData.setUserTactics} currentSimDate={gameData.currentSimDate}
-                    isSimulating={sim.isSimulating}
-                    onShowSeasonReview={() => setView('SeasonReview')}
-                    onShowPlayoffReview={() => setView('PlayoffReview')}
-                    depthChart={gameData.depthChart} onUpdateDepthChart={gameData.setDepthChart}
-                />
-            ) : null;
+            // [Fix] Ensure tactics exist before rendering Dashboard to prevent crash
+            if (myTeam && gameData.userTactics) {
+                return (
+                    <DashboardView 
+                        team={myTeam} teams={gameData.teams} schedule={gameData.schedule}
+                        onSim={sim.handleExecuteSim} tactics={gameData.userTactics}
+                        onUpdateTactics={gameData.setUserTactics} currentSimDate={gameData.currentSimDate}
+                        isSimulating={sim.isSimulating}
+                        onShowSeasonReview={() => setView('SeasonReview')}
+                        onShowPlayoffReview={() => setView('PlayoffReview')}
+                        depthChart={gameData.depthChart} onUpdateDepthChart={gameData.setDepthChart}
+                    />
+                );
+            } else if (myTeam && !gameData.userTactics) {
+                return (
+                    <div className="flex h-full items-center justify-center">
+                        <Loader2 size={40} className="text-indigo-500 animate-spin" />
+                    </div>
+                );
+            }
+            return null;
         case 'Roster':
             return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} />;
         case 'Schedule':
