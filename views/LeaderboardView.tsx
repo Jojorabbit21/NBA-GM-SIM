@@ -80,9 +80,11 @@ const LeaderboardCard: React.FC<{
     })), [currentStat]);
 
     return (
-        <div className="flex flex-col bg-slate-900/90 border border-slate-800 rounded-xl overflow-hidden shadow-xl h-full">
+        // [Fix] Removed overflow-hidden to allow dropdown to expand outside card
+        <div className="flex flex-col bg-slate-900/90 border border-slate-800 rounded-xl shadow-xl h-full relative">
             {/* Card Header with Dropdown */}
-            <div className="bg-slate-800/40 px-5 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-30">
+            {/* [Fix] Added rounded-t-xl to maintain corner style */}
+            <div className="bg-slate-800/40 px-5 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-[60] rounded-t-xl">
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-black text-white uppercase tracking-wider oswald">{statDef.label}</span>
                 </div>
@@ -100,7 +102,8 @@ const LeaderboardCard: React.FC<{
             </div>
 
             {/* Table Body */}
-            <div className="flex-1">
+            {/* [Fix] Added rounded-b-xl and overflow-hidden here to clip table corners */}
+            <div className="flex-1 rounded-b-xl overflow-hidden">
                 <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
                     {/* [Fix] Added border-none to override default border-b from TableHead component */}
                     <TableHead className="bg-slate-950 border-none">

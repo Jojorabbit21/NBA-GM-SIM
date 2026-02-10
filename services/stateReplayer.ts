@@ -109,6 +109,13 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.fta += (statLine.fta || 0);
             player.stats.pf += (statLine.pf || 0);
             player.stats.plusMinus += (statLine.plusMinus || 0);
+
+            // [Fix] Aggregate Zone Stats
+            Object.keys(statLine).forEach(key => {
+                if (key.startsWith('zone_') && typeof (statLine as any)[key] === 'number') {
+                    player.stats[key] = (player.stats[key] || 0) + ((statLine as any)[key] || 0);
+                }
+            });
         }
     });
 }
