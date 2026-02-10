@@ -35,11 +35,17 @@ export function runFullGameSimulation(
         isAwayB2B
     };
 
+    // [Fix] Initialize rotation history for ALL players (Bench included) to avoid undefined push errors
     [state.home, state.away].forEach(team => {
-        team.onCourt.forEach(p => {
+        const allPlayers = [...team.onCourt, ...team.bench];
+        allPlayers.forEach(p => {
              if (!state.rotationHistory[p.playerId]) {
                  state.rotationHistory[p.playerId] = [];
              }
+        });
+        
+        // Add start segment only for Starters
+        team.onCourt.forEach(p => {
              state.rotationHistory[p.playerId].push({ in: 0, out: 0 });
         });
     });

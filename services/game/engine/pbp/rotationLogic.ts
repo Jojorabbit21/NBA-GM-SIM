@@ -111,6 +111,9 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
                  const idx = teamState.bench.indexOf(filler);
                  teamState.bench.splice(idx, 1);
                  teamState.onCourt.push(filler);
+                 
+                 // [Fix] Safety check
+                 if (!state.rotationHistory[filler.playerId]) state.rotationHistory[filler.playerId] = [];
                  state.rotationHistory[filler.playerId].push({ in: currentTotalSec, out: currentTotalSec });
             }
             
@@ -167,6 +170,7 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
             const histOut = state.rotationHistory[outPlayer.playerId];
             if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
             
+            // [Fix] Safety check
             if (!state.rotationHistory[inPlayer.playerId]) state.rotationHistory[inPlayer.playerId] = [];
             state.rotationHistory[inPlayer.playerId].push({ in: currentTotalSec, out: currentTotalSec });
             
