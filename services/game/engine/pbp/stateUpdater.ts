@@ -2,7 +2,7 @@
 import { GameState, TeamState } from './pbpTypes';
 import { calculateIncrementalFatigue } from '../fatigueSystem';
 import { formatTime } from './timeEngine';
-import { SIM_CONFIG } from '../config/constants';
+import { SIM_CONFIG } from '../../config/constants';
 
 /**
  * Updates fatigue, injury checks, and minutes played for all players on court.
