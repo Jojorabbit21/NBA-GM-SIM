@@ -12,12 +12,13 @@ interface LiveScoreboardProps {
     messageClass: string;
     scoreTimeline: { h: number; a: number; wp: number }[];
     progress: number;
-    quarter?: number; // [New]
-    timeRemaining?: string; // [New]
+    quarter?: number;
+    timeRemaining?: string;
+    finalMessage?: string | null;
 }
 
 export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
-    homeTeam, awayTeam, displayScore, currentMessage, messageClass, scoreTimeline, progress, quarter, timeRemaining
+    homeTeam, awayTeam, displayScore, currentMessage, messageClass, scoreTimeline, progress, quarter, timeRemaining, finalMessage
 }) => {
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
@@ -28,6 +29,13 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
         <div className="flex items-center justify-between px-6 py-6 md:px-10 bg-slate-950/30">
             {/* CSS Animation Styles */}
             <style>{`
+                @keyframes shake-gentle {
+                    0% { transform: translate(0, 0) rotate(0deg); }
+                    25% { transform: translate(1px, 1px) rotate(0.5deg); }
+                    50% { transform: translate(-1px, -1px) rotate(-0.5deg); }
+                    75% { transform: translate(1px, -1px) rotate(0.5deg); }
+                    100% { transform: translate(0, 0) rotate(0deg); }
+                }
                 @keyframes shake-intense {
                     0% { transform: translate(1px, 1px) rotate(0deg); }
                     10% { transform: translate(-1px, -2px) rotate(-1deg); }
@@ -41,22 +49,18 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
                     90% { transform: translate(1px, 2px) rotate(0deg); }
                     100% { transform: translate(1px, -2px) rotate(-1deg); }
                 }
-                .animate-shake-intense {
-                    animation: shake-intense 0.5s infinite;
-                }
-                @keyframes pulse-fast {
-                    0%, 100% { transform: scale(1); opacity: 1; }
-                    50% { transform: scale(1.05); opacity: 0.8; }
-                }
-                .animate-pulse-fast {
-                    animation: pulse-fast 1s infinite;
-                }
                 @keyframes flash-text {
-                    0%, 100% { color: #ef4444; text-shadow: 0 0 10px #ef4444; }
-                    50% { color: #ffffff; text-shadow: 0 0 20px #ffffff; }
+                    0%, 100% { color: #ef4444; text-shadow: 0 0 10px #ef4444; transform: scale(1.1); }
+                    50% { color: #ffffff; text-shadow: 0 0 20px #ffffff; transform: scale(1.15); }
+                }
+                .animate-shake-gentle {
+                    animation: shake-gentle 0.5s infinite;
+                }
+                .animate-shake-intense {
+                    animation: shake-intense 0.1s infinite;
                 }
                 .animate-buzzer-beater {
-                    animation: shake-intense 0.5s infinite, flash-text 0.15s infinite;
+                    animation: shake-intense 0.1s infinite, flash-text 0.15s infinite;
                 }
             `}</style>
 
@@ -71,8 +75,9 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
 
             {/* Center: Graph & Message */}
             <div className="flex-1 px-2 flex flex-col items-center justify-center">
-                 <div className={`text-sm md:text-base font-black text-center min-h-[3rem] flex items-center justify-center break-keep leading-tight transition-all duration-300 ${messageClass}`}>
-                    {currentMessage}
+                 {/* Message Box */}
+                 <div className={`text-sm md:text-lg font-black text-center min-h-[4rem] flex items-center justify-center break-keep leading-tight transition-all duration-300 ${finalMessage ? 'scale-110 text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.8)]' : messageClass}`}>
+                    {finalMessage || currentMessage}
                  </div>
 
                  {/* Score Graph Component */}

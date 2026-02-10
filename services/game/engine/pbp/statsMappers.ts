@@ -1,21 +1,88 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
-import { PbpLog } from '../../../../types';
+import { PbpLog, PlayType } from '../../../../types';
 import { formatTime } from './timeEngine';
 import { resolveDynamicZone } from '../shotDistribution';
+
+/**
+ * Generates a descriptive text for the shot based on PlayType and Zone.
+ */
+function getShotDescription(
+    actor: LivePlayer, 
+    playType: PlayType | undefined, 
+    zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
+    isMake: boolean
+): string {
+    if (!zone || !playType) return isMake ? '득점 성공' : '슛 실패';
+
+    const canDunk = actor.attr.vertical > 70 && actor.attr.ins > 60; // Simple check
+    const descriptions: string[] = [];
+
+    // 1. 3-Point Line
+    if (zone === '3PT') {
+        if (playType === 'CatchShoot' || playType === 'PnR_Pop') {
+            descriptions.push('캐치앤슛 3점', '오픈 찬스 3점', '패스를 받아 3점슛', '빠른 릴리즈의 3점');
+        } else if (playType === 'Iso') {
+            descriptions.push('스텝백 3점', '풀업 3점', '드리블 후 3점', '수비를 앞에 두고 3점');
+        } else if (playType === 'Transition') {
+            descriptions.push('트랜지션 3점', '속공 상황에서 3점', '얼리 오펜스 3점');
+        } else {
+            descriptions.push('외곽 3점슛', '3점 라인 밖 점퍼');
+        }
+    } 
+    // 2. Mid-Range
+    else if (zone === 'Mid') {
+        if (playType === 'PnR_Handler') {
+            descriptions.push('스크린을 타고 풀업 점퍼', '미드레인지 풀업', '자유투 라인 점퍼');
+        } else if (playType === 'Iso') {
+            descriptions.push('페이드어웨이', '드리블 돌파 후 점퍼', '풀업 미드레인지', '미드레인지 점퍼');
+        } else if (playType === 'PostUp') {
+            descriptions.push('포스트업 페이드어웨이', '턴어라운드 점퍼', '포스트업 후 훅슛');
+        } else {
+            descriptions.push('미드레인지 슛', '중거리 슛');
+        }
+    }
+    // 3. Paint / Rim
+    else {
+        if (playType === 'PnR_Roll') {
+            if (canDunk) descriptions.push('앨리웁 덩크', '강력한 덩크', '투핸드 덩크');
+            descriptions.push('픽앤롤 레이업', '골밑 마무리', '빈 공간을 파고들어 레이업');
+        } else if (playType === 'Cut') {
+            if (canDunk) descriptions.push('컷인 덩크', '원핸드 슬램');
+            descriptions.push('백도어 컷 레이업', '기습적인 골밑 득점', '리버스 레이업');
+        } else if (playType === 'Transition') {
+            if (canDunk) descriptions.push('속공 덩크', '트랜지션 슬램', '원맨 속공 덩크');
+            descriptions.push('속공 레이업', '유로스텝 레이업', '코스트 투 코스트');
+        } else if (playType === 'PostUp') {
+            if (canDunk) descriptions.push('포스트업 후 덩크');
+            descriptions.push('포스트업 훅슛', '골밑 훅슛', '드롭스텝 레이업', '파워 레이업');
+        } else {
+            // ISO or others driving to rim
+            if (canDunk) descriptions.push('드라이브 덩크', '돌파 후 덩크');
+            descriptions.push('드라이브 레이업', '플로터', '핑거롤 레이업', '더블 클러치', '컨택을 이겨내고 레이업');
+        }
+    }
+
+    // Return random flavor text
+    return descriptions[Math.floor(Math.random() * descriptions.length)];
+}
 
 /**
  * Applies the result of a possession to the player and team stats.
  * Also generates the PBP log entry.
  */
 export function applyPossessionResult(state: GameState, result: PossessionResult) {
-    const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal, offTeam, defTeam, isAndOne } = result;
+    const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal, offTeam, defTeam, isAndOne, playType } = result;
 
     // Helper to increment foul
     const commitFoul = (defP: LivePlayer) => {
         defP.pf += 1;
         defTeam.fouls += 1;
-        // Ejection logic handled in substitutionSystem check called in main loop
+        
+        // [New] Immediate Foul Out Alert
+        if (defP.pf === 6) {
+             addLog(state, defTeam.id, `🚨 ${defP.playerName} 6반칙 퇴장 (Foul Out)`, 'info');
+        }
     };
 
     // Helper to update Plus/Minus for players currently on court
@@ -43,7 +110,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // [Update] Apply +/- for the field goal
         updatePlusMinus(points);
 
-        let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} ${points}점슛 성공`;
+        // [New] Rich Shot Description
+        const shotDesc = getShotDescription(actor, playType, zone, true);
+        let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} ${shotDesc} 성공`;
+        
         if (assister) logText += ` (AST: ${assister.playerName})`;
         
         // Handle And-1
@@ -57,10 +127,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 offTeam.score += 1;
                 // [Update] Apply +/- for the And-1 FT
                 updatePlusMinus(1);
-                logText += ` + 앤드원 성공`;
+                logText += ` + 앤드원 성공 (파울: ${defender.playerName})`;
             } else {
                 actor.fta += 1;
-                logText += ` + 앤드원 실패`;
+                logText += ` + 앤드원 실패 (파울: ${defender.playerName})`;
             }
         }
         
@@ -71,7 +141,11 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (zone === '3PT') actor.p3a += 1;
         if (zone) updateZoneStats(actor, zone, false);
 
-        let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} 슛 실패`;
+        // [New] Rich Miss Description
+        const shotDesc = getShotDescription(actor, playType, zone, false);
+        // Remove '성공'/'실패' suffixes from helper if they exist (though helper currently doesn't add them for specific types)
+        // We construct the sentence here.
+        let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} ${shotDesc} 실패`;
 
         if (isBlock && defender) {
             defender.blk += 1;
@@ -87,6 +161,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             if (rebType === 'off') rebounder.offReb += 1;
             else rebounder.defReb += 1;
             
+            // "Putback" hint can be inferred here if offensive rebound
             addLog(state, rebounder.playerId, `${rebounder.playerName} 리바운드 (${rebType === 'off' ? '공격' : '수비'})`, 'info');
         }
 
@@ -136,7 +211,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // [Update] Apply +/- for Shooting Foul FTs
         updatePlusMinus(ftMade);
         
-        addLog(state, offTeam.id, `${actor.playerName} 슛 동작 파울 - 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);
+        // [New] Detailed Foul Log with Defender Name
+        addLog(state, offTeam.id, `${actor.playerName} 슈팅 파울 - 자유투 ${ftMade}/${numShots} 성공 (파울: ${defender?.playerName})`, 'freethrow', ftMade);
     }
 }
 

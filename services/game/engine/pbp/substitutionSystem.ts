@@ -67,7 +67,7 @@ export function checkSubstitutions(state: GameState, team: TeamState): SubReques
         if (p.health === 'Injured') { 
             shouldSub = true; reason = '부상'; 
         } else if (p.pf >= 6) { 
-            shouldSub = true; reason = '퇴장'; 
+            shouldSub = true; reason = '6반칙 퇴장'; // Updated text
         } 
         // --- Priority 2: Fatigue Shutdown (Only if NOT scheduled) ---
         else if (p.currentCondition <= HARD_FLOOR) { 
