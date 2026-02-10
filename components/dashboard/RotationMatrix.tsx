@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { AlertCircle, Timer } from 'lucide-react';
+import { AlertCircle, Timer, RotateCcw } from 'lucide-react';
 import { Table, TableBody, TableRow } from '../common/Table';
 
 interface RotationMatrixProps {
@@ -90,6 +90,18 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
         onUpdateTactics({ ...tactics, rotationMap: newMap });
     };
 
+    const handleResetRotation = () => {
+        if (!window.confirm("로테이션 설정을 전부 초기화하시겠습니까?\n모든 선수의 출전 시간이 해제됩니다.")) return;
+
+        const newMap: Record<string, boolean[]> = {};
+        // Initialize all false for everyone in roster to verify clear state
+        team.roster.forEach(p => {
+            newMap[p.id] = Array(48).fill(false);
+        });
+
+        onUpdateTactics({ ...tactics, rotationMap: newMap });
+    };
+
     // Validation
     const validation = useMemo(() => {
         const minuteCounts = Array(48).fill(0);
@@ -133,10 +145,21 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
-             {/* Rotation Chart Title */}
-             <div className="px-6 py-4 bg-slate-800 border-t-2 border-t-indigo-500 border-b border-slate-700 flex items-center gap-3 flex-shrink-0">
-                 <Timer size={20} className="text-indigo-400"/>
-                 <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
+             {/* Rotation Chart Title & Actions */}
+             <div className="px-6 py-4 bg-slate-800 border-t-2 border-t-indigo-500 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+                 <div className="flex items-center gap-3">
+                    <Timer size={20} className="text-indigo-400"/>
+                    <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
+                 </div>
+                 
+                 <button 
+                    onClick={handleResetRotation}
+                    className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                    title="모든 시간 할당 해제"
+                 >
+                    <RotateCcw size={14} />
+                    <span>초기화</span>
+                 </button>
             </div>
 
             {/* Rotation Grid Table */}
