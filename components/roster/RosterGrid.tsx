@@ -317,7 +317,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 let displayVal = val;
                                 if (typeof val === 'number') {
                                     if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
-                                    else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf'].includes(c.key)) displayVal = val.toFixed(1);
+                                    else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm'].includes(c.key)) displayVal = val.toFixed(1);
                                 }
                                 return <TableCell key={c.key} align="center" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
                             })}
@@ -390,10 +390,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             </tr>
                             <tr className="h-10 text-slate-500 text-[9px] font-black uppercase tracking-widest">
                                 <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
-                                <TableHeaderCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                                <TableHeaderCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
                                 {ZONE_CONFIG.map(z => (
                                     <React.Fragment key={z.id}>
-                                        <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800/30 bg-slate-950">M/A</TableHeaderCell>
+                                        <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800 bg-slate-950">M/A</TableHeaderCell>
                                         <TableHeaderCell align="right" className="border-r border-slate-800 text-slate-300" sortable onSort={() => handleSort(`zone_pct_${z.id}`)} sortDirection={sortConfig.key === `zone_pct_${z.id}` ? sortConfig.direction : null}>%</TableHeaderCell>
                                     </React.Fragment>
                                 ))}
@@ -405,7 +405,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                         <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     </TableCell>
-                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_8px_rgba(0,0,0,0.5)]">{p.position}</TableCell>
                                     
                                     {ZONE_CONFIG.map(z => {
                                         const m = p.stats[z.keyM] || 0;
@@ -413,7 +413,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                         const pct = a > 0 ? ((m/a)*100).toFixed(0) + '%' : '-';
                                         return (
                                             <React.Fragment key={z.id}>
-                                                <TableCell align="right" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800/30" value={`${m}/${a}`} />
+                                                <TableCell align="right" className="font-mono font-bold text-xs text-slate-300 border-r border-slate-800" value={`${m}/${a}`} />
                                                 <TableCell align="right" className={`font-mono font-bold text-xs border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
                                             </React.Fragment>
                                         );
@@ -424,13 +424,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr className="h-10">
                                 <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM TOTAL</TableCell>
-                                <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
+                                <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30 shadow-[4px_0_8px_rgba(0,0,0,0.5)]"></TableCell>
                                 {ZONE_CONFIG.map(z => {
                                     const avg = averages.zone[z.id];
                                     const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
                                     return (
                                         <React.Fragment key={z.id}>
-                                            <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800/30" value={`${avg.m}/${avg.a}`} />
+                                            <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800" value={`${avg.m}/${avg.a}`} />
                                             <TableCell align="right" className="font-mono font-black text-xs text-slate-400 border-r border-slate-800" value={pct} />
                                         </React.Fragment>
                                     );
