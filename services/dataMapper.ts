@@ -60,6 +60,11 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const baseAttrs = typeof raw.base_attributes === 'string' 
         ? JSON.parse(raw.base_attributes) 
         : (raw.base_attributes || {});
+    
+    // [New] DB의 tendencies 컬럼 파싱
+    const tendencies = typeof raw.tendencies === 'string'
+        ? JSON.parse(raw.tendencies)
+        : (raw.tendencies || undefined);
         
     // raw 데이터와 baseAttrs 병합 (baseAttrs가 우선순위 높음)
     const p = { ...raw, ...baseAttrs };
@@ -231,7 +236,10 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         ath: calculatedAth,
 
         stats: p.stats || defaultStats,
-        playoffStats: p.playoffStats || defaultStats
+        playoffStats: p.playoffStats || defaultStats,
+        
+        // [New] Real Tendencies from DB
+        tendencies: tendencies
     };
 };
 

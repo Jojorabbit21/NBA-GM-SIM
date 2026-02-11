@@ -26,6 +26,22 @@ export interface PlayerStats {
     [key: string]: number; // for zones
 }
 
+export interface ShotZones {
+    ra: number;  // Restricted Area
+    itp: number; // In The Paint (Non-RA)
+    mid: number; // Mid-Range
+    cnr: number; // Corner 3
+    p45: number; // 45 Degree 3 (Wing)
+    atb: number; // Above The Break (Top)
+}
+
+export interface PlayerTendencies {
+    lateral_bias: number; // 0: Strong Left, 1: Left, 2: Right, 3: Strong Right
+    zones: ShotZones;
+    touch?: number; // Optional
+    foul?: number;  // Optional
+}
+
 export interface HiddenTendencies {
     hand: 'Right' | 'Left';
     lateralBias: number;
@@ -90,7 +106,9 @@ export interface Player {
     intangibles: number;
     stats: PlayerStats;
     playoffStats?: PlayerStats;
-    tendencies?: HiddenTendencies;
+    // Runtime hidden tendencies (Calculated or DB)
+    tendencies?: PlayerTendencies; // Real DB Data
+    hiddenTendencies?: HiddenTendencies; // Fallback Hash Data
 }
 
 export interface RosterUpdate {
