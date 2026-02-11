@@ -81,29 +81,29 @@ export const GameResultView: React.FC<{
             pbpLogs={pbpLogs}
           />
 
-          {/* 2. Navigation Tabs (Full Width) */}
-          <div className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800">
-              <div className="max-w-7xl mx-auto flex items-center justify-center gap-1 p-2 overflow-x-auto">
+          {/* 2. Navigation Tabs (Reverted Style) */}
+          <div className="bg-slate-950 border-b border-slate-800">
+              <div className="max-w-7xl mx-auto flex items-center gap-6 px-6 overflow-x-auto">
                   {tabs.map((tab) => (
                       <button
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={`
-                              relative px-5 py-3 text-xs font-bold transition-all duration-300 rounded-xl flex items-center gap-2 whitespace-nowrap
+                              flex items-center gap-2 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2
                               ${activeTab === tab.id 
-                                ? 'bg-slate-800 text-white shadow-md ring-1 ring-slate-700' 
-                                : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'}
+                                ? 'text-indigo-400 border-indigo-400' 
+                                : 'text-slate-500 border-transparent hover:text-slate-300'}
                           `}
                       >
                           {tab.icon}
-                          {tab.label}
+                          <span>{tab.label}</span>
                       </button>
                   ))}
               </div>
           </div>
 
           {/* 3. Main Content Area */}
-          <div className="flex-1 max-w-7xl mx-auto w-full p-4 md:p-8 space-y-6 flex flex-col min-h-[500px]">
+          <div className="flex-1 max-w-7xl mx-auto w-full p-0 md:p-8 space-y-6 flex flex-col min-h-[500px]">
               
               {activeTab === 'BoxScore' && (
                   <GameBoxScoreTab 

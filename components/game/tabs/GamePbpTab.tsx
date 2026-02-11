@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { PbpLog, Team } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
-import { ArrowRight, UserPlus, UserMinus } from 'lucide-react';
+import { ArrowRight, UserPlus, UserMinus, Clock } from 'lucide-react';
 
 interface GamePbpTabProps {
     logs?: PbpLog[];
@@ -129,7 +129,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
     return (
         <div className="h-[600px] w-full flex flex-col animate-in fade-in slide-in-from-right-4 duration-300">
             {/* Quarter Filter Tabs */}
-            <div className="flex items-center gap-2 mb-4 px-1">
+            <div className="flex items-center gap-2 mb-4 px-4 md:px-0">
                 {[0, 1, 2, 3, 4].map(q => (
                     <button
                         key={q}
@@ -148,17 +148,30 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
             <div 
                 ref={scrollRef}
-                className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900 border border-slate-800 rounded-2xl p-0 font-mono text-xs md:text-sm shadow-inner"
+                className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900 border border-slate-800 p-0 font-mono text-xs md:text-sm shadow-inner rounded-none md:rounded-xl"
             >
                 <div className="divide-y divide-slate-800/50">
                     {displayLogs.map((log, idx) => {
                         const isHome = log.teamId === homeTeam.id;
-                        const teamColor = isHome ? TEAM_DATA[homeTeam.id]?.colors.primary : TEAM_DATA[awayTeam.id]?.colors.primary;
                         const isScore = log.type === 'score';
                         const isImportant = log.type === 'info';
                         const isFT = log.type === 'freethrow';
                         const isFoul = log.type === 'foul';
                         const isTurnover = log.type === 'turnover';
+                        
+                        // Check for Game Flow Events
+                        const isFlowEvent = log.text.includes('경기 시작') || log.text.includes('종료') || log.text.includes('하프 타임');
+
+                        if (isFlowEvent) {
+                             return (
+                                <div key={idx} className="flex items-center justify-center py-3 bg-slate-800/40 border-y border-slate-800">
+                                    <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-widest">
+                                        <Clock size={14} />
+                                        <span>{log.text}</span>
+                                    </div>
+                                </div>
+                             );
+                        }
                         
                         // Text Color
                         let textColor = 'text-slate-400';
@@ -169,22 +182,16 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         else if (isTurnover) textColor = 'text-red-400';
 
                         // Background
-                        let bgClass = 'hover:bg-white/5 transition-colors relative';
+                        let bgClass = 'hover:bg-white/5 transition-colors';
                         if (isImportant) bgClass = 'bg-slate-800/30 border-y border-slate-800/50';
                         
-                        const qDisplay = isImportant && log.text.includes('종료') ? '-' : `${log.quarter}Q`;
-                        const timeDisplay = isImportant && log.text.includes('종료') ? 'End' : (log.timeRemaining || '-');
+                        const timeDisplay = (log.timeRemaining || '-');
 
                         return (
                             <div key={idx} className={`flex items-center py-2.5 px-4 gap-4 ${bgClass}`}>
-                                {/* Team Color Indicator */}
-                                {!isImportant && (
-                                    <div className="absolute left-0 top-0 bottom-0 w-1" style={{ backgroundColor: teamColor || 'transparent' }}></div>
-                                )}
-
                                 {/* 1. Quarter */}
-                                <div className="flex-shrink-0 w-8 text-slate-600 font-bold text-xs text-center pl-1">
-                                    {qDisplay}
+                                <div className="flex-shrink-0 w-6 text-slate-600 font-bold text-[10px] text-center">
+                                    {log.quarter}Q
                                 </div>
 
                                 {/* 2. Time */}
@@ -194,7 +201,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 3. Away Logo */}
                                 <div className="flex-shrink-0 w-8 flex justify-center">
-                                    <img src={awayTeam.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
+                                    <img src={awayTeam.logo} className={`w-5 h-5 object-contain ${!isHome ? 'opacity-100' : 'opacity-40 grayscale'}`} alt="" />
                                 </div>
 
                                 {/* 4. Score (Text Only) */}
@@ -208,7 +215,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
 
                                 {/* 5. Home Logo */}
                                 <div className="flex-shrink-0 w-8 flex justify-center">
-                                    <img src={homeTeam.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
+                                    <img src={homeTeam.logo} className={`w-5 h-5 object-contain ${isHome ? 'opacity-100' : 'opacity-40 grayscale'}`} alt="" />
                                 </div>
 
                                 {/* 6. Message */}
