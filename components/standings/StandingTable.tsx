@@ -35,8 +35,8 @@ export const StandingTable: React.FC<StandingTableProps> = ({
     const sorted = getFilteredAndSortedTeams(teamList);
     const leader = sorted.length > 0 ? sorted[0] : null;
 
-    // Data column text styles (Updated: text-xs, text-slate-400)
-    const dataTextClass = "font-mono text-xs text-slate-400";
+    // Data column text styles (Updated: text-xs, text-slate-400, font-semibold)
+    const dataTextClass = "font-mono text-xs font-semibold text-slate-400";
 
     return (
         <div className="bg-slate-900/90 rounded-xl border border-slate-800 overflow-hidden shadow-xl flex flex-col">
@@ -87,7 +87,7 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                     >
                                         <div className="flex items-center gap-2 max-w-[180px] group-hover:translate-x-1 transition-transform">
                                             <TeamLogo teamId={t.id} size="sm" />
-                                            <span className="font-bold text-slate-100 text-sm truncate group-hover:text-indigo-400 transition-colors">{t.name}</span>
+                                            <span className="font-semibold text-slate-100 text-xs truncate group-hover:text-indigo-400 transition-colors">{t.name}</span>
                                             {statusEmoji && <span className="text-xs ml-1 filter drop-shadow-md select-none">{statusEmoji}</span>}
                                         </div>
                                     </TableCell>

@@ -131,14 +131,14 @@ const LeaderboardCard: React.FC<{
                                     <TableCell align="center" className="pl-4">
                                         <div className="flex flex-col items-center justify-center">
                                             {rankIcon}
-                                            <span className={`text-xs font-black ${rankColor} font-mono leading-none`}>{rank}</span>
+                                            <span className={`text-xs font-semibold ${rankColor} font-mono leading-none`}>{rank}</span>
                                         </div>
                                     </TableCell>
                                     <TableCell className="px-2" onClick={() => onPlayerClick(p)}>
                                         <div className="flex items-center gap-3">
                                             <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !mx-0 shadow-none" />
                                             <div className="flex items-center gap-2 min-w-0">
-                                                <span className={`text-xs font-bold truncate group-hover:text-indigo-400 group-hover:underline ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
+                                                <span className={`text-xs font-semibold truncate group-hover:text-indigo-400 group-hover:underline ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
                                                 <span className="text-[10px] text-slate-600">|</span>
                                                 <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
                                                 <span className="text-[10px] text-slate-600">|</span>
@@ -147,7 +147,7 @@ const LeaderboardCard: React.FC<{
                                         </div>
                                     </TableCell>
                                     <TableCell align="right" className="pr-4">
-                                        <span className={`text-sm font-black font-mono tabular-nums ${isTop3 ? 'text-white' : 'text-slate-400'}`}>
+                                        <span className={`text-xs font-semibold font-mono tabular-nums ${isTop3 ? 'text-white' : 'text-slate-400'}`}>
                                             {statDef.format(statDef.getValue(p))}
                                         </span>
                                     </TableCell>
