@@ -59,7 +59,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
     }, [box]);
 
     // Updated: Central Alignment for Stats
-    const totalCellClass = "py-3 px-2 text-center text-xs font-black text-slate-300 font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
+    const totalCellClass = "py-3 px-2 text-center text-xs font-semibold text-slate-300 font-mono tabular-nums bg-slate-800/50 border-t border-slate-700";
 
     const formatPct = (m: number, a: number) => {
         if (a === 0) return '-';
@@ -127,7 +127,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                             <TableRow key={p.playerId} className={isMvp ? 'bg-amber-900/10' : ''}>
                                 <TableCell className="px-4 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
                                     <div className="flex items-center gap-2">
-                                        <span className={`text-sm font-bold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-slate-200'}`}>{p.playerName}</span>
+                                        <span className={`text-xs font-semibold truncate max-w-[100px] ${isMvp ? 'text-amber-200' : 'text-slate-200'}`}>{p.playerName}</span>
                                         <div className="flex items-center gap-1 flex-shrink-0">
                                             {isMvp && <Crown size={12} className="text-amber-400 fill-amber-400 animate-pulse" />}
                                             {p.isStopper && (
@@ -150,33 +150,31 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                         </div>
                                     </div>
                                 </TableCell>
-                                {/* Fix: Reduced font size and standardized styling for POS */}
-                                <TableCell align="center" className="text-xs font-bold text-slate-500">{playerInfo?.position || '-'}</TableCell>
+                                <TableCell align="center" className="text-xs font-semibold text-slate-500">{playerInfo?.position || '-'}</TableCell>
                                 <TableCell align="center">
                                     <div className="flex justify-center">
                                         <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" />
                                     </div>
                                 </TableCell>
                                 <TableCell align="center">
-                                    <span className={`text-xs font-black font-mono ${fatColor}`}>{Math.round(fatigueUsed)}</span>
+                                    <span className={`text-xs font-semibold font-mono ${fatColor}`}>{Math.round(fatigueUsed)}</span>
                                 </TableCell>
-                                <TableCell variant="stat" align="center" value={Math.round(p.mp)} />
-                                <TableCell variant="stat" align="center" className="text-slate-200" value={p.pts} />
-                                <TableCell variant="stat" align="center" value={p.reb} />
-                                <TableCell variant="stat" align="center" value={p.ast} />
-                                <TableCell variant="stat" align="center" value={p.stl} />
-                                <TableCell variant="stat" align="center" value={p.blk} />
-                                <TableCell variant="stat" align="center" value={p.tov} />
-                                <TableCell variant="stat" align="center" value={p.pf} />
-                                <TableCell variant="stat" align="center" value={`${p.fgm}/${p.fga}`} />
-                                <TableCell variant="stat" align="center" className="text-slate-400" value={formatPct(p.fgm, p.fga)} />
-                                <TableCell variant="stat" align="center" value={`${p.p3m}/${p.p3a}`} />
-                                <TableCell variant="stat" align="center" className="text-slate-400" value={formatPct(p.p3m, p.p3a)} />
-                                <TableCell variant="stat" align="center" value={`${p.ftm}/${p.fta}`} />
-                                <TableCell variant="stat" align="center" className="text-slate-400" value={formatPct(p.ftm, p.fta)} />
-                                {/* Fix: Styled Margin Column with Mono font and Colors */}
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={Math.round(p.mp)} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold text-slate-200" value={p.pts} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={p.reb} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={p.ast} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={p.stl} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={p.blk} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={p.tov} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={p.pf} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={`${p.fgm}/${p.fga}`} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold text-slate-400" value={formatPct(p.fgm, p.fga)} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={`${p.p3m}/${p.p3a}`} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold text-slate-400" value={formatPct(p.p3m, p.p3a)} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold" value={`${p.ftm}/${p.fta}`} />
+                                <TableCell variant="stat" align="center" className="text-xs font-semibold text-slate-400" value={formatPct(p.ftm, p.fta)} />
                                 <TableCell align="center" className="pr-4">
-                                    <span className={`font-mono font-bold text-xs tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <span className={`font-mono font-semibold text-xs tabular-nums ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
                                     </span>
                                 </TableCell>

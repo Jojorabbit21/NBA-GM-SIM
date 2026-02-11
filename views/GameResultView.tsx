@@ -81,9 +81,9 @@ export const GameResultView: React.FC<{
             pbpLogs={pbpLogs}
           />
 
-          {/* 2. Navigation Tabs (Reverted Style) */}
+          {/* 2. Navigation Tabs (Centered & Reverted Style) */}
           <div className="bg-slate-950 border-b border-slate-800">
-              <div className="max-w-7xl mx-auto flex items-center gap-6 px-6 overflow-x-auto">
+              <div className="max-w-7xl mx-auto flex items-center justify-center gap-6 px-6 overflow-x-auto">
                   {tabs.map((tab) => (
                       <button
                           key={tab.id}
