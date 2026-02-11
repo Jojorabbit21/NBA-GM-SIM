@@ -8,20 +8,6 @@ interface VisualShotChartProps {
     allPlayers?: Player[]; // Optional context for relative comparison if needed
 }
 
-// SVG Paths (Approximate 500x470 half court) - Defined outside to prevent re-creation
-const SHOT_ZONES_PATHS = {
-    c3L: "M 0,0 L 45,0 L 45,140 L 0,140 Z",
-    c3R: "M 455,0 L 500,0 L 500,140 L 455,140 Z",
-    atb3L: "M 45,0 L 160,0 L 160,140 L 45,140 Z", 
-    atb3C: "M 160,0 L 340,0 L 340,140 L 160,140 Z",
-    atb3R: "M 340,0 L 455,0 L 455,140 L 340,140 Z",
-    midL: "M 0,140 L 160,140 L 160,320 L 0,320 Z",
-    midC: "M 160,140 L 340,140 L 340,320 L 160,320 Z",
-    midR: "M 340,140 L 500,140 L 500,320 L 340,320 Z",
-    paint: "M 170,320 L 330,320 L 330,470 L 170,470 Z",
-    rim: "M 210,400 L 290,400 L 290,450 L 210,450 Z"
-};
-
 export const VisualShotChart: React.FC<VisualShotChartProps> = ({ player }) => {
     const s = player.stats;
     
@@ -29,12 +15,8 @@ export const VisualShotChart: React.FC<VisualShotChartProps> = ({ player }) => {
     const totalFGA = s ? s.fga : 0;
     const isScoutingMode = totalFGA === 0; // Show projections only if 0 shots taken
 
-    // Helper to calculate percentage or default (Safer type handling)
-    const getZ = (m: number | undefined, a: number | undefined) => ({ 
-        m: m || 0, 
-        a: a || 0, 
-        pct: (a && a > 0) ? ((m || 0) / a) * 100 : 0 
-    });
+    // Helper to calculate percentage or default
+    const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0, pct: (a && a > 0) ? (m! / a) * 100 : 0 });
 
     const zData = useMemo(() => {
         if (!s) return null;
@@ -104,6 +86,20 @@ export const VisualShotChart: React.FC<VisualShotChartProps> = ({ player }) => {
         return `${label}: ${d.m}/${d.a} (${d.pct.toFixed(1)}%)`;
     };
 
+    // SVG Paths (Approximate 500x470 half court)
+    const paths = {
+        c3L: "M 0,0 L 45,0 L 45,140 L 0,140 Z",
+        c3R: "M 455,0 L 500,0 L 500,140 L 455,140 Z",
+        atb3L: "M 45,0 L 160,0 L 160,140 L 45,140 Z", 
+        atb3C: "M 160,0 L 340,0 L 340,140 L 160,140 Z",
+        atb3R: "M 340,0 L 455,0 L 455,140 L 340,140 Z",
+        midL: "M 0,140 L 160,140 L 160,320 L 0,320 Z",
+        midC: "M 160,140 L 340,140 L 340,320 L 160,320 Z",
+        midR: "M 340,140 L 500,140 L 500,320 L 340,320 Z",
+        paint: "M 170,320 L 330,320 L 330,470 L 170,470 Z",
+        rim: "M 210,400 L 290,400 L 290,450 L 210,450 Z"
+    };
+
     const ZonePath = ({ d, zoneKey }: { d: string, zoneKey: keyof typeof zData }) => {
         return (
             <path 
@@ -123,16 +119,16 @@ export const VisualShotChart: React.FC<VisualShotChartProps> = ({ player }) => {
             <div className="relative w-full max-w-[400px] aspect-[500/470] bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
                 <svg viewBox="0 0 500 470" className="w-full h-full">
                     {/* Zones */}
-                    <ZonePath zoneKey="c3L" d={SHOT_ZONES_PATHS.c3L} />
-                    <ZonePath zoneKey="c3R" d={SHOT_ZONES_PATHS.c3R} />
-                    <ZonePath zoneKey="atb3L" d={SHOT_ZONES_PATHS.atb3L} />
-                    <ZonePath zoneKey="atb3C" d={SHOT_ZONES_PATHS.atb3C} />
-                    <ZonePath zoneKey="atb3R" d={SHOT_ZONES_PATHS.atb3R} />
-                    <ZonePath zoneKey="midL" d={SHOT_ZONES_PATHS.midL} />
-                    <ZonePath zoneKey="midC" d={SHOT_ZONES_PATHS.midC} />
-                    <ZonePath zoneKey="midR" d={SHOT_ZONES_PATHS.midR} />
-                    <ZonePath zoneKey="paint" d={SHOT_ZONES_PATHS.paint} />
-                    <ZonePath zoneKey="rim" d={SHOT_ZONES_PATHS.rim} />
+                    <ZonePath zoneKey="c3L" d={paths.c3L} />
+                    <ZonePath zoneKey="c3R" d={paths.c3R} />
+                    <ZonePath zoneKey="atb3L" d={paths.atb3L} />
+                    <ZonePath zoneKey="atb3C" d={paths.atb3C} />
+                    <ZonePath zoneKey="atb3R" d={paths.atb3R} />
+                    <ZonePath zoneKey="midL" d={paths.midL} />
+                    <ZonePath zoneKey="midC" d={paths.midC} />
+                    <ZonePath zoneKey="midR" d={paths.midR} />
+                    <ZonePath zoneKey="paint" d={paths.paint} />
+                    <ZonePath zoneKey="rim" d={paths.rim} />
 
                     {/* Hoop Marker */}
                     <circle cx="250" cy="425" r="5" fill="none" stroke="orange" strokeWidth="2" />
