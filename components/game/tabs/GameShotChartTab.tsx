@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Team, ShotEvent } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
-import { X, Check, Filter } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../../../utils/courtCoordinates';
 
 interface GameShotChartTabProps {
@@ -86,11 +86,11 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
         };
     }, [displayShots]);
 
-    // Helper for Stat Box
+    // Helper for Stat Box (Updated Font Size/Weight)
     const StatBox = ({ label, stat }: { label: string, stat: { m: number, a: number, pct: number } }) => (
         <div className="flex flex-col items-center min-w-[60px]">
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{label}</span>
-            <span className="text-xl font-black text-white font-mono leading-none">{stat.pct}%</span>
+            <span className="text-base font-semibold text-white font-mono leading-none">{stat.pct}%</span>
             <span className="text-[10px] text-slate-400 font-medium">{stat.m}/{stat.a}</span>
         </div>
     );
@@ -98,8 +98,8 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
     return (
         <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-right-4 duration-300 h-full">
             
-            {/* Control & Stats Bar */}
-            <div className="flex flex-col xl:flex-row justify-between items-center gap-4 bg-slate-900/50 p-3 rounded-2xl border border-slate-800">
+            {/* Control & Stats Bar (Removed Outer Container Styling) */}
+            <div className="flex flex-col xl:flex-row justify-between items-center gap-4">
                 <div className="flex p-1 bg-slate-950 rounded-xl border border-slate-800">
                     <button
                         onClick={() => setSelectedTeamId(homeTeam.id)}
@@ -131,8 +131,8 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-[500px]">
-                {/* Left: Shot Chart (8 Cols) */}
-                <div className="lg:col-span-8 bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative flex items-center justify-center">
+                {/* Left: Shot Chart (8 Cols) - Removed Outer Styling */}
+                <div className="lg:col-span-8 flex items-center justify-center relative">
                     <div className="relative w-full aspect-[50/47] max-h-full">
                          <svg viewBox={`0 0 ${COURT_WIDTH/2} ${COURT_HEIGHT}`} className="w-full h-full">
                             {/* Court Background */}
@@ -184,22 +184,22 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                     </div>
                 </div>
 
-                {/* Right: Player Filter (4 Cols) */}
+                {/* Right: Player Filter (4 Cols) - Updated Header & Simplified Items */}
                 <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-3xl flex flex-col overflow-hidden">
                     <div className="p-4 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center">
-                        <div className="flex items-center gap-2">
-                            <Filter size={16} className="text-indigo-400" />
-                            <span className="text-xs font-black text-slate-300 uppercase tracking-widest">Player Filter</span>
+                        <div className="flex items-center gap-3">
+                             <img src={activeTeam.logo} className="w-6 h-6 object-contain" alt="" />
+                             <span className="text-sm font-black text-white uppercase tracking-tight">{activeTeam.name}</span>
                         </div>
                         <button 
                             onClick={toggleAllPlayers}
                             className="text-[10px] font-bold text-slate-500 hover:text-white uppercase tracking-wider transition-colors"
                         >
-                            {selectedPlayerIds.size === activeTeam.roster.length ? 'Deselect All' : 'Select All'}
+                            {selectedPlayerIds.size === activeTeam.roster.length ? '전체 해제' : '전체 선택'}
                         </button>
                     </div>
                     
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-0.5">
                         {activeTeam.roster
                             .sort((a, b) => b.ovr - a.ovr) // Sort by OVR
                             .map(player => {
@@ -208,20 +208,12 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                     <button
                                         key={player.id}
                                         onClick={() => togglePlayer(player.id)}
-                                        className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${isSelected ? 'bg-slate-800 border border-slate-700' : 'hover:bg-slate-800/50 border border-transparent'}`}
+                                        className="w-full flex items-center gap-3 p-3 rounded-xl transition-colors hover:bg-white/5"
                                     >
-                                        <div className="flex items-center gap-3">
-                                            <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-500' : 'bg-slate-900 border-slate-700'}`}>
-                                                {isSelected && <Check size={12} className="text-white" />}
-                                            </div>
-                                            <div className="flex flex-col items-start">
-                                                <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-400'}`}>{player.name}</span>
-                                                <span className="text-[10px] font-bold text-slate-600">{player.position}</span>
-                                            </div>
+                                        <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-500' : 'bg-transparent border-slate-600'}`}>
+                                            {isSelected && <Check size={12} className="text-white" />}
                                         </div>
-                                        <span className={`text-xs font-black font-mono ${isSelected ? 'text-indigo-400' : 'text-slate-600'}`}>
-                                            {player.ovr}
-                                        </span>
+                                        <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-500'}`}>{player.name}</span>
                                     </button>
                                 );
                             })

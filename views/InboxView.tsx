@@ -291,19 +291,19 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                                             })
                                             .map(p => (
                                             <TableRow key={p.playerId} onClick={() => onPlayerClick(p.playerId)}>
-                                                <TableCell className="pl-6 font-medium text-slate-300 pretendard group-hover:text-white transition-colors">{p.playerName}</TableCell>
-                                                <TableCell align="center" className="font-medium text-slate-300 pretendard">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{Math.round(p.mp)}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.pts}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.reb}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.ast}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.stl}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.blk}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.tov}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.fgm}/{p.fga}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.p3m}/{p.p3a}</TableCell>
-                                                <TableCell align="right" className="font-medium text-slate-300 pretendard">{p.ftm}/{p.fta}</TableCell>
-                                                <TableCell align="right" className={`pr-6 font-medium pretendard ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-300'}`}>
+                                                <TableCell className="pl-6 text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">{p.playerName}</TableCell>
+                                                <TableCell align="center" className="text-xs font-semibold text-slate-300">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{Math.round(p.mp)}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.pts}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.reb}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.ast}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.stl}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.blk}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.tov}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.fgm}/{p.fga}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.p3m}/{p.p3a}</TableCell>
+                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.ftm}/{p.fta}</TableCell>
+                                                <TableCell align="right" className={`pr-6 text-xs font-semibold ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-300'}`}>
                                                     {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
                                                 </TableCell>
                                             </TableRow>
