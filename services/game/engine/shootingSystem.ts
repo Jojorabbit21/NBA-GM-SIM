@@ -24,8 +24,19 @@ export function calculateShootingStats(
     const { effectivePerfDrop, homeAdvantage, mentalClutchBonus } = modifiers;
     
     // Ensure tendencies
-    const tendencies = p.tendencies || generateHiddenTendencies(p);
-    const { lateralBias } = tendencies;
+    let lateralBias = 0;
+    if (p.tendencies) {
+        // Map 0-3 scale (DB) to -1~1 scale (Runtime) for calculation consistency
+        // 0: Strong Left, 1: Left, 2: Right, 3: Strong Right
+        const tb = p.tendencies.lateral_bias;
+        if (tb === 0) lateralBias = -0.8;
+        else if (tb === 1) lateralBias = -0.4;
+        else if (tb === 2) lateralBias = 0.4;
+        else if (tb === 3) lateralBias = 0.8;
+    } else {
+        const ht = p.hiddenTendencies || generateHiddenTendencies(p);
+        lateralBias = ht.lateralBias;
+    }
 
     // --- Step 0: Calculate Haste Penalty (The "Rush" Factor) ---
     // High pace reduces accuracy unless player has high composure.

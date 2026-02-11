@@ -18,6 +18,11 @@ export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }
     '브랜던 클락': { type: '종아리 염좌', returnDate: '2026-03-01' },
     '타이 제롬': { type: '종아리 염좌', returnDate: '2026-02-01' },
     '디존테 머레이': { type: '아킬레스건 파열', returnDate: '2026-01-15' },
+    '데빈 카터': { type: '어깨 수술', returnDate: '2026-01-15' },
+    
+    // PHI Injuries (Optional Context: Embiid/George often manage load or have minor issues start of season)
+    // For simulation fun, let's keep them healthy unless user specifies, but here is template.
+    // '조엘 엠비드': { type: '무릎 관리', returnDate: '2025-10-25' },
 
     // English Keys (Fallback for Raw DB Data)
     'Jayson Tatum': { type: '아킬레스건 파열', returnDate: '2026-06-30' },
@@ -31,5 +36,6 @@ export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }
     'Scotty Pippen Jr.': { type: '발가락 골절', returnDate: '2026-02-04' },
     'Brandon Clarke': { type: '종아리 염좌', returnDate: '2026-03-01' },
     'Ty Jerome': { type: '종아리 염좌', returnDate: '2026-02-01' },
-    'Dejounte Murray': { type: '아킬레스건 파열', returnDate: '2026-01-15' }
+    'Dejounte Murray': { type: '아킬레스건 파열', returnDate: '2026-01-15' },
+    'Devin Carter': { type: '어깨 수술', returnDate: '2026-01-15' }
 };
