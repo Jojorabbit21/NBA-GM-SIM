@@ -108,8 +108,8 @@ const LeaderboardCard: React.FC<{
                     {/* [Fix] Added border-none to override default border-b from TableHead component */}
                     <TableHead className="bg-slate-950 border-none">
                         <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
-                        <TableHeaderCell align="left" className="px-2 border-none bg-slate-950">TEAM / PLAYER</TableHeaderCell>
-                        <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950">{statDef.id}</TableHeaderCell>
+                        <TableHeaderCell align="left" className="px-2 border-none bg-slate-950 !rounded-none">TEAM / PLAYER</TableHeaderCell>
+                        <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950 !rounded-none">{statDef.id}</TableHeaderCell>
                     </TableHead>
                     <TableBody>
                         {sortedData.map((p, i) => {

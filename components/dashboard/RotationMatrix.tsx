@@ -124,7 +124,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     const stickyBottom = "border-b border-slate-800";
     const gridBorder = "border-r border-slate-800/50"; 
     const gridBottom = "border-b border-slate-800/50";
-    const quarterDivider = "border-r-indigo-500/60";
+    const quarterDivider = "border-r-indigo-500";
 
     const getMinColor = (mins: number) => {
         if (mins === 0) return 'text-slate-600';
@@ -164,19 +164,19 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                 <Table className="!rounded-none !border-t-0 border-x-0 border-b-0 shadow-none" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
                     <thead className={`${stickyHeaderBg} sticky top-0 z-50`}>
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
-                            <th rowSpan={2} className={`sticky left-0 z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center`}>POS</th>
-                            <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
-                            <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>OVR</th>
-                            <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[290px] z-50 ${stickyHeaderBg} ${stickyBottom} w-[50px] min-w-[50px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>MIN</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800`}>1Q</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800`}>2Q</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800`}>3Q</th>
-                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${stickyBottom}`}>4Q</th>
+                            <th rowSpan={2} className={`sticky left-0 z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center !rounded-none`}>POS</th>
+                            <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3 !rounded-none`}>PLAYER</th>
+                            <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center !rounded-none`}>OVR</th>
+                            <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center !rounded-none`}>COND</th>
+                            <th rowSpan={2} className={`sticky left-[290px] z-50 ${stickyHeaderBg} ${stickyBottom} w-[50px] min-w-[50px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>1Q</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>2Q</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>3Q</th>
+                            <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${stickyBottom} !rounded-none`}>4Q</th>
                         </tr>
                         <tr className={`text-[10px] font-black text-slate-600 uppercase tracking-tighter h-6 ${gridBottom}`}>
                              {Array.from({length: 48}).map((_, i) => (
-                                <th key={i} className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'}`}>{i + 1}</th>
+                                <th key={i} className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'} !rounded-none`}>{i + 1}</th>
                             ))}
                         </tr>
                     </thead>
