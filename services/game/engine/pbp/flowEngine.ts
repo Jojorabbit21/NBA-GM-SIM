@@ -121,7 +121,16 @@ export function calculateHitRate(
         defImpactFactor = S.THREE_DEF_IMPACT;
     }
 
-    const defRating = defStat * fatigueDef;
+    // [New] Foul Trouble Penalty Calculation
+    const foulCount = defender.pf;
+    const FT_CONFIG = SIM_CONFIG.FOUL_TROUBLE.DEF_PENALTY;
+    let defPenalty = 0;
+    
+    if (foulCount >= 5) defPenalty = FT_CONFIG[5]; // e.g. 0.40
+    else if (foulCount === 4) defPenalty = FT_CONFIG[4]; // e.g. 0.15
+
+    // Apply Def Rating with Fatigue and Foul Trouble Penalty
+    const defRating = defStat * fatigueDef * (1 - defPenalty);
     
     // Apply Delta (Individual Matchup)
     // e.g. (90 - 70) * 0.004 = +0.08 (+8%)
@@ -151,7 +160,11 @@ export function calculateHitRate(
 
         // calculateAceStopperImpact returns percentage (e.g. -15 for -15%)
         const impactPercent = calculateAceStopperImpact(flatAce, flatStopper, stopperMp);
-        hitRate = hitRate * (1 + (impactPercent / 100));
+        
+        // If in foul trouble, the stopper impact is significantly reduced (closer to 0 or positive)
+        const adjustedImpact = impactPercent * (1 - defPenalty);
+        
+        hitRate = hitRate * (1 + (adjustedImpact / 100));
     }
 
     // 4. Efficiency Modifiers
