@@ -299,18 +299,18 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
                             <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                 <div className="flex flex-col">
-                                    <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                    <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     {p.health !== 'Healthy' && <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>{p.health}</span>}
                                 </div>
                             </TableCell>
-                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
-                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
+                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
                             <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
-                                <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-sm !shadow-none" /></div>
+                                <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
 
                             {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                                <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-sm" value={(p as any)[k]} variant="attribute" colorScale />
+                                <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 const val = getSortValue(p, c.key);
@@ -319,13 +319,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                     else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm'].includes(c.key)) displayVal = val.toFixed(1);
                                 }
-                                return <TableCell key={c.key} align="center" className="font-mono font-bold text-sm text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                                return <TableCell key={c.key} align="center" className="font-mono font-semibold text-xs text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
                             })}
                             {tab === 'salary' && (
                                 <>
-                                    <TableCell align="center" className="font-mono font-bold text-sm text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
-                                    <TableCell align="center" className="font-mono font-bold text-sm text-slate-400 border-r border-slate-800/30" value={`${p.contractYears} yrs`} />
-                                    <TableCell align="center" className="font-mono font-bold text-sm text-slate-300 border-r border-slate-800/30" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
+                                    <TableCell align="center" className="font-mono font-semibold text-xs text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
+                                    <TableCell align="center" className="font-mono font-semibold text-xs text-slate-400 border-r border-slate-800/30" value={`${p.contractYears} yrs`} />
+                                    <TableCell align="center" className="font-mono font-semibold text-xs text-slate-300 border-r border-slate-800/30" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
                                 </>
                             )}
                         </TableRow>
@@ -335,13 +335,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <tr className="h-10">
                         <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
                         <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
-                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-bold text-slate-500 text-sm z-30">{averages.attr.age}</TableCell>
+                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-semibold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
                         <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30 text-center">
-                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-sm !shadow-none opacity-80" /></div>
+                            <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
                         </TableCell>
 
                         {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map(k => (
-                            <TableCell key={k} align="center" className="font-black font-mono border-r border-slate-800/30 text-sm" value={averages.attr[k]} variant="attribute" colorScale />
+                            <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
                             let val = averages.stat[c.key];
@@ -350,10 +350,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                 else displayVal = val.toFixed(1);
                             }
-                            return <TableCell key={c.key} align="center" className="font-mono font-black text-sm text-slate-400 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                            return <TableCell key={c.key} align="center" className="font-mono font-semibold text-xs text-slate-400 border-r border-slate-800/30" value={displayVal} variant="stat" />;
                         })}
                         {tab === 'salary' && (
-                            <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-sm" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
+                            <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-xs" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
                         )}
                     </tr>
                 </TableFoot>
@@ -403,9 +403,9 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {sortedRoster.map(p => (
                                 <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
                                     <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
-                                        <span className="text-sm font-bold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                        <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     </TableCell>
-                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-bold text-sm bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_8px_rgba(0,0,0,0.5)]">{p.position}</TableCell>
+                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_8px_rgba(0,0,0,0.5)]">{p.position}</TableCell>
                                     
                                     {ZONE_CONFIG.map(z => {
                                         const m = p.stats[z.keyM] || 0;
@@ -413,8 +413,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                         const pct = a > 0 ? ((m/a)*100).toFixed(0) + '%' : '-';
                                         return (
                                             <React.Fragment key={z.id}>
-                                                <TableCell align="right" className="font-mono font-bold text-sm text-slate-300 border-r border-slate-800" value={`${m}/${a}`} />
-                                                <TableCell align="right" className={`font-mono font-bold text-sm border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
+                                                <TableCell align="right" className="font-mono font-semibold text-xs text-slate-300 border-r border-slate-800" value={`${m}/${a}`} />
+                                                <TableCell align="right" className={`font-mono font-semibold text-xs border-r border-slate-800 ${a > 0 ? (m/a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600'}`} value={pct} />
                                             </React.Fragment>
                                         );
                                     })}
@@ -430,8 +430,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
                                     return (
                                         <React.Fragment key={z.id}>
-                                            <TableCell align="right" className="font-mono font-black text-sm text-slate-400 border-r border-slate-800" value={`${avg.m}/${avg.a}`} />
-                                            <TableCell align="right" className="font-mono font-black text-sm text-slate-400 border-r border-slate-800" value={pct} />
+                                            <TableCell align="right" className="font-mono font-semibold text-xs text-slate-400 border-r border-slate-800" value={`${avg.m}/${avg.a}`} />
+                                            <TableCell align="right" className="font-mono font-semibold text-xs text-slate-400 border-r border-slate-800" value={pct} />
                                         </React.Fragment>
                                     );
                                 })}

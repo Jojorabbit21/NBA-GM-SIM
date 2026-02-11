@@ -195,16 +195,16 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                             </td>
                                         )}
                                         <td className={`sticky left-[50px] z-30 ${stickyBodyBg} px-3 cursor-pointer ${stickyBorder} ${stickyBottom}`} onClick={() => onViewPlayer(p)}>
-                                            <span className={`text-xs font-bold truncate block ${pos === 'RES' ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>{p.name}</span>
+                                            <span className={`text-xs font-semibold truncate block ${pos === 'RES' ? 'text-slate-500' : 'text-slate-200 group-hover:text-indigo-400'}`}>{p.name}</span>
                                         </td>
                                         <td className={`sticky left-[210px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
                                             <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" /></div>
                                         </td>
                                         <td className={`sticky left-[250px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <span className={`text-sm font-black ${(p.condition || 100) < 70 ? 'text-red-500' : (p.condition || 100) < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{Math.round(p.condition || 100)}</span>
+                                            <span className={`text-xs font-semibold ${(p.condition || 100) < 70 ? 'text-red-500' : (p.condition || 100) < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{Math.round(p.condition || 100)}</span>
                                         </td>
                                         <td className={`sticky left-[290px] z-30 ${stickyBodyBg} text-center ${stickyBottom} shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
-                                            <span className={`text-sm font-mono font-black ${getMinColor(totalMins)}`}>{totalMins}</span>
+                                            <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)}`}>{totalMins}</span>
                                         </td>
                                         {playerMap.map((active: boolean, i: number) => (
                                             <td key={i} onClick={() => handleToggleMinute(p.id, i)} className={`p-0 cursor-pointer relative transition-all ${gridBottom} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'} hover:bg-white/10`}>
