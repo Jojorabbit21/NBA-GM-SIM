@@ -145,7 +145,7 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                         <div className="relative w-full aspect-[50/47] max-h-full max-w-[700px]">
                              <svg viewBox={`0 0 ${COURT_WIDTH/2} ${COURT_HEIGHT}`} className="w-full h-full drop-shadow-xl">
                                 {/* Court Background */}
-                                <rect x="0" y="0" width={COURT_WIDTH/2} height={COURT_HEIGHT} fill="#020617" />
+                                <rect x="0" y="0" width={COURT_WIDTH/2} height={COURT_HEIGHT} fill="#0f172a" />
                                 
                                 {/* Markings */}
                                 <g fill="none" stroke="#334155" strokeWidth="0.5">
