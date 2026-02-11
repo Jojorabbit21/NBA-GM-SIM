@@ -2,6 +2,7 @@
 import React from 'react';
 import { Team, PlayerBoxScore, RotationData } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
+import { Table, TableHead, TableHeaderCell } from '../common/Table';
 
 interface RotationChartProps {
     homeTeam: Team;
@@ -81,15 +82,15 @@ const BackgroundGrid = () => (
     </div>
 );
 
-// Reusable Header Component
-const QuarterHeader = () => (
-    <div className="grid grid-cols-[140px_1fr] mb-1">
-        <div className="text-[10px] font-bold text-slate-500 flex items-end px-3 pb-1">PLAYER</div>
-        <div className="grid grid-cols-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center h-7">
-            <div className="border-l border-slate-700/50 flex items-center justify-center bg-slate-900/50 rounded-tl-md">1Q</div>
-            <div className="border-l border-slate-700/50 flex items-center justify-center bg-slate-900/50">2Q</div>
-            <div className="border-l border-slate-700/50 flex items-center justify-center bg-slate-900/50">3Q</div>
-            <div className="border-l border-slate-700/50 flex items-center justify-center bg-slate-900/50 rounded-tr-md">4Q</div>
+// Reusable Header Component with TableHead styles
+const StandardizedHeader = () => (
+    <div className="grid grid-cols-[140px_1fr] mb-0 bg-slate-950 border-b border-slate-800">
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 flex items-center px-4 h-10 border-r border-slate-800">PLAYER</div>
+        <div className="grid grid-cols-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center h-10">
+            <div className="border-r border-slate-800 flex items-center justify-center">1Q</div>
+            <div className="border-r border-slate-800 flex items-center justify-center">2Q</div>
+            <div className="border-r border-slate-800 flex items-center justify-center">3Q</div>
+            <div className="flex items-center justify-center">4Q</div>
         </div>
     </div>
 );
@@ -121,23 +122,21 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                     <div className="flex items-center gap-2 mb-3 px-2 border-b border-slate-800/50 pb-2">
                         <img src={awayTeam.logo} className="w-6 h-6 object-contain" alt="" />
                         <span className="text-sm font-black text-slate-300 uppercase tracking-wider">{awayTeam.name}</span>
-                        <span className="text-xs text-slate-500 font-bold ml-2">(Away)</span>
                     </div>
 
-                    <QuarterHeader />
-                    
-                    <div className="border border-slate-700/50 rounded-xl overflow-hidden bg-slate-900/40 backdrop-blur-sm relative">
-                        <BackgroundGrid />
-                        
-                        {/* Player Rows */}
-                        {sortedAway.map(p => (
-                            <PlayerRow 
-                                key={p.playerId} 
-                                player={p} 
-                                segments={rotationData[p.playerId]} 
-                                teamColor={awayColor}
-                            />
-                        ))}
+                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 backdrop-blur-sm relative">
+                        <StandardizedHeader />
+                        <div className="relative">
+                            <BackgroundGrid />
+                            {sortedAway.map(p => (
+                                <PlayerRow 
+                                    key={p.playerId} 
+                                    player={p} 
+                                    segments={rotationData[p.playerId]} 
+                                    teamColor={awayColor}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
 
@@ -146,22 +145,21 @@ export const RotationChart: React.FC<RotationChartProps> = ({
                     <div className="flex items-center gap-2 mb-3 px-2 border-b border-slate-800/50 pb-2">
                         <img src={homeTeam.logo} className="w-6 h-6 object-contain" alt="" />
                         <span className="text-sm font-black text-slate-300 uppercase tracking-wider">{homeTeam.name}</span>
-                        <span className="text-xs text-slate-500 font-bold ml-2">(Home)</span>
                     </div>
 
-                    <QuarterHeader />
-                    
-                    <div className="border border-slate-700/50 rounded-xl overflow-hidden bg-slate-900/40 backdrop-blur-sm relative">
-                         <BackgroundGrid />
-
-                        {sortedHome.map(p => (
-                            <PlayerRow 
-                                key={p.playerId} 
-                                player={p} 
-                                segments={rotationData[p.playerId]} 
-                                teamColor={homeColor}
-                            />
-                        ))}
+                    <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-900/40 backdrop-blur-sm relative">
+                        <StandardizedHeader />
+                        <div className="relative">
+                             <BackgroundGrid />
+                            {sortedHome.map(p => (
+                                <PlayerRow 
+                                    key={p.playerId} 
+                                    player={p} 
+                                    segments={rotationData[p.playerId]} 
+                                    teamColor={homeColor}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>

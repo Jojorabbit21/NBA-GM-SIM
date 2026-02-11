@@ -40,8 +40,8 @@ export const SimulationCourt: React.FC<SimulationCourtProps> = ({
                     <circle cx={COURT_WIDTH/2} cy={COURT_HEIGHT/2} r="6" />
 
                     {/* --- Left Side --- */}
-                    {/* Key (16ft wide, 19ft long) */}
-                    <rect x="0" y={(COURT_HEIGHT-16)/2} width="19" height="16" />
+                    {/* Key (16ft wide, 19ft long) - Border Removed per request */}
+                    <rect x="0" y={(COURT_HEIGHT-16)/2} width="19" height="16" stroke="none" />
                     {/* Free Throw Circle (Top half) */}
                     <path d={`M 19,${17} A 6 6 0 0 1 19,${33}`} />
                     <path d={`M 19,${17} A 6 6 0 0 0 19,${33}`} strokeDasharray="1,1" />
@@ -63,8 +63,8 @@ export const SimulationCourt: React.FC<SimulationCourtProps> = ({
 
 
                     {/* --- Right Side (Mirror) --- */}
-                    {/* Key */}
-                    <rect x={COURT_WIDTH-19} y={(COURT_HEIGHT-16)/2} width="19" height="16" />
+                    {/* Key - Border Removed per request */}
+                    <rect x={COURT_WIDTH-19} y={(COURT_HEIGHT-16)/2} width="19" height="16" stroke="none" />
                     {/* Free Throw Circle */}
                     <path d={`M ${COURT_WIDTH-19},${17} A 6 6 0 0 0 ${COURT_WIDTH-19},${33}`} />
                     <path d={`M ${COURT_WIDTH-19},${17} A 6 6 0 0 1 ${COURT_WIDTH-19},${33}`} strokeDasharray="1,1" />
@@ -95,43 +95,22 @@ export const SimulationCourt: React.FC<SimulationCourtProps> = ({
                                 <circle 
                                     cx={shot.x} 
                                     cy={shot.y} 
-                                    r={0.8} 
+                                    r={0.55} // Reduced size
                                     fill={color} 
                                     stroke="white" 
                                     strokeWidth="0.1" 
                                     opacity="0.9"
                                 />
                             ) : (
-                                <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.6">
-                                    <line x1="-0.6" y1="-0.6" x2="0.6" y2="0.6" stroke={color} strokeWidth="0.2" />
-                                    <line x1="-0.6" y1="0.6" x2="0.6" y2="-0.6" stroke={color} strokeWidth="0.2" />
+                                <g transform={`translate(${shot.x}, ${shot.y})`} opacity="1.0"> 
+                                    <line x1="-0.4" y1="-0.4" x2="0.4" y2="0.4" stroke={color} strokeWidth="0.2" />
+                                    <line x1="-0.4" y1="0.4" x2="0.4" y2="-0.4" stroke={color} strokeWidth="0.2" />
                                 </g>
                             )}
                         </g>
                     );
                 })}
             </svg>
-            
-            {/* Legend Overlay */}
-            <div className="absolute bottom-2 left-4 flex gap-4 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-700/50 backdrop-blur-sm">
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: homeColor }}></div>
-                    <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Home</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: awayColor }}></div>
-                    <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Away</span>
-                </div>
-                <div className="w-px h-3 bg-slate-700"></div>
-                <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-slate-500 border border-white"></div>
-                    <span className="text-[8px] font-bold text-slate-400 uppercase">Make</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <X size={10} className="text-slate-500" />
-                    <span className="text-[8px] font-bold text-slate-400 uppercase">Miss</span>
-                </div>
-            </div>
         </div>
     );
 };
