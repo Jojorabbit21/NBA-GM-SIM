@@ -33,8 +33,9 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
 
     if (view === 'GameSim' && sim.activeGame) {
-        // [Fix] Pass pbpLogs to View so animation follows actual engine events
+        // [Fix] Pass pbpLogs AND pbpShotEvents to View so animation follows actual engine events
         const pbpLogs = sim.tempSimulationResult?.pbpLogs || [];
+        const pbpShotEvents = sim.tempSimulationResult?.pbpShotEvents || [];
         
         return (
             <GameSimulatingView 
@@ -42,6 +43,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 awayTeam={gameData.teams.find((t: Team) => t.id === sim.activeGame.awayTeamId)!} 
                 userTeamId={gameData.myTeamId} 
                 pbpLogs={pbpLogs}
+                pbpShotEvents={pbpShotEvents}
                 onSimulationComplete={() => sim.finalizeSimRef.current?.()} 
             />
         );

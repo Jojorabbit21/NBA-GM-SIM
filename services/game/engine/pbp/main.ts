@@ -7,7 +7,7 @@ import { simulatePossession } from './possessionHandler';
 import { updateOnCourtStates } from './stateUpdater';
 import { applyPossessionResult } from './statsMappers';
 import { checkSubstitutions } from './substitutionSystem';
-import { LivePlayer } from './pbpTypes';
+import { LivePlayer, ShotEvent } from './pbpTypes';
 
 export function runFullGameSimulation(
     homeTeam: Team,
@@ -31,6 +31,7 @@ export function runFullGameSimulation(
         isDeadBall: false,
         logs: [] as PbpLog[],
         rotationHistory: {} as RotationData,
+        shotEvents: [] as ShotEvent[], // [New] Init shot events
         isHomeB2B,
         isAwayB2B
     };
@@ -163,6 +164,7 @@ export function runFullGameSimulation(
         awayTactics: mapTactics(state.away.tactics),
         rosterUpdates: {},
         pbpLogs: state.logs,
-        rotationData: state.rotationHistory
+        rotationData: state.rotationHistory,
+        pbpShotEvents: state.shotEvents // [New] Pass shot events to result
     };
 }

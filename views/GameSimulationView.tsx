@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Team, PbpLog } from '../types';
+import { Team, PbpLog, ShotEvent } from '../types';
 import { calculateWinProbability, calculatePerMinuteStats, WPSnapshot } from '../utils/simulationMath';
 import { GAME_OVER_MESSAGES } from '../data/uiConstants';
+import { TEAM_DATA } from '../data/teamData';
 
 // New Sub-components
 import { LiveScoreboard } from '../components/simulation/LiveScoreboard';
@@ -18,6 +19,7 @@ interface TimelineItem {
     text: string; // Log Text
     isHighlight: boolean; // (Legacy flag, kept for structure consistency)
     elapsedMinutes: number; // For graph syncing
+    totalSecondsPassed: number; // For shot chart syncing
 }
 
 export const GameSimulatingView: React.FC<{ 
@@ -25,8 +27,9 @@ export const GameSimulatingView: React.FC<{
   awayTeam: Team, 
   userTeamId?: string | null,
   pbpLogs: PbpLog[],
+  pbpShotEvents?: ShotEvent[], // [New]
   onSimulationComplete?: () => void
-}> = ({ homeTeam, awayTeam, userTeamId, pbpLogs, onSimulationComplete }) => {
+}> = ({ homeTeam, awayTeam, userTeamId, pbpLogs, pbpShotEvents = [], onSimulationComplete }) => {
   // State
   const [currentIndex, setCurrentIndex] = useState(0);
   const [finalMessage, setFinalMessage] = useState<string | null>(null);
@@ -52,22 +55,17 @@ export const GameSimulatingView: React.FC<{
       let currentA = 0;
       
       // Initial State
-      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "경기 시작 (TIP-OFF)", isHighlight: true, elapsedMinutes: 0 });
+      items.push({ h: 0, a: 0, q: 1, t: "12:00", wp: 50, text: "경기 시작 (TIP-OFF)", isHighlight: true, elapsedMinutes: 0, totalSecondsPassed: 0 });
 
       pbpLogs.forEach((log, index) => {
           // A. Always track score accumulation invisibly
-          // [SSOT Fix] Strictly use log.points provided by the engine. 
-          // Do NOT fallback to text parsing or default values which causes drift.
           if (log.type === 'score' || log.type === 'freethrow') {
-             // Use nullish coalescing (??) to allow 0 points (missed FT) to be valid
              const points = log.points ?? 0;
-             
              if (log.teamId === homeTeam.id) currentH += points;
              else currentA += points;
           }
 
           // B. Determine if this log is "Show-worthy"
-          // Show scores only if points > 0, but always show 'info' events
           const isScoreEvent = (log.type === 'score' || log.type === 'freethrow');
           const hasPoints = (log.points ?? 0) > 0;
           
@@ -78,13 +76,11 @@ export const GameSimulatingView: React.FC<{
               log.text.includes('버저비터')
           );
           
-          // Check for Quarter End explicitly (0:00 time remaining)
           const isPeriodEnd = log.timeRemaining === '0:00';
-          const isLast = index === pbpLogs.length - 1; // Always show final log
+          const isLast = index === pbpLogs.length - 1; 
 
           // Only push to timeline if it's a key event
           if ((isScoreEvent && hasPoints) || isUrgent || isPeriodEnd || isLast) {
-              // Parse Time to Seconds for WP Calculation & Graph Sync
               const [mm, ss] = log.timeRemaining.split(':').map(Number);
               const secondsRemainingInQ = mm * 60 + ss;
               const totalSecondsPassed = ((log.quarter - 1) * 720) + (720 - secondsRemainingInQ);
@@ -92,7 +88,6 @@ export const GameSimulatingView: React.FC<{
               
               const wp = calculateWinProbability(currentH, currentA, elapsedMinutes);
 
-              // Use custom text for Period Ends
               let displayText = log.text;
               if (isPeriodEnd) {
                   if (log.quarter === 1) displayText = "1쿼터 종료";
@@ -108,16 +103,16 @@ export const GameSimulatingView: React.FC<{
                   wp: wp,
                   text: displayText,
                   isHighlight: true,
-                  elapsedMinutes: elapsedMinutes
+                  elapsedMinutes: elapsedMinutes,
+                  totalSecondsPassed: totalSecondsPassed
               });
           }
       });
       
-      // Ensure final state matches exactly 00:00 if not present
       const lastItem = items[items.length - 1];
       if (lastItem && lastItem.t !== "00:00" && lastItem.text.includes("종료") === false) {
-           // If the last log wasn't 00:00, ensure graph fills up
            lastItem.elapsedMinutes = 48;
+           lastItem.totalSecondsPassed = 48 * 60;
            lastItem.t = "00:00";
       }
       
@@ -136,7 +131,7 @@ export const GameSimulatingView: React.FC<{
       return pool[Math.floor(Math.random() * pool.length)];
   };
 
-  // 3. Animation Loop (Adjusted for Event-Driven Pacing)
+  // 3. Animation Loop
   useEffect(() => {
       indexRef.current = 0;
       setCurrentIndex(0);
@@ -150,16 +145,12 @@ export const GameSimulatingView: React.FC<{
 
           const idx = indexRef.current;
           
-          // Finish Condition
           if (idx >= timeline.length) {
-              // Game Over Logic
               const finalState = timeline[timeline.length - 1];
               const isBuzzerBeater = finalState.text.includes("버저비터");
-              
               const gameOverText = getGameOverMessage(finalState.h, finalState.a, isBuzzerBeater);
               setFinalMessage(gameOverText);
               
-              // Wait 3 seconds to show Game Over message, then exit
               setTimeout(() => {
                   if (!isUnmounted && onCompleteRef.current) onCompleteRef.current();
               }, 3000);
@@ -167,25 +158,21 @@ export const GameSimulatingView: React.FC<{
           }
 
           const currentItem = timeline[idx];
-          
-          // Determine Speed based on Context
-          let delay = 1000; // Default: 1.0s per event (Readable speed)
+          let delay = 1000; 
 
           if (currentItem) {
-              // Longer delay for Period Ends & Start
               if (currentItem.text.includes("종료") || currentItem.text.includes("하프 타임") || currentItem.text.includes("경기 시작")) {
                   delay = 1200;
               } else {
                   const scoreDiff = Math.abs(currentItem.h - currentItem.a);
-                  
                   if (currentItem.q === 4) {
                       if (scoreDiff <= 5 && parseInt(currentItem.t.split(':')[0]) < 2) {
-                          delay = 1500; // Super Clutch: 1.5s (Build tension)
+                          delay = 1500; 
                       } else if (scoreDiff > 20) {
-                          delay = 200; // Garbage Time: 0.2s (Skip fast)
+                          delay = 200; 
                       }
                   } else if (scoreDiff > 25) {
-                       delay = 300; // Blowout early: Fast
+                       delay = 300; 
                   }
               }
           }
@@ -209,34 +196,37 @@ export const GameSimulatingView: React.FC<{
 
   const currentData = timeline[currentIndex] || timeline[timeline.length - 1];
   
-  // Calculate Graph Data
+  // Calculate Visible Shots based on time
+  const visibleShots = useMemo(() => {
+      return pbpShotEvents.filter(shot => {
+          // Calculate shot's total seconds elapsed
+          const shotSecondsRemaining = shot.gameClock; // e.g. 715
+          const shotTotalElapsed = ((shot.quarter - 1) * 720) + (720 - shotSecondsRemaining);
+          return shotTotalElapsed <= currentData.totalSecondsPassed;
+      });
+  }, [pbpShotEvents, currentData.totalSecondsPassed]);
+
   const currentMinuteIndex = Math.floor(currentData.elapsedMinutes);
   const visibleGraphData = minuteGraphData.slice(0, currentMinuteIndex + 1);
-
   const progress = (currentMinuteIndex / 48) * 100;
   
-  // --- Visual Effects Calculation ---
+  const homeColor = TEAM_DATA[homeTeam.id]?.colors.primary || '#ffffff';
+  const awayColor = TEAM_DATA[awayTeam.id]?.colors.primary || '#94a3b8';
+
+  // Visual Effects
   const scoreDiff = Math.abs(currentData.h - currentData.a);
   const [mStr, sStr] = currentData.t.split(':');
   const secondsRemaining = parseInt(mStr) * 60 + parseInt(sStr);
   const is4Q = currentData.q === 4;
 
-  let messageClass = "text-indigo-300"; // Default
-
-  // 1. Buzzer Beater (Extreme)
+  let messageClass = "text-indigo-300"; 
   if (currentData.text.includes("버저비터") || currentData.text.includes("GAME WINNER")) {
        messageClass = "text-red-500 font-black text-2xl animate-buzzer-beater drop-shadow-[0_0_10px_rgba(255,255,255,1)]";
-  } 
-  // 2. Period Ends (Important Info)
-  else if (currentData.text.includes("종료") || currentData.text.includes("하프 타임")) {
+  } else if (currentData.text.includes("종료") || currentData.text.includes("하프 타임")) {
        messageClass = "text-amber-400 font-black text-xl animate-pulse";
-  }
-  // 3. Super Clutch (4Q, < 24s, Diff <= 3) -> Intense Shake
-  else if (is4Q && scoreDiff <= 3 && secondsRemaining < 24) {
+  } else if (is4Q && scoreDiff <= 3 && secondsRemaining < 24) {
        messageClass = "text-red-500 font-black text-xl animate-shake-intense";
-  } 
-  // 4. Clutch (4Q, < 2m, Diff <= 5) -> Gentle Shake
-  else if (is4Q && scoreDiff <= 5 && secondsRemaining < 120) {
+  } else if (is4Q && scoreDiff <= 5 && secondsRemaining < 120) {
        messageClass = "text-orange-400 font-bold text-lg animate-shake-gentle";
   }
 
@@ -262,7 +252,13 @@ export const GameSimulatingView: React.FC<{
             finalMessage={finalMessage} 
         />
 
-        <SimulationCourt isFinished={currentIndex >= timeline.length - 1} />
+        <SimulationCourt 
+            shots={visibleShots} 
+            homeTeamId={homeTeam.id}
+            awayTeamId={awayTeam.id}
+            homeColor={homeColor}
+            awayColor={awayColor}
+        />
         
       </div>
     </div>

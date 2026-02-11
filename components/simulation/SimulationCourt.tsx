@@ -1,57 +1,137 @@
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { X } from 'lucide-react';
+import { ShotEvent } from '../../types';
+import { COURT_WIDTH, COURT_HEIGHT } from '../../utils/courtCoordinates';
 
 interface SimulationCourtProps {
-    isFinished: boolean;
+    shots: ShotEvent[];
+    homeTeamId: string;
+    awayTeamId: string;
+    homeColor: string;
+    awayColor: string;
 }
 
-export const SimulationCourt: React.FC<SimulationCourtProps> = ({ isFinished }) => {
-    const [shots, setShots] = useState<{id: number, x: number, y: number, isMake: boolean}[]>([]);
-
-    useEffect(() => {
-        const shotTimer = setInterval(() => {
-            setShots(prev => {
-                if (isFinished) return prev;
-                const isHome = Math.random() > 0.5;
-                const isMake = Math.random() > 0.45;
-                const hoopX = isHome ? 88.75 : 5.25;
-                const direction = isHome ? -1 : 1;
-                const dist = Math.random() * 28;
-                const angle = (Math.random() * Math.PI) - (Math.PI / 2);
-                const x = Math.max(2, Math.min(92, hoopX + Math.cos(angle) * dist * direction));
-                const y = Math.max(2, Math.min(48, 25 + Math.sin(angle) * dist));
-                return [...prev.slice(-40), { id: Date.now(), x, y, isMake }];
-            });
-        }, 200); 
-
-        return () => clearInterval(shotTimer);
-    }, [isFinished]);
+export const SimulationCourt: React.FC<SimulationCourtProps> = ({ 
+    shots, homeTeamId, awayTeamId, homeColor, awayColor 
+}) => {
+    
+    // NBA Court Dimensions (Feet) - Mapped 1:1 to SVG ViewBox
+    // Court: 94 x 50
+    // Rim Centers: (5.25, 25) and (88.75, 25)
+    // Key: 19ft length, 16ft width
+    // 3PT: 22ft corner dist, 23.75ft arc radius
 
     return (
         <div className="relative w-full aspect-[94/50] bg-slate-950 border-t border-slate-800">
-            <svg viewBox="0 0 94 50" className="absolute inset-0 w-full h-full opacity-80">
-                <rect width="94" height="50" fill="#0f172a" />
-                <g fill="none" stroke="#1e293b" strokeWidth="0.4">
-                    <rect x="0" y="0" width="94" height="50" />
-                    <line x1="47" y1="0" x2="47" y2="50" />
-                    <circle cx="47" cy="25" r="6" />
-                    <circle cx="47" cy="25" r="2" fill="#1e293b" />
-                    <rect x="0" y="17" width="19" height="16" />
-                    <circle cx="19" cy="25" r="6" strokeDasharray="1,1" />
-                    <path d="M 0 3 L 14 3 A 23.75 23.75 0 0 1 14 47 L 0 47" />
-                    <circle cx="5.25" cy="25" r="1.5" />
-                    <rect x="75" y="17" width="19" height="16" />
-                    <circle cx="75" cy="25" r="6" strokeDasharray="1,1" />
-                    <path d="M 94 3 L 80 3 A 23.75 23.75 0 0 0 80 47 L 94 47" />
-                    <circle cx="88.75" cy="25" r="1.5" />
+            <svg viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`} className="absolute inset-0 w-full h-full">
+                {/* Court Floor */}
+                <rect width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" />
+                
+                <g fill="none" stroke="#334155" strokeWidth="0.5">
+                    {/* Main Border */}
+                    <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} strokeWidth="1" />
+                    
+                    {/* Half Court Line */}
+                    <line x1={COURT_WIDTH/2} y1="0" x2={COURT_WIDTH/2} y2={COURT_HEIGHT} />
+                    
+                    {/* Center Circle */}
+                    <circle cx={COURT_WIDTH/2} cy={COURT_HEIGHT/2} r="2" />
+                    <circle cx={COURT_WIDTH/2} cy={COURT_HEIGHT/2} r="6" />
+
+                    {/* --- Left Side --- */}
+                    {/* Key (16ft wide, 19ft long) */}
+                    <rect x="0" y={(COURT_HEIGHT-16)/2} width="19" height="16" />
+                    {/* Free Throw Circle (Top half) */}
+                    <path d={`M 19,${17} A 6 6 0 0 1 19,${33}`} />
+                    <path d={`M 19,${17} A 6 6 0 0 0 19,${33}`} strokeDasharray="1,1" />
+                    
+                    {/* 3-Point Line */}
+                    {/* Corner Lines (0 to 14ft x, 3ft from sides) */}
+                    <line x1="0" y1="3" x2="14" y2="3" />
+                    <line x1="0" y1="47" x2="14" y2="47" />
+                    {/* Arc (Radius 23.75 from Hoop Center 5.25, 25) */}
+                    {/* M 14,3 A 23.75 23.75 0 0 1 14,47 */}
+                    <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
+
+                    {/* Hoop & Backboard */}
+                    <line x1="4" y1="22" x2="4" y2="28" stroke="white" strokeWidth="0.5" />
+                    <circle cx="5.25" cy="25" r="0.75" stroke="white" />
+                    
+                    {/* Restricted Area (4ft radius from hoop center) */}
+                    <path d="M 5.25,21 A 4 4 0 0 1 5.25,29" />
+
+
+                    {/* --- Right Side (Mirror) --- */}
+                    {/* Key */}
+                    <rect x={COURT_WIDTH-19} y={(COURT_HEIGHT-16)/2} width="19" height="16" />
+                    {/* Free Throw Circle */}
+                    <path d={`M ${COURT_WIDTH-19},${17} A 6 6 0 0 0 ${COURT_WIDTH-19},${33}`} />
+                    <path d={`M ${COURT_WIDTH-19},${17} A 6 6 0 0 1 ${COURT_WIDTH-19},${33}`} strokeDasharray="1,1" />
+
+                    {/* 3-Point Line */}
+                    <line x1={COURT_WIDTH} y1="3" x2={COURT_WIDTH-14} y2="3" />
+                    <line x1={COURT_WIDTH} y1="47" x2={COURT_WIDTH-14} y2="47" />
+                    <path d={`M ${COURT_WIDTH-14},3 A 23.75 23.75 0 0 0 ${COURT_WIDTH-14},47`} />
+
+                    {/* Hoop & Backboard */}
+                    <line x1={COURT_WIDTH-4} y1="22" x2={COURT_WIDTH-4} y2="28" stroke="white" strokeWidth="0.5" />
+                    <circle cx={COURT_WIDTH-5.25} cy="25" r="0.75" stroke="white" />
+                    
+                    {/* Restricted Area */}
+                    <path d={`M ${COURT_WIDTH-5.25},21 A 4 4 0 0 0 ${COURT_WIDTH-5.25},29`} />
+
                 </g>
+
+                {/* Shot Markers */}
+                {shots.map((shot) => {
+                    const isHome = shot.teamId === homeTeamId;
+                    const color = isHome ? homeColor : awayColor;
+                    
+                    // Simple fade-in effect via key
+                    return (
+                        <g key={shot.id} className="animate-in fade-in zoom-in duration-300">
+                            {shot.isMake ? (
+                                <circle 
+                                    cx={shot.x} 
+                                    cy={shot.y} 
+                                    r={0.8} 
+                                    fill={color} 
+                                    stroke="white" 
+                                    strokeWidth="0.1" 
+                                    opacity="0.9"
+                                />
+                            ) : (
+                                <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.6">
+                                    <line x1="-0.6" y1="-0.6" x2="0.6" y2="0.6" stroke={color} strokeWidth="0.2" />
+                                    <line x1="-0.6" y1="0.6" x2="0.6" y2="-0.6" stroke={color} strokeWidth="0.2" />
+                                </g>
+                            )}
+                        </g>
+                    );
+                })}
             </svg>
-            {shots.map(s => (
-                <div key={s.id} className="absolute transform -translate-x-1/2 -translate-y-1/2 transition-opacity duration-1000" style={{ left: `${(s.x / 94) * 100}%`, top: `${(s.y / 50) * 100}%` }}>
-                    {s.isMake ? <div className="w-2 md:w-2.5 h-2 md:h-2.5 rounded-full bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,1)] border border-emerald-300"></div> : <X size={12} className="text-red-500/60 drop-shadow-[0_0_5px_rgba(239,68,68,0.5)]" strokeWidth={3} />}
+            
+            {/* Legend Overlay */}
+            <div className="absolute bottom-2 left-4 flex gap-4 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-700/50 backdrop-blur-sm">
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: homeColor }}></div>
+                    <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Home</span>
                 </div>
-            ))}
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full border border-white/50" style={{ backgroundColor: awayColor }}></div>
+                    <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">Away</span>
+                </div>
+                <div className="w-px h-3 bg-slate-700"></div>
+                <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 rounded-full bg-slate-500 border border-white"></div>
+                    <span className="text-[8px] font-bold text-slate-400 uppercase">Make</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <X size={10} className="text-slate-500" />
+                    <span className="text-[8px] font-bold text-slate-400 uppercase">Miss</span>
+                </div>
+            </div>
         </div>
     );
 };

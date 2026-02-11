@@ -46,16 +46,31 @@ export interface PbpLog {
 
 export type RotationData = Record<string, { in: number, out: number }[]>;
 
+export interface ShotEvent {
+    id: string;
+    quarter: number;
+    gameClock: number;
+    teamId: string;
+    playerId: string;
+    x: number;
+    y: number;
+    zone: string;
+    isMake: boolean;
+    playType?: string;
+    assistPlayerId?: string;
+}
+
 export interface SimulationResult {
     homeScore: number;
     awayScore: number;
     homeBox: PlayerBoxScore[];
     awayBox: PlayerBoxScore[];
-    homeTactics: any; // Using any to avoid circular dependency on TacticalSnapshot for now, or import it if needed.
+    homeTactics: any; 
     awayTactics: any;
     rosterUpdates: Record<string, any>;
     pbpLogs: PbpLog[];
     rotationData: RotationData;
+    pbpShotEvents?: ShotEvent[]; // [New]
 }
 
 export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition';

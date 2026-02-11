@@ -1,6 +1,7 @@
 
 import { PlayerBoxScore } from './engine';
 import { TacticalSnapshot } from './tactics';
+import { ShotEvent } from './engine'; // Added ShotEvent
 
 export interface Game {
     id: string;
@@ -53,4 +54,5 @@ export interface PlayoffGameResultDB {
     series_id: string;
     round_number: number;
     game_number: number;
+    shot_events?: ShotEvent[]; // [New] Store shot chart data
 }
