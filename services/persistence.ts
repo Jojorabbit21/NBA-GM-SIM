@@ -72,6 +72,7 @@ export const loadUserHistory = async (userId: string) => {
 
 // 4. Write Logs
 export const writeGameResult = async (result: any) => {
+    // result object now contains shot_events, assuming the backend can handle it
     await supabase.from('user_game_results').insert(result);
 };
 

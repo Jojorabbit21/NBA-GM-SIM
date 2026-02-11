@@ -78,6 +78,21 @@ export interface TeamState {
     bonus: boolean; // Penalty situation
 }
 
+// [New] Structured Shot Event for Visualization
+export interface ShotEvent {
+    id: string;
+    quarter: number;
+    gameClock: number;
+    teamId: string;
+    playerId: string;
+    x: number;
+    y: number;
+    zone: string;
+    isMake: boolean;
+    playType?: string;
+    assistPlayerId?: string;
+}
+
 export interface GameState {
     home: TeamState;
     away: TeamState;
@@ -97,6 +112,9 @@ export interface GameState {
 
     // [New] Rotation Tracking
     rotationHistory: RotationData;
+    
+    // [New] Shot Chart Data
+    shotEvents: ShotEvent[];
 }
 
 export interface PossessionResult {

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
-import { List, RotateCw, Shield, LayoutList } from 'lucide-react';
-import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData } from '../types';
+import { List, RotateCw, Shield, LayoutList, Target } from 'lucide-react';
+import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent } from '../types';
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
@@ -13,8 +13,9 @@ import { GameBoxScoreTab } from '../components/game/tabs/GameBoxScoreTab';
 import { GamePbpTab } from '../components/game/tabs/GamePbpTab';
 import { GameRotationTab } from '../components/game/tabs/GameRotationTab';
 import { GameTacticsTab } from '../components/game/tabs/GameTacticsTab';
+import { GameShotChartTab } from '../components/game/tabs/GameShotChartTab';
 
-type ResultTab = 'BoxScore' | 'PbpLog' | 'Rotation' | 'Tactics';
+type ResultTab = 'BoxScore' | 'ShotChart' | 'PbpLog' | 'Rotation' | 'Tactics';
 
 export const GameResultView: React.FC<{
   result: {
@@ -32,12 +33,13 @@ export const GameResultView: React.FC<{
     myTeamId: string;
     pbpLogs?: PbpLog[];
     rotationData?: RotationData;
+    pbpShotEvents?: ShotEvent[]; // [New]
   };
   myTeamId: string;
   teams: Team[];
   onFinish: () => void;
 }> = ({ result, myTeamId, teams, onFinish }) => {
-  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames } = result;
+  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames, pbpShotEvents } = result;
   
   const isHome = myTeamId === home.id;
   const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
@@ -57,11 +59,12 @@ export const GameResultView: React.FC<{
       tov: Math.max(...allPlayers.map(p => p.tov)),
   };
 
-  const tabs: { id: ResultTab; label: string }[] = [
-      { id: 'BoxScore', label: '박스스코어' },
-      { id: 'PbpLog', label: '플레이-바이-플레이' },
-      { id: 'Rotation', label: '로테이션 차트' },
-      { id: 'Tactics', label: '전술 비교' },
+  const tabs: { id: ResultTab; label: string; icon: React.ReactNode }[] = [
+      { id: 'BoxScore', label: '박스스코어', icon: <List size={16} /> },
+      { id: 'ShotChart', label: '샷 차트', icon: <Target size={16} /> },
+      { id: 'PbpLog', label: '중계 로그', icon: <LayoutList size={16} /> },
+      { id: 'Rotation', label: '로테이션', icon: <RotateCw size={16} /> },
+      { id: 'Tactics', label: '전술 분석', icon: <Shield size={16} /> },
   ];
 
   return (
@@ -80,20 +83,20 @@ export const GameResultView: React.FC<{
 
           {/* 2. Navigation Tabs (Full Width) */}
           <div className="sticky top-0 z-50 bg-slate-950/95 backdrop-blur-sm border-b border-slate-800">
-              <div className="max-w-7xl mx-auto flex items-center justify-center">
+              <div className="max-w-7xl mx-auto flex items-center justify-center gap-1 p-2 overflow-x-auto">
                   {tabs.map((tab) => (
                       <button
                           key={tab.id}
                           onClick={() => setActiveTab(tab.id)}
                           className={`
-                              relative px-6 py-4 text-sm font-bold transition-all duration-300
-                              ${activeTab === tab.id ? 'text-white' : 'text-slate-500 hover:text-slate-300'}
+                              relative px-5 py-3 text-xs font-bold transition-all duration-300 rounded-xl flex items-center gap-2 whitespace-nowrap
+                              ${activeTab === tab.id 
+                                ? 'bg-slate-800 text-white shadow-md ring-1 ring-slate-700' 
+                                : 'text-slate-500 hover:text-slate-300 hover:bg-slate-900'}
                           `}
                       >
+                          {tab.icon}
                           {tab.label}
-                          {activeTab === tab.id && (
-                              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]"></div>
-                          )}
                       </button>
                   ))}
               </div>
@@ -112,6 +115,14 @@ export const GameResultView: React.FC<{
                       leaders={leaders}
                       otherGames={otherGames}
                       teams={teams}
+                  />
+              )}
+
+              {activeTab === 'ShotChart' && (
+                  <GameShotChartTab 
+                      homeTeam={home}
+                      awayTeam={away}
+                      shotEvents={pbpShotEvents}
                   />
               )}
 

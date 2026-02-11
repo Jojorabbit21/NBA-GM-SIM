@@ -1,8 +1,9 @@
 
-import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
+import { GameState, PossessionResult, LivePlayer, TeamState, ShotEvent } from './pbpTypes';
 import { PbpLog, PlayType } from '../../../../types';
 import { formatTime } from './timeEngine';
 import { resolveDynamicZone } from '../shotDistribution';
+import { generateShotCoordinate, CourtSide } from '../../../../utils/courtCoordinates';
 
 /**
  * Generates a descriptive text for the shot based on PlayType and Zone.
@@ -91,6 +92,42 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         offTeam.onCourt.forEach(p => p.plusMinus += scoreDelta);
         defTeam.onCourt.forEach(p => p.plusMinus -= scoreDelta);
     };
+
+    // [New] Shot Coordinate Generation Logic
+    if ((type === 'score' || type === 'miss') && zone) {
+        // Determine court side based on home/away possession
+        // Convention: Home shoots right, Away shoots left? Or switch by half?
+        // Simpler: Just map to the correct hoop.
+        // Let's say Home attacks Right Hoop (x > 47), Away attacks Left Hoop (x < 47) in 1st/3rd.
+        // Switch in 2nd/4th.
+        
+        let side: CourtSide = 'Left';
+        if (state.quarter <= 2) {
+             // 1H: Away @ Left, Home @ Right (NBA Standard view from TV)
+             side = (offTeam.id === state.home.id) ? 'Right' : 'Left';
+        } else {
+             // 2H: Switch
+             side = (offTeam.id === state.home.id) ? 'Left' : 'Right';
+        }
+
+        const coords = generateShotCoordinate(zone, side);
+        
+        const shotEvent: ShotEvent = {
+            id: `shot_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            quarter: state.quarter,
+            gameClock: state.gameClock,
+            teamId: offTeam.id,
+            playerId: actor.playerId,
+            x: coords.x,
+            y: coords.y,
+            zone: zone,
+            isMake: type === 'score',
+            playType: playType,
+            assistPlayerId: assister?.playerId
+        };
+        
+        state.shotEvents.push(shotEvent);
+    }
 
     // 1. Base Stats
     if (type === 'score') {
