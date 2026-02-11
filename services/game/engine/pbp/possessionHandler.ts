@@ -4,7 +4,8 @@ import { resolvePlayAction } from './playTypes';
 import { calculateHitRate, flattenPlayer } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { calculatePlaymakingStats } from '../playmakingSystem';
-import { calculateFoulStats } from '../foulSystem'; // Import Foul System
+import { calculateFoulStats } from '../foulSystem'; 
+import { SIM_CONFIG } from '../../config/constants';
 
 /**
  * Determines the outcome of a single possession.
@@ -25,7 +26,6 @@ export function simulatePossession(state: GameState): PossessionResult {
     if (!defender) defender = defTeam.onCourt[Math.floor(Math.random() * 5)];
 
     // 3. Defensive Foul Check (Non-Shooting / Reach-in / Illegal Screen etc.)
-    // [Fix] Re-introduced Explicit Foul Logic
     // Base 9% chance for a defensive foul on the floor (not shooting)
     // Adjusted by Def Intensity slider (5 is mid)
     const defIntensity = defTeam.tactics.sliders.defIntensity;
@@ -34,7 +34,17 @@ export function simulatePossession(state: GameState): PossessionResult {
     // Individual Discipline Factor
     // Low discipline / High aggression increases foul chance
     const disciplineFactor = (100 - defender.attr.defConsist) / 200; // 0.0 to 0.5
-    const finalFoulChance = baseFoulChance + (disciplineFactor * 0.05);
+    
+    // [New] Foul Trouble Modifier (Probability Reduction)
+    const foulCount = defender.pf;
+    const FT_CONFIG = SIM_CONFIG.FOUL_TROUBLE.PROB_MOD;
+    let foulTroubleMod = 1.0;
+    
+    if (foulCount >= 5) foulTroubleMod = FT_CONFIG[5];
+    else if (foulCount === 4) foulTroubleMod = FT_CONFIG[4];
+    else if (foulCount === 3) foulTroubleMod = FT_CONFIG[3];
+
+    const finalFoulChance = (baseFoulChance + (disciplineFactor * 0.05)) * foulTroubleMod;
 
     if (Math.random() < finalFoulChance) {
         return {
@@ -85,15 +95,19 @@ export function simulatePossession(state: GameState): PossessionResult {
     // Check Block
     let isBlock = false;
     if (!isScore && preferredZone !== '3PT') {
-        const blockChance = (defender.attr.blk + defender.attr.vertical) / 800; 
+        // [Update] Apply foul trouble logic to blocks too (less aggressive contests)
+        const blockMod = foulTroubleMod; // Re-use the probability modifier as block aggression modifier
+        const blockChance = ((defender.attr.blk + defender.attr.vertical) / 800) * blockMod; 
         if (Math.random() < blockChance) isBlock = true;
     }
 
     // Shooting Foul Check (And-1 or Missed Shot Foul)
-    // This is separate from the "Floor Foul" above.
     // Higher probability if driving to rim.
     let shootingFoulChance = (actor.attr.drFoul * 0.7 + (100 - defender.attr.foulTendency) * 0.3) / 600;
     if (preferredZone === 'Rim') shootingFoulChance *= 2.0;
+    
+    // [Update] Apply Foul Trouble Modifier to shooting fouls as well
+    shootingFoulChance *= foulTroubleMod;
     
     const isShootingFoul = Math.random() < shootingFoulChance;
 
