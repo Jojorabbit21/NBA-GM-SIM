@@ -178,6 +178,7 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
              // If user checked this minute
              if (m[currentMinute]) {
                  // Verify availability (Must be Healthy and NOT fouled out)
+                 // [CTO Fix]: This filter prevents the "Zombie Player" bug
                  const p = [...teamState.onCourt, ...teamState.bench].find(lp => lp.playerId === pid);
                  if (p && p.health === 'Healthy' && p.pf < 6) {
                      validSelectedIds.add(pid);
@@ -275,6 +276,7 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
     // 1. Apply Succession Logic (Update future map based on depth chart)
+    // This ensures the fouled out player's future minutes are transferred to their backup
     applyRotationSuccession(team, outPlayer, currentMinute);
 
     // 2. Perform Immediate Substitution
