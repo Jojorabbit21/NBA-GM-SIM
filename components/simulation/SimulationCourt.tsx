@@ -56,7 +56,7 @@ export const SimulationCourt: React.FC<SimulationCourtProps> = ({
 
                     {/* Hoop & Backboard */}
                     <line x1="4" y1="22" x2="4" y2="28" stroke="white" strokeWidth="0.5" />
-                    <circle cx="5.25" cy="25" r="0.75" stroke="white" />
+                    <circle cx={5.25} cy="25" r="0.75" stroke="white" />
                     
                     {/* Restricted Area (4ft radius from hoop center) */}
                     <path d="M 5.25,21 A 4 4 0 0 1 5.25,29" />
@@ -88,6 +88,9 @@ export const SimulationCourt: React.FC<SimulationCourtProps> = ({
                     const isHome = shot.teamId === homeTeamId;
                     const color = isHome ? homeColor : awayColor;
                     
+                    // [Updated] Missed shots use a fixed bright slate color for visibility on dark courts
+                    const missColor = "#cbd5e1"; // Slate-300
+
                     // Simple fade-in effect via key
                     return (
                         <g key={shot.id} className="animate-in fade-in zoom-in duration-300">
@@ -103,8 +106,8 @@ export const SimulationCourt: React.FC<SimulationCourtProps> = ({
                                 />
                             ) : (
                                 <g transform={`translate(${shot.x}, ${shot.y})`} opacity="1.0"> 
-                                    <line x1="-0.4" y1="-0.4" x2="0.4" y2="0.4" stroke={color} strokeWidth="0.2" />
-                                    <line x1="-0.4" y1="0.4" x2="0.4" y2="-0.4" stroke={color} strokeWidth="0.2" />
+                                    <line x1="-0.4" y1="-0.4" x2="0.4" y2="0.4" stroke={missColor} strokeWidth="0.2" />
+                                    <line x1="-0.4" y1="0.4" x2="0.4" y2="-0.4" stroke={missColor} strokeWidth="0.2" />
                                 </g>
                             )}
                         </g>
