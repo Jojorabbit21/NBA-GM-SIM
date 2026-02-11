@@ -42,7 +42,7 @@ function getShotDescription(
         } else {
             descriptions.push('미드레인지 슛', '중거리 슛');
         }
-    }
+    } 
     // 3. Paint / Rim
     else {
         if (playType === 'PnR_Roll') {
@@ -96,19 +96,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     // [New] Shot Coordinate Generation Logic
     if ((type === 'score' || type === 'miss') && zone) {
         // Determine court side based on home/away possession
-        // Convention: Home shoots right, Away shoots left? Or switch by half?
-        // Simpler: Just map to the correct hoop.
-        // Let's say Home attacks Right Hoop (x > 47), Away attacks Left Hoop (x < 47) in 1st/3rd.
-        // Switch in 2nd/4th.
-        
-        let side: CourtSide = 'Left';
-        if (state.quarter <= 2) {
-             // 1H: Away @ Left, Home @ Right (NBA Standard view from TV)
-             side = (offTeam.id === state.home.id) ? 'Right' : 'Left';
-        } else {
-             // 2H: Switch
-             side = (offTeam.id === state.home.id) ? 'Left' : 'Right';
-        }
+        // [Update] Fixed Sides: Home always shoots Right, Away always shoots Left.
+        // This keeps the chart cleaner for analysis without confusing side switches.
+        const side: CourtSide = (offTeam.id === state.home.id) ? 'Right' : 'Left';
 
         const coords = generateShotCoordinate(zone, side);
         
