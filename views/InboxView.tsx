@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert } from 'lucide-react';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, BarChart2, Loader2 } from 'lucide-react';
 import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, Team, Player } from '../types';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
+import { fetchFullGameResult } from '../services/queries'; // [New]
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
@@ -16,9 +17,10 @@ interface InboxViewProps {
   userId: string;
   teams: Team[];
   onUpdateUnreadCount: () => void;
+  onViewGameResult: (result: any) => void; // [New] Prop to trigger view switch
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewGameResult }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,7 +186,9 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                                 type={selectedMessage.type} 
                                 content={selectedMessage.content} 
                                 teams={teams} 
-                                onPlayerClick={handlePlayerClick} 
+                                onPlayerClick={handlePlayerClick}
+                                onViewGameResult={onViewGameResult} 
+                                userId={userId}
                             />
                        </div>
                    </div>
@@ -201,7 +205,17 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
 
 // --- Sub-Component: Content Renderer ---
 
-const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams: Team[], onPlayerClick: (id: string) => void }> = ({ type, content, teams, onPlayerClick }) => {
+const MessageContentRenderer: React.FC<{ 
+    type: MessageType, 
+    content: any, 
+    teams: Team[], 
+    onPlayerClick: (id: string) => void,
+    onViewGameResult: (result: any) => void,
+    userId: string
+}> = ({ type, content, teams, onPlayerClick, onViewGameResult, userId }) => {
+    
+    const [isFetchingResult, setIsFetchingResult] = useState(false);
+
     // Shared Helper for OVR
     const getSnapshot = (id: string, savedOvr?: number, savedPos?: string) => {
         for (const t of teams) {
@@ -210,6 +224,48 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
         }
         if (savedOvr !== undefined && savedPos) return { ovr: savedOvr, pos: savedPos };
         return { ovr: 0, pos: '-' };
+    };
+
+    const handleViewDetails = async (gameId: string) => {
+        if (isFetchingResult) return;
+        setIsFetchingResult(true);
+        try {
+            const raw = await fetchFullGameResult(gameId, userId);
+            if (raw) {
+                // Map raw DB data to View structure
+                const homeTeam = teams.find(t => t.id === raw.home_team_id);
+                const awayTeam = teams.find(t => t.id === raw.away_team_id);
+                
+                // Construct result object compatible with GameResultView
+                const mappedResult = {
+                    home: homeTeam,
+                    away: awayTeam,
+                    homeScore: raw.home_score,
+                    awayScore: raw.away_score,
+                    homeBox: raw.box_score?.home || [],
+                    awayBox: raw.box_score?.away || [],
+                    homeTactics: raw.tactics?.home,
+                    awayTactics: raw.tactics?.away,
+                    pbpLogs: raw.pbp_logs,
+                    pbpShotEvents: raw.shot_events,
+                    rotationData: raw.rotation_data,
+                    otherGames: [], // Can't easily fetch full other games context here, leave empty
+                    date: raw.date,
+                    recap: [] // Optional
+                };
+                
+                if (homeTeam && awayTeam) {
+                    onViewGameResult(mappedResult);
+                }
+            } else {
+                alert("경기 데이터를 불러올 수 없습니다.");
+            }
+        } catch (e) {
+            console.error("Fetch failed", e);
+            alert("오류가 발생했습니다.");
+        } finally {
+            setIsFetchingResult(false);
+        }
     };
 
     switch (type) {
@@ -313,6 +369,18 @@ const MessageContentRenderer: React.FC<{ type: MessageType, content: any, teams:
                             </div>
                         </div>
                     )}
+                    
+                    {/* [Added] View Detail Button */}
+                    <div className="flex justify-center pt-4">
+                        <button 
+                            onClick={() => handleViewDetails(gameData.gameId)}
+                            disabled={isFetchingResult}
+                            className="flex items-center gap-3 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all shadow-lg border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 group"
+                        >
+                            {isFetchingResult ? <Loader2 className="animate-spin" size={18} /> : <BarChart2 size={18} className="text-indigo-400 group-hover:text-indigo-300" />}
+                            <span>상세 기록 보기 (Box Score, Shots, Logs)</span>
+                        </button>
+                    </div>
                 </div>
             );
 
