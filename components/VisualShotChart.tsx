@@ -65,7 +65,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
 
     // Use total FGA to determine mode: Scouting (Low sample) vs Data (High sample)
     const totalFGA = s.fga;
-    const isScoutingMode = totalFGA < 20; // Show projections if less than 20 shots
+    const isScoutingMode = totalFGA < 1; // Show projections if less than 20 shots [Edited by user! DO NOT CHANGE]
 
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
