@@ -1,5 +1,5 @@
 
-import { Team, Game, SimulationResult } from '../types';
+import { Team, Game, SimulationResult, PlayerBoxScore, TacticalSnapshot } from '../types';
 import { simulateGame } from './gameEngine';
 
 export interface CpuGameResult {
@@ -10,6 +10,8 @@ export interface CpuGameResult {
     awayScore: number;
     isPlayoff?: boolean;
     seriesId?: string;
+    boxScore: { home: PlayerBoxScore[]; away: PlayerBoxScore[] };
+    tactics: { home: TacticalSnapshot; away: TacticalSnapshot };
 }
 
 /**
@@ -45,7 +47,9 @@ export const simulateCpuGames = (
                 homeScore: simResult.homeScore,
                 awayScore: simResult.awayScore,
                 isPlayoff: game.isPlayoff,
-                seriesId: game.seriesId
+                seriesId: game.seriesId,
+                boxScore: { home: simResult.homeBox, away: simResult.awayBox },
+                tactics: { home: simResult.homeTactics, away: simResult.awayTactics }
             });
         }
     }

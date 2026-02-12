@@ -31,9 +31,13 @@ export function calculateIncrementalFatigue(
 
     // Injury Check (Micro-roll)
     let injuryOccurred = false;
-    if (effectiveCondition < 30) {
+    // [Update] Lowered threshold from 30 to 15 to reduce injury frequency
+    if (effectiveCondition < 15) {
         const roll = Math.random() * 10000;
-        if (roll < (30 - effectiveCondition) * 2.5) {
+        // Adjusted multiplier to 5.0:
+        // At condition 14: (15-14)*5 = 5/10000 = 0.05%
+        // At condition 0:  (15-0)*5  = 75/10000 = 0.75% (Same peak risk as before, but safer zone is larger)
+        if (roll < (15 - effectiveCondition) * 5.0) {
             injuryOccurred = true;
         }
     }
