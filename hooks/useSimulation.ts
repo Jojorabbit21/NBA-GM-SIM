@@ -1,14 +1,14 @@
 
 import { useState, useRef, useCallback } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player, RosterUpdate, SimulationResult } from '../types';
 import { simulateGame } from '../services/gameEngine';
 import { simulateCpuGames } from '../services/simulationService';
-import { checkAndInitPlayoffs, advancePlayoffState, generateNextPlayoffGames } from '../utils/playoffLogic';
 import { updateTeamStats, updateSeriesState } from '../utils/simulationUtils';
-import { saveGameResults, saveUserTransaction } from '../services/queries';
+import { checkAndInitPlayoffs, advancePlayoffState, generateNextPlayoffGames } from '../utils/playoffLogic';
+import { saveGameResults } from '../services/queries';
 import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
+import { generateGameRecapNews, generateCPUTradeNews } from '../services/geminiService';
 import { simulateCPUTrades } from '../services/tradeEngine';
-import { generateCPUTradeNews, generateGameRecapNews } from '../services/geminiService';
 import { sendMessage } from '../services/messageService';
 
 export const useSimulation = (
@@ -18,12 +18,12 @@ export const useSimulation = (
     setSchedule: React.Dispatch<React.SetStateAction<Game[]>>,
     myTeamId: string | null,
     currentSimDate: string,
-    advanceDate: (newDate: string, overrides: any) => void,
+    advanceDate: (date: string, overrides: any) => void,
     playoffSeries: PlayoffSeries[],
     setPlayoffSeries: React.Dispatch<React.SetStateAction<PlayoffSeries[]>>,
     setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>,
     setNews: React.Dispatch<React.SetStateAction<any[]>>,
-    setToastMessage: (msg: string | null) => void,
+    setToastMessage: (msg: string) => void,
     forceSave: (overrides?: any) => Promise<void>,
     session: any,
     isGuestMode: boolean,
@@ -34,8 +34,6 @@ export const useSimulation = (
     const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any | null>(null);
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
-    
-    // Ref to hold the finalize function so it can be called from the View
     const finalizeSimRef = useRef<(() => void) | null>(null);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false) => {
@@ -43,36 +41,40 @@ export const useSimulation = (
         setIsSimulating(true);
 
         try {
-            // 1. Identify User's Game today
+            // 1. Identify User Game
             const userGame = schedule.find(g => 
                 !g.played && 
                 g.date === currentSimDate && 
                 (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
             );
 
-            // 2. Prepare CPU Games
+            // 2. Simulate CPU Games
             const cpuResults = simulateCpuGames(schedule, teams, currentSimDate, userGame?.id);
 
             // 3. User Game Logic
             if (userGame) {
-                const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
-                const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
+                const homeTeam = teams.find(t => t.id === userGame.homeTeamId);
+                const awayTeam = teams.find(t => t.id === userGame.awayTeamId);
 
-                // [Fix] Inject Depth Chart into Tactics for simulation
-                const effectiveTactics = { ...userTactics };
-                if (depthChart) effectiveTactics.depthChart = depthChart;
+                if (!homeTeam || !awayTeam) {
+                    setIsSimulating(false);
+                    return;
+                }
 
-                // Check B2B status (simple check: played yesterday?)
-                // Assuming date strings are comparable or we check schedule
-                const yesterday = new Date(new Date(currentSimDate).getTime() - 86400000).toISOString().split('T')[0];
-                const isHomeB2B = schedule.some(g => g.played && g.date === yesterday && (g.homeTeamId === homeTeam.id || g.awayTeamId === homeTeam.id));
-                const isAwayB2B = schedule.some(g => g.played && g.date === yesterday && (g.homeTeamId === awayTeam.id || g.awayTeamId === awayTeam.id));
+                // Simulate User Game (PbP Engine)
+                // Determine Back-to-Back status
+                const isHomeB2B = schedule.some(g => g.played && g.date === new Date(new Date(currentSimDate).setDate(new Date(currentSimDate).getDate() - 1)).toISOString().split('T')[0] && (g.homeTeamId === homeTeam.id || g.awayTeamId === homeTeam.id));
+                const isAwayB2B = schedule.some(g => g.played && g.date === new Date(new Date(currentSimDate).setDate(new Date(currentSimDate).getDate() - 1)).toISOString().split('T')[0] && (g.homeTeamId === awayTeam.id || g.awayTeamId === awayTeam.id));
 
                 const userSimResult = simulateGame(
-                    homeTeam, awayTeam, myTeamId, effectiveTactics, 
-                    isHomeB2B, isAwayB2B,
-                    myTeamId === homeTeam.id ? depthChart : undefined, // homeDepthChart
-                    myTeamId === awayTeam.id ? depthChart : undefined  // awayDepthChart
+                    homeTeam, 
+                    awayTeam, 
+                    myTeamId, 
+                    userTactics, 
+                    isHomeB2B, 
+                    isAwayB2B,
+                    homeTeam.id === myTeamId ? depthChart : undefined,
+                    awayTeam.id === myTeamId ? depthChart : undefined
                 );
 
                 // Define Finalize Function (State updates & DB save)
@@ -82,7 +84,44 @@ export const useSimulation = (
                     // Update stats for User Game
                     const homeT = newTeams.find((t: Team) => t.id === homeTeam.id);
                     const awayT = newTeams.find((t: Team) => t.id === awayTeam.id);
-                    updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
+                    if (homeT && awayT) updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
+
+                    // Apply Roster Updates (Fatigue & Injuries) from Game Result
+                    if (userSimResult.rosterUpdates) {
+                        const updates = userSimResult.rosterUpdates;
+                        // Iterate affected teams (User's game only involves 2 teams)
+                        [homeT, awayT].forEach((team: Team) => {
+                            if (team) {
+                                team.roster.forEach((p: Player) => {
+                                    const update = updates[p.id];
+                                    const oldCond = p.condition || 100;
+
+                                    if (update) {
+                                        // Update Condition from Engine
+                                        if (update.condition !== undefined) {
+                                            p.condition = update.condition;
+                                            p.conditionDelta = Number((p.condition - oldCond).toFixed(1));
+                                        }
+                                        // Update Health
+                                        if (update.health) {
+                                            p.health = update.health as any;
+                                            p.injuryType = update.injuryType;
+                                            p.returnDate = update.returnDate;
+                                        }
+                                    } else {
+                                        // DNP (Did Not Play) -> Minor Recovery on game day
+                                        if (oldCond < 100) {
+                                            const recovered = Math.min(100, oldCond + 5);
+                                            p.condition = recovered;
+                                            p.conditionDelta = Number((recovered - oldCond).toFixed(1));
+                                        } else {
+                                            p.conditionDelta = 0;
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    }
 
                     // Update stats for CPU Games
                     cpuResults.forEach(res => {
@@ -253,10 +292,8 @@ export const useSimulation = (
                 };
 
                 if (skipAnimation) {
-                    // [Feature] Instant Sim: Execute immediately without entering GameSim view
                     await executeStateUpdates();
                 } else {
-                    // Normal Sim: Enter GameSim view and wait for completion
                     setActiveGame(userGame);
                     setTempSimulationResult(userSimResult);
                     finalizeSimRef.current = executeStateUpdates;
@@ -265,6 +302,23 @@ export const useSimulation = (
             } else {
                 // No User Game today - Just Advance
                 const newTeams = JSON.parse(JSON.stringify(teams));
+                
+                // Apply Daily Rest Recovery for User Team (Day Off)
+                const myTeam = newTeams.find((t: Team) => t.id === myTeamId);
+                if (myTeam) {
+                    myTeam.roster.forEach((p: Player) => {
+                        const oldCond = p.condition || 100;
+                        if (oldCond < 100) {
+                            // Recover 15% per rest day
+                            const newCond = Math.min(100, oldCond + 15);
+                            p.condition = parseFloat(newCond.toFixed(1));
+                            p.conditionDelta = Number((newCond - oldCond).toFixed(1));
+                        } else {
+                            p.conditionDelta = 0;
+                        }
+                    });
+                }
+                
                 cpuResults.forEach(res => {
                     const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
                     const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
@@ -289,29 +343,34 @@ export const useSimulation = (
                 advanceDate(nextDate, { teams: newTeams, schedule: newSchedule });
                 await forceSave({ currentSimDate: nextDate, teams: newTeams });
                 setIsSimulating(false);
-                setToastMessage("다음 날짜로 이동했습니다.");
+                setToastMessage("다음 날짜로 이동했습니다 (휴식일).");
             }
-
         } catch (e) {
-            console.error("Simulation Failed:", e);
-            setIsSimulating(false);
+            console.error("Simulation Error:", e);
             setToastMessage("시뮬레이션 중 오류가 발생했습니다.");
+            setIsSimulating(false);
         }
-    }, [isSimulating, myTeamId, schedule, currentSimDate, teams, playoffSeries, depthChart, session, refreshUnreadCount]);
+    }, [isSimulating, myTeamId, teams, schedule, currentSimDate, depthChart, playoffSeries, advanceDate, forceSave, session, refreshUnreadCount]);
+
+    const loadSavedGameResult = (result: any) => {
+        setLastGameResult(result);
+    };
+
+    const clearLastGameResult = () => {
+        setLastGameResult(null);
+    };
 
     return {
+        handleExecuteSim,
         isSimulating,
         setIsSimulating,
         activeGame,
+        setActiveGame,
         lastGameResult,
+        clearLastGameResult,
+        loadSavedGameResult,
         tempSimulationResult,
-        finalizeSimRef,
-        handleExecuteSim,
-        clearLastGameResult: () => {
-            setLastGameResult(null);
-            setTempSimulationResult(null);
-            setActiveGame(null);
-        },
-        loadSavedGameResult: (res: any) => setLastGameResult(res)
+        setTempSimulationResult,
+        finalizeSimRef
     };
 };
