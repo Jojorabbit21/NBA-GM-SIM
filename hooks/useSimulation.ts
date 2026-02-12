@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart, TradeAlertContent } from '../types';
 import { simulateGame } from '../services/gameEngine';
 import { saveGameResults, saveUserTransaction } from '../services/queries';
 import { generateGameRecapNews } from '../services/geminiService';
@@ -201,12 +201,46 @@ export const useSimulation = (
         if (Math.random() < 0.3) {
             const tradeResult = await simulateCPUTrades(updatedTeams, myTeamId);
             if (tradeResult && tradeResult.transaction) {
+                // [Fix] Generate ID if missing (Fixes ?????? in History)
+                if (!tradeResult.transaction.id) {
+                    tradeResult.transaction.id = crypto.randomUUID();
+                }
+
                 updatedTeams = tradeResult.updatedTeams;
                 setTransactions(prev => [tradeResult.transaction!, ...prev]);
-                setToastMessage(`[트레이드] ${tradeResult.transaction.description}`);
+                
+                // [Request] Removed Toast Message
+                // setToastMessage(`[트레이드] ${tradeResult.transaction.description}`);
                 
                 if (!isGuestMode && session?.user?.id) {
                     await saveUserTransaction(session.user.id, tradeResult.transaction);
+                    
+                    // [Request] Send Message to Inbox for CPU Trades
+                    const tx = tradeResult.transaction;
+                    const team1 = updatedTeams.find(t => t.id === tx.teamId);
+                    const team2 = updatedTeams.find(t => t.id === tx.details.partnerTeamId);
+                    
+                    const tradeContent: TradeAlertContent = {
+                        summary: tx.description,
+                        trades: [{
+                            team1Id: tx.teamId,
+                            team1Name: team1?.name || tx.teamId,
+                            team2Id: tx.details.partnerTeamId,
+                            team2Name: tx.details.partnerTeamName,
+                            team1Acquired: tx.details.acquired.map((p: any) => ({ id: p.id, name: p.name, ovr: p.ovr || 70 })),
+                            team2Acquired: tx.details.traded.map((p: any) => ({ id: p.id, name: p.name, ovr: p.ovr || 70 }))
+                        }]
+                    };
+
+                    await sendMessage(
+                        session.user.id,
+                        myTeamId!,
+                        currentSimDate,
+                        'TRADE_ALERT',
+                        tx.description,
+                        tradeContent
+                    );
+                    refreshUnreadCount();
                 }
             }
         }
