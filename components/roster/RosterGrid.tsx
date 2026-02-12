@@ -300,7 +300,14 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                 <div className="flex flex-col">
                                     <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
-                                    {p.health !== 'Healthy' && <span className={`text-[9px] font-black uppercase ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}>{p.health}</span>}
+                                    {p.health !== 'Healthy' && (
+                                        <span 
+                                            className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
+                                            title={`${p.injuryType || '부상'} | 예상 복귀: ${p.returnDate || '미정'}`}
+                                        >
+                                            {p.health}
+                                        </span>
+                                    )}
                                 </div>
                             </TableCell>
                             <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>

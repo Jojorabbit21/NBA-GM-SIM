@@ -51,6 +51,38 @@ export const useSimulation = (
             // 2. Simulate CPU Games
             const cpuResults = simulateCpuGames(schedule, teams, currentSimDate, userGame?.id);
 
+            // Helper to save CPU results
+            const saveCpuGames = async (uId: string) => {
+                const regPayloads: any[] = [];
+                const poPayloads: any[] = [];
+                
+                cpuResults.forEach(res => {
+                    const p = {
+                        user_id: uId,
+                        game_id: res.gameId,
+                        date: currentSimDate,
+                        home_team_id: res.homeTeamId,
+                        away_team_id: res.awayTeamId,
+                        home_score: res.homeScore,
+                        away_score: res.awayScore,
+                        box_score: res.boxScore,
+                        tactics: res.tactics,
+                        is_playoff: res.isPlayoff || false,
+                        series_id: res.seriesId || null,
+                        pbp_logs: [],
+                        shot_events: [],
+                        rotation_data: {}
+                    };
+                    if (res.isPlayoff) poPayloads.push(p);
+                    else regPayloads.push(p);
+                });
+
+                if (regPayloads.length > 0) await saveGameResults(regPayloads);
+                if (poPayloads.length > 0) {
+                    for (const pg of poPayloads) await savePlayoffGameResult(pg);
+                }
+            };
+
             // 3. User Game Logic
             if (userGame) {
                 const homeTeam = teams.find(t => t.id === userGame.homeTeamId);
@@ -182,7 +214,7 @@ export const useSimulation = (
                         }
                     }
 
-                    // DB Save (User Game Result)
+                    // DB Save (User Game Result & CPU Game Results)
                     if (session?.user?.id) {
                         const userId = session.user.id;
                         
@@ -211,6 +243,9 @@ export const useSimulation = (
                         } else {
                             await saveGameResults([userGamePayload]);
                         }
+                        
+                        // [FIX] Save CPU Games
+                        await saveCpuGames(userId);
 
                         // Send Game Recap Message
                         const recapNews = await generateGameRecapNews({
@@ -334,6 +369,11 @@ export const useSimulation = (
                         newSchedule[cIdx].awayScore = res.awayScore;
                     }
                 });
+                
+                // [FIX] Save CPU Games
+                if (session?.user?.id) {
+                    await saveCpuGames(session.user.id);
+                }
 
                 // Advance Date
                 const d = new Date(currentSimDate);
