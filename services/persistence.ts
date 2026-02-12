@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Transaction, GameTactics, DepthChart } from '../types';
+import { Transaction, GameTactics, DepthChart, SavedPlayerState } from '../types';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
@@ -8,7 +8,7 @@ export const saveCheckpoint = async (
     teamId: string, 
     simDate: string, 
     tactics?: GameTactics | null,
-    rosterState?: Record<string, number>, // Map of PlayerID -> Condition
+    rosterState?: Record<string, SavedPlayerState | number>, // Supports legacy number or new Object
     depthChart?: DepthChart | null // [New] Depth Chart Data
 ) => {
     if (!userId || !teamId || !simDate) return null;

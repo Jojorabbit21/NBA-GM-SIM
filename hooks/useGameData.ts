@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
 import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
@@ -84,17 +84,30 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                         checkpoint.sim_date
                     );
 
-                    // [NEW] Apply Saved Roster Condition State
+                    // [NEW] Apply Saved Roster Condition & Injury State
                     let loadedTeams = replayedState.teams;
                     if (checkpoint.roster_state) {
-                        const conditionMap = checkpoint.roster_state;
+                        const stateMap = checkpoint.roster_state;
                         loadedTeams = loadedTeams.map(t => ({
                             ...t,
-                            roster: t.roster.map(p => ({
-                                ...p,
-                                // [CRITICAL FIX] Use ?? instead of || to prevent 0 -> 100 flip
-                                condition: conditionMap[p.id] !== undefined ? conditionMap[p.id] : (p.condition ?? 100)
-                            }))
+                            roster: t.roster.map(p => {
+                                const savedState = stateMap[p.id];
+                                if (!savedState) return p;
+
+                                // Handle Legacy Format (number only for condition)
+                                if (typeof savedState === 'number') {
+                                    return { ...p, condition: savedState };
+                                }
+                                
+                                // Handle New Object Format
+                                return {
+                                    ...p,
+                                    condition: savedState.condition ?? 100,
+                                    health: savedState.health || 'Healthy',
+                                    injuryType: savedState.injuryType,
+                                    returnDate: savedState.returnDate
+                                };
+                            })
                         }));
                     }
 
@@ -159,17 +172,26 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             const teamId = overrides?.myTeamId || gameStateRef.current.myTeamId;
             const date = overrides?.currentSimDate || gameStateRef.current.currentSimDate;
             const tactics = overrides?.userTactics || gameStateRef.current.userTactics;
-            const depthChart = overrides?.depthChart || gameStateRef.current.depthChart; // [New]
+            const depthChart = overrides?.depthChart || gameStateRef.current.depthChart; 
             
-            // [NEW] Capture Roster State (Condition) from current teams (or override)
+            // [NEW] Capture Full Roster State (Condition + Injury)
             const currentTeams = overrides?.teams || gameStateRef.current.teams;
-            const rosterState: Record<string, number> = {};
+            const rosterState: Record<string, SavedPlayerState> = {};
+            
             if (currentTeams) {
                 currentTeams.forEach((t: Team) => {
                     t.roster.forEach((p: Player) => {
-                        // Only save if condition is not 100 to save space, or save all
-                        if (p.condition !== undefined && p.condition < 100) {
-                            rosterState[p.id] = p.condition;
+                        // Save if condition changed OR if player is injured
+                        const isInjured = p.health !== 'Healthy';
+                        const isFatigued = p.condition !== undefined && p.condition < 100;
+                        
+                        if (isInjured || isFatigued) {
+                            rosterState[p.id] = {
+                                condition: p.condition || 100,
+                                health: p.health,
+                                injuryType: p.injuryType,
+                                returnDate: p.returnDate
+                            };
                         }
                     });
                 });
