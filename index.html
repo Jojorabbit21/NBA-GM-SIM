@@ -37,6 +37,10 @@
 </script>
 </head>
 <body>
+    <!-- Font Preload Hack: 화면에 보이지 않는 텍스트를 미리 렌더링하여 폰트 파일을 강제로 다운로드합니다. -->
+    <!-- 이를 통해 시뮬레이션 시작 시 폰트가 깜빡이는 현상(FOUT)을 방지합니다. -->
+    <div style="font-family: 'Seven Segment'; position: absolute; opacity: 0; pointer-events: none; z-index: -1000;">88:88</div>
+
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>
