@@ -247,7 +247,7 @@ const MessageContentRenderer: React.FC<{
                     homeTactics: raw.tactics?.home,
                     awayTactics: raw.tactics?.away,
                     pbpLogs: raw.pbp_logs,
-                    pbpShotEvents: raw.shot_events,
+                    pbpShotEvents: raw.shot_events || [], // [Fix] Add Fallback for missing shot events
                     rotationData: raw.rotation_data,
                     otherGames: [], // Can't easily fetch full other games context here, leave empty
                     date: raw.date,

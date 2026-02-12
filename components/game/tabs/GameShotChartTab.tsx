@@ -48,7 +48,10 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
     
     // Filter and Transform Shots to Half Court (Left Hoop Perspective)
     const displayShots = useMemo(() => {
-        return shotEvents
+        // [Fix] Defensive check for null shotEvents from legacy/broken data
+        const safeEvents = shotEvents || [];
+
+        return safeEvents
             .filter(shot => shot.teamId === selectedTeamId && selectedPlayerIds.has(shot.playerId))
             .map(shot => {
                 // Normalize to Left Half Court (0-47ft)
@@ -225,7 +228,9 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                     const isSelected = selectedPlayerIds.has(player.id);
                                     
                                     // Count shots for this player
-                                    const playerShots = shotEvents.filter(s => s.teamId === activeTeam.id && s.playerId === player.id);
+                                    // [Fix] Add safe fallback for shotEvents null check
+                                    const safeEvents = shotEvents || [];
+                                    const playerShots = safeEvents.filter(s => s.teamId === activeTeam.id && s.playerId === player.id);
                                     const made = playerShots.filter(s => s.isMake).length;
                                     const total = playerShots.length;
                                     

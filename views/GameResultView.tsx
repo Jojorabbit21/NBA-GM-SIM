@@ -120,7 +120,7 @@ export const GameResultView: React.FC<{
                   <GameShotChartTab 
                       homeTeam={home}
                       awayTeam={away}
-                      shotEvents={pbpShotEvents}
+                      shotEvents={pbpShotEvents || []} // [Fix] Ensure array
                   />
               )}
 
