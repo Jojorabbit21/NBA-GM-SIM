@@ -47,6 +47,14 @@ export interface HiddenTendencies {
     lateralBias: number;
 }
 
+// [New] Interface for saving player state (Condition + Health)
+export interface SavedPlayerState {
+    condition: number;
+    health?: 'Healthy' | 'Injured' | 'Day-to-Day';
+    injuryType?: string;
+    returnDate?: string;
+}
+
 export interface Player {
     id: string;
     name: string;
