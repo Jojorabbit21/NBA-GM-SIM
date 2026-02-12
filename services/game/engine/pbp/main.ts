@@ -1,5 +1,5 @@
 
-import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, PbpLog, RotationData, TacticalSnapshot } from '../../../../types';
+import { Team, GameTactics, DepthChart, SimulationResult, PlayerBoxScore, PbpLog, RotationData, TacticalSnapshot, RosterUpdate } from '../../../../types';
 import { initTeamState } from './initializer';
 import { calculatePossessionTime } from './timeEngine';
 import { checkAndApplyRotation, forceSubstitution } from './rotationLogic';
@@ -7,7 +7,7 @@ import { simulatePossession } from './possessionHandler';
 import { updateOnCourtStates } from './stateUpdater';
 import { applyPossessionResult } from './statsMappers';
 import { checkSubstitutions } from './substitutionSystem';
-import { LivePlayer, ShotEvent } from './pbpTypes';
+import { LivePlayer, ShotEvent, InjuryEvent } from './pbpTypes';
 
 export function runFullGameSimulation(
     homeTeam: Team,
@@ -32,6 +32,7 @@ export function runFullGameSimulation(
         logs: [] as PbpLog[],
         rotationHistory: {} as RotationData,
         shotEvents: [] as ShotEvent[], // [New] Init shot events
+        injuries: [] as InjuryEvent[], // [New] Init injuries
         isHomeB2B,
         isAwayB2B
     };
@@ -155,6 +156,21 @@ export function runFullGameSimulation(
         sliders: t.sliders
     });
 
+    // [New] Collect Roster Updates (Injuries)
+    const rosterUpdates: Record<string, RosterUpdate> = {};
+    [state.home, state.away].forEach(team => {
+        [...team.onCourt, ...team.bench].forEach((p: LivePlayer) => {
+            if (p.health !== 'Healthy') {
+                rosterUpdates[p.playerId] = {
+                    health: p.health,
+                    injuryType: p.injuryType,
+                    returnDate: p.returnDate,
+                    condition: p.currentCondition
+                };
+            }
+        });
+    });
+
     return {
         homeScore: state.home.score,
         awayScore: state.away.score,
@@ -162,9 +178,10 @@ export function runFullGameSimulation(
         awayBox: mapToBox(state.away),
         homeTactics: mapTactics(state.home.tactics),
         awayTactics: mapTactics(state.away.tactics),
-        rosterUpdates: {},
+        rosterUpdates: rosterUpdates,
         pbpLogs: state.logs,
         rotationData: state.rotationHistory,
-        pbpShotEvents: state.shotEvents // [New] Pass shot events to result
+        pbpShotEvents: state.shotEvents,
+        injuries: state.injuries // [New] Pass injuries
     };
 }

@@ -95,9 +95,28 @@ export const useSimulation = (
             const homeTeam = updatedTeams.find(t => t.id === userGame.homeTeamId)!;
             const awayTeam = updatedTeams.find(t => t.id === userGame.awayTeamId)!;
             
-            // Update Logic
+            // Update Stats
             updateTeamStats(homeTeam, awayTeam, userSimResult.homeScore, userSimResult.awayScore);
             
+            // [Fix] Apply Roster Updates (Injuries) to Global State
+            if (userSimResult.rosterUpdates) {
+                updatedTeams = updatedTeams.map(t => {
+                    if (t.id === homeTeam.id || t.id === awayTeam.id) {
+                         return {
+                             ...t,
+                             roster: t.roster.map(p => {
+                                 const update = userSimResult.rosterUpdates[p.id];
+                                 if (update) {
+                                     return { ...p, ...update };
+                                 }
+                                 return p;
+                             })
+                         };
+                    }
+                    return t;
+                });
+            }
+
             if (userGame.isPlayoff && userGame.seriesId) {
                 updateSeriesState(updatedPlayoffSeries, userGame.seriesId, userGame.homeTeamId, userGame.awayTeamId, userSimResult.homeScore, userSimResult.awayScore);
             }
@@ -124,7 +143,7 @@ export const useSimulation = (
                 box_score: { home: userSimResult.homeBox, away: userSimResult.awayBox },
                 rotation_data: userSimResult.rotationData,
                 tactics: { home: userSimResult.homeTactics, away: userSimResult.awayTactics },
-                shot_events: userSimResult.pbpShotEvents || [], // [Critical] Persist Shot Events
+                shot_events: userSimResult.pbpShotEvents || [],
                 pbp_logs: userSimResult.pbpLogs
             };
 
@@ -162,7 +181,7 @@ export const useSimulation = (
                 refreshUnreadCount();
             }
 
-            // [Fix] Flatten structure for GameResultView
+            // Flatten structure for GameResultView
             setLastGameResult({
                 ...userResult,
                 // Explicitly pass flattened props expected by GameResultView
@@ -173,7 +192,8 @@ export const useSimulation = (
                 home: homeTeam,
                 away: awayTeam,
                 otherGames: [], // Filled below
-                recap: []
+                recap: [],
+                injuries: userSimResult.injuries // [New] Pass injuries
             });
         }
 
@@ -216,16 +236,11 @@ export const useSimulation = (
                 updatedTeams = tradeResult.updatedTeams;
                 setTransactions(prev => [tradeResult.transaction!, ...prev]);
                 
-                // [Request] Removed Toast Message
-                // setToastMessage(`[트레이드] ${tradeResult.transaction.description}`);
-                
                 if (!isGuestMode && session?.user?.id) {
                     await saveUserTransaction(session.user.id, tradeResult.transaction);
                     
-                    // [Request] Send Message to Inbox for CPU Trades
                     const tx = tradeResult.transaction;
                     const team1 = updatedTeams.find(t => t.id === tx.teamId);
-                    const team2 = updatedTeams.find(t => t.id === tx.details.partnerTeamId);
                     
                     const tradeContent: TradeAlertContent = {
                         summary: tx.description,

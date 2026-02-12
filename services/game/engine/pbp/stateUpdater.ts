@@ -40,17 +40,35 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
 
             // Injury Check
             if (fatigueRes.injuryOccurred && p.health === 'Healthy') {
+                const injuryTypes = ['Ankle Sprain', 'Hamstring Strain', 'Knee Soreness', 'Calf Strain', 'Back Spasms'];
+                const durations = ['1 Week', '2 Weeks', '1 Month', 'Day-to-Day', '3 Days'];
+                
+                const type = injuryTypes[Math.floor(Math.random() * injuryTypes.length)];
+                const duration = durations[Math.floor(Math.random() * durations.length)];
+
                 p.health = 'Injured';
-                p.injuryType = 'General Soreness'; // Placeholder for specific injury generation
-                p.returnDate = 'TBD';
+                p.injuryType = type;
+                p.returnDate = duration; // Storing duration string temporarily as returnDate for simple display
                 
                 // Add Log
+                const timeStr = formatTime(state.gameClock);
                 state.logs.push({
                     quarter: state.quarter,
-                    timeRemaining: formatTime(state.gameClock),
+                    timeRemaining: timeStr,
                     teamId: team.id,
-                    text: `🚨 ${p.playerName} 선수가 고통을 호소하며 쓰러졌습니다.`,
+                    text: `🚨 ${p.playerName} 선수가 고통을 호소하며 쓰러졌습니다. (${type})`,
                     type: 'info'
+                });
+
+                // [New] Record Structural Injury Event
+                state.injuries.push({
+                    playerId: p.playerId,
+                    playerName: p.playerName,
+                    teamId: team.id,
+                    injuryType: type,
+                    durationDesc: duration,
+                    quarter: state.quarter,
+                    timeRemaining: timeStr
                 });
             }
         });

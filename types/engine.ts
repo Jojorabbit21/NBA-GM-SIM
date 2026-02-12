@@ -60,6 +60,16 @@ export interface ShotEvent {
     assistPlayerId?: string;
 }
 
+export interface InjuryEvent {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    injuryType: string;
+    durationDesc: string;
+    quarter: number;
+    timeRemaining: string;
+}
+
 export interface SimulationResult {
     homeScore: number;
     awayScore: number;
@@ -70,7 +80,8 @@ export interface SimulationResult {
     rosterUpdates: Record<string, any>;
     pbpLogs: PbpLog[];
     rotationData: RotationData;
-    pbpShotEvents?: ShotEvent[]; // [New]
+    pbpShotEvents?: ShotEvent[]; 
+    injuries?: InjuryEvent[];
 }
 
 export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition';

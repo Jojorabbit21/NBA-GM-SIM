@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -93,6 +93,17 @@ export interface ShotEvent {
     assistPlayerId?: string;
 }
 
+// [New] Structured Injury Event
+export interface InjuryEvent {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    injuryType: string;
+    durationDesc: string; // e.g., "2 Weeks", "Day-to-Day"
+    quarter: number;
+    timeRemaining: string;
+}
+
 export interface GameState {
     home: TeamState;
     away: TeamState;
@@ -115,6 +126,9 @@ export interface GameState {
     
     // [New] Shot Chart Data
     shotEvents: ShotEvent[];
+
+    // [New] Injury Tracking
+    injuries: InjuryEvent[];
 }
 
 export interface PossessionResult {
