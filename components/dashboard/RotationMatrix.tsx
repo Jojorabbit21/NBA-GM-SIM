@@ -3,7 +3,7 @@ import React, { useMemo, useState } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { AlertCircle, Timer, RotateCcw, Wand2 } from 'lucide-react';
+import { AlertCircle, RotateCcw, Wand2 } from 'lucide-react';
 import { Table, TableBody, TableRow } from '../common/Table';
 
 interface RotationMatrixProps {
@@ -124,7 +124,8 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     const stickyBottom = "border-b border-slate-800";
     const gridBorder = "border-r border-slate-800/50"; 
     const gridBottom = "border-b border-slate-800/50";
-    const quarterDivider = "border-r-indigo-500";
+    // [Update] Increased visibility for quarter dividers (2px width, stronger color)
+    const quarterDivider = "!border-r-2 !border-r-indigo-500/50"; 
 
     const getMinColor = (mins: number) => {
         if (mins === 0) return 'text-slate-600';
@@ -138,7 +139,6 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
              <div className="px-6 py-4 bg-slate-800 border-t-2 border-t-indigo-500 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
                  <div className="flex items-center gap-3">
-                    <Timer size={20} className="text-indigo-400"/>
                     <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
                  </div>
                  
