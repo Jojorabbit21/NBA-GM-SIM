@@ -41,6 +41,17 @@ export function runFullGameSimulation(
         injuries: []
     };
 
+    // [FIX] Initialize Rotation History for Starters
+    // 선발 선수들의 시작 시간(0분)을 기록하여 1쿼터 차트가 누락되지 않도록 함
+    [state.home, state.away].forEach(team => {
+        team.onCourt.forEach(p => {
+            if (!state.rotationHistory[p.playerId]) {
+                state.rotationHistory[p.playerId] = [];
+            }
+            state.rotationHistory[p.playerId].push({ in: 0, out: 0 });
+        });
+    });
+
     // 2. Game Loop (4 Quarters)
     for (let q = 1; q <= 4; q++) {
         state.quarter = q;
@@ -100,6 +111,18 @@ export function runFullGameSimulation(
             state.possession = state.possession === 'home' ? 'away' : 'home';
         }
     }
+
+    // [FIX] Finalize Rotation Segments
+    // 경기 종료 시점까지 코트에 있는 선수들의 'out' 시간을 기록하여 그래프를 닫아줌
+    const GAME_END_SEC = 48 * 60;
+    [state.home, state.away].forEach(team => {
+        team.onCourt.forEach(p => {
+             const hist = state.rotationHistory[p.playerId];
+             if (hist && hist.length > 0) {
+                 hist[hist.length - 1].out = GAME_END_SEC;
+             }
+        });
+    });
 
     // 3. Finalize & Map Results
     const mapToBox = (teamState: TeamState) => {
