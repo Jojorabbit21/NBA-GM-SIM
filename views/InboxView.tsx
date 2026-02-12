@@ -237,6 +237,7 @@ const MessageContentRenderer: React.FC<{
                 const awayTeam = teams.find(t => t.id === raw.away_team_id);
                 
                 // Construct result object compatible with GameResultView
+                // [Fix] Ensure pbp_logs and shot_events are safe arrays
                 const mappedResult = {
                     home: homeTeam,
                     away: awayTeam,
@@ -246,8 +247,8 @@ const MessageContentRenderer: React.FC<{
                     awayBox: raw.box_score?.away || [],
                     homeTactics: raw.tactics?.home,
                     awayTactics: raw.tactics?.away,
-                    pbpLogs: raw.pbp_logs,
-                    pbpShotEvents: raw.shot_events || [], // [Fix] Add Fallback for missing shot events
+                    pbpLogs: raw.pbp_logs || [], // Safety fallback
+                    pbpShotEvents: raw.shot_events || [], // Safety fallback
                     rotationData: raw.rotation_data,
                     otherGames: [], // Can't easily fetch full other games context here, leave empty
                     date: raw.date,
@@ -258,7 +259,7 @@ const MessageContentRenderer: React.FC<{
                     onViewGameResult(mappedResult);
                 }
             } else {
-                alert("경기 데이터를 불러올 수 없습니다.");
+                alert("경기 데이터를 불러올 수 없습니다. (데이터가 존재하지 않거나 손상됨)");
             }
         } catch (e) {
             console.error("Fetch failed", e);
@@ -370,7 +371,7 @@ const MessageContentRenderer: React.FC<{
                         </div>
                     )}
                     
-                    {/* [Added] View Detail Button */}
+                    {/* View Detail Button */}
                     <div className="flex justify-center pt-4">
                         <button 
                             onClick={() => handleViewDetails(gameData.gameId)}
