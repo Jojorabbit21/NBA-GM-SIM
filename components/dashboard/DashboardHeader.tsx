@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CalendarClock } from 'lucide-react';
+import { CalendarClock, FastForward } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
@@ -16,12 +16,13 @@ interface DashboardHeaderProps {
   isGameToday: boolean;
   isSimulating?: boolean;
   onSimClick: () => void;
+  onAutoSimClick?: () => void; // New prop
   currentSeries?: PlayoffSeries;
   currentSimDate?: string;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
-  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, 
+  team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, onAutoSimClick,
   currentSeries
 }) => {
   const homeTeam = isHome ? team : opponent;
@@ -91,7 +92,20 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
 
             {/* Right: Simulation Action */}
-            <div className="flex items-center">
+            <div className="flex items-center gap-3">
+                {isGameToday && onAutoSimClick && (
+                    <Button 
+                        onClick={onAutoSimClick} 
+                        disabled={isSimulating} 
+                        variant="secondary"
+                        size="md"
+                        icon={<FastForward size={16} />}
+                        className="min-w-[130px] h-10 !rounded-xl"
+                    >
+                        자동 진행
+                    </Button>
+                )}
+
                 <Button 
                     onClick={onSimClick} 
                     disabled={isSimulating} 
