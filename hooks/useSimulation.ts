@@ -8,6 +8,11 @@ import { savePlayoffState } from '../services/playoffService';
 import { INITIAL_STATS } from '../utils/constants';
 import { sendMessage } from '../services/messageService';
 
+// [Config] Recovery Rates
+const RECOVERY_REST_DAY = 25; // 경기 없는 날 (완전 휴식)
+const RECOVERY_POST_GAME_PLAYED = 15; // 경기 출전 후 (수면 회복)
+const RECOVERY_POST_GAME_DNP = 25; // 경기 결장 (수면 + 휴식)
+
 export const useSimulation = (
     teams: Team[], setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
     schedule: Game[], setSchedule: React.Dispatch<React.SetStateAction<Game[]>>,
@@ -56,7 +61,7 @@ export const useSimulation = (
                         awayTeam.wins++;
                     }
 
-                    // 2. Update Player Stats & Condition
+                    // 2. Update Player Stats
                     const applyBox = (team: Team, box: PlayerBoxScore[]) => {
                         box.forEach(line => {
                             const p = team.roster.find(player => player.id === line.playerId);
@@ -83,11 +88,6 @@ export const useSimulation = (
                                 p.stats.ftm += line.ftm;
                                 p.stats.pf += line.pf || 0;
                                 p.stats.plusMinus += (line.plusMinus || 0);
-
-                                // Apply Post-Game Condition (Fatigue)
-                                if (line.condition !== undefined) {
-                                    p.condition = line.condition;
-                                }
 
                                 // Detailed Zone Stats Accumulation
                                 Object.keys(line).forEach(key => {
@@ -139,7 +139,7 @@ export const useSimulation = (
                 home_team_id: og.homeTeamId,
                 away_team_id: og.awayTeamId,
                 home_score: res.homeScore,
-                away_score: res.awayScore,
+                away_score: res.awayScore, // [Fixed] Changed from res.away_score to res.awayScore
                 is_playoff: og.isPlayoff,
                 series_id: og.seriesId,
                 box_score: { home: res.homeBox, away: res.awayBox }
@@ -150,24 +150,62 @@ export const useSimulation = (
             await saveGameResults(resultsToSave);
         }
         
-        // Immediate local reflect
         updateLocalStandingsAndStats(resultsToSave);
 
         return updatedSchedule;
     }, [schedule, teams, isGuestMode, session, updateLocalStandingsAndStats]);
 
-    // Handle User Game Completion (Actually Saving the Pre-calculated Result)
+    // Handle User Game Completion
     useEffect(() => {
         finalizeSimRef.current = async () => {
             if (!activeGame || !tempSimulationResult) return;
 
             const userGame = activeGame;
+            const result = tempSimulationResult; // Pre-calculated engine result
+
             const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
             const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
 
-            // [Fix] Use the pre-calculated result instead of simulating again
-            const result = tempSimulationResult;
+            // 1. Calculate Post-Game Recovery (Sleep) & Deltas
+            // result.homeBox/awayBox contains the 'end of game' condition (fatigued).
+            // We apply recovery based on whether they played or not.
+            
+            const processRecovery = (team: Team, box: PlayerBoxScore[]) => {
+                return team.roster.map(p => {
+                    const statLine = box.find(b => b.playerId === p.id);
+                    const oldCond = p.condition || 100; // Previous day's condition
+                    let newCond = oldCond;
+                    
+                    if (statLine) {
+                        // Player was on the active roster list for this game
+                        const fatiguedCond = statLine.condition; // Condition at buzzer
+                        // If MP > 0, they played and get normal sleep (+15). If DNP, they get rest (+25).
+                        const recovery = statLine.mp > 0 ? RECOVERY_POST_GAME_PLAYED : RECOVERY_POST_GAME_DNP;
+                        newCond = Math.min(100, Math.round(fatiguedCond + recovery));
+                    } else {
+                        // Player was not in the game object at all (Reserved/Inactive)
+                        newCond = Math.min(100, Math.round(oldCond + RECOVERY_REST_DAY));
+                    }
 
+                    return {
+                        ...p,
+                        condition: newCond,
+                        conditionDelta: newCond - oldCond
+                    };
+                });
+            };
+
+            const nextHomeRoster = processRecovery(homeTeam, result.homeBox);
+            const nextAwayRoster = processRecovery(awayTeam, result.awayBox);
+
+            // Apply to Teams State
+            setTeams(prev => prev.map(t => {
+                if (t.id === homeTeam.id) return { ...t, roster: nextHomeRoster };
+                if (t.id === awayTeam.id) return { ...t, roster: nextAwayRoster };
+                return t;
+            }));
+
+            // 2. Save Results
             const userResult = {
                 user_id: session?.user?.id || 'guest',
                 game_id: userGame.id,
@@ -180,7 +218,6 @@ export const useSimulation = (
                 series_id: userGame.seriesId,
                 box_score: { home: result.homeBox, away: result.awayBox },
                 rotation_data: result.rotationData,
-                // Save tactics for review
                 tactics: { home: result.homeTactics, away: result.awayTactics }
             };
 
@@ -212,9 +249,10 @@ export const useSimulation = (
                 refreshUnreadCount();
             }
 
-            // Update local memory for user game
+            // Update stats
             updateLocalStandingsAndStats([userResult]);
 
+            // Simulate CPU Games
             const updatedSchedule = await simulateLeagueGames(currentSimDate, userGame.id);
             const userGameIdx = updatedSchedule.findIndex(g => g.id === userGame.id);
             updatedSchedule[userGameIdx] = { ...userGame, played: true, homeScore: result.homeScore, awayScore: result.awayScore };
@@ -228,6 +266,7 @@ export const useSimulation = (
                 otherGames: updatedSchedule.filter(g => g.date === currentSimDate && g.id !== userGame.id)
             });
 
+            // Playoffs
             let updatedSeries = playoffSeries;
             if (playoffSeries.length > 0) {
                 updatedSeries = advancePlayoffState(playoffSeries, teams);
@@ -238,51 +277,59 @@ export const useSimulation = (
             }
 
             setActiveGame(null);
-            setTempSimulationResult(null); // Clear temp result
+            setTempSimulationResult(null); 
         };
     }, [activeGame, tempSimulationResult, teams, schedule, currentSimDate, myTeamId, setSchedule, isGuestMode, session, simulateLeagueGames, playoffSeries, setPlayoffSeries, updateLocalStandingsAndStats, refreshUnreadCount]);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics) => {
         setIsSimulating(true);
         
-        // Recovery logic before game.
-        const updatedTeams = teams.map(team => ({
-            ...team,
-            roster: team.roster.map(player => {
-                const currentCond = Math.max(0, player.condition !== undefined ? player.condition : 100);
-                return { ...player, condition: Math.min(100, Math.round(currentCond + 15)) };
-            })
-        }));
-        setTeams(updatedTeams);
-
+        // [Logic Update] Removed instant recovery before game.
+        // Players play with their current condition.
+        
         const userGame = schedule.find(g => g.date === currentSimDate && !g.played && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
         
         if (userGame) {
-            // [Fix] Run simulation IMMEDIATELY to get the result for the animation
-            const homeTeam = updatedTeams.find(t => t.id === userGame.homeTeamId)!;
-            const awayTeam = updatedTeams.find(t => t.id === userGame.awayTeamId)!;
+            const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
+            const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
             
             // Execute Physics Engine
             const result = simulateGame(
                 homeTeam, 
                 awayTeam, 
                 myTeamId, 
-                userTactics, // Use the tactics passed from dashboard
+                userTactics, 
                 false, 
                 false, 
                 depthChart
             );
 
-            // Store result for later saving and for the View to display target score
             setTempSimulationResult(result);
-            setActiveGame(userGame); // Triggers View Switch
+            setActiveGame(userGame); // Triggers View Switch -> Game Animation
             
-            // Note: setIsSimulating remains true until View finishes animation
         } else {
-            // ... (Simulate non-user games - unchanged)
+            // --- NO USER GAME TODAY (REST DAY SIMULATION) ---
+            
+            // 1. Apply Rest Day Recovery (+25) to User Team (and others)
+            const updatedTeams = teams.map(team => ({
+                ...team,
+                roster: team.roster.map(p => {
+                    const oldCond = p.condition || 100;
+                    const newCond = Math.min(100, Math.round(oldCond + RECOVERY_REST_DAY));
+                    return { 
+                        ...p, 
+                        condition: newCond,
+                        conditionDelta: newCond - oldCond
+                    };
+                })
+            }));
+            setTeams(updatedTeams);
+
+            // 2. Simulate CPU Games
             const updatedSchedule = await simulateLeagueGames(currentSimDate, undefined, updatedTeams);
             setSchedule(updatedSchedule);
 
+            // 3. Playoff Logic
             let nextSeries = playoffSeries;
             const isRegularOver = updatedSchedule.filter(g => !g.isPlayoff).every(g => g.played);
             
@@ -330,6 +377,6 @@ export const useSimulation = (
         handleExecuteSim,
         finalizeSimRef,
         clearLastGameResult,
-        tempSimulationResult // Export this for the Router
+        tempSimulationResult 
     };
 };
