@@ -383,7 +383,6 @@ export const useSimulation = (
                 advanceDate(nextDate, { teams: newTeams, schedule: newSchedule });
                 await forceSave({ currentSimDate: nextDate, teams: newTeams });
                 setIsSimulating(false);
-                setToastMessage("다음 날짜로 이동했습니다 (휴식일).");
             }
         } catch (e) {
             console.error("Simulation Error:", e);
