@@ -109,12 +109,34 @@ export const useScoutingReport = (player: Player | null) => {
 
 export const saveGameResults = async (results: any[]) => {
     if (!results || results.length === 0) return;
+    
+    // 1. Try saving with FULL data (including pbp_logs, shot_events)
     const { error } = await supabase.from('user_game_results').insert(results);
+    
     if (error) {
-        console.error("❌ Save Game Results Error:", error);
-        console.error("Payload:", results);
+        console.error("❌ Save Full Game Results Error:", error.message);
+        
+        // 2. Fallback: If error is due to missing columns, retry without heavy logs
+        // Postgres error code 42703 is "undefined_column", but Supabase/Postgrest message checking is safer
+        if (error.message && (error.message.includes('column') || error.message.includes('does not exist'))) {
+            console.warn("⚠️ DB Schema mismatch detected. Retrying save WITHOUT 'pbp_logs' and 'shot_events'. PLEASE RUN SQL MIGRATION.");
+            
+            const safeResults = results.map(r => {
+                // Destructure to exclude the problematic columns
+                const { pbp_logs, shot_events, ...rest } = r;
+                return rest;
+            });
+            
+            const { error: retryError } = await supabase.from('user_game_results').insert(safeResults);
+            
+            if (retryError) {
+                console.error("❌ Save Fallback Failed:", retryError);
+            } else {
+                console.log("✅ Saved game results (Partial Data - Logs Dropped) to DB.");
+            }
+        }
     } else {
-        console.log(`✅ Saved ${results.length} game results to DB.`);
+        console.log(`✅ Saved ${results.length} game results (Full Data) to DB.`);
     }
 };
 
