@@ -218,7 +218,9 @@ export const useSimulation = (
                 series_id: userGame.seriesId,
                 box_score: { home: result.homeBox, away: result.awayBox },
                 rotation_data: result.rotationData,
-                tactics: { home: result.homeTactics, away: result.awayTactics }
+                tactics: { home: result.homeTactics, away: result.awayTactics },
+                shot_events: result.pbpShotEvents,
+                pbp_logs: result.pbpLogs
             };
 
             if (!isGuestMode && session?.user?.id) {
@@ -369,6 +371,11 @@ export const useSimulation = (
         }
     }, [teams, schedule, currentSimDate, myTeamId, advanceDate, setTeams, setSchedule, simulateLeagueGames, forceSave, playoffSeries, setPlayoffSeries, isGuestMode, session, depthChart]);
 
+    // [New] Function to manually load a result from DB/History (for "View Details")
+    const loadSavedGameResult = (result: any) => {
+        setLastGameResult(result);
+    };
+
     const clearLastGameResult = () => setLastGameResult(null);
 
     return {
@@ -377,6 +384,7 @@ export const useSimulation = (
         handleExecuteSim,
         finalizeSimRef,
         clearLastGameResult,
-        tempSimulationResult 
+        tempSimulationResult,
+        loadSavedGameResult 
     };
 };

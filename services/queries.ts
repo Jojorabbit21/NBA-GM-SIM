@@ -76,6 +76,22 @@ export const useMonthlySchedule = (userId?: string, year?: number, month?: numbe
     });
 };
 
+// --- Single Game Result for Inbox Detail ---
+export const fetchFullGameResult = async (gameId: string, userId: string) => {
+    const { data, error } = await supabase
+        .from('user_game_results')
+        .select('*')
+        .eq('game_id', gameId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (error) {
+        console.error("❌ Failed to fetch game details:", error);
+        return null;
+    }
+    return data;
+};
+
 // --- Scouting ---
 export const useScoutingReport = (player: Player | null) => {
     return useQuery({

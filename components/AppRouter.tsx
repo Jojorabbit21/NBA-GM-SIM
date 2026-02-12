@@ -56,14 +56,36 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 myTeamId={gameData.myTeamId!} 
                 teams={gameData.teams} 
                 onFinish={() => { 
-                    const d = new Date(gameData.currentSimDate);
-                    d.setDate(d.getDate() + 1);
-                    const nextDate = d.toISOString().split('T')[0];
-                    gameData.setCurrentSimDate(nextDate);
-                    sim.clearLastGameResult(); 
-                    sim.setIsSimulating(false); 
-                    setView('Dashboard'); 
-                    gameData.forceSave({ currentSimDate: nextDate });
+                    // Only advance date if it's a live simulation, not a replay
+                    // Checking if currentSimDate matches the result date can be tricky due to timezones,
+                    // but usually "Finish" implies moving on.
+                    // However, if we came from Inbox, we just want to go back to Inbox or Dashboard without advancing.
+                    // For now, let's keep it simple: if it was a real sim, date was advanced INSIDE useSimulation.
+                    // Here we just clear the view.
+                    
+                    // Actually, date advancement is triggered here in original code.
+                    // We need to know if this is a "Replay" or "Live".
+                    // A simple check: if gameData.currentSimDate == result.date, it's likely Live (or same day replay).
+                    // If result.date < currentSimDate, it is definitely a replay.
+                    
+                    const resultDate = new Date(sim.lastGameResult.date);
+                    const currentDate = new Date(gameData.currentSimDate);
+                    
+                    // If result is from the past, just close view.
+                    if (resultDate < currentDate) {
+                        sim.clearLastGameResult();
+                        setView('Inbox'); // Go back to Inbox if it was a replay
+                    } else {
+                        // Live Sim completion logic
+                        const d = new Date(gameData.currentSimDate);
+                        d.setDate(d.getDate() + 1);
+                        const nextDate = d.toISOString().split('T')[0];
+                        gameData.setCurrentSimDate(nextDate);
+                        sim.clearLastGameResult(); 
+                        sim.setIsSimulating(false); 
+                        setView('Dashboard'); 
+                        gameData.forceSave({ currentSimDate: nextDate });
+                    }
                 }} 
             />
         );
@@ -115,7 +137,18 @@ const AppRouter: React.FC<AppRouterProps> = ({
         case 'OvrCalculator':
             return <OvrCalculatorView teams={gameData.teams} />;
         case 'Inbox':
-            return <InboxView myTeamId={gameData.myTeamId!} userId={session?.user?.id} teams={gameData.teams} onUpdateUnreadCount={refreshUnreadCount} />;
+            return (
+                <InboxView 
+                    myTeamId={gameData.myTeamId!} 
+                    userId={session?.user?.id} 
+                    teams={gameData.teams} 
+                    onUpdateUnreadCount={refreshUnreadCount}
+                    onViewGameResult={(result) => {
+                        sim.loadSavedGameResult(result);
+                        setView('GameResult');
+                    }}
+                />
+            );
         case 'Onboarding':
             return myTeam ? <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} /> : null;
         default:
