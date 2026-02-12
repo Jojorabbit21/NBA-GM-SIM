@@ -1,3 +1,4 @@
+
 import { useState, useRef } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart, TradeAlertContent } from '../types';
 import { simulateGame } from '../services/gameEngine';
@@ -161,8 +162,14 @@ export const useSimulation = (
                 refreshUnreadCount();
             }
 
+            // [Fix] Flatten structure for GameResultView
             setLastGameResult({
                 ...userResult,
+                // Explicitly pass flattened props expected by GameResultView
+                homeBox: userSimResult.homeBox,
+                awayBox: userSimResult.awayBox,
+                homeTactics: userSimResult.homeTactics,
+                awayTactics: userSimResult.awayTactics,
                 home: homeTeam,
                 away: awayTeam,
                 otherGames: [], // Filled below
