@@ -124,7 +124,6 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     const stickyBottom = "border-b border-slate-800";
     const gridBorder = "border-r border-slate-800/50"; 
     const gridBottom = "border-b border-slate-800/50";
-    // [Update] Increased visibility for quarter dividers (2px width, stronger color)
     const quarterDivider = "!border-r-2 !border-r-indigo-500/50"; 
 
     const getMinColor = (mins: number) => {
@@ -167,8 +166,8 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                             <th rowSpan={2} className={`sticky left-0 z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center !rounded-none`}>POS</th>
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3 !rounded-none`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center !rounded-none`}>OVR</th>
-                            <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center !rounded-none`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[290px] z-50 ${stickyHeaderBg} ${stickyBottom} w-[50px] min-w-[50px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[55px] min-w-[55px] text-center !rounded-none`}>COND</th>
+                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${stickyHeaderBg} ${stickyBottom} w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>1Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>2Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>3Q</th>
@@ -187,6 +186,9 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                             return players.map((p: Player, index: number) => {
                                 const playerMap = (tactics.rotationMap && tactics.rotationMap[p.id]) || Array(48).fill(false);
                                 const totalMins = playerMap.filter(Boolean).length;
+                                const cond = Math.round(p.condition || 100);
+                                const delta = p.conditionDelta;
+
                                 return (
                                     <TableRow key={p.id} className="hover:bg-white/5 group h-9">
                                         {index === 0 && (
@@ -201,9 +203,16 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                             <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-6 !h-6 !text-xs !shadow-none" /></div>
                                         </td>
                                         <td className={`sticky left-[250px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
-                                            <span className={`text-xs font-semibold ${(p.condition || 100) < 70 ? 'text-red-500' : (p.condition || 100) < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{Math.round(p.condition || 100)}</span>
+                                            <div className="flex items-center justify-center gap-1">
+                                                <span className={`text-xs font-semibold ${cond < 70 ? 'text-red-500' : cond < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{cond}</span>
+                                                {delta !== undefined && delta !== 0 && (
+                                                    <span className={`text-[9px] font-bold ${delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                        {delta > 0 ? '+' : ''}{delta}
+                                                    </span>
+                                                )}
+                                            </div>
                                         </td>
-                                        <td className={`sticky left-[290px] z-30 ${stickyBodyBg} text-center ${stickyBottom} shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
+                                        <td className={`sticky left-[305px] z-30 ${stickyBodyBg} text-center ${stickyBottom} shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
                                             <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)}`}>{totalMins}</span>
                                         </td>
                                         {playerMap.map((active: boolean, i: number) => (

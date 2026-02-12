@@ -63,6 +63,7 @@ export interface Player {
     injuryType?: string;
     returnDate?: string;
     condition?: number;
+    conditionDelta?: number; // [New] Tracks daily change (e.g., +15, -10)
     ins: number;
     out: number;
     plm: number;
