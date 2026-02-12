@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import { List, RotateCw, Shield, LayoutList, Target } from 'lucide-react';
 import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent } from '../types';
 
 // Components
@@ -59,12 +58,12 @@ export const GameResultView: React.FC<{
       tov: Math.max(...allPlayers.map(p => p.tov)),
   };
 
-  const tabs: { id: ResultTab; label: string; icon: React.ReactNode }[] = [
-      { id: 'BoxScore', label: '박스스코어', icon: <List size={16} /> },
-      { id: 'ShotChart', label: '샷 차트', icon: <Target size={16} /> },
-      { id: 'PbpLog', label: '중계 로그', icon: <LayoutList size={16} /> },
-      { id: 'Rotation', label: '로테이션', icon: <RotateCw size={16} /> },
-      { id: 'Tactics', label: '전술 분석', icon: <Shield size={16} /> },
+  const tabs: { id: ResultTab; label: string }[] = [
+      { id: 'BoxScore', label: '박스스코어' },
+      { id: 'ShotChart', label: '샷 차트' },
+      { id: 'PbpLog', label: '중계 로그' },
+      { id: 'Rotation', label: '로테이션' },
+      { id: 'Tactics', label: '전술 분석' },
   ];
 
   return (
@@ -95,7 +94,6 @@ export const GameResultView: React.FC<{
                                 : 'text-slate-500 border-transparent hover:text-slate-300'}
                           `}
                       >
-                          {tab.icon}
                           <span>{tab.label}</span>
                       </button>
                   ))}
