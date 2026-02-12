@@ -22,7 +22,7 @@ interface MainLayoutProps {
     gameHeaderProps: {
         schedule: Game[];
         teams: Team[];
-        onSim: (tactics: GameTactics) => void;
+        onSim: (tactics: GameTactics, skipAnimation?: boolean) => void;
         isSimulating: boolean;
         playoffSeries: PlayoffSeries[];
         userTactics: GameTactics | null;
@@ -80,7 +80,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         opponentOvrValue={opponentOvrValue}
                         isGameToday={isGameToday}
                         isSimulating={isSimulating}
-                        onSimClick={() => userTactics && onSim(userTactics)}
+                        onSimClick={() => userTactics && onSim(userTactics, false)}
+                        onAutoSimClick={() => userTactics && onSim(userTactics, true)}
                         currentSeries={currentSeries}
                         currentSimDate={currentSimDate}
                     />

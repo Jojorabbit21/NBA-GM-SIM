@@ -1,14 +1,15 @@
 
-import { useState, useRef } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart, TradeAlertContent } from '../types';
+import { useState, useRef, useCallback } from 'react';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
 import { simulateGame } from '../services/gameEngine';
-import { saveGameResults, saveUserTransaction } from '../services/queries';
-import { generateGameRecapNews } from '../services/geminiService';
-import { sendMessage } from '../services/messageService';
-import { simulateCPUTrades } from '../services/tradeEngine';
-import { generateNextPlayoffGames, advancePlayoffState, checkAndInitPlayoffs } from '../utils/playoffLogic';
-import { updateTeamStats, updateSeriesState } from '../utils/simulationUtils';
 import { simulateCpuGames } from '../services/simulationService';
+import { checkAndInitPlayoffs, advancePlayoffState, generateNextPlayoffGames } from '../utils/playoffLogic';
+import { updateTeamStats, updateSeriesState } from '../utils/simulationUtils';
+import { saveGameResults, saveUserTransaction } from '../services/queries';
+import { savePlayoffState, savePlayoffGameResult } from '../services/playoffService';
+import { simulateCPUTrades } from '../services/tradeEngine';
+import { generateCPUTradeNews, generateGameRecapNews } from '../services/geminiService';
+import { sendMessage } from '../services/messageService';
 
 export const useSimulation = (
     teams: Team[],
@@ -34,273 +35,269 @@ export const useSimulation = (
     const [lastGameResult, setLastGameResult] = useState<any | null>(null);
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
     
+    // Ref to hold the finalize function so it can be called from the View
     const finalizeSimRef = useRef<(() => void) | null>(null);
 
-    const clearLastGameResult = () => setLastGameResult(null);
-    const loadSavedGameResult = (result: any) => setLastGameResult(result);
-
-    const handleExecuteSim = async (userTactics: GameTactics) => {
+    const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false) => {
         if (isSimulating || !myTeamId) return;
         setIsSimulating(true);
 
-        // 1. Find User's Game Today
-        const userGame = schedule.find(g => 
-            !g.played && 
-            g.date === currentSimDate && 
-            (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
-        );
-
-        if (userGame) {
-            // Simulate User Game
-            const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
-            const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
-            
-            // Check for Back-to-Back
-            const checkB2B = (teamId: string) => {
-                const yesterday = new Date(currentSimDate);
-                yesterday.setDate(yesterday.getDate() - 1);
-                const yStr = yesterday.toISOString().split('T')[0];
-                return schedule.some(g => g.played && g.date === yStr && (g.homeTeamId === teamId || g.awayTeamId === teamId));
-            };
-
-            // Run Simulation
-            const result = simulateGame(
-                homeTeam, awayTeam, myTeamId, userTactics, checkB2B(homeTeam.id), checkB2B(awayTeam.id),
-                homeTeam.id === myTeamId ? depthChart : null,
-                awayTeam.id === myTeamId ? depthChart : null
+        try {
+            // 1. Identify User's Game today
+            const userGame = schedule.find(g => 
+                !g.played && 
+                g.date === currentSimDate && 
+                (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
             );
 
-            setTempSimulationResult(result);
-            setActiveGame(userGame);
+            // 2. Prepare CPU Games
+            const cpuResults = simulateCpuGames(schedule, teams, currentSimDate, userGame?.id);
 
-            // Set up callback for when animation finishes
-            finalizeSimRef.current = async () => {
-                setActiveGame(null);
-                await processDayCompletion(result, userGame);
-            };
-        } else {
-            // No game for user today, just simulate others and advance
-            await processDayCompletion();
-        }
-    };
+            // 3. User Game Logic
+            if (userGame) {
+                const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
+                const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
 
-    const processDayCompletion = async (userSimResult?: SimulationResult, userGame?: Game) => {
-        // Create Mutable Copies
-        let updatedTeams = [...teams];
-        let updatedSchedule = [...schedule];
-        let updatedPlayoffSeries = [...playoffSeries];
+                // [Fix] Inject Depth Chart into Tactics for simulation
+                const effectiveTactics = { ...userTactics };
+                if (depthChart) effectiveTactics.depthChart = depthChart;
 
-        // 1. Process User Game Result
-        if (userSimResult && userGame) {
-            const homeTeam = updatedTeams.find(t => t.id === userGame.homeTeamId)!;
-            const awayTeam = updatedTeams.find(t => t.id === userGame.awayTeamId)!;
-            
-            // Update Stats
-            updateTeamStats(homeTeam, awayTeam, userSimResult.homeScore, userSimResult.awayScore);
-            
-            // [Fix] Apply Roster Updates (Injuries) to Global State
-            if (userSimResult.rosterUpdates) {
-                updatedTeams = updatedTeams.map(t => {
-                    if (t.id === homeTeam.id || t.id === awayTeam.id) {
-                         return {
-                             ...t,
-                             roster: t.roster.map(p => {
-                                 const update = userSimResult.rosterUpdates[p.id];
-                                 if (update) {
-                                     return { ...p, ...update };
-                                 }
-                                 return p;
-                             })
-                         };
+                // Check B2B status (simple check: played yesterday?)
+                // Assuming date strings are comparable or we check schedule
+                const yesterday = new Date(new Date(currentSimDate).getTime() - 86400000).toISOString().split('T')[0];
+                const isHomeB2B = schedule.some(g => g.played && g.date === yesterday && (g.homeTeamId === homeTeam.id || g.awayTeamId === homeTeam.id));
+                const isAwayB2B = schedule.some(g => g.played && g.date === yesterday && (g.homeTeamId === awayTeam.id || g.awayTeamId === awayTeam.id));
+
+                const userSimResult = simulateGame(
+                    homeTeam, awayTeam, myTeamId, effectiveTactics, 
+                    isHomeB2B, isAwayB2B,
+                    myTeamId === homeTeam.id ? depthChart : undefined, // homeDepthChart
+                    myTeamId === awayTeam.id ? depthChart : undefined  // awayDepthChart
+                );
+
+                // Define Finalize Function (State updates & DB save)
+                const executeStateUpdates = async () => {
+                    const newTeams = JSON.parse(JSON.stringify(teams));
+                    
+                    // Update stats for User Game
+                    const homeT = newTeams.find((t: Team) => t.id === homeTeam.id);
+                    const awayT = newTeams.find((t: Team) => t.id === awayTeam.id);
+                    updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
+
+                    // Update stats for CPU Games
+                    cpuResults.forEach(res => {
+                        const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
+                        const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
+                        if (h && a) updateTeamStats(h, a, res.homeScore, res.awayScore);
+                    });
+
+                    // Update Schedule
+                    const newSchedule = [...schedule];
+                    const uIdx = newSchedule.findIndex(g => g.id === userGame.id);
+                    if (uIdx !== -1) {
+                        newSchedule[uIdx].played = true;
+                        newSchedule[uIdx].homeScore = userSimResult.homeScore;
+                        newSchedule[uIdx].awayScore = userSimResult.awayScore;
                     }
-                    return t;
-                });
-            }
+                    cpuResults.forEach(res => {
+                        const cIdx = newSchedule.findIndex(g => g.id === res.gameId);
+                        if (cIdx !== -1) {
+                            newSchedule[cIdx].played = true;
+                            newSchedule[cIdx].homeScore = res.homeScore;
+                            newSchedule[cIdx].awayScore = res.awayScore;
+                        }
+                    });
 
-            if (userGame.isPlayoff && userGame.seriesId) {
-                updateSeriesState(updatedPlayoffSeries, userGame.seriesId, userGame.homeTeamId, userGame.awayTeamId, userSimResult.homeScore, userSimResult.awayScore);
-            }
+                    // Playoff Logic
+                    let updatedSeries = [...playoffSeries];
+                    if (playoffSeries.length > 0) {
+                        // User Game Series Update
+                        if (userGame.isPlayoff && userGame.seriesId) {
+                            updateSeriesState(updatedSeries, userGame.seriesId, userGame.homeTeamId, userGame.awayTeamId, userSimResult.homeScore, userSimResult.awayScore);
+                        }
+                        // CPU Games Series Update
+                        cpuResults.forEach(res => {
+                            if (res.isPlayoff && res.seriesId) {
+                                updateSeriesState(updatedSeries, res.seriesId, res.homeTeamId, res.awayTeamId, res.homeScore, res.awayScore);
+                            }
+                        });
 
-            // Update Schedule
-            const gameIdx = updatedSchedule.findIndex(g => g.id === userGame.id);
-            if (gameIdx !== -1) {
-                updatedSchedule[gameIdx].played = true;
-                updatedSchedule[gameIdx].homeScore = userSimResult.homeScore;
-                updatedSchedule[gameIdx].awayScore = userSimResult.awayScore;
-            }
+                        // Advance Rounds
+                        updatedSeries = advancePlayoffState(updatedSeries, newTeams);
+                        setPlayoffSeries(updatedSeries);
 
-            // Save to DB
-            const userResult = {
-                user_id: session?.user?.id || 'guest',
-                game_id: userGame.id,
-                date: currentSimDate,
-                home_team_id: userGame.homeTeamId,
-                away_team_id: userGame.awayTeamId,
-                home_score: userSimResult.homeScore,
-                away_score: userSimResult.awayScore,
-                is_playoff: userGame.isPlayoff || false,
-                series_id: userGame.seriesId,
-                box_score: { home: userSimResult.homeBox, away: userSimResult.awayBox },
-                rotation_data: userSimResult.rotationData,
-                tactics: { home: userSimResult.homeTactics, away: userSimResult.awayTactics },
-                shot_events: userSimResult.pbpShotEvents || [],
-                pbp_logs: userSimResult.pbpLogs
-            };
+                        // Generate Next Games
+                        const { newGames, updatedSeries: nextSeries } = generateNextPlayoffGames(newSchedule, updatedSeries, currentSimDate);
+                        if (newGames.length > 0) {
+                            newSchedule.push(...newGames);
+                            updatedSeries = nextSeries; // update local ref
+                            setPlayoffSeries(nextSeries);
+                        }
+                    } else {
+                        // Check if regular season finished to init playoffs
+                        const nextSeries = checkAndInitPlayoffs(newTeams, newSchedule, [], currentSimDate);
+                        if (nextSeries.length > 0) {
+                            setPlayoffSeries(nextSeries);
+                            const { newGames } = generateNextPlayoffGames(newSchedule, nextSeries, currentSimDate);
+                            if (newGames.length > 0) newSchedule.push(...newGames);
+                        }
+                    }
 
-            if (!isGuestMode && session?.user?.id) {
-                console.log("💾 Saving Game Result with Shots:", userResult.shot_events?.length);
-                await saveGameResults([userResult]);
-                
-                // Messages & News
-                const recapNews = await generateGameRecapNews({
-                    home: homeTeam, away: awayTeam,
-                    homeScore: userSimResult.homeScore, awayScore: userSimResult.awayScore,
-                    homeBox: userSimResult.homeBox, awayBox: userSimResult.awayBox,
-                    userTactics: userSimResult.homeTactics,
-                    myTeamId: myTeamId!
-                });
+                    // DB Save (User Game Result)
+                    if (session?.user?.id) {
+                        const userId = session.user.id;
+                        
+                        // Save User Game
+                        const userGamePayload = {
+                            user_id: userId,
+                            game_id: userGame.id,
+                            date: currentSimDate,
+                            home_team_id: userGame.homeTeamId,
+                            away_team_id: userGame.awayTeamId,
+                            home_score: userSimResult.homeScore,
+                            away_score: userSimResult.awayScore,
+                            box_score: { home: userSimResult.homeBox, away: userSimResult.awayBox },
+                            tactics: { home: userSimResult.homeTactics, away: userSimResult.awayTactics },
+                            is_playoff: userGame.isPlayoff || false,
+                            series_id: userGame.seriesId || null,
+                            pbp_logs: userSimResult.pbpLogs,
+                            shot_events: userSimResult.pbpShotEvents,
+                            rotation_data: userSimResult.rotationData
+                        };
 
-                if (recapNews) setNews(prev => [...prev, { type: 'text', content: recapNews.join('\n') }]);
+                        // Use different tables for regular vs playoff
+                        if (userGame.isPlayoff) {
+                            await savePlayoffGameResult(userGamePayload as any);
+                            await savePlayoffState(userId, myTeamId, updatedSeries, 0, false);
+                        } else {
+                            await saveGameResults([userGamePayload]);
+                        }
 
-                const myTeamName = homeTeam.id === myTeamId ? homeTeam.name : awayTeam.name;
-                await sendMessage(
-                    session.user.id,
-                    myTeamId!,
-                    currentSimDate,
-                    'GAME_RECAP',
-                    `경기 결과: ${myTeamName} vs ${homeTeam.id === myTeamId ? awayTeam.name : homeTeam.name}`,
-                    {
-                        gameId: userGame.id,
-                        homeTeamId: userGame.homeTeamId,
-                        awayTeamId: userGame.awayTeamId,
+                        // Send Game Recap Message
+                        const recapNews = await generateGameRecapNews({
+                            home: homeTeam,
+                            away: awayTeam,
+                            homeScore: userSimResult.homeScore,
+                            awayScore: userSimResult.awayScore,
+                            homeBox: userSimResult.homeBox,
+                            awayBox: userSimResult.awayBox,
+                            userTactics,
+                            myTeamId
+                        });
+
+                        await sendMessage(
+                            userId, 
+                            myTeamId, 
+                            currentSimDate === 'PLAYOFF' ? new Date().toISOString().split('T')[0] : currentSimDate,
+                            'GAME_RECAP', 
+                            recapNews ? recapNews[0] : '경기 결과',
+                            {
+                                gameId: userGame.id,
+                                homeTeamId: homeTeam.id,
+                                awayTeamId: awayTeam.id,
+                                homeScore: userSimResult.homeScore,
+                                awayScore: userSimResult.awayScore,
+                                userBoxScore: myTeamId === homeTeam.id ? userSimResult.homeBox : userSimResult.awayBox
+                            }
+                        );
+                        refreshUnreadCount();
+                    }
+
+                    // CPU Trades Logic (Random Chance)
+                    if (!playoffSeries.length && Math.random() < 0.3) {
+                       const tradeResult = await simulateCPUTrades(newTeams, myTeamId);
+                       if (tradeResult && tradeResult.transaction) {
+                           setTransactions(prev => [tradeResult.transaction!, ...prev]);
+                           
+                           // News Ticker
+                           const newsItems = await generateCPUTradeNews(tradeResult.transaction);
+                           if (newsItems) {
+                               setNews(prev => [...prev, ...newsItems.map(c => ({ type: 'text', content: c }))]);
+                               setToastMessage(`[TRADE] ${newsItems[0]}`);
+                           }
+                       }
+                    }
+
+                    // Update State
+                    setTeams(newTeams);
+                    setSchedule(newSchedule);
+                    
+                    // Create Flattened Result for View
+                    setLastGameResult({
+                        ...userSimResult,
                         homeScore: userSimResult.homeScore,
                         awayScore: userSimResult.awayScore,
-                        userBoxScore: homeTeam.id === myTeamId ? userSimResult.homeBox : userSimResult.awayBox
+                        pbpLogs: userSimResult.pbpLogs,
+                        rotationData: userSimResult.rotationData,
+                        pbpShotEvents: userSimResult.pbpShotEvents,
+                        homeBox: userSimResult.homeBox,
+                        awayBox: userSimResult.awayBox,
+                        homeTactics: userSimResult.homeTactics,
+                        awayTactics: userSimResult.awayTactics,
+                        home: homeTeam,
+                        away: awayTeam,
+                        otherGames: cpuResults.map(r => ({
+                            id: r.gameId,
+                            homeTeamId: r.homeTeamId,
+                            awayTeamId: r.awayTeamId,
+                            homeScore: r.homeScore,
+                            awayScore: r.awayScore,
+                            date: currentSimDate,
+                            played: true
+                        })),
+                        recap: [],
+                        injuries: userSimResult.injuries
+                    });
+
+                    setActiveGame(null);
+                };
+
+                if (skipAnimation) {
+                    // [Feature] Instant Sim: Execute immediately without entering GameSim view
+                    await executeStateUpdates();
+                } else {
+                    // Normal Sim: Enter GameSim view and wait for completion
+                    setActiveGame(userGame);
+                    setTempSimulationResult(userSimResult);
+                    finalizeSimRef.current = executeStateUpdates;
+                }
+
+            } else {
+                // No User Game today - Just Advance
+                const newTeams = JSON.parse(JSON.stringify(teams));
+                cpuResults.forEach(res => {
+                    const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
+                    const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
+                    if (h && a) updateTeamStats(h, a, res.homeScore, res.awayScore);
+                });
+
+                const newSchedule = [...schedule];
+                cpuResults.forEach(res => {
+                    const cIdx = newSchedule.findIndex(g => g.id === res.gameId);
+                    if (cIdx !== -1) {
+                        newSchedule[cIdx].played = true;
+                        newSchedule[cIdx].homeScore = res.homeScore;
+                        newSchedule[cIdx].awayScore = res.awayScore;
                     }
-                );
-                refreshUnreadCount();
-            }
+                });
 
-            // Flatten structure for GameResultView
-            setLastGameResult({
-                ...userResult,
-                // Explicitly pass flattened props expected by GameResultView
-                homeBox: userSimResult.homeBox,
-                awayBox: userSimResult.awayBox,
-                homeTactics: userSimResult.homeTactics,
-                awayTactics: userSimResult.awayTactics,
-                home: homeTeam,
-                away: awayTeam,
-                otherGames: [], // Filled below
-                recap: [],
-                injuries: userSimResult.injuries // [New] Pass injuries
-            });
-        }
-
-        // 2. Simulate CPU Games (Batch Processing)
-        const cpuResults = simulateCpuGames(updatedSchedule, updatedTeams, currentSimDate, userGame?.id);
-        
-        for (const res of cpuResults) {
-            const h = updatedTeams.find(t => t.id === res.homeTeamId)!;
-            const a = updatedTeams.find(t => t.id === res.awayTeamId)!;
-            const gIdx = updatedSchedule.findIndex(g => g.id === res.gameId);
-            
-            // Apply Results
-            updateTeamStats(h, a, res.homeScore, res.awayScore);
-            
-            if (res.isPlayoff && res.seriesId) {
-                updateSeriesState(updatedPlayoffSeries, res.seriesId, res.homeTeamId, res.awayTeamId, res.homeScore, res.awayScore);
-            }
-
-            if (gIdx !== -1) {
-                updatedSchedule[gIdx].played = true;
-                updatedSchedule[gIdx].homeScore = res.homeScore;
-                updatedSchedule[gIdx].awayScore = res.awayScore;
-            }
-        }
-
-        // Update Last Game Result with Other Games
-        if (lastGameResult || userSimResult) {
-             setLastGameResult((prev: any) => ({ ...prev, otherGames: cpuResults }));
-        }
-
-        // 3. CPU Trades
-        if (Math.random() < 0.3) {
-            const tradeResult = await simulateCPUTrades(updatedTeams, myTeamId);
-            if (tradeResult && tradeResult.transaction) {
-                // [Fix] Generate ID if missing (Fixes ?????? in History)
-                if (!tradeResult.transaction.id) {
-                    tradeResult.transaction.id = crypto.randomUUID();
-                }
-
-                updatedTeams = tradeResult.updatedTeams;
-                setTransactions(prev => [tradeResult.transaction!, ...prev]);
+                // Advance Date
+                const d = new Date(currentSimDate);
+                d.setDate(d.getDate() + 1);
+                const nextDate = d.toISOString().split('T')[0];
                 
-                if (!isGuestMode && session?.user?.id) {
-                    await saveUserTransaction(session.user.id, tradeResult.transaction);
-                    
-                    const tx = tradeResult.transaction;
-                    const team1 = updatedTeams.find(t => t.id === tx.teamId);
-                    
-                    const tradeContent: TradeAlertContent = {
-                        summary: tx.description,
-                        trades: [{
-                            team1Id: tx.teamId,
-                            team1Name: team1?.name || tx.teamId,
-                            team2Id: tx.details.partnerTeamId,
-                            team2Name: tx.details.partnerTeamName,
-                            team1Acquired: tx.details.acquired.map((p: any) => ({ id: p.id, name: p.name, ovr: p.ovr || 70 })),
-                            team2Acquired: tx.details.traded.map((p: any) => ({ id: p.id, name: p.name, ovr: p.ovr || 70 }))
-                        }]
-                    };
-
-                    await sendMessage(
-                        session.user.id,
-                        myTeamId!,
-                        currentSimDate,
-                        'TRADE_ALERT',
-                        tx.description,
-                        tradeContent
-                    );
-                    refreshUnreadCount();
-                }
+                advanceDate(nextDate, { teams: newTeams, schedule: newSchedule });
+                await forceSave({ currentSimDate: nextDate, teams: newTeams });
+                setIsSimulating(false);
+                setToastMessage("다음 날짜로 이동했습니다.");
             }
+
+        } catch (e) {
+            console.error("Simulation Failed:", e);
+            setIsSimulating(false);
+            setToastMessage("시뮬레이션 중 오류가 발생했습니다.");
         }
-
-        // 4. Playoff Management (Init / Advance)
-        if (playoffSeries.length === 0) {
-            const newSeries = checkAndInitPlayoffs(updatedTeams, updatedSchedule, updatedPlayoffSeries, currentSimDate);
-            if (newSeries.length > 0) {
-                updatedPlayoffSeries = newSeries;
-                const { newGames } = generateNextPlayoffGames(updatedSchedule, updatedPlayoffSeries, currentSimDate);
-                updatedSchedule = [...updatedSchedule, ...newGames];
-            }
-        } else {
-            const nextSeriesState = advancePlayoffState(updatedPlayoffSeries, updatedTeams);
-            const { newGames, updatedSeries } = generateNextPlayoffGames(updatedSchedule, nextSeriesState, currentSimDate);
-            updatedPlayoffSeries = updatedSeries;
-            updatedSchedule = [...updatedSchedule, ...newGames];
-        }
-
-        // 5. Finalize State & Advance Date
-        setTeams(updatedTeams);
-        setSchedule(updatedSchedule);
-        setPlayoffSeries(updatedPlayoffSeries);
-
-        if (!userGame) {
-            // Auto-advance if no user game
-            const d = new Date(currentSimDate);
-            d.setDate(d.getDate() + 1);
-            const nextDate = d.toISOString().split('T')[0];
-            advanceDate(nextDate, { teams: updatedTeams, schedule: updatedSchedule });
-            forceSave({ teams: updatedTeams, currentSimDate: nextDate });
-        } else {
-            // Just save state, user advances manually from GameResultView
-            forceSave({ teams: updatedTeams }); 
-        }
-
-        setIsSimulating(false);
-    };
+    }, [isSimulating, myTeamId, schedule, currentSimDate, teams, playoffSeries, depthChart, session, refreshUnreadCount]);
 
     return {
         isSimulating,
@@ -308,9 +305,13 @@ export const useSimulation = (
         activeGame,
         lastGameResult,
         tempSimulationResult,
+        finalizeSimRef,
         handleExecuteSim,
-        loadSavedGameResult,
-        clearLastGameResult,
-        finalizeSimRef
+        clearLastGameResult: () => {
+            setLastGameResult(null);
+            setTempSimulationResult(null);
+            setActiveGame(null);
+        },
+        loadSavedGameResult: (res: any) => setLastGameResult(res)
     };
 };
