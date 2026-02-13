@@ -71,14 +71,23 @@ export function runFullGameSimulation(
         });
 
         while (state.gameClock > 0) {
-            // A. Determine Pace & Time Taken
             const offTeam = state.possession === 'home' ? state.home : state.away;
-            const defTeam = state.possession === 'home' ? state.away : state.home;
             
-            const timeTaken = calculatePossessionTime(state, offTeam.tactics.sliders, offTeam.tactics.offenseTactics[0]);
+            // B. Simulate Possession Outcome (FIRST to determine PlayType)
+            // We need to simulate first to know if it's a Transition play or not for time calc
+            // But we need time calc to update clock.
+            // Compromise: We calculate potential play result, get playType, then calc time, then apply.
+            // Actually, simulatePossession generates the result object.
             
-            // B. Simulate Possession Outcome
             const result = simulatePossession(state);
+            
+            // A. Determine Pace & Time Taken (Now with PlayType context)
+            const timeTaken = calculatePossessionTime(
+                state, 
+                offTeam.tactics.sliders, 
+                offTeam.tactics.offenseTactics[0],
+                result.playType
+            );
             
             // C. Apply Result (Stats, Score, Logs)
             applyPossessionResult(state, result);

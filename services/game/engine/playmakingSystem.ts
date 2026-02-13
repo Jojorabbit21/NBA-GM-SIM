@@ -1,5 +1,5 @@
 
-import { Player, TacticalSliders } from '../../../types';
+import { Player, TacticalSliders, OffenseTactic } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 import { PlaymakingResult } from './types';
 
@@ -8,6 +8,7 @@ export function calculatePlaymakingStats(
     mp: number,
     fga: number,
     sliders: TacticalSliders,
+    offTactic: OffenseTactic, // [New] Added Tactic
     isAceTarget: boolean,
     stopper?: Player
 ): PlaymakingResult {
@@ -25,20 +26,28 @@ export function calculatePlaymakingStats(
     const tovAttr = (100 - p.handling) * 0.02 + (100 - p.passIq) * 0.02;
     let tovBase = (usageProxy * C.TOV_USAGE_FACTOR) + (tovAttr * 0.05); 
 
-    // [New] Haste Penalty for Turnovers
-    // Higher pace significantly increases turnover chance for low-playmaking players
-    if (sliders.pace > 6) {
-        // [Balance Patch] Increased multiplier from 0.1 to 0.2
-        // Pace 10 => (10-5)*0.2 = 1.0 (+100% Base TOV) -> Doubles Turnovers
-        const paceMod = (sliders.pace - 5) * 0.2; 
-        
-        // Mitigation by Playmaking Skill (Handling + PassIQ)
-        // High skill players can handle speed better.
-        const skill = (p.handling + p.passIq) / 2;
-        const mitigation = Math.max(0, (skill - 70) * 0.015); // Skill 90 -> -30% impact
-        
-        const finalMod = Math.max(0, paceMod - mitigation);
-        tovBase *= (1.0 + finalMod);
+    // [New] Haste Malus for Turnovers (Revised)
+    
+    // A. Pace Slider Penalty (7+)
+    if (sliders.pace >= 7) {
+        // Condition: PassAcc < 82
+        if (p.passAcc < 82) {
+            let pacePenalty = 0; // Additive percentage points
+            if (sliders.pace === 7) pacePenalty = 5;
+            else if (sliders.pace === 8) pacePenalty = 6;
+            else if (sliders.pace === 9) pacePenalty = 8;
+            else if (sliders.pace === 10) pacePenalty = 10;
+            
+            // Add directly to base TOV count (simulating % increase)
+            // Since tovBase is roughly a count, we add a percentage of usageProxy
+            tovBase += (usageProxy * (pacePenalty / 100));
+        }
+    }
+
+    // B. Tactic Penalty (SevenSeconds)
+    if (offTactic === 'SevenSeconds') {
+        // Unconditional +5% penalty
+        tovBase += (usageProxy * 0.05);
     }
 
     let tov = Math.round(tovBase * (mp / 48) * (Math.random() * 0.5 + 0.7));

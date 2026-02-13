@@ -1,50 +1,51 @@
 
-import { GameState } from './pbpTypes';
-import { TacticalSliders, OffenseTactic } from '../../../../types';
+import { GameState, PossessionResult } from './pbpTypes';
+import { TacticalSliders, OffenseTactic, PlayType } from '../../../../types';
 import { OFFENSE_STRATEGY_CONFIG } from './strategyMap';
 
 /**
  * Calculates how much time a possession takes based on:
- * - Pace slider
- * - Strategy (SevenSeconds vs Grind)
- * - Game situation (2-for-1, Clutch)
+ * - Base Time (Tactic Defined)
+ * - Pace Slider (User Defined)
+ * - Game Situation (2-for-1, Transition)
  */
 export function calculatePossessionTime(
     state: GameState, 
     sliders: TacticalSliders,
-    tactic: OffenseTactic = 'Balance'
+    tactic: OffenseTactic = 'Balance',
+    playType?: PlayType
 ): number {
     const { gameClock } = state;
     
-    // [Balance Fix] Increased Base time: 12 ~ 22 seconds (Avg ~17s)
-    // Real NBA Avg is ~14-15s, but simulation overhead usually requires slight padding
-    // to prevent 150+ point games constantly.
-    let timeTaken = Math.floor(Math.random() * 10) + 12;
-    
-    // 1. Slider Adjustment (1-10)
-    // Higher pace = Less time taken.
-    // Range: (1-5) -> +Adds time, (6-10) -> -Removes time
-    // Max Impact: Pace 10 => (5 * -0.8) = -4s. Pace 1 => (-4 * -0.8) = +3.2s
-    const paceMod = (sliders.pace - 5) * -0.8;
+    // 1. Get Base Time from Tactic
+    const config = OFFENSE_STRATEGY_CONFIG[tactic];
+    let timeTaken = config ? config.baseTime : 15.5; // Default to Balance if undefined
+
+    // 2. Slider Adjustment (Revised Formula)
+    // Range: 1 (Slow) to 10 (Fast)
+    // Formula: (5 - Slider) * 0.4
+    // Slider 10 => -2.0s
+    // Slider 1  => +1.6s
+    const paceMod = (5 - sliders.pace) * 0.4;
     timeTaken += paceMod;
 
-    // 2. Tactic Adjustment
-    const config = OFFENSE_STRATEGY_CONFIG[tactic];
-    if (config) {
-        // paceMod in config: +5 (Fast) to -5 (Slow)
-        // Invert because higher config pace = lower time
-        timeTaken -= (config.paceMod || 0); 
-    }
-
     // 3. Situational Logic (2-for-1)
-    // If quarter ending (between 30s and 45s), speed up to get 2 shots
+    // If quarter ending (between 30s and 45s), speed up significantly
     if (gameClock <= 45 && gameClock >= 30) {
-        timeTaken = Math.min(timeTaken, 6); // Hurry up significantly
+        timeTaken = Math.min(timeTaken, 6); 
     }
 
-    // Hard clamps
-    if (timeTaken < 4) timeTaken = 4; // Unlikely to be faster than 4s (Inbound + Dribble)
-    if (timeTaken > 23) timeTaken = 23; // Shot clock is 24
+    // 4. Hard Floor (Minimum Time Limit)
+    // Transition plays can be fast, but set plays have a physical floor (inbound + crossing halfcourt + set up)
+    if (playType !== 'Transition') {
+        if (timeTaken < 7) timeTaken = 7;
+    } else {
+        // Transition is naturally faster
+        timeTaken = Math.max(4, timeTaken - 4);
+    }
+
+    // Upper Clamp (Shot Clock Violation prevention logic handled elsewhere, but cap for sim realism)
+    if (timeTaken > 24) timeTaken = 24; 
 
     // End of quarter/game logic
     if (timeTaken > gameClock) {

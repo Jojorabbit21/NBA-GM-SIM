@@ -10,7 +10,14 @@ interface StrategyConfig {
     fit: Partial<Record<keyof ArchetypeRatings, number>>;
     
     // Pace Modifier: -5 (Slow) to +5 (Fast).
+    // [Updated] No longer used for direct time subtraction, but kept for legacy reference if needed.
     paceMod?: number;
+
+    // [New] Base Time per Possession (Seconds)
+    baseTime: number;
+
+    // Shot Selection Bias: Modifiers for shot types [Rim, Mid, 3PT]
+    shotBias?: { rim: number; mid: number; three: number };
 }
 
 export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
@@ -25,7 +32,8 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
             'Handoff': 0.05
         },
         fit: { connector: 2, handler: 1, spacer: 1 },
-        paceMod: 0
+        paceMod: 0,
+        baseTime: 15.5
     },
     'PaceAndSpace': {
         playDistribution: {
@@ -37,7 +45,8 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
             'PostUp': 0.05
         },
         fit: { spacer: 3, handler: 2, popper: 1 }, 
-        paceMod: 3
+        paceMod: 3,
+        baseTime: 14
     },
     'PerimeterFocus': {
         playDistribution: {
@@ -49,7 +58,8 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
             'PostUp': 0.0
         },
         fit: { screener: 2, handler: 2, spacer: 1 }, 
-        paceMod: 1
+        paceMod: 1,
+        baseTime: 16.5
     },
     'PostFocus': {
         playDistribution: {
@@ -60,7 +70,8 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
             'Iso': 0.10
         },
         fit: { postScorer: 3, spacer: 1, connector: 2 }, 
-        paceMod: -3
+        paceMod: -3,
+        baseTime: 17.5
     },
     'Grind': {
         playDistribution: {
@@ -71,7 +82,8 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
             'Cut': 0.10
         },
         fit: { connector: 2, screener: 2, isoScorer: 2 }, 
-        paceMod: -5
+        paceMod: -5,
+        baseTime: 19
     },
     'SevenSeconds': {
         playDistribution: {
@@ -82,7 +94,8 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
             'Iso': 0.15
         },
         fit: { handler: 2, driver: 2, spacer: 2 }, 
-        paceMod: 5
+        paceMod: 5,
+        baseTime: 13
     }
 };
 
