@@ -63,6 +63,7 @@ export function simulatePossession(state: GameState): PossessionResult {
         1.0, 
         1, 
         offTeam.tactics.sliders,
+        offTeam.tactics.offenseTactics[0], // [New] Pass Offense Tactic
         false, 
         undefined 
     );
@@ -85,7 +86,8 @@ export function simulatePossession(state: GameState): PossessionResult {
     const hitRate = calculateHitRate(
         actor, defender, defTeam, 
         selectedPlayType, preferredZone, 
-        offTeam.tactics.sliders.pace, 
+        offTeam.tactics.sliders.pace,
+        offTeam.tactics.offenseTactics[0], // [New] Pass Offense Tactic
         bonusHitRate, 
         1.0, 1.0 
     );

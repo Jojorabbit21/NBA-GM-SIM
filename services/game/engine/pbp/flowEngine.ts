@@ -2,7 +2,7 @@
 import { SIM_CONFIG } from '../../config/constants';
 import { LivePlayer, TeamState } from './pbpTypes';
 import { calculateAceStopperImpact } from '../aceStopperSystem';
-import { Player, PlayType } from '../../../../types';
+import { Player, PlayType, OffenseTactic } from '../../../../types';
 
 // Helper to convert LivePlayer to Player (flat structure)
 export function flattenPlayer(lp: LivePlayer): Player {
@@ -89,6 +89,7 @@ export function calculateHitRate(
     playType: PlayType,
     preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT',
     paceSlider: number,
+    offTactic: OffenseTactic, // [New] Added Tactic for Haste Malus
     bonusHitRate: number,
     attEfficiency: number,
     defEfficiency: number
@@ -172,20 +173,31 @@ export function calculateHitRate(
     hitRate *= attEfficiency; // Team spacing/fit bonus
     hitRate *= (2.0 - defEfficiency); // Defense coordination penalty
 
-    // [New] Haste Penalty (High Pace reduces Accuracy) - PbP Version
-    // Use simplified composure calculation for real-time check
-    if (playType !== 'Transition' && paceSlider > 5) {
-        const basePacePenalty = (paceSlider - 6) * 0.05; 
-        const composure = (actor.attr.shotIq * 0.45) + (actor.attr.offConsist * 0.40); // Simplified attr access
-        const mitigation = Math.min(1.0, composure / 100);
-        
-        const hastePenalty = basePacePenalty * (1 - mitigation);
-        hitRate -= Math.min(0.15, hastePenalty);
+    // [New] Haste Malus (Revised)
+    // Apply penalty for high pace and SevenSeconds tactic
+    if (playType !== 'Transition') {
+        // Pace Slider Penalty (7+)
+        if (paceSlider >= 7) {
+            let sliderMalus = 0;
+            if (paceSlider === 7) sliderMalus = 0.03;
+            else if (paceSlider === 8) sliderMalus = 0.04;
+            else if (paceSlider === 9) sliderMalus = 0.05;
+            else if (paceSlider === 10) sliderMalus = 0.07;
+
+            // Mitigation by ShotIQ (High IQ players resist rushing)
+            const composure = actor.attr.shotIq;
+            const mitigation = Math.max(0, (composure - 70) * 0.001); // Small offset for elite players
+            
+            hitRate -= Math.max(0, sliderMalus - mitigation);
+        }
+
+        // Tactic Penalty
+        if (offTactic === 'SevenSeconds') {
+            hitRate -= 0.05; // -5% Flat
+        }
     }
     
     // [New] Transition Defense Breakdown
-    // If the defending team (defTeam) plays at a very high pace (e.g. SevenSeconds or > 7), 
-    // their transition defense is likely loose (gambling for steals or leaking out).
     if (playType === 'Transition') {
         const defPace = defTeam.tactics.sliders.pace;
         if (defPace > 7) {
