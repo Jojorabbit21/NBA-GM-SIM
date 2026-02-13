@@ -6,6 +6,8 @@ import { resolveRebound } from './reboundLogic';
 import { calculatePlaymakingStats } from '../playmakingSystem';
 import { calculateFoulStats } from '../foulSystem'; 
 import { SIM_CONFIG } from '../../config/constants';
+import { OFFENSE_STRATEGY_CONFIG } from './strategyMap';
+import { PlayType } from '../../../../types';
 
 /**
  * Determines the outcome of a single possession.
@@ -15,8 +17,30 @@ export function simulatePossession(state: GameState): PossessionResult {
     const defTeam = state.possession === 'home' ? state.away : state.home;
 
     // 1. Resolve Play Action (Who does what?)
-    const playTypes = ['Iso', 'PnR_Handler', 'PnR_Roll', 'CatchShoot', 'PostUp', 'Cut'] as const;
-    const selectedPlayType = playTypes[Math.floor(Math.random() * playTypes.length)];
+    // [Fix] Use Tactic-based Play Distribution instead of random
+    const tacticName = offTeam.tactics.offenseTactics[0] || 'Balance';
+    const strategy = OFFENSE_STRATEGY_CONFIG[tacticName];
+    
+    let selectedPlayType: PlayType = 'Iso';
+    
+    if (strategy && strategy.playDistribution) {
+        const rand = Math.random();
+        let cumulative = 0;
+        
+        // Roulette wheel selection for PlayType
+        // The distribution sum should be close to 1.0 in config
+        for (const [pType, prob] of Object.entries(strategy.playDistribution)) {
+            cumulative += prob;
+            if (rand < cumulative) {
+                selectedPlayType = pType as PlayType;
+                break;
+            }
+        }
+    } else {
+        // Fallback if config missing
+        const playTypes = ['Iso', 'PnR_Handler', 'PnR_Roll', 'CatchShoot', 'PostUp', 'Cut'] as const;
+        selectedPlayType = playTypes[Math.floor(Math.random() * playTypes.length)];
+    }
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType);
     const { actor, secondaryActor, preferredZone, shotType, bonusHitRate } = playCtx;
