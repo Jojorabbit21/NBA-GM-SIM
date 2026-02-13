@@ -23,24 +23,40 @@ export interface PlayContext {
 export function resolvePlayAction(team: TeamState, playType: PlayType): PlayContext {
     const players = team.onCourt;
 
-    // Helper to pick best fit player based on criteria
-    const pickBest = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
+    // [Fix] Weighted Random Selection instead of "Winner Takes All"
+    // This prevents superstars from taking 100% of shots.
+    const pickWeightedActor = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
         let pool = players;
         if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
         
-        // Add some randomness so the best player doesn't take 100% of shots
-        const weighted = pool.map(p => ({ 
-            p, 
-            score: criteria(p) * (0.8 + Math.random() * 0.4) // +/- 20% variance
-        }));
+        // 1. Calculate Score & Raise to Power (to emphasize skill gap but allow variance)
+        // Power of 2.0 makes 90 rated player significantly more likely than 70, but not guaranteed.
+        const candidates = pool.map(p => {
+            const rawScore = criteria(p);
+            // Ensure minimum weight of 1 to prevent errors
+            const weight = Math.pow(Math.max(1, rawScore), 2.5); 
+            return { p, weight };
+        });
+
+        // 2. Total Weight
+        const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+
+        // 3. Random Pick (Roulette Wheel)
+        let random = Math.random() * totalWeight;
         
-        return weighted.sort((a, b) => b.score - a.score)[0].p;
+        for (const c of candidates) {
+            random -= c.weight;
+            if (random <= 0) return c.p;
+        }
+        
+        // Fallback
+        return candidates[0].p;
     };
 
     switch (playType) {
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
-            const actor = pickBest(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+            const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
             return {
                 playType,
                 actor,
@@ -51,8 +67,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'PnR_Handler': {
             // Best Handler
-            const actor = pickBest(p => p.archetypes.handler);
-            const screener = pickBest(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
+            const actor = pickWeightedActor(p => p.archetypes.handler);
+            const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
             return {
                 playType,
                 actor,
@@ -64,8 +80,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'PnR_Roll': {
             // Handler passes to Roller
-            const screener = pickBest(p => p.archetypes.roller + p.archetypes.screener * 0.5);
-            const handler = pickBest(p => p.archetypes.handler, screener.playerId);
+            const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
+            const handler = pickWeightedActor(p => p.archetypes.handler, screener.playerId);
             return {
                 playType,
                 actor: screener, // Finisher
@@ -77,8 +93,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'PnR_Pop': {
             // Handler passes to Popper
-            const popper = pickBest(p => p.archetypes.popper);
-            const handler = pickBest(p => p.archetypes.handler, popper.playerId);
+            const popper = pickWeightedActor(p => p.archetypes.popper);
+            const handler = pickWeightedActor(p => p.archetypes.handler, popper.playerId);
             return {
                 playType,
                 actor: popper,
@@ -90,7 +106,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'PostUp': {
             // Best Post Scorer
-            const actor = pickBest(p => p.archetypes.postScorer);
+            const actor = pickWeightedActor(p => p.archetypes.postScorer);
             return {
                 playType,
                 actor,
@@ -101,8 +117,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'CatchShoot': {
             // Best Spacer
-            const actor = pickBest(p => p.archetypes.spacer);
-            const passer = pickBest(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
+            const actor = pickWeightedActor(p => p.archetypes.spacer);
+            const passer = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
             return {
                 playType,
                 actor,
@@ -114,9 +130,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'Cut': {
             // Best Driver/Cutter (Off-ball movement)
-            // [Fix] Changed p.attr.iq to p.attr.shotIq as 'iq' does not exist in attribute map
-            const actor = pickBest(p => p.archetypes.driver + p.attr.shotIq * 0.5); 
-            const passer = pickBest(p => p.archetypes.connector, actor.playerId);
+            const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.shotIq * 0.5); 
+            const passer = pickWeightedActor(p => p.archetypes.connector, actor.playerId);
             return {
                 playType,
                 actor,
@@ -128,8 +143,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'Handoff': {
             // Shooter getting ball from Big
-            const actor = pickBest(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
-            const big = pickBest(p => p.archetypes.screener, actor.playerId);
+            const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
+            const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
             return {
                 playType,
                 actor,
@@ -141,7 +156,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         case 'Transition': {
             // Fast break
-            const actor = pickBest(p => p.attr.speed + p.archetypes.driver);
+            const actor = pickWeightedActor(p => p.attr.speed + p.archetypes.driver);
             return {
                 playType,
                 actor,
@@ -152,7 +167,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         }
         default: {
             // Fallback: Random Iso
-            const actor = players[0];
+            const actor = players[Math.floor(Math.random() * players.length)];
             return { playType: 'Iso', actor, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0 };
         }
     }
