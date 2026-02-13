@@ -23,8 +23,12 @@ export function calculatePlaymakingStats(
     // 2. Turnovers (Direct Event)
     // Usage proxy uses FGA + AstWeight to estimate ball handling load
     const usageProxy = (fga + (assistWeight / 3)); 
-    const tovAttr = (100 - p.handling) * 0.02 + (100 - p.passIq) * 0.02;
-    let tovBase = (usageProxy * C.TOV_USAGE_FACTOR) + (tovAttr * 0.05); 
+    
+    // [Update] Increased weight of bad handling/IQ on turnovers
+    // (100 - Rating) * Factor. Higher factor = More turnovers for bad players.
+    const tovAttr = (100 - p.handling) * 0.06 + (100 - p.passIq) * 0.04;
+    
+    let tovBase = (usageProxy * C.TOV_USAGE_FACTOR) + tovAttr; 
 
     // [New] Haste Malus for Turnovers (Revised)
     

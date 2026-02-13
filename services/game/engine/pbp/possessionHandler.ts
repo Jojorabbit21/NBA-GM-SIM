@@ -82,19 +82,44 @@ export function simulatePossession(state: GameState): PossessionResult {
     }
 
     // 4. Turnover Check
+    // Calculate Playmaking Stats projected for a FULL GAME (MP=48) to get a proper rating scale
     const pmStats = calculatePlaymakingStats(
         flattenPlayer(actor), 
-        1.0, 
-        1, 
+        48.0, // Use full game minutes to get a rating-like return
+        15,   // Assume 15 FGA for scaling context
         offTeam.tactics.sliders,
-        offTeam.tactics.offenseTactics[0], // [New] Pass Offense Tactic
+        offTeam.tactics.offenseTactics[0], 
         false, 
         undefined 
     );
     
-    const tovChance = Math.max(0.05, Math.min(0.25, (pmStats.tov / 100))); 
-    if (Math.random() < tovChance) {
-        const isSteal = Math.random() < 0.6;
+    // Expected TOVs per 48 mins (e.g. 3.0 to 6.0)
+    const expectedTovPerGame = pmStats.tov; 
+    
+    // Convert to per-possession probability.
+    // Assume ~100 possessions per game.
+    // Base Probability = Expected / 100
+    let tovProbability = expectedTovPerGame / 100;
+    
+    // Apply Defender Pressure (Steal & PerDef)
+    // High steal rating increases TOV chance significantly
+    const pressure = (defender.attr.stl * 0.7 + defender.attr.perDef * 0.3) / 100; // 0.0 to 1.0
+    const pressureFactor = pressure * 0.08; // Up to +8% flat increase
+    
+    tovProbability += pressureFactor;
+    
+    // Global Tuning Multiplier for Simulation Balance
+    tovProbability *= 1.5;
+
+    // Hard Caps
+    const finalTovChance = Math.max(0.01, Math.min(0.40, tovProbability));
+
+    if (Math.random() < finalTovChance) {
+        // Determine if it was a steal
+        // Steal chance depends on defender's steal rating relative to the turnover chance
+        const stealChance = (defender.attr.stl / 100) * 0.8;
+        const isSteal = Math.random() < stealChance;
+        
         return {
             type: 'turnover',
             offTeam, defTeam, actor,

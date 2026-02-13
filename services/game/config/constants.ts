@@ -20,7 +20,7 @@ export const SIM_CONFIG = {
         BLK_GUARD_FACTOR: 0.015,
         BLK_BIG_FACTOR: 0.05,
         AST_BASE_FACTOR: 0.25,
-        TOV_USAGE_FACTOR: 0.12,
+        TOV_USAGE_FACTOR: 0.20, // [Up] Increased from 0.12 to 0.20 to generate more turnovers
     },
     SHOOTING: {
         INSIDE_BASE_PCT: 0.58,
