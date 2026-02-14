@@ -38,6 +38,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
   );
 
   return (
+    <div>
       <PageHeader 
         title="리그 순위표" 
         icon={<Trophy size={24} />}
@@ -111,5 +112,6 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
           </div>
         </>
       )}
+    </div>  
   );
 };
