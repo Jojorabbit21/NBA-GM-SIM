@@ -68,78 +68,77 @@ export function calculateShootingStats(
 
     // --- Step 1: Determine Volume (Attempts) by Range ---
     // [Update] Boosted Base Tendencies for Modern NBA (2025-26)
-    // Even average shooters shoot more 3s now.
+    // Even average shooters shoot more 3s now. Base rate ~40%
     const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
     let base3PTendency = 0;
 
-    if (threeAvg >= 90) base3PTendency = 0.58;       // Elite (Curry/Dame range)
-    else if (threeAvg >= 85) base3PTendency = 0.50;  // Great
-    else if (threeAvg >= 80) base3PTendency = 0.42;  // Good
-    else if (threeAvg >= 75) base3PTendency = 0.35;  // Solid (League Standard)
-    else if (threeAvg >= 70) base3PTendency = 0.22;  // Capable
-    else if (threeAvg >= 65) base3PTendency = 0.10;  // Occasional
+    if (threeAvg >= 90) base3PTendency = 0.65;       // Elite (Curry/Dame range)
+    else if (threeAvg >= 85) base3PTendency = 0.55;  // Great
+    else if (threeAvg >= 80) base3PTendency = 0.48;  // Good
+    else if (threeAvg >= 75) base3PTendency = 0.40;  // Solid (League Standard ~40%)
+    else if (threeAvg >= 70) base3PTendency = 0.25;  // Capable
+    else if (threeAvg >= 65) base3PTendency = 0.15;  // Occasional
     else base3PTendency = 0.02;                      // Non-shooter
 
     // [Update] Advanced Role-Based Tactic Modifiers
-    // Instead of flat penalties, we adjust based on Position & Role within the tactic.
+    // Compressed range to prevent extreme drops. (0.85 ~ 1.25)
     let tacticMult = 1.0;
     const isBig = ['C', 'PF'].includes(p.position);
-    const isGuard = ['PG', 'SG'].includes(p.position);
-    const isWing = ['SF'].includes(p.position);
-
+    
     if (tactics.offense.includes('PostFocus')) {
         // [Logic Change] Post Focus shouldn't kill 3s. It creates kick-outs.
         if (isBig) {
             // Bigs focus inside unless they are elite stretch bigs
-            if (threeAvg < 82) tacticMult = 0.4; 
-            else tacticMult = 0.9; // Stretch bigs still space the floor
+            if (threeAvg < 82) tacticMult = 0.85; 
+            else tacticMult = 1.0; // Stretch bigs still space the floor
         } else {
             // Guards/Wings get MORE 3s from kick-outs
-            tacticMult = 1.15; 
+            tacticMult = 1.10; 
         }
     }
     else if (tactics.offense.includes('PerimeterFocus')) {
         // PnR heavy. Handlers shoot, Rollers roll.
         if (isBig && threeAvg < 75) {
-            tacticMult = 0.2; // Hard Roller
+            tacticMult = 0.80; // Hard Roller
         } else {
-            tacticMult = 1.25; // Handlers & Spacers shoot more
+            tacticMult = 1.15; // Handlers & Spacers shoot more
         }
     }
     else if (tactics.offense.includes('PaceAndSpace')) {
-        tacticMult = 1.35; // Everyone green light
+        tacticMult = 1.25; // Everyone green light
     }
     else if (tactics.offense.includes('SevenSeconds')) {
-        tacticMult = 1.50; // Extreme pace
+        tacticMult = 1.25; // Extreme pace
     }
     else if (tactics.offense.includes('Grind')) {
-        tacticMult = 0.90; // Slightly conservative
+        tacticMult = 0.95; // Slightly conservative
     }
 
     // [Update] Slasher Penalty (Context Aware)
     // If a player is a slasher but the tactic is PaceAndSpace, they should slash less and shoot more 3s if capable.
     if (p.ins > threeAvg + 15) {
         // Only penalize if 3PT rating is mediocre
-        if (threeAvg < 80) base3PTendency *= 0.85;
+        if (threeAvg < 80) base3PTendency *= 0.90;
     }
 
     // Calculate Raw Attempts
     let p3a = Math.round(fga * base3PTendency * tacticMult);
 
-    // [New] Modern Era Floor (The "2026" Correction)
-    // Capable shooters should essentially NEVER shoot 0 threes in high minutes, regardless of tactic.
-    if (threeAvg >= 72 && fga >= 8) {
-        const modernFloor = Math.round(fga * 0.20); // Minimum 20% 3PAr for capable shooters
+    // [New] Modern Era Floor (The "3-Point Revolution" Correction)
+    // Capable shooters (70+) should essentially NEVER shoot 0 threes in high minutes.
+    // Ensure at least 35% of shots are 3s for capable shooters.
+    if (threeAvg >= 70 && fga >= 5) {
+        const modernFloor = Math.round(fga * 0.35); 
         if (p3a < modernFloor) {
-            // Blend towards floor to prevent drastic overrides
-            p3a = Math.round((p3a + modernFloor) / 2);
+            // Force up to the floor
+            p3a = modernFloor;
         }
     }
 
     // Soft Cap for High Volume (Prevent 20 3PA/game unless truly elite volume shooter)
-    // If 3PA > 13, dampen the excess
-    if (p3a > 13) {
-        p3a = 13 + Math.round((p3a - 13) * 0.5);
+    // If 3PA > 14, dampen the excess
+    if (p3a > 14) {
+        p3a = 14 + Math.round((p3a - 14) * 0.5);
     }
     
     // Hard Logic Caps

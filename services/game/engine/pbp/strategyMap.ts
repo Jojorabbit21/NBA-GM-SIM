@@ -20,88 +20,89 @@ interface StrategyConfig {
     shotBias?: { rim: number; mid: number; three: number };
 }
 
+// [Update] Adjusted distributions to ensure 3PA/FGA ratio is between 35% and 50%
 export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
     'Balance': {
         playDistribution: {
             'Iso': 0.15,
             'PnR_Handler': 0.20,
-            'PnR_Roll': 0.15,
-            'PostUp': 0.15,
-            'CatchShoot': 0.20,
-            'Cut': 0.10,
+            'PnR_Roll': 0.10,
+            'PnR_Pop': 0.10, // Added explicit Pop for spacing
+            'PostUp': 0.10,
+            'CatchShoot': 0.25, // Increased base 3pt chance
+            'Cut': 0.05,
             'Handoff': 0.05
         },
         fit: { connector: 2, handler: 1, spacer: 1 },
         paceMod: 0,
-        baseTime: 15.5
+        baseTime: 15.0
     },
     'PaceAndSpace': {
         playDistribution: {
-            'CatchShoot': 0.40,
-            'PnR_Handler': 0.20,
-            'PnR_Pop': 0.15,
+            'CatchShoot': 0.45, // High volume 3s
+            'PnR_Handler': 0.15, // Drive & Kick
+            'PnR_Pop': 0.15, // Stretch Bigs
             'Iso': 0.10,
             'Cut': 0.10,
-            'PostUp': 0.05
+            'Transition': 0.05
         },
         fit: { spacer: 3, handler: 2, popper: 1 }, 
         paceMod: 3,
-        baseTime: 14
+        baseTime: 13.5
     },
     'PerimeterFocus': {
         playDistribution: {
-            'PnR_Handler': 0.35,
-            'PnR_Roll': 0.20,
-            'Iso': 0.20,
-            'CatchShoot': 0.15,
-            'Handoff': 0.10,
-            'PostUp': 0.0
+            'PnR_Handler': 0.30,
+            'PnR_Roll': 0.15,
+            'PnR_Pop': 0.10,
+            'Iso': 0.20, // Perimeter Iso
+            'CatchShoot': 0.20,
+            'Handoff': 0.05
         },
         fit: { screener: 2, handler: 2, spacer: 1 }, 
         paceMod: 1,
-        baseTime: 16.5
+        baseTime: 16.0
     },
     'PostFocus': {
         playDistribution: {
-            'PostUp': 0.50,
+            'PostUp': 0.35, // Reduced from 0.50 to allow kick-outs
+            'CatchShoot': 0.25, // Kick-out 3s are crucial in modern post play
             'Cut': 0.15,
-            'CatchShoot': 0.15,
-            'PnR_Handler': 0.10,
+            'PnR_Handler': 0.15,
             'Iso': 0.10
         },
         fit: { postScorer: 3, spacer: 1, connector: 2 }, 
         paceMod: -3,
-        baseTime: 17.5
+        baseTime: 18.0
     },
     'Grind': {
         playDistribution: {
-            'Iso': 0.30,
-            'PostUp': 0.30,
+            'Iso': 0.25,
+            'PostUp': 0.20,
             'PnR_Handler': 0.20,
-            'CatchShoot': 0.10,
-            'Cut': 0.10
+            'CatchShoot': 0.20, // Must take open shots even in grind
+            'Cut': 0.10,
+            'Handoff': 0.05
         },
         fit: { connector: 2, screener: 2, isoScorer: 2 }, 
         paceMod: -5,
-        baseTime: 19
+        baseTime: 19.5
     },
     'SevenSeconds': {
         playDistribution: {
-            'Transition': 0.25, // Artificial boost to transition logic
-            'CatchShoot': 0.25,
+            'Transition': 0.30, 
+            'CatchShoot': 0.30, // Early 3s
             'PnR_Handler': 0.20,
-            'PnR_Roll': 0.15,
-            'Iso': 0.15
+            'PnR_Pop': 0.10,
+            'Iso': 0.10
         },
         fit: { handler: 2, driver: 2, spacer: 2 }, 
         paceMod: 5,
-        baseTime: 13
+        baseTime: 12.0
     }
 };
 
 // Defensive Tactics: Determine WHO contests the shot (Usage) and HOW WELL the team defends (Fit)
-// [Note] Defense strategies don't select PlayTypes, but they modify success rates.
-// We keep the old structure for Defense as it works well for the "Resistance" model.
 export const DEFENSE_STRATEGY_CONFIG: Record<DefenseTactic, any> = {
     'ManToManPerimeter': {
         usage: { perimLock: 3, connector: 2, driver: 1 },
