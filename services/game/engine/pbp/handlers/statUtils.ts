@@ -1,6 +1,6 @@
 
 import { LivePlayer, TeamState } from '../pbpTypes';
-import { resolveDynamicZone } from '../shotDistribution';
+import { resolveDynamicZone } from '../../shotDistribution';
 
 /**
  * Updates detailed shooting zone stats for a player.

@@ -1,6 +1,6 @@
 
 import { GameState, ShotEvent, PossessionResult } from '../pbpTypes';
-import { generateShotCoordinate, CourtSide } from '../../../../utils/courtCoordinates';
+import { generateShotCoordinate, CourtSide } from '../../../../../utils/courtCoordinates';
 
 /**
  * Generates and records a shot event for the shot chart visualization.
