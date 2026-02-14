@@ -63,7 +63,8 @@ function identifyDefender(
     const isScreenPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop', 'Handoff'].includes(playType);
     
     // Zone Defense does NOT switch (they guard areas)
-    if (!isScreenPlay || defTactic === 'ZoneDefense' || !secondaryActor) {
+    // Putback is chaos, usually just nearest defender (Primary)
+    if (!isScreenPlay || defTactic === 'ZoneDefense' || !secondaryActor || playType === 'Putback') {
         return { defender: primaryDefender, isSwitch: false, isBotchedSwitch: false };
     }
 
@@ -118,24 +119,39 @@ export function simulatePossession(state: GameState): PossessionResult {
     const defTeam = state.possession === 'home' ? state.away : state.home;
 
     // 1. Resolve Play Action (Who does what?)
-    const tacticName = offTeam.tactics.offenseTactics[0] || 'Balance';
-    const strategy = OFFENSE_STRATEGY_CONFIG[tacticName];
-    
+    // [Update] Check for Second Chance Situation (Offensive Rebound just occurred)
     let selectedPlayType: PlayType = 'Iso';
-    
-    if (strategy && strategy.playDistribution) {
-        const rand = Math.random();
-        let cumulative = 0;
-        for (const [pType, prob] of Object.entries(strategy.playDistribution)) {
-            cumulative += prob;
-            if (rand < cumulative) {
-                selectedPlayType = pType as PlayType;
-                break;
-            }
+    let isSecondChance = false;
+
+    // In main.ts, offensive rebounds reset shotClock to 14. 
+    // If shotClock is 14 and gameClock < 720 (to avoid start of game coincidence), it's likely a 2nd chance.
+    if (state.shotClock === 14 && state.gameClock < 720) {
+        // High probability to go immediately back up (Putback)
+        if (Math.random() < 0.70) {
+            selectedPlayType = 'Putback';
+            isSecondChance = true;
         }
-    } else {
-        const playTypes = ['Iso', 'PnR_Handler', 'PnR_Roll', 'CatchShoot', 'PostUp', 'Cut'] as const;
-        selectedPlayType = playTypes[Math.floor(Math.random() * playTypes.length)];
+        // Otherwise, it resets to standard offense (Kick out)
+    }
+
+    if (!isSecondChance) {
+        const tacticName = offTeam.tactics.offenseTactics[0] || 'Balance';
+        const strategy = OFFENSE_STRATEGY_CONFIG[tacticName];
+        
+        if (strategy && strategy.playDistribution) {
+            const rand = Math.random();
+            let cumulative = 0;
+            for (const [pType, prob] of Object.entries(strategy.playDistribution)) {
+                cumulative += prob;
+                if (rand < cumulative) {
+                    selectedPlayType = pType as PlayType;
+                    break;
+                }
+            }
+        } else {
+            const playTypes = ['Iso', 'PnR_Handler', 'PnR_Roll', 'CatchShoot', 'PostUp', 'Cut'] as const;
+            selectedPlayType = playTypes[Math.floor(Math.random() * playTypes.length)];
+        }
     }
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType);
