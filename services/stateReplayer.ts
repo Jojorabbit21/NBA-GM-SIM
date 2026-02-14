@@ -110,12 +110,22 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.pf += (statLine.pf || 0);
             player.stats.plusMinus += (statLine.plusMinus || 0);
 
-            // [Fix] Aggregate Zone Stats
+            // [Fix] Aggregate Zone Stats (Flat Legacy Keys)
             Object.keys(statLine).forEach(key => {
                 if (key.startsWith('zone_') && typeof (statLine as any)[key] === 'number') {
                     player.stats[key] = (player.stats[key] || 0) + ((statLine as any)[key] || 0);
                 }
             });
+
+            // [Fix] Aggregate Zone Stats (Nested zoneData Object from New Engine)
+            if (statLine.zoneData) {
+                Object.keys(statLine.zoneData).forEach(key => {
+                    const val = (statLine.zoneData as any)[key];
+                    if (typeof val === 'number') {
+                        player.stats[key] = (player.stats[key] || 0) + val;
+                    }
+                });
+            }
         }
     });
 }
