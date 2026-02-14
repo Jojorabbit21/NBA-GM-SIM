@@ -3,7 +3,7 @@ import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
-import { AlertCircle, RotateCcw, Wand2, ChevronDown } from 'lucide-react';
+import { AlertCircle, RotateCcw, ChevronDown } from 'lucide-react';
 import { Table, TableBody, TableRow } from '../common/Table';
 
 interface RotationMatrixProps {
@@ -246,11 +246,10 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                  <div className="flex gap-2">
                     <div className="relative flex shadow-md group" ref={dropdownRef}>
                         <button 
-                            onClick={() => handleAllocation('Balanced')}
+                            onClick={() => handleAllocation('Overwork')}
                             className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
                         >
-                            <Wand2 size={14} />
-                            <span>AI 자동 배분</span>
+                            <span>코치에게 위임</span>
                         </button>
                         <button 
                             onClick={() => setIsAiDropdownOpen(!isAiDropdownOpen)}
@@ -266,14 +265,14 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                         onClick={() => handleAllocation('Overwork')}
                                         className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5"
                                     >
-                                        <span>주전 혹사</span>
+                                        <span>주전 혹사 (기본)</span>
                                         <span className="text-[9px] text-slate-500 font-normal">주전 36분 / 벤치 12분</span>
                                     </button>
                                     <button 
                                         onClick={() => handleAllocation('Balanced')}
                                         className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5"
                                     >
-                                        <span>균형 분배 (추천)</span>
+                                        <span>균형 분배</span>
                                         <span className="text-[9px] text-slate-500 font-normal">주전 26분 / 벤치 18분 / 써드 4분</span>
                                     </button>
                                     <button 
