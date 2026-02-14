@@ -145,7 +145,35 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
     }> = ({ tactics, myBox, oppBox, myTeam, oppTeam }) => {
         if (tactics.stopperId) {
             const stopperStats = myBox.find(p => p.playerId === tactics.stopperId);
-            const targetStats = oppBox.find(p => p.isAceTarget);
+            
+            // [Bug Fix] Fallback logic if no interaction occurred (isAceTarget is false)
+            // 1. Try to find the target marked by engine
+            let targetStats = oppBox.find(p => p.isAceTarget);
+
+            // 2. Fallback: Identify Ace by OVR among starters if no event triggered
+            if (!targetStats && oppTeam) {
+                const candidates = oppBox.filter(p => p.gs > 0);
+                // If no starters in box (rare), check all
+                const pool = candidates.length > 0 ? candidates : oppBox;
+
+                let maxOvr = -1;
+                let aceId = '';
+
+                pool.forEach(stat => {
+                    const rosterPlayer = oppTeam.roster.find(r => r.id === stat.playerId);
+                    if (rosterPlayer) {
+                        const ovr = calculatePlayerOvr(rosterPlayer);
+                        if (ovr > maxOvr) {
+                            maxOvr = ovr;
+                            aceId = stat.playerId;
+                        }
+                    }
+                });
+
+                if (aceId) {
+                    targetStats = oppBox.find(p => p.playerId === aceId);
+                }
+            }
 
             if (stopperStats && targetStats) {
                 const effect = targetStats.matchupEffect || 0;
