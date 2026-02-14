@@ -1,8 +1,8 @@
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { ChevronDown, Wand2, RotateCcw } from 'lucide-react';
+import { ChevronDown, RotateCcw } from 'lucide-react';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface DepthChartEditorProps {
@@ -13,6 +13,8 @@ interface DepthChartEditorProps {
     onUpdateTactics: (t: GameTactics) => void;
 }
 
+type AutoFillMode = 'Ability' | 'Stamina';
+
 export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
     team,
     tactics,
@@ -20,6 +22,20 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
     onUpdateDepthChart,
     onUpdateTactics
 }) => {
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
     useEffect(() => {
         if (!depthChart) {
             const initialChart: DepthChart = {
@@ -33,27 +49,95 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
         }
     }, [depthChart, tactics.starters, onUpdateDepthChart]);
 
-    const handleAutoFill = () => {
+    // Comparator for Ability First Logic
+    const compareByAbility = (a: Player, b: Player, pos: string) => {
+        const ovrDiff = calculatePlayerOvr(b) - calculatePlayerOvr(a);
+        if (ovrDiff !== 0) return ovrDiff;
+
+        // Tie-breaker based on position specific stats
+        if (pos === 'PG') return b.plm - a.plm;
+        if (pos === 'SG' || pos === 'SF') return b.out - a.out;
+        if (pos === 'PF' || pos === 'C') return b.ins - a.ins;
+        return 0;
+    };
+
+    const handleAutoFill = (mode: AutoFillMode) => {
         const usedIds = new Set<string>();
         const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
-        const availablePlayers = [...team.roster]
-            .filter(p => p.health !== 'Injured')
-            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-
+        
         const newChart: DepthChart = {
             PG: [null, null, null], SG: [null, null, null], SF: [null, null, null],
             PF: [null, null, null], C: [null, null, null]
         };
 
+        // Helper to get candidates for a position
+        const getCandidates = (pos: string) => {
+            return team.roster.filter(p => 
+                p.health !== 'Injured' && 
+                p.position.includes(pos) && 
+                !usedIds.has(p.id)
+            );
+        };
+
+        positions.forEach(pos => {
+            let candidates = getCandidates(pos);
+
+            if (mode === 'Ability') {
+                // Sort by Ability
+                candidates.sort((a, b) => compareByAbility(a, b, pos));
+                
+                // Assign Top 3
+                for (let depth = 0; depth < 3; depth++) {
+                    if (candidates[depth]) {
+                        newChart[pos][depth] = candidates[depth].id;
+                        usedIds.add(candidates[depth].id);
+                    }
+                }
+            } else if (mode === 'Stamina') {
+                // Filter out exhausted players (< 20)
+                candidates = candidates.filter(p => (p.condition ?? 100) >= 20);
+
+                // Split into Starter Candidates (>= 70) and Reserves
+                const starterPool = candidates.filter(p => (p.condition ?? 100) >= 70).sort((a, b) => compareByAbility(a, b, pos));
+                const reservePool = candidates.filter(p => (p.condition ?? 100) < 70).sort((a, b) => compareByAbility(a, b, pos));
+                
+                // 1. Assign Starter (Depth 0)
+                let starter = starterPool.shift(); // Take best condition+ability player
+                if (!starter && reservePool.length > 0) {
+                    // Fallback: If no one has >70 condition, take best available to prevent empty slot
+                    starter = reservePool.shift();
+                }
+
+                if (starter) {
+                    newChart[pos][0] = starter.id;
+                    usedIds.add(starter.id);
+                }
+
+                // 2. Assign Bench (Depth 1) & Third (Depth 2) from remaining pool
+                const remaining = [...starterPool, ...reservePool].sort((a, b) => compareByAbility(a, b, pos));
+                
+                if (remaining[0]) {
+                    newChart[pos][1] = remaining[0].id;
+                    usedIds.add(remaining[0].id);
+                }
+                if (remaining[1]) {
+                    newChart[pos][2] = remaining[1].id;
+                    usedIds.add(remaining[1].id);
+                }
+            }
+        });
+
+        // Fill empty slots with any remaining players (Fallback for safety)
         for (let depth = 0; depth < 3; depth++) {
             positions.forEach(pos => {
-                let match = availablePlayers.find(p => p.position.includes(pos) && !usedIds.has(p.id));
-                if (!match) {
-                    match = availablePlayers.find(p => !usedIds.has(p.id));
-                }
-                if (match) {
-                    newChart[pos][depth] = match.id;
-                    usedIds.add(match.id);
+                if (!newChart[pos][depth]) {
+                    const fallback = team.roster.find(p => 
+                        !usedIds.has(p.id) && p.health !== 'Injured'
+                    );
+                    if (fallback) {
+                        newChart[pos][depth] = fallback.id;
+                        usedIds.add(fallback.id);
+                    }
                 }
             });
         }
@@ -68,6 +152,7 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
 
         onUpdateTactics({ ...tactics, starters: newStarters });
         onUpdateDepthChart(newChart);
+        setIsDropdownOpen(false);
     };
 
     const handleResetChart = () => {
@@ -120,13 +205,40 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                     <span className="text-base font-black text-white uppercase tracking-widest oswald">뎁스 차트</span>
                 </div>
                 <div className="flex gap-2">
-                    <button 
-                        onClick={handleAutoFill}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md active:scale-95"
-                    >
-                        <Wand2 size={14} />
-                        <span>AI 자동 설정</span>
-                    </button>
+                    <div className="relative flex shadow-md group" ref={dropdownRef}>
+                        <button 
+                            onClick={() => handleAutoFill('Ability')}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
+                        >
+                            <span>코치에게 위임</span>
+                        </button>
+                        <button 
+                            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                            className={`px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-r-lg transition-all active:bg-indigo-700 ${isDropdownOpen ? 'bg-indigo-700' : ''}`}
+                        >
+                            <ChevronDown size={14} className={`transition-transform duration-200 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isDropdownOpen && (
+                            <div className="absolute top-full right-0 mt-2 w-32 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                <div className="p-1">
+                                    <button 
+                                        onClick={() => handleAutoFill('Ability')}
+                                        className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5"
+                                    >
+                                        <span>능력치 우선</span>
+                                    </button>
+                                    <button 
+                                        onClick={() => handleAutoFill('Stamina')}
+                                        className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5"
+                                    >
+                                        <span>체력 우선</span>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     <button 
                         onClick={handleResetChart}
                         className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
