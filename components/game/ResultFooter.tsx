@@ -13,7 +13,7 @@ export const ResultFooter: React.FC<ResultFooterProps> = ({ onFinish }) => {
                 onClick={onFinish}
                 className="px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black uppercase text-lg tracking-widest shadow-[0_10px_30px_rgba(79,70,229,0.4)] transition-all active:scale-95 flex items-center gap-4"
             >
-                Continue to Dashboard <ChevronRight />
+                라커룸으로 이동 <ChevronRight />
             </button>
         </div>
     );

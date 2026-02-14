@@ -69,9 +69,9 @@ export const useSimulation = (
                         tactics: res.tactics,
                         is_playoff: res.isPlayoff || false,
                         series_id: res.seriesId || null,
-                        pbp_logs: [],
-                        shot_events: [],
-                        rotation_data: {}
+                        pbp_logs: [], // [Config] Do not save text logs for CPU games
+                        shot_events: res.pbpShotEvents || [], // [Config] Save Shot Chart
+                        rotation_data: res.rotationData || {} // [Config] Save Rotation
                     };
                     if (res.isPlayoff) poPayloads.push(p);
                     else regPayloads.push(p);
@@ -335,6 +335,7 @@ export const useSimulation = (
                             date: currentSimDate,
                             played: true
                         })),
+                        cpuResults: cpuResults, // [New] Pass full CPU results for detailed view
                         recap: [],
                         injuries: userSimResult.injuries
                     });
@@ -441,6 +442,7 @@ export const useSimulation = (
 // [Helper] Aggregate Game Stats into Season Stats
 // [Updated] Supports separate Playoff Stats
 function accumulatePlayerStats(team: Team, box: PlayerBoxScore[], isPlayoff: boolean = false) {
+    // ... (No changes in helper)
     if (!team || !box) return;
     box.forEach(stat => {
         const p = team.roster.find(rp => rp.id === stat.playerId);

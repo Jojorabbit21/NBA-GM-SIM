@@ -13,10 +13,11 @@ interface GameBoxScoreTabProps {
     leaders: GameStatLeaders;
     otherGames?: Game[];
     teams: Team[]; // For looking up other games' team logos
+    onSelectGame?: (gameId: string) => void; // [New]
 }
 
 export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
-    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams
+    homeTeam, awayTeam, homeBox, awayBox, mvpId, leaders, otherGames, teams, onSelectGame
 }) => {
     
     const getTeamInfo = (id: string) => teams.find(t => t.id === id);
@@ -64,22 +65,26 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
                             const hWin = hScore > aScore;
                             
                             return (
-                                <div key={g.id} className="bg-slate-900/50 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+                                <button 
+                                    key={g.id} 
+                                    onClick={() => onSelectGame && onSelectGame(g.id)}
+                                    className="bg-slate-900/50 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 hover:bg-slate-800 transition-all hover:border-slate-600 cursor-pointer active:scale-95 group"
+                                >
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-2">
                                             <img src={a.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                            <span className={`text-xs font-bold uppercase ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
+                                            <span className={`text-xs font-bold uppercase group-hover:text-white transition-colors ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
                                         </div>
                                         <span className={`text-sm font-black oswald ${!hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{aScore}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-2">
                                             <img src={h.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                            <span className={`text-xs font-bold uppercase ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
+                                            <span className={`text-xs font-bold uppercase group-hover:text-white transition-colors ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
                                         </div>
                                         <span className={`text-sm font-black oswald ${hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{hScore}</span>
                                     </div>
-                                </div>
+                                </button>
                             );
                         })}
                     </div>
