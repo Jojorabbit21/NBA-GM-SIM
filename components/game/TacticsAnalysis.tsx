@@ -4,6 +4,8 @@ import { Target, Sliders, Clock, Activity, ShieldAlert, Lock, Unlock } from 'luc
 import { Team, TacticalSnapshot, PlayerBoxScore, TacticalSliders } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
 import { TeamLogo } from '../common/TeamLogo';
+import { calculatePlayerOvr } from '../../utils/constants';
+import { OvrBadge } from '../common/OvrBadge';
 
 const OFFENSE_LABELS: Record<string, string> = {
     'Balance': '밸런스',
@@ -134,44 +136,70 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
     );
 
     // [New] Stopper Impact Table Component
-    const StopperImpactTable: React.FC<{ tactics: TacticalSnapshot, myBox: PlayerBoxScore[], oppBox: PlayerBoxScore[] }> = ({ tactics, myBox, oppBox }) => {
+    const StopperImpactTable: React.FC<{ 
+        tactics: TacticalSnapshot, 
+        myBox: PlayerBoxScore[], 
+        oppBox: PlayerBoxScore[],
+        myTeam: Team,
+        oppTeam: Team
+    }> = ({ tactics, myBox, oppBox, myTeam, oppTeam }) => {
         if (tactics.stopperId) {
-            const stopper = myBox.find(p => p.playerId === tactics.stopperId);
-            const target = oppBox.find(p => p.isAceTarget);
+            const stopperStats = myBox.find(p => p.playerId === tactics.stopperId);
+            const targetStats = oppBox.find(p => p.isAceTarget);
 
-            if (stopper && target) {
-                const effect = target.matchupEffect || 0;
+            if (stopperStats && targetStats) {
+                const effect = targetStats.matchupEffect || 0;
                 const isDebuff = effect < 0;
                 
+                const stopperPlayer = myTeam.roster.find(p => p.id === stopperStats.playerId);
+                const targetPlayer = oppTeam.roster.find(p => p.id === targetStats.playerId);
+
+                const stopperOvr = stopperPlayer ? calculatePlayerOvr(stopperPlayer) : 70;
+                const targetOvr = targetPlayer ? calculatePlayerOvr(targetPlayer) : 70;
+
+                // Proxy for "Contest Success Rate" using DEF rating since raw contest % isn't stored
+                const contestRating = stopperPlayer ? stopperPlayer.def : 0;
+
                 return (
-                    <div className="mt-4 bg-slate-950/60 rounded-xl border border-white/5 p-3 relative overflow-hidden">
+                    <div className="mt-4 bg-slate-950/60 rounded-xl border border-white/5 p-4 relative overflow-hidden">
                         <div className="flex items-center gap-2 text-indigo-300 font-black text-[10px] uppercase tracking-widest mb-3 border-b border-white/5 pb-2">
                             <ShieldAlert size={12} />
-                            <span>Ace Stopper Impact</span>
+                            <span>에이스 스토퍼 수비 결과</span>
                         </div>
                         
-                        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
-                            {/* Stopper */}
-                            <div className="flex flex-col">
-                                <span className="text-[9px] text-slate-500 font-bold uppercase">Stopper</span>
-                                <span className="text-xs font-bold text-white truncate">{stopper.playerName}</span>
-                                <span className="text-[9px] text-slate-400">DEF Rating</span>
+                        <div className="flex flex-col gap-2">
+                            {/* Row 1: Stopper */}
+                            <div className="grid grid-cols-[1fr_40px_40px_80px] gap-2 items-center text-xs">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">ME</span>
+                                    <span className="font-bold text-white truncate">{stopperStats.playerName}</span>
+                                </div>
+                                <div className="text-center font-bold text-slate-400">{stopperPlayer?.position}</div>
+                                <div className="flex justify-center"><OvrBadge value={stopperOvr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-0" /></div>
+                                <div className="text-right flex items-center justify-end gap-1">
+                                    <span className="text-[9px] text-slate-500">DEF</span>
+                                    <span className="font-mono font-black text-emerald-400">{contestRating}</span>
+                                </div>
                             </div>
 
-                            {/* Impact Badge */}
-                            <div className={`flex flex-col items-center justify-center px-3 py-1 rounded-lg border ${isDebuff ? 'bg-red-900/30 border-red-500/30' : 'bg-emerald-900/30 border-emerald-500/30'}`}>
-                                {isDebuff ? <Lock size={14} className="text-red-400 mb-0.5" /> : <Unlock size={14} className="text-emerald-400 mb-0.5" />}
-                                <span className={`text-xs font-black ${isDebuff ? 'text-red-400' : 'text-emerald-400'}`}>
-                                    {effect > 0 ? '+' : ''}{effect}%
-                                </span>
-                                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tight mt-0.5">Efficiency</span>
-                            </div>
+                            <div className="h-px bg-white/5 w-full"></div>
 
-                            {/* Target */}
-                            <div className="flex flex-col items-end text-right">
-                                <span className="text-[9px] text-slate-500 font-bold uppercase">Target Ace</span>
-                                <span className="text-xs font-bold text-white truncate">{target.playerName}</span>
-                                <span className="text-[9px] text-slate-400">{target.pts} PTS ({target.fgm}/{target.fga})</span>
+                            {/* Row 2: Ace */}
+                            <div className="grid grid-cols-[1fr_40px_40px_80px] gap-2 items-center text-xs">
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase bg-slate-900 px-1.5 py-0.5 rounded border border-slate-700">VS</span>
+                                    <span className="font-bold text-slate-300 truncate">{targetStats.playerName}</span>
+                                </div>
+                                <div className="text-center font-bold text-slate-500">{targetPlayer?.position}</div>
+                                <div className="flex justify-center"><OvrBadge value={targetOvr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-0 grayscale opacity-70" /></div>
+                                <div className="flex justify-end">
+                                    <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded border ${isDebuff ? 'bg-red-900/30 border-red-500/30' : 'bg-slate-800 border-slate-600/30'}`}>
+                                        {isDebuff ? <Lock size={10} className="text-red-400" /> : <Unlock size={10} className="text-slate-400" />}
+                                        <span className={`text-[10px] font-black ${isDebuff ? 'text-red-400' : 'text-slate-400'}`}>
+                                            {effect > 0 ? '+' : ''}{effect}%
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -181,7 +209,15 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
         return null;
     };
 
-    const TacticalCard: React.FC<{ team: Team, tactics?: TacticalSnapshot, grade: any, isHome: boolean, box: PlayerBoxScore[], oppBox: PlayerBoxScore[] }> = ({ team, tactics, grade, isHome, box, oppBox }) => {
+    const TacticalCard: React.FC<{ 
+        team: Team, 
+        oppTeam: Team, 
+        tactics?: TacticalSnapshot, 
+        grade: any, 
+        isHome: boolean, 
+        box: PlayerBoxScore[], 
+        oppBox: PlayerBoxScore[] 
+    }> = ({ team, oppTeam, tactics, grade, isHome, box, oppBox }) => {
         const avgTime = calculateAvgPossTime(box);
         const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
         
@@ -235,9 +271,9 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                     </div>
                 )}
 
-                {/* [New] Ace Stopper Section */}
+                {/* Ace Stopper Section */}
                 {tactics && tactics.stopperId && (
-                     <StopperImpactTable tactics={tactics} myBox={box} oppBox={oppBox} />
+                     <StopperImpactTable tactics={tactics} myBox={box} oppBox={oppBox} myTeam={team} oppTeam={oppTeam} />
                 )}
 
                 <div className="pt-2 border-t border-white/5 relative z-10">
@@ -260,8 +296,8 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Away (Left) vs Home (Right) Layout Order */}
-                <TacticalCard team={awayTeam} tactics={awayTactics} grade={awayGrade} isHome={false} box={awayBox} oppBox={homeBox} />
-                <TacticalCard team={homeTeam} tactics={homeTactics} grade={homeGrade} isHome={true} box={homeBox} oppBox={awayBox} />
+                <TacticalCard team={awayTeam} oppTeam={homeTeam} tactics={awayTactics} grade={awayGrade} isHome={false} box={awayBox} oppBox={homeBox} />
+                <TacticalCard team={homeTeam} oppTeam={awayTeam} tactics={homeTactics} grade={homeGrade} isHome={true} box={homeBox} oppBox={awayBox} />
             </div>
         </div>
     );

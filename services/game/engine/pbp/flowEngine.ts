@@ -95,10 +95,11 @@ export function calculateHitRate(
     playType: PlayType,
     preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT',
     paceSlider: number,
-    offTactic: OffenseTactic, // [New] Added Tactic for Haste Malus
+    offTactic: OffenseTactic, 
     bonusHitRate: number,
     attEfficiency: number,
-    defEfficiency: number
+    defEfficiency: number,
+    acePlayerId?: string // [New] Pass opponent Ace ID to check target match
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -156,8 +157,13 @@ export function calculateHitRate(
     hitRate -= helpImpact; // Higher team defense reduces hit rate
 
     // 3. Tactical & Ace Stopper Impact
+    // [Updated] Only apply impact if:
+    // a) Defense has AceStopper tactic active
+    // b) Current defender IS the designated stopper
+    // c) Current actor IS the designated Ace of the opposing team
     const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && 
-                            defTeam.tactics.stopperId === defender.playerId;
+                            defTeam.tactics.stopperId === defender.playerId &&
+                            actor.playerId === acePlayerId; // [New Check]
     
     let matchupEffect = 0;
     let isAceTarget = false;

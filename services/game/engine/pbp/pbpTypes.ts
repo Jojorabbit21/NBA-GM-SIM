@@ -80,6 +80,7 @@ export interface TeamState {
     timeouts: number;
     fouls: number; // Team fouls in quarter
     bonus: boolean; // Penalty situation
+    acePlayerId?: string; // [New] Identify the team's Ace (Highest OVR Starter)
 }
 
 // [New] Structured Shot Event for Visualization

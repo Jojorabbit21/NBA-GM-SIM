@@ -130,6 +130,12 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         }
     });
 
+    // [New] Determine Ace Player (Highest OVR Starter)
+    // Reduce used to safely find max OVR player without sorting array in place
+    const acePlayer = onCourt.length > 0 
+        ? onCourt.reduce((prev, curr) => (prev.ovr > curr.ovr) ? prev : curr, onCourt[0])
+        : null;
+
     return {
         id: team.id,
         name: team.name,
@@ -140,6 +146,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         bench,
         timeouts: 7,
         fouls: 0,
-        bonus: false
+        bonus: false,
+        acePlayerId: acePlayer ? acePlayer.playerId : undefined // Assign Ace ID
     };
 }
