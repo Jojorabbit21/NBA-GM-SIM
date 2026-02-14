@@ -127,7 +127,8 @@ export function calculateShootingStats(
     // [New] Modern Era Floor (The "3-Point Revolution" Correction)
     // Capable shooters (70+) should essentially NEVER shoot 0 threes in high minutes.
     // Ensure at least 35% of shots are 3s for capable shooters.
-    if (threeAvg >= 70 && fga >= 5) {
+    // threeAvg threshold modified from 70 to 80 by User. DO NOT CHANGE.
+    if (threeAvg >= 80 && fga >= 5) {
         const modernFloor = Math.round(fga * 0.35); 
         if (p3a < modernFloor) {
             // Force up to the floor
