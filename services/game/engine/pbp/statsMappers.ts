@@ -143,6 +143,9 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         
         if (assister) logText += ` (AST: ${assister.playerName})`;
         
+        // [FIX] Accurately calculate total points for the log including And-One
+        let totalPointsAdded = points; 
+
         // Handle And-1
         if (isAndOne && defender) {
             commitFoul(defender);
@@ -152,6 +155,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 actor.ftm += 1;
                 actor.fta += 1;
                 offTeam.score += 1;
+                totalPointsAdded += 1; // Add bonus point to log tracker
+                
                 // [Update] Apply +/- for the And-1 FT
                 updatePlusMinus(1);
                 logText += ` + 앤드원 성공 (파울: ${defender.playerName})`;
@@ -161,7 +166,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             }
         }
         
-        addLog(state, offTeam.id, logText, 'score', points + (isAndOne ? 1 : 0));
+        addLog(state, offTeam.id, logText, 'score', totalPointsAdded);
 
     } else if (type === 'miss') {
         actor.fga += 1;
