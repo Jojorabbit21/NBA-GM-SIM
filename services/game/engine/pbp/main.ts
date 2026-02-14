@@ -56,6 +56,7 @@ export function runFullGameSimulation(
     for (let q = 1; q <= 4; q++) {
         state.quarter = q;
         state.gameClock = 720;
+        state.shotClock = 24; // Reset at quarter start
         
         // Reset Team Foul Counts at quarter start
         state.home.fouls = 0;
@@ -116,8 +117,30 @@ export function runFullGameSimulation(
             hSubs.forEach(req => forceSubstitution(state, state.home, req.outPlayer, req.reason));
             aSubs.forEach(req => forceSubstitution(state, state.away, req.outPlayer, req.reason));
 
-            // Switch Possession
-            state.possession = state.possession === 'home' ? 'away' : 'home';
+            // G. Handle Possession Change & Shot Clock
+            // [Offensive Rebound Logic]
+            // If the result was a miss AND the rebounder is on the offensive team, maintain possession.
+            let isOffReb = false;
+            
+            if (result.type === 'miss' && result.rebounder) {
+                // Check if rebounder belongs to the current offensive team
+                // We compare player IDs within the current offTeam's onCourt array
+                const rebounderId = result.rebounder.playerId;
+                if (offTeam.onCourt.some(p => p.playerId === rebounderId)) {
+                    isOffReb = true;
+                }
+            }
+
+            if (isOffReb) {
+                // Offensive Rebound: Keep Possession, Reset Shot Clock to 14
+                // No change to state.possession
+                state.shotClock = 14; 
+                // The loop continues with the same team attacking, representing a putback or kick-out
+            } else {
+                // Standard Possession Change (Score, Def Rebound, Turnover, etc.)
+                state.possession = state.possession === 'home' ? 'away' : 'home';
+                state.shotClock = 24;
+            }
         }
     }
 

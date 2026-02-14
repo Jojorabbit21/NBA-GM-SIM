@@ -17,26 +17,42 @@ function identifyDefender(
     actor: LivePlayer, 
     secondaryActor: LivePlayer | undefined, 
     playType: PlayType,
-    isActorAce: boolean // [New] Flag to check if actor is the designated Ace
+    isActorAce: boolean,
+    targetZone: 'Rim' | 'Paint' | 'Mid' | '3PT' // [New] Target zone context
 ): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean } {
     
-    // 0. Ace Stopper Logic (Pre-assignment)
-    let primaryDefender: LivePlayer | undefined;
-    const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && isActorAce;
+    const defTactic = defTeam.tactics.defenseTactics[0]; // Primary tactic
     
-    // If Ace Stopper tactic is active AND the current attacker is the Ace,
-    // try to assign the designated stopper regardless of position.
+    // 0. Ace Stopper Logic (Pre-assignment)
+    // Stopper takes priority unless it's a zone defense (which overrides specific matchups)
+    let primaryDefender: LivePlayer | undefined;
+    const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && isActorAce && defTactic !== 'ZoneDefense';
+    
     if (isStopperActive && defTeam.tactics.stopperId) {
         primaryDefender = defTeam.onCourt.find(p => p.playerId === defTeam.tactics.stopperId);
     }
 
-    // 1. Default Defender (Positional Match) if no stopper or stopper not on court
+    // [New] Zone Defense Funneling Logic
+    // In a Zone, if the ball is inside (Rim/Paint), the Anchor (Big man) contests it, regardless of who is driving.
+    if (defTactic === 'ZoneDefense') {
+        if (targetZone === 'Rim' || targetZone === 'Paint') {
+            // Find the best rim protector (C or PF) on court
+            const anchor = defTeam.onCourt.find(p => p.position === 'C') || 
+                           defTeam.onCourt.find(p => p.position === 'PF');
+            
+            if (anchor) {
+                return { defender: anchor, isSwitch: false, isBotchedSwitch: false };
+            }
+        }
+        // For Perimeter shots in Zone, we stick to positional area assignment (below), but disallow switching.
+    }
+
+    // 1. Default Defender (Positional Match)
     if (!primaryDefender) {
         primaryDefender = defTeam.onCourt.find(p => p.position === actor.position);
     }
     // Fallback: If exact match missing (e.g. 2 PGs on court), pick random or closest
     if (!primaryDefender) {
-        // Fallback logic: Match Guard with Guard, Big with Big if possible
         const isActorGuard = ['PG', 'SG'].includes(actor.position);
         primaryDefender = defTeam.onCourt.find(p => isActorGuard ? ['PG', 'SG'].includes(p.position) : ['PF', 'C'].includes(p.position));
     }
@@ -45,7 +61,6 @@ function identifyDefender(
 
     // 2. Check for Switch Situation
     const isScreenPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop', 'Handoff'].includes(playType);
-    const defTactic = defTeam.tactics.defenseTactics[0]; // Primary tactic
     
     // Zone Defense does NOT switch (they guard areas)
     if (!isScreenPlay || defTactic === 'ZoneDefense' || !secondaryActor) {
@@ -129,8 +144,15 @@ export function simulatePossession(state: GameState): PossessionResult {
     // [New] Check if Actor is Ace
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
-    // 2. Identify Defender (with Switch Logic)
-    const { defender, isSwitch, isBotchedSwitch } = identifyDefender(defTeam, actor, secondaryActor, selectedPlayType, isActorAce);
+    // 2. Identify Defender (with Switch Logic & Zone Funneling)
+    const { defender, isSwitch, isBotchedSwitch } = identifyDefender(
+        defTeam, 
+        actor, 
+        secondaryActor, 
+        selectedPlayType, 
+        isActorAce,
+        preferredZone // Pass zone to determine defender
+    );
 
     // 3. Defensive Foul Check (Non-Shooting)
     const defIntensity = defTeam.tactics.sliders.defIntensity;
