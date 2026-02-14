@@ -31,6 +31,9 @@ export function calculateIncrementalFatigue(
 
     // Injury Check (Micro-roll)
     let injuryOccurred = false;
+    
+    // [Disabled] Injury logic temporarily disabled per user request
+    /*
     // [Update] Lowered threshold from 30 to 15 to reduce injury frequency
     if (effectiveCondition < 15) {
         const roll = Math.random() * 10000;
@@ -41,6 +44,7 @@ export function calculateIncrementalFatigue(
             injuryOccurred = true;
         }
     }
+    */
 
     return { drain, injuryOccurred };
 }
