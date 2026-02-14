@@ -64,7 +64,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
 
       {/* 1. Header */}
       <PageHeader 
-        title="Team Roster" 
+        title="로스터 & 기록" 
         description="선수단 구성 및 기록 확인"
         icon={<Users size={24} />}
         actions={
