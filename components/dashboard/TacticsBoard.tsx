@@ -112,9 +112,21 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
     };
 
     const handleDefenseChange = (val: string) => {
-        const currentStopper = defTactics.includes('AceStopper') ? 'AceStopper' : null;
-        const newTactics = currentStopper ? [currentStopper, val as DefenseTactic] : [val as DefenseTactic];
-        onUpdateTactics({ ...tactics, defenseTactics: newTactics as DefenseTactic[] });
+        const newDefTactic = val as DefenseTactic;
+
+        // [Logic Update] If Zone Defense is selected, disable Ace Stopper
+        if (newDefTactic === 'ZoneDefense') {
+            onUpdateTactics({ 
+                ...tactics, 
+                defenseTactics: ['ZoneDefense'], // Remove AceStopper if present
+                stopperId: undefined // Clear stopper assignment
+            });
+        } else {
+            // Keep existing AceStopper logic for Man-to-Man
+            const currentStopper = defTactics.includes('AceStopper') ? 'AceStopper' : null;
+            const newTactics = currentStopper ? [currentStopper, newDefTactic] : [newDefTactic];
+            onUpdateTactics({ ...tactics, defenseTactics: newTactics as DefenseTactic[] });
+        }
     };
 
     const handleStopperChange = (playerId: string) => {
@@ -129,6 +141,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
     const currentOffense = offTactics[0] || 'Balance';
     const currentDefense = defTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter';
     const sortedRoster = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+    const isZoneDefense = currentDefense === 'ZoneDefense';
 
     // Options for Selects
     const offOptions = (['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => ({ value: t, label: OFFENSE_TACTIC_INFO[t].label }));
@@ -225,7 +238,8 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                             stopperProps={{
                                 stopperId,
                                 onStopperChange: handleStopperChange,
-                                roster: sortedRoster
+                                roster: sortedRoster,
+                                isDisabled: isZoneDefense // [New] Disable if Zone Defense
                             }}
                         />
 

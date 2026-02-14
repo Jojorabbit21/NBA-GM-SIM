@@ -18,6 +18,7 @@ interface StrategyCardProps {
         stopperId?: string;
         onStopperChange: (val: string) => void;
         roster: Player[];
+        isDisabled?: boolean; // [New] Prop to disable stopper selection
     };
 }
 
@@ -72,21 +73,27 @@ export const StrategyCard: React.FC<StrategyCardProps> = ({
                     {stopperProps && (
                         <div className="px-6 py-4 border-t border-white/5 bg-slate-950/20">
                             <div className="flex items-center gap-2 mb-2">
-                                <ShieldAlert size={16} className="text-indigo-400" />
-                                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">에이스 스토퍼 (Lockdown)</span>
+                                <ShieldAlert size={16} className={`text-indigo-400 ${stopperProps.isDisabled ? 'opacity-50' : ''}`} />
+                                <span className={`text-xs font-black text-slate-400 uppercase tracking-widest ${stopperProps.isDisabled ? 'opacity-50' : ''}`}>에이스 스토퍼 (Lockdown)</span>
                             </div>
                             <div className="relative group">
                                 <select 
                                     value={stopperProps.stopperId || ""} 
-                                    onChange={(e) => stopperProps.onStopperChange(e.target.value)} 
-                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:bg-slate-800 transition-all shadow-inner"
+                                    onChange={(e) => stopperProps.onStopperChange(e.target.value)}
+                                    disabled={stopperProps.isDisabled}
+                                    className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2.5 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none shadow-inner transition-all ${stopperProps.isDisabled ? 'opacity-50 cursor-not-allowed text-slate-500' : 'cursor-pointer hover:bg-slate-800'}`}
                                 >
-                                    <option value="">지정 안함 (팀 수비 모드)</option>
-                                    {stopperProps.roster.map(p => (
+                                    {stopperProps.isDisabled ? (
+                                        <option value="">지역 방어 사용 중 (지정 불가)</option>
+                                    ) : (
+                                        <option value="">지정 안함 (팀 수비 모드)</option>
+                                    )}
+                                    
+                                    {!stopperProps.isDisabled && stopperProps.roster.map(p => (
                                         <option key={p.id} value={p.id}>{p.name} ({p.position}) - OVR {calculatePlayerOvr(p)}</option>
                                     ))}
                                 </select>
-                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400" size={14} />
+                                {!stopperProps.isDisabled && <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none group-hover:text-indigo-400" size={14} />}
                             </div>
                         </div>
                     )}

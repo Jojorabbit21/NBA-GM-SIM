@@ -138,7 +138,8 @@ export function simulatePossession(state: GameState): PossessionResult {
         offTeam.tactics.sliders.pace,
         offTeam.tactics.offenseTactics[0], // [New] Pass Offense Tactic
         bonusHitRate, 
-        1.0, 1.0 
+        1.0, 1.0,
+        offTeam.acePlayerId // [New] Pass ID of the identified Ace for targeted checking
     );
 
     const hitRate = shotContext.rate;
