@@ -38,7 +38,6 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 pretendard pb-12">
       <PageHeader 
         title="리그 순위표" 
         icon={<Trophy size={24} />}
@@ -112,6 +111,5 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
           </div>
         </>
       )}
-    </div>
   );
 };
