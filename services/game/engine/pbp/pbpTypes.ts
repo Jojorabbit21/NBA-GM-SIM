@@ -161,4 +161,9 @@ export interface PossessionResult {
     // [New] Matchup Context
     isAceTarget?: boolean;
     matchupEffect?: number;
+    
+    // [New] Switch & Mismatch Info (For Log flavor)
+    isSwitch?: boolean;
+    isMismatch?: boolean;
+    isBotchedSwitch?: boolean; // 수비 실수 (오픈 찬스)
 }

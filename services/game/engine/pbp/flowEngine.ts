@@ -86,6 +86,7 @@ export interface HitRateResult {
     rate: number;
     matchupEffect: number;
     isAceTarget: boolean;
+    isMismatch: boolean; // [New]
 }
 
 export function calculateHitRate(
@@ -99,10 +100,23 @@ export function calculateHitRate(
     bonusHitRate: number,
     attEfficiency: number,
     defEfficiency: number,
-    acePlayerId?: string // [New] Pass opponent Ace ID to check target match
+    acePlayerId?: string,
+    isBotchedSwitch: boolean = false, // [New]
+    isSwitch: boolean = false // [New]
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
+
+    // 0. Check Botched Switch (Open Shot)
+    if (isBotchedSwitch) {
+        // Massive Bonus, limited Defense impact
+        return {
+            rate: 0.85, // Almost guaranteed open look
+            matchupEffect: 0,
+            isAceTarget: false,
+            isMismatch: false
+        };
+    }
 
     // 1. Base Percentages from Constants
     if (preferredZone === 'Rim') hitRate = S.INSIDE_BASE_PCT; // 0.58
@@ -111,13 +125,11 @@ export function calculateHitRate(
     else hitRate = 0.45; 
 
     // 2. Attribute Delta (Offense vs Defense)
-    // Fatigue applied
     const fatigueOff = actor.currentCondition / 100;
     const fatigueDef = defender.currentCondition / 100;
 
     const offRating = preferredZone === '3PT' ? (actor.attr.out * fatigueOff) : (actor.attr.ins * fatigueOff);
     
-    // Defensive Stat Selection (Perimeter vs Interior)
     let defStat = defender.attr.perDef;
     let defImpactFactor = S.MID_DEF_IMPACT;
 
@@ -129,55 +141,89 @@ export function calculateHitRate(
         defImpactFactor = S.THREE_DEF_IMPACT;
     }
 
-    // [New] Foul Trouble Penalty Calculation
     const foulCount = defender.pf;
     const FT_CONFIG = SIM_CONFIG.FOUL_TROUBLE.DEF_PENALTY;
     let defPenalty = 0;
     
-    if (foulCount >= 5) defPenalty = FT_CONFIG[5]; // e.g. 0.40
-    else if (foulCount === 4) defPenalty = FT_CONFIG[4]; // e.g. 0.15
+    if (foulCount >= 5) defPenalty = FT_CONFIG[5]; 
+    else if (foulCount === 4) defPenalty = FT_CONFIG[4]; 
 
-    // Apply Def Rating with Fatigue and Foul Trouble Penalty
     const defRating = defStat * fatigueDef * (1 - defPenalty);
     
-    // Apply Delta (Individual Matchup)
-    // e.g. (90 - 70) * 0.004 = +0.08 (+8%)
+    // Base Matchup Calculation
     hitRate += (offRating - defRating) * defImpactFactor;
 
-    // [New] Apply Team Defensive Metrics (Help Defense)
+    // [New] Switch Mismatch Calculation
+    let isMismatch = false;
+    let mismatchModifier = 0;
+
+    if (isSwitch) {
+        const isActorBig = ['C', 'PF'].includes(actor.position);
+        const isDefenderSmall = ['PG', 'SG'].includes(defender.position);
+        
+        const isActorSmall = ['PG', 'SG'].includes(actor.position);
+        const isDefenderBig = ['C', 'PF'].includes(defender.position);
+
+        // Case A: Big vs Small (Post Mismatch)
+        if (isActorBig && isDefenderSmall && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+             // Advantage: Strength Diff
+             const strDelta = actor.attr.strength - defender.attr.strength;
+             if (strDelta > 10) {
+                 isMismatch = true;
+                 mismatchModifier = strDelta * 0.002; // +2% to +5% typically
+             }
+        }
+        // Case B: Small vs Big (Speed/Perimeter Mismatch)
+        else if (isActorSmall && isDefenderBig && (preferredZone === '3PT' || preferredZone === 'Mid')) {
+             // Advantage: Speed/Agility vs PerDef
+             const spdDelta = (actor.attr.speed + actor.attr.agility)/2 - (defender.attr.speed + defender.attr.perDef)/2;
+             if (spdDelta > 10) {
+                 isMismatch = true;
+                 mismatchModifier = spdDelta * 0.0025; // +2.5% to +6% typically
+             }
+        }
+    }
+
+    // [New] Help Defense Mitigation (Balance Control)
+    // If mismatch exists, team help defense tries to rotate
+    if (isMismatch) {
+        const teamDefMetrics = calculateTeamDefensiveRating(defTeam);
+        // Team Help IQ determines if rotation arrives
+        const helpChance = teamDefMetrics.help / 120; // ~0.5 to 0.8
+        
+        if (Math.random() < helpChance) {
+            // Help arrived! Reduce mismatch advantage
+            mismatchModifier *= 0.3; // Slash bonus by 70%
+            // Note: In logs we could say "Help Defense mitigated mismatch" but keeping it simple for now
+        }
+        hitRate += mismatchModifier;
+    }
+
+    // [New] Apply Team Defensive Metrics (Standard Help)
+    // This is the base help defense that always applies
     const teamDefMetrics = calculateTeamDefensiveRating(defTeam);
     let helpImpact = 0;
     if (preferredZone === 'Rim' || preferredZone === 'Paint') {
-        // Interior Help: IntDef + HelpIQ
         helpImpact = (teamDefMetrics.intDef + teamDefMetrics.help - 140) * 0.002;
     } else {
-        // Perimeter Pressure: PerDef + Pressure + HelpIQ
         helpImpact = (teamDefMetrics.perDef + teamDefMetrics.pressure + teamDefMetrics.help - 210) * 0.001;
     }
-    hitRate -= helpImpact; // Higher team defense reduces hit rate
+    hitRate -= helpImpact; 
 
     // 3. Tactical & Ace Stopper Impact
-    // [Updated] Only apply impact if:
-    // a) Defense has AceStopper tactic active
-    // b) Current defender IS the designated stopper
-    // c) Current actor IS the designated Ace of the opposing team
     const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && 
                             defTeam.tactics.stopperId === defender.playerId &&
-                            actor.playerId === acePlayerId; // [New Check]
+                            actor.playerId === acePlayerId; 
     
     let matchupEffect = 0;
     let isAceTarget = false;
 
     if (isStopperActive) {
-        // Calculate detailed impact from AceStopper System
         const flatAce = flattenPlayer(actor);
         const flatStopper = flattenPlayer(defender);
         const stopperMp = defender.mp; 
 
-        // calculateAceStopperImpact returns percentage (e.g. -15 for -15%)
         const impactPercent = calculateAceStopperImpact(flatAce, flatStopper, stopperMp);
-        
-        // If in foul trouble, the stopper impact is significantly reduced (closer to 0 or positive)
         const adjustedImpact = impactPercent * (1 - defPenalty);
         
         hitRate = hitRate * (1 + (adjustedImpact / 100));
@@ -187,14 +233,12 @@ export function calculateHitRate(
     }
 
     // 4. Efficiency Modifiers
-    hitRate += bonusHitRate; // From PlayType (e.g. +15% for Dunk)
-    hitRate *= attEfficiency; // Team spacing/fit bonus
-    hitRate *= (2.0 - defEfficiency); // Defense coordination penalty
+    hitRate += bonusHitRate; 
+    hitRate *= attEfficiency; 
+    hitRate *= (2.0 - defEfficiency); 
 
-    // [New] Haste Malus (Revised)
-    // Apply penalty for high pace and SevenSeconds tactic
+    // Haste Malus
     if (playType !== 'Transition') {
-        // Pace Slider Penalty (7+)
         if (paceSlider >= 7) {
             let sliderMalus = 0;
             if (paceSlider === 7) sliderMalus = 0.03;
@@ -202,30 +246,28 @@ export function calculateHitRate(
             else if (paceSlider === 9) sliderMalus = 0.05;
             else if (paceSlider === 10) sliderMalus = 0.07;
 
-            // Mitigation by ShotIQ (High IQ players resist rushing)
             const composure = actor.attr.shotIq;
-            const mitigation = Math.max(0, (composure - 70) * 0.001); // Small offset for elite players
+            const mitigation = Math.max(0, (composure - 70) * 0.001); 
             
             hitRate -= Math.max(0, sliderMalus - mitigation);
         }
 
-        // Tactic Penalty
         if (offTactic === 'SevenSeconds') {
-            hitRate -= 0.05; // -5% Flat
+            hitRate -= 0.05; 
         }
     }
     
-    // [New] Transition Defense Breakdown
     if (playType === 'Transition') {
         const defPace = defTeam.tactics.sliders.pace;
         if (defPace > 7) {
-            hitRate += 0.15; // +15% success against fast teams (bad transition D)
+            hitRate += 0.15; 
         }
     }
     
     return {
         rate: Math.max(0.05, Math.min(0.95, hitRate)),
         matchupEffect,
-        isAceTarget
+        isAceTarget,
+        isMismatch // Return status
     };
 }
