@@ -135,34 +135,45 @@ export function runFullGameSimulation(
 
     // 3. Finalize & Map Results
     const mapToBox = (teamState: TeamState) => {
-        return [...teamState.onCourt, ...teamState.bench].map(p => ({
-            playerId: p.playerId,
-            playerName: p.playerName,
-            pts: p.pts, reb: p.reb, offReb: p.offReb, defReb: p.defReb,
-            ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov,
-            fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a, ftm: p.ftm, fta: p.fta,
-            rimM: p.rimM, rimA: p.rimA, midM: p.midM, midA: p.midA,
-            mp: parseFloat(p.mp.toFixed(1)),
-            g: p.mp > 0 ? 1 : 0,
-            gs: p.gs,
-            pf: p.pf,
-            plusMinus: p.plusMinus,
-            condition: parseFloat(p.currentCondition.toFixed(1)),
-            isStopper: teamState.tactics.stopperId === p.playerId,
-            // Additional fields for detailed boxscore
-            zoneData: {
-                zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
-                zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
-                zone_mid_l_m: p.zone_mid_l_m, zone_mid_l_a: p.zone_mid_l_a,
-                zone_mid_c_m: p.zone_mid_c_m, zone_mid_c_a: p.zone_mid_c_a,
-                zone_mid_r_m: p.zone_mid_r_m, zone_mid_r_a: p.zone_mid_r_a,
-                zone_c3_l_m: p.zone_c3_l_m, zone_c3_l_a: p.zone_c3_l_a,
-                zone_c3_r_m: p.zone_c3_r_m, zone_c3_r_a: p.zone_c3_r_a,
-                zone_atb3_l_m: p.zone_atb3_l_m, zone_atb3_l_a: p.zone_atb3_l_a,
-                zone_atb3_c_m: p.zone_atb3_c_m, zone_atb3_c_a: p.zone_atb3_c_a,
-                zone_atb3_r_m: p.zone_atb3_r_m, zone_atb3_r_a: p.zone_atb3_r_a,
+        return [...teamState.onCourt, ...teamState.bench].map(p => {
+            // [New] Calculate average matchup effect
+            let avgEffect = 0;
+            if (p.matchupEffectCount > 0) {
+                avgEffect = Math.round(p.matchupEffectSum / p.matchupEffectCount);
             }
-        }));
+
+            return {
+                playerId: p.playerId,
+                playerName: p.playerName,
+                pts: p.pts, reb: p.reb, offReb: p.offReb, defReb: p.defReb,
+                ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov,
+                fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a, ftm: p.ftm, fta: p.fta,
+                rimM: p.rimM, rimA: p.rimA, midM: p.midM, midA: p.midA,
+                mp: parseFloat(p.mp.toFixed(1)),
+                g: p.mp > 0 ? 1 : 0,
+                gs: p.gs,
+                pf: p.pf,
+                plusMinus: p.plusMinus,
+                condition: parseFloat(p.currentCondition.toFixed(1)),
+                isStopper: teamState.tactics.stopperId === p.playerId,
+                // [New] Pass through match up data
+                isAceTarget: p.matchupEffectCount > 0,
+                matchupEffect: avgEffect,
+                // Additional fields for detailed boxscore
+                zoneData: {
+                    zone_rim_m: p.zone_rim_m, zone_rim_a: p.zone_rim_a,
+                    zone_paint_m: p.zone_paint_m, zone_paint_a: p.zone_paint_a,
+                    zone_mid_l_m: p.zone_mid_l_m, zone_mid_l_a: p.zone_mid_l_a,
+                    zone_mid_c_m: p.zone_mid_c_m, zone_mid_c_a: p.zone_mid_c_a,
+                    zone_mid_r_m: p.zone_mid_r_m, zone_mid_r_a: p.zone_mid_r_a,
+                    zone_c3_l_m: p.zone_c3_l_m, zone_c3_l_a: p.zone_c3_l_a,
+                    zone_c3_r_m: p.zone_c3_r_m, zone_c3_r_a: p.zone_c3_r_a,
+                    zone_atb3_l_m: p.zone_atb3_l_m, zone_atb3_l_a: p.zone_atb3_l_a,
+                    zone_atb3_c_m: p.zone_atb3_c_m, zone_atb3_c_a: p.zone_atb3_c_a,
+                    zone_atb3_r_m: p.zone_atb3_r_m, zone_atb3_r_a: p.zone_atb3_r_a,
+                }
+            };
+        });
     };
 
     const mapTactics = (t: GameTactics) => ({

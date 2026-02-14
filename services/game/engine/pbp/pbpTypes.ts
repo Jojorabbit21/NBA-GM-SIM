@@ -63,6 +63,10 @@ export interface LivePlayer extends PlayerBoxScore {
     zone_atb3_l_m: number; zone_atb3_l_a: number;
     zone_atb3_c_m: number; zone_atb3_c_a: number;
     zone_atb3_r_m: number; zone_atb3_r_a: number;
+
+    // [New] Ace Stopper Tracking
+    matchupEffectSum: number; // Cumulative impact score
+    matchupEffectCount: number; // Number of possessions targeted
 }
 
 export interface TeamState {
@@ -152,4 +156,8 @@ export interface PossessionResult {
     shotType?: string; // "Jump Shot", "Dunk", "Layup"
     isBlock?: boolean;
     isSteal?: boolean;
+
+    // [New] Matchup Context
+    isAceTarget?: boolean;
+    matchupEffect?: number;
 }

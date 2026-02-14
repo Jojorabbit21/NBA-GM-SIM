@@ -82,6 +82,12 @@ function calculateTeamDefensiveRating(team: TeamState) {
     };
 }
 
+export interface HitRateResult {
+    rate: number;
+    matchupEffect: number;
+    isAceTarget: boolean;
+}
+
 export function calculateHitRate(
     actor: LivePlayer,
     defender: LivePlayer,
@@ -93,7 +99,7 @@ export function calculateHitRate(
     bonusHitRate: number,
     attEfficiency: number,
     defEfficiency: number
-): number {
+): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
 
@@ -153,6 +159,9 @@ export function calculateHitRate(
     const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && 
                             defTeam.tactics.stopperId === defender.playerId;
     
+    let matchupEffect = 0;
+    let isAceTarget = false;
+
     if (isStopperActive) {
         // Calculate detailed impact from AceStopper System
         const flatAce = flattenPlayer(actor);
@@ -166,6 +175,9 @@ export function calculateHitRate(
         const adjustedImpact = impactPercent * (1 - defPenalty);
         
         hitRate = hitRate * (1 + (adjustedImpact / 100));
+
+        matchupEffect = adjustedImpact;
+        isAceTarget = true;
     }
 
     // 4. Efficiency Modifiers
@@ -205,5 +217,9 @@ export function calculateHitRate(
         }
     }
     
-    return Math.max(0.05, Math.min(0.95, hitRate));
+    return {
+        rate: Math.max(0.05, Math.min(0.95, hitRate)),
+        matchupEffect,
+        isAceTarget
+    };
 }
