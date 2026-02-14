@@ -79,6 +79,16 @@ export function generateCommentary(
 
         // Rim / Paint (Dunks & Layups)
         if (zone === 'Rim' || zone === 'Paint') {
+            // [New] Putback Commentary
+            if (playType === 'Putback') {
+                return pick([
+                    `${actor.playerName}, 공격 리바운드 후 바로 올려놓습니다!${scoreTag}`,
+                    `${actor.playerName}, 잡자마자 풋백 득점!${scoreTag}`,
+                    `${actor.playerName}, 팁인 성공! 세컨드 찬스를 살립니다.${scoreTag}`,
+                    `${actor.playerName}, 골밑 집중력! 리바운드에 이은 골밑슛 성공.${scoreTag}`
+                ]);
+            }
+
             if (playType === 'PnR_Roll' || playType === 'Cut') {
                  if (canDunk && assister) {
                     return pick([
@@ -131,6 +141,13 @@ export function generateCommentary(
                 `${actor.playerName}, 회심의 3점슛... 림을 외면합니다.`,
                 `${actor.playerName}, 3점 라인 밖에서 던져보지만 빗나갑니다.`,
                 `${actor.playerName}의 3점 시도, 들어가지 않습니다.`
+            ]);
+        }
+        if (playType === 'Putback') {
+             return pick([
+                `${actor.playerName}, 풋백 시도... 림을 돕니다.`,
+                `${actor.playerName}, 리바운드는 잡았으나 마무리가 아쉽습니다.`,
+                `${actor.playerName}, 골밑 혼전 중 슛 실패.`
             ]);
         }
         return pick([

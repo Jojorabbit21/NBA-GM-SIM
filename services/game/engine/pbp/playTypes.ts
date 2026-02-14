@@ -165,6 +165,18 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 bonusHitRate: 0.20 // Transition is efficient
             };
         }
+        case 'Putback': {
+            // Second Chance points (Rebounder immediately goes up)
+            // Prioritize players with high Rebound & Inside scoring
+            const actor = pickWeightedActor(p => p.attr.reb * 0.6 + p.attr.ins * 0.4);
+            return {
+                playType,
+                actor,
+                preferredZone: 'Rim',
+                shotType: 'Layup', // Or Dunk
+                bonusHitRate: 0.25 // High bonus as defense is scrambling
+            };
+        }
         default: {
             // Fallback: Random Iso
             const actor = players[Math.floor(Math.random() * players.length)];

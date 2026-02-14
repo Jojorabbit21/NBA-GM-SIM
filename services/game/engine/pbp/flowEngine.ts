@@ -237,8 +237,8 @@ export function calculateHitRate(
     hitRate *= attEfficiency; 
     hitRate *= (2.0 - defEfficiency); 
 
-    // Haste Malus
-    if (playType !== 'Transition') {
+    // Haste Malus (Not for Transition OR Putback)
+    if (playType !== 'Transition' && playType !== 'Putback') {
         if (paceSlider >= 7) {
             let sliderMalus = 0;
             if (paceSlider === 7) sliderMalus = 0.03;

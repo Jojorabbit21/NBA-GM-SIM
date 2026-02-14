@@ -7,7 +7,7 @@ import { OFFENSE_STRATEGY_CONFIG } from './strategyMap';
  * Calculates how much time a possession takes based on:
  * - Base Time (Tactic Defined)
  * - Pace Slider (User Defined)
- * - Game Situation (2-for-1, Transition)
+ * - Game Situation (2-for-1, Transition, Putback)
  */
 export function calculatePossessionTime(
     state: GameState, 
@@ -17,6 +17,15 @@ export function calculatePossessionTime(
 ): number {
     const { gameClock } = state;
     
+    // [Update] Instant Action for Putbacks (Second Chance)
+    // No set up required, immediate shot or pass
+    if (playType === 'Putback') {
+        // Randomly 2 to 4 seconds
+        let putbackTime = 2 + Math.floor(Math.random() * 3);
+        if (putbackTime > gameClock) putbackTime = gameClock;
+        return putbackTime;
+    }
+
     // 1. Get Base Time from Tactic
     const config = OFFENSE_STRATEGY_CONFIG[tactic];
     let timeTaken = config ? config.baseTime : 15.5; // Default to Balance if undefined
