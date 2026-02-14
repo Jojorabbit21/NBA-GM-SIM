@@ -74,6 +74,7 @@ function getShotDescription(
  */
 export function applyPossessionResult(state: GameState, result: PossessionResult) {
     const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal, offTeam, defTeam, isAndOne, playType } = result;
+    const { isSwitch, isMismatch, isBotchedSwitch } = result; // [New]
 
     // [New] Update Matchup Tracking
     if (result.isAceTarget && typeof result.matchupEffect === 'number') {
@@ -101,11 +102,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
 
     // [New] Shot Coordinate Generation Logic
     if ((type === 'score' || type === 'miss') && zone) {
-        // Determine court side based on home/away possession
-        // [Update] Fixed Sides: Home always shoots Right, Away always shoots Left.
-        // This keeps the chart cleaner for analysis without confusing side switches.
         const side: CourtSide = (offTeam.id === state.home.id) ? 'Right' : 'Left';
-
         const coords = generateShotCoordinate(zone, side);
         
         const shotEvent: ShotEvent = {
@@ -139,36 +136,34 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (assister) assister.ast += 1;
 
         offTeam.score += points;
-        
-        // [Update] Apply +/- for the field goal
         updatePlusMinus(points);
 
-        // [New] Rich Shot Description
         const shotDesc = getShotDescription(actor, playType, zone, true);
         let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} ${shotDesc} 성공`;
         
         if (assister) logText += ` (AST: ${assister.playerName})`;
         
-        // [FIX] Accurately calculate total points for the log including And-One
+        // [New] Add situational tags (concise)
+        if (isBotchedSwitch) logText += ` [OPEN]`;
+        else if (isMismatch) logText += ` [MIS]`;
+        else if (isSwitch) logText += ` [SW]`;
+        
         let totalPointsAdded = points; 
 
         // Handle And-1
         if (isAndOne && defender) {
             commitFoul(defender);
-            // Simple FT logic: 80% chance to convert And-1
             if (Math.random() < (actor.attr.ft / 100)) {
                 actor.pts += 1;
                 actor.ftm += 1;
                 actor.fta += 1;
                 offTeam.score += 1;
-                totalPointsAdded += 1; // Add bonus point to log tracker
-                
-                // [Update] Apply +/- for the And-1 FT
+                totalPointsAdded += 1; 
                 updatePlusMinus(1);
-                logText += ` + 앤드원 성공 (파울: ${defender.playerName})`;
+                logText += ` + 앤드원`;
             } else {
                 actor.fta += 1;
-                logText += ` + 앤드원 실패 (파울: ${defender.playerName})`;
+                logText += ` + 앤드원 실패`;
             }
         }
         
@@ -179,10 +174,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (zone === '3PT') actor.p3a += 1;
         if (zone) updateZoneStats(actor, zone, false);
 
-        // [New] Rich Miss Description
         const shotDesc = getShotDescription(actor, playType, zone, false);
-        // Remove '성공'/'실패' suffixes from helper if they exist (though helper currently doesn't add them for specific types)
-        // We construct the sentence here.
         let logText = `[${offTeam.id.toUpperCase()}] ${actor.playerName} ${shotDesc} 실패`;
 
         if (isBlock && defender) {
@@ -190,6 +182,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             logText += ` (블록: ${defender.playerName})`;
             addLog(state, defTeam.id, logText, 'block');
         } else {
+            // [New] Add tags on miss too
+            if (isBotchedSwitch) logText += ` [OPEN]`; // Even open shots miss sometimes
+            else if (isSwitch) logText += ` [SW]`;
+            
             addLog(state, offTeam.id, logText, 'miss');
         }
 
@@ -199,7 +195,6 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             if (rebType === 'off') rebounder.offReb += 1;
             else rebounder.defReb += 1;
             
-            // "Putback" hint can be inferred here if offensive rebound
             addLog(state, rebounder.playerId, `${rebounder.playerName} 리바운드 (${rebType === 'off' ? '공격' : '수비'})`, 'info');
         }
 
@@ -210,34 +205,29 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (isSteal && defender) {
             defender.stl += 1;
             logText += ` (스틸: ${defender.playerName})`;
+            if (isSwitch) logText += ` [SW]`;
         }
         addLog(state, offTeam.id, logText, 'turnover');
     
     } else if (type === 'foul') {
-        // Defensive Foul on the floor (Non-shooting)
         if (defender) commitFoul(defender);
-        addLog(state, defTeam.id, `${defender?.playerName} 수비 파울 (팀 파울 ${defTeam.fouls})`, 'foul');
+        addLog(state, defTeam.id, `${defender?.playerName} 수비 파울 ${isSwitch ? '[SW]' : ''} (팀 파울 ${defTeam.fouls})`, 'foul');
         
-        // Bonus Situation Check? (Simplified: If fouls > 4, shoot FTs)
         if (defTeam.fouls > 4) {
-            // 2 Free Throws
             let ftMade = 0;
             actor.fta += 2;
             const ftPct = actor.attr.ft / 100;
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
             
-            // [Update] Apply +/- for Penalty FTs
             updatePlusMinus(ftMade);
-            
             addLog(state, offTeam.id, `${actor.playerName} 자유투 ${ftMade}/2 성공`, 'freethrow', ftMade);
         }
 
     } else if (type === 'freethrow') {
-        // Shooting Foul (Missed Shot)
         if (defender) commitFoul(defender);
         
-        const numShots = 2; // Simplify 2 or 3 shots to 2 for now
+        const numShots = 2; 
         let ftMade = 0;
         actor.fta += numShots;
         const ftPct = actor.attr.ft / 100;
@@ -246,11 +236,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
         }
         
-        // [Update] Apply +/- for Shooting Foul FTs
         updatePlusMinus(ftMade);
-        
-        // [New] Detailed Foul Log with Defender Name
-        addLog(state, offTeam.id, `${actor.playerName} 슈팅 파울 - 자유투 ${ftMade}/${numShots} 성공 (파울: ${defender?.playerName})`, 'freethrow', ftMade);
+        addLog(state, offTeam.id, `${actor.playerName} 슈팅 파울 - 자유투 ${ftMade}/${numShots} 성공 ${isMismatch ? '[MIS]' : ''}`, 'freethrow', ftMade);
     }
 }
 
@@ -262,7 +249,6 @@ function updateZoneStats(p: LivePlayer, zone: 'Rim' | 'Paint' | 'Mid' | '3PT', i
         p.midA++;
         if (isMake) p.midM++;
     }
-    // Specific Sub-Zone Update
     const subZoneKey = resolveDynamicZone(p, zone);
     const attemptKey = `${subZoneKey}_a` as keyof LivePlayer;
     if (typeof p[attemptKey] === 'number') (p as any)[attemptKey]++;
