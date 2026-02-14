@@ -57,11 +57,16 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+            
+            // [Update] Modern ISO: High 3PT shooters will look for Step-back 3s
+            const lovesThree = actor.attr.threeVal >= 80;
+            const takeThree = lovesThree && Math.random() < 0.55; // 55% chance if elite shooter
+
             return {
                 playType,
                 actor,
-                preferredZone: 'Mid',
-                shotType: 'Pullup',
+                preferredZone: takeThree ? '3PT' : 'Mid',
+                shotType: takeThree ? 'Pullup' : 'Pullup',
                 bonusHitRate: 0.05 // Iso is tough, low bonus
             };
         }
@@ -69,11 +74,16 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
             // Best Handler
             const actor = pickWeightedActor(p => p.archetypes.handler);
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
+            
+            // [Update] Modern PnR: Handler Pull-up 3 off the screen
+            const lovesThree = actor.attr.threeVal >= 78;
+            const takeThree = lovesThree && Math.random() < 0.45;
+
             return {
                 playType,
                 actor,
                 secondaryActor: screener,
-                preferredZone: 'Mid', // Pullup off screen or drive
+                preferredZone: takeThree ? '3PT' : 'Mid', // Pullup off screen or drive
                 shotType: 'Pullup',
                 bonusHitRate: 0.10 // PnR creates advantage
             };
@@ -145,11 +155,15 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
             // Shooter getting ball from Big
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
             const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
+            
+            // [Update] DHO usually leads to 3s for shooters
+            const lovesThree = actor.attr.threeVal >= 75;
+            
             return {
                 playType,
                 actor,
                 secondaryActor: big,
-                preferredZone: 'Mid',
+                preferredZone: lovesThree ? '3PT' : 'Mid',
                 shotType: 'CatchShoot', // or Drive
                 bonusHitRate: 0.10
             };
@@ -157,11 +171,16 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
         case 'Transition': {
             // Fast break
             const actor = pickWeightedActor(p => p.attr.speed + p.archetypes.driver);
+            
+            // [Update] Transition 3s (Curry Style)
+            const lovesThree = actor.attr.threeVal >= 82;
+            const takeThree = lovesThree && Math.random() < 0.40;
+
             return {
                 playType,
                 actor,
-                preferredZone: 'Rim',
-                shotType: 'Layup',
+                preferredZone: takeThree ? '3PT' : 'Rim',
+                shotType: takeThree ? 'Pullup' : 'Layup',
                 bonusHitRate: 0.20 // Transition is efficient
             };
         }
