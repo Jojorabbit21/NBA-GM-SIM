@@ -1,6 +1,6 @@
 
 import { useState, useRef, useCallback } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player, RosterUpdate, SimulationResult } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart, Player, RosterUpdate, SimulationResult, PlayerBoxScore } from '../types';
 import { simulateGame } from '../services/gameEngine';
 import { simulateCpuGames } from '../services/simulationService';
 import { updateTeamStats, updateSeriesState } from '../utils/simulationUtils';
@@ -116,7 +116,12 @@ export const useSimulation = (
                     // Update stats for User Game
                     const homeT = newTeams.find((t: Team) => t.id === homeTeam.id);
                     const awayT = newTeams.find((t: Team) => t.id === awayTeam.id);
-                    if (homeT && awayT) updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
+                    if (homeT && awayT) {
+                        updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
+                        // [Fix] Aggregate Stats
+                        accumulatePlayerStats(homeT, userSimResult.homeBox);
+                        accumulatePlayerStats(awayT, userSimResult.awayBox);
+                    }
 
                     // Apply Roster Updates (Fatigue & Injuries) from Game Result
                     if (userSimResult.rosterUpdates) {
@@ -159,7 +164,12 @@ export const useSimulation = (
                     cpuResults.forEach(res => {
                         const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
                         const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
-                        if (h && a) updateTeamStats(h, a, res.homeScore, res.awayScore);
+                        if (h && a) {
+                            updateTeamStats(h, a, res.homeScore, res.awayScore);
+                            // [Fix] Aggregate Stats for CPU games
+                            accumulatePlayerStats(h, res.boxScore.home);
+                            accumulatePlayerStats(a, res.boxScore.away);
+                        }
                     });
 
                     // Update Schedule
@@ -357,7 +367,12 @@ export const useSimulation = (
                 cpuResults.forEach(res => {
                     const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
                     const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
-                    if (h && a) updateTeamStats(h, a, res.homeScore, res.awayScore);
+                    if (h && a) {
+                        updateTeamStats(h, a, res.homeScore, res.awayScore);
+                        // [Fix] Aggregate Stats for CPU games
+                        accumulatePlayerStats(h, res.boxScore.home);
+                        accumulatePlayerStats(a, res.boxScore.away);
+                    }
                 });
 
                 const newSchedule = [...schedule];
@@ -413,3 +428,51 @@ export const useSimulation = (
         finalizeSimRef
     };
 };
+
+// [Helper] Aggregate Game Stats into Season Stats
+function accumulatePlayerStats(team: Team, box: PlayerBoxScore[]) {
+    if (!team || !box) return;
+    box.forEach(stat => {
+        const p = team.roster.find(rp => rp.id === stat.playerId);
+        if (p) {
+            // Stats object should exist, but init if safety needed (rare case)
+            if (!p.stats) p.stats = { 
+                g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, 
+                fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0, plusMinus: 0 
+            } as any;
+
+            p.stats.g += 1;
+            p.stats.gs += (stat.gs || 0);
+            p.stats.mp += (stat.mp || 0);
+            p.stats.pts += (stat.pts || 0);
+            p.stats.reb += (stat.reb || 0);
+            p.stats.offReb += (stat.offReb || 0);
+            p.stats.defReb += (stat.defReb || 0);
+            p.stats.ast += (stat.ast || 0);
+            p.stats.stl += (stat.stl || 0);
+            p.stats.blk += (stat.blk || 0);
+            p.stats.tov += (stat.tov || 0);
+            p.stats.pf += (stat.pf || 0);
+            p.stats.fgm += (stat.fgm || 0);
+            p.stats.fga += (stat.fga || 0);
+            p.stats.p3m += (stat.p3m || 0);
+            p.stats.p3a += (stat.p3a || 0);
+            p.stats.ftm += (stat.ftm || 0);
+            p.stats.fta += (stat.fta || 0);
+            p.stats.rimM += (stat.rimM || 0);
+            p.stats.rimA += (stat.rimA || 0);
+            p.stats.midM += (stat.midM || 0);
+            p.stats.midA += (stat.midA || 0);
+            p.stats.plusMinus += (stat.plusMinus || 0);
+
+            // Aggregate Zone Data
+            if (stat.zoneData) {
+                Object.entries(stat.zoneData).forEach(([k, v]) => {
+                    if (typeof v === 'number') {
+                        p.stats[k] = (p.stats[k] || 0) + v;
+                    }
+                });
+            }
+        }
+    });
+}
