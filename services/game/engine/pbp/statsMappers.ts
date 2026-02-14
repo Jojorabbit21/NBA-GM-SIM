@@ -5,7 +5,7 @@ import { formatTime } from './timeEngine';
 import { resolveRebound } from './reboundLogic';
 
 // Modularized Imports
-import { generateCommentary, getReboundCommentary } from '../../commentary/textGenerator';
+import { generateCommentary, getReboundCommentary } from '../commentary/textGenerator';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 
