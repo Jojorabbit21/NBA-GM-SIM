@@ -32,14 +32,11 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
         let aScore = 0;
         
         return logs.map(log => {
-            if (log.type === 'score' || log.type === 'freethrow') {
-                let points = 2;
-                if (log.text.includes('3점')) points = 3;
-                else if (log.type === 'freethrow') {
-                    if (log.text.includes('앤드원')) points = 1;
-                    else points = 1;
-                }
-                
+            // [FIX] Rely on explicit 'points' field from engine, do not guess from text.
+            // This ensures And-1s and multi-FT makes are counted correctly.
+            const points = log.points || 0;
+            
+            if (points > 0) {
                 if (log.teamId === homeTeam.id) hScore += points;
                 else aScore += points;
             }
