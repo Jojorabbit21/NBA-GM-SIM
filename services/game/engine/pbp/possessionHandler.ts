@@ -132,7 +132,7 @@ export function simulatePossession(state: GameState): PossessionResult {
     }
 
     // 5. Shot Calculation
-    const hitRate = calculateHitRate(
+    const shotContext = calculateHitRate(
         actor, defender, defTeam, 
         selectedPlayType, preferredZone, 
         offTeam.tactics.sliders.pace,
@@ -141,6 +141,7 @@ export function simulatePossession(state: GameState): PossessionResult {
         1.0, 1.0 
     );
 
+    const hitRate = shotContext.rate;
     const isScore = Math.random() < hitRate;
     
     // Check Block
@@ -176,7 +177,10 @@ export function simulatePossession(state: GameState): PossessionResult {
             zone: preferredZone,
             playType: selectedPlayType,
             shotType,
-            isAndOne
+            isAndOne,
+            // [New] Pass Matchup Info
+            matchupEffect: shotContext.matchupEffect,
+            isAceTarget: shotContext.isAceTarget
         };
     } else {
         // Miss
@@ -190,7 +194,10 @@ export function simulatePossession(state: GameState): PossessionResult {
                 defender: defender,
                 points: 0, // Points added in applyPossessionResult via FT calculation
                 isAndOne: false,
-                playType: selectedPlayType
+                playType: selectedPlayType,
+                // [New] Pass Matchup Info
+                matchupEffect: shotContext.matchupEffect,
+                isAceTarget: shotContext.isAceTarget
             };
         }
 
@@ -207,7 +214,10 @@ export function simulatePossession(state: GameState): PossessionResult {
             playType: selectedPlayType,
             shotType,
             isBlock,
-            isAndOne: false
+            isAndOne: false,
+            // [New] Pass Matchup Info
+            matchupEffect: shotContext.matchupEffect,
+            isAceTarget: shotContext.isAceTarget
         };
     }
 }

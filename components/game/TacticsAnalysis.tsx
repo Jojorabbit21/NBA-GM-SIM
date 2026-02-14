@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Target, Sliders, Clock, Activity } from 'lucide-react';
+import { Target, Sliders, Clock, Activity, ShieldAlert, Lock, Unlock } from 'lucide-react';
 import { Team, TacticalSnapshot, PlayerBoxScore, TacticalSliders } from '../../types';
 import { TEAM_DATA } from '../../data/teamData';
 import { TeamLogo } from '../common/TeamLogo';
@@ -133,7 +133,55 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
         </div>
     );
 
-    const TacticalCard: React.FC<{ team: Team, tactics?: TacticalSnapshot, grade: any, isHome: boolean, box: PlayerBoxScore[] }> = ({ team, tactics, grade, isHome, box }) => {
+    // [New] Stopper Impact Table Component
+    const StopperImpactTable: React.FC<{ tactics: TacticalSnapshot, myBox: PlayerBoxScore[], oppBox: PlayerBoxScore[] }> = ({ tactics, myBox, oppBox }) => {
+        if (tactics.stopperId) {
+            const stopper = myBox.find(p => p.playerId === tactics.stopperId);
+            const target = oppBox.find(p => p.isAceTarget);
+
+            if (stopper && target) {
+                const effect = target.matchupEffect || 0;
+                const isDebuff = effect < 0;
+                
+                return (
+                    <div className="mt-4 bg-slate-950/60 rounded-xl border border-white/5 p-3 relative overflow-hidden">
+                        <div className="flex items-center gap-2 text-indigo-300 font-black text-[10px] uppercase tracking-widest mb-3 border-b border-white/5 pb-2">
+                            <ShieldAlert size={12} />
+                            <span>Ace Stopper Impact</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-[1fr_auto_1fr] gap-2 items-center">
+                            {/* Stopper */}
+                            <div className="flex flex-col">
+                                <span className="text-[9px] text-slate-500 font-bold uppercase">Stopper</span>
+                                <span className="text-xs font-bold text-white truncate">{stopper.playerName}</span>
+                                <span className="text-[9px] text-slate-400">DEF Rating</span>
+                            </div>
+
+                            {/* Impact Badge */}
+                            <div className={`flex flex-col items-center justify-center px-3 py-1 rounded-lg border ${isDebuff ? 'bg-red-900/30 border-red-500/30' : 'bg-emerald-900/30 border-emerald-500/30'}`}>
+                                {isDebuff ? <Lock size={14} className="text-red-400 mb-0.5" /> : <Unlock size={14} className="text-emerald-400 mb-0.5" />}
+                                <span className={`text-xs font-black ${isDebuff ? 'text-red-400' : 'text-emerald-400'}`}>
+                                    {effect > 0 ? '+' : ''}{effect}%
+                                </span>
+                                <span className="text-[8px] font-bold text-slate-500 uppercase tracking-tight mt-0.5">Efficiency</span>
+                            </div>
+
+                            {/* Target */}
+                            <div className="flex flex-col items-end text-right">
+                                <span className="text-[9px] text-slate-500 font-bold uppercase">Target Ace</span>
+                                <span className="text-xs font-bold text-white truncate">{target.playerName}</span>
+                                <span className="text-[9px] text-slate-400">{target.pts} PTS ({target.fgm}/{target.fga})</span>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+        }
+        return null;
+    };
+
+    const TacticalCard: React.FC<{ team: Team, tactics?: TacticalSnapshot, grade: any, isHome: boolean, box: PlayerBoxScore[], oppBox: PlayerBoxScore[] }> = ({ team, tactics, grade, isHome, box, oppBox }) => {
         const avgTime = calculateAvgPossTime(box);
         const teamColor = TEAM_DATA[team.id]?.colors.primary || '#6366f1';
         
@@ -187,6 +235,11 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                     </div>
                 )}
 
+                {/* [New] Ace Stopper Section */}
+                {tactics && tactics.stopperId && (
+                     <StopperImpactTable tactics={tactics} myBox={box} oppBox={oppBox} />
+                )}
+
                 <div className="pt-2 border-t border-white/5 relative z-10">
                     <p className="text-[11px] text-slate-400 font-medium leading-relaxed flex gap-2">
                         <Activity size={14} style={{ color: teamColor }} className="flex-shrink-0 mt-0.5" />
@@ -207,8 +260,8 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Away (Left) vs Home (Right) Layout Order */}
-                <TacticalCard team={awayTeam} tactics={awayTactics} grade={awayGrade} isHome={false} box={awayBox} />
-                <TacticalCard team={homeTeam} tactics={homeTactics} grade={homeGrade} isHome={true} box={homeBox} />
+                <TacticalCard team={awayTeam} tactics={awayTactics} grade={awayGrade} isHome={false} box={awayBox} oppBox={homeBox} />
+                <TacticalCard team={homeTeam} tactics={homeTactics} grade={homeGrade} isHome={true} box={homeBox} oppBox={awayBox} />
             </div>
         </div>
     );

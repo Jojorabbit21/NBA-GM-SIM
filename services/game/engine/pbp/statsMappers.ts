@@ -75,6 +75,12 @@ function getShotDescription(
 export function applyPossessionResult(state: GameState, result: PossessionResult) {
     const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal, offTeam, defTeam, isAndOne, playType } = result;
 
+    // [New] Update Matchup Tracking
+    if (result.isAceTarget && typeof result.matchupEffect === 'number') {
+        actor.matchupEffectSum += result.matchupEffect;
+        actor.matchupEffectCount += 1;
+    }
+
     // Helper to increment foul
     const commitFoul = (defP: LivePlayer) => {
         defP.pf += 1;
