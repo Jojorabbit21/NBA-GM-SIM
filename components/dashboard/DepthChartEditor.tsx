@@ -2,7 +2,7 @@
 import React, { useEffect } from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { ChevronDown, Wand2 } from 'lucide-react';
+import { ChevronDown, Wand2, RotateCcw } from 'lucide-react';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
 interface DepthChartEditorProps {
@@ -70,6 +70,18 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
         onUpdateDepthChart(newChart);
     };
 
+    const handleResetChart = () => {
+        const resetChart: DepthChart = {
+            PG: [null, null, null], SG: [null, null, null], SF: [null, null, null],
+            PF: [null, null, null], C: [null, null, null]
+        };
+        
+        const resetStarters = { PG: '', SG: '', SF: '', PF: '', C: '' };
+
+        onUpdateDepthChart(resetChart);
+        onUpdateTactics({ ...tactics, starters: resetStarters });
+    };
+
     const handleChange = (pos: keyof DepthChart, depthIndex: number, playerId: string) => {
         const newChart = { ...depthChart! };
         const newRow = [...newChart[pos]];
@@ -107,13 +119,22 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
                 <div className="flex items-center gap-3">
                     <span className="text-base font-black text-white uppercase tracking-widest oswald">뎁스 차트</span>
                 </div>
-                <button 
-                    onClick={handleAutoFill}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md active:scale-95"
-                >
-                    <Wand2 size={14} />
-                    <span>AI 자동 설정</span>
-                </button>
+                <div className="flex gap-2">
+                    <button 
+                        onClick={handleAutoFill}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-md active:scale-95"
+                    >
+                        <Wand2 size={14} />
+                        <span>AI 자동 설정</span>
+                    </button>
+                    <button 
+                        onClick={handleResetChart}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                    >
+                        <RotateCcw size={14} />
+                        <span>초기화</span>
+                    </button>
+                </div>
             </div>
             <Table className="border-0 rounded-none shadow-none">
                 <TableHead>
