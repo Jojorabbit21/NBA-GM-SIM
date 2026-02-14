@@ -1,7 +1,7 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, BarChart2, Loader2 } from 'lucide-react';
-import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, Team, Player } from '../types';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, BarChart2, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, Team, Player, PlayerBoxScore } from '../types';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries'; // [New]
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
@@ -10,7 +10,7 @@ import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { PageHeader } from '../components/common/PageHeader';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
 
 interface InboxViewProps {
   myTeamId: string;
@@ -203,6 +203,242 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   );
 };
 
+// --- Sub-Component: Game Recap Viewer (With Sorting State) ---
+type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
+
+const GameRecapViewer: React.FC<{
+    gameData: GameRecapContent;
+    teams: Team[];
+    onPlayerClick: (id: string) => void;
+    handleViewDetails: (gameId: string) => void;
+    isFetchingResult: boolean;
+}> = ({ gameData, teams, onPlayerClick, handleViewDetails, isFetchingResult }) => {
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
+
+    const homeTeam = teams.find(t => t.id === gameData.homeTeamId);
+    const awayTeam = teams.find(t => t.id === gameData.awayTeamId);
+
+    const hColor = TEAM_DATA[homeTeam?.id || '']?.colors.primary || '#ffffff';
+    const aColor = TEAM_DATA[awayTeam?.id || '']?.colors.primary || '#ffffff';
+    
+    // Safe check for black color to fallback to white for visibility
+    const hText = hColor === '#000000' ? '#ffffff' : hColor;
+    const aText = aColor === '#000000' ? '#ffffff' : aColor;
+
+    const handleSort = (key: SortKey) => {
+        setSortConfig(prev => ({
+            key,
+            direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc'
+        }));
+    };
+
+    const getSortValue = (p: PlayerBoxScore, key: SortKey): number => {
+        switch (key) {
+            case 'mp': return p.mp;
+            case 'pts': return p.pts;
+            case 'reb': return p.reb;
+            case 'ast': return p.ast;
+            case 'stl': return p.stl;
+            case 'blk': return p.blk;
+            case 'tov': return p.tov;
+            case 'pf': return p.pf;
+            case 'fgm': return p.fgm;
+            case 'fg%': return p.fga > 0 ? p.fgm / p.fga : 0;
+            case 'p3m': return p.p3m;
+            case '3p%': return p.p3a > 0 ? p.p3m / p.p3a : 0;
+            case 'ftm': return p.ftm;
+            case 'ft%': return p.fta > 0 ? p.ftm / p.fta : 0;
+            case 'pm': return p.plusMinus;
+            default: return 0;
+        }
+    };
+
+    const sortedBox = useMemo(() => {
+        if (!gameData.userBoxScore) return [];
+        const data = [...gameData.userBoxScore].filter(p => p.mp > 0);
+        
+        if (sortConfig.key === 'default') {
+             // Default: Starters (GS=1) first, then by MP desc
+            return data.sort((a, b) => {
+                if (a.gs !== b.gs) return b.gs - a.gs;
+                return b.mp - a.mp;
+            });
+        }
+
+        return data.sort((a, b) => {
+            const valA = getSortValue(a, sortConfig.key);
+            const valB = getSortValue(b, sortConfig.key);
+            return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
+        });
+    }, [gameData.userBoxScore, sortConfig]);
+
+    const totals = useMemo(() => {
+        if (!sortedBox) return null;
+        return sortedBox.reduce((acc, p) => ({
+            mp: acc.mp + p.mp,
+            pts: acc.pts + p.pts,
+            reb: acc.reb + p.reb,
+            ast: acc.ast + p.ast,
+            stl: acc.stl + p.stl,
+            blk: acc.blk + p.blk,
+            tov: acc.tov + p.tov,
+            pf: acc.pf + (p.pf || 0),
+            fgm: acc.fgm + p.fgm,
+            fga: acc.fga + p.fga,
+            p3m: acc.p3m + p.p3m,
+            p3a: acc.p3a + p.p3a,
+            ftm: acc.ftm + p.ftm,
+            fta: acc.fta + p.fta,
+            plusMinus: acc.plusMinus + p.plusMinus
+        }), {
+            mp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0,
+            fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, plusMinus: 0
+        });
+    }, [sortedBox]);
+
+    const formatPct = (m: number, a: number) => (a > 0 ? ((m/a)*100).toFixed(0) + '%' : '-');
+
+    const SortableHeader = ({ label, sKey, width }: { label: string, sKey: SortKey, width?: string }) => (
+        <TableHeaderCell 
+            align="center" 
+            className={`w-${width || 'auto'} ${label === 'PTS' ? 'text-slate-300' : 'text-slate-400'}`}
+            sortable 
+            onSort={() => handleSort(sKey)}
+            sortDirection={sortConfig.key === sKey ? sortConfig.direction : null}
+        >
+            {label}
+        </TableHeaderCell>
+    );
+
+    const totalCellClass = "py-3 px-2 text-center text-xs font-black text-slate-300 font-mono tabular-nums bg-slate-800/80 border-t border-slate-700";
+
+    return (
+        <div className="space-y-10 max-w-5xl mx-auto">
+            {/* 1. Header Grid (3 Columns) */}
+            <div className="grid grid-cols-3 items-center w-full py-6 bg-slate-900/50 rounded-2xl border border-slate-800 shadow-sm">
+                
+                {/* Left: Away Team */}
+                <div className="flex flex-col items-center justify-center gap-3 border-r border-slate-800/50">
+                    <TeamLogo teamId={awayTeam?.id || ''} size="xl" className="drop-shadow-lg" />
+                    <span 
+                        className="text-xl font-black uppercase oswald tracking-tight text-center leading-none"
+                        style={{ color: aText }}
+                    >
+                        {awayTeam?.name}
+                    </span>
+                </div>
+                
+                {/* Center: Score */}
+                <div className="flex items-center justify-center gap-6">
+                    <span className={`text-5xl font-black ${gameData.awayScore > gameData.homeScore ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'text-slate-600'} oswald`}>{gameData.awayScore}</span>
+                    <span className="text-slate-700 font-black text-2xl">-</span>
+                    <span className={`text-5xl font-black ${gameData.homeScore > gameData.awayScore ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'text-slate-600'} oswald`}>{gameData.homeScore}</span>
+                </div>
+
+                {/* Right: Home Team */}
+                <div className="flex flex-col items-center justify-center gap-3 border-l border-slate-800/50">
+                    <TeamLogo teamId={homeTeam?.id || ''} size="xl" className="drop-shadow-lg" />
+                    <span 
+                        className="text-xl font-black uppercase oswald tracking-tight text-center leading-none"
+                        style={{ color: hText }}
+                    >
+                        {homeTeam?.name}
+                    </span>
+                </div>
+            </div>
+            
+            {/* 2. Full Box Score */}
+            {sortedBox.length > 0 && (
+                <div className="space-y-4">
+                    <h4 className="text-sm font-black text-slate-400 px-2 uppercase tracking-widest flex items-center gap-2">
+                        <BarChart2 size={16} /> Team Stats Summary
+                    </h4>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                        <Table className="!rounded-none !border-0 !shadow-none">
+                            <TableHead className="bg-slate-950">
+                                <TableHeaderCell align="left" className="pl-6 w-40 sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</TableHeaderCell>
+                                <TableHeaderCell align="center">POS</TableHeaderCell>
+                                <SortableHeader label="MIN" sKey="mp" />
+                                <SortableHeader label="PTS" sKey="pts" />
+                                <SortableHeader label="REB" sKey="reb" />
+                                <SortableHeader label="AST" sKey="ast" />
+                                <SortableHeader label="STL" sKey="stl" />
+                                <SortableHeader label="BLK" sKey="blk" />
+                                <SortableHeader label="TOV" sKey="tov" />
+                                <SortableHeader label="PF" sKey="pf" />
+                                <SortableHeader label="FG" sKey="fgm" />
+                                <SortableHeader label="3P" sKey="p3m" />
+                                <SortableHeader label="FT" sKey="ftm" />
+                                <SortableHeader label="+/-" sKey="pm" />
+                            </TableHead>
+                            <TableBody>
+                                {sortedBox.map(p => (
+                                    <TableRow key={p.playerId} onClick={() => onPlayerClick(p.playerId)}>
+                                        <TableCell className="pl-6 text-xs font-bold text-slate-300 group-hover:text-white transition-colors sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">{p.playerName}</TableCell>
+                                        <TableCell align="center" className="text-xs font-semibold text-slate-500">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-400">{Math.round(p.mp)}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-bold text-white">{p.pts}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-300">{p.reb}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-300">{p.ast}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-300">{p.stl}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-300">{p.blk}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-300">{p.tov}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-300">{p.pf}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-400">{p.fgm}/{p.fga}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-400">{p.p3m}/{p.p3a}</TableCell>
+                                        <TableCell align="center" className="text-xs font-mono font-semibold text-slate-400">{p.ftm}/{p.fta}</TableCell>
+                                        <TableCell align="center" className={`text-xs font-mono font-bold ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                            {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                            {totals && (
+                                <TableFoot>
+                                    <tr>
+                                        <td className="py-3 px-6 sticky left-0 bg-slate-800 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)] border-t border-slate-700">
+                                            <span className="text-xs font-black text-white uppercase tracking-wider">TEAM TOTALS</span>
+                                        </td>
+                                        <td className={totalCellClass}>-</td>
+                                        <td className={totalCellClass}>{Math.round(totals.mp)}</td>
+                                        <td className={totalCellClass}>{totals.pts}</td>
+                                        <td className={totalCellClass}>{totals.reb}</td>
+                                        <td className={totalCellClass}>{totals.ast}</td>
+                                        <td className={totalCellClass}>{totals.stl}</td>
+                                        <td className={totalCellClass}>{totals.blk}</td>
+                                        <td className={totalCellClass}>{totals.tov}</td>
+                                        <td className={totalCellClass}>{totals.pf}</td>
+                                        <td className={totalCellClass}>{totals.fgm}/{totals.fga}</td>
+                                        <td className={totalCellClass}>{totals.p3m}/{totals.p3a}</td>
+                                        <td className={totalCellClass}>{totals.ftm}/{totals.fta}</td>
+                                        <td className={totalCellClass}>
+                                            <span className={totals.plusMinus > 0 ? 'text-emerald-400' : totals.plusMinus < 0 ? 'text-red-400' : 'text-slate-400'}>
+                                                {totals.plusMinus > 0 ? '+' : ''}{totals.plusMinus}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </TableFoot>
+                            )}
+                        </Table>
+                    </div>
+                </div>
+            )}
+            
+            {/* View Detail Button */}
+            <div className="flex justify-center pt-4">
+                <button 
+                    onClick={() => handleViewDetails(gameData.gameId)}
+                    disabled={isFetchingResult}
+                    className="flex items-center gap-3 px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-base font-black uppercase tracking-widest transition-all shadow-[0_10px_20px_rgba(79,70,229,0.3)] border border-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 group"
+                >
+                    {isFetchingResult ? <Loader2 className="animate-spin" size={20} /> : <BarChart2 size={20} />}
+                    <span>상세 보고서 보기</span>
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // --- Sub-Component: Content Renderer ---
 
 const MessageContentRenderer: React.FC<{ 
@@ -271,118 +507,14 @@ const MessageContentRenderer: React.FC<{
 
     switch (type) {
         case 'GAME_RECAP':
-            const gameData = content as GameRecapContent;
-            const homeTeam = teams.find(t => t.id === gameData.homeTeamId);
-            const awayTeam = teams.find(t => t.id === gameData.awayTeamId);
-            
-            const hColor = TEAM_DATA[homeTeam?.id || '']?.colors.primary || '#ffffff';
-            const aColor = TEAM_DATA[awayTeam?.id || '']?.colors.primary || '#ffffff';
-            
-            // Safe check for black color to fallback to white for visibility
-            const hText = hColor === '#000000' ? '#ffffff' : hColor;
-            const aText = aColor === '#000000' ? '#ffffff' : aColor;
-
             return (
-                <div className="space-y-10 max-w-5xl mx-auto">
-                    {/* 1. Centered Scoreboard */}
-                    <div className="flex items-center justify-center gap-12 py-4">
-                        <div className="flex items-center gap-4">
-                            <span 
-                                className="text-2xl font-black uppercase oswald tracking-tight"
-                                style={{ color: hText }}
-                            >
-                                {homeTeam?.name}
-                            </span>
-                            <TeamLogo teamId={homeTeam?.id || ''} size="xl" className="drop-shadow-md" />
-                        </div>
-                        
-                        <div className="flex items-center gap-6">
-                             <span className={`text-5xl font-black ${gameData.homeScore > gameData.awayScore ? 'text-white' : 'text-slate-500'} oswald`}>{gameData.homeScore}</span>
-                             <span className="text-slate-600 font-bold text-2xl">-</span>
-                             <span className={`text-5xl font-black ${gameData.awayScore > gameData.homeScore ? 'text-white' : 'text-slate-500'} oswald`}>{gameData.awayScore}</span>
-                        </div>
-
-                        <div className="flex items-center gap-4">
-                            <TeamLogo teamId={awayTeam?.id || ''} size="xl" className="drop-shadow-md" />
-                            <span 
-                                className="text-2xl font-black uppercase oswald tracking-tight"
-                                style={{ color: aText }}
-                            >
-                                {awayTeam?.name}
-                            </span>
-                        </div>
-                    </div>
-                    
-                    {/* 2. Full Box Score */}
-                    {gameData.userBoxScore && (
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-bold text-slate-400 px-2">Team Box Score</h4>
-                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-                                <Table>
-                                    <TableHead>
-                                        <TableHeaderCell align="left" className="pl-6 w-40">Player</TableHeaderCell>
-                                        <TableHeaderCell align="center">POS</TableHeaderCell>
-                                        <TableHeaderCell align="right">MIN</TableHeaderCell>
-                                        <TableHeaderCell align="right">PTS</TableHeaderCell>
-                                        <TableHeaderCell align="right">REB</TableHeaderCell>
-                                        <TableHeaderCell align="right">AST</TableHeaderCell>
-                                        <TableHeaderCell align="right">STL</TableHeaderCell>
-                                        <TableHeaderCell align="right">BLK</TableHeaderCell>
-                                        <TableHeaderCell align="right">TOV</TableHeaderCell>
-                                        <TableHeaderCell align="right">FG</TableHeaderCell>
-                                        <TableHeaderCell align="right">3P</TableHeaderCell>
-                                        <TableHeaderCell align="right">FT</TableHeaderCell>
-                                        <TableHeaderCell align="right" className="pr-6">+/-</TableHeaderCell>
-                                    </TableHead>
-                                    <TableBody>
-                                        {[...gameData.userBoxScore]
-                                            .filter(p => p.mp > 0) // Filter out DNPs
-                                            // Sort: MP -> PTS -> REB -> AST -> STL -> BLK
-                                            .sort((a, b) => {
-                                                if (b.mp !== a.mp) return b.mp - a.mp;
-                                                if (b.pts !== a.pts) return b.pts - a.pts;
-                                                if (b.reb !== a.reb) return b.reb - a.reb;
-                                                if (b.ast !== a.ast) return b.ast - a.ast;
-                                                if (b.stl !== a.stl) return b.stl - a.stl;
-                                                return b.blk - a.blk;
-                                            })
-                                            .map(p => (
-                                            <TableRow key={p.playerId} onClick={() => onPlayerClick(p.playerId)}>
-                                                <TableCell className="pl-6 text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">{p.playerName}</TableCell>
-                                                <TableCell align="center" className="text-xs font-semibold text-slate-300">{teams.find(t => t.roster.some(r => r.id === p.playerId))?.roster.find(r => r.id === p.playerId)?.position || '-'}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{Math.round(p.mp)}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.pts}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.reb}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.ast}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.stl}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.blk}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.tov}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.fgm}/{p.fga}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.p3m}/{p.p3a}</TableCell>
-                                                <TableCell align="right" className="text-xs font-semibold text-slate-300">{p.ftm}/{p.fta}</TableCell>
-                                                <TableCell align="right" className={`pr-6 text-xs font-semibold ${p.plusMinus > 0 ? 'text-emerald-400' : p.plusMinus < 0 ? 'text-red-400' : 'text-slate-300'}`}>
-                                                    {p.plusMinus > 0 ? '+' : ''}{p.plusMinus}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {/* View Detail Button */}
-                    <div className="flex justify-center pt-4">
-                        <button 
-                            onClick={() => handleViewDetails(gameData.gameId)}
-                            disabled={isFetchingResult}
-                            className="flex items-center gap-3 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-sm font-black uppercase tracking-widest transition-all shadow-lg border border-slate-700 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 group"
-                        >
-                            {isFetchingResult ? <Loader2 className="animate-spin" size={18} /> : <BarChart2 size={18} className="text-indigo-400 group-hover:text-indigo-300" />}
-                            <span>상세 기록 보기 (Box Score, Shots, Logs)</span>
-                        </button>
-                    </div>
-                </div>
+                <GameRecapViewer 
+                    gameData={content as GameRecapContent}
+                    teams={teams}
+                    onPlayerClick={onPlayerClick}
+                    handleViewDetails={handleViewDetails}
+                    isFetchingResult={isFetchingResult}
+                />
             );
 
         case 'TRADE_ALERT':

@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent } from '../types';
 import { ShieldAlert, Clock, ChevronLeft } from 'lucide-react'; 
 import { CpuGameResult } from '../services/simulationService'; // [New] Import Type
@@ -57,11 +57,19 @@ export const GameResultView: React.FC<{
   // Default to the user's game passed in props
   const [activeResult, setActiveResult] = useState<any>(initialResult);
   const [activeTab, setActiveTab] = useState<ResultTab>('BoxScore');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   
   // Reset active result when initialResult changes (e.g. new simulation)
   useEffect(() => {
       setActiveResult(initialResult);
   }, [initialResult]);
+
+  // Scroll to top whenever the active result changes (switching games)
+  useEffect(() => {
+      if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = 0;
+      }
+  }, [activeResult]);
 
   const isUserGame = activeResult === initialResult;
 
@@ -92,9 +100,6 @@ export const GameResultView: React.FC<{
           };
           setActiveResult(mappedResult);
           setActiveTab('BoxScore'); // Reset tab
-          // Scroll to top
-          const container = document.querySelector('.overflow-y-auto');
-          if (container) container.scrollTop = 0;
       }
   };
 
@@ -131,7 +136,10 @@ export const GameResultView: React.FC<{
   ];
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24">
+    <div 
+        ref={scrollContainerRef}
+        className="fixed inset-0 bg-slate-950 z-[100] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-24"
+    >
        <div className="min-h-screen flex flex-col">
           
           {/* 1. Header (Compact) */}
