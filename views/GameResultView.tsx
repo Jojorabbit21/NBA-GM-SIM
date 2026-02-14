@@ -1,7 +1,8 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent } from '../types';
-import { ShieldAlert, Clock } from 'lucide-react'; // Import Icon
+import { ShieldAlert, Clock, ChevronLeft } from 'lucide-react'; 
+import { CpuGameResult } from '../services/simulationService'; // [New] Import Type
 
 // Components
 import { ResultHeader } from '../components/game/ResultHeader';
@@ -17,7 +18,6 @@ import { GameShotChartTab } from '../components/game/tabs/GameShotChartTab';
 
 type ResultTab = 'BoxScore' | 'ShotChart' | 'PbpLog' | 'Rotation' | 'Tactics';
 
-// Define InjuryEvent locally or import if exposed in types
 interface InjuryEvent {
     playerId: string;
     playerName: string;
@@ -38,6 +38,7 @@ export const GameResultView: React.FC<{
     awayBox: PlayerBoxScore[];
     recap: string[];
     otherGames: Game[];
+    cpuResults?: CpuGameResult[]; // [New]
     homeTactics?: TacticalSnapshot;
     awayTactics?: TacticalSnapshot;
     userTactics?: any;
@@ -45,30 +46,80 @@ export const GameResultView: React.FC<{
     pbpLogs?: PbpLog[];
     rotationData?: RotationData;
     pbpShotEvents?: ShotEvent[]; 
-    injuries?: InjuryEvent[]; // [New]
+    injuries?: InjuryEvent[]; 
   };
   myTeamId: string;
   teams: Team[];
   onFinish: () => void;
-}> = ({ result, myTeamId, teams, onFinish }) => {
-  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames, pbpShotEvents, injuries } = result;
+}> = ({ result: initialResult, myTeamId, teams, onFinish }) => {
+  
+  // [New] State to manage currently viewed game
+  // Default to the user's game passed in props
+  const [activeResult, setActiveResult] = useState<any>(initialResult);
+  const [activeTab, setActiveTab] = useState<ResultTab>('BoxScore');
+  
+  // Reset active result when initialResult changes (e.g. new simulation)
+  useEffect(() => {
+      setActiveResult(initialResult);
+  }, [initialResult]);
+
+  const isUserGame = activeResult === initialResult;
+
+  // Handler for switching to other games
+  const handleSelectGame = (gameId: string) => {
+      if (!initialResult.cpuResults) return;
+      const targetGame = initialResult.cpuResults.find(g => g.gameId === gameId);
+      if (targetGame) {
+          // Map CpuGameResult to the format expected by the view
+          const hTeam = teams.find(t => t.id === targetGame.homeTeamId);
+          const aTeam = teams.find(t => t.id === targetGame.awayTeamId);
+          if (!hTeam || !aTeam) return;
+
+          const mappedResult = {
+              ...initialResult, // Inherit base properties (like otherGames list)
+              home: hTeam,
+              away: aTeam,
+              homeScore: targetGame.homeScore,
+              awayScore: targetGame.awayScore,
+              homeBox: targetGame.boxScore.home,
+              awayBox: targetGame.boxScore.away,
+              homeTactics: targetGame.tactics.home,
+              awayTactics: targetGame.tactics.away,
+              rotationData: targetGame.rotationData, // [New] Now available
+              pbpShotEvents: targetGame.pbpShotEvents, // [New] Now available
+              pbpLogs: [], // CPU games don't have PBP
+              injuries: [], // CPU injuries not detailed in this view structure usually
+          };
+          setActiveResult(mappedResult);
+          setActiveTab('BoxScore'); // Reset tab
+          // Scroll to top
+          const container = document.querySelector('.overflow-y-auto');
+          if (container) container.scrollTop = 0;
+      }
+  };
+
+  const handleBackToMain = () => {
+      setActiveResult(initialResult);
+      setActiveTab('BoxScore');
+  };
+
+  const { home, away, homeScore, awayScore, homeBox, awayBox, homeTactics, awayTactics, pbpLogs, rotationData, otherGames, pbpShotEvents, injuries } = activeResult;
   
   const isHome = myTeamId === home.id;
   const isWin = isHome ? homeScore > awayScore : awayScore > homeScore;
-  const [activeTab, setActiveTab] = useState<ResultTab>('BoxScore');
-
+  
   // MVP Calculation
   const allPlayers = [...homeBox, ...awayBox];
-  const mvp = allPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), allPlayers[0]);
+  const mvp = allPlayers.length > 0 ? allPlayers.reduce((prev, curr) => (curr.pts > prev.pts ? curr : prev), allPlayers[0]) : null;
 
   // Leaders Calculation
   const leaders: GameStatLeaders = {
-      pts: Math.max(...allPlayers.map(p => p.pts)),
-      reb: Math.max(...allPlayers.map(p => p.reb)),
-      ast: Math.max(...allPlayers.map(p => p.ast)),
-      stl: Math.max(...allPlayers.map(p => p.stl)),
-      blk: Math.max(...allPlayers.map(p => p.blk)),
-      tov: Math.max(...allPlayers.map(p => p.tov)),
+      pts: Math.max(0, ...allPlayers.map(p => p.pts)),
+      reb: Math.max(0, ...allPlayers.map(p => p.reb)),
+      ast: Math.max(0, ...allPlayers.map(p => p.ast)),
+      stl: Math.max(0, ...allPlayers.map(p => p.stl)),
+      blk: Math.max(0, ...allPlayers.map(p => p.blk)),
+      tov: Math.max(0, ...allPlayers.map(p => p.tov)),
   };
 
   const tabs: { id: ResultTab; label: string }[] = [
@@ -89,34 +140,50 @@ export const GameResultView: React.FC<{
             awayTeam={away}
             homeScore={homeScore}
             awayScore={awayScore}
-            isWin={isWin}
-            pbpLogs={pbpLogs}
+            isWin={isUserGame ? isWin : (homeScore > awayScore)} // For CPU games, just show result color
+            pbpLogs={pbpLogs} // Might be empty for CPU games
           />
 
           {/* 2. Navigation Tabs (Centered & Reverted Style) */}
-          <div className="bg-slate-950 border-b border-slate-800">
+          <div className="bg-slate-950 border-b border-slate-800 sticky top-0 z-50">
               <div className="max-w-7xl mx-auto flex items-center justify-center gap-6 px-6 overflow-x-auto">
-                  {tabs.map((tab) => (
-                      <button
-                          key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
-                          className={`
-                              flex items-center gap-2 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2
-                              ${activeTab === tab.id 
-                                ? 'text-indigo-400 border-indigo-400' 
-                                : 'text-slate-500 border-transparent hover:text-slate-300'}
-                          `}
-                      >
-                          <span>{tab.label}</span>
-                      </button>
-                  ))}
+                  {tabs.map((tab) => {
+                      // Hide PBP tab for CPU games if empty
+                      if (tab.id === 'PbpLog' && (!pbpLogs || pbpLogs.length === 0)) return null;
+
+                      return (
+                          <button
+                              key={tab.id}
+                              onClick={() => setActiveTab(tab.id)}
+                              className={`
+                                  flex items-center gap-2 py-4 text-xs font-black uppercase tracking-widest transition-all border-b-2
+                                  ${activeTab === tab.id 
+                                    ? 'text-indigo-400 border-indigo-400' 
+                                    : 'text-slate-500 border-transparent hover:text-slate-300'}
+                              `}
+                          >
+                              <span>{tab.label}</span>
+                          </button>
+                      );
+                  })}
               </div>
           </div>
 
           {/* 3. Main Content Area */}
           <div className="flex-1 max-w-7xl mx-auto w-full p-0 md:p-8 space-y-6 flex flex-col min-h-[500px]">
               
-              {/* [New] Medical Report Section */}
+              {/* Back Button for CPU Games */}
+              {!isUserGame && (
+                  <button 
+                      onClick={handleBackToMain}
+                      className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors self-start mb-2 px-2"
+                  >
+                      <ChevronLeft size={16} />
+                      <span className="text-xs font-bold">내 경기 결과로 돌아가기</span>
+                  </button>
+              )}
+
+              {/* [New] Medical Report Section (Only for User Games usually) */}
               {injuries && injuries.length > 0 && (
                   <div className="w-full bg-red-950/20 border border-red-900/50 rounded-2xl p-6 shadow-lg animate-in slide-in-from-top-2">
                       <div className="flex items-center gap-3 mb-4 border-b border-red-900/30 pb-2">
@@ -162,10 +229,11 @@ export const GameResultView: React.FC<{
                       awayTeam={away}
                       homeBox={homeBox}
                       awayBox={awayBox}
-                      mvpId={mvp.playerId}
+                      mvpId={mvp?.playerId || ''}
                       leaders={leaders}
-                      otherGames={otherGames}
+                      otherGames={isUserGame ? otherGames : undefined} // Only show other games on main view
                       teams={teams}
+                      onSelectGame={handleSelectGame}
                   />
               )}
 
@@ -208,7 +276,19 @@ export const GameResultView: React.FC<{
 
           </div>
 
-          <ResultFooter onFinish={onFinish} />
+          {/* Conditional Footer */}
+          {isUserGame ? (
+              <ResultFooter onFinish={onFinish} />
+          ) : (
+              <div className="fixed bottom-0 left-0 right-0 p-6 bg-slate-950/80 backdrop-blur-md border-t border-slate-800 flex justify-center z-50">
+                <button 
+                    onClick={handleBackToMain}
+                    className="px-12 py-4 bg-slate-800 hover:bg-slate-700 text-white rounded-2xl font-black uppercase text-lg tracking-widest shadow-lg transition-all active:scale-95 flex items-center gap-4"
+                >
+                    <ChevronLeft /> 내 경기 결과로 돌아가기
+                </button>
+            </div>
+          )}
        </div>
     </div>
   );
