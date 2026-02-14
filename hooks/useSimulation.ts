@@ -117,10 +117,13 @@ export const useSimulation = (
                     const homeT = newTeams.find((t: Team) => t.id === homeTeam.id);
                     const awayT = newTeams.find((t: Team) => t.id === awayTeam.id);
                     if (homeT && awayT) {
-                        updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
-                        // [Fix] Aggregate Stats
-                        accumulatePlayerStats(homeT, userSimResult.homeBox);
-                        accumulatePlayerStats(awayT, userSimResult.awayBox);
+                        // [Fix] Only update W/L record for Regular Season
+                        if (!userGame.isPlayoff) {
+                            updateTeamStats(homeT, awayT, userSimResult.homeScore, userSimResult.awayScore);
+                        }
+                        // [Fix] Aggregate Stats (Separate Regular vs Playoff)
+                        accumulatePlayerStats(homeT, userSimResult.homeBox, userGame.isPlayoff);
+                        accumulatePlayerStats(awayT, userSimResult.awayBox, userGame.isPlayoff);
                     }
 
                     // Apply Roster Updates (Fatigue & Injuries) from Game Result
@@ -165,10 +168,13 @@ export const useSimulation = (
                         const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
                         const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
                         if (h && a) {
-                            updateTeamStats(h, a, res.homeScore, res.awayScore);
-                            // [Fix] Aggregate Stats for CPU games
-                            accumulatePlayerStats(h, res.boxScore.home);
-                            accumulatePlayerStats(a, res.boxScore.away);
+                            // [Fix] Only update W/L record for Regular Season
+                            if (!res.isPlayoff) {
+                                updateTeamStats(h, a, res.homeScore, res.awayScore);
+                            }
+                            // [Fix] Aggregate Stats (Separate Regular vs Playoff)
+                            accumulatePlayerStats(h, res.boxScore.home, res.isPlayoff);
+                            accumulatePlayerStats(a, res.boxScore.away, res.isPlayoff);
                         }
                     });
 
@@ -368,10 +374,13 @@ export const useSimulation = (
                     const h = newTeams.find((t: Team) => t.id === res.homeTeamId);
                     const a = newTeams.find((t: Team) => t.id === res.awayTeamId);
                     if (h && a) {
-                        updateTeamStats(h, a, res.homeScore, res.awayScore);
-                        // [Fix] Aggregate Stats for CPU games
-                        accumulatePlayerStats(h, res.boxScore.home);
-                        accumulatePlayerStats(a, res.boxScore.away);
+                        // [Fix] Only update W/L record for Regular Season
+                        if (!res.isPlayoff) {
+                            updateTeamStats(h, a, res.homeScore, res.awayScore);
+                        }
+                        // [Fix] Aggregate Stats (Separate Regular vs Playoff)
+                        accumulatePlayerStats(h, res.boxScore.home, res.isPlayoff);
+                        accumulatePlayerStats(a, res.boxScore.away, res.isPlayoff);
                     }
                 });
 
@@ -430,46 +439,61 @@ export const useSimulation = (
 };
 
 // [Helper] Aggregate Game Stats into Season Stats
-function accumulatePlayerStats(team: Team, box: PlayerBoxScore[]) {
+// [Updated] Supports separate Playoff Stats
+function accumulatePlayerStats(team: Team, box: PlayerBoxScore[], isPlayoff: boolean = false) {
     if (!team || !box) return;
     box.forEach(stat => {
         const p = team.roster.find(rp => rp.id === stat.playerId);
         if (p) {
-            // Stats object should exist, but init if safety needed (rare case)
-            if (!p.stats) p.stats = { 
-                g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, 
-                fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0, plusMinus: 0 
-            } as any;
+            // Determine target stats object based on isPlayoff flag
+            let targetStats = isPlayoff ? p.playoffStats : p.stats;
 
-            p.stats.g += 1;
-            p.stats.gs += (stat.gs || 0);
-            p.stats.mp += (stat.mp || 0);
-            p.stats.pts += (stat.pts || 0);
-            p.stats.reb += (stat.reb || 0);
-            p.stats.offReb += (stat.offReb || 0);
-            p.stats.defReb += (stat.defReb || 0);
-            p.stats.ast += (stat.ast || 0);
-            p.stats.stl += (stat.stl || 0);
-            p.stats.blk += (stat.blk || 0);
-            p.stats.tov += (stat.tov || 0);
-            p.stats.pf += (stat.pf || 0);
-            p.stats.fgm += (stat.fgm || 0);
-            p.stats.fga += (stat.fga || 0);
-            p.stats.p3m += (stat.p3m || 0);
-            p.stats.p3a += (stat.p3a || 0);
-            p.stats.ftm += (stat.ftm || 0);
-            p.stats.fta += (stat.fta || 0);
-            p.stats.rimM += (stat.rimM || 0);
-            p.stats.rimA += (stat.rimA || 0);
-            p.stats.midM += (stat.midM || 0);
-            p.stats.midA += (stat.midA || 0);
-            p.stats.plusMinus += (stat.plusMinus || 0);
+            // Initialize if missing (safety check)
+            if (!targetStats) {
+                targetStats = {
+                    g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, 
+                    fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, rimM: 0, rimA: 0, midM: 0, midA: 0, pf: 0, plusMinus: 0,
+                    // Init zone stats
+                    zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
+                    zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
+                    zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,
+                    zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0
+                } as any;
+                
+                // Re-assign back to player object to ensure reference is kept
+                if (isPlayoff) p.playoffStats = targetStats;
+                else p.stats = targetStats;
+            }
+
+            targetStats.g += 1;
+            targetStats.gs += (stat.gs || 0);
+            targetStats.mp += (stat.mp || 0);
+            targetStats.pts += (stat.pts || 0);
+            targetStats.reb += (stat.reb || 0);
+            targetStats.offReb += (stat.offReb || 0);
+            targetStats.defReb += (stat.defReb || 0);
+            targetStats.ast += (stat.ast || 0);
+            targetStats.stl += (stat.stl || 0);
+            targetStats.blk += (stat.blk || 0);
+            targetStats.tov += (stat.tov || 0);
+            targetStats.pf += (stat.pf || 0);
+            targetStats.fgm += (stat.fgm || 0);
+            targetStats.fga += (stat.fga || 0);
+            targetStats.p3m += (stat.p3m || 0);
+            targetStats.p3a += (stat.p3a || 0);
+            targetStats.ftm += (stat.ftm || 0);
+            targetStats.fta += (stat.fta || 0);
+            targetStats.rimM += (stat.rimM || 0);
+            targetStats.rimA += (stat.rimA || 0);
+            targetStats.midM += (stat.midM || 0);
+            targetStats.midA += (stat.midA || 0);
+            targetStats.plusMinus += (stat.plusMinus || 0);
 
             // Aggregate Zone Data
             if (stat.zoneData) {
                 Object.entries(stat.zoneData).forEach(([k, v]) => {
                     if (typeof v === 'number') {
-                        p.stats[k] = (p.stats[k] || 0) + v;
+                        targetStats[k] = (targetStats[k] || 0) + v;
                     }
                 });
             }
