@@ -16,11 +16,24 @@ function identifyDefender(
     defTeam: TeamState, 
     actor: LivePlayer, 
     secondaryActor: LivePlayer | undefined, 
-    playType: PlayType
+    playType: PlayType,
+    isActorAce: boolean // [New] Flag to check if actor is the designated Ace
 ): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean } {
     
-    // 1. Default Defender (Positional Match)
-    let primaryDefender = defTeam.onCourt.find(p => p.position === actor.position);
+    // 0. Ace Stopper Logic (Pre-assignment)
+    let primaryDefender: LivePlayer | undefined;
+    const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && isActorAce;
+    
+    // If Ace Stopper tactic is active AND the current attacker is the Ace,
+    // try to assign the designated stopper regardless of position.
+    if (isStopperActive && defTeam.tactics.stopperId) {
+        primaryDefender = defTeam.onCourt.find(p => p.playerId === defTeam.tactics.stopperId);
+    }
+
+    // 1. Default Defender (Positional Match) if no stopper or stopper not on court
+    if (!primaryDefender) {
+        primaryDefender = defTeam.onCourt.find(p => p.position === actor.position);
+    }
     // Fallback: If exact match missing (e.g. 2 PGs on court), pick random or closest
     if (!primaryDefender) {
         // Fallback logic: Match Guard with Guard, Big with Big if possible
@@ -46,6 +59,12 @@ function identifyDefender(
 
     if (defTactic === 'AceStopper' || defTactic === 'ManToManPerimeter') {
         switchChance += 0.15; // More likely to switch to stay tight
+    }
+
+    // [New] Stopper Fight Through Logic
+    // If this is the Stopper guarding the Ace, they try VERY hard not to switch (Fight Through Screens)
+    if (isStopperActive && primaryDefender.playerId === defTeam.tactics.stopperId) {
+        switchChance *= 0.2; // 80% reduction in switch chance
     }
 
     if (Math.random() > switchChance) {
@@ -107,8 +126,11 @@ export function simulatePossession(state: GameState): PossessionResult {
     const playCtx = resolvePlayAction(offTeam, selectedPlayType);
     const { actor, secondaryActor, preferredZone, shotType, bonusHitRate } = playCtx;
 
+    // [New] Check if Actor is Ace
+    const isActorAce = actor.playerId === offTeam.acePlayerId;
+
     // 2. Identify Defender (with Switch Logic)
-    const { defender, isSwitch, isBotchedSwitch } = identifyDefender(defTeam, actor, secondaryActor, selectedPlayType);
+    const { defender, isSwitch, isBotchedSwitch } = identifyDefender(defTeam, actor, secondaryActor, selectedPlayType, isActorAce);
 
     // 3. Defensive Foul Check (Non-Shooting)
     const defIntensity = defTeam.tactics.sliders.defIntensity;
