@@ -1,5 +1,18 @@
 // This is a stub for the Vercel Serverless Function
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+// import type { VercelRequest, VercelResponse } from '@vercel/node';
+
+// Minimal type definitions to avoid build errors if @vercel/node is missing
+interface VercelRequest {
+    body: any;
+    method: string;
+    [key: string]: any;
+}
+
+interface VercelResponse {
+    status: (code: number) => VercelResponse;
+    json: (body: any) => any;
+    [key: string]: any;
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { action, payload } = req.body;
