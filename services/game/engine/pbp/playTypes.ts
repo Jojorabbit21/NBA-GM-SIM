@@ -1,11 +1,12 @@
 
 import { PlayType } from '../../../../types';
 import { LivePlayer, TeamState } from './pbpTypes';
-import { ArchetypeRatings } from './archetypeSystem';
+import { getTeamOptionRanks, getContextualMultiplier } from './usageSystem';
 
 // ==========================================================================================
 //  🏀 PLAY TYPE SYSTEM
 //  Specific tactical actions and their execution logic.
+//  Updated with Usage Priority System (Option Ranks)
 // ==========================================================================================
 
 export interface PlayContext {
@@ -23,18 +24,26 @@ export interface PlayContext {
 export function resolvePlayAction(team: TeamState, playType: PlayType): PlayContext {
     const players = team.onCourt;
 
-    // [Fix] Weighted Random Selection instead of "Winner Takes All"
-    // This prevents superstars from taking 100% of shots.
+    // [New] 1. Calculate Option Ranks for current lineup (1~5)
+    const optionRanks = getTeamOptionRanks(team);
+
+    // [Fix] Weighted Random Selection with Option System Integration
     const pickWeightedActor = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
         let pool = players;
         if (excludeId) pool = pool.filter(p => p.playerId !== excludeId);
         
-        // 1. Calculate Score & Raise to Power (to emphasize skill gap but allow variance)
-        // Power of 2.0 makes 90 rated player significantly more likely than 70, but not guaranteed.
         const candidates = pool.map(p => {
+            // A. Base Skill Score (Existing Logic)
             const rawScore = criteria(p);
-            // Ensure minimum weight of 1 to prevent errors
-            const weight = Math.pow(Math.max(1, rawScore), 2.5); 
+            
+            // B. Option Multiplier (New Logic)
+            const rank = optionRanks.get(p.playerId) || 3;
+            const usageMultiplier = getContextualMultiplier(rank, playType);
+
+            // C. Final Weight = Skill^2.5 * OptionMultiplier
+            // Power of 2.5 emphasizes skill gap, OptionMultiplier enforces hierarchy
+            const weight = Math.pow(Math.max(1, rawScore), 2.5) * usageMultiplier;
+
             return { p, weight };
         });
 
@@ -56,18 +65,18 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
     switch (playType) {
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
+            // Heavily favors Rank 1 & 2 due to multipliers
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
             
-            // [Update] Modern ISO: High 3PT shooters will look for Step-back 3s
             const lovesThree = actor.attr.threeVal >= 80;
-            const takeThree = lovesThree && Math.random() < 0.55; // 55% chance if elite shooter
+            const takeThree = lovesThree && Math.random() < 0.55; 
 
             return {
                 playType,
                 actor,
                 preferredZone: takeThree ? '3PT' : 'Mid',
-                shotType: takeThree ? 'Pullup' : 'Pullup',
-                bonusHitRate: 0.05 // Iso is tough, low bonus
+                shotType: 'Pullup',
+                bonusHitRate: 0.05
             };
         }
         case 'PnR_Handler': {
@@ -75,7 +84,6 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
             const actor = pickWeightedActor(p => p.archetypes.handler);
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
             
-            // [Update] Modern PnR: Handler Pull-up 3 off the screen
             const lovesThree = actor.attr.threeVal >= 78;
             const takeThree = lovesThree && Math.random() < 0.45;
 
@@ -83,13 +91,14 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 playType,
                 actor,
                 secondaryActor: screener,
-                preferredZone: takeThree ? '3PT' : 'Mid', // Pullup off screen or drive
+                preferredZone: takeThree ? '3PT' : 'Mid', 
                 shotType: 'Pullup',
-                bonusHitRate: 0.10 // PnR creates advantage
+                bonusHitRate: 0.10
             };
         }
         case 'PnR_Roll': {
-            // Handler passes to Roller
+            // Handler passes to Roller (Finisher)
+            // Rollers (Rank 3-5) can get this if they are good at rolling
             const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
             const handler = pickWeightedActor(p => p.archetypes.handler, screener.playerId);
             return {
@@ -97,8 +106,8 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor: screener, // Finisher
                 secondaryActor: handler, // Assister
                 preferredZone: 'Rim',
-                shotType: 'Dunk', // or Layup
-                bonusHitRate: 0.15 // High percentage shot
+                shotType: 'Dunk',
+                bonusHitRate: 0.15 
             };
         }
         case 'PnR_Pop': {
@@ -115,18 +124,19 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
             };
         }
         case 'PostUp': {
-            // Best Post Scorer
+            // Best Post Scorer (Usually Rank 1-2 Bigs)
             const actor = pickWeightedActor(p => p.archetypes.postScorer);
             return {
                 playType,
                 actor,
                 preferredZone: 'Paint',
-                shotType: 'Hook', // or Fadeaway
+                shotType: 'Hook', 
                 bonusHitRate: 0.05
             };
         }
         case 'CatchShoot': {
             // Best Spacer
+            // Democratic play - weights are flatter
             const actor = pickWeightedActor(p => p.archetypes.spacer);
             const passer = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
             return {
@@ -135,11 +145,11 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: passer,
                 preferredZone: '3PT',
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.12 // Assisted shot
+                bonusHitRate: 0.12 
             };
         }
         case 'Cut': {
-            // Best Driver/Cutter (Off-ball movement)
+            // Best Driver/Cutter
             const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.shotIq * 0.5); 
             const passer = pickWeightedActor(p => p.archetypes.connector, actor.playerId);
             return {
@@ -148,7 +158,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: passer,
                 preferredZone: 'Rim',
                 shotType: 'Layup',
-                bonusHitRate: 0.15 // Easy bucket
+                bonusHitRate: 0.15 
             };
         }
         case 'Handoff': {
@@ -156,7 +166,6 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
             const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
             
-            // [Update] DHO usually leads to 3s for shooters
             const lovesThree = actor.attr.threeVal >= 75;
             
             return {
@@ -164,15 +173,14 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor,
                 secondaryActor: big,
                 preferredZone: lovesThree ? '3PT' : 'Mid',
-                shotType: 'CatchShoot', // or Drive
+                shotType: 'CatchShoot',
                 bonusHitRate: 0.10
             };
         }
         case 'Transition': {
-            // Fast break
+            // Fast break - Option system disabled (all 1.0)
             const actor = pickWeightedActor(p => p.attr.speed + p.archetypes.driver);
             
-            // [Update] Transition 3s (Curry Style)
             const lovesThree = actor.attr.threeVal >= 82;
             const takeThree = lovesThree && Math.random() < 0.40;
 
@@ -181,23 +189,21 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor,
                 preferredZone: takeThree ? '3PT' : 'Rim',
                 shotType: takeThree ? 'Pullup' : 'Layup',
-                bonusHitRate: 0.20 // Transition is efficient
+                bonusHitRate: 0.20 
             };
         }
         case 'Putback': {
-            // Second Chance points (Rebounder immediately goes up)
-            // Prioritize players with high Rebound & Inside scoring
+            // Second Chance - Option system disabled
             const actor = pickWeightedActor(p => p.attr.reb * 0.6 + p.attr.ins * 0.4);
             return {
                 playType,
                 actor,
                 preferredZone: 'Rim',
-                shotType: 'Layup', // Or Dunk
-                bonusHitRate: 0.25 // High bonus as defense is scrambling
+                shotType: 'Layup', 
+                bonusHitRate: 0.25 
             };
         }
         default: {
-            // Fallback: Random Iso
             const actor = players[Math.floor(Math.random() * players.length)];
             return { playType: 'Iso', actor, preferredZone: 'Mid', shotType: 'Jumper', bonusHitRate: 0 };
         }
