@@ -35,7 +35,7 @@ export const useSimulation = (
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
     
     // Ref to hold the finalization logic for the active game
-    const finalizeSimRef = useRef<() => void>();
+    const finalizeSimRef = useRef<(() => void) | undefined>(undefined);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false) => {
         if (isSimulating || !myTeamId) return;
@@ -134,7 +134,12 @@ export const useSimulation = (
 
                     // Store temp result for animation
                     setTempSimulationResult(result);
-                    setActiveGame(userGame);
+                    
+                    // [UX Fix] Do NOT set activeGame if skipping animation to prevent flickering to Sim View.
+                    // activeGame drives the view switch in App.tsx.
+                    if (!skipAnimation) {
+                        setActiveGame(userGame);
+                    }
 
                     // Define Finalize Function
                     finalizeSimRef.current = async () => {
@@ -282,9 +287,6 @@ export const useSimulation = (
                                 
                                 await savePlayoffState(session.user.id, myTeamId, newPlayoffSeries, currentRound, isFinished, championId);
                             }
-                            
-                            // Batch Save CPU Games if any
-                            // (Actually better to save game results separately, simplified here)
                         }
 
                         // Set View Data
@@ -310,17 +312,12 @@ export const useSimulation = (
                         });
 
                         setActiveGame(null);
-                        
-                        // Date Advance is handled by the View's "Finish" button calling the router logic
-                        // But we should save the updated state now.
-                        // Wait, advanceDate is passed from App.tsx. 
-                        // It updates currentSimDate state.
-                        // We do NOT call advanceDate here if we want to show GameResult view first.
                     };
 
                     if (skipAnimation) {
+                        // Directly finalize without setting activeGame to avoid UI flicker
                         await finalizeSimRef.current();
-                        setIsSimulating(false); // Done
+                        setIsSimulating(false); 
                     }
                     // Else: GameSimulatingView will call finalizeSimRef.current when done
                 }
@@ -346,7 +343,7 @@ export const useSimulation = (
                 }
                 
                 setIsSimulating(false);
-                setToastMessage(`시뮬레이션 완료: ${currentSimDate}`);
+                // [UX Fix] Toast message removed per user request
             }
 
         } catch (e) {
