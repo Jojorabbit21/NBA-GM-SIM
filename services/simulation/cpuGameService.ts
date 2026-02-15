@@ -1,12 +1,13 @@
 
-import { Team, Game, PlayoffSeries } from '../../types';
-import { simulateCpuGames } from '../simulationService';
+import { Team, Game, PlayoffSeries, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent } from '../../types';
+import { simulateCpuGames, CpuGameResult } from '../simulationService';
 import { updateTeamStats, updateSeriesState } from '../../utils/simulationUtils';
 
 export interface ProcessedCpuResults {
     gameResultsToSave: any[];
     playoffResultsToSave: any[];
     viewData: any[]; // For lastGameResult.otherGames
+    cpuResults: CpuGameResult[]; // [New] Full camelCase data for View
 }
 
 export const processCpuGames = (
@@ -17,6 +18,7 @@ export const processCpuGames = (
     userGameId: string | undefined,
     userId: string | undefined
 ): ProcessedCpuResults => {
+    // These results are already in CpuGameResult (camelCase) format
     const results = simulateCpuGames(schedule, teams, currentSimDate, userGameId);
     
     const gameResultsToSave: any[] = [];
@@ -39,7 +41,7 @@ export const processCpuGames = (
                 schedule[gameIdx].awayScore = res.awayScore;
             }
 
-            // Common Result Data Payload
+            // Common Result Data Payload for DB (snake_case)
             const resultData = userId ? {
                 user_id: userId,
                 game_id: res.gameId,
@@ -50,8 +52,8 @@ export const processCpuGames = (
                 away_score: res.awayScore,
                 box_score: res.boxScore,
                 tactics: res.tactics,
-                rotation_data: res.rotationData, // [New] Save Rotation
-                shot_events: res.pbpShotEvents,  // [New] Save Shot Chart
+                rotation_data: res.rotationData, 
+                shot_events: res.pbpShotEvents,  
                 is_playoff: res.isPlayoff || false
             } : null;
 
@@ -63,7 +65,7 @@ export const processCpuGames = (
                     playoffResultsToSave.push({
                         ...resultData,
                         series_id: res.seriesId,
-                        round_number: 0, // Should be derived from series if needed
+                        round_number: 0, 
                         game_number: 0
                     });
                 }
@@ -79,5 +81,10 @@ export const processCpuGames = (
         }
     });
 
-    return { gameResultsToSave, playoffResultsToSave, viewData };
+    return { 
+        gameResultsToSave, 
+        playoffResultsToSave, 
+        viewData,
+        cpuResults: results // Return full camelCase results for UI
+    };
 };
