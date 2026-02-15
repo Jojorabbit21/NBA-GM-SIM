@@ -298,7 +298,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
             </div>
 
             <div className="flex-1 min-h-0">
-                <Table className="!rounded-none !border-t-0 border-x-0 border-b-0 shadow-none" style={{ borderCollapse: 'separate', borderSpacing: 0 }}>
+                <Table className="!rounded-none !border-t-0 border-x-0 border-b-0 shadow-none">
                     <thead className={`${stickyHeaderBg} sticky top-0 z-50`}>
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter h-8">
                             <th rowSpan={2} className={`sticky left-0 z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[50px] min-w-[50px] text-center !rounded-none`}>POS</th>

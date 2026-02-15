@@ -1,40 +1,40 @@
-
 import React from 'react';
-import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import { OvrBadge } from './OvrBadge';
 
 // --- Types ---
 export type CellVariant = 'text' | 'player' | 'stat' | 'attribute' | 'ovr' | 'rank' | 'badge';
 
 interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     className?: string;
     fullHeight?: boolean; 
+    style?: React.CSSProperties;
 }
 
 interface TableHeadProps extends React.HTMLAttributes<HTMLTableSectionElement> {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     className?: string;
     noRow?: boolean; 
 }
 
 interface TableBodyProps extends React.HTMLAttributes<HTMLTableSectionElement> {
-    children: React.ReactNode;
+    children?: React.ReactNode;
 }
 
 interface TableFootProps extends React.HTMLAttributes<HTMLTableSectionElement> {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     className?: string;
 }
 
 interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     className?: string;
     onClick?: () => void;
 }
 
 interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
-    children: React.ReactNode;
+    children?: React.ReactNode;
     align?: 'left' | 'center' | 'right';
     width?: string | number;
     sortable?: boolean;
@@ -42,6 +42,7 @@ interface TableHeaderCellProps extends React.ThHTMLAttributes<HTMLTableCellEleme
     onSort?: () => void;
     className?: string;
     stickyLeft?: boolean;
+    style?: React.CSSProperties;
 }
 
 interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
@@ -55,6 +56,7 @@ interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
     onClick?: () => void;
     colorScale?: boolean; 
     stickyLeft?: boolean;
+    style?: React.CSSProperties;
 }
 
 const getAttrColor = (val: number) => {
@@ -64,8 +66,8 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-export const Table = ({ children, className = '', fullHeight = true, ...props }: TableProps) => (
-    <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`}>
+export const Table = ({ children, className = '', fullHeight = true, style, ...props }: TableProps) => (
+    <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`} style={style}>
         <table className="w-full text-left border-separate border-spacing-0" {...props}>
             {children}
         </table>
