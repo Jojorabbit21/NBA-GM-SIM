@@ -118,7 +118,7 @@ export const useSimulation = (
                         awayBox: result.awayBox,
                         recap: [],
                         otherGames: cpuData.viewData,
-                        cpuResults: cpuData.gameResultsToSave, // Pass full CPU results for viewing
+                        cpuResults: cpuData.cpuResults, // [Fix] Use View-Ready camelCase results
                         homeTactics: result.homeTactics,
                         awayTactics: result.awayTactics,
                         pbpLogs: result.pbpLogs,
