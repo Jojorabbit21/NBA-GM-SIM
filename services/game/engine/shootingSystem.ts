@@ -203,8 +203,11 @@ export function calculateShootingStats(
       - (oppDefMetrics.pressure * 0.001) - hasteMalus + mentalClutchBonus + homeAdvantage
     ));
 
-    const threeBasePct = Math.min(0.50, Math.max(0.20, 
-       C.THREE_BASE_PCT + ((threeAvg - oppDefMetrics.perDef) * C.THREE_DEF_IMPACT 
+    // [Balance Fix] 3PT Hard Cap reduced from 0.50 to 0.42 (42%)
+    // Base is 0.27. Elite (99) vs Avg Def (75) -> +24 diff * 0.005 = +0.12. Total 0.39.
+    // Tactic bonus might push it to ~0.42.
+    const threeBasePct = Math.min(0.42, Math.max(0.18, 
+       C.THREE_BASE_PCT + ((threeAvg - oppDefMetrics.perDef) * C.THREE_DEF_IMPACT) 
        - effectivePerfDrop - hasteMalus + (mentalClutchBonus * 0.5) + (homeAdvantage * 0.8)
     ));
 
