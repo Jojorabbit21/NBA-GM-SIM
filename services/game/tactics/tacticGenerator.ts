@@ -3,14 +3,15 @@ import { Team, GameTactics, OffenseTactic, DefenseTactic, DepthChart, Player } f
 import { calculatePlayerOvr } from '../../../utils/constants';
 
 /**
- * AI 팀 및 사용자 자동 설정을 위한 전술 생성기
- * [v1.1 Update] 단순 스탯 비교가 아닌, 선발 라인업의 구성과 '적합도 점수(Suitability Score)'를 기반으로 6가지 전술 중 최적을 선택함.
+ * AI 팀 및 사용자 자동 설정을 위한 전술 생성기 v2.0
+ * 상세 스탯 기반의 적합도 평가 및 동적 슬라이더 튜닝 적용
  */
 export const generateAutoTactics = (team: Team): GameTactics => {
     const healthy = team.roster.filter(p => p.health !== 'Injured');
+    // OVR 순으로 정렬하여 기본 로스터 구성
     const sortedRoster = [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
-    // 1. 뎁스 차트 구성 로직 (기존 유지)
+    // 1. 뎁스 차트 자동 구성 (OVR 기반, 포지션 엄수)
     const depthChart: DepthChart = {
         PG: [null, null, null],
         SG: [null, null, null],
@@ -22,14 +23,16 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     const usedIds = new Set<string>();
     const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
 
-    // 주전(1순위) 및 벤치(2순위) 선발
+    // 1-1. 주전 및 벤치(1, 2순위) 선발
     for (let depth = 0; depth <= 1; depth++) {
         for (const pos of positions) {
+            // 해당 포지션을 선호하는 선수 중 가장 높은 OVR
             const candidate = sortedRoster.find(p => p.position.includes(pos) && !usedIds.has(p.id));
             if (candidate) {
                 depthChart[pos][depth] = candidate.id;
                 usedIds.add(candidate.id);
             } else {
+                // 포지션이 딱 맞는 선수가 없으면 남은 선수 중 OVR 높은 순 (Fallback)
                 const fallback = sortedRoster.find(p => !usedIds.has(p.id));
                 if (fallback) {
                     depthChart[pos][depth] = fallback.id;
@@ -39,7 +42,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         }
     }
 
-    // 써드 멤버(3순위) 선발
+    // 1-2. 써드 멤버(3순위) 선발
     for (const pos of positions) {
         let candidate = sortedRoster.find(p => p.position.includes(pos) && !usedIds.has(p.id));
         if (!candidate) {
@@ -51,12 +54,13 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         }
     }
 
-    // 2. 로테이션 맵 구성 (기존 유지)
+    // 2. 로테이션 맵 초기화 (기존 로직 유지)
     const rotationMap: Record<string, boolean[]> = {};
     sortedRoster.forEach(p => {
         rotationMap[p.id] = Array(48).fill(false);
     });
 
+    // 단순화된 로테이션 할당 (주전 36분, 벤치 12분)
     for (const pos of positions) {
         const starterId = depthChart[pos][0];
         const benchId = depthChart[pos][1];
@@ -77,17 +81,17 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     }
 
     // -------------------------------------------------------------------------
-    // 3. 고도화된 전술 선택 알고리즘 (Scoring System)
+    // 3. 전술 분석 알고리즘 (Tactical Analysis Engine)
     // -------------------------------------------------------------------------
     
-    // 선발 라인업 추출 (ID -> Player Object)
-    const startersList = positions.map(pos => {
+    // 분석 대상: 주전 5명
+    const starters = positions.map(pos => {
         const pid = depthChart[pos][0];
         return team.roster.find(p => p.id === pid);
     }).filter(p => p !== undefined) as Player[];
 
-    // 데이터가 부족하면 기본값 반환
-    if (startersList.length < 5) {
+    if (starters.length < 5) {
+        // 데이터 부족 시 기본값
         return {
             offenseTactics: ['Balance'],
             defenseTactics: ['ManToManPerimeter'],
@@ -97,38 +101,41 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         };
     }
 
-    // --- A. 그룹별 핵심 지표 산출 ---
-    const guards = startersList.filter(p => p.position.includes('G'));
-    const bigs = startersList.filter(p => ['PF', 'C'].includes(p.position));
-
-    // 팀 평균 3점슛 (코너, 45도, 탑 평균)
-    const team3ptAvg = startersList.reduce((sum, p) => sum + (p.threeCorner + p.three45 + p.threeTop)/3, 0) / 5;
+    // --- A. 상세 스탯 집계 ---
     
-    // 팀 평균 속도
-    const teamSpeedAvg = startersList.reduce((sum, p) => sum + p.speed, 0) / 5;
+    // 3점 능력 (평균 & 최대)
+    const get3pt = (p: Player) => (p.threeCorner + p.three45 + p.threeTop) / 3;
+    const team3ptAvg = starters.reduce((sum, p) => sum + get3pt(p), 0) / 5;
+    const bestShooterRating = Math.max(...starters.map(p => get3pt(p)));
+
+    // 핸들링 & 패스 (가드진)
+    const guards = starters.filter(p => p.position.includes('G'));
+    const maxHandle = guards.length ? Math.max(...guards.map(p => p.handling)) : 50;
+    const maxPlaymaking = guards.length ? Math.max(...guards.map(p => p.plm)) : 50;
+
+    // 포스트 & 인사이드 (빅맨진)
+    const bigs = starters.filter(p => ['PF', 'C'].includes(p.position));
+    const maxPost = bigs.length ? Math.max(...bigs.map(p => p.postPlay)) : 50;
+    const maxInside = bigs.length ? Math.max(...bigs.map(p => p.ins)) : 50;
     
-    // 팀 평균 수비력
-    const teamDefAvg = startersList.reduce((sum, p) => sum + p.def, 0) / 5;
+    // Stretch Big 존재 여부 (센터가 3점이 되는가?)
+    const center = starters.find(p => p.position === 'C');
+    const isStretchFive = center ? get3pt(center) >= 75 : false;
 
-    // 최고의 볼 핸들러 창출 능력 (미첼, 돈치치 등) -> Handling + ShotIQ + MidRange
-    const maxGuardCreation = guards.length > 0 
-        ? Math.max(...guards.map(g => g.handling * 0.4 + g.shotIq * 0.3 + g.midRange * 0.3))
-        : 0;
+    // 피지컬
+    const teamSpeed = starters.reduce((sum, p) => sum + p.speed, 0) / 5;
+    const teamStamina = starters.reduce((sum, p) => sum + p.stamina, 0) / 5;
+    const teamStr = starters.reduce((sum, p) => sum + p.strength, 0) / 5;
 
-    // 최고의 빅맨 파괴력 (엠비드, 요키치, 야니스 등) -> Inside + Post + Strength
-    const maxPostPower = bigs.length > 0
-        ? Math.max(...bigs.map(b => b.ins * 0.4 + b.postPlay * 0.4 + b.strength * 0.2))
-        : 0;
-    
-    // 빅맨 기동성 (야니스 vs 엠비드 구분을 위함)
-    const bigmanSpeed = bigs.length > 0
-        ? bigs.reduce((sum, b) => sum + b.speed, 0) / bigs.length
-        : 50;
+    // 수비
+    const teamDef = starters.reduce((sum, p) => sum + p.def, 0) / 5;
+    const teamBlk = starters.reduce((sum, p) => sum + p.blk, 0) / 5;
+    const teamStl = starters.reduce((sum, p) => sum + p.steal, 0) / 5;
 
 
-    // --- B. 전술별 적합도 점수 계산 ---
+    // --- B. 전술 적합도 점수 계산 (Scoring) ---
     const scores: Record<OffenseTactic, number> = {
-        'Balance': 60,        // 기본 점수
+        'Balance': 50, // 기준점
         'PaceAndSpace': 0,
         'PerimeterFocus': 0,
         'PostFocus': 0,
@@ -136,63 +143,94 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         'SevenSeconds': 0
     };
 
-    // 1. Pace & Space: 슈팅과 스페이싱 중시
-    // 조건: 팀 3점이 높고, 빅맨도 슛이 있으면 유리
-    scores['PaceAndSpace'] = (team3ptAvg * 1.5) + (startersList.filter(p => (p.threeTop + p.three45)/2 > 80).length * 5);
-    
-    // 2. Seven Seconds: 속도와 3점 중시
-    // 조건: 팀이 빠르고 슛이 좋음. 빅맨이 빠르면(야니스) 유리함
-    scores['SevenSeconds'] = (teamSpeedAvg * 1.2) + (team3ptAvg * 0.8) + (bigmanSpeed > 75 ? 10 : 0);
+    // 1. Pace & Space
+    // 조건: 팀 전체가 슛이 좋아야 함. 센터가 외곽이 되면 큰 가산점. 핸들러의 패스 능력 필요.
+    scores['PaceAndSpace'] = (team3ptAvg * 0.5) + (maxPlaymaking * 0.3) + (isStretchFive ? 15 : 0);
 
-    // 3. Perimeter Focus: 가드 중심
-    // 조건: 가드 에이스의 능력치가 빅맨보다 높거나 압도적일 때 (미첼 케이스 해결)
-    scores['PerimeterFocus'] = (maxGuardCreation * 1.8) + (team3ptAvg * 0.5);
-    // 가드가 빅맨보다 훨씬 강하면 추가 가산점
-    if (maxGuardCreation > maxPostPower + 5) scores['PerimeterFocus'] += 15;
+    // 2. Seven Seconds
+    // 조건: 극단적인 속도와 체력. 슛도 받쳐줘야 함. 수비나 리바운드는 포기.
+    scores['SevenSeconds'] = (teamSpeed * 0.6) + (teamStamina * 0.2) + (team3ptAvg * 0.2);
 
-    // 4. Post Focus: 빅맨 중심
-    // 조건: 정통 빅맨이 강력할 때. 단, 너무 빠르면(야니스) 7초나 밸런스로 유도
-    scores['PostFocus'] = (maxPostPower * 1.8) - (team3ptAvg * 0.3); // 3점이 너무 좋으면 아까움
-    if (bigmanSpeed > 80) scores['PostFocus'] -= 10; // 야니스 같은 달리는 빅맨은 포스트 짱박기 비추
+    // 3. Perimeter Focus
+    // 조건: 압도적인 핸들러 에이스(아이솔레이션/픽앤롤) 존재.
+    // 이전보다 가중치를 낮추고, 빅맨이 너무 강력하면 오히려 감점 (포스트 써야하니까)
+    scores['PerimeterFocus'] = (maxHandle * 0.5) + (bestShooterRating * 0.3) - (maxPost * 0.2);
 
-    // 5. Grind: 수비 중심, 느린 템포
-    // 조건: 수비가 좋고, 공격력이 애매할 때
-    scores['Grind'] = (teamDefAvg * 1.5) + (100 - teamSpeedAvg) * 0.5;
+    // 4. Post Focus
+    // 조건: 압도적인 빅맨 존재. 팀 속도가 느릴수록 유리(세트 오펜스).
+    scores['PostFocus'] = (maxPost * 0.6) + (maxInside * 0.3) - (teamSpeed * 0.1);
+    if (team3ptAvg < 70) scores['PostFocus'] += 10; // 슛 없으면 골밑이라도 파야함
 
-    // 6. Balance: 보정
-    // 특정 전술 점수가 너무 낮으면 밸런스로 회귀
-    const maxScore = Math.max(...Object.values(scores).filter(s => s !== 60));
-    if (maxScore < 75) scores['Balance'] += 20; // 뚜렷한 색깔이 없으면 밸런스 선호
+    // 5. Grind
+    // 조건: 수비가 강력하고, 템포를 죽여야 하는 팀(스피드 낮음, 힘 높음).
+    scores['Grind'] = (teamDef * 0.5) + (teamStr * 0.3) + ((100 - teamSpeed) * 0.3);
+
+    // 6. Balance (Fallback)
+    // 1옵션과 2옵션의 격차가 적거나, 모든 스탯이 평범할 때 점수 상승
+    const statVariance = Math.abs(maxPost - maxHandle);
+    if (statVariance < 10) scores['Balance'] += 15;
 
 
-    // --- C. 최종 선택 ---
+    // --- C. 최종 전술 선택 ---
     let selectedTactic: OffenseTactic = 'Balance';
     let highestScore = -999;
 
     (Object.keys(scores) as OffenseTactic[]).forEach(t => {
-        if (scores[t] > highestScore) {
-            highestScore = scores[t];
+        // 난수성 부여 (너무 뻔한 결과 방지, +/- 3점)
+        const variance = (Math.random() * 6) - 3;
+        const finalScore = scores[t] + variance;
+        
+        if (finalScore > highestScore) {
+            highestScore = finalScore;
             selectedTactic = t;
         }
     });
 
-    // --- D. 수비 전술 및 슬라이더 자동 조정 ---
-    // 팀 블락 능력이 좋으면 지역방어 선호, 아니면 맨투맨
-    const teamBlkAvg = startersList.reduce((sum, p) => sum + p.blk, 0) / 5;
-    const defTactic: DefenseTactic = teamBlkAvg > 75 ? 'ZoneDefense' : 'ManToManPerimeter';
 
-    // 전술에 따른 슬라이더 프리셋 매핑
-    const sliderPresets: Record<OffenseTactic, any> = {
-        'Balance':        { pace: 5, offReb: 5, zone: 3 },
-        'PaceAndSpace':   { pace: 7, offReb: 3, zone: 2 },
-        'PerimeterFocus': { pace: 5, offReb: 4, zone: 2 },
-        'PostFocus':      { pace: 3, offReb: 8, zone: 4 }, // 느리고 리바운드 집중
-        'Grind':          { pace: 2, offReb: 6, zone: 5 }, // 매우 느리고 수비 집중
-        'SevenSeconds':   { pace: 10, offReb: 4, zone: 1 } // 극도로 빠름
+    // --- D. 슬라이더 프리셋 및 동적 튜닝 (Dynamic Slider Tuning) ---
+    
+    // 1. 전술별 기본 프리셋
+    const presets: Record<OffenseTactic, any> = {
+        'Balance':        { pace: 5, offReb: 5, zone: 3, press: 1 },
+        'PaceAndSpace':   { pace: 7, offReb: 3, zone: 2, press: 1 },
+        'PerimeterFocus': { pace: 5, offReb: 4, zone: 2, press: 1 },
+        'PostFocus':      { pace: 3, offReb: 8, zone: 4, press: 1 },
+        'Grind':          { pace: 2, offReb: 6, zone: 5, press: 2 },
+        'SevenSeconds':   { pace: 10, offReb: 3, zone: 1, press: 3 }
     };
 
-    const preset = sliderPresets[selectedTactic];
+    const base = presets[selectedTactic];
+    const sliders = { ...base }; // Clone
 
+    // 2. 능력치 기반 미세 조정 (Fine-tuning)
+    // Pace: 팀 스피드가 빠르면 기본 전술보다 템포를 더 올림
+    if (teamSpeed > 80) sliders.pace = Math.min(10, sliders.pace + 2);
+    else if (teamSpeed < 50) sliders.pace = Math.max(1, sliders.pace - 2);
+
+    // Rebound: 빅맨진의 리바운드 능력이 좋으면 공격리바운드 가담을 늘림
+    const bigReb = bigs.length ? Math.max(...bigs.map(p => p.reb)) : 50;
+    if (bigReb > 85) sliders.offReb = Math.min(10, sliders.offReb + 2);
+
+    // Defense Intensity: 팀 수비력이 좋거나 스틸이 좋으면 압박 강도 상향
+    const defBase = Math.round(teamDef / 10); // 50->5, 80->8
+    sliders.defIntensity = Math.min(10, Math.max(1, defBase));
+    if (teamStl > 80) sliders.defIntensity = Math.min(10, sliders.defIntensity + 1);
+
+    // Full Court Press: 팀 스태미너가 좋고 가드가 많으면 시도
+    if (teamStamina > 80 && guards.length >= 3) sliders.fullCourtPress = Math.min(10, sliders.press + 2);
+    else sliders.fullCourtPress = sliders.press;
+
+    // Zone Usage: 블락 능력이 좋으면 골밑을 지키는 존 디펜스 선호
+    // 반대로 대인 수비(PerDef)가 좋으면 존 빈도 낮춤
+    const avgPerDef = starters.reduce((sum, p) => sum + p.perDef, 0) / 5;
+    if (teamBlk > avgPerDef + 10) sliders.zoneUsage = Math.min(10, sliders.zoneUsage + 3);
+    else if (avgPerDef > teamBlk + 10) sliders.zoneUsage = Math.max(1, sliders.zoneUsage - 2);
+    
+    // 수비 전술 자동 선택
+    const defTactic: DefenseTactic = sliders.zoneUsage > 6 ? 'ZoneDefense' : 'ManToManPerimeter';
+    // 에이스 스토퍼: 상대팀 분석이 없으므로 자동 생성 단계에선 잘 안 씀. 
+    // 단, 최고의 수비수(Def > 90)가 있다면 고려해볼만 함.
+    
     const startersMap = {
         PG: depthChart.PG[0] || '',
         SG: depthChart.SG[0] || '',
@@ -205,12 +243,12 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         offenseTactics: [selectedTactic],
         defenseTactics: [defTactic],
         sliders: {
-            pace: preset.pace,
-            offReb: preset.offReb,
-            defIntensity: Math.min(10, Math.round(teamDefAvg / 10)), // 수비력에 비례한 강도
-            defReb: 5,
-            fullCourtPress: teamSpeedAvg > 80 ? 3 : 1, // 빠르면 프레스 빈도 높임
-            zoneUsage: preset.zone
+            pace: sliders.pace,
+            offReb: sliders.offReb,
+            defIntensity: sliders.defIntensity,
+            defReb: 5, // 수비 리바운드는 보통 기본값 유지 (박스아웃은 기본이니까)
+            fullCourtPress: sliders.fullCourtPress,
+            zoneUsage: sliders.zoneUsage
         },
         starters: startersMap,
         minutesLimits: {},
