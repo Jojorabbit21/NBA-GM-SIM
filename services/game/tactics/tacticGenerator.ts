@@ -3,15 +3,16 @@ import { Team, GameTactics, OffenseTactic, DefenseTactic, DepthChart, Player } f
 import { calculatePlayerOvr } from '../../../utils/constants';
 
 /**
- * AI 팀 및 사용자 자동 설정을 위한 전술 생성기 v2.0
- * 상세 스탯 기반의 적합도 평가 및 동적 슬라이더 튜닝 적용
+ * AI 팀 및 사용자 자동 설정을 위한 전술 생성기 v3.0
+ * '엘리트 스탯 임계점(Threshold)' 기반 가산점 로직 적용
+ * 모든 전술의 기대 점수 범위를 정규화하여 특정 전술 편중 현상 해결
  */
 export const generateAutoTactics = (team: Team): GameTactics => {
     const healthy = team.roster.filter(p => p.health !== 'Injured');
     // OVR 순으로 정렬하여 기본 로스터 구성
     const sortedRoster = [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
-    // 1. 뎁스 차트 자동 구성 (OVR 기반, 포지션 엄수)
+    // 1. 뎁스 차트 자동 구성
     const depthChart: DepthChart = {
         PG: [null, null, null],
         SG: [null, null, null],
@@ -26,13 +27,11 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     // 1-1. 주전 및 벤치(1, 2순위) 선발
     for (let depth = 0; depth <= 1; depth++) {
         for (const pos of positions) {
-            // 해당 포지션을 선호하는 선수 중 가장 높은 OVR
             const candidate = sortedRoster.find(p => p.position.includes(pos) && !usedIds.has(p.id));
             if (candidate) {
                 depthChart[pos][depth] = candidate.id;
                 usedIds.add(candidate.id);
             } else {
-                // 포지션이 딱 맞는 선수가 없으면 남은 선수 중 OVR 높은 순 (Fallback)
                 const fallback = sortedRoster.find(p => !usedIds.has(p.id));
                 if (fallback) {
                     depthChart[pos][depth] = fallback.id;
@@ -54,13 +53,12 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         }
     }
 
-    // 2. 로테이션 맵 초기화 (기존 로직 유지)
+    // 2. 로테이션 맵 초기화
     const rotationMap: Record<string, boolean[]> = {};
     sortedRoster.forEach(p => {
         rotationMap[p.id] = Array(48).fill(false);
     });
 
-    // 단순화된 로테이션 할당 (주전 36분, 벤치 12분)
     for (const pos of positions) {
         const starterId = depthChart[pos][0];
         const benchId = depthChart[pos][1];
@@ -81,17 +79,15 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     }
 
     // -------------------------------------------------------------------------
-    // 3. 전술 분석 알고리즘 (Tactical Analysis Engine)
+    // 3. 전술 분석 알고리즘 (Tactical Analysis Engine v3.0)
     // -------------------------------------------------------------------------
     
-    // 분석 대상: 주전 5명
     const starters = positions.map(pos => {
         const pid = depthChart[pos][0];
         return team.roster.find(p => p.id === pid);
     }).filter(p => p !== undefined) as Player[];
 
     if (starters.length < 5) {
-        // 데이터 부족 시 기본값
         return {
             offenseTactics: ['Balance'],
             defenseTactics: ['ManToManPerimeter'],
@@ -102,82 +98,96 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     }
 
     // --- A. 상세 스탯 집계 ---
-    
-    // 3점 능력 (평균 & 최대)
     const get3pt = (p: Player) => (p.threeCorner + p.three45 + p.threeTop) / 3;
     const team3ptAvg = starters.reduce((sum, p) => sum + get3pt(p), 0) / 5;
     const bestShooterRating = Math.max(...starters.map(p => get3pt(p)));
 
-    // 핸들링 & 패스 (가드진)
     const guards = starters.filter(p => p.position.includes('G'));
     const maxHandle = guards.length ? Math.max(...guards.map(p => p.handling)) : 50;
     const maxPlaymaking = guards.length ? Math.max(...guards.map(p => p.plm)) : 50;
 
-    // 포스트 & 인사이드 (빅맨진)
     const bigs = starters.filter(p => ['PF', 'C'].includes(p.position));
     const maxPost = bigs.length ? Math.max(...bigs.map(p => p.postPlay)) : 50;
     const maxInside = bigs.length ? Math.max(...bigs.map(p => p.ins)) : 50;
     
-    // Stretch Big 존재 여부 (센터가 3점이 되는가?)
+    // Stretch Big 존재 여부
     const center = starters.find(p => p.position === 'C');
-    const isStretchFive = center ? get3pt(center) >= 75 : false;
+    const isStretchFive = center ? get3pt(center) >= 78 : false; // 기준 상향 (75 -> 78)
 
-    // 피지컬
+    // 피지컬 & 수비
     const teamSpeed = starters.reduce((sum, p) => sum + p.speed, 0) / 5;
     const teamStamina = starters.reduce((sum, p) => sum + p.stamina, 0) / 5;
     const teamStr = starters.reduce((sum, p) => sum + p.strength, 0) / 5;
-
-    // 수비
     const teamDef = starters.reduce((sum, p) => sum + p.def, 0) / 5;
     const teamBlk = starters.reduce((sum, p) => sum + p.blk, 0) / 5;
     const teamStl = starters.reduce((sum, p) => sum + p.steal, 0) / 5;
 
 
-    // --- B. 전술 적합도 점수 계산 (Scoring) ---
+    // --- B. 전술 적합도 점수 계산 (Scoring v3.0) ---
+    // 모든 전술의 기본 점수(Base Score)를 40점으로 통일
+    // 가중치(Multiplier) 합계를 0.5 ~ 0.6 수준으로 통일하여 스탯 인플레이션 방지
+    // 핵심 조건(Threshold) 달성 시에만 큰 폭의 보너스 부여
+
     const scores: Record<OffenseTactic, number> = {
-        'Balance': 50, // 기준점
-        'PaceAndSpace': 0,
-        'PerimeterFocus': 0,
-        'PostFocus': 0,
-        'Grind': 0,
-        'SevenSeconds': 0
+        'Balance': 40,
+        'PaceAndSpace': 40,
+        'PerimeterFocus': 40,
+        'PostFocus': 40,
+        'Grind': 40,
+        'SevenSeconds': 40
     };
 
-    // 1. Pace & Space
-    // 조건: 팀 전체가 슛이 좋아야 함. 센터가 외곽이 되면 큰 가산점. 핸들러의 패스 능력 필요.
-    scores['PaceAndSpace'] = (team3ptAvg * 0.5) + (maxPlaymaking * 0.3) + (isStretchFive ? 15 : 0);
+    // 1. Balance (안전한 선택지)
+    // 1옵션과 5옵션의 OVR 차이가 적으면(15 이하) 조직력이 좋다고 판단하여 가산점
+    const ovrMin = Math.min(...starters.map(p => calculatePlayerOvr(p)));
+    const ovrMax = Math.max(...starters.map(p => calculatePlayerOvr(p)));
+    scores['Balance'] += (ovrMin / 2); // 기본기 점수
+    if ((ovrMax - ovrMin) < 15) scores['Balance'] += 10; // 조직력 보너스
 
-    // 2. Seven Seconds
-    // 조건: 극단적인 속도와 체력. 슛도 받쳐줘야 함. 수비나 리바운드는 포기.
-    scores['SevenSeconds'] = (teamSpeed * 0.6) + (teamStamina * 0.2) + (team3ptAvg * 0.2);
+    // 2. Pace & Space (3점 + 패스)
+    // 가중치: 3점(0.3) + 패스(0.2)
+    scores['PaceAndSpace'] += (team3ptAvg * 0.3) + (maxPlaymaking * 0.2);
+    // [Threshold] 팀 3점 평균이 80 이상이거나, 스트레치 빅맨이 있을 때만 강력 추천
+    if (team3ptAvg > 80) scores['PaceAndSpace'] += 15;
+    if (isStretchFive) scores['PaceAndSpace'] += 10;
 
-    // 3. Perimeter Focus
-    // 조건: 압도적인 핸들러 에이스(아이솔레이션/픽앤롤) 존재.
-    // 이전보다 가중치를 낮추고, 빅맨이 너무 강력하면 오히려 감점 (포스트 써야하니까)
-    scores['PerimeterFocus'] = (maxHandle * 0.5) + (bestShooterRating * 0.3) - (maxPost * 0.2);
+    // 3. Seven Seconds (속도 + 체력)
+    // 가중치: 속도(0.35) + 체력(0.15)
+    scores['SevenSeconds'] += (teamSpeed * 0.35) + (teamStamina * 0.15);
+    // [Threshold] 팀 평균 속도가 82를 넘는 '엘리트 런앤건' 팀에게만 보너스
+    if (teamSpeed > 82) scores['SevenSeconds'] += 20; // 압도적인 속도일 때만 1순위 등극
 
-    // 4. Post Focus
-    // 조건: 압도적인 빅맨 존재. 팀 속도가 느릴수록 유리(세트 오펜스).
-    scores['PostFocus'] = (maxPost * 0.6) + (maxInside * 0.3) - (teamSpeed * 0.1);
-    if (team3ptAvg < 70) scores['PostFocus'] += 10; // 슛 없으면 골밑이라도 파야함
+    // 4. Perimeter Focus (핸들러 + 슛)
+    // 가중치: 핸들링(0.3) + 최고슈터(0.2)
+    scores['PerimeterFocus'] += (maxHandle * 0.3) + (bestShooterRating * 0.2);
+    // [Threshold] 리그 탑급 핸들러(90+) 보유 시 몰빵 전술 유효
+    if (maxHandle >= 90) scores['PerimeterFocus'] += 20;
+    else if (maxHandle >= 85) scores['PerimeterFocus'] += 10;
 
-    // 5. Grind
-    // 조건: 수비가 강력하고, 템포를 죽여야 하는 팀(스피드 낮음, 힘 높음).
-    scores['Grind'] = (teamDef * 0.5) + (teamStr * 0.3) + ((100 - teamSpeed) * 0.3);
+    // 5. Post Focus (빅맨)
+    // 가중치: 포스트(0.4) + 인사이드(0.1)
+    scores['PostFocus'] += (maxPost * 0.4) + (maxInside * 0.1);
+    // [Threshold] 리그 탑급 빅맨(90+) 보유 시 유효
+    if (maxPost >= 90) scores['PostFocus'] += 20;
+    // 팀 3점이 너무 낮으면(70 미만) 강제로 포스트를 해야 함 (생존형 가산점)
+    if (team3ptAvg < 70) scores['PostFocus'] += 15;
 
-    // 6. Balance (Fallback)
-    // 1옵션과 2옵션의 격차가 적거나, 모든 스탯이 평범할 때 점수 상승
-    const statVariance = Math.abs(maxPost - maxHandle);
-    if (statVariance < 10) scores['Balance'] += 15;
+    // 6. Grind (수비 + 힘 + 저속)
+    // 가중치: 수비(0.3) + 힘(0.2)
+    scores['Grind'] += (teamDef * 0.3) + (teamStr * 0.2);
+    // [Threshold] 수비력이 80 이상인 늪농구 팀
+    if (teamDef >= 80) scores['Grind'] += 15;
+    // 공격력이 너무 낮으면(오버롤 75 미만) 수비라도 해야 함
+    if (ovrMax < 80) scores['Grind'] += 10;
 
 
-    // --- C. 최종 전술 선택 ---
+    // --- C. 최종 전술 선택 (Randomness 추가) ---
     let selectedTactic: OffenseTactic = 'Balance';
     let highestScore = -999;
 
     (Object.keys(scores) as OffenseTactic[]).forEach(t => {
-        // 난수성 부여 (너무 뻔한 결과 방지, +/- 3점)
-        const variance = (Math.random() * 6) - 3;
+        // +/- 4점의 난수 부여로 경계선에 있는 전술들의 다양성 확보
+        const variance = (Math.random() * 8) - 4;
         const finalScore = scores[t] + variance;
         
         if (finalScore > highestScore) {
@@ -187,50 +197,47 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     });
 
 
-    // --- D. 슬라이더 프리셋 및 동적 튜닝 (Dynamic Slider Tuning) ---
-    
-    // 1. 전술별 기본 프리셋
+    // --- D. 슬라이더 미세 조정 (Micro-Adjustment) ---
     const presets: Record<OffenseTactic, any> = {
         'Balance':        { pace: 5, offReb: 5, zone: 3, press: 1 },
         'PaceAndSpace':   { pace: 7, offReb: 3, zone: 2, press: 1 },
-        'PerimeterFocus': { pace: 5, offReb: 4, zone: 2, press: 1 },
-        'PostFocus':      { pace: 3, offReb: 8, zone: 4, press: 1 },
-        'Grind':          { pace: 2, offReb: 6, zone: 5, press: 2 },
-        'SevenSeconds':   { pace: 10, offReb: 3, zone: 1, press: 3 }
+        'PerimeterFocus': { pace: 4, offReb: 4, zone: 2, press: 1 },
+        'PostFocus':      { pace: 2, offReb: 8, zone: 4, press: 1 },
+        'Grind':          { pace: 1, offReb: 7, zone: 5, press: 2 },
+        'SevenSeconds':   { pace: 10, offReb: 2, zone: 1, press: 3 }
     };
 
     const base = presets[selectedTactic];
-    const sliders = { ...base }; // Clone
+    const sliders = { ...base };
 
-    // 2. 능력치 기반 미세 조정 (Fine-tuning)
-    // Pace: 팀 스피드가 빠르면 기본 전술보다 템포를 더 올림
-    if (teamSpeed > 80) sliders.pace = Math.min(10, sliders.pace + 2);
-    else if (teamSpeed < 50) sliders.pace = Math.max(1, sliders.pace - 2);
+    // 1. Pace Tuning
+    // 팀 스피드가 평균(60)보다 높으면 페이스를 올림. 10포인트당 1칸.
+    const speedDiff = Math.floor((teamSpeed - 60) / 10);
+    sliders.pace = Math.max(1, Math.min(10, sliders.pace + speedDiff));
 
-    // Rebound: 빅맨진의 리바운드 능력이 좋으면 공격리바운드 가담을 늘림
+    // 2. Rebound Tuning
+    // 빅맨 리바운드 능력치에 따라 보정
     const bigReb = bigs.length ? Math.max(...bigs.map(p => p.reb)) : 50;
-    if (bigReb > 85) sliders.offReb = Math.min(10, sliders.offReb + 2);
+    const rebDiff = Math.floor((bigReb - 65) / 10);
+    sliders.offReb = Math.max(1, Math.min(10, sliders.offReb + rebDiff));
 
-    // Defense Intensity: 팀 수비력이 좋거나 스틸이 좋으면 압박 강도 상향
-    const defBase = Math.round(teamDef / 10); // 50->5, 80->8
-    sliders.defIntensity = Math.min(10, Math.max(1, defBase));
+    // 3. Defense Intensity Tuning
+    // 팀 수비력이 좋거나 스틸이 좋으면 압박 강도 상향
+    const defDiff = Math.floor((teamDef - 60) / 10);
+    sliders.defIntensity = Math.max(1, Math.min(10, 5 + defDiff));
     if (teamStl > 80) sliders.defIntensity = Math.min(10, sliders.defIntensity + 1);
 
-    // Full Court Press: 팀 스태미너가 좋고 가드가 많으면 시도
-    if (teamStamina > 80 && guards.length >= 3) sliders.fullCourtPress = Math.min(10, sliders.press + 2);
+    // 4. Press & Zone
+    if (teamStamina > 85 && guards.length >= 3) sliders.fullCourtPress = Math.min(10, sliders.press + 2);
     else sliders.fullCourtPress = sliders.press;
 
-    // Zone Usage: 블락 능력이 좋으면 골밑을 지키는 존 디펜스 선호
-    // 반대로 대인 수비(PerDef)가 좋으면 존 빈도 낮춤
+    // 블락 능력이 좋으면 골밑을 지키는 존 디펜스 선호
     const avgPerDef = starters.reduce((sum, p) => sum + p.perDef, 0) / 5;
-    if (teamBlk > avgPerDef + 10) sliders.zoneUsage = Math.min(10, sliders.zoneUsage + 3);
+    if (teamBlk > avgPerDef + 15) sliders.zoneUsage = Math.min(10, sliders.zoneUsage + 3);
     else if (avgPerDef > teamBlk + 10) sliders.zoneUsage = Math.max(1, sliders.zoneUsage - 2);
-    
-    // 수비 전술 자동 선택
+
     const defTactic: DefenseTactic = sliders.zoneUsage > 6 ? 'ZoneDefense' : 'ManToManPerimeter';
-    // 에이스 스토퍼: 상대팀 분석이 없으므로 자동 생성 단계에선 잘 안 씀. 
-    // 단, 최고의 수비수(Def > 90)가 있다면 고려해볼만 함.
-    
+
     const startersMap = {
         PG: depthChart.PG[0] || '',
         SG: depthChart.SG[0] || '',
@@ -246,7 +253,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
             pace: sliders.pace,
             offReb: sliders.offReb,
             defIntensity: sliders.defIntensity,
-            defReb: 5, // 수비 리바운드는 보통 기본값 유지 (박스아웃은 기본이니까)
+            defReb: 5,
             fullCourtPress: sliders.fullCourtPress,
             zoneUsage: sliders.zoneUsage
         },
