@@ -4,7 +4,7 @@ export const SIM_CONFIG = {
         BASE_POSSESSIONS: 85, 
         HOME_ADVANTAGE: 0.02,
         PACE_SLIDER_IMPACT: 0.02, 
-        SCORING_MODIFIER: 1.00, // [Down] 1.05 -> 1.00 (전체 득점 볼륨 미세 하향)
+        SCORING_MODIFIER: 0.94, // [Down] 1.00 -> 0.94 (전체 득점 볼륨 6% 하향)
     },
     FATIGUE: {
         DRAIN_BASE: 2.5, 
@@ -23,15 +23,16 @@ export const SIM_CONFIG = {
         TOV_USAGE_FACTOR: 0.20,
     },
     SHOOTING: {
-        // [Balance Update] 야투율 인플레이션 억제를 위한 베이스 확률 하향
-        INSIDE_BASE_PCT: 0.50, // 0.58 -> 0.50
-        MID_BASE_PCT: 0.36,    // 0.40 -> 0.36
-        THREE_BASE_PCT: 0.33,  // 0.35 -> 0.33
+        // [Balance Update] 야투율 인플레이션 억제를 위한 베이스 확률 대폭 하향 (High Risk)
+        INSIDE_BASE_PCT: 0.45, // 0.50 -> 0.45
+        MID_BASE_PCT: 0.32,    // 0.36 -> 0.32
+        THREE_BASE_PCT: 0.30,  // 0.33 -> 0.30
         
-        // [Balance Update] 수비 스탯의 영향력 강화 (잘 막으면 더 많이 실패함)
-        INSIDE_DEF_IMPACT: 0.005, // 0.004 -> 0.005
-        MID_DEF_IMPACT: 0.006,    // 0.005 -> 0.006
-        THREE_DEF_IMPACT: 0.007,  // 0.006 -> 0.007
+        // [Balance Update] 수비 스탯의 영향력 대폭 강화 (High Return for High Skill Gap)
+        // 수비가 좋으면 성공률을 더 많이 깎아먹음
+        INSIDE_DEF_IMPACT: 0.008, // 0.005 -> 0.008
+        MID_DEF_IMPACT: 0.008,    // 0.006 -> 0.008
+        THREE_DEF_IMPACT: 0.010,  // 0.007 -> 0.010
     },
     // [New] Foul Trouble Logic
     FOUL_TROUBLE: {

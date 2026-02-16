@@ -75,7 +75,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor,
                 preferredZone: takeThree ? '3PT' : 'Mid',
                 shotType: 'Pullup',
-                bonusHitRate: 0.02 // [Down] 0.05 -> 0.02
+                bonusHitRate: 0.00 // [Down] 0.02 -> 0.00 (Pure Skill)
             };
         }
         case 'PnR_Handler': {
@@ -92,7 +92,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: screener,
                 preferredZone: takeThree ? '3PT' : 'Mid', 
                 shotType: 'Pullup',
-                bonusHitRate: 0.05 // [Down] 0.10 -> 0.05
+                bonusHitRate: 0.03 // [Down] 0.05 -> 0.03
             };
         }
         case 'PnR_Roll': {
@@ -105,7 +105,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: handler, // Assister
                 preferredZone: 'Rim',
                 shotType: 'Dunk',
-                bonusHitRate: 0.08 // [Down] 0.15 -> 0.08
+                bonusHitRate: 0.06 // [Down] 0.08 -> 0.06
             };
         }
         case 'PnR_Pop': {
@@ -118,7 +118,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: handler,
                 preferredZone: '3PT',
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.04 // [Down] 0.08 -> 0.04
+                bonusHitRate: 0.03 // [Down] 0.04 -> 0.03
             };
         }
         case 'PostUp': {
@@ -129,7 +129,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor,
                 preferredZone: 'Paint',
                 shotType: 'Hook', 
-                bonusHitRate: 0.03 // [Down] 0.05 -> 0.03
+                bonusHitRate: 0.01 // [Down] 0.03 -> 0.01
             };
         }
         case 'CatchShoot': {
@@ -142,7 +142,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: passer,
                 preferredZone: '3PT',
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.06 // [Down] 0.12 -> 0.06
+                bonusHitRate: 0.05 // [Down] 0.06 -> 0.05
             };
         }
         case 'Cut': {
@@ -155,7 +155,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: passer,
                 preferredZone: 'Rim',
                 shotType: 'Layup',
-                bonusHitRate: 0.08 // [Down] 0.15 -> 0.08
+                bonusHitRate: 0.06 // [Down] 0.08 -> 0.06
             };
         }
         case 'Handoff': {
@@ -171,7 +171,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 secondaryActor: big,
                 preferredZone: lovesThree ? '3PT' : 'Mid',
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.05 // [Down] 0.10 -> 0.05
+                bonusHitRate: 0.04 // [Down] 0.05 -> 0.04
             };
         }
         case 'Transition': {
@@ -186,7 +186,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor,
                 preferredZone: takeThree ? '3PT' : 'Rim',
                 shotType: takeThree ? 'Pullup' : 'Layup',
-                bonusHitRate: 0.12 // [Down] 0.20 -> 0.12
+                bonusHitRate: 0.10 // [Down] 0.12 -> 0.10
             };
         }
         case 'Putback': {
@@ -197,7 +197,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType): PlayCont
                 actor,
                 preferredZone: 'Rim',
                 shotType: 'Layup', 
-                bonusHitRate: 0.15 // [Down] 0.25 -> 0.15
+                bonusHitRate: 0.12 // [Down] 0.15 -> 0.12
             };
         }
         default: {
