@@ -8,49 +8,37 @@ export function calculatePlaymakingStats(
     mp: number,
     fga: number,
     sliders: TacticalSliders,
-    offTactic: OffenseTactic, // [New] Added Tactic
+    offTactic: OffenseTactic, 
     isAceTarget: boolean,
     stopper?: Player
 ): PlaymakingResult {
     const C = SIM_CONFIG.STATS;
 
     // 1. Assist Weight (Potential)
-    // Pass Accuracy, Vision, IQ + Usage (MP)
-    // This represents the ability to create shots for others
     const plmAttr = (p.passAcc * 0.4 + p.passVision * 0.4 + p.passIq * 0.2);
     const assistWeight = plmAttr * (mp / 48) * C.AST_BASE_FACTOR;
 
     // 2. Turnovers (Direct Event)
-    // Usage proxy uses FGA + AstWeight to estimate ball handling load
     const usageProxy = (fga + (assistWeight / 3)); 
     
-    // [Update] Increased weight of bad handling/IQ on turnovers
-    // (100 - Rating) * Factor. Higher factor = More turnovers for bad players.
     const tovAttr = (100 - p.handling) * 0.06 + (100 - p.passIq) * 0.04;
     
     let tovBase = (usageProxy * C.TOV_USAGE_FACTOR) + tovAttr; 
 
-    // [New] Haste Malus for Turnovers (Revised)
-    
-    // A. Pace Slider Penalty (7+)
+    // [New] Haste Malus for Turnovers
     if (sliders.pace >= 7) {
-        // Condition: PassAcc < 82
         if (p.passAcc < 82) {
-            let pacePenalty = 0; // Additive percentage points
+            let pacePenalty = 0; 
             if (sliders.pace === 7) pacePenalty = 5;
             else if (sliders.pace === 8) pacePenalty = 6;
             else if (sliders.pace === 9) pacePenalty = 8;
             else if (sliders.pace === 10) pacePenalty = 10;
             
-            // Add directly to base TOV count (simulating % increase)
-            // Since tovBase is roughly a count, we add a percentage of usageProxy
             tovBase += (usageProxy * (pacePenalty / 100));
         }
     }
 
-    // B. Tactic Penalty (SevenSeconds)
     if (offTactic === 'SevenSeconds') {
-        // Unconditional +5% penalty
         tovBase += (usageProxy * 0.05);
     }
 
@@ -62,6 +50,11 @@ export function calculatePlaymakingStats(
         const tovIncrease = (stealRating / 100) * 0.40;
         tov = Math.round(tov * (1.0 + tovIncrease));
     }
+
+    // [Normalization] Turnover Cap
+    // Prevent catastrophic turnover games (e.g. 30 TOs) which lead to < 60pts
+    // Hard cap per player per game context roughly 7-8
+    if (tov > 7) tov = 7 + (Math.random() > 0.5 ? 1 : 0);
 
     return { tov, assistWeight };
 }

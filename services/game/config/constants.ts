@@ -1,7 +1,7 @@
 
 export const SIM_CONFIG = {
     GAME_ENV: {
-        BASE_POSSESSIONS: 85, 
+        BASE_POSSESSIONS: 98, // [Update] Adjusted to modern NBA average (approx 100)
         HOME_ADVANTAGE: 0.02,
         PACE_SLIDER_IMPACT: 0.02, 
         SCORING_MODIFIER: 0.94, 
@@ -23,30 +23,32 @@ export const SIM_CONFIG = {
         TOV_USAGE_FACTOR: 0.20,
     },
     SHOOTING: {
-        // [Balance Update] 3점슛 밸런스 조정 (Avg 35%, Elite 40% Max)
-        INSIDE_BASE_PCT: 0.45, 
-        MID_BASE_PCT: 0.32,    
-        THREE_BASE_PCT: 0.27,  // 0.30 -> 0.27 (기본 난이도 상승)
+        // [Normalization] Raised base percentages to prevent < 70pt games
+        // Rim: 0.58 -> 0.62
+        // Mid: 0.40 -> 0.42
+        // 3PT: 0.35 -> 0.36
+        INSIDE_BASE_PCT: 0.62, 
+        MID_BASE_PCT: 0.42,    
+        THREE_BASE_PCT: 0.36,  
         
-        // [Balance Update] 능력치 격차가 성공률에 미치는 영향 축소
-        INSIDE_DEF_IMPACT: 0.008, 
-        MID_DEF_IMPACT: 0.008,    
-        THREE_DEF_IMPACT: 0.005,  // 0.010 -> 0.005 (격차가 커도 성공률이 폭증하지 않음)
+        // [Normalization] Reduced Defense Impact to prevent > 140pt games (or < 60)
+        // Attribute gaps now matter slightly less, pulling results to average.
+        // Old: 0.003 - 0.004 range. New: 0.0025 range.
+        INSIDE_DEF_IMPACT: 0.0025, 
+        MID_DEF_IMPACT: 0.0025,    
+        THREE_DEF_IMPACT: 0.0020, 
     },
-    // [New] Foul Trouble Logic
+    // Foul Trouble Logic
     FOUL_TROUBLE: {
-        // Multiplier for Foul Probability (Lower = Less likely to foul)
         PROB_MOD: {
-            3: 0.85, // Caution
-            4: 0.60, // Danger
-            5: 0.30  // Survival Mode (Matador Defense)
+            3: 0.85, 
+            4: 0.60, 
+            5: 0.30  
         },
-        // Penalty for Defensive Attributes (Higher = Worse defense)
-        // Trade-off for playing safe to avoid fouls
         DEF_PENALTY: {
-            3: 0.0,  // No penalty at 3
-            4: 0.15, // 15% stat reduction
-            5: 0.40  // 40% stat reduction (Open lane)
+            3: 0.0,  
+            4: 0.15, 
+            5: 0.40  
         }
     }
 };
