@@ -4,7 +4,7 @@ export const SIM_CONFIG = {
         BASE_POSSESSIONS: 85, 
         HOME_ADVANTAGE: 0.02,
         PACE_SLIDER_IMPACT: 0.02, 
-        SCORING_MODIFIER: 1.05, 
+        SCORING_MODIFIER: 1.00, // [Down] 1.05 -> 1.00 (전체 득점 볼륨 미세 하향)
     },
     FATIGUE: {
         DRAIN_BASE: 2.5, 
@@ -20,15 +20,18 @@ export const SIM_CONFIG = {
         BLK_GUARD_FACTOR: 0.015,
         BLK_BIG_FACTOR: 0.05,
         AST_BASE_FACTOR: 0.25,
-        TOV_USAGE_FACTOR: 0.20, // [Up] Increased from 0.12 to 0.20 to generate more turnovers
+        TOV_USAGE_FACTOR: 0.20,
     },
     SHOOTING: {
-        INSIDE_BASE_PCT: 0.58,
-        MID_BASE_PCT: 0.40,
-        THREE_BASE_PCT: 0.35,
-        INSIDE_DEF_IMPACT: 0.004,
-        MID_DEF_IMPACT: 0.005,
-        THREE_DEF_IMPACT: 0.006,
+        // [Balance Update] 야투율 인플레이션 억제를 위한 베이스 확률 하향
+        INSIDE_BASE_PCT: 0.50, // 0.58 -> 0.50
+        MID_BASE_PCT: 0.36,    // 0.40 -> 0.36
+        THREE_BASE_PCT: 0.33,  // 0.35 -> 0.33
+        
+        // [Balance Update] 수비 스탯의 영향력 강화 (잘 막으면 더 많이 실패함)
+        INSIDE_DEF_IMPACT: 0.005, // 0.004 -> 0.005
+        MID_DEF_IMPACT: 0.006,    // 0.005 -> 0.006
+        THREE_DEF_IMPACT: 0.007,  // 0.006 -> 0.007
     },
     // [New] Foul Trouble Logic
     FOUL_TROUBLE: {
