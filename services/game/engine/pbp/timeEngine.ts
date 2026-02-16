@@ -28,37 +28,44 @@ export function calculatePossessionTime(
 
     // 1. Get Base Time from Tactic
     const config = OFFENSE_STRATEGY_CONFIG[tactic];
-    let timeTaken = config ? config.baseTime : 15.5; // Default to Balance if undefined
+    // [Normalization] Increased base times slightly to reduce total possessions (Prevent 140+ pts)
+    // Was 15.5, now dynamic but centered around 14-16s effectively
+    let timeTaken = config ? config.baseTime : 16.0; 
 
-    // 2. Slider Adjustment (Revised Formula)
-    // Range: 1 (Slow) to 10 (Fast)
-    // Formula: (5 - Slider) * 0.4
-    // Slider 10 => -2.0s
-    // Slider 1  => +1.6s
-    const paceMod = (5 - sliders.pace) * 0.4;
+    // 2. Slider Adjustment (Compressed Impact)
+    // Old: (5 - Slider) * 0.4 -> Range +/- 2.0s
+    // New: (5 - Slider) * 0.6 -> Range +/- 3.0s (But base times are higher)
+    // However, we apply a dampener to ensure we don't go too low.
+    const paceMod = (5 - sliders.pace) * 0.6;
     timeTaken += paceMod;
 
     // 3. Situational Logic (2-for-1)
-    // If quarter ending (between 30s and 45s), speed up significantly
     if (gameClock <= 45 && gameClock >= 30) {
         timeTaken = Math.min(timeTaken, 6); 
     }
 
-    // 4. Hard Floor (Minimum Time Limit)
-    // Transition plays can be fast, but set plays have a physical floor (inbound + crossing halfcourt + set up)
+    // 4. Hard Floors & Ceilings (Normalization Logic)
+    // Prevent unrealistic rapid-fire or shot-clock stalling
     if (playType !== 'Transition') {
-        if (timeTaken < 7) timeTaken = 7;
+        // [Normalization] Raised floor from 7s to 10s for set plays.
+        // Even fast teams need time to cross half court and pass once.
+        if (timeTaken < 10) timeTaken = 10;
     } else {
-        // Transition is naturally faster
-        timeTaken = Math.max(4, timeTaken - 4);
+        // Transition is naturally faster, but rarely instant
+        timeTaken = Math.max(6, timeTaken - 4);
     }
 
-    // Upper Clamp (Shot Clock Violation prevention logic handled elsewhere, but cap for sim realism)
-    if (timeTaken > 24) timeTaken = 24; 
+    // Upper Clamp (Prevent exceeding 24s violation logic handled elsewhere)
+    if (timeTaken > 23) timeTaken = 23; 
 
-    // End of quarter/game logic
+    // Random Variance (Natural feeling)
+    // +/- 1.5 seconds
+    timeTaken += (Math.random() * 3) - 1.5;
+
+    // Final Safety Checks
+    if (timeTaken < 4) timeTaken = 4; // Absolute physical minimum
     if (timeTaken > gameClock) {
-        timeTaken = gameClock; // Cannot exceed remaining time
+        timeTaken = gameClock; 
     }
     
     return Math.round(timeTaken);
