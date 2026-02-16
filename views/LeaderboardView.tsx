@@ -3,206 +3,372 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { ChevronDown, BarChart3, Trophy, Medal } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight, Users, Shield } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
-import { Dropdown } from '../components/common/Dropdown';
+import { TeamLogo } from '../components/common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface LeaderboardViewProps {
   teams: Team[];
 }
 
-interface ExtendedPlayer extends Player {
-  teamLogo: string;
-  teamName: string;
-  teamCity: string;
-  teamId: string;
-}
+type SortKey = 'name' | 'team' | 'ovr' | 'g' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins';
+type ViewMode = 'Players' | 'Teams';
 
-type StatCategory = 'PTS' | 'REB' | 'ORB' | 'DRB' | 'AST' | 'STL' | 'BLK' | 'FGM' | 'FGA' | 'FG%' | '3PM' | '3PA' | '3P%' | 'FTM' | 'FTA' | 'FT%' | 'TS%';
+const ITEMS_PER_PAGE = 50;
 
-interface StatDefinition {
-  id: StatCategory;
-  label: string;
-  getValue: (p: Player) => number;
-  format: (val: number) => string;
-}
-
-const STAT_CATS: StatDefinition[] = [
-  { id: 'PTS', label: '득점 (Points)', getValue: p => p.stats.g > 0 ? p.stats.pts / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: 'REB', label: '리바운드 (Rebounds)', getValue: p => p.stats.g > 0 ? p.stats.reb / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: 'AST', label: '어시스트 (Assists)', getValue: p => p.stats.g > 0 ? p.stats.ast / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: 'STL', label: '스틸 (Steals)', getValue: p => p.stats.g > 0 ? p.stats.stl / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: 'BLK', label: '블록 (Blocks)', getValue: p => p.stats.g > 0 ? p.stats.blk / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: 'FG%', label: '야투율 (FG%)', getValue: p => p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0, format: v => (v * 100).toFixed(1) + '%' },
-  { id: '3PM', label: '3점 성공 (3PM)', getValue: p => p.stats.g > 0 ? p.stats.p3m / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: '3P%', label: '3점 성공률 (3P%)', getValue: p => p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0, format: v => (v * 100).toFixed(1) + '%' },
-  { id: 'FT%', label: '자유투 성공률 (FT%)', getValue: p => p.stats.fta > 0 ? p.stats.ftm / p.stats.fta : 0, format: v => (v * 100).toFixed(1) + '%' },
-  { id: 'TS%', label: 'TS% (True Shooting)', getValue: p => { const tsa = p.stats.fga + 0.44 * p.stats.fta; return tsa > 0 ? p.stats.pts / (2 * tsa) : 0; }, format: v => (v * 100).toFixed(1) + '%' },
-  { id: 'ORB', label: '공격 리바 (ORB)', getValue: p => p.stats.g > 0 ? p.stats.offReb / p.stats.g : 0, format: v => v.toFixed(1) },
-  { id: 'DRB', label: '수비 리바 (DRB)', getValue: p => p.stats.g > 0 ? p.stats.defReb / p.stats.g : 0, format: v => v.toFixed(1) },
-];
-
-// --- Internal Component: Leaderboard Card ---
-const LeaderboardCard: React.FC<{
-    title?: string;
-    defaultStat: StatCategory;
-    players: ExtendedPlayer[];
-    onPlayerClick: (p: ExtendedPlayer) => void;
-}> = ({ defaultStat, players, onPlayerClick }) => {
-    const [currentStat, setCurrentStat] = useState<StatCategory>(defaultStat);
-
-    const statDef = STAT_CATS.find(s => s.id === currentStat)!;
-
-    const sortedData = useMemo(() => {
-        // Filter minimal games to remove noise
-        let filtered = players.filter(p => p.stats.g > 0);
-        
-        // Qualification filters
-        if (currentStat === 'FG%') filtered = filtered.filter(p => p.stats.fga >= p.stats.g * 3);
-        if (currentStat === '3P%') filtered = filtered.filter(p => p.stats.p3a >= p.stats.g * 1);
-        if (currentStat === 'FT%') filtered = filtered.filter(p => p.stats.fta >= p.stats.g * 1);
-        
-        return filtered.sort((a, b) => statDef.getValue(b) - statDef.getValue(a)).slice(0, 50);
-    }, [players, currentStat, statDef]);
-
-    const dropdownItems = useMemo(() => STAT_CATS.map(cat => ({
-        id: cat.id,
-        label: (
-             <div className="flex justify-between items-center w-full">
-                <span>{cat.label}</span>
-                {currentStat === cat.id && <div className="w-1.5 h-1.5 rounded-full bg-white"></div>}
-            </div>
-        ),
-        onClick: () => setCurrentStat(cat.id),
-        active: currentStat === cat.id
-    })), [currentStat]);
-
-    return (
-        // [Fix] Removed overflow-hidden to allow dropdown to expand outside card
-        <div className="flex flex-col bg-slate-900/90 border border-slate-800 rounded-xl shadow-xl h-full relative">
-            {/* Card Header with Dropdown */}
-            {/* [Fix] Added rounded-t-xl to maintain corner style */}
-            <div className="bg-slate-800/40 px-5 py-4 border-b border-slate-800 flex items-center justify-between sticky top-0 z-[60] rounded-t-xl">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm font-black text-white uppercase tracking-wider oswald">{statDef.label}</span>
-                </div>
-                
-                <Dropdown
-                    items={dropdownItems}
-                    width="w-48"
-                    trigger={
-                        <button className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/60 hover:bg-slate-700 text-slate-300 rounded-lg text-[10px] font-black uppercase transition-colors border border-slate-700/50">
-                            <span>카테고리</span>
-                            <ChevronDown size={12} />
-                        </button>
-                    }
-                />
-            </div>
-
-            {/* Table Body */}
-            {/* [Fix] Added rounded-b-xl and overflow-hidden here to clip table corners */}
-            <div className="flex-1 rounded-b-xl overflow-hidden">
-                <Table className="rounded-none border-0 shadow-none" fullHeight={false}>
-                    {/* [Fix] Added border-none to override default border-b from TableHead component */}
-                    <TableHead className="bg-slate-950 border-none">
-                        <TableHeaderCell align="center" className="pl-4 w-10 !rounded-none border-none bg-slate-950">#</TableHeaderCell>
-                        <TableHeaderCell align="left" className="px-2 border-none bg-slate-950 !rounded-none">TEAM / PLAYER</TableHeaderCell>
-                        <TableHeaderCell align="right" className="pr-4 border-none bg-slate-950 !rounded-none">{statDef.id}</TableHeaderCell>
-                    </TableHead>
-                    <TableBody>
-                        {sortedData.map((p, i) => {
-                            const rank = i + 1;
-                            const ovr = calculatePlayerOvr(p);
-                            const isTop3 = rank <= 3;
-                            
-                            let rankColor = 'text-slate-500';
-                            let rankIcon = null;
-                            
-                            if (rank === 1) { rankColor = 'text-yellow-400'; rankIcon = <Trophy size={10} className="text-yellow-500 fill-yellow-500 mb-0.5" />; }
-                            else if (rank === 2) { rankColor = 'text-slate-300'; rankIcon = <Medal size={10} className="text-slate-300 fill-slate-300 mb-0.5" />; }
-                            else if (rank === 3) { rankColor = 'text-amber-600'; rankIcon = <Medal size={10} className="text-amber-700 fill-amber-700 mb-0.5" />; }
-
-                            const rowClass = isTop3 ? 'bg-slate-900/40' : '';
-
-                            return (
-                                <TableRow key={p.id} className={rowClass}>
-                                    <TableCell align="center" className="pl-4">
-                                        <div className="flex flex-col items-center justify-center">
-                                            {rankIcon}
-                                            <span className={`text-xs font-semibold ${rankColor} font-mono leading-none`}>{rank}</span>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="px-2" onClick={() => onPlayerClick(p)}>
-                                        <div className="flex items-center gap-3">
-                                            <OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !mx-0 shadow-none" />
-                                            <div className="flex items-center gap-2 min-w-0">
-                                                <span className={`text-xs font-semibold truncate group-hover:text-indigo-400 group-hover:underline ${isTop3 ? 'text-white' : 'text-slate-300'}`}>{p.name}</span>
-                                                <span className="text-[10px] text-slate-600">|</span>
-                                                <span className="text-[10px] font-bold text-slate-500">{p.position}</span>
-                                                <span className="text-[10px] text-slate-600">|</span>
-                                                <span className="text-[10px] font-bold text-slate-500 truncate max-w-[80px]">{p.teamName}</span>
-                                            </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell align="right" className="pr-4">
-                                        <span className={`text-xs font-semibold font-mono tabular-nums ${isTop3 ? 'text-white' : 'text-slate-400'}`}>
-                                            {statDef.format(statDef.getValue(p))}
-                                        </span>
-                                    </TableCell>
-                                </TableRow>
-                            );
-                        })}
-                        {sortedData.length === 0 && (
-                            <TableRow>
-                                <TableCell colSpan={3} className="py-12 text-center text-slate-600 text-xs font-bold uppercase tracking-widest">
-                                    No Data Recorded
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </div>
-        </div>
-    );
-};
-
-// --- Main View ---
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
-  const [viewPlayer, setViewPlayer] = useState<ExtendedPlayer | null>(null);
-  
-  const flatPlayers = useMemo(() => {
-    return teams.flatMap(t => t.roster.map(p => ({ ...p, teamLogo: t.logo, teamName: t.name, teamCity: t.city, teamId: t.id }))) as ExtendedPlayer[];
+  const [mode, setMode] = useState<ViewMode>('Players');
+  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // --- Data Processing ---
+
+  // 1. Flatten Players
+  const allPlayers = useMemo(() => {
+    return teams.flatMap(t => 
+        t.roster.map(p => ({ 
+            ...p, 
+            teamId: t.id, 
+            teamName: t.name,
+            teamCity: t.city
+        }))
+    );
   }, [teams]);
 
+  // 2. Aggregate Team Stats
+  const teamStats = useMemo(() => {
+    return teams.map(t => {
+        const games = t.wins + t.losses || 1; // Avoid div by zero
+        const totals = t.roster.reduce((acc, p) => ({
+            pts: acc.pts + p.stats.pts,
+            reb: acc.reb + p.stats.reb,
+            ast: acc.ast + p.stats.ast,
+            stl: acc.stl + p.stats.stl,
+            blk: acc.blk + p.stats.blk,
+            tov: acc.tov + p.stats.tov,
+            fgm: acc.fgm + p.stats.fgm,
+            fga: acc.fga + p.stats.fga,
+            p3m: acc.p3m + p.stats.p3m,
+            p3a: acc.p3a + p.stats.p3a,
+            ftm: acc.ftm + p.stats.ftm,
+            fta: acc.fta + p.stats.fta,
+            pm: acc.pm + p.stats.plusMinus,
+        }), { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, pm: 0 });
+
+        const tsa = totals.fga + 0.44 * totals.fta;
+
+        return {
+            ...t,
+            // Pre-calculate per-game stats for sorting
+            stats: {
+                pts: totals.pts / games,
+                reb: totals.reb / games,
+                ast: totals.ast / games,
+                stl: totals.stl / games,
+                blk: totals.blk / games,
+                tov: totals.tov / games,
+                fgPct: totals.fga > 0 ? totals.fgm / totals.fga : 0,
+                p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
+                ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
+                tsPct: tsa > 0 ? totals.pts / (2 * tsa) : 0,
+                pm: totals.pm / games, // Average margin
+            }
+        };
+    });
+  }, [teams]);
+
+  // --- Sorting & Pagination Logic ---
+
+  const handleSort = (key: SortKey) => {
+    let direction: 'asc' | 'desc' = 'desc';
+    if (sortConfig.key === key && sortConfig.direction === 'desc') {
+        direction = 'asc';
+    }
+    setSortConfig({ key, direction });
+    setCurrentPage(1); // Reset to first page on sort
+  };
+
+  const sortedData = useMemo(() => {
+    const data = mode === 'Players' ? [...allPlayers.filter(p => p.stats.g > 0)] : [...teamStats];
+
+    return data.sort((a, b) => {
+        let valA: number | string = 0;
+        let valB: number | string = 0;
+
+        if (mode === 'Players') {
+            const pA = a as Player;
+            const pB = b as Player;
+            const gA = pA.stats.g || 1;
+            const gB = pB.stats.g || 1;
+
+            switch (sortConfig.key) {
+                case 'name': valA = pA.name; valB = pB.name; break;
+                case 'ovr': valA = calculatePlayerOvr(pA); valB = calculatePlayerOvr(pB); break;
+                case 'g': valA = pA.stats.g; valB = pB.stats.g; break;
+                case 'mp': valA = pA.stats.mp / gA; valB = pB.stats.mp / gB; break;
+                case 'pts': valA = pA.stats.pts / gA; valB = pB.stats.pts / gB; break;
+                case 'reb': valA = pA.stats.reb / gA; valB = pB.stats.reb / gB; break;
+                case 'ast': valA = pA.stats.ast / gA; valB = pB.stats.ast / gB; break;
+                case 'stl': valA = pA.stats.stl / gA; valB = pB.stats.stl / gB; break;
+                case 'blk': valA = pA.stats.blk / gA; valB = pB.stats.blk / gB; break;
+                case 'tov': valA = pA.stats.tov / gA; valB = pB.stats.tov / gB; break;
+                case 'fg%': valA = pA.stats.fga > 0 ? pA.stats.fgm / pA.stats.fga : 0; valB = pB.stats.fga > 0 ? pB.stats.fgm / pB.stats.fga : 0; break;
+                case '3p%': valA = pA.stats.p3a > 0 ? pA.stats.p3m / pA.stats.p3a : 0; valB = pB.stats.p3a > 0 ? pB.stats.p3m / pB.stats.p3a : 0; break;
+                case 'ft%': valA = pA.stats.fta > 0 ? pA.stats.ftm / pA.stats.fta : 0; valB = pB.stats.fta > 0 ? pB.stats.ftm / pB.stats.fta : 0; break;
+                case 'ts%': {
+                    const tsaA = pA.stats.fga + 0.44 * pA.stats.fta;
+                    const tsaB = pB.stats.fga + 0.44 * pB.stats.fta;
+                    valA = tsaA > 0 ? pA.stats.pts / (2 * tsaA) : 0;
+                    valB = tsaB > 0 ? pB.stats.pts / (2 * tsaB) : 0;
+                    break;
+                }
+                case 'pm': valA = pA.stats.plusMinus / gA; valB = pB.stats.plusMinus / gB; break;
+            }
+        } else {
+            const tA = a as typeof teamStats[0];
+            const tB = b as typeof teamStats[0];
+            
+            switch (sortConfig.key) {
+                case 'name': valA = tA.city; valB = tB.city; break;
+                case 'wins': valA = tA.wins; valB = tB.wins; break; // Secondary sort for team list
+                case 'pts': valA = tA.stats.pts; valB = tB.stats.pts; break;
+                case 'reb': valA = tA.stats.reb; valB = tB.stats.reb; break;
+                case 'ast': valA = tA.stats.ast; valB = tB.stats.ast; break;
+                case 'stl': valA = tA.stats.stl; valB = tB.stats.stl; break;
+                case 'blk': valA = tA.stats.blk; valB = tB.stats.blk; break;
+                case 'tov': valA = tA.stats.tov; valB = tB.stats.tov; break;
+                case 'fg%': valA = tA.stats.fgPct; valB = tB.stats.fgPct; break;
+                case '3p%': valA = tA.stats.p3Pct; valB = tB.stats.p3Pct; break;
+                case 'ft%': valA = tA.stats.ftPct; valB = tB.stats.ftPct; break;
+                case 'ts%': valA = tA.stats.tsPct; valB = tB.stats.tsPct; break;
+                case 'pm': valA = tA.stats.pm; valB = tB.stats.pm; break;
+            }
+        }
+
+        if (typeof valA === 'string' && typeof valB === 'string') {
+            return sortConfig.direction === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+        return sortConfig.direction === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
+    });
+  }, [allPlayers, teamStats, mode, sortConfig]);
+
+  const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
+  const currentData = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // --- Rendering Helpers ---
+
+  const formatStat = (val: number, isPct: boolean = false) => {
+      if (isPct) return (val * 100).toFixed(1) + '%';
+      return val.toFixed(1);
+  };
+
+  const SortHeader = ({ label, sKey, width, align }: { label: string, sKey: SortKey, width?: string, align?: 'left'|'center'|'right' }) => (
+      <TableHeaderCell 
+        align={align || 'center'} 
+        width={width}
+        sortable 
+        onSort={() => handleSort(sKey)} 
+        sortDirection={sortConfig.key === sKey ? sortConfig.direction : null}
+        className={sortConfig.key === sKey ? 'text-indigo-400 font-bold' : ''}
+      >
+          {label}
+      </TableHeaderCell>
+  );
+
   return (
-    <div className="flex flex-col animate-in fade-in duration-500 ko-normal pb-20">
-      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={viewPlayer.teamName} teamId={viewPlayer.teamId} onClose={() => setViewPlayer(null)} allTeams={teams} />}
+    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
+      {viewPlayer && (
+        <PlayerDetailModal 
+            player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} 
+            teamName={(viewPlayer as any).teamName} 
+            teamId={(viewPlayer as any).teamId} 
+            onClose={() => setViewPlayer(null)} 
+            allTeams={teams} 
+        />
+      )}
       
       <PageHeader 
         title="리그 리더보드" 
-        description="2025-26 시즌 카테고리별 선수 순위 (Top 50)"
-        icon={<BarChart3 size={24} />}
+        description={mode === 'Players' ? "2025-26 시즌 선수별 주요 스탯 랭킹" : "2025-26 시즌 팀별 평균 기록"}
+        icon={<BarChart2 size={24} />}
+        actions={
+            <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
+                <button 
+                    onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Players' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                    <Users size={14} /> Players
+                </button>
+                <button 
+                    onClick={() => { setMode('Teams'); setCurrentPage(1); setSortConfig({key: 'wins', direction: 'desc'}); }}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Teams' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                    <Shield size={14} /> Teams
+                </button>
+            </div>
+        }
       />
 
-      {/* Grid of 3 Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start mt-8">
-          <LeaderboardCard 
-              defaultStat="PTS" 
-              players={flatPlayers} 
-              onPlayerClick={setViewPlayer} 
-          />
-          <LeaderboardCard 
-              defaultStat="REB" 
-              players={flatPlayers} 
-              onPlayerClick={setViewPlayer} 
-          />
-          <LeaderboardCard 
-              defaultStat="AST" 
-              players={flatPlayers} 
-              onPlayerClick={setViewPlayer} 
-          />
+      {/* Main Table Area */}
+      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl flex flex-col min-h-0">
+          <Table className="!rounded-none !border-0 !shadow-none" fullHeight>
+              <TableHead className="bg-slate-950">
+                  <TableHeaderCell align="center" width="40" className="pl-4">#</TableHeaderCell>
+                  {mode === 'Players' ? (
+                      <>
+                        <SortHeader label="PLAYER NAME" sKey="name" align="left" />
+                        <SortHeader label="POS" sKey="ovr" width="50" />
+                        <SortHeader label="TEAM" sKey="team" width="50" />
+                        <SortHeader label="OVR" sKey="ovr" width="50" />
+                        <SortHeader label="G" sKey="g" width="50" />
+                        <SortHeader label="MP" sKey="mp" width="50" />
+                      </>
+                  ) : (
+                      <>
+                        <SortHeader label="TEAM NAME" sKey="name" align="left" />
+                        <SortHeader label="W-L" sKey="wins" width="80" />
+                      </>
+                  )}
+                  
+                  {/* Common Stats Cols */}
+                  <SortHeader label="PTS" sKey="pts" width="60" />
+                  <SortHeader label="REB" sKey="reb" width="60" />
+                  <SortHeader label="AST" sKey="ast" width="60" />
+                  <SortHeader label="STL" sKey="stl" width="60" />
+                  <SortHeader label="BLK" sKey="blk" width="60" />
+                  <SortHeader label="TOV" sKey="tov" width="60" />
+                  <SortHeader label="FG%" sKey="fg%" width="60" />
+                  <SortHeader label="3P%" sKey="3p%" width="60" />
+                  <SortHeader label="FT%" sKey="ft%" width="60" />
+                  <SortHeader label="TS%" sKey="ts%" width="60" />
+                  <SortHeader label="+/-" sKey="pm" width="60" />
+              </TableHead>
+              <TableBody>
+                  {currentData.map((item, index) => {
+                      const rank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                      const isTop3 = rank <= 3;
+                      const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
+                      
+                      if (mode === 'Players') {
+                          const p = item as Player & { teamName: string; teamId: string };
+                          const s = p.stats;
+                          const g = s.g || 1;
+                          const ovr = calculatePlayerOvr(p);
+                          
+                          // Calc derived stats
+                          const fgPct = s.fga > 0 ? s.fgm/s.fga : 0;
+                          const p3Pct = s.p3a > 0 ? s.p3m/s.p3a : 0;
+                          const ftPct = s.fta > 0 ? s.ftm/s.fta : 0;
+                          const tsPct = (s.fga + 0.44 * s.fta) > 0 ? s.pts / (2 * (s.fga + 0.44 * s.fta)) : 0;
+
+                          return (
+                              <TableRow key={p.id} onClick={() => setViewPlayer(p)}>
+                                  <TableCell align="center" className={`pl-4 font-black ${rankColor}`}>{rank}</TableCell>
+                                  <TableCell variant="player" value={p.name} subText={p.position} />
+                                  <TableCell align="center" className="text-xs font-bold text-slate-500">{p.position}</TableCell>
+                                  <TableCell align="center">
+                                     <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="xs" /></div>
+                                  </TableCell>
+                                  <TableCell align="center" variant="ovr" value={ovr} />
+                                  <TableCell align="center" variant="stat" value={s.g} />
+                                  <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} />
+                                  
+                                  {/* Stats */}
+                                  <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className="text-white" />
+                                  <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={(s.blk/g).toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={(s.tov/g).toFixed(1)} />
+                                  
+                                  <TableCell align="center" variant="stat" value={formatStat(fgPct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(p3Pct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className="text-slate-400" />
+                                  
+                                  <TableCell align="center" className={`font-mono font-bold text-xs ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                      {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
+                                  </TableCell>
+                              </TableRow>
+                          );
+                      } else {
+                          const t = item as typeof teamStats[0];
+                          const s = t.stats;
+                          
+                          return (
+                              <TableRow key={t.id} className="hover:bg-slate-800/30">
+                                  <TableCell align="center" className={`pl-4 font-black ${rankColor}`}>{rank}</TableCell>
+                                  <TableCell className="px-3">
+                                      <div className="flex items-center gap-3">
+                                          <TeamLogo teamId={t.id} size="sm" />
+                                          <span className="text-sm font-bold text-white uppercase">{t.name}</span>
+                                      </div>
+                                  </TableCell>
+                                  <TableCell align="center" className="font-mono font-bold text-xs text-slate-400">{t.wins}-{t.losses}</TableCell>
+
+                                  <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className="text-white" />
+                                  <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={s.blk.toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={s.tov.toFixed(1)} />
+                                  
+                                  <TableCell align="center" variant="stat" value={formatStat(s.fgPct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.p3Pct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className="text-slate-400" />
+                                  
+                                  <TableCell align="center" className={`font-mono font-bold text-xs ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                      {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
+                                  </TableCell>
+                              </TableRow>
+                          );
+                      }
+                  })}
+                  
+                  {currentData.length === 0 && (
+                      <TableRow>
+                          <TableCell colSpan={15} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
+                              데이터가 없습니다.
+                          </TableCell>
+                      </TableRow>
+                  )}
+              </TableBody>
+          </Table>
+      </div>
+
+      {/* Pagination Footer */}
+      <div className="flex items-center justify-between px-6 py-4 bg-slate-900/50 border border-slate-800 rounded-xl flex-shrink-0">
+          <div className="text-xs font-bold text-slate-500">
+              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)} of {sortedData.length}
+          </div>
+          
+          <div className="flex gap-2">
+              <button 
+                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                  disabled={currentPage === 1}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                  <ChevronLeft size={16} />
+              </button>
+              
+              <div className="flex items-center gap-1 px-2">
+                  <span className="text-sm font-black text-white">{currentPage}</span>
+                  <span className="text-xs font-bold text-slate-600">/</span>
+                  <span className="text-xs font-bold text-slate-500">{totalPages}</span>
+              </div>
+
+              <button 
+                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                  disabled={currentPage === totalPages}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                  <ChevronRight size={16} />
+              </button>
+          </div>
       </div>
     </div>
   );
