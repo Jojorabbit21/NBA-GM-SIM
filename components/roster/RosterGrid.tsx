@@ -220,7 +220,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     return (
         <div className="space-y-8 pb-10">
             {/* Table 1: Main Stats / Attributes / Salary */}
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={false}>
                 <colgroup>
                     <col style={{ width: WIDTHS.NAME }} />
                     <col style={{ width: WIDTHS.POS }} />
@@ -374,7 +374,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <h3 className="text-base font-black text-white uppercase tracking-tight">상세 구역별 야투 (10 Zones)</h3>
                     </div>
                     
-                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={false}>
                         <colgroup>
                             <col style={{ width: WIDTHS.NAME }} />
                             <col style={{ width: WIDTHS.POS }} />
