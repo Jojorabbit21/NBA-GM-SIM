@@ -10,13 +10,15 @@ const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }
   'PerimeterFocus': { label: '퍼리미터 포커스', desc: '픽앤롤 및 외곽 아이솔레이션' },
   'PostFocus': { label: '포스트 포커스', desc: '빅맨의 높이와 파워를 이용한 골밑 장악' },
   'Grind': { label: '그라인드', desc: '저득점 강제 및 에이스 집중' },
-  'SevenSeconds': { label: '세븐 세컨즈', desc: '7초 이내 빠른 공격' }
+  'SevenSeconds': { label: '세븐 세컨즈', desc: '7초 이내 빠른 공격' },
+  'Custom': { label: '사용자 설정', desc: '커스텀 전술' }
 };
 
 const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: string }> = {
   'ManToManPerimeter': { label: '맨투맨', desc: '대인 방어 및 외곽 억제' },
   'ZoneDefense': { label: '지역 방어', desc: '지역 방어 및 골밑 보호' },
-  'AceStopper': { label: '에이스 스토퍼', desc: '상대 주득점원 집중 견제' }
+  'AceStopper': { label: '에이스 스토퍼', desc: '상대 주득점원 집중 견제' },
+  'Custom': { label: '사용자 설정', desc: '커스텀 수비' }
 };
 
 const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: any }> = ({ data, labels }) => {

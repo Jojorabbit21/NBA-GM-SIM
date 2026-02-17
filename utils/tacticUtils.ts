@@ -81,6 +81,12 @@ export const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: s
           '체력 부담이 가장 심한 전술입니다.',
           '수비 강도가 매우 낮아 많은 실점을 허용할 수 있습니다.'
       ]
+  },
+  'Custom': {
+      label: '사용자 설정',
+      desc: '사용자가 직접 설정한 전술',
+      pros: [],
+      cons: []
   }
 };
 
@@ -114,6 +120,12 @@ export const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: s
   'AceStopper': { 
       label: '에이스 스토퍼', 
       desc: '상대 주득점원 봉쇄 지시',
+      pros: [],
+      cons: []
+  },
+  'Custom': {
+      label: '사용자 설정',
+      desc: '사용자가 직접 설정한 수비 전술',
       pros: [],
       cons: []
   }

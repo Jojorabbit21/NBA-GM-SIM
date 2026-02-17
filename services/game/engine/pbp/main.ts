@@ -86,7 +86,6 @@ export function runFullGameSimulation(
             const timeTaken = calculatePossessionTime(
                 state, 
                 offTeam.tactics.sliders, 
-                offTeam.tactics.offenseTactics[0],
                 result.playType
             );
             

@@ -1,17 +1,16 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Activity, Wand2, ChevronDown, Edit3, Trash2 } from 'lucide-react';
-import { OffenseTactic, DefenseTactic, GameTactics, TacticPreset, Player } from '../../types';
-import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../utils/tacticUtils';
+import { GameTactics, TacticPreset, Player, Team, OffenseTactic, DefenseTactic } from '../../types';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
 import { supabase } from '../../services/supabaseClient';
-import { calculatePlayerOvr } from '../../utils/constants';
 import { Dropdown } from '../common/Dropdown';
 import { PresetRenameModal } from './tactics/PresetRenameModal';
 import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
-import { StrategyCard } from './tactics/StrategyCard';
+import { RosterGrid } from '../roster/RosterGrid';
 
 interface TacticsBoardProps {
+  team: Team; // [Updated] Receives full Team object for RosterGrid
   tactics: GameTactics;
   roster: Player[];
   onUpdateTactics: (t: GameTactics) => void;
@@ -19,9 +18,7 @@ interface TacticsBoardProps {
   calculateTacticScore: (type: OffenseTactic | DefenseTactic) => number;
 }
 
-export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onUpdateTactics, onAutoSet }) => {
-    const { offenseTactics: offTactics, defenseTactics: defTactics, sliders, stopperId } = tactics;
-    
+export const TacticsBoard: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet }) => {
     const [userId, setUserId] = useState<string | null>(null);
     const [teamId, setTeamId] = useState<string | null>(null);
     const [presets, setPresets] = useState<Record<number, TacticPreset>>({});
@@ -31,12 +28,6 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
     const [renameModalOpen, setRenameModalOpen] = useState(false);
     const [targetRenameSlot, setTargetRenameSlot] = useState<number | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
-
-    // Identify Starters for Court View
-    const starters = useMemo(() => {
-        const starterIds = Object.values(tactics.starters).filter(id => id !== '');
-        return roster.filter(p => starterIds.includes(p.id));
-    }, [tactics.starters, roster]);
 
     useEffect(() => {
         const init = async () => {
@@ -106,49 +97,8 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
         }
     };
 
-    // --- Strategy Change Handlers ---
-    const handleOffenseChange = (val: string) => {
-        onUpdateTactics({ ...tactics, offenseTactics: [val as OffenseTactic] });
-    };
-
-    const handleDefenseChange = (val: string) => {
-        const newDefTactic = val as DefenseTactic;
-
-        // [Logic Update] If Zone Defense is selected, disable Ace Stopper
-        if (newDefTactic === 'ZoneDefense') {
-            onUpdateTactics({ 
-                ...tactics, 
-                defenseTactics: ['ZoneDefense'], // Remove AceStopper if present
-                stopperId: undefined // Clear stopper assignment
-            });
-        } else {
-            // Keep existing AceStopper logic for Man-to-Man
-            const currentStopper = defTactics.includes('AceStopper') ? 'AceStopper' : null;
-            const newTactics = currentStopper ? [currentStopper, newDefTactic] : [newDefTactic];
-            onUpdateTactics({ ...tactics, defenseTactics: newTactics as DefenseTactic[] });
-        }
-    };
-
-    const handleStopperChange = (playerId: string) => {
-        const baseDefense = defTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter';
-        if (playerId) {
-            onUpdateTactics({ ...tactics, stopperId: playerId, defenseTactics: ['AceStopper', baseDefense] });
-        } else {
-            onUpdateTactics({ ...tactics, stopperId: undefined, defenseTactics: [baseDefense] });
-        }
-    };
-
-    const currentOffense = offTactics[0] || 'Balance';
-    const currentDefense = defTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter';
-    const sortedRoster = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-    const isZoneDefense = currentDefense === 'ZoneDefense';
-
-    // Options for Selects
-    const offOptions = (['Balance', 'PaceAndSpace', 'PerimeterFocus', 'PostFocus', 'Grind', 'SevenSeconds'] as OffenseTactic[]).map(t => ({ value: t, label: OFFENSE_TACTIC_INFO[t].label }));
-    const defOptions = (['ManToManPerimeter', 'ZoneDefense'] as DefenseTactic[]).map(t => ({ value: t, label: DEFENSE_TACTIC_INFO[t].label }));
-
     return (
-        <div className="flex flex-col h-full bg-slate-900/20">
+        <div className="flex flex-col h-full bg-slate-950/20">
             <PresetRenameModal 
                 isOpen={renameModalOpen} 
                 onClose={() => setRenameModalOpen(false)} 
@@ -157,7 +107,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
             />
 
             {/* Header Controls */}
-            <div className="px-8 py-5 bg-slate-950/40 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20">
+            <div className="px-8 py-5 bg-slate-900/80 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20">
                 <div className="flex items-center gap-6">
                     <Dropdown
                         isOpen={isDropdownOpen}
@@ -167,7 +117,7 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                         trigger={
                             <button 
                                 onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                className="w-full flex items-center justify-between gap-2 bg-slate-900 border border-slate-700 hover:border-indigo-500/50 text-white px-4 py-2.5 rounded-xl transition-all shadow-sm group w-64"
+                                className="w-full flex items-center justify-between gap-2 bg-slate-950 border border-slate-700 hover:border-indigo-500/50 text-white px-4 py-2.5 rounded-xl transition-all shadow-sm group w-64"
                             >
                                 <span className="text-sm font-bold truncate">
                                     {presets[activeSlot] ? presets[activeSlot].name : `프리셋 ${activeSlot}`}
@@ -212,45 +162,36 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ tactics, roster, onU
                 </button>
             </div>
             
-            {/* Main Content */}
-            <div className="p-6 lg:p-10 flex-1 overflow-y-auto custom-scrollbar">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full">
+            {/* Split View Content */}
+            <div className="flex-1 overflow-hidden">
+                <div className="flex h-full">
                     
-                    {/* Left Column: Strategies (8 cols) */}
-                    <div className="lg:col-span-8 space-y-6">
-                        
-                        <StrategyCard 
-                            type="offense"
-                            starters={starters}
-                            selectedTactic={currentOffense}
-                            onChange={handleOffenseChange}
-                            info={OFFENSE_TACTIC_INFO[currentOffense]}
-                            options={offOptions}
-                        />
-
-                        <StrategyCard 
-                            type="defense"
-                            starters={starters}
-                            selectedTactic={currentDefense}
-                            onChange={handleDefenseChange}
-                            info={DEFENSE_TACTIC_INFO[currentDefense]}
-                            options={defOptions}
-                            stopperProps={{
-                                stopperId,
-                                onStopperChange: handleStopperChange,
-                                roster: sortedRoster,
-                                isDisabled: isZoneDefense // [New] Disable if Zone Defense
-                            }}
-                        />
-
+                    {/* Left Column: Player Attributes Table (Visual Context) */}
+                    <div className="w-[60%] flex flex-col border-r border-slate-800 bg-slate-900/10">
+                        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">선수단 능력치 분석</span>
+                        </div>
+                        <div className="flex-1 overflow-hidden p-0 relative">
+                            {/* RosterGrid component reused here - passing tab='roster' to force attribute view */}
+                            <div className="absolute inset-0 overflow-auto custom-scrollbar">
+                                <RosterGrid 
+                                    team={team} 
+                                    tab="roster" 
+                                    onPlayerClick={() => {}} // No-op for cleaner UX in tactics mode
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    {/* Right Column: Sliders (4 cols) */}
-                    <div className="lg:col-span-4 flex flex-col space-y-4">
-                        <TacticsSlidersPanel 
-                            sliders={sliders} 
-                            onUpdateSliders={(s) => onUpdateTactics({ ...tactics, sliders: s })} 
-                        />
+                    {/* Right Column: Tactics Control Panel */}
+                    <div className="w-[40%] flex flex-col bg-slate-950/30">
+                        <div className="flex-1 overflow-hidden p-6">
+                            <TacticsSlidersPanel 
+                                tactics={tactics}
+                                onUpdateTactics={onUpdateTactics}
+                                roster={roster}
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

@@ -155,8 +155,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
               
               {activeTab === 'tactics' && (
-                  <div className="animate-in fade-in duration-500">
+                  <div className="animate-in fade-in duration-500 h-full">
                     <TacticsBoard 
+                        team={team} // [Updated] Pass full team object
                         tactics={tactics}
                         roster={effectiveRoster}
                         onUpdateTactics={onUpdateTactics}
