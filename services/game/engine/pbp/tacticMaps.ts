@@ -52,6 +52,12 @@ export const OFFENSE_TACTIC_CONFIG: Record<OffenseTactic, TacticConfig> = {
         fit: { handler: 2, driver: 2, spacer: 2 }, 
         paceMod: 5, 
         shotBias: { rim: 1.4, mid: 0.2, three: 1.4 } 
+    },
+    'Custom': {
+        usage: { handler: 2, isoScorer: 2 },
+        fit: { connector: 2 },
+        paceMod: 0,
+        shotBias: { rim: 1.0, mid: 1.0, three: 1.0 }
     }
 };
 
@@ -74,5 +80,9 @@ export const DEFENSE_TACTIC_CONFIG: Record<DefenseTactic, TacticConfig> = {
         usage: { perimLock: 5, rimProtector: 2 },
         // Relies on individual brilliance
         fit: { perimLock: 4, rimProtector: 2 }
+    },
+    'Custom': {
+        usage: { perimLock: 3, connector: 2 },
+        fit: { perimLock: 2, connector: 2 }
     }
 };

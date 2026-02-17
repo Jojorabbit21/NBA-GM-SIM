@@ -91,7 +91,11 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         return {
             offenseTactics: ['Balance'],
             defenseTactics: ['ManToManPerimeter'],
-            sliders: { pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2 },
+            sliders: { 
+                pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 1, zoneUsage: 2,
+                ballMovement: 5, play_pnr: 5, play_post: 5, play_iso: 5, play_cns: 5, play_drive: 5,
+                shot_3pt: 5, shot_mid: 5, shot_rim: 5, shot_pullup: 5, helpDef: 5, switchFreq: 5, zoneFreq: 2
+            },
             starters: { PG: '', SG: '', SF: '', PF: '', C: '' },
             minutesLimits: {}, rotationMap, depthChart
         };
@@ -134,7 +138,8 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         'PerimeterFocus': 40,
         'PostFocus': 40,
         'Grind': 40,
-        'SevenSeconds': 40
+        'SevenSeconds': 40,
+        'Custom': 0 // Custom is not auto-selected
     };
 
     // 1. Balance (안전한 선택지)
@@ -185,7 +190,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     let selectedTactic: OffenseTactic = 'Balance';
     let highestScore = -999;
 
-    (Object.keys(scores) as OffenseTactic[]).forEach(t => {
+    (Object.keys(scores) as OffenseTactic[]).filter(t => t !== 'Custom').forEach(t => {
         // +/- 4점의 난수 부여로 경계선에 있는 전술들의 다양성 확보
         const variance = (Math.random() * 8) - 4;
         const finalScore = scores[t] + variance;
@@ -204,7 +209,8 @@ export const generateAutoTactics = (team: Team): GameTactics => {
         'PerimeterFocus': { pace: 4, offReb: 4, zone: 2, press: 1 },
         'PostFocus':      { pace: 2, offReb: 8, zone: 4, press: 1 },
         'Grind':          { pace: 1, offReb: 7, zone: 5, press: 2 },
-        'SevenSeconds':   { pace: 10, offReb: 2, zone: 1, press: 3 }
+        'SevenSeconds':   { pace: 10, offReb: 2, zone: 1, press: 3 },
+        'Custom':         { pace: 5, offReb: 5, zone: 1, press: 1 }
     };
 
     const base = presets[selectedTactic];
@@ -255,7 +261,10 @@ export const generateAutoTactics = (team: Team): GameTactics => {
             defIntensity: sliders.defIntensity,
             defReb: 5,
             fullCourtPress: sliders.fullCourtPress,
-            zoneUsage: sliders.zoneUsage
+            zoneUsage: sliders.zoneUsage,
+            // Default filler for other sliders
+            ballMovement: 5, play_pnr: 5, play_post: 5, play_iso: 5, play_cns: 5, play_drive: 5,
+            shot_3pt: 5, shot_mid: 5, shot_rim: 5, shot_pullup: 5, helpDef: 5, switchFreq: 5, zoneFreq: sliders.zoneUsage
         },
         starters: startersMap,
         minutesLimits: {},

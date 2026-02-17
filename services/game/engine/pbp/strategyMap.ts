@@ -99,6 +99,19 @@ export const OFFENSE_STRATEGY_CONFIG: Record<OffenseTactic, StrategyConfig> = {
         fit: { handler: 2, driver: 2, spacer: 2 }, 
         paceMod: 5,
         baseTime: 12.0
+    },
+    'Custom': {
+        playDistribution: {
+            'Iso': 0.20,
+            'PnR_Handler': 0.20,
+            'PostUp': 0.10,
+            'CatchShoot': 0.30,
+            'Cut': 0.10,
+            'Handoff': 0.10
+        },
+        fit: { connector: 1 }, 
+        paceMod: 0,
+        baseTime: 15.0
     }
 };
 
@@ -115,5 +128,9 @@ export const DEFENSE_STRATEGY_CONFIG: Record<DefenseTactic, any> = {
     'AceStopper': {
         usage: { perimLock: 5, rimProtector: 2 },
         fit: { perimLock: 4, rimProtector: 2 }
+    },
+    'Custom': {
+        usage: { perimLock: 3, connector: 2 },
+        fit: { perimLock: 2, connector: 2 }
     }
 };
