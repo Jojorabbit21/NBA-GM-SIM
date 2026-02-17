@@ -162,34 +162,32 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ team, tactics, roste
                 </button>
             </div>
             
-            {/* Split View Content */}
-            <div className="flex-1 overflow-hidden">
-                <div className="flex h-full">
-                    
-                    {/* Left Column: Player Attributes Table (Visual Context) */}
-                    <div className="w-[60%] flex flex-col border-r border-slate-800 bg-slate-900/10">
-                        <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">선수단 능력치 분석</span>
-                        </div>
-                        <div className="flex-1 overflow-hidden p-0 relative">
-                            {/* RosterGrid component reused here - passing tab='roster' to force attribute view */}
-                            <div className="absolute inset-0 overflow-auto custom-scrollbar">
-                                <RosterGrid 
-                                    team={team} 
-                                    tab="roster" 
-                                    onPlayerClick={() => {}} // No-op for cleaner UX in tactics mode
-                                />
-                            </div>
-                        </div>
+            {/* Main Content - Vertical Stack */}
+            <div className="flex-1 overflow-hidden flex flex-col">
+                
+                {/* Top Section: Tactics Panel (Controls) */}
+                <div className="h-[60%] flex flex-col bg-slate-950/30 border-b border-slate-800">
+                     <div className="flex-1 overflow-hidden p-6">
+                        <TacticsSlidersPanel 
+                            tactics={tactics}
+                            onUpdateTactics={onUpdateTactics}
+                            roster={roster}
+                        />
                     </div>
+                </div>
 
-                    {/* Right Column: Tactics Control Panel */}
-                    <div className="w-[40%] flex flex-col bg-slate-950/30">
-                        <div className="flex-1 overflow-hidden p-6">
-                            <TacticsSlidersPanel 
-                                tactics={tactics}
-                                onUpdateTactics={onUpdateTactics}
-                                roster={roster}
+                {/* Bottom Section: Roster Grid (Reference) */}
+                <div className="flex-1 flex flex-col bg-slate-900/10 min-h-0">
+                    <div className="p-4 border-b border-slate-800 bg-slate-900/50">
+                        <span className="text-xs font-black text-slate-500 uppercase tracking-widest">선수단 능력치 분석 (참고용)</span>
+                    </div>
+                    <div className="flex-1 overflow-hidden p-0 relative">
+                        {/* RosterGrid component reused here - passing tab='roster' to force attribute view */}
+                        <div className="absolute inset-0 overflow-auto custom-scrollbar">
+                            <RosterGrid 
+                                team={team} 
+                                tab="roster" 
+                                onPlayerClick={() => {}} // No-op for cleaner UX in tactics mode
                             />
                         </div>
                     </div>
