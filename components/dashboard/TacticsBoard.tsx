@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Activity, Wand2, ChevronDown, Edit3, Trash2 } from 'lucide-react';
 import { GameTactics, TacticPreset, Player, Team, OffenseTactic, DefenseTactic } from '../../types';
 import { fetchPresets, savePreset, deletePreset, renamePreset } from '../../services/tacticsService';
@@ -10,7 +10,7 @@ import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
 import { RosterGrid } from '../roster/RosterGrid';
 
 interface TacticsBoardProps {
-  team: Team; // [Updated] Receives full Team object for RosterGrid
+  team: Team; 
   tactics: GameTactics;
   roster: Player[];
   onUpdateTactics: (t: GameTactics) => void;
@@ -106,8 +106,8 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ team, tactics, roste
                 initialName={targetRenameSlot ? (presets[targetRenameSlot]?.name || `Preset ${targetRenameSlot}`) : ""}
             />
 
-            {/* Header Controls */}
-            <div className="px-8 py-5 bg-slate-900/80 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20">
+            {/* Header Controls (Fixed) */}
+            <div className="px-8 py-5 bg-slate-900/80 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20 backdrop-blur-sm">
                 <div className="flex items-center gap-6">
                     <Dropdown
                         isOpen={isDropdownOpen}
@@ -162,32 +162,29 @@ export const TacticsBoard: React.FC<TacticsBoardProps> = ({ team, tactics, roste
                 </button>
             </div>
             
-            {/* Main Content - Vertical Stack */}
-            <div className="flex-1 overflow-hidden flex flex-col">
-                
-                {/* Top Section: Tactics Panel (Controls) */}
-                <div className="h-[60%] flex flex-col bg-slate-950/30 border-b border-slate-800">
-                     <div className="flex-1 overflow-hidden p-6">
+            {/* Scrollable Content Container */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex flex-col min-h-0">
+                    
+                    {/* Top Section: Tactics Controls */}
+                    <div className="p-8">
                         <TacticsSlidersPanel 
                             tactics={tactics}
                             onUpdateTactics={onUpdateTactics}
                             roster={roster}
                         />
                     </div>
-                </div>
 
-                {/* Bottom Section: Roster Grid (Reference) */}
-                <div className="flex-1 flex flex-col bg-slate-900/10 min-h-0">
-                    <div className="p-4 border-b border-slate-800 bg-slate-900/50">
-                        <span className="text-xs font-black text-slate-500 uppercase tracking-widest">선수단 능력치 분석 (참고용)</span>
-                    </div>
-                    <div className="flex-1 overflow-hidden p-0 relative">
-                        {/* RosterGrid component reused here - passing tab='roster' to force attribute view */}
-                        <div className="absolute inset-0 overflow-auto custom-scrollbar">
+                    {/* Bottom Section: Roster Grid */}
+                    <div className="flex flex-col bg-slate-900/10 border-t border-slate-800">
+                        <div className="flex-shrink-0 p-4 border-b border-slate-800 bg-slate-900/50">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">선수단 능력치 분석 (참고용)</span>
+                        </div>
+                        <div className="p-0">
                             <RosterGrid 
                                 team={team} 
                                 tab="roster" 
-                                onPlayerClick={() => {}} // No-op for cleaner UX in tactics mode
+                                onPlayerClick={() => {}} 
                             />
                         </div>
                     </div>
