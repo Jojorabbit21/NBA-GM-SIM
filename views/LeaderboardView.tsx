@@ -7,7 +7,7 @@ import { BarChart2, ChevronLeft, ChevronRight, Users, Shield } from 'lucide-reac
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
 
 interface LeaderboardViewProps {
   teams: Team[];
@@ -17,6 +17,33 @@ type SortKey = 'name' | 'team' | 'ovr' | 'g' | 'mp' | 'pts' | 'reb' | 'ast' | 's
 type ViewMode = 'Players' | 'Teams';
 
 const ITEMS_PER_PAGE = 50;
+
+// Consistent Styling Constants matching RosterGrid
+const WIDTHS = {
+    RANK: 50,
+    NAME: 180,
+    POS: 60,
+    TEAM: 60,
+    OVR: 60,
+    STAT: 70, // Slightly wider for readability
+    WL: 80
+};
+
+const STAT_COLS: { key: SortKey; label: string }[] = [
+    { key: 'g', label: 'G' },
+    { key: 'mp', label: 'MIN' },
+    { key: 'pts', label: 'PTS' },
+    { key: 'reb', label: 'REB' },
+    { key: 'ast', label: 'AST' },
+    { key: 'stl', label: 'STL' },
+    { key: 'blk', label: 'BLK' },
+    { key: 'tov', label: 'TOV' },
+    { key: 'fg%', label: 'FG%' },
+    { key: '3p%', label: '3P%' },
+    { key: 'ft%', label: 'FT%' },
+    { key: 'ts%', label: 'TS%' },
+    { key: 'pm', label: '+/-' }
+];
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
@@ -56,7 +83,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
             ftm: acc.ftm + p.stats.ftm,
             fta: acc.fta + p.stats.fta,
             pm: acc.pm + p.stats.plusMinus,
-        }), { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, pm: 0 });
+            mp: acc.mp + p.stats.mp, // Total minutes for team stats might be sum of players
+        }), { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, pm: 0, mp: 0 });
 
         const tsa = totals.fga + 0.44 * totals.fta;
 
@@ -64,6 +92,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
             ...t,
             // Pre-calculate per-game stats for sorting
             stats: {
+                g: games,
+                mp: 48, // Team always plays 48 mins (simplified)
                 pts: totals.pts / games,
                 reb: totals.reb / games,
                 ast: totals.ast / games,
@@ -107,6 +137,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
             switch (sortConfig.key) {
                 case 'name': valA = pA.name; valB = pB.name; break;
                 case 'ovr': valA = calculatePlayerOvr(pA); valB = calculatePlayerOvr(pB); break;
+                case 'team': valA = (pA as any).teamCity; valB = (pB as any).teamCity; break;
                 case 'g': valA = pA.stats.g; valB = pB.stats.g; break;
                 case 'mp': valA = pA.stats.mp / gA; valB = pB.stats.mp / gB; break;
                 case 'pts': valA = pA.stats.pts / gA; valB = pB.stats.pts / gB; break;
@@ -134,6 +165,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
             switch (sortConfig.key) {
                 case 'name': valA = tA.city; valB = tB.city; break;
                 case 'wins': valA = tA.wins; valB = tB.wins; break; // Secondary sort for team list
+                case 'g': valA = tA.stats.g; valB = tB.stats.g; break;
+                case 'mp': valA = tA.stats.mp; valB = tB.stats.mp; break;
                 case 'pts': valA = tA.stats.pts; valB = tB.stats.pts; break;
                 case 'reb': valA = tA.stats.reb; valB = tB.stats.reb; break;
                 case 'ast': valA = tA.stats.ast; valB = tB.stats.ast; break;
@@ -165,18 +198,28 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
       return val.toFixed(1);
   };
 
-  const SortHeader = ({ label, sKey, width, align }: { label: string, sKey: SortKey, width?: string, align?: 'left'|'center'|'right' }) => (
+  const SortHeader = ({ label, sKey, width, align }: { label: string, sKey: SortKey, width?: number, align?: 'left'|'center'|'right' }) => (
       <TableHeaderCell 
         align={align || 'center'} 
         width={width}
         sortable 
         onSort={() => handleSort(sKey)} 
         sortDirection={sortConfig.key === sKey ? sortConfig.direction : null}
-        className={sortConfig.key === sKey ? 'text-indigo-400 font-bold' : ''}
+        className={`border-r border-slate-800 ${sortConfig.key === sKey ? 'text-indigo-400 font-bold' : 'text-slate-400'}`}
       >
           {label}
       </TableHeaderCell>
   );
+
+  // Calculate Sticky Positions
+  const LEFT_RANK = 0;
+  const LEFT_NAME = WIDTHS.RANK;
+  const LEFT_POS = WIDTHS.RANK + WIDTHS.NAME;
+  const LEFT_TEAM = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS;
+  const LEFT_OVR = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS + WIDTHS.TEAM;
+  
+  // For Teams Mode
+  const T_LEFT_WL = WIDTHS.RANK + WIDTHS.NAME;
 
   return (
     <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
@@ -213,43 +256,49 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
       />
 
       {/* Main Table Area */}
-      <div className="flex-1 bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl flex flex-col min-h-0">
-          <Table className="!rounded-none !border-0 !shadow-none" fullHeight>
-              <TableHead className="bg-slate-950">
-                  <TableHeaderCell align="center" width="40" className="pl-4">#</TableHeaderCell>
+      <div className="flex-1 bg-slate-950/20 flex flex-col min-h-0">
+          <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+              <colgroup>
+                  {/* Fixed Columns */}
+                  <col style={{ width: WIDTHS.RANK }} />
+                  <col style={{ width: WIDTHS.NAME }} />
                   {mode === 'Players' ? (
                       <>
-                        <SortHeader label="PLAYER NAME" sKey="name" align="left" />
-                        <SortHeader label="POS" sKey="ovr" width="50" />
-                        <SortHeader label="TEAM" sKey="team" width="50" />
-                        <SortHeader label="OVR" sKey="ovr" width="50" />
-                        <SortHeader label="G" sKey="g" width="50" />
-                        <SortHeader label="MP" sKey="mp" width="50" />
+                        <col style={{ width: WIDTHS.POS }} />
+                        <col style={{ width: WIDTHS.TEAM }} />
+                        <col style={{ width: WIDTHS.OVR }} />
+                      </>
+                  ) : (
+                      <col style={{ width: WIDTHS.WL }} />
+                  )}
+                  {/* Stats Columns */}
+                  {STAT_COLS.map((_, i) => <col key={`s-${i}`} style={{ width: WIDTHS.STAT }} />)}
+              </colgroup>
+
+              <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                  <TableHeaderCell style={{ left: 0 }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">#</TableHeaderCell>
+                  
+                  {mode === 'Players' ? (
+                      <>
+                        <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('team')} sortDirection={sortConfig.key === 'team' ? sortConfig.direction : null}>TEAM</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
                       </>
                   ) : (
                       <>
-                        <SortHeader label="TEAM NAME" sKey="name" align="left" />
-                        <SortHeader label="W-L" sKey="wins" width="80" />
+                        <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>TEAM NAME</TableHeaderCell>
+                        <TableHeaderCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('wins')} sortDirection={sortConfig.key === 'wins' ? sortConfig.direction : null}>W-L</TableHeaderCell>
                       </>
                   )}
                   
-                  {/* Common Stats Cols */}
-                  <SortHeader label="PTS" sKey="pts" width="60" />
-                  <SortHeader label="REB" sKey="reb" width="60" />
-                  <SortHeader label="AST" sKey="ast" width="60" />
-                  <SortHeader label="STL" sKey="stl" width="60" />
-                  <SortHeader label="BLK" sKey="blk" width="60" />
-                  <SortHeader label="TOV" sKey="tov" width="60" />
-                  <SortHeader label="FG%" sKey="fg%" width="60" />
-                  <SortHeader label="3P%" sKey="3p%" width="60" />
-                  <SortHeader label="FT%" sKey="ft%" width="60" />
-                  <SortHeader label="TS%" sKey="ts%" width="60" />
-                  <SortHeader label="+/-" sKey="pm" width="60" />
+                  {STAT_COLS.map(col => (
+                      <SortHeader key={col.key} label={col.label} sKey={col.key} width={WIDTHS.STAT} />
+                  ))}
               </TableHead>
               <TableBody>
                   {currentData.map((item, index) => {
                       const rank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                      const isTop3 = rank <= 3;
                       const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
                       
                       if (mode === 'Players') {
@@ -258,38 +307,43 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                           const g = s.g || 1;
                           const ovr = calculatePlayerOvr(p);
                           
-                          // Calc derived stats
+                          // Calc derived stats for rendering
                           const fgPct = s.fga > 0 ? s.fgm/s.fga : 0;
                           const p3Pct = s.p3a > 0 ? s.p3m/s.p3a : 0;
                           const ftPct = s.fta > 0 ? s.ftm/s.fta : 0;
                           const tsPct = (s.fga + 0.44 * s.fta) > 0 ? s.pts / (2 * (s.fga + 0.44 * s.fta)) : 0;
 
                           return (
-                              <TableRow key={p.id} onClick={() => setViewPlayer(p)}>
-                                  <TableCell align="center" className={`pl-4 font-black ${rankColor}`}>{rank}</TableCell>
-                                  <TableCell variant="player" value={p.name} subText={p.position} />
-                                  <TableCell align="center" className="text-xs font-bold text-slate-500">{p.position}</TableCell>
-                                  <TableCell align="center">
+                              <TableRow key={p.id} onClick={() => setViewPlayer(p)} className="group">
+                                  <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 bg-slate-900 z-30`}>{rank}</TableCell>
+                                  <TableCell style={{ left: LEFT_NAME }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
+                                     <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
+                                  </TableCell>
+                                  <TableCell style={{ left: LEFT_POS }} stickyLeft align="center" className="text-xs font-bold text-slate-500 border-r border-slate-800 bg-slate-900 z-30">{p.position}</TableCell>
+                                  <TableCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-900 z-30">
                                      <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="xs" /></div>
                                   </TableCell>
-                                  <TableCell align="center" variant="ovr" value={ovr} />
-                                  <TableCell align="center" variant="stat" value={s.g} />
-                                  <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} />
+                                  <TableCell style={{ left: LEFT_OVR }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-900 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30">
+                                     <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-[10px] shadow-none" /></div>
+                                  </TableCell>
                                   
                                   {/* Stats */}
-                                  <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className="text-white" />
-                                  <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={(s.blk/g).toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={(s.tov/g).toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={s.g} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
                                   
-                                  <TableCell align="center" variant="stat" value={formatStat(fgPct, true)} className="text-slate-400" />
-                                  <TableCell align="center" variant="stat" value={formatStat(p3Pct, true)} className="text-slate-400" />
-                                  <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className="text-slate-400" />
-                                  <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className="text-xs font-bold text-white border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={(s.blk/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={(s.tov/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
                                   
-                                  <TableCell align="center" className={`font-mono font-bold text-xs ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                  <TableCell align="center" variant="stat" value={formatStat(fgPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={formatStat(p3Pct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  
+                                  <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                       {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
                                   </TableCell>
                               </TableRow>
@@ -299,29 +353,31 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                           const s = t.stats;
                           
                           return (
-                              <TableRow key={t.id} className="hover:bg-slate-800/30">
-                                  <TableCell align="center" className={`pl-4 font-black ${rankColor}`}>{rank}</TableCell>
-                                  <TableCell className="px-3">
+                              <TableRow key={t.id} className="hover:bg-slate-800/30 group">
+                                  <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 bg-slate-900 z-30`}>{rank}</TableCell>
+                                  <TableCell style={{ left: LEFT_NAME }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                       <div className="flex items-center gap-3">
                                           <TeamLogo teamId={t.id} size="sm" />
-                                          <span className="text-sm font-bold text-white uppercase">{t.name}</span>
+                                          <span className="text-xs font-bold text-slate-200 uppercase truncate">{t.name}</span>
                                       </div>
                                   </TableCell>
-                                  <TableCell align="center" className="font-mono font-bold text-xs text-slate-400">{t.wins}-{t.losses}</TableCell>
+                                  <TableCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className="font-mono font-bold text-xs text-slate-400 border-r border-slate-800 bg-slate-900 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30">{t.wins}-{t.losses}</TableCell>
 
-                                  <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className="text-white" />
-                                  <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={s.blk.toFixed(1)} />
-                                  <TableCell align="center" variant="stat" value={s.tov.toFixed(1)} />
+                                  <TableCell align="center" variant="stat" value={s.g} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.mp} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className="text-xs font-bold text-white border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.blk.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.tov.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
                                   
-                                  <TableCell align="center" variant="stat" value={formatStat(s.fgPct, true)} className="text-slate-400" />
-                                  <TableCell align="center" variant="stat" value={formatStat(s.p3Pct, true)} className="text-slate-400" />
-                                  <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className="text-slate-400" />
-                                  <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className="text-slate-400" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.fgPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.p3Pct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
                                   
-                                  <TableCell align="center" className={`font-mono font-bold text-xs ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                  <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                       {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
                                   </TableCell>
                               </TableRow>
@@ -341,7 +397,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
       </div>
 
       {/* Pagination Footer */}
-      <div className="flex items-center justify-between px-6 py-4 bg-slate-900/50 border border-slate-800 rounded-xl flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.2)] flex-shrink-0 z-50">
           <div className="text-xs font-bold text-slate-500">
               Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)} of {sortedData.length}
           </div>
