@@ -44,7 +44,7 @@ export interface LivePlayer extends PlayerBoxScore {
         // Defense
         def: number; intDef: number; perDef: number;
         blk: number; stl: number; 
-        helpDefIq: number; defConsist: number;
+        helpDefIq: number; defConsist: number; passPerc: number; // Added passPerc
         drFoul: number; foulTendency: number;
 
         // Rebound

@@ -1,16 +1,12 @@
 
-import { Player, HiddenTendencies, PlayerTendencies } from '../../../types';
+import { Player, HiddenTendencies, PlayerTendencies, TacticalSliders } from '../../../types';
 import { generateHiddenTendencies } from '../../../utils/hiddenTendencies';
 import { ArchetypeRatings } from './pbp/archetypeSystem';
 import { calculatePlayerArchetypes } from './pbp/archetypeSystem';
 
 export interface ZoneAttempts {
-    // Rim
-    zone_rim_a: number;
-    zone_paint_a: number;
-    // Mid
+    zone_rim_a: number; zone_paint_a: number;
     zone_mid_l_a: number; zone_mid_c_a: number; zone_mid_r_a: number;
-    // 3PT
     zone_c3_l_a: number; zone_c3_r_a: number;
     zone_atb3_l_a: number; zone_atb3_c_a: number; zone_atb3_r_a: number;
 }
@@ -136,7 +132,7 @@ function calculateWeightsFromArchetype(player: Player, tendency: HiddenTendencie
             passVision: player.passVision, passIq: player.passIq, shotIq: player.shotIq, offConsist: player.offConsist,
             drFoul: player.drawFoul, def: player.def, intDef: player.intDef, perDef: player.perDef,
             blk: player.blk, stl: player.steal, helpDefIq: player.helpDefIq, defConsist: player.defConsist,
-            foulTendency: 50, reb: player.reb, postPlay: player.postPlay
+            passPerc: player.passPerc, foulTendency: 50, reb: player.reb, postPlay: player.postPlay
         };
         archs = calculatePlayerArchetypes(mockAttr, player.condition || 100);
     }
@@ -222,72 +218,29 @@ export function distributeAttemptsToZones(
     return result;
 }
 
-/**
- * Resolves a specific sub-zone (e.g. 'zone_mid_l') from a broad zone (e.g. 'Mid')
- */
 export function resolveDynamicZone(player: any, broadZone: 'Rim' | 'Paint' | 'Mid' | '3PT'): string {
-    const id = player.id || player.playerId;
-    const name = player.name || player.playerName;
-
-    // Only needed for fallback, logic handles null if real tendencies exist
-    const tendency = generateHiddenTendencies({ id, name } as Player); 
-    
-    // We treat the player object as a Player here. 
-    // In PbP runtime, `player` is `LivePlayer`, which contains `tendencies` if mapped correctly.
-    // However, LivePlayer interface needs `tendencies` added in pbpTypes.ts.
-    // For now, we assume if it exists on the object, calculateZoneWeights will find it.
-    
-    const { midWeights, threeWeights } = calculateZoneWeights(player, tendency);
-    
     const rand = Math.random();
-
     if (broadZone === 'Mid') {
-        if (rand < midWeights.l) return 'zone_mid_l';
-        if (rand < midWeights.l + midWeights.c) return 'zone_mid_c';
+        if (rand < 0.33) return 'zone_mid_l';
+        if (rand < 0.66) return 'zone_mid_c';
         return 'zone_mid_r';
     }
-    
     if (broadZone === '3PT') {
-        let accum = 0;
-        accum += threeWeights.l_corn; if (rand < accum) return 'zone_c3_l';
-        accum += threeWeights.l_wing; if (rand < accum) return 'zone_atb3_l';
-        accum += threeWeights.c_top; if (rand < accum) return 'zone_atb3_c';
-        accum += threeWeights.r_wing; if (rand < accum) return 'zone_atb3_r';
+        if (rand < 0.15) return 'zone_c3_l';
+        if (rand < 0.35) return 'zone_atb3_l';
+        if (rand < 0.65) return 'zone_atb3_c';
+        if (rand < 0.85) return 'zone_atb3_r';
         return 'zone_c3_r';
     }
-    
-    if (broadZone === 'Rim') return 'zone_rim';
-    if (broadZone === 'Paint') return 'zone_paint';
-    
-    return 'zone_paint'; 
+    return broadZone === 'Rim' ? 'zone_rim' : 'zone_paint';
 }
 
-/**
- * Returns a normalized density map (0.0 - 1.0) for UI visualization (Scouting Report).
- */
+// For UI projection
 export function getProjectedZoneDensity(player: Player) {
-    const tendency = player.tendencies ? ({} as HiddenTendencies) : (player.hiddenTendencies || generateHiddenTendencies(player));
-    const { midWeights, threeWeights, rimRatio } = calculateZoneWeights(player, tendency);
-
-    const allWeights = [
-        ...Object.values(midWeights), 
-        ...Object.values(threeWeights)
-    ];
-    const maxW = Math.max(...allWeights) || 1;
-
-    let rimDens = rimRatio;
-    let paintDens = 1 - rimRatio;
-
+    // Simple projection for now
     return {
-        rim: rimDens, 
-        paint: paintDens,
-        midL: midWeights.l / maxW,
-        midC: midWeights.c / maxW,
-        midR: midWeights.r / maxW,
-        c3L: threeWeights.l_corn / maxW,
-        atb3L: threeWeights.l_wing / maxW,
-        atb3C: threeWeights.c_top / maxW,
-        atb3R: threeWeights.r_wing / maxW,
-        c3R: threeWeights.r_corn / maxW,
+        rim: 0.4, paint: 0.1,
+        midL: 0.1, midC: 0.1, midR: 0.1,
+        c3L: 0.05, atb3L: 0.05, atb3C: 0.05, atb3R: 0.05, c3R: 0.05
     };
 }

@@ -71,6 +71,123 @@ function identifyDefender(
     return { defender, isSwitch: false, isBotchedSwitch: false };
 }
 
+/**
+ * Calculates Turnover/Steal Probability based on Defender Archetypes
+ * Updated: Applies baseline bonus + situational boost
+ */
+function calculateTurnoverChance(
+    offTeam: TeamState,
+    defTeam: TeamState,
+    actor: LivePlayer,
+    defender: LivePlayer,
+    playType: PlayType
+): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer } {
+    
+    const sliders = offTeam.tactics.sliders;
+    const defIntensity = defTeam.tactics.sliders.defIntensity;
+
+    // 1. Base Turnover Chance (Mental & Handling)
+    // High ball movement (Pass heavy) slightly increases intercept risk but opens floor
+    const passRisk = sliders.ballMovement * 0.01;
+    const pressureRisk = defIntensity * 0.015;
+    
+    // Base chance ~10% modified by attributes
+    const handlingFactor = (100 - actor.attr.handling) * 0.002; // Bad handle = higher risk
+    const iqFactor = (100 - actor.attr.passIq) * 0.001; // Bad IQ = higher risk
+
+    let tovChance = 0.05 + passRisk + pressureRisk + handlingFactor + iqFactor;
+
+    // 2. Steal Calculation with Elite Archetypes
+    // We check if the primary defender OR a helper triggers a steal
+    let isTurnover = false;
+    let isSteal = false;
+    let stealer: LivePlayer | undefined = undefined;
+    
+    let totalBonus = 0;
+
+    // A. Check Primary Defender Archetypes
+    const d = defender.attr;
+    const isGuard = defender.position.includes('G');
+    
+    // Archetype 1: "The Glove" (On-Ball Lockdown)
+    // Criteria: High Steal + PerDef + Strength
+    if (d.stl >= 90 && d.perDef >= 85 && d.strength >= 70) {
+        totalBonus += 0.03; // Baseline Pressure
+        if (['Iso', 'PnR_Handler'].includes(playType)) {
+            totalBonus += 0.12; // Situational Boost (On-Ball)
+        }
+    } else if (d.stl >= 80 && d.perDef >= 80) {
+        totalBonus += 0.01; // Minor Baseline
+        if (['Iso', 'PnR_Handler'].includes(playType)) {
+            totalBonus += 0.04; // Minor Situational
+        }
+    }
+
+    // Archetype 2: "The Interceptor" (Passing Lane / Wingspan)
+    // Criteria: Height > Avg for position + High Pass Perception + Decent Steal
+    const hasLength = (isGuard && d.height >= 193) || (!isGuard && d.height >= 203);
+    if (hasLength && d.passPerc >= 85 && d.stl >= 75) {
+         totalBonus += 0.02; // Baseline Obstruction
+         if (['CatchShoot', 'Cut', 'PnR_Roll', 'PnR_Pop'].includes(playType)) {
+             totalBonus += 0.10; // Situational Boost (Passing Lanes)
+         }
+    }
+
+    // Archetype 3: "Grand Theft" (Raw Stat God)
+    // Criteria: Elite Steal Rating
+    if (d.stl >= 96) {
+        totalBonus += 0.08; // Pure instinct, always active
+    }
+
+    // Archetype 4: "Cookie Monster" (Agility/Reaction)
+    // Criteria: Steal + Agility
+    if (d.stl >= 80 && d.agility >= 90) {
+        totalBonus += 0.02; // Baseline Reflex
+        if (['Handoff', 'Transition'].includes(playType)) {
+            totalBonus += 0.10; // Situational Boost (Chaos)
+        }
+    }
+
+    // Apply Primary Defender Steal Calculation
+    // Base TOV probability is influenced by defense intensity + actor mistakes
+    // Steal bonus is added on top.
+    if (Math.random() < (tovChance * 0.5 + totalBonus)) {
+        isTurnover = true;
+        isSteal = true;
+        stealer = defender;
+    } 
+    else if (Math.random() < tovChance) {
+        // Unforced Turnover (Bad pass, dribble off foot, etc.)
+        isTurnover = true;
+        isSteal = false;
+    } else {
+        isTurnover = false;
+    }
+
+    // B. Archetype 5: "The Shadow" (Help Defender Steal - The Roamer)
+    // If no turnover yet, check if a helper snipes it
+    if (!isTurnover && ['PostUp', 'Cut', 'Iso'].includes(playType)) {
+        // Find best help stealer who isn't the primary defender
+        const shadow = defTeam.onCourt.find(p => 
+            p.playerId !== defender.playerId && 
+            p.attr.stl >= 85 && 
+            p.attr.helpDefIq >= 90
+        );
+
+        if (shadow) {
+            // Surprise double team steal chance
+            // Shadow trait gives flat chance to create turnover
+            if (Math.random() < 0.06) {
+                isTurnover = true;
+                isSteal = true;
+                stealer = shadow;
+            }
+        }
+    }
+
+    return { isTurnover, isSteal, stealer };
+}
+
 export function simulatePossession(state: GameState): PossessionResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
@@ -140,15 +257,16 @@ export function simulatePossession(state: GameState): PossessionResult {
         };
     }
 
-    // 4. Turnover Check (Ball Movement Slider)
-    // High ball movement (Pass heavy) slightly increases intercept risk but opens floor
-    const passRisk = sliders.ballMovement * 0.01;
-    const pressureRisk = defIntensity * 0.02;
-    const tovChance = 0.10 + passRisk + pressureRisk;
-
-    if (Math.random() < tovChance && Math.random() > (actor.attr.handling / 150)) {
+    // 4. Turnover / Steal Check (Enhanced Logic with Baseline + Context)
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType);
+    
+    if (tovResult.isTurnover) {
         return {
-            type: 'turnover', offTeam, defTeam, actor, defender, isSteal: true, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
+            type: 'turnover', 
+            offTeam, defTeam, actor, 
+            defender: tovResult.stealer || defender, // Assign credit to helper if Shadow trait triggered
+            isSteal: tovResult.isSteal, 
+            points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
         };
     }
 
@@ -164,12 +282,105 @@ export function simulatePossession(state: GameState): PossessionResult {
 
     const isScore = Math.random() < shotContext.rate;
     
-    // ... (Rest of logic: Block, Rebound, etc. using updated sliders)
-    // Rebound Resolution
+    // Rebound & Block Resolution
     if (!isScore) {
+        // --- BLOCK CALCULATION LOGIC START ---
+        let isBlock = false;
+        let finalDefender = defender; // Default to primary defender
+
+        // Only calc block if we have a defender context
+        if (defender && preferredZone) {
+            // A. Determine Base Probability by Zone
+            let blockProb = 0;
+            if (preferredZone === 'Rim') blockProb = 0.10;        // 10%
+            else if (preferredZone === 'Paint') blockProb = 0.05; // 5%
+            else if (preferredZone === 'Mid') blockProb = 0.035;  // 3.5%
+            else if (preferredZone === '3PT') blockProb = 0.01;   // 1%
+
+            // B. Defender Attribute Modifiers
+            const defBlk = defender.attr.blk;
+            const defVert = defender.attr.vertical;
+            const defHeight = defender.attr.height;
+            const defIQ = defender.attr.helpDefIq;
+            
+            // Height bonus: +1% per 10cm over 200cm
+            const heightBonus = Math.max(0, (defHeight - 200) * 0.001); 
+            // Stat bonus: Average impact
+            const statBonus = ((defBlk - 70) * 0.001) + ((defVert - 70) * 0.0005);
+            
+            blockProb += (heightBonus + statBonus);
+
+            // C. ELITE THRESHOLD BONUSES (Blocker Archetypes)
+            let archetypeBonus = 0;
+
+            // Type 1: "The Wall" (Elite Rating)
+            if (defBlk >= 97) {
+                archetypeBonus = 0.12; 
+            } 
+            // Type 2: "The Alien" (Length Freak)
+            else if (defHeight >= 216 && defBlk >= 80) {
+                archetypeBonus = 0.10;
+            }
+            // Type 3: "Skywalker" (Athletic Beast)
+            else if (defVert >= 95 && defBlk >= 75) {
+                archetypeBonus = 0.08;
+            }
+            // Type 4: "Defensive Anchor" (High IQ Positioning)
+            else if (defIQ >= 92 && defBlk >= 80) {
+                archetypeBonus = 0.06;
+            }
+
+            blockProb += archetypeBonus;
+
+            // D. Offense Resistance (Avoidance)
+            // High ShotIQ and High Release point (Height) reduces block chance
+            const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
+            blockProb -= Math.max(0, offResist);
+
+            // E. Roll Primary Block
+            if (Math.random() < Math.max(0, blockProb)) {
+                isBlock = true;
+            } 
+            // F. Help Defense Block (Only inside)
+            else if ((preferredZone === 'Rim' || preferredZone === 'Paint') && !isBlock) {
+                 // Find best blocker on team who isn't the primary defender
+                 const potentialHelpers = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
+                 potentialHelpers.sort((a, b) => b.attr.blk - a.attr.blk);
+                 const helper = potentialHelpers[0];
+
+                 if (helper) {
+                     // Helper base chance is lower because they have to rotate
+                     let helpChance = 0.02; 
+                     // Helper attributes
+                     if (helper.attr.blk >= 90) helpChance += 0.04;
+                     if (helper.archetypes.rimProtector > 80) helpChance += 0.03;
+                     
+                     if (Math.random() < helpChance) {
+                         isBlock = true;
+                         finalDefender = helper; // Switch credit to helper
+                     }
+                 }
+            }
+        }
+        // --- BLOCK CALCULATION LOGIC END ---
+
         const { player: rebounder } = resolveRebound(state.home, state.away, actor.playerId);
+        
         return {
-            type: 'miss', offTeam, defTeam, actor, defender, rebounder, points: 0, zone: preferredZone, playType: selectedPlayType, isBlock: false, isAndOne: false, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch
+            type: 'miss', 
+            offTeam, defTeam, 
+            actor, 
+            defender: finalDefender, // Updated to blocker if help block occurred
+            rebounder, 
+            points: 0, 
+            zone: preferredZone, 
+            playType: selectedPlayType, 
+            isBlock, // Calculated Result
+            isAndOne: false, 
+            matchupEffect: shotContext.matchupEffect, 
+            isAceTarget: shotContext.isAceTarget, 
+            isSwitch, 
+            isMismatch: shotContext.isMismatch
         };
     }
 
