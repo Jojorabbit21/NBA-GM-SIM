@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Sliders, HelpCircle, ChevronDown, Target, Shield, ShieldAlert } from 'lucide-react';
 import { GameTactics, TacticalSliders, OffenseTactic, DefenseTactic, Player } from '../../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../../utils/tacticUtils';
+import { OFFENSE_PRESETS, DEFENSE_PRESETS } from '../../../services/game/config/tacticPresets'; // [New] Import Presets
 import { calculatePlayerOvr } from '../../../utils/constants';
 
 interface TacticsSlidersPanelProps {
@@ -62,28 +63,48 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
     const currentOffense = offenseTactics[0] || 'Balance';
     const currentDefense = defenseTactics.find(t => t !== 'AceStopper') || 'ManToManPerimeter';
 
-    // Helper to update a specific slider
+    // Helper to update a specific slider (Manual adjustment -> Switches to Custom implicitly if we tracked that, but here just updates values)
     const updateSlider = (key: keyof TacticalSliders, val: number) => {
         onUpdateTactics({ ...tactics, sliders: { ...sliders, [key]: val } });
     };
 
-    // Helper to update preset
+    // [Updated] Update preset AND apply associated slider values
     const handleOffenseChange = (val: string) => {
-        onUpdateTactics({ ...tactics, offenseTactics: [val as OffenseTactic] });
+        const newPreset = val as OffenseTactic;
+        
+        // Merge existing sliders with new preset values
+        // If the preset is 'Custom', we don't overwrite (or we could reset to defaults, but keeping current is usually better UX)
+        const presetSliders = OFFENSE_PRESETS[newPreset] || {};
+        const newSliders = { ...sliders, ...presetSliders };
+
+        onUpdateTactics({ 
+            ...tactics, 
+            offenseTactics: [newPreset],
+            sliders: newSliders
+        });
     };
 
+    // [Updated] Update defense preset AND apply associated slider values
     const handleDefenseChange = (val: string) => {
         const newDefTactic = val as DefenseTactic;
+        const presetSliders = DEFENSE_PRESETS[newDefTactic] || {};
+        const newSliders = { ...sliders, ...presetSliders };
+
         if (newDefTactic === 'ZoneDefense') {
             onUpdateTactics({ 
                 ...tactics, 
                 defenseTactics: ['ZoneDefense'],
+                sliders: newSliders,
                 stopperId: undefined 
             });
         } else {
             const currentStopper = defenseTactics.includes('AceStopper') ? 'AceStopper' : null;
-            const newTactics = currentStopper ? [currentStopper, newDefTactic] : [newDefTactic];
-            onUpdateTactics({ ...tactics, defenseTactics: newTactics as DefenseTactic[] });
+            const newTacticsList = currentStopper ? [currentStopper, newDefTactic] : [newDefTactic];
+            onUpdateTactics({ 
+                ...tactics, 
+                defenseTactics: newTacticsList as DefenseTactic[],
+                sliders: newSliders
+            });
         }
     };
 
@@ -103,7 +124,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
     return (
         <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
             {/* Tab Header */}
-            <div className="flex border-b border-slate-800">
+            <div className="flex border-b border-slate-800 flex-shrink-0">
                 <button 
                     onClick={() => setActiveTab('offense')}
                     className={`flex-1 py-4 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'offense' ? 'bg-indigo-600 text-white' : 'bg-slate-950 text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}
