@@ -2,7 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Team } from '../types';
 import { Loader2, Trophy } from 'lucide-react';
-import { StandingTable } from '../components/standings/StandingTable';
+import { StandingTable } from '../components/simulation/StandingTable';
 import { DIVISION_KOREAN } from '../data/mappings';
 import { PageHeader } from '../components/common/PageHeader';
 
