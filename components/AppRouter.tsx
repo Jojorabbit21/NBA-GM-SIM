@@ -120,7 +120,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
         case 'Standings':
             return <StandingsView teams={gameData.teams} onTeamClick={() => {}} />;
         case 'Leaderboard':
-            return <LeaderboardView teams={gameData.teams} />;
+            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} />;
         case 'Transactions':
             return (
                 <TransactionsView 

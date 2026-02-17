@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Team, Player } from '../types';
+import { Team, Player, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { BarChart2, ChevronLeft, ChevronRight, Users, Shield } from 'lucide-react';
@@ -11,9 +11,10 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, Tabl
 
 interface LeaderboardViewProps {
   teams: Team[];
+  schedule?: Game[]; // Added schedule prop for accurate team stats
 }
 
-type SortKey = 'name' | 'team' | 'ovr' | 'g' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins';
+type SortKey = 'name' | 'team' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins';
 type ViewMode = 'Players' | 'Teams';
 
 const ITEMS_PER_PAGE = 50;
@@ -45,7 +46,7 @@ const STAT_COLS: { key: SortKey; label: string }[] = [
     { key: 'pm', label: '+/-' }
 ];
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
@@ -68,9 +69,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
   // 2. Aggregate Team Stats
   const teamStats = useMemo(() => {
     return teams.map(t => {
-        const games = t.wins + t.losses || 1; // Avoid div by zero
+        // Calculate precise scoring stats from schedule
+        const teamGames = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
+        const playedCount = teamGames.length || 1;
+        
+        let totalPts = 0;
+        let totalPa = 0;
+        
+        teamGames.forEach(g => {
+            if (g.homeTeamId === t.id) {
+                totalPts += g.homeScore || 0;
+                totalPa += g.awayScore || 0;
+            } else {
+                totalPts += g.awayScore || 0;
+                totalPa += g.homeScore || 0;
+            }
+        });
+
+        // Aggregate other stats from roster (approximations for stats not in Game object)
         const totals = t.roster.reduce((acc, p) => ({
-            pts: acc.pts + p.stats.pts,
             reb: acc.reb + p.stats.reb,
             ast: acc.ast + p.stats.ast,
             stl: acc.stl + p.stats.stl,
@@ -82,33 +99,31 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
             p3a: acc.p3a + p.stats.p3a,
             ftm: acc.ftm + p.stats.ftm,
             fta: acc.fta + p.stats.fta,
-            pm: acc.pm + p.stats.plusMinus,
-            mp: acc.mp + p.stats.mp, // Total minutes for team stats might be sum of players
-        }), { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, pm: 0, mp: 0 });
+        }), { reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
 
         const tsa = totals.fga + 0.44 * totals.fta;
 
         return {
             ...t,
-            // Pre-calculate per-game stats for sorting
             stats: {
-                g: games,
+                g: playedCount,
                 mp: 48, // Team always plays 48 mins (simplified)
-                pts: totals.pts / games,
-                reb: totals.reb / games,
-                ast: totals.ast / games,
-                stl: totals.stl / games,
-                blk: totals.blk / games,
-                tov: totals.tov / games,
+                pts: totalPts / playedCount,
+                pa: totalPa / playedCount,
+                reb: totals.reb / playedCount,
+                ast: totals.ast / playedCount,
+                stl: totals.stl / playedCount,
+                blk: totals.blk / playedCount,
+                tov: totals.tov / playedCount,
                 fgPct: totals.fga > 0 ? totals.fgm / totals.fga : 0,
                 p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
                 ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
-                tsPct: tsa > 0 ? totals.pts / (2 * tsa) : 0,
-                pm: totals.pm / games, // Average margin
+                tsPct: tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0,
+                pm: (totalPts - totalPa) / playedCount, // True Margin
             }
         };
     });
-  }, [teams]);
+  }, [teams, schedule]);
 
   // --- Sorting & Pagination Logic ---
 
@@ -168,6 +183,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                 case 'g': valA = tA.stats.g; valB = tB.stats.g; break;
                 case 'mp': valA = tA.stats.mp; valB = tB.stats.mp; break;
                 case 'pts': valA = tA.stats.pts; valB = tB.stats.pts; break;
+                case 'pa': valA = tA.stats.pa; valB = tB.stats.pa; break;
                 case 'reb': valA = tA.stats.reb; valB = tB.stats.reb; break;
                 case 'ast': valA = tA.stats.ast; valB = tB.stats.ast; break;
                 case 'stl': valA = tA.stats.stl; valB = tB.stats.stl; break;
@@ -272,7 +288,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                       <col style={{ width: WIDTHS.WL }} />
                   )}
                   {/* Stats Columns */}
-                  {STAT_COLS.map((_, i) => <col key={`s-${i}`} style={{ width: WIDTHS.STAT }} />)}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* G */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* MIN */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* PTS */}
+                  {mode === 'Teams' && <col style={{ width: WIDTHS.STAT }} />} {/* PA for Teams */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* REB */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* AST */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* STL */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* BLK */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* TOV */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* FG% */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* 3P% */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* FT% */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* TS% */}
+                  <col style={{ width: WIDTHS.STAT }} /> {/* +/- */}
               </colgroup>
 
               <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
@@ -292,9 +321,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                       </>
                   )}
                   
-                  {STAT_COLS.map(col => (
-                      <SortHeader key={col.key} label={col.label} sKey={col.key} width={WIDTHS.STAT} />
-                  ))}
+                  <SortHeader label="G" sKey="g" width={WIDTHS.STAT} />
+                  <SortHeader label="MIN" sKey="mp" width={WIDTHS.STAT} />
+                  <SortHeader label="PTS" sKey="pts" width={WIDTHS.STAT} />
+                  {mode === 'Teams' && <SortHeader label="PA" sKey="pa" width={WIDTHS.STAT} />}
+                  <SortHeader label="REB" sKey="reb" width={WIDTHS.STAT} />
+                  <SortHeader label="AST" sKey="ast" width={WIDTHS.STAT} />
+                  <SortHeader label="STL" sKey="stl" width={WIDTHS.STAT} />
+                  <SortHeader label="BLK" sKey="blk" width={WIDTHS.STAT} />
+                  <SortHeader label="TOV" sKey="tov" width={WIDTHS.STAT} />
+                  <SortHeader label="FG%" sKey="fg%" width={WIDTHS.STAT} />
+                  <SortHeader label="3P%" sKey="3p%" width={WIDTHS.STAT} />
+                  <SortHeader label="FT%" sKey="ft%" width={WIDTHS.STAT} />
+                  <SortHeader label="TS%" sKey="ts%" width={WIDTHS.STAT} />
+                  <SortHeader label="+/-" sKey="pm" width={WIDTHS.STAT} />
               </TableHead>
               <TableBody>
                   {currentData.map((item, index) => {
@@ -366,6 +406,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams }) => {
                                   <TableCell align="center" variant="stat" value={s.g} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
                                   <TableCell align="center" variant="stat" value={s.mp} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
                                   <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className="text-xs font-bold text-white border-r border-slate-800/30" />
+                                  <TableCell align="center" variant="stat" value={s.pa.toFixed(1)} className="text-xs font-semibold text-red-300 border-r border-slate-800/30" />
                                   <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
                                   <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
                                   <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
