@@ -3,48 +3,32 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { BarChart2, ChevronLeft, ChevronRight, Users, Shield } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight, Users, Shield, ArrowUp, ArrowDown } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface LeaderboardViewProps {
   teams: Team[];
-  schedule?: Game[]; // Added schedule prop for accurate team stats
+  schedule?: Game[];
 }
 
-type SortKey = 'name' | 'team' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins';
+type SortKey = 'name' | 'team' | 'position' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins';
 type ViewMode = 'Players' | 'Teams';
 
 const ITEMS_PER_PAGE = 50;
 
-// Consistent Styling Constants matching RosterGrid
+// Column Widths
 const WIDTHS = {
     RANK: 50,
     NAME: 180,
     POS: 60,
     TEAM: 60,
     OVR: 60,
-    STAT: 70, // Slightly wider for readability
+    STAT: 60,
     WL: 80
 };
-
-const STAT_COLS: { key: SortKey; label: string }[] = [
-    { key: 'g', label: 'G' },
-    { key: 'mp', label: 'MIN' },
-    { key: 'pts', label: 'PTS' },
-    { key: 'reb', label: 'REB' },
-    { key: 'ast', label: 'AST' },
-    { key: 'stl', label: 'STL' },
-    { key: 'blk', label: 'BLK' },
-    { key: 'tov', label: 'TOV' },
-    { key: 'fg%', label: 'FG%' },
-    { key: '3p%', label: '3P%' },
-    { key: 'ft%', label: 'FT%' },
-    { key: 'ts%', label: 'TS%' },
-    { key: 'pm', label: '+/-' }
-];
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
@@ -86,7 +70,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             }
         });
 
-        // Aggregate other stats from roster (approximations for stats not in Game object)
+        // Aggregate other stats from roster
         const totals = t.roster.reduce((acc, p) => ({
             reb: acc.reb + p.stats.reb,
             ast: acc.ast + p.stats.ast,
@@ -107,7 +91,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             ...t,
             stats: {
                 g: playedCount,
-                mp: 48, // Team always plays 48 mins (simplified)
+                mp: 48,
                 pts: totalPts / playedCount,
                 pa: totalPa / playedCount,
                 reb: totals.reb / playedCount,
@@ -119,7 +103,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
                 ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
                 tsPct: tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0,
-                pm: (totalPts - totalPa) / playedCount, // True Margin
+                pm: (totalPts - totalPa) / playedCount,
             }
         };
     });
@@ -133,7 +117,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
         direction = 'asc';
     }
     setSortConfig({ key, direction });
-    setCurrentPage(1); // Reset to first page on sort
+    setCurrentPage(1);
   };
 
   const sortedData = useMemo(() => {
@@ -151,6 +135,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
             switch (sortConfig.key) {
                 case 'name': valA = pA.name; valB = pB.name; break;
+                case 'position': valA = pA.position; valB = pB.position; break;
                 case 'ovr': valA = calculatePlayerOvr(pA); valB = calculatePlayerOvr(pB); break;
                 case 'team': valA = (pA as any).teamCity; valB = (pB as any).teamCity; break;
                 case 'g': valA = pA.stats.g; valB = pB.stats.g; break;
@@ -179,7 +164,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             
             switch (sortConfig.key) {
                 case 'name': valA = tA.city; valB = tB.city; break;
-                case 'wins': valA = tA.wins; valB = tB.wins; break; // Secondary sort for team list
+                case 'wins': valA = tA.wins; valB = tB.wins; break;
                 case 'g': valA = tA.stats.g; valB = tB.stats.g; break;
                 case 'mp': valA = tA.stats.mp; valB = tB.stats.mp; break;
                 case 'pts': valA = tA.stats.pts; valB = tB.stats.pts; break;
@@ -234,11 +219,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const LEFT_TEAM = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS;
   const LEFT_OVR = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS + WIDTHS.TEAM;
   
-  // For Teams Mode
-  const T_LEFT_WL = WIDTHS.RANK + WIDTHS.NAME;
+  const T_LEFT_WL = WIDTHS.RANK + WIDTHS.NAME; // For Teams mode
+
+  const contentTextClass = "text-xs font-medium text-slate-300 font-mono";
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
+    <div className="flex flex-col animate-in fade-in duration-500 ko-normal gap-6 pb-20">
       {viewPlayer && (
         <PlayerDetailModal 
             player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} 
@@ -253,218 +239,227 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
         title="리그 리더보드" 
         description={mode === 'Players' ? "2025-26 시즌 선수별 주요 스탯 랭킹" : "2025-26 시즌 팀별 평균 기록"}
         icon={<BarChart2 size={24} />}
-        actions={
-            <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
-                <button 
-                    onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Players' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                    <Users size={14} /> Players
-                </button>
-                <button 
-                    onClick={() => { setMode('Teams'); setCurrentPage(1); setSortConfig({key: 'wins', direction: 'desc'}); }}
-                    className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Teams' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-                >
-                    <Shield size={14} /> Teams
-                </button>
-            </div>
-        }
       />
 
-      {/* Main Table Area */}
-      <div className="flex-1 bg-slate-950/20 flex flex-col min-h-0">
-          <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
-              <colgroup>
-                  {/* Fixed Columns */}
-                  <col style={{ width: WIDTHS.RANK }} />
-                  <col style={{ width: WIDTHS.NAME }} />
-                  {mode === 'Players' ? (
-                      <>
-                        <col style={{ width: WIDTHS.POS }} />
-                        <col style={{ width: WIDTHS.TEAM }} />
-                        <col style={{ width: WIDTHS.OVR }} />
-                      </>
-                  ) : (
-                      <col style={{ width: WIDTHS.WL }} />
-                  )}
-                  {/* Stats Columns */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* G */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* MIN */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* PTS */}
-                  {mode === 'Teams' && <col style={{ width: WIDTHS.STAT }} />} {/* PA for Teams */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* REB */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* AST */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* STL */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* BLK */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* TOV */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* FG% */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* 3P% */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* FT% */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* TS% */}
-                  <col style={{ width: WIDTHS.STAT }} /> {/* +/- */}
-              </colgroup>
-
-              <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
-                  <TableHeaderCell style={{ left: 0 }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">#</TableHeaderCell>
-                  
-                  {mode === 'Players' ? (
-                      <>
-                        <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>POS</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('team')} sortDirection={sortConfig.key === 'team' ? sortConfig.direction : null}>TEAM</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
-                      </>
-                  ) : (
-                      <>
-                        <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>TEAM NAME</TableHeaderCell>
-                        <TableHeaderCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('wins')} sortDirection={sortConfig.key === 'wins' ? sortConfig.direction : null}>W-L</TableHeaderCell>
-                      </>
-                  )}
-                  
-                  <SortHeader label="G" sKey="g" width={WIDTHS.STAT} />
-                  <SortHeader label="MIN" sKey="mp" width={WIDTHS.STAT} />
-                  <SortHeader label="PTS" sKey="pts" width={WIDTHS.STAT} />
-                  {mode === 'Teams' && <SortHeader label="PA" sKey="pa" width={WIDTHS.STAT} />}
-                  <SortHeader label="REB" sKey="reb" width={WIDTHS.STAT} />
-                  <SortHeader label="AST" sKey="ast" width={WIDTHS.STAT} />
-                  <SortHeader label="STL" sKey="stl" width={WIDTHS.STAT} />
-                  <SortHeader label="BLK" sKey="blk" width={WIDTHS.STAT} />
-                  <SortHeader label="TOV" sKey="tov" width={WIDTHS.STAT} />
-                  <SortHeader label="FG%" sKey="fg%" width={WIDTHS.STAT} />
-                  <SortHeader label="3P%" sKey="3p%" width={WIDTHS.STAT} />
-                  <SortHeader label="FT%" sKey="ft%" width={WIDTHS.STAT} />
-                  <SortHeader label="TS%" sKey="ts%" width={WIDTHS.STAT} />
-                  <SortHeader label="+/-" sKey="pm" width={WIDTHS.STAT} />
-              </TableHead>
-              <TableBody>
-                  {currentData.map((item, index) => {
-                      const rank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
-                      const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
-                      
-                      if (mode === 'Players') {
-                          const p = item as Player & { teamName: string; teamId: string };
-                          const s = p.stats;
-                          const g = s.g || 1;
-                          const ovr = calculatePlayerOvr(p);
-                          
-                          // Calc derived stats for rendering
-                          const fgPct = s.fga > 0 ? s.fgm/s.fga : 0;
-                          const p3Pct = s.p3a > 0 ? s.p3m/s.p3a : 0;
-                          const ftPct = s.fta > 0 ? s.ftm/s.fta : 0;
-                          const tsPct = (s.fga + 0.44 * s.fta) > 0 ? s.pts / (2 * (s.fga + 0.44 * s.fta)) : 0;
-
-                          return (
-                              <TableRow key={p.id} onClick={() => setViewPlayer(p)} className="group">
-                                  <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 bg-slate-900 z-30`}>{rank}</TableCell>
-                                  <TableCell style={{ left: LEFT_NAME }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
-                                     <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
-                                  </TableCell>
-                                  <TableCell style={{ left: LEFT_POS }} stickyLeft align="center" className="text-xs font-bold text-slate-500 border-r border-slate-800 bg-slate-900 z-30">{p.position}</TableCell>
-                                  <TableCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-900 z-30">
-                                     <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="xs" /></div>
-                                  </TableCell>
-                                  <TableCell style={{ left: LEFT_OVR }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-900 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30">
-                                     <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-[10px] shadow-none" /></div>
-                                  </TableCell>
-                                  
-                                  {/* Stats */}
-                                  <TableCell align="center" variant="stat" value={s.g} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  
-                                  <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className="text-xs font-bold text-white border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={(s.blk/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={(s.tov/g).toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  
-                                  <TableCell align="center" variant="stat" value={formatStat(fgPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={formatStat(p3Pct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  
-                                  <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-                                      {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
-                                  </TableCell>
-                              </TableRow>
-                          );
-                      } else {
-                          const t = item as typeof teamStats[0];
-                          const s = t.stats;
-                          
-                          return (
-                              <TableRow key={t.id} className="hover:bg-slate-800/30 group">
-                                  <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 bg-slate-900 z-30`}>{rank}</TableCell>
-                                  <TableCell style={{ left: LEFT_NAME }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
-                                      <div className="flex items-center gap-3">
-                                          <TeamLogo teamId={t.id} size="sm" />
-                                          <span className="text-xs font-bold text-slate-200 uppercase truncate">{t.name}</span>
-                                      </div>
-                                  </TableCell>
-                                  <TableCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className="font-mono font-bold text-xs text-slate-400 border-r border-slate-800 bg-slate-900 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30">{t.wins}-{t.losses}</TableCell>
-
-                                  <TableCell align="center" variant="stat" value={s.g} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.mp} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className="text-xs font-bold text-white border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.pa.toFixed(1)} className="text-xs font-semibold text-red-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.blk.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={s.tov.toFixed(1)} className="text-xs font-semibold text-slate-300 border-r border-slate-800/30" />
-                                  
-                                  <TableCell align="center" variant="stat" value={formatStat(s.fgPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={formatStat(s.p3Pct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className="text-xs font-semibold text-slate-400 border-r border-slate-800/30" />
-                                  
-                                  <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
-                                      {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
-                                  </TableCell>
-                              </TableRow>
-                          );
-                      }
-                  })}
-                  
-                  {currentData.length === 0 && (
-                      <TableRow>
-                          <TableCell colSpan={15} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
-                              데이터가 없습니다.
-                          </TableCell>
-                      </TableRow>
-                  )}
-              </TableBody>
-          </Table>
-      </div>
-
-      {/* Pagination Footer */}
-      <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.2)] flex-shrink-0 z-50">
-          <div className="text-xs font-bold text-slate-500">
-              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)} of {sortedData.length}
-          </div>
+      {/* Main Content Wrapper (Card Style) */}
+      <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
           
-          <div className="flex gap-2">
-              <button 
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                  <ChevronLeft size={16} />
-              </button>
-              
-              <div className="flex items-center gap-1 px-2">
-                  <span className="text-sm font-black text-white">{currentPage}</span>
-                  <span className="text-xs font-bold text-slate-600">/</span>
-                  <span className="text-xs font-bold text-slate-500">{totalPages}</span>
+          {/* Top Toolbar: View Mode Selector */}
+          <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                  <span className="text-xs font-black uppercase text-slate-400 tracking-widest">통계 모드</span>
+                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+                      <button 
+                          onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Players' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                          <Users size={14} /> Players
+                      </button>
+                      <button 
+                          onClick={() => { setMode('Teams'); setCurrentPage(1); setSortConfig({key: 'wins', direction: 'desc'}); }}
+                          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Teams' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                      >
+                          <Shield size={14} /> Teams
+                      </button>
+                  </div>
               </div>
+          </div>
 
-              <button 
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                  <ChevronRight size={16} />
-              </button>
+          {/* Table Area (Auto Height) */}
+          <div className="w-full">
+            <Table className="!rounded-none !border-0 !shadow-none" fullHeight={false} style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                <colgroup>
+                    <col style={{ width: WIDTHS.RANK }} />
+                    <col style={{ width: WIDTHS.NAME }} />
+                    {mode === 'Players' ? (
+                        <>
+                            <col style={{ width: WIDTHS.POS }} />
+                            <col style={{ width: WIDTHS.TEAM }} />
+                            <col style={{ width: WIDTHS.OVR }} />
+                        </>
+                    ) : (
+                        <col style={{ width: WIDTHS.WL }} />
+                    )}
+                    {/* Stats Columns */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* G */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* MIN */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* PTS */}
+                    {mode === 'Teams' && <col style={{ width: WIDTHS.STAT }} />} {/* PA for Teams */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* REB */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* AST */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* STL */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* BLK */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* TOV */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* FG% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* 3P% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* FT% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* TS% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* +/- */}
+                </colgroup>
+
+                <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                    <TableHeaderCell style={{ left: 0 }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">#</TableHeaderCell>
+                    
+                    {mode === 'Players' ? (
+                        <>
+                            <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
+                            <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                            <TableHeaderCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('team')} sortDirection={sortConfig.key === 'team' ? sortConfig.direction : null}>TEAM</TableHeaderCell>
+                            <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
+                        </>
+                    ) : (
+                        <>
+                            <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>TEAM NAME</TableHeaderCell>
+                            <TableHeaderCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('wins')} sortDirection={sortConfig.key === 'wins' ? sortConfig.direction : null}>W-L</TableHeaderCell>
+                        </>
+                    )}
+                    
+                    <SortHeader label="G" sKey="g" width={WIDTHS.STAT} />
+                    <SortHeader label="MIN" sKey="mp" width={WIDTHS.STAT} />
+                    <SortHeader label="PTS" sKey="pts" width={WIDTHS.STAT} />
+                    {mode === 'Teams' && <SortHeader label="PA" sKey="pa" width={WIDTHS.STAT} />}
+                    <SortHeader label="REB" sKey="reb" width={WIDTHS.STAT} />
+                    <SortHeader label="AST" sKey="ast" width={WIDTHS.STAT} />
+                    <SortHeader label="STL" sKey="stl" width={WIDTHS.STAT} />
+                    <SortHeader label="BLK" sKey="blk" width={WIDTHS.STAT} />
+                    <SortHeader label="TOV" sKey="tov" width={WIDTHS.STAT} />
+                    <SortHeader label="FG%" sKey="fg%" width={WIDTHS.STAT} />
+                    <SortHeader label="3P%" sKey="3p%" width={WIDTHS.STAT} />
+                    <SortHeader label="FT%" sKey="ft%" width={WIDTHS.STAT} />
+                    <SortHeader label="TS%" sKey="ts%" width={WIDTHS.STAT} />
+                    <SortHeader label="+/-" sKey="pm" width={WIDTHS.STAT} />
+                </TableHead>
+                <TableBody>
+                    {currentData.map((item, index) => {
+                        const rank = (currentPage - 1) * ITEMS_PER_PAGE + index + 1;
+                        const rankColor = rank === 1 ? 'text-yellow-400' : rank === 2 ? 'text-slate-300' : rank === 3 ? 'text-amber-600' : 'text-slate-600';
+                        
+                        // [Fix] Hover effect for sticky columns
+                        const stickyCellClass = "bg-slate-900 group-hover:bg-slate-800 transition-colors z-30";
+
+                        if (mode === 'Players') {
+                            const p = item as Player & { teamName: string; teamId: string };
+                            const s = p.stats;
+                            const g = s.g || 1;
+                            const ovr = calculatePlayerOvr(p);
+                            
+                            const fgPct = s.fga > 0 ? s.fgm/s.fga : 0;
+                            const p3Pct = s.p3a > 0 ? s.p3m/s.p3a : 0;
+                            const ftPct = s.fta > 0 ? s.ftm/s.fta : 0;
+                            const tsPct = (s.fga + 0.44 * s.fta) > 0 ? s.pts / (2 * (s.fga + 0.44 * s.fta)) : 0;
+
+                            return (
+                                <TableRow key={p.id} onClick={() => setViewPlayer(p)} className="group h-10">
+                                    <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
+                                    <TableCell style={{ left: LEFT_NAME }} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
+                                        <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
+                                    </TableCell>
+                                    <TableCell style={{ left: LEFT_POS }} stickyLeft align="center" className={`text-xs font-semibold text-slate-500 border-r border-slate-800 ${stickyCellClass}`}>{p.position}</TableCell>
+                                    <TableCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className={`border-r border-slate-800 ${stickyCellClass}`}>
+                                        <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="xs" /></div>
+                                    </TableCell>
+                                    <TableCell style={{ left: LEFT_OVR }} stickyLeft align="center" className={`border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] ${stickyCellClass}`}>
+                                        <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-[10px] shadow-none" /></div>
+                                    </TableCell>
+                                    
+                                    <TableCell align="center" variant="stat" value={s.g} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    
+                                    <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 font-bold`} />
+                                    <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={(s.blk/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={(s.tov/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    
+                                    <TableCell align="center" variant="stat" value={formatStat(fgPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={formatStat(p3Pct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    
+                                    <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                        {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        } else {
+                            const t = item as typeof teamStats[0];
+                            const s = t.stats;
+                            
+                            return (
+                                <TableRow key={t.id} className="hover:bg-slate-800/30 group h-10">
+                                    <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
+                                    <TableCell style={{ left: LEFT_NAME }} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
+                                        <div className="flex items-center gap-3">
+                                            <TeamLogo teamId={t.id} size="sm" />
+                                            <span className="text-xs font-semibold text-slate-200 uppercase truncate">{t.name}</span>
+                                        </div>
+                                    </TableCell>
+                                    <TableCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className={`font-mono font-bold text-xs text-slate-400 border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] ${stickyCellClass}`}>{t.wins}-{t.losses}</TableCell>
+
+                                    <TableCell align="center" variant="stat" value={s.g} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.mp} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 font-bold`} />
+                                    <TableCell align="center" variant="stat" value={s.pa.toFixed(1)} className={`${contentTextClass} text-red-300 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.blk.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={s.tov.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    
+                                    <TableCell align="center" variant="stat" value={formatStat(s.fgPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={formatStat(s.p3Pct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    
+                                    <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                        {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
+                                    </TableCell>
+                                </TableRow>
+                            );
+                        }
+                    })}
+                    
+                    {currentData.length === 0 && (
+                        <TableRow>
+                            <TableCell colSpan={15} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
+                                데이터가 없습니다.
+                            </TableCell>
+                        </TableRow>
+                    )}
+                </TableBody>
+            </Table>
+          </div>
+
+          {/* Pagination Footer */}
+          <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.2)] flex-shrink-0 z-50">
+              <div className="text-xs font-bold text-slate-500">
+                  Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)} of {sortedData.length}
+              </div>
+              
+              <div className="flex gap-2">
+                  <button 
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                      <ChevronLeft size={16} />
+                  </button>
+                  
+                  <div className="flex items-center gap-1 px-2">
+                      <span className="text-sm font-black text-white">{currentPage}</span>
+                      <span className="text-xs font-bold text-slate-600">/</span>
+                      <span className="text-xs font-bold text-slate-500">{totalPages}</span>
+                  </div>
+
+                  <button 
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                  >
+                      <ChevronRight size={16} />
+                  </button>
+              </div>
           </div>
       </div>
     </div>
