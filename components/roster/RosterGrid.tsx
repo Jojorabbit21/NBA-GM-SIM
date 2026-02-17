@@ -265,7 +265,16 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
                         <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
                         <TableHeaderCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
+                        <TableHeaderCell 
+                            style={{ left: LEFT_OVR, clipPath: 'inset(0 -15px 0 0)' }} 
+                            stickyLeft 
+                            className="border-r border-slate-800 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)]" 
+                            sortable 
+                            onSort={() => handleSort('ovr')} 
+                            sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
+                        >
+                            OVR
+                        </TableHeaderCell>
                         
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
                             g.keys.map((k, idx) => {
@@ -312,7 +321,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             </TableCell>
                             <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
                             <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
-                            <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">
+                            <TableCell 
+                                style={{ left: LEFT_OVR, clipPath: 'inset(0 -15px 0 0)' }} 
+                                stickyLeft 
+                                className="border-r border-slate-800 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)] bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center"
+                            >
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                             </TableCell>
 
@@ -320,13 +333,28 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={(p as any)[k]} variant="attribute" colorScale />
                             ))}
                             {tab === 'stats' && STATS_COLS.map(c => {
+                                // 출전 시간(MP)이 0이면 데이터 없음(-)으로 표시
+                                if (p.stats.mp === 0) {
+                                    return <TableCell key={c.key} align="center" className="font-mono font-medium text-xs text-slate-600 border-r border-slate-800/30" value="-" />;
+                                }
+
                                 const val = getSortValue(p, c.key);
                                 let displayVal = val;
+                                let textColor = 'text-slate-300';
+
+                                // 마진 컬럼 컬러 코딩
+                                if (c.key === 'pm') {
+                                    const numVal = Number(val);
+                                    if (numVal > 0) textColor = 'text-emerald-400';
+                                    else if (numVal < 0) textColor = 'text-red-400';
+                                    else textColor = 'text-slate-500';
+                                }
+
                                 if (typeof val === 'number') {
                                     if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                     else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm'].includes(c.key)) displayVal = val.toFixed(1);
                                 }
-                                return <TableCell key={c.key} align="center" className="font-mono font-semibold text-xs text-slate-300 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                                return <TableCell key={c.key} align="center" className={`font-mono font-medium text-xs ${textColor} border-r border-slate-800/30`} value={displayVal} variant="stat" />;
                             })}
                             {tab === 'salary' && (
                                 <>
@@ -343,7 +371,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
                         <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
                         <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-semibold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
-                        <TableCell style={{ left: LEFT_OVR }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)] z-30 text-center">
+                        <TableCell 
+                            style={{ left: LEFT_OVR, clipPath: 'inset(0 -15px 0 0)' }} 
+                            stickyLeft 
+                            className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)] z-30 text-center"
+                        >
                             <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
                         </TableCell>
 
@@ -351,13 +383,27 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             <TableCell key={k} align="center" className="font-semibold font-mono border-r border-slate-800/30 text-xs" value={averages.attr[k]} variant="attribute" colorScale />
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => {
+                            // G, GS, MIN은 팀 평균에서 제외 (빈칸 처리)
+                            if (['g', 'gs', 'mp'].includes(c.key)) {
+                                return <TableCell key={c.key} className="border-r border-slate-800/30 bg-slate-950" />;
+                            }
+
                             let val = averages.stat[c.key];
                             let displayVal = val;
+                            let textColor = 'text-slate-400';
+
+                            // Footer 마진 컬러링
+                            if (c.key === 'pm') {
+                                const numVal = Number(val);
+                                if (numVal > 0) textColor = 'text-emerald-400';
+                                else if (numVal < 0) textColor = 'text-red-400';
+                            }
+
                             if (typeof val === 'number') {
                                 if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                 else displayVal = val.toFixed(1);
                             }
-                            return <TableCell key={c.key} align="center" className="font-mono font-semibold text-xs text-slate-400 border-r border-slate-800/30" value={displayVal} variant="stat" />;
+                            return <TableCell key={c.key} align="center" className={`font-mono font-medium text-xs ${textColor} border-r border-slate-800/30`} value={displayVal} variant="stat" />;
                         })}
                         {tab === 'salary' && (
                             <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-xs" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
@@ -397,7 +443,16 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             </tr>
                             <tr className="h-10 text-slate-500 text-[9px] font-black uppercase tracking-widest">
                                 <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
-                                <TableHeaderCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                                <TableHeaderCell 
+                                    style={{ left: WIDTHS.NAME, clipPath: 'inset(0 -15px 0 0)' }} 
+                                    stickyLeft 
+                                    className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)]" 
+                                    sortable 
+                                    onSort={() => handleSort('position')} 
+                                    sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
+                                >
+                                    POS
+                                </TableHeaderCell>
                                 {ZONE_CONFIG.map(z => (
                                     <React.Fragment key={z.id}>
                                         <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800 bg-slate-950">M/A</TableHeaderCell>
@@ -412,7 +467,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                         <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     </TableCell>
-                                    <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_8px_rgba(0,0,0,0.5)]">{p.position}</TableCell>
+                                    <TableCell 
+                                        style={{ left: WIDTHS.NAME, clipPath: 'inset(0 -15px 0 0)' }} 
+                                        stickyLeft 
+                                        className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)]"
+                                    >
+                                        {p.position}
+                                    </TableCell>
                                     
                                     {ZONE_CONFIG.map(z => {
                                         const m = p.stats[z.keyM] || 0;
@@ -431,7 +492,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr className="h-10">
                                 <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM TOTAL</TableCell>
-                                <TableCell style={{ left: WIDTHS.NAME }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30 shadow-[4px_0_8px_rgba(0,0,0,0.5)]"></TableCell>
+                                <TableCell 
+                                    style={{ left: WIDTHS.NAME, clipPath: 'inset(0 -15px 0 0)' }} 
+                                    stickyLeft 
+                                    className="border-r border-slate-800 bg-slate-950 z-30 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)]"
+                                ></TableCell>
                                 {ZONE_CONFIG.map(z => {
                                     const avg = averages.zone[z.id];
                                     const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
