@@ -73,7 +73,7 @@ function identifyDefender(
 
 /**
  * Calculates Turnover/Steal Probability based on Defender Archetypes
- * Updated: Applies baseline bonus + situational boost
+ * Updated: Interceptor now uses Agility instead of Height
  */
 function calculateTurnoverChance(
     offTeam: TeamState,
@@ -107,7 +107,6 @@ function calculateTurnoverChance(
 
     // A. Check Primary Defender Archetypes
     const d = defender.attr;
-    const isGuard = defender.position.includes('G');
     
     // Archetype 1: "The Glove" (On-Ball Lockdown)
     // Criteria: High Steal + PerDef + Strength
@@ -123,13 +122,13 @@ function calculateTurnoverChance(
         }
     }
 
-    // Archetype 2: "The Interceptor" (Passing Lane / Wingspan)
-    // Criteria: Height > Avg for position + High Pass Perception + Decent Steal
-    const hasLength = (isGuard && d.height >= 193) || (!isGuard && d.height >= 203);
-    if (hasLength && d.passPerc >= 85 && d.stl >= 75) {
-         totalBonus += 0.02; // Baseline Obstruction
+    // Archetype 2: "The Interceptor" (Passing Lane / Reflex)
+    // Criteria: High Agility + High Pass Perception + Decent Steal
+    // [MODIFIED] Replaced Height check with Agility check
+    if (d.agility >= 85 && d.passPerc >= 85 && d.stl >= 75) {
+         totalBonus += 0.02; // Baseline: Quick reaction
          if (['CatchShoot', 'Cut', 'PnR_Roll', 'PnR_Pop'].includes(playType)) {
-             totalBonus += 0.10; // Situational Boost (Passing Lanes)
+             totalBonus += 0.10; // Situational Boost: Jumping passing lanes
          }
     }
 
