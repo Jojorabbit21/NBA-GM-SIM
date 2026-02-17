@@ -262,13 +262,14 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     </tr>
                     {/* Header Row 2: Labels */}
                     <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                        <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
-                        <TableHeaderCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
+                        {/* Remove border-r from NAME, POS, AGE to make them look unified. Keep border-r on OVR only. */}
+                        <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft className="bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                        <TableHeaderCell style={{ left: LEFT_AGE }} stickyLeft className="bg-slate-950" sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}>AGE</TableHeaderCell>
                         <TableHeaderCell 
                             style={{ left: LEFT_OVR, clipPath: 'inset(0 -15px 0 0)' }} 
                             stickyLeft 
-                            className="border-r border-slate-800 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)]" 
+                            className="border-r border-slate-800 shadow-[4px_0_4px_-2px_rgba(0,0,0,0.5)] bg-slate-950" 
                             sortable 
                             onSort={() => handleSort('ovr')} 
                             sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
@@ -306,7 +307,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 <TableBody>
                     {sortedRoster.map(p => (
                         <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
-                            <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
+                            {/* Remove border-r from internal sticky cells */}
+                            <TableCell style={{ left: 0 }} stickyLeft className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                 <div className="flex flex-col">
                                     <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     {p.health !== 'Healthy' && (
@@ -319,8 +321,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     )}
                                 </div>
                             </TableCell>
-                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
-                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
+                            <TableCell style={{ left: LEFT_POS }} stickyLeft className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.position}</TableCell>
+                            <TableCell style={{ left: LEFT_AGE }} stickyLeft className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors z-30 text-center">{p.age}</TableCell>
                             <TableCell 
                                 style={{ left: LEFT_OVR, clipPath: 'inset(0 -15px 0 0)' }} 
                                 stickyLeft 
@@ -368,9 +370,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 </TableBody>
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
-                        <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
-                        <TableCell style={{ left: LEFT_POS }} stickyLeft className="border-r border-slate-800 bg-slate-950 z-30"></TableCell>
-                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="border-r border-slate-800 bg-slate-950 text-center font-semibold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
+                        {/* Remove border-r from internal sticky cells */}
+                        <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM AVERAGE</TableCell>
+                        <TableCell style={{ left: LEFT_POS }} stickyLeft className="bg-slate-950 z-30"></TableCell>
+                        <TableCell style={{ left: LEFT_AGE }} stickyLeft className="bg-slate-950 text-center font-semibold text-slate-500 text-xs z-30">{averages.attr.age}</TableCell>
                         <TableCell 
                             style={{ left: LEFT_OVR, clipPath: 'inset(0 -15px 0 0)' }} 
                             stickyLeft 
@@ -442,7 +445,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 ))}
                             </tr>
                             <tr className="h-10 text-slate-500 text-[9px] font-black uppercase tracking-widest">
-                                <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
+                                {/* Remove border-r from NAME */}
+                                <TableHeaderCell style={{ left: 0 }} stickyLeft align="left" className="pl-4 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>NAME</TableHeaderCell>
                                 <TableHeaderCell 
                                     style={{ left: WIDTHS.NAME, clipPath: 'inset(0 -15px 0 0)' }} 
                                     stickyLeft 
@@ -464,7 +468,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableBody>
                             {sortedRoster.map(p => (
                                 <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
-                                    <TableCell style={{ left: 0 }} stickyLeft className="pl-4 border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
+                                    {/* Remove border-r from NAME */}
+                                    <TableCell style={{ left: 0 }} stickyLeft className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors z-30">
                                         <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
                                     </TableCell>
                                     <TableCell 
@@ -491,7 +496,8 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </TableBody>
                         <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr className="h-10">
-                                <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left border-r border-slate-800 bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM TOTAL</TableCell>
+                                {/* Remove border-r from TEAM TOTAL label */}
+                                <TableCell style={{ left: 0 }} stickyLeft className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-[10px] z-30 uppercase tracking-widest">TEAM TOTAL</TableCell>
                                 <TableCell 
                                     style={{ left: WIDTHS.NAME, clipPath: 'inset(0 -15px 0 0)' }} 
                                     stickyLeft 
