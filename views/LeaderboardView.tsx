@@ -139,11 +139,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
     if (dateFilter && typeof dateFilter.value === 'string') {
         const { start, end } = JSON.parse(dateFilter.value);
-        const sDate = new Date(start);
-        const eDate = new Date(end);
+        // Robust string comparison for YYYY-MM-DD
         targetSchedule = schedule.filter(g => {
-            const gDate = new Date(g.date);
-            return gDate >= sDate && gDate <= eDate;
+            const gDate = g.date; // Assuming YYYY-MM-DD
+            return gDate >= start && gDate <= end;
         });
     }
 
@@ -650,7 +649,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                           <input 
                               type="number" 
                               placeholder="Value" 
-                              className="h-full bg-transparent px-3 w-20 text-sm font-medium text-white outline-none placeholder:text-slate-600"
+                              className="h-full bg-transparent px-3 w-20 text-sm font-medium text-white outline-none placeholder:text-slate-600 [&::-webkit-inner-spin-button]:appearance-none"
                               value={filterVal}
                               onChange={(e) => setFilterVal(e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && addStatFilter()}
@@ -663,7 +662,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                       </div>
 
                       {/* Integrated Date Filter */}
-                      <div className="flex items-center h-[42px] bg-slate-900 rounded-xl border border-slate-700/50 shadow-sm shrink-0">
+                      <div className="flex items-center h-[42px] bg-slate-950 rounded-xl border border-slate-700/50 shadow-sm shrink-0">
                           <div className="px-3 flex items-center justify-center border-r border-slate-700/50 h-full text-slate-500">
                               <Calendar size={16} />
                           </div>
@@ -714,7 +713,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                               <button onClick={() => removeFilter(filter.id)} className="hover:text-white transition-colors"><X size={12} /></button>
                           </div>
                       ))}
-                      <button onClick={() => setActiveFilters([])} className="text-[10px] font-bold text-slate-500 hover:text-red-400 underline decoration-slate-700 underline-offset-2 transition-colors ml-2">Clear All</button>
+                      <button onClick={() => setActiveFilters([])} className="text-sm font-bold text-slate-500 hover:text-red-400 underline decoration-slate-700 underline-offset-2 transition-colors ml-2">모두 삭제</button>
                   </div>
               )}
           </div>
