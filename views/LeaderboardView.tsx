@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -22,8 +22,8 @@ const ITEMS_PER_PAGE = 50;
 // Column Widths
 const WIDTHS = {
     RANK: 50,
-    TEAM: 60,     // Moved before Name
-    NAME: 180,
+    // TEAM: 60, // Removed
+    NAME: 240,   // Increased width to accommodate Logo + Name
     POS: 60,
     OVR: 60,
     STAT: 60,
@@ -38,6 +38,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
+  const [showHeatmap, setShowHeatmap] = useState(true);
 
   // --- Data Processing ---
 
@@ -167,6 +168,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   }, [mode, allPlayers, teamStats]);
 
   const getBgStyle = (key: string, value: number) => {
+    // 1. Check Global Toggle
+    if (!showHeatmap) return undefined;
+    
+    // 2. Check Excluded Columns (G)
+    if (key === 'g') return undefined;
+
     const range = statRanges[key];
     if (!range || range.max === range.min) return undefined;
     
@@ -335,11 +342,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       boxShadow: isLast ? '4px 0 4px -2px rgba(0,0,0,0.5)' : 'none' // Shadow only on last
   });
 
-  // Calculate Sticky Positions (Updated Order: Rank -> Team -> Name -> Pos -> Ovr)
-  // Players Mode Config
+  // Calculate Sticky Positions
+  // Players Mode Config (Team Column Removed)
   const P_LEFT_RANK = 0;
-  const P_LEFT_TEAM_LOGO = WIDTHS.RANK;
-  const P_LEFT_NAME = WIDTHS.RANK + WIDTHS.TEAM;
+  // const P_LEFT_TEAM_LOGO = WIDTHS.RANK; // Removed
+  const P_LEFT_NAME = WIDTHS.RANK; // Name moves left
   const P_LEFT_POS = P_LEFT_NAME + WIDTHS.NAME;
   const P_LEFT_OVR = P_LEFT_POS + WIDTHS.POS;
 
@@ -348,7 +355,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const T_LEFT_RANK = 0;
   const T_LEFT_NAME = WIDTHS.RANK; 
   
-  const contentTextClass = "text-xs font-medium text-slate-300 font-mono tabular-nums";
+  // [Updated] Text color set to text-white for data columns
+  const contentTextClass = "text-xs font-medium text-white font-mono tabular-nums";
 
   return (
     <div className="flex flex-col animate-in fade-in duration-500 ko-normal gap-6 pb-20">
@@ -371,9 +379,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       {/* Main Content Wrapper (Card Style) */}
       <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
           
-          {/* Top Toolbar: View Mode Selector */}
+          {/* Top Toolbar: View Mode Selector & Heatmap Toggle */}
           <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-6">
+                  {/* View Mode */}
                   <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                       <button 
                           onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
@@ -388,6 +397,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                           팀
                       </button>
                   </div>
+
+                  {/* Heatmap Toggle */}
+                  <div 
+                      className="flex items-center gap-3 cursor-pointer group select-none" 
+                      onClick={() => setShowHeatmap(!showHeatmap)}
+                      title="스탯 분포 색상 표시 (Heatmap)"
+                  >
+                        <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                            <div className={`absolute top-1 bottom-1 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'left-6' : 'left-1'}`} />
+                        </div>
+                        <div className={`text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
+                            <Zap size={14} className={showHeatmap ? 'fill-indigo-400' : ''} />
+                            <span>Heatmap {showHeatmap ? 'ON' : 'OFF'}</span>
+                        </div>
+                  </div>
               </div>
           </div>
 
@@ -398,7 +422,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                     <col style={{ width: WIDTHS.RANK }} />
                     {mode === 'Players' ? (
                         <>
-                            <col style={{ width: WIDTHS.TEAM }} />
+                            {/* <col style={{ width: WIDTHS.TEAM }} /> Removed */}
                             <col style={{ width: WIDTHS.NAME }} />
                             <col style={{ width: WIDTHS.POS }} />
                             <col style={{ width: WIDTHS.OVR }} />
@@ -436,11 +460,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                     
                     {mode === 'Players' ? (
                         <>
-                            {/* Team Column (Moved Left, Not Sortable) */}
-                            <TableHeaderCell style={getStickyStyle(P_LEFT_TEAM_LOGO, WIDTHS.TEAM)} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">TEAM</TableHeaderCell>
+                            {/* Team Column (Removed) */}
+                            {/* Player Name with Logo */}
+                            <TableHeaderCell style={getStickyStyle(P_LEFT_NAME, WIDTHS.NAME)} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER</TableHeaderCell>
                             
-                            <TableHeaderCell style={getStickyStyle(P_LEFT_NAME, WIDTHS.NAME)} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
                             <TableHeaderCell style={getStickyStyle(P_LEFT_POS, WIDTHS.POS)} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                            
                             {/* Last Sticky Column with Clip Path for Shadow */}
                             <TableHeaderCell style={{ ...getStickyStyle(P_LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
                             
@@ -495,12 +520,12 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                 <TableRow key={p.id} onClick={() => setViewPlayer(p)} className="group h-10">
                                     <TableCell style={getStickyStyle(0, WIDTHS.RANK)} stickyLeft align="center" className={`font-medium text-xs ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
                                     
-                                    <TableCell style={getStickyStyle(P_LEFT_TEAM_LOGO, WIDTHS.TEAM)} stickyLeft align="center" className={`border-r border-slate-800 ${stickyCellClass}`}>
-                                        <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="sm" /></div>
-                                    </TableCell>
-                                    
+                                    {/* Merged Team Logo + Name Column */}
                                     <TableCell style={getStickyStyle(P_LEFT_NAME, WIDTHS.NAME)} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
-                                        <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
+                                        <div className="flex items-center gap-3">
+                                            <TeamLogo teamId={p.teamId} size="sm" />
+                                            <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
+                                        </div>
                                     </TableCell>
                                     
                                     <TableCell style={getStickyStyle(P_LEFT_POS, WIDTHS.POS)} stickyLeft align="center" className={`text-xs font-semibold text-slate-500 border-r border-slate-800 ${stickyCellClass}`}>{p.position}</TableCell>
@@ -509,21 +534,23 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                         <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
                                     
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('g', s.g)}>{s.g}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('mp', s.mp/g)}>{(s.mp/g).toFixed(1)}</TableCell>
+                                    {/* Updated Text Color to White */}
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('g', s.g)}>{s.g}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('mp', s.mp/g)}>{(s.mp/g).toFixed(1)}</TableCell>
                                     
-                                    <TableCell align="center" className={`${contentTextClass} text-white border-r border-slate-800/30`} style={getBgStyle('pts', s.pts/g)}>{(s.pts/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('pts', s.pts/g)}>{(s.pts/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('reb', s.reb/g)}>{(s.reb/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ast', s.ast/g)}>{(s.ast/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('stl', s.stl/g)}>{(s.stl/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('blk', s.blk/g)}>{(s.blk/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('tov', s.tov/g)}>{(s.tov/g).toFixed(1)}</TableCell>
                                     
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('fg%', fgPct)}>{formatStat(fgPct, true)}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('3p%', p3Pct)}>{formatStat(p3Pct, true)}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ft%', ftPct)}>{formatStat(ftPct, true)}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ts%', tsPct)}>{formatStat(tsPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fg%', fgPct)}>{formatStat(fgPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3p%', p3Pct)}>{formatStat(p3Pct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ft%', ftPct)}>{formatStat(ftPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ts%', tsPct)}>{formatStat(tsPct, true)}</TableCell>
                                     
+                                    {/* +/- gets colored */}
                                     <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`} style={getBgStyle('pm', s.plusMinus/g)}>
                                         {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
                                     </TableCell>
@@ -550,7 +577,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     <TableCell align="center" className={`${contentTextClass} text-red-400 border-r border-slate-800/30`} style={getBgStyle('losses', t.losses)}>{t.losses}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} text-slate-200 border-r border-slate-800/30`} style={getBgStyle('winPct', winPct)}>{winPct.toFixed(3)}</TableCell>
 
-                                    <TableCell align="center" className={`${contentTextClass} text-white border-r border-slate-800/30`} style={getBgStyle('pts', s.pts)}>{s.pts.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('pts', s.pts)}>{s.pts.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} text-red-300 border-r border-slate-800/30`} style={getBgStyle('pa', s.pa)}>{s.pa.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('reb', s.reb)}>{s.reb.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ast', s.ast)}>{s.ast.toFixed(1)}</TableCell>
@@ -558,10 +585,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('blk', s.blk)}>{s.blk.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('tov', s.tov)}>{s.tov.toFixed(1)}</TableCell>
                                     
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('fg%', s.fgPct)}>{formatStat(s.fgPct, true)}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('3p%', s.p3Pct)}>{formatStat(s.p3Pct, true)}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ft%', s.ftPct)}>{formatStat(s.ftPct, true)}</TableCell>
-                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ts%', s.tsPct)}>{formatStat(s.tsPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fg%', s.fgPct)}>{formatStat(s.fgPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3p%', s.p3Pct)}>{formatStat(s.p3Pct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ft%', s.ftPct)}>{formatStat(s.ftPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ts%', s.tsPct)}>{formatStat(s.tsPct, true)}</TableCell>
                                     
                                     <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`} style={getBgStyle('pm', s.pm)}>
                                         {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
