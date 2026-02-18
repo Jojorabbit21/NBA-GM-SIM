@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { BarChart2, ChevronLeft, ChevronRight, Users, Shield, ArrowUp, ArrowDown } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -14,7 +14,7 @@ interface LeaderboardViewProps {
   schedule?: Game[];
 }
 
-type SortKey = 'name' | 'team' | 'position' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins';
+type SortKey = 'name' | 'team' | 'position' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins' | 'losses' | 'winPct';
 type ViewMode = 'Players' | 'Teams';
 
 const ITEMS_PER_PAGE = 50;
@@ -22,12 +22,15 @@ const ITEMS_PER_PAGE = 50;
 // Column Widths
 const WIDTHS = {
     RANK: 50,
+    TEAM: 60,     // Moved before Name
     NAME: 180,
     POS: 60,
-    TEAM: 60,
     OVR: 60,
     STAT: 60,
-    WL: 80
+    // New Team Columns
+    W: 45,
+    L: 45,
+    PCT: 65,
 };
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
@@ -137,7 +140,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 case 'name': valA = pA.name; valB = pB.name; break;
                 case 'position': valA = pA.position; valB = pB.position; break;
                 case 'ovr': valA = calculatePlayerOvr(pA); valB = calculatePlayerOvr(pB); break;
-                case 'team': valA = (pA as any).teamCity; valB = (pB as any).teamCity; break;
+                case 'team': valA = (pA as any).teamCity; valB = (pB as any).teamCity; break; // This sort might be disabled in UI but kept in logic
                 case 'g': valA = pA.stats.g; valB = pB.stats.g; break;
                 case 'mp': valA = pA.stats.mp / gA; valB = pB.stats.mp / gB; break;
                 case 'pts': valA = pA.stats.pts / gA; valB = pB.stats.pts / gB; break;
@@ -165,6 +168,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             switch (sortConfig.key) {
                 case 'name': valA = tA.city; valB = tB.city; break;
                 case 'wins': valA = tA.wins; valB = tB.wins; break;
+                case 'losses': valA = tA.losses; valB = tB.losses; break;
+                case 'winPct': 
+                    valA = (tA.wins + tA.losses) > 0 ? tA.wins / (tA.wins + tA.losses) : 0;
+                    valB = (tB.wins + tB.losses) > 0 ? tB.wins / (tB.wins + tB.losses) : 0;
+                    break;
                 case 'g': valA = tA.stats.g; valB = tB.stats.g; break;
                 case 'mp': valA = tA.stats.mp; valB = tB.stats.mp; break;
                 case 'pts': valA = tA.stats.pts; valB = tB.stats.pts; break;
@@ -212,15 +220,31 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       </TableHeaderCell>
   );
 
-  // Calculate Sticky Positions
-  const LEFT_RANK = 0;
-  const LEFT_NAME = WIDTHS.RANK;
-  const LEFT_POS = WIDTHS.RANK + WIDTHS.NAME;
-  const LEFT_TEAM = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS;
-  const LEFT_OVR = WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS + WIDTHS.TEAM;
-  
-  const T_LEFT_WL = WIDTHS.RANK + WIDTHS.NAME; // For Teams mode
+  // Helper for sticky column styling to prevent gaps
+  const getStickyStyle = (left: number, width: number, isLast: boolean = false) => ({
+      left: left,
+      width: width,
+      minWidth: width, // Explicitly set min/max to prevent squishing
+      maxWidth: width,
+      position: 'sticky' as 'sticky',
+      zIndex: 30,
+      borderRight: isLast ? undefined : 'none', // Remove right border for seamless sticky unless last
+      boxShadow: isLast ? '4px 0 4px -2px rgba(0,0,0,0.5)' : 'none' // Shadow only on last
+  });
 
+  // Calculate Sticky Positions (Updated Order: Rank -> Team -> Name -> Pos -> Ovr)
+  // Players Mode Config
+  const P_LEFT_RANK = 0;
+  const P_LEFT_TEAM_LOGO = WIDTHS.RANK;
+  const P_LEFT_NAME = WIDTHS.RANK + WIDTHS.TEAM;
+  const P_LEFT_POS = P_LEFT_NAME + WIDTHS.NAME;
+  const P_LEFT_OVR = P_LEFT_POS + WIDTHS.POS;
+
+  // Teams Mode Config (Rank -> TeamName)
+  // W, L, PCT will NOT be sticky, they will scroll with other stats.
+  const T_LEFT_RANK = 0;
+  const T_LEFT_NAME = WIDTHS.RANK; 
+  
   const contentTextClass = "text-xs font-medium text-slate-300 font-mono";
 
   return (
@@ -247,19 +271,18 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           {/* Top Toolbar: View Mode Selector */}
           <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
               <div className="flex items-center gap-3">
-                  <span className="text-xs font-black uppercase text-slate-400 tracking-widest">통계 모드</span>
                   <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
                       <button 
                           onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Players' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Players' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                       >
-                          <Users size={14} /> Players
+                          선수
                       </button>
                       <button 
                           onClick={() => { setMode('Teams'); setCurrentPage(1); setSortConfig({key: 'wins', direction: 'desc'}); }}
-                          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Teams' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                          className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Teams' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
                       >
-                          <Shield size={14} /> Teams
+                          팀
                       </button>
                   </div>
               </div>
@@ -270,19 +293,26 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             <Table className="!rounded-none !border-0 !shadow-none" fullHeight={false} style={{ tableLayout: 'fixed', minWidth: '100%' }}>
                 <colgroup>
                     <col style={{ width: WIDTHS.RANK }} />
-                    <col style={{ width: WIDTHS.NAME }} />
                     {mode === 'Players' ? (
                         <>
-                            <col style={{ width: WIDTHS.POS }} />
                             <col style={{ width: WIDTHS.TEAM }} />
+                            <col style={{ width: WIDTHS.NAME }} />
+                            <col style={{ width: WIDTHS.POS }} />
                             <col style={{ width: WIDTHS.OVR }} />
+                            {/* Players have G and MIN */}
+                            <col style={{ width: WIDTHS.STAT }} /> {/* G */}
+                            <col style={{ width: WIDTHS.STAT }} /> {/* MIN */}
                         </>
                     ) : (
-                        <col style={{ width: WIDTHS.WL }} />
+                        <>
+                            <col style={{ width: WIDTHS.NAME }} />
+                            {/* Teams have W, L, PCT instead of G, MIN */}
+                            <col style={{ width: WIDTHS.W }} /> {/* W */}
+                            <col style={{ width: WIDTHS.L }} /> {/* L */}
+                            <col style={{ width: WIDTHS.PCT }} /> {/* PCT */}
+                        </>
                     )}
-                    {/* Stats Columns */}
-                    <col style={{ width: WIDTHS.STAT }} /> {/* G */}
-                    <col style={{ width: WIDTHS.STAT }} /> {/* MIN */}
+                    
                     <col style={{ width: WIDTHS.STAT }} /> {/* PTS */}
                     {mode === 'Teams' && <col style={{ width: WIDTHS.STAT }} />} {/* PA for Teams */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* REB */}
@@ -298,24 +328,34 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 </colgroup>
 
                 <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
-                    <TableHeaderCell style={{ left: 0 }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">#</TableHeaderCell>
+                    {/* Rank is common */}
+                    <TableHeaderCell style={getStickyStyle(0, WIDTHS.RANK)} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">#</TableHeaderCell>
                     
                     {mode === 'Players' ? (
                         <>
-                            <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
-                            <TableHeaderCell style={{ left: LEFT_POS }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
-                            <TableHeaderCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('team')} sortDirection={sortConfig.key === 'team' ? sortConfig.direction : null}>TEAM</TableHeaderCell>
-                            <TableHeaderCell style={{ left: LEFT_OVR }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
+                            {/* Team Column (Moved Left, Not Sortable) */}
+                            <TableHeaderCell style={getStickyStyle(P_LEFT_TEAM_LOGO, WIDTHS.TEAM)} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950">TEAM</TableHeaderCell>
+                            
+                            <TableHeaderCell style={getStickyStyle(P_LEFT_NAME, WIDTHS.NAME)} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>PLAYER NAME</TableHeaderCell>
+                            <TableHeaderCell style={getStickyStyle(P_LEFT_POS, WIDTHS.POS)} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}>POS</TableHeaderCell>
+                            {/* Last Sticky Column with Clip Path for Shadow */}
+                            <TableHeaderCell style={{ ...getStickyStyle(P_LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}>OVR</TableHeaderCell>
+                            
+                            <SortHeader label="G" sKey="g" width={WIDTHS.STAT} />
+                            <SortHeader label="MIN" sKey="mp" width={WIDTHS.STAT} />
                         </>
                     ) : (
                         <>
-                            <TableHeaderCell style={{ left: LEFT_NAME }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>TEAM NAME</TableHeaderCell>
-                            <TableHeaderCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className="border-r border-slate-800 bg-slate-950 shadow-[4px_0_8px_rgba(0,0,0,0.5)]" sortable onSort={() => handleSort('wins')} sortDirection={sortConfig.key === 'wins' ? sortConfig.direction : null}>W-L</TableHeaderCell>
+                            {/* Team Name is Last Sticky for Teams Mode */}
+                            <TableHeaderCell style={{ ...getStickyStyle(T_LEFT_NAME, WIDTHS.NAME, true), clipPath: 'inset(0 -15px 0 0)' }} stickyLeft align="left" className="pl-4 border-r border-slate-800 bg-slate-950" sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}>TEAM NAME</TableHeaderCell>
+                            
+                            {/* W, L, PCT instead of G, MIN */}
+                            <SortHeader label="W" sKey="wins" width={WIDTHS.W} />
+                            <SortHeader label="L" sKey="losses" width={WIDTHS.L} />
+                            <SortHeader label="WIN%" sKey="winPct" width={WIDTHS.PCT} />
                         </>
                     )}
                     
-                    <SortHeader label="G" sKey="g" width={WIDTHS.STAT} />
-                    <SortHeader label="MIN" sKey="mp" width={WIDTHS.STAT} />
                     <SortHeader label="PTS" sKey="pts" width={WIDTHS.STAT} />
                     {mode === 'Teams' && <SortHeader label="PA" sKey="pa" width={WIDTHS.STAT} />}
                     <SortHeader label="REB" sKey="reb" width={WIDTHS.STAT} />
@@ -350,22 +390,26 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
                             return (
                                 <TableRow key={p.id} onClick={() => setViewPlayer(p)} className="group h-10">
-                                    <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
-                                    <TableCell style={{ left: LEFT_NAME }} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
-                                        <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
-                                    </TableCell>
-                                    <TableCell style={{ left: LEFT_POS }} stickyLeft align="center" className={`text-xs font-semibold text-slate-500 border-r border-slate-800 ${stickyCellClass}`}>{p.position}</TableCell>
-                                    <TableCell style={{ left: LEFT_TEAM }} stickyLeft align="center" className={`border-r border-slate-800 ${stickyCellClass}`}>
+                                    <TableCell style={getStickyStyle(0, WIDTHS.RANK)} stickyLeft align="center" className={`font-medium text-xs ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
+                                    
+                                    <TableCell style={getStickyStyle(P_LEFT_TEAM_LOGO, WIDTHS.TEAM)} stickyLeft align="center" className={`border-r border-slate-800 ${stickyCellClass}`}>
                                         <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="xs" /></div>
                                     </TableCell>
-                                    <TableCell style={{ left: LEFT_OVR }} stickyLeft align="center" className={`border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] ${stickyCellClass}`}>
-                                        <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-6 !h-6 !text-[10px] shadow-none" /></div>
+                                    
+                                    <TableCell style={getStickyStyle(P_LEFT_NAME, WIDTHS.NAME)} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
+                                        <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
+                                    </TableCell>
+                                    
+                                    <TableCell style={getStickyStyle(P_LEFT_POS, WIDTHS.POS)} stickyLeft align="center" className={`text-xs font-semibold text-slate-500 border-r border-slate-800 ${stickyCellClass}`}>{p.position}</TableCell>
+                                    
+                                    <TableCell style={{ ...getStickyStyle(P_LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }} stickyLeft align="center" className={`border-r border-slate-800 ${stickyCellClass}`}>
+                                        <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
                                     
                                     <TableCell align="center" variant="stat" value={s.g} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
                                     
-                                    <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 font-bold`} />
+                                    <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 !font-bold`} />
                                     <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
@@ -377,7 +421,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
                                     
-                                    <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
                                     </TableCell>
                                 </TableRow>
@@ -385,21 +429,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                         } else {
                             const t = item as typeof teamStats[0];
                             const s = t.stats;
+                            const winPct = (t.wins + t.losses) > 0 ? t.wins / (t.wins + t.losses) : 0;
                             
                             return (
                                 <TableRow key={t.id} className="hover:bg-slate-800/30 group h-10">
-                                    <TableCell style={{ left: 0 }} stickyLeft align="center" className={`font-black ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
-                                    <TableCell style={{ left: LEFT_NAME }} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
+                                    <TableCell style={getStickyStyle(0, WIDTHS.RANK)} stickyLeft align="center" className={`font-medium text-xs ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
+                                    
+                                    <TableCell style={{ ...getStickyStyle(T_LEFT_NAME, WIDTHS.NAME, true), clipPath: 'inset(0 -15px 0 0)' }} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
                                         <div className="flex items-center gap-3">
                                             <TeamLogo teamId={t.id} size="sm" />
                                             <span className="text-xs font-semibold text-slate-200 uppercase truncate">{t.name}</span>
                                         </div>
                                     </TableCell>
-                                    <TableCell style={{ left: T_LEFT_WL }} stickyLeft align="center" className={`font-mono font-bold text-xs text-slate-400 border-r border-slate-800 shadow-[4px_0_8px_rgba(0,0,0,0.5)] ${stickyCellClass}`}>{t.wins}-{t.losses}</TableCell>
+                                    
+                                    {/* Team Stats: W, L, PCT */}
+                                    <TableCell align="center" variant="stat" value={t.wins} className={`${contentTextClass} text-emerald-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={t.losses} className={`${contentTextClass} text-red-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" variant="stat" value={winPct.toFixed(3)} className={`${contentTextClass} text-slate-200 border-r border-slate-800/30`} />
 
-                                    <TableCell align="center" variant="stat" value={s.g} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.mp} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 font-bold`} />
+                                    <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 !font-bold`} />
                                     <TableCell align="center" variant="stat" value={s.pa.toFixed(1)} className={`${contentTextClass} text-red-300 border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
@@ -412,7 +460,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
                                     <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
                                     
-                                    <TableCell align="center" className={`font-mono font-bold text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                         {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
                                     </TableCell>
                                 </TableRow>
