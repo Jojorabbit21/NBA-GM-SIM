@@ -59,60 +59,58 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
         <div className="flex flex-col border-b border-slate-800 bg-slate-900">
             <div className="px-6 py-4 flex flex-col xl:flex-row items-center gap-6">
                 
-                {/* Left Group: Breadcrumb Style Selectors & Heatmap Toggle */}
-                <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2">
-                        <Dropdown 
-                            trigger={
-                               <button className="flex items-center gap-1 text-base font-black text-white uppercase tracking-tight hover:text-indigo-400 transition-colors group">
-                                   <span>{mode}</span>
-                                   <ChevronDown size={14} className="text-slate-600 group-hover:text-indigo-400 mt-0.5" />
-                               </button>
-                            }
-                            items={[
-                                { id: 'Players', label: 'Players', onClick: () => setMode('Players'), active: mode === 'Players' },
-                                { id: 'Teams', label: 'Teams', onClick: () => setMode('Teams'), active: mode === 'Teams' }
-                            ]}
-                            width="w-32"
-                            align="left"
-                        />
+                {/* Left Group: Breadcrumb Style Selectors */}
+                <div className="flex items-center gap-2">
+                    <Dropdown 
+                        trigger={
+                           <button className="flex items-center gap-1 text-base font-black text-white uppercase tracking-tight hover:text-indigo-400 transition-colors group">
+                               <span>{mode}</span>
+                               <ChevronDown size={14} className="text-slate-600 group-hover:text-indigo-400 mt-0.5" />
+                           </button>
+                        }
+                        items={[
+                            { id: 'Players', label: 'Players', onClick: () => setMode('Players'), active: mode === 'Players' },
+                            { id: 'Teams', label: 'Teams', onClick: () => setMode('Teams'), active: mode === 'Teams' }
+                        ]}
+                        width="w-32"
+                        align="left"
+                    />
 
-                        <span className="text-slate-700 text-base font-light">/</span>
+                    <span className="text-slate-700 text-base font-light">/</span>
 
-                        <Dropdown 
-                            trigger={
-                               <button className="flex items-center gap-1 text-base font-black text-slate-400 uppercase tracking-tight hover:text-white transition-colors group">
-                                   <span>{statCategory}</span>
-                                   <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
-                               </button>
-                            }
-                            items={[
-                                { id: 'Traditional', label: 'Traditional (General)', onClick: () => setStatCategory('Traditional'), active: statCategory === 'Traditional' },
-                                { id: 'Shooting', label: 'Shooting (Zones)', onClick: () => setStatCategory('Shooting'), active: statCategory === 'Shooting' }
-                            ]}
-                            width="w-48"
-                            align="left"
-                        />
-                    </div>
+                    <Dropdown 
+                        trigger={
+                           <button className="flex items-center gap-1 text-base font-black text-slate-400 uppercase tracking-tight hover:text-white transition-colors group">
+                               <span>{statCategory}</span>
+                               <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
+                           </button>
+                        }
+                        items={[
+                            { id: 'Traditional', label: 'Traditional (General)', onClick: () => setStatCategory('Traditional'), active: statCategory === 'Traditional' },
+                            { id: 'Shooting', label: 'Shooting (Zones)', onClick: () => setStatCategory('Shooting'), active: statCategory === 'Shooting' }
+                        ]}
+                        width="w-48"
+                        align="left"
+                    />
+                </div>
 
-                    {/* Heatmap Toggle (Moved Here) */}
+                {/* Right Group: Filters & Toggles */}
+                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
+                    
+                    {/* Heatmap Toggle (Container Style) */}
                     <div 
-                        className="flex items-center gap-2 cursor-pointer group select-none" 
+                        className="flex items-center justify-between gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0" 
                         onClick={() => setShowHeatmap(!showHeatmap)}
                         title="스탯 분포 색상 표시"
                     >
-                        <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-800'}`}>
-                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'translate-x-6 left-0.5' : 'translate-x-0 left-1'}`} />
+                        <div className={`text-xs font-bold transition-colors ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
+                            색상 스케일
                         </div>
-                        <div className={`text-xs font-bold transition-colors ${showHeatmap ? 'text-indigo-400' : 'text-slate-600'}`}>
-                            <span className="hidden md:inline">색상 스케일</span>
+                        <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'translate-x-4.5 left-0.5' : 'translate-x-0 left-0.5'}`} />
                         </div>
                     </div>
-                </div>
 
-                {/* Right Group: Filter Inputs */}
-                <div className="flex flex-col md:flex-row items-center gap-4 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
-                    
                     {/* Stat Filter */}
                     <div className="flex items-center h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0">
                         <div className="px-3 flex items-center justify-center border-r border-slate-800 h-full text-slate-500">
@@ -179,15 +177,18 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
 
             {/* Active Filter Chips */}
             {activeFilters.length > 0 && (
-                <div className="px-6 pb-3 flex flex-wrap gap-2 animate-in slide-in-from-top-2">
-                    {activeFilters.map(filter => (
-                        <div key={filter.id} className="flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-xs font-bold text-indigo-300">
-                            <span>{filter.label}</span>
-                            <button onClick={() => removeFilter(filter.id)} className="hover:text-white transition-colors"><X size={12} /></button>
-                        </div>
-                    ))}
-                    <button onClick={clearFilters} className="text-xs font-bold text-slate-500 hover:text-red-400 underline decoration-slate-700 underline-offset-2 transition-colors ml-2">Clear All</button>
-                </div>
+                <>
+                    <div className="h-px bg-slate-800/60 mx-6 mb-3"></div>
+                    <div className="px-6 pb-3 flex flex-wrap gap-2 animate-in slide-in-from-top-2">
+                        {activeFilters.map(filter => (
+                            <div key={filter.id} className="flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-xs font-bold text-indigo-300">
+                                <span>{filter.label}</span>
+                                <button onClick={() => removeFilter(filter.id)} className="hover:text-white transition-colors"><X size={12} /></button>
+                            </div>
+                        ))}
+                        <button onClick={clearFilters} className="text-xs font-bold text-slate-500 hover:text-red-400 underline decoration-slate-700 underline-offset-2 transition-colors ml-2">모두 제거</button>
+                    </div>
+                </>
             )}
         </div>
     );
