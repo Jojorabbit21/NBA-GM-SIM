@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { BarChart2, ChevronLeft, ChevronRight, Zap, Filter, Calendar, X, Plus } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight, Zap, Filter, Calendar, X, Plus, ChevronDown } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -44,15 +44,15 @@ const WIDTHS = {
 };
 
 const STAT_OPTIONS = [
-    { value: 'pts', label: 'PTS (득점)' },
-    { value: 'reb', label: 'REB (리바운드)' },
-    { value: 'ast', label: 'AST (어시스트)' },
-    { value: 'stl', label: 'STL (스틸)' },
-    { value: 'blk', label: 'BLK (블록)' },
-    { value: 'tov', label: 'TOV (턴오버)' },
-    { value: 'fg%', label: 'FG% (야투율)' },
-    { value: '3p%', label: '3P% (3점슛)' },
-    { value: 'ovr', label: 'OVR (능력치)' },
+    { value: 'pts', label: 'PTS' },
+    { value: 'reb', label: 'REB' },
+    { value: 'ast', label: 'AST' },
+    { value: 'stl', label: 'STL' },
+    { value: 'blk', label: 'BLK' },
+    { value: 'tov', label: 'TOV' },
+    { value: 'fg%', label: 'FG%' },
+    { value: '3p%', label: '3P%' },
+    { value: 'ovr', label: 'OVR' },
 ];
 
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
@@ -99,7 +99,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           id: Date.now().toString(),
           type: 'date',
           value: JSON.stringify({ start: dateStart, end: dateEnd }),
-          label: `기간: ${dateStart} ~ ${dateEnd}`
+          label: `${dateStart} ~ ${dateEnd}`
       };
       setActiveFilters([...cleanFilters, newItem]);
       setDateStart('');
@@ -124,7 +124,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     );
   }, [teams]);
 
-  // 2. Aggregate Team Stats (Affected by Date Filter)
+  // 2. Aggregate Team Stats
   const teamStats = useMemo(() => {
     // Check for active date filter
     const dateFilter = activeFilters.find(f => f.type === 'date');
@@ -184,12 +184,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
         }), { reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
 
         const tsa = totals.fga + 0.44 * totals.fta;
-        // Adjust Per Game stats based on filtered games length? 
-        // Current implementation: Player stats are cumulative season stats in 'roster'. 
-        // Team stats from schedule are dynamic. 
-        // We will normalize roster aggregation by *82 games approx* if filtered, but simpler to keep season avg for roster based stats.
-        // For pure correctness with date filter: only W/L/PTS/PA/DIFF are strictly accurate range-based.
-
+        
         return {
             ...t,
             wins, // Override with filtered wins
@@ -269,10 +264,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   }, [mode, allPlayers, teamStats]);
 
   const getBgStyle = (key: string, value: number) => {
-    // 1. Check Global Toggle
     if (!showHeatmap) return undefined;
-    
-    // 2. Check Excluded Columns (G)
     if (key === 'g') return undefined;
 
     const range = statRanges[key];
@@ -292,38 +284,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     if (isInverse) {
         // Inverse: Lower (0.0) is Better (Green), Higher (1.0) is Worse (Red)
         if (ratio < 0.5) {
-            // Good Side (Green)
             color = '16, 185, 129'; // Emerald-500
-            // Map 0.0->0.5 opacity (Best), 0.5->0.0 opacity (Avg)
             opacity = (0.5 - ratio) * 2 * 0.5;
         } else {
-            // Bad Side (Red)
             color = '239, 68, 68'; // Red-500
-            // Map 1.0->0.5 opacity (Worst), 0.5->0.0 opacity (Avg)
             opacity = (ratio - 0.5) * 2 * 0.5;
         }
     } else {
         // Normal: Higher (1.0) is Better (Green), Lower (0.0) is Worse (Red)
         if (ratio > 0.5) {
-            // Good Side (Green)
             color = '16, 185, 129'; // Emerald-500
-            // Map 1.0->0.5 opacity (Best), 0.5->0.0 opacity (Avg)
             opacity = (ratio - 0.5) * 2 * 0.5;
         } else {
-            // Bad Side (Red)
             color = '239, 68, 68'; // Red-500
-            // Map 0.0->0.5 opacity (Worst), 0.5->0.0 opacity (Avg)
             opacity = (0.5 - ratio) * 2 * 0.5;
         }
     }
     
-    // Filter noise near average (opacity < 0.05) to keep UI clean
     if (opacity < 0.05) return undefined;
 
     return { backgroundColor: `rgba(${color}, ${opacity})` };
   };
-
-  // --- Sorting & Pagination Logic ---
 
   const handleSort = (key: SortKey) => {
     let direction: 'asc' | 'desc' = 'desc';
@@ -342,11 +323,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     if (activeFilters.length > 0) {
         data = data.filter(item => {
             return activeFilters.every(filter => {
-                if (filter.type !== 'stat') return true; // Date filters handled in teamStats/preprocessing
+                if (filter.type !== 'stat') return true; 
                 
                 let itemVal = 0;
                 
-                // Helper to get value
                 if (mode === 'Players') {
                     const p = item as Player;
                     const g = p.stats.g || 1;
@@ -399,7 +379,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 case 'name': valA = pA.name; valB = pB.name; break;
                 case 'position': valA = pA.position; valB = pB.position; break;
                 case 'ovr': valA = calculatePlayerOvr(pA); valB = calculatePlayerOvr(pB); break;
-                case 'team': valA = (pA as any).teamCity; valB = (pB as any).teamCity; break; // This sort might be disabled in UI but kept in logic
+                case 'team': valA = (pA as any).teamCity; valB = (pB as any).teamCity; break; 
                 case 'g': valA = pA.stats.g; valB = pB.stats.g; break;
                 case 'mp': valA = pA.stats.mp / gA; valB = pB.stats.mp / gB; break;
                 case 'pts': valA = pA.stats.pts / gA; valB = pB.stats.pts / gB; break;
@@ -530,8 +510,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           
           {/* Top Toolbar: View Mode Selector & Filters & Heatmap Toggle */}
           <div className="flex flex-col border-b border-slate-800 bg-slate-900">
-              <div className="px-6 py-4 flex flex-col xl:flex-row justify-between items-center gap-6">
-                  {/* Left: View Mode */}
+              <div className="px-6 py-4 flex flex-col xl:flex-row items-center gap-6">
+                  
+                  {/* Left Group: View Mode */}
                   <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
                       <button 
                           onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
@@ -547,70 +528,95 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                       </button>
                   </div>
 
-                  {/* Center: Filter Controls */}
-                  <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto overflow-x-auto">
+                  {/* Filter Group (Stat + Date) */}
+                  <div className="flex flex-col md:flex-row items-center gap-4 flex-1 overflow-x-auto w-full xl:w-auto">
                       
-                      {/* Stat Filter */}
-                      <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50">
-                          <div className="p-1.5 bg-slate-700 rounded-lg text-slate-400"><Filter size={14} /></div>
-                          <select 
-                              className="bg-transparent text-xs font-bold text-white outline-none border-none cursor-pointer w-24"
-                              value={filterCat}
-                              onChange={(e) => setFilterCat(e.target.value)}
-                          >
-                              {STAT_OPTIONS.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
-                          </select>
-                          <select 
-                              className="bg-slate-900 text-xs font-bold text-white outline-none border border-slate-700 rounded px-1 py-1 cursor-pointer"
-                              value={filterOp}
-                              onChange={(e) => setFilterOp(e.target.value as Operator)}
-                          >
-                              {['>=', '<=', '>', '<', '='].map(op => <option key={op} value={op}>{op}</option>)}
-                          </select>
+                      {/* Integrated Stat Filter */}
+                      <div className="flex items-center h-9 bg-slate-950 rounded-lg border border-slate-700/50 shadow-sm shrink-0">
+                          <div className="px-3 flex items-center justify-center border-r border-slate-700/50 h-full text-slate-500">
+                              <Filter size={14} />
+                          </div>
+                          
+                          {/* Category */}
+                          <div className="relative h-full border-r border-slate-700/50">
+                            <select 
+                                className="h-full bg-transparent pl-3 pr-7 text-xs font-bold text-white outline-none cursor-pointer appearance-none hover:bg-slate-800/30 transition-colors w-24"
+                                value={filterCat}
+                                onChange={(e) => setFilterCat(e.target.value)}
+                            >
+                                {STAT_OPTIONS.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
+                            </select>
+                            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                          </div>
+
+                          {/* Operator */}
+                          <div className="relative h-full border-r border-slate-700/50">
+                            <select 
+                                className="h-full bg-transparent px-2 text-xs font-bold text-indigo-400 outline-none cursor-pointer appearance-none text-center hover:bg-slate-800/30 transition-colors w-12"
+                                value={filterOp}
+                                onChange={(e) => setFilterOp(e.target.value as Operator)}
+                            >
+                                {['>=', '<=', '>', '<', '='].map(op => <option key={op} value={op} className="bg-slate-900 text-slate-300">{op}</option>)}
+                            </select>
+                          </div>
+
+                          {/* Value Input */}
                           <input 
                               type="number" 
                               placeholder="Value" 
-                              className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-bold text-white outline-none focus:border-indigo-500 transition-colors"
+                              className="h-full bg-transparent px-3 w-20 text-xs font-bold text-white outline-none placeholder:text-slate-600"
                               value={filterVal}
                               onChange={(e) => setFilterVal(e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && addStatFilter()}
                           />
-                          <button onClick={addStatFilter} className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Plus size={14} /></button>
+
+                          {/* Add Button */}
+                          <button onClick={addStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-700/50 text-slate-400 hover:text-white hover:bg-indigo-600/20 transition-all">
+                              <Plus size={14} />
+                          </button>
                       </div>
 
-                      {/* Date Filter */}
-                      <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50">
-                          <div className="p-1.5 bg-slate-700 rounded-lg text-slate-400"><Calendar size={14} /></div>
-                          <input 
-                              type="date" 
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-indigo-500"
-                              value={dateStart}
-                              onChange={(e) => setDateStart(e.target.value)}
-                          />
-                          <span className="text-slate-500 text-xs">-</span>
-                          <input 
-                              type="date" 
-                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-indigo-500"
-                              value={dateEnd}
-                              onChange={(e) => setDateEnd(e.target.value)}
-                          />
-                          <button onClick={addDateFilter} className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Plus size={14} /></button>
-                      </div>
-                  </div>
+                      {/* Integrated Date Filter */}
+                      <div className="flex items-center h-9 bg-slate-950 rounded-lg border border-slate-700/50 shadow-sm shrink-0">
+                          <div className="px-3 flex items-center justify-center border-r border-slate-700/50 h-full text-slate-500">
+                              <Calendar size={14} />
+                          </div>
+                          
+                          <div className="flex items-center h-full">
+                              <input 
+                                  type="date" 
+                                  className="h-full bg-transparent px-2 text-[10px] font-bold text-white outline-none w-24 [&::-webkit-calendar-picker-indicator]:hidden"
+                                  value={dateStart}
+                                  onChange={(e) => setDateStart(e.target.value)}
+                              />
+                              <span className="text-slate-600 text-xs px-1">~</span>
+                              <input 
+                                  type="date" 
+                                  className="h-full bg-transparent px-2 text-[10px] font-bold text-white outline-none w-24 [&::-webkit-calendar-picker-indicator]:hidden"
+                                  value={dateEnd}
+                                  onChange={(e) => setDateEnd(e.target.value)}
+                              />
+                          </div>
 
-                  {/* Right: Heatmap Toggle */}
-                  <div 
-                      className="flex items-center gap-3 cursor-pointer group select-none shrink-0" 
-                      onClick={() => setShowHeatmap(!showHeatmap)}
-                      title="스탯 분포 색상 표시 (Heatmap)"
-                  >
-                        <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-700'}`}>
-                            <div className={`absolute top-1 bottom-1 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'left-6' : 'left-1'}`} />
-                        </div>
-                        <div className={`text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
-                            <Zap size={14} className={showHeatmap ? 'fill-indigo-400' : ''} />
-                            <span>Heatmap</span>
-                        </div>
+                          <button onClick={addDateFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-700/50 text-slate-400 hover:text-white hover:bg-indigo-600/20 transition-all">
+                              <Plus size={14} />
+                          </button>
+                      </div>
+
+                      {/* Heatmap Toggle */}
+                      <div 
+                          className="flex items-center gap-3 cursor-pointer group select-none shrink-0 ml-2" 
+                          onClick={() => setShowHeatmap(!showHeatmap)}
+                          title="스탯 분포 색상 표시 (Heatmap)"
+                      >
+                            <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-700'}`}>
+                                <div className={`absolute top-1 bottom-1 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'left-6' : 'left-1'}`} />
+                            </div>
+                            <div className={`text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                <Zap size={14} className={showHeatmap ? 'fill-indigo-400' : ''} />
+                                <span className="hidden md:inline">Heatmap</span>
+                            </div>
+                      </div>
                   </div>
               </div>
 
