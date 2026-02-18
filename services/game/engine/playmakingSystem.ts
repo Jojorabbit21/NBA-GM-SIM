@@ -21,8 +21,21 @@ export function calculatePlaymakingStats(
     // 2. Turnovers (Direct Event)
     const usageProxy = (fga + (assistWeight / 3)); 
     
+    // Base Risks
+    // High ball movement (Pass heavy) slightly increases intercept risk but opens floor
+    // Pressure Risk comes from Defense Intensity Slider
+    const passRisk = sliders.ballMovement * 0.01;
+    const pressureRisk = sliders.defIntensity * 0.015;
+
+    // [New] Full Court Press Risk
+    // Adds direct turnover probability based on press intensity
+    // Level 1: 0%, Level 10: 5.4% flat increase
+    const pressRisk = (sliders.fullCourtPress - 1) * 0.006; 
+    
+    // Attribute Mitigation
     const tovAttr = (100 - p.handling) * 0.06 + (100 - p.passIq) * 0.04;
     
+    // Combine Factors
     let tovBase = (usageProxy * C.TOV_USAGE_FACTOR) + tovAttr; 
 
     // [New] Haste Malus for Turnovers
@@ -42,7 +55,11 @@ export function calculatePlaymakingStats(
         tovBase += (usageProxy * 0.05);
     }
 
-    let tov = Math.round(tovBase * (mp / 48) * (Math.random() * 0.5 + 0.7));
+    // Apply Press Risk here
+    const finalRiskFactor = 0.05 + passRisk + pressureRisk + pressRisk;
+    
+    // Final Calculation with randomness
+    let tov = Math.round((tovBase + (usageProxy * finalRiskFactor)) * (mp / 48) * (Math.random() * 0.5 + 0.7));
 
     // Ace Stopper Impact on Turnovers
     if (isAceTarget && stopper) {
