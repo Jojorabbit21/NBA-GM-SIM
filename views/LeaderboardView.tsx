@@ -14,7 +14,7 @@ interface LeaderboardViewProps {
   schedule?: Game[];
 }
 
-type SortKey = 'name' | 'team' | 'position' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins' | 'losses' | 'winPct';
+type SortKey = 'name' | 'team' | 'position' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'oreb' | 'dreb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | 'fgm' | 'fga' | '3p%' | '3pm' | '3pa' | 'ft%' | 'ftm' | 'fta' | 'ts%' | 'pm' | 'wins' | 'losses' | 'winPct';
 type ViewMode = 'Players' | 'Teams';
 type Operator = '>' | '<' | '>=' | '<=' | '=';
 
@@ -32,26 +32,33 @@ const ITEMS_PER_PAGE = 50;
 // Column Widths
 const WIDTHS = {
     RANK: 50,
-    // TEAM: 60, // Removed
-    NAME: 240,   // Increased width to accommodate Logo + Name
-    POS: 60,
-    OVR: 60,
-    STAT: 60,
+    NAME: 200,   // Reduced slightly to fit more cols
+    POS: 50,
+    OVR: 50,
+    STAT: 50,    // Reduced standard stat width
+    PCT: 60,     // Percentages need a bit more
     // New Team Columns
-    W: 45,
-    L: 45,
-    PCT: 65,
+    W: 40,
+    L: 40,
 };
 
 const STAT_OPTIONS = [
     { value: 'pts', label: 'PTS' },
     { value: 'reb', label: 'REB' },
+    { value: 'oreb', label: 'OREB' },
+    { value: 'dreb', label: 'DREB' },
     { value: 'ast', label: 'AST' },
     { value: 'stl', label: 'STL' },
     { value: 'blk', label: 'BLK' },
     { value: 'tov', label: 'TOV' },
+    { value: 'fgm', label: 'FGM' },
+    { value: 'fga', label: 'FGA' },
     { value: 'fg%', label: 'FG%' },
+    { value: '3pm', label: '3PM' },
+    { value: '3pa', label: '3PA' },
     { value: '3p%', label: '3P%' },
+    { value: 'ftm', label: 'FTM' },
+    { value: 'fta', label: 'FTA' },
     { value: 'ovr', label: 'OVR' },
 ];
 
@@ -168,9 +175,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             else losses++;
         });
 
-        // Aggregate other stats from roster (Note: Roster stats are total season, tough to date-filter without boxscore history)
+        // Aggregate other stats from roster
         const totals = t.roster.reduce((acc, p) => ({
             reb: acc.reb + p.stats.reb,
+            offReb: acc.offReb + (p.stats.offReb || 0),
+            defReb: acc.defReb + (p.stats.defReb || 0),
             ast: acc.ast + p.stats.ast,
             stl: acc.stl + p.stats.stl,
             blk: acc.blk + p.stats.blk,
@@ -181,7 +190,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             p3a: acc.p3a + p.stats.p3a,
             ftm: acc.ftm + p.stats.ftm,
             fta: acc.fta + p.stats.fta,
-        }), { reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+        }), { reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
 
         const tsa = totals.fga + 0.44 * totals.fta;
         
@@ -194,15 +203,29 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 mp: 48,
                 pts: totalPts / playedCount,
                 pa: totalPa / playedCount,
-                reb: totals.reb / (t.wins + t.losses || 1), // Keep season avg
+                
+                // Aggregated stats per game
+                reb: totals.reb / (t.wins + t.losses || 1), 
+                oreb: totals.offReb / (t.wins + t.losses || 1),
+                dreb: totals.defReb / (t.wins + t.losses || 1),
                 ast: totals.ast / (t.wins + t.losses || 1),
                 stl: totals.stl / (t.wins + t.losses || 1),
                 blk: totals.blk / (t.wins + t.losses || 1),
                 tov: totals.tov / (t.wins + t.losses || 1),
+                
+                fgm: totals.fgm / (t.wins + t.losses || 1),
+                fga: totals.fga / (t.wins + t.losses || 1),
                 fgPct: totals.fga > 0 ? totals.fgm / totals.fga : 0,
+                
+                p3m: totals.p3m / (t.wins + t.losses || 1),
+                p3a: totals.p3a / (t.wins + t.losses || 1),
                 p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
+                
+                ftm: totals.ftm / (t.wins + t.losses || 1),
+                fta: totals.fta / (t.wins + t.losses || 1),
                 ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
-                tsPct: tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0, // Approx
+                
+                tsPct: tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0, 
                 pm: (totalPts - totalPa) / playedCount,
             }
         };
@@ -228,12 +251,23 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             update('mp', s.mp / g);
             update('pts', s.pts / g);
             update('reb', s.reb / g);
+            update('oreb', (s.offReb || 0) / g);
+            update('dreb', (s.defReb || 0) / g);
             update('ast', s.ast / g);
             update('stl', s.stl / g);
             update('blk', s.blk / g);
             update('tov', s.tov / g);
+            
+            update('fgm', s.fgm / g);
+            update('fga', s.fga / g);
             update('fg%', s.fga > 0 ? s.fgm / s.fga : 0);
+            
+            update('3pm', s.p3m / g);
+            update('3pa', s.p3a / g);
             update('3p%', s.p3a > 0 ? s.p3m / s.p3a : 0);
+            
+            update('ftm', s.ftm / g);
+            update('fta', s.fta / g);
             update('ft%', s.fta > 0 ? s.ftm / s.fta : 0);
             
             const tsa = s.fga + 0.44 * s.fta;
@@ -249,13 +283,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             update('pts', s.pts);
             update('pa', s.pa);
             update('reb', s.reb);
+            update('oreb', s.oreb);
+            update('dreb', s.dreb);
             update('ast', s.ast);
             update('stl', s.stl);
             update('blk', s.blk);
             update('tov', s.tov);
+            
+            update('fgm', s.fgm);
+            update('fga', s.fga);
             update('fg%', s.fgPct);
+            
+            update('3pm', s.p3m);
+            update('3pa', s.p3a);
             update('3p%', s.p3Pct);
+            
+            update('ftm', s.ftm);
+            update('fta', s.fta);
             update('ft%', s.ftPct);
+            
             update('ts%', s.tsPct);
             update('pm', s.pm);
         });
@@ -265,7 +311,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
   const getBgStyle = (key: string, value: number) => {
     if (!showHeatmap) return undefined;
-    if (key === 'g') return undefined;
+    if (key === 'g' || key === 'mp') return undefined; // No heatmap for G/MIN
 
     const range = statRanges[key];
     if (!range || range.max === range.min) return undefined;
@@ -282,21 +328,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     let opacity = 0;
 
     if (isInverse) {
-        // Inverse: Lower (0.0) is Better (Green), Higher (1.0) is Worse (Red)
         if (ratio < 0.5) {
-            color = '16, 185, 129'; // Emerald-500
+            color = '16, 185, 129'; // Emerald
             opacity = (0.5 - ratio) * 2 * 0.5;
         } else {
-            color = '239, 68, 68'; // Red-500
+            color = '239, 68, 68'; // Red
             opacity = (ratio - 0.5) * 2 * 0.5;
         }
     } else {
-        // Normal: Higher (1.0) is Better (Green), Lower (0.0) is Worse (Red)
         if (ratio > 0.5) {
-            color = '16, 185, 129'; // Emerald-500
+            color = '16, 185, 129'; // Emerald
             opacity = (ratio - 0.5) * 2 * 0.5;
         } else {
-            color = '239, 68, 68'; // Red-500
+            color = '239, 68, 68'; // Red
             opacity = (0.5 - ratio) * 2 * 0.5;
         }
     }
@@ -332,23 +376,45 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                     const g = p.stats.g || 1;
                     if (filter.category === 'pts') itemVal = p.stats.pts / g;
                     else if (filter.category === 'reb') itemVal = p.stats.reb / g;
+                    else if (filter.category === 'oreb') itemVal = (p.stats.offReb || 0) / g;
+                    else if (filter.category === 'dreb') itemVal = (p.stats.defReb || 0) / g;
                     else if (filter.category === 'ast') itemVal = p.stats.ast / g;
                     else if (filter.category === 'stl') itemVal = p.stats.stl / g;
                     else if (filter.category === 'blk') itemVal = p.stats.blk / g;
                     else if (filter.category === 'tov') itemVal = p.stats.tov / g;
+                    
+                    else if (filter.category === 'fgm') itemVal = p.stats.fgm / g;
+                    else if (filter.category === 'fga') itemVal = p.stats.fga / g;
                     else if (filter.category === 'fg%') itemVal = (p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0) * 100;
+                    
+                    else if (filter.category === '3pm') itemVal = p.stats.p3m / g;
+                    else if (filter.category === '3pa') itemVal = p.stats.p3a / g;
                     else if (filter.category === '3p%') itemVal = (p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0) * 100;
+                    
+                    else if (filter.category === 'ftm') itemVal = p.stats.ftm / g;
+                    else if (filter.category === 'fta') itemVal = p.stats.fta / g;
                     else if (filter.category === 'ovr') itemVal = calculatePlayerOvr(p);
                 } else {
                     const t = item as typeof teamStats[0];
                     if (filter.category === 'pts') itemVal = t.stats.pts;
                     else if (filter.category === 'reb') itemVal = t.stats.reb;
+                    else if (filter.category === 'oreb') itemVal = t.stats.oreb;
+                    else if (filter.category === 'dreb') itemVal = t.stats.dreb;
                     else if (filter.category === 'ast') itemVal = t.stats.ast;
                     else if (filter.category === 'stl') itemVal = t.stats.stl;
                     else if (filter.category === 'blk') itemVal = t.stats.blk;
                     else if (filter.category === 'tov') itemVal = t.stats.tov;
+                    
+                    else if (filter.category === 'fgm') itemVal = t.stats.fgm;
+                    else if (filter.category === 'fga') itemVal = t.stats.fga;
                     else if (filter.category === 'fg%') itemVal = t.stats.fgPct * 100;
+                    
+                    else if (filter.category === '3pm') itemVal = t.stats.p3m;
+                    else if (filter.category === '3pa') itemVal = t.stats.p3a;
                     else if (filter.category === '3p%') itemVal = t.stats.p3Pct * 100;
+                    
+                    else if (filter.category === 'ftm') itemVal = t.stats.ftm;
+                    else if (filter.category === 'fta') itemVal = t.stats.fta;
                 }
 
                 const criteria = filter.value as number;
@@ -384,12 +450,20 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 case 'mp': valA = pA.stats.mp / gA; valB = pB.stats.mp / gB; break;
                 case 'pts': valA = pA.stats.pts / gA; valB = pB.stats.pts / gB; break;
                 case 'reb': valA = pA.stats.reb / gA; valB = pB.stats.reb / gB; break;
+                case 'oreb': valA = (pA.stats.offReb || 0) / gA; valB = (pB.stats.offReb || 0) / gB; break;
+                case 'dreb': valA = (pA.stats.defReb || 0) / gA; valB = (pB.stats.defReb || 0) / gB; break;
                 case 'ast': valA = pA.stats.ast / gA; valB = pB.stats.ast / gB; break;
                 case 'stl': valA = pA.stats.stl / gA; valB = pB.stats.stl / gB; break;
                 case 'blk': valA = pA.stats.blk / gA; valB = pB.stats.blk / gB; break;
                 case 'tov': valA = pA.stats.tov / gA; valB = pB.stats.tov / gB; break;
+                case 'fgm': valA = pA.stats.fgm / gA; valB = pB.stats.fgm / gB; break;
+                case 'fga': valA = pA.stats.fga / gA; valB = pB.stats.fga / gB; break;
                 case 'fg%': valA = pA.stats.fga > 0 ? pA.stats.fgm / pA.stats.fga : 0; valB = pB.stats.fga > 0 ? pB.stats.fgm / pB.stats.fga : 0; break;
+                case '3pm': valA = pA.stats.p3m / gA; valB = pB.stats.p3m / gB; break;
+                case '3pa': valA = pA.stats.p3a / gA; valB = pB.stats.p3a / gB; break;
                 case '3p%': valA = pA.stats.p3a > 0 ? pA.stats.p3m / pA.stats.p3a : 0; valB = pB.stats.p3a > 0 ? pB.stats.p3m / pB.stats.p3a : 0; break;
+                case 'ftm': valA = pA.stats.ftm / gA; valB = pB.stats.ftm / gB; break;
+                case 'fta': valA = pA.stats.fta / gA; valB = pB.stats.fta / gB; break;
                 case 'ft%': valA = pA.stats.fta > 0 ? pA.stats.ftm / pA.stats.fta : 0; valB = pB.stats.fta > 0 ? pB.stats.ftm / pB.stats.fta : 0; break;
                 case 'ts%': {
                     const tsaA = pA.stats.fga + 0.44 * pA.stats.fta;
@@ -417,13 +491,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                 case 'pts': valA = tA.stats.pts; valB = tB.stats.pts; break;
                 case 'pa': valA = tA.stats.pa; valB = tB.stats.pa; break;
                 case 'reb': valA = tA.stats.reb; valB = tB.stats.reb; break;
+                case 'oreb': valA = tA.stats.oreb; valB = tB.stats.oreb; break;
+                case 'dreb': valA = tA.stats.dreb; valB = tB.stats.dreb; break;
                 case 'ast': valA = tA.stats.ast; valB = tB.stats.ast; break;
                 case 'stl': valA = tA.stats.stl; valB = tB.stats.stl; break;
                 case 'blk': valA = tA.stats.blk; valB = tB.stats.blk; break;
                 case 'tov': valA = tA.stats.tov; valB = tB.stats.tov; break;
+                
+                case 'fgm': valA = tA.stats.fgm; valB = tB.stats.fgm; break;
+                case 'fga': valA = tA.stats.fga; valB = tB.stats.fga; break;
                 case 'fg%': valA = tA.stats.fgPct; valB = tB.stats.fgPct; break;
+                
+                case '3pm': valA = tA.stats.p3m; valB = tB.stats.p3m; break;
+                case '3pa': valA = tA.stats.p3a; valB = tB.stats.p3a; break;
                 case '3p%': valA = tA.stats.p3Pct; valB = tB.stats.p3Pct; break;
+                
+                case 'ftm': valA = tA.stats.ftm; valB = tB.stats.ftm; break;
+                case 'fta': valA = tA.stats.fta; valB = tB.stats.fta; break;
                 case 'ft%': valA = tA.stats.ftPct; valB = tB.stats.ftPct; break;
+                
                 case 'ts%': valA = tA.stats.tsPct; valB = tB.stats.tsPct; break;
                 case 'pm': valA = tA.stats.pm; valB = tB.stats.pm; break;
             }
@@ -532,27 +618,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                   <div className="flex flex-col md:flex-row items-center gap-4 flex-1 overflow-x-auto w-full xl:w-auto">
                       
                       {/* Integrated Stat Filter */}
-                      <div className="flex items-center h-9 bg-slate-950 rounded-lg border border-slate-700/50 shadow-sm shrink-0">
+                      <div className="flex items-center h-[42px] bg-slate-950 rounded-xl border border-slate-700/50 shadow-sm shrink-0">
                           <div className="px-3 flex items-center justify-center border-r border-slate-700/50 h-full text-slate-500">
-                              <Filter size={14} />
+                              <Filter size={16} />
                           </div>
                           
                           {/* Category */}
                           <div className="relative h-full border-r border-slate-700/50">
                             <select 
-                                className="h-full bg-transparent pl-3 pr-7 text-xs font-bold text-white outline-none cursor-pointer appearance-none hover:bg-slate-800/30 transition-colors w-24"
+                                className="h-full bg-transparent pl-3 pr-7 text-sm font-medium text-white outline-none cursor-pointer appearance-none hover:bg-slate-800/30 transition-colors w-28"
                                 value={filterCat}
                                 onChange={(e) => setFilterCat(e.target.value)}
                             >
                                 {STAT_OPTIONS.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
                             </select>
-                            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                            <ChevronDown size={14} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
                           </div>
 
                           {/* Operator */}
                           <div className="relative h-full border-r border-slate-700/50">
                             <select 
-                                className="h-full bg-transparent px-2 text-xs font-bold text-indigo-400 outline-none cursor-pointer appearance-none text-center hover:bg-slate-800/30 transition-colors w-12"
+                                className="h-full bg-transparent px-2 text-sm font-medium text-indigo-400 outline-none cursor-pointer appearance-none text-center hover:bg-slate-800/30 transition-colors w-14"
                                 value={filterOp}
                                 onChange={(e) => setFilterOp(e.target.value as Operator)}
                             >
@@ -564,42 +650,42 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                           <input 
                               type="number" 
                               placeholder="Value" 
-                              className="h-full bg-transparent px-3 w-20 text-xs font-bold text-white outline-none placeholder:text-slate-600"
+                              className="h-full bg-transparent px-3 w-20 text-sm font-medium text-white outline-none placeholder:text-slate-600"
                               value={filterVal}
                               onChange={(e) => setFilterVal(e.target.value)}
                               onKeyDown={(e) => e.key === 'Enter' && addStatFilter()}
                           />
 
                           {/* Add Button */}
-                          <button onClick={addStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-700/50 text-slate-400 hover:text-white hover:bg-indigo-600/20 transition-all">
-                              <Plus size={14} />
+                          <button onClick={addStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-700/50 text-slate-400 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-xl">
+                              <Plus size={16} />
                           </button>
                       </div>
 
                       {/* Integrated Date Filter */}
-                      <div className="flex items-center h-9 bg-slate-950 rounded-lg border border-slate-700/50 shadow-sm shrink-0">
+                      <div className="flex items-center h-[42px] bg-slate-900 rounded-xl border border-slate-700/50 shadow-sm shrink-0">
                           <div className="px-3 flex items-center justify-center border-r border-slate-700/50 h-full text-slate-500">
-                              <Calendar size={14} />
+                              <Calendar size={16} />
                           </div>
                           
                           <div className="flex items-center h-full">
                               <input 
                                   type="date" 
-                                  className="h-full bg-transparent px-2 text-[10px] font-bold text-white outline-none w-24 [&::-webkit-calendar-picker-indicator]:hidden"
+                                  className="h-full bg-transparent px-3 text-sm font-medium text-white outline-none w-32 [&::-webkit-calendar-picker-indicator]:hidden"
                                   value={dateStart}
                                   onChange={(e) => setDateStart(e.target.value)}
                               />
-                              <span className="text-slate-600 text-xs px-1">~</span>
+                              <span className="text-slate-600 text-sm px-1">~</span>
                               <input 
                                   type="date" 
-                                  className="h-full bg-transparent px-2 text-[10px] font-bold text-white outline-none w-24 [&::-webkit-calendar-picker-indicator]:hidden"
+                                  className="h-full bg-transparent px-3 text-sm font-medium text-white outline-none w-32 [&::-webkit-calendar-picker-indicator]:hidden"
                                   value={dateEnd}
                                   onChange={(e) => setDateEnd(e.target.value)}
                               />
                           </div>
 
-                          <button onClick={addDateFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-700/50 text-slate-400 hover:text-white hover:bg-indigo-600/20 transition-all">
-                              <Plus size={14} />
+                          <button onClick={addDateFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-700/50 text-slate-400 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-xl">
+                              <Plus size={16} />
                           </button>
                       </div>
 
@@ -607,14 +693,13 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                       <div 
                           className="flex items-center gap-3 cursor-pointer group select-none shrink-0 ml-2" 
                           onClick={() => setShowHeatmap(!showHeatmap)}
-                          title="스탯 분포 색상 표시 (Heatmap)"
+                          title="스탯 분포 색상 표시"
                       >
                             <div className={`w-10 h-5 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-700'}`}>
                                 <div className={`absolute top-1 bottom-1 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'left-6' : 'left-1'}`} />
                             </div>
-                            <div className={`text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
-                                <Zap size={14} className={showHeatmap ? 'fill-indigo-400' : ''} />
-                                <span className="hidden md:inline">Heatmap</span>
+                            <div className={`text-sm font-medium transition-colors ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                <span className="hidden md:inline">색상 스케일</span>
                             </div>
                       </div>
                   </div>
@@ -661,15 +746,23 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                     
                     <col style={{ width: WIDTHS.STAT }} /> {/* PTS */}
                     {mode === 'Teams' && <col style={{ width: WIDTHS.STAT }} />} {/* PA for Teams */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* OREB */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* DREB */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* REB */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* AST */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* STL */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* BLK */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* TOV */}
-                    <col style={{ width: WIDTHS.STAT }} /> {/* FG% */}
-                    <col style={{ width: WIDTHS.STAT }} /> {/* 3P% */}
-                    <col style={{ width: WIDTHS.STAT }} /> {/* FT% */}
-                    <col style={{ width: WIDTHS.STAT }} /> {/* TS% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* FGM */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* FGA */}
+                    <col style={{ width: WIDTHS.PCT }} /> {/* FG% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* 3PM */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* 3PA */}
+                    <col style={{ width: WIDTHS.PCT }} /> {/* 3P% */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* FTM */}
+                    <col style={{ width: WIDTHS.STAT }} /> {/* FTA */}
+                    <col style={{ width: WIDTHS.PCT }} /> {/* FT% */}
+                    <col style={{ width: WIDTHS.PCT }} /> {/* TS% */}
                     <col style={{ width: WIDTHS.STAT }} /> {/* +/- */}
                 </colgroup>
 
@@ -705,15 +798,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                     
                     <SortHeader label="PTS" sKey="pts" width={WIDTHS.STAT} />
                     {mode === 'Teams' && <SortHeader label="PA" sKey="pa" width={WIDTHS.STAT} />}
+                    <SortHeader label="OREB" sKey="oreb" width={WIDTHS.STAT} />
+                    <SortHeader label="DREB" sKey="dreb" width={WIDTHS.STAT} />
                     <SortHeader label="REB" sKey="reb" width={WIDTHS.STAT} />
                     <SortHeader label="AST" sKey="ast" width={WIDTHS.STAT} />
                     <SortHeader label="STL" sKey="stl" width={WIDTHS.STAT} />
                     <SortHeader label="BLK" sKey="blk" width={WIDTHS.STAT} />
                     <SortHeader label="TOV" sKey="tov" width={WIDTHS.STAT} />
-                    <SortHeader label="FG%" sKey="fg%" width={WIDTHS.STAT} />
-                    <SortHeader label="3P%" sKey="3p%" width={WIDTHS.STAT} />
-                    <SortHeader label="FT%" sKey="ft%" width={WIDTHS.STAT} />
-                    <SortHeader label="TS%" sKey="ts%" width={WIDTHS.STAT} />
+                    
+                    <SortHeader label="FGM" sKey="fgm" width={WIDTHS.STAT} />
+                    <SortHeader label="FGA" sKey="fga" width={WIDTHS.STAT} />
+                    <SortHeader label="FG%" sKey="fg%" width={WIDTHS.PCT} />
+                    
+                    <SortHeader label="3PM" sKey="3pm" width={WIDTHS.STAT} />
+                    <SortHeader label="3PA" sKey="3pa" width={WIDTHS.STAT} />
+                    <SortHeader label="3P%" sKey="3p%" width={WIDTHS.PCT} />
+                    
+                    <SortHeader label="FTM" sKey="ftm" width={WIDTHS.STAT} />
+                    <SortHeader label="FTA" sKey="fta" width={WIDTHS.STAT} />
+                    <SortHeader label="FT%" sKey="ft%" width={WIDTHS.PCT} />
+                    
+                    <SortHeader label="TS%" sKey="ts%" width={WIDTHS.PCT} />
                     <SortHeader label="+/-" sKey="pm" width={WIDTHS.STAT} />
                 </TableHead>
                 <TableBody>
@@ -758,15 +863,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('mp', s.mp/g)}>{(s.mp/g).toFixed(1)}</TableCell>
                                     
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('pts', s.pts/g)}>{(s.pts/g).toFixed(1)}</TableCell>
+                                    
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('oreb', (s.offReb||0)/g)}>{((s.offReb||0)/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('dreb', (s.defReb||0)/g)}>{((s.defReb||0)/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('reb', s.reb/g)}>{(s.reb/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ast', s.ast/g)}>{(s.ast/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('stl', s.stl/g)}>{(s.stl/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('blk', s.blk/g)}>{(s.blk/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('tov', s.tov/g)}>{(s.tov/g).toFixed(1)}</TableCell>
                                     
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fgm', s.fgm/g)}>{(s.fgm/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fga', s.fga/g)}>{(s.fga/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fg%', fgPct)}>{formatStat(fgPct, true)}</TableCell>
+                                    
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3pm', s.p3m/g)}>{(s.p3m/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3pa', s.p3a/g)}>{(s.p3a/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3p%', p3Pct)}>{formatStat(p3Pct, true)}</TableCell>
+                                    
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ftm', s.ftm/g)}>{(s.ftm/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fta', s.fta/g)}>{(s.fta/g).toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ft%', ftPct)}>{formatStat(ftPct, true)}</TableCell>
+                                    
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ts%', tsPct)}>{formatStat(tsPct, true)}</TableCell>
                                     
                                     {/* +/- gets colored */}
@@ -798,15 +915,27 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('pts', s.pts)}>{s.pts.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} text-red-300 border-r border-slate-800/30`} style={getBgStyle('pa', s.pa)}>{s.pa.toFixed(1)}</TableCell>
+                                    
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('oreb', s.oreb)}>{s.oreb.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('dreb', s.dreb)}>{s.dreb.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('reb', s.reb)}>{s.reb.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ast', s.ast)}>{s.ast.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('stl', s.stl)}>{s.stl.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('blk', s.blk)}>{s.blk.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('tov', s.tov)}>{s.tov.toFixed(1)}</TableCell>
                                     
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fgm', s.fgm)}>{s.fgm.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fga', s.fga)}>{s.fga.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fg%', s.fgPct)}>{formatStat(s.fgPct, true)}</TableCell>
+                                    
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3pm', s.p3m)}>{s.p3m.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3pa', s.p3a)}>{s.p3a.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('3p%', s.p3Pct)}>{formatStat(s.p3Pct, true)}</TableCell>
+                                    
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ftm', s.ftm)}>{s.ftm.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('fta', s.fta)}>{s.fta.toFixed(1)}</TableCell>
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ft%', s.ftPct)}>{formatStat(s.ftPct, true)}</TableCell>
+                                    
                                     <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ts%', s.tsPct)}>{formatStat(s.tsPct, true)}</TableCell>
                                     
                                     <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`} style={getBgStyle('pm', s.pm)}>
@@ -819,7 +948,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                     
                     {currentData.length === 0 && (
                         <TableRow>
-                            <TableCell colSpan={15} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
+                            <TableCell colSpan={24} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
                                 데이터가 없습니다.
                             </TableCell>
                         </TableRow>
