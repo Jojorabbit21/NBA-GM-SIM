@@ -125,6 +125,9 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                          if (col.key.endsWith('_m') || col.key.endsWith('_a')) {
                                              const val = (s[col.key] || 0) / g;
                                              cellContent = val.toFixed(1);
+                                             if (col.isHeatmap) {
+                                                 bgStyle = getHeatmapStyle(col.key, val, statRanges, showHeatmap, col.isInverse);
+                                             }
                                          }
                                          // For PCT, use pre-calculated value
                                          else if (col.key.endsWith('_pct')) {

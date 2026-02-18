@@ -90,8 +90,8 @@ const generateShootingColumns = (): ColumnDef[] => {
 
     ZONES.forEach(z => {
         cols.push(
-            { key: `${z.key}_m`, label: `${z.label} M`, width: WIDTHS.ZONE, sortable: true, category: 'Shooting', format: 'number' },
-            { key: `${z.key}_a`, label: `${z.label} A`, width: WIDTHS.ZONE, sortable: true, category: 'Shooting', format: 'number' },
+            { key: `${z.key}_m`, label: `${z.label} M`, width: WIDTHS.ZONE, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
+            { key: `${z.key}_a`, label: `${z.label} A`, width: WIDTHS.ZONE, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
             { key: `${z.key}_pct`, label: `${z.label} %`, width: WIDTHS.ZONE + 10, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' }
         );
     });
