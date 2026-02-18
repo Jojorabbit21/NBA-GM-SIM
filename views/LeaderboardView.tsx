@@ -112,6 +112,84 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     });
   }, [teams, schedule]);
 
+  // 3. Calculate Global Min/Max for Color Scale (Heatmap)
+  const statRanges = useMemo(() => {
+    const ranges: Record<string, { min: number, max: number }> = {};
+    const update = (k: string, v: number) => {
+        if (!ranges[k]) ranges[k] = { min: v, max: v };
+        else {
+            ranges[k].min = Math.min(ranges[k].min, v);
+            ranges[k].max = Math.max(ranges[k].max, v);
+        }
+    };
+
+    if (mode === 'Players') {
+        allPlayers.forEach(p => {
+            const s = p.stats;
+            const g = s.g || 1;
+            update('g', s.g);
+            update('mp', s.mp / g);
+            update('pts', s.pts / g);
+            update('reb', s.reb / g);
+            update('ast', s.ast / g);
+            update('stl', s.stl / g);
+            update('blk', s.blk / g);
+            update('tov', s.tov / g);
+            update('fg%', s.fga > 0 ? s.fgm / s.fga : 0);
+            update('3p%', s.p3a > 0 ? s.p3m / s.p3a : 0);
+            update('ft%', s.fta > 0 ? s.ftm / s.fta : 0);
+            
+            const tsa = s.fga + 0.44 * s.fta;
+            update('ts%', tsa > 0 ? s.pts / (2 * tsa) : 0);
+            update('pm', s.plusMinus / g);
+        });
+    } else {
+        teamStats.forEach(t => {
+            const s = t.stats;
+            update('wins', t.wins);
+            update('losses', t.losses);
+            update('winPct', (t.wins + t.losses) > 0 ? t.wins / (t.wins + t.losses) : 0);
+            update('pts', s.pts);
+            update('pa', s.pa);
+            update('reb', s.reb);
+            update('ast', s.ast);
+            update('stl', s.stl);
+            update('blk', s.blk);
+            update('tov', s.tov);
+            update('fg%', s.fgPct);
+            update('3p%', s.p3Pct);
+            update('ft%', s.ftPct);
+            update('ts%', s.tsPct);
+            update('pm', s.pm);
+        });
+    }
+    return ranges;
+  }, [mode, allPlayers, teamStats]);
+
+  const getBgStyle = (key: string, value: number) => {
+    const range = statRanges[key];
+    if (!range || range.max === range.min) return undefined;
+    
+    let ratio = (value - range.min) / (range.max - range.min);
+    
+    // Inverse for TOV (High TOV = Bad = Low Ratio)
+    // For all other stats, Higher is Better (High Ratio = More Green)
+    if (key === 'tov') {
+        ratio = 1 - ratio;
+    }
+    
+    // Clamp
+    ratio = Math.max(0, Math.min(1, ratio));
+    
+    // Max opacity 0.5 (bg-emerald-500/50)
+    const opacity = ratio * 0.5;
+    
+    // Don't style very low values to keep UI clean
+    if (opacity < 0.05) return undefined;
+
+    return { backgroundColor: `rgba(16, 185, 129, ${opacity})` };
+  };
+
   // --- Sorting & Pagination Logic ---
 
   const handleSort = (key: SortKey) => {
@@ -245,7 +323,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const T_LEFT_RANK = 0;
   const T_LEFT_NAME = WIDTHS.RANK; 
   
-  const contentTextClass = "text-xs font-medium text-slate-300 font-mono";
+  const contentTextClass = "text-xs font-medium text-slate-300 font-mono tabular-nums";
 
   return (
     <div className="flex flex-col animate-in fade-in duration-500 ko-normal gap-6 pb-20">
@@ -393,7 +471,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     <TableCell style={getStickyStyle(0, WIDTHS.RANK)} stickyLeft align="center" className={`font-medium text-xs ${rankColor} border-r border-slate-800 ${stickyCellClass}`}>{rank}</TableCell>
                                     
                                     <TableCell style={getStickyStyle(P_LEFT_TEAM_LOGO, WIDTHS.TEAM)} stickyLeft align="center" className={`border-r border-slate-800 ${stickyCellClass}`}>
-                                        <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="xs" /></div>
+                                        <div className="flex justify-center"><TeamLogo teamId={p.teamId} size="sm" /></div>
                                     </TableCell>
                                     
                                     <TableCell style={getStickyStyle(P_LEFT_NAME, WIDTHS.NAME)} stickyLeft className={`pl-4 border-r border-slate-800 ${stickyCellClass}`}>
@@ -406,22 +484,22 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                         <div className="flex justify-center"><OvrBadge value={ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
                                     
-                                    <TableCell align="center" variant="stat" value={s.g} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={(s.mp/g).toFixed(1)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('g', s.g)}>{s.g}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('mp', s.mp/g)}>{(s.mp/g).toFixed(1)}</TableCell>
                                     
-                                    <TableCell align="center" variant="stat" value={(s.pts/g).toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 !font-bold`} />
-                                    <TableCell align="center" variant="stat" value={(s.reb/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={(s.ast/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={(s.stl/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={(s.blk/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={(s.tov/g).toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" className={`${contentTextClass} text-white border-r border-slate-800/30`} style={getBgStyle('pts', s.pts/g)}>{(s.pts/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('reb', s.reb/g)}>{(s.reb/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ast', s.ast/g)}>{(s.ast/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('stl', s.stl/g)}>{(s.stl/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('blk', s.blk/g)}>{(s.blk/g).toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('tov', s.tov/g)}>{(s.tov/g).toFixed(1)}</TableCell>
                                     
-                                    <TableCell align="center" variant="stat" value={formatStat(fgPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={formatStat(p3Pct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={formatStat(ftPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={formatStat(tsPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('fg%', fgPct)}>{formatStat(fgPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('3p%', p3Pct)}>{formatStat(p3Pct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ft%', ftPct)}>{formatStat(ftPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ts%', tsPct)}>{formatStat(tsPct, true)}</TableCell>
                                     
-                                    <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.plusMinus > 0 ? 'text-emerald-400' : s.plusMinus < 0 ? 'text-red-400' : 'text-slate-500'}`} style={getBgStyle('pm', s.plusMinus/g)}>
                                         {s.plusMinus > 0 ? '+' : ''}{(s.plusMinus/g).toFixed(1)}
                                     </TableCell>
                                 </TableRow>
@@ -443,24 +521,24 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                                     </TableCell>
                                     
                                     {/* Team Stats: W, L, PCT */}
-                                    <TableCell align="center" variant="stat" value={t.wins} className={`${contentTextClass} text-emerald-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={t.losses} className={`${contentTextClass} text-red-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={winPct.toFixed(3)} className={`${contentTextClass} text-slate-200 border-r border-slate-800/30`} />
+                                    <TableCell align="center" className={`${contentTextClass} text-emerald-400 border-r border-slate-800/30`} style={getBgStyle('wins', t.wins)}>{t.wins}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-red-400 border-r border-slate-800/30`} style={getBgStyle('losses', t.losses)}>{t.losses}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-200 border-r border-slate-800/30`} style={getBgStyle('winPct', winPct)}>{winPct.toFixed(3)}</TableCell>
 
-                                    <TableCell align="center" variant="stat" value={s.pts.toFixed(1)} className={`${contentTextClass} text-white border-r border-slate-800/30 !font-bold`} />
-                                    <TableCell align="center" variant="stat" value={s.pa.toFixed(1)} className={`${contentTextClass} text-red-300 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.reb.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.ast.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.stl.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.blk.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={s.tov.toFixed(1)} className={`${contentTextClass} border-r border-slate-800/30`} />
+                                    <TableCell align="center" className={`${contentTextClass} text-white border-r border-slate-800/30`} style={getBgStyle('pts', s.pts)}>{s.pts.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-red-300 border-r border-slate-800/30`} style={getBgStyle('pa', s.pa)}>{s.pa.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('reb', s.reb)}>{s.reb.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('ast', s.ast)}>{s.ast.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('stl', s.stl)}>{s.stl.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('blk', s.blk)}>{s.blk.toFixed(1)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} border-r border-slate-800/30`} style={getBgStyle('tov', s.tov)}>{s.tov.toFixed(1)}</TableCell>
                                     
-                                    <TableCell align="center" variant="stat" value={formatStat(s.fgPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={formatStat(s.p3Pct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={formatStat(s.ftPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
-                                    <TableCell align="center" variant="stat" value={formatStat(s.tsPct, true)} className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} />
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('fg%', s.fgPct)}>{formatStat(s.fgPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('3p%', s.p3Pct)}>{formatStat(s.p3Pct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ft%', s.ftPct)}>{formatStat(s.ftPct, true)}</TableCell>
+                                    <TableCell align="center" className={`${contentTextClass} text-slate-400 border-r border-slate-800/30`} style={getBgStyle('ts%', s.tsPct)}>{formatStat(s.tsPct, true)}</TableCell>
                                     
-                                    <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    <TableCell align="center" className={`font-mono font-medium text-xs border-r border-slate-800/30 ${s.pm > 0 ? 'text-emerald-400' : s.pm < 0 ? 'text-red-400' : 'text-slate-500'}`} style={getBgStyle('pm', s.pm)}>
                                         {s.pm > 0 ? '+' : ''}{s.pm.toFixed(1)}
                                     </TableCell>
                                 </TableRow>
