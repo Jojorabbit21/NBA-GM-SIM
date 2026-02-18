@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Sliders, HelpCircle, ChevronDown, Target, Shield, ShieldAlert } from 'lucide-react';
+import React from 'react';
+import { HelpCircle, ChevronDown, Target, Shield, ShieldAlert } from 'lucide-react';
 import { GameTactics, TacticalSliders, OffenseTactic, DefenseTactic, Player } from '../../../types';
 import { OFFENSE_TACTIC_INFO, DEFENSE_TACTIC_INFO } from '../../../utils/tacticUtils';
 import { OFFENSE_PRESETS, DEFENSE_PRESETS } from '../../../services/game/config/tacticPresets'; 
@@ -57,7 +57,6 @@ const SliderControl: React.FC<{
 );
 
 export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster }) => {
-    const [activeTab, setActiveTab] = useState<'offense' | 'defense'>('offense');
     
     const { offenseTactics, defenseTactics, sliders, stopperId } = tactics;
     const currentOffense = offenseTactics[0] || 'Balance';
@@ -116,158 +115,121 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
     const sortedRoster = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
     return (
-        <div className="flex flex-col h-full bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-            {/* Tab Header */}
-            <div className="flex border-b border-slate-800 flex-shrink-0">
-                <button 
-                    onClick={() => setActiveTab('offense')}
-                    className={`flex-1 py-4 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'offense' ? 'bg-indigo-600 text-white' : 'bg-slate-950 text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}
-                >
-                    <Target size={16} /> 공격 설정
-                </button>
-                <div className="w-px bg-slate-800"></div>
-                <button 
-                    onClick={() => setActiveTab('defense')}
-                    className={`flex-1 py-4 flex items-center justify-center gap-2 text-xs font-black uppercase tracking-widest transition-all ${activeTab === 'defense' ? 'bg-indigo-600 text-white' : 'bg-slate-950 text-slate-500 hover:text-slate-300 hover:bg-slate-900'}`}
-                >
-                    <Shield size={16} /> 수비 설정
-                </button>
-            </div>
+        <div className="flex flex-col gap-12">
+            
+            {/* --- OFFENSE SECTION --- */}
+            <div className="space-y-6">
+                <div className="flex items-center gap-3 border-l-4 border-orange-500 pl-4">
+                    <Target size={24} className="text-orange-400" />
+                    <h3 className="text-xl font-black text-white uppercase tracking-widest oswald">Offense Settings</h3>
+                </div>
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-900/50">
-                
-                {/* --- OFFENSE TAB --- */}
-                {activeTab === 'offense' && (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-right-2 duration-300">
-                        {/* 1. Preset Selector */}
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">메인 공격 전술</label>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 bg-slate-900/50 p-6 rounded-3xl border border-slate-800">
+                    
+                    {/* Col 1: Style & Preset */}
+                    <div className="space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">공격 전술 프리셋</label>
                             <div className="relative group">
                                 <select 
                                     value={currentOffense} 
                                     onChange={(e) => handleOffenseChange(e.target.value)} 
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:border-slate-500 transition-all shadow-inner"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:border-slate-500 transition-all shadow-inner"
                                 >
                                     {offOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                 </select>
                                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
                             </div>
-                            <p className="text-[10px] text-slate-400 font-medium leading-relaxed bg-slate-950/50 p-3 rounded-lg border border-slate-800">
-                                {OFFENSE_TACTIC_INFO[currentOffense].desc}
-                            </p>
                         </div>
 
-                        <div className="w-full h-px bg-slate-800/50"></div>
+                        <div className="h-px bg-slate-800"></div>
 
-                        {/* 2. Sliders: Style */}
                         <div className="space-y-4">
                             <h4 className="text-sm font-black text-orange-400 tracking-tight">운영 스타일</h4>
-                            <div className="flex flex-col gap-6">
+                            <div className="flex flex-col gap-4">
                                 <SliderControl 
                                     label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
-                                    leftLabel="느림 (지공)" rightLabel="빠름 (속공)" tooltip="높을수록 빠른 공수전환과 얼리 오펜스를 시도합니다." colorClass="accent-orange-500"
+                                    leftLabel="느림" rightLabel="빠름" tooltip="높을수록 빠른 공수전환과 얼리 오펜스를 시도합니다." colorClass="accent-orange-500"
                                 />
                                 <SliderControl 
                                     label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
-                                    leftLabel="단독 찬스" rightLabel="팀 패스" tooltip="높을수록 더 많은 패스를 돌려 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." colorClass="accent-orange-500"
+                                    leftLabel="개인기" rightLabel="팀 패스" tooltip="높을수록 더 많은 패스를 돌려 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." colorClass="accent-orange-500"
                                 />
                                 <SliderControl 
-                                    label="공격 리바운드 참여" value={sliders.offReb} onChange={v => updateSlider('offReb', v)}
-                                    leftLabel="백코트" rightLabel="리바운드" tooltip="높을수록 슛 이후 공격 리바운드에 가담하지만, 상대 속공에 취약해집니다." colorClass="accent-orange-500"
+                                    label="공격 리바운드" value={sliders.offReb} onChange={v => updateSlider('offReb', v)}
+                                    leftLabel="백코트" rightLabel="적극 가담" tooltip="높을수록 슛 이후 공격 리바운드에 가담하지만, 상대 속공에 취약해집니다." colorClass="accent-orange-500"
                                 />
-                            </div>
-                        </div>
-
-                        {/* 3. Sliders: Shot Tendency */}
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-black text-emerald-400 tracking-tight">슈팅 선호 구역</h4>
-                            <div className="flex flex-col gap-6">
-                                <SliderControl 
-                                    label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
-                                    leftLabel="자제" rightLabel="적극" colorClass="accent-emerald-500"
-                                />
-                                <SliderControl 
-                                    label="골밑 돌파 빈도" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
-                                    leftLabel="자제" rightLabel="적극" colorClass="accent-emerald-500"
-                                />
-                                <SliderControl 
-                                    label="중거리 슛 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
-                                    leftLabel="자제" rightLabel="적극" colorClass="accent-emerald-500"
-                                />
-                                <SliderControl 
-                                    label="풀업 점퍼 시도" value={sliders.shot_pullup} onChange={v => updateSlider('shot_pullup', v)}
-                                    leftLabel="셋 슛 (정적)" rightLabel="풀업 (동적)" tooltip="드리블 중 슛을 쏘는 빈도입니다. 높을수록 난이도 높은 슛을 시도합니다." colorClass="accent-emerald-500"
-                                />
-                            </div>
-                        </div>
-
-                        {/* 4. Sliders: Play Types */}
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-black text-blue-400 tracking-tight">공격 루트 비중</h4>
-                            <div className="flex flex-col gap-6">
-                                <SliderControl label="픽앤롤 (Pick & Roll)" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
-                                <SliderControl label="아이솔레이션 (Isolation)" value={sliders.play_iso} onChange={v => updateSlider('play_iso', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
-                                <SliderControl label="포스트업 (Post Up)" value={sliders.play_post} onChange={v => updateSlider('play_post', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
-                                <SliderControl label="캐치 앤 슛 (Spot Up)" value={sliders.play_cns} onChange={v => updateSlider('play_cns', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
-                                <SliderControl label="컷인 & 돌파 (Drive)" value={sliders.play_drive} onChange={v => updateSlider('play_drive', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
                             </div>
                         </div>
                     </div>
-                )}
 
-                {/* --- DEFENSE TAB --- */}
-                {activeTab === 'defense' && (
-                    <div className="space-y-10 animate-in fade-in slide-in-from-left-2 duration-300">
-                        {/* 1. Preset Selector */}
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">메인 수비 전술</label>
+                    {/* Col 2: Shot Tendency */}
+                    <div className="space-y-6 lg:border-l lg:border-slate-800 lg:pl-8">
+                         <h4 className="text-sm font-black text-emerald-400 tracking-tight">슈팅 선호도</h4>
+                         <div className="flex flex-col gap-6">
+                            <SliderControl 
+                                label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
+                                leftLabel="자제" rightLabel="난사" colorClass="accent-emerald-500"
+                            />
+                            <SliderControl 
+                                label="골밑 돌파 빈도" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
+                                leftLabel="자제" rightLabel="적극" colorClass="accent-emerald-500"
+                            />
+                            <SliderControl 
+                                label="중거리 슛 빈도" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
+                                leftLabel="자제" rightLabel="적극" colorClass="accent-emerald-500"
+                            />
+                            <SliderControl 
+                                label="풀업 점퍼 시도" value={sliders.shot_pullup} onChange={v => updateSlider('shot_pullup', v)}
+                                leftLabel="셋 슛" rightLabel="풀업" tooltip="드리블 중 슛을 쏘는 빈도입니다. 높을수록 난이도 높은 슛을 시도합니다." colorClass="accent-emerald-500"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Col 3: Play Types */}
+                    <div className="space-y-6 lg:border-l lg:border-slate-800 lg:pl-8">
+                        <h4 className="text-sm font-black text-blue-400 tracking-tight">공격 루트 비중</h4>
+                        <div className="flex flex-col gap-6">
+                            <SliderControl label="픽앤롤 (P&R)" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
+                            <SliderControl label="아이솔레이션 (Iso)" value={sliders.play_iso} onChange={v => updateSlider('play_iso', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
+                            <SliderControl label="포스트업 (Post)" value={sliders.play_post} onChange={v => updateSlider('play_post', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
+                            <SliderControl label="캐치 앤 슛 (Spot Up)" value={sliders.play_cns} onChange={v => updateSlider('play_cns', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
+                            <SliderControl label="컷인 & 돌파 (Cut)" value={sliders.play_drive} onChange={v => updateSlider('play_drive', v)} leftLabel="낮음" rightLabel="높음" colorClass="accent-blue-500" />
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+            {/* --- DEFENSE SECTION --- */}
+            <div className="space-y-6">
+                <div className="flex items-center gap-3 border-l-4 border-indigo-500 pl-4">
+                    <Shield size={24} className="text-indigo-400" />
+                    <h3 className="text-xl font-black text-white uppercase tracking-widest oswald">Defense Settings</h3>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 bg-slate-900/50 p-6 rounded-3xl border border-slate-800">
+                    
+                    {/* Col 1: Style & Intensity */}
+                    <div className="space-y-6">
+                        <div className="space-y-2">
+                            <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest block">수비 전술 프리셋</label>
                             <div className="relative group">
                                 <select 
                                     value={currentDefense} 
                                     onChange={(e) => handleDefenseChange(e.target.value)} 
-                                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:border-slate-500 transition-all shadow-inner"
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none cursor-pointer hover:border-slate-500 transition-all shadow-inner"
                                 >
                                     {defOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
                                 </select>
                                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />
                             </div>
-                            <p className="text-[10px] text-slate-400 font-medium leading-relaxed bg-slate-950/50 p-3 rounded-lg border border-slate-800">
-                                {DEFENSE_TACTIC_INFO[currentDefense].desc}
-                            </p>
                         </div>
 
-                        {/* 2. Stopper Setting */}
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-black text-red-400 uppercase tracking-widest flex items-center gap-1.5">
-                                <ShieldAlert size={12} /> 에이스 스토퍼 (Ace Stopper)
-                            </label>
-                            <div className="relative group">
-                                <select 
-                                    value={stopperId || ""} 
-                                    onChange={(e) => handleStopperChange(e.target.value)}
-                                    disabled={currentDefense === 'ZoneDefense'}
-                                    className={`w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none shadow-inner transition-all ${currentDefense === 'ZoneDefense' ? 'opacity-50 cursor-not-allowed text-slate-500' : 'cursor-pointer hover:border-slate-500'}`}
-                                >
-                                    {currentDefense === 'ZoneDefense' ? (
-                                        <option value="">지역 방어 사용 중 (지정 불가)</option>
-                                    ) : (
-                                        <option value="">지정 안함 (팀 수비 모드)</option>
-                                    )}
-                                    
-                                    {currentDefense !== 'ZoneDefense' && sortedRoster.map(p => (
-                                        <option key={p.id} value={p.id}>{p.name} ({p.position}) - OVR {calculatePlayerOvr(p)}</option>
-                                    ))}
-                                </select>
-                                {!stopperId && currentDefense !== 'ZoneDefense' && <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />}
-                            </div>
-                        </div>
+                        <div className="h-px bg-slate-800"></div>
 
-                        <div className="w-full h-px bg-slate-800/50"></div>
-
-                        {/* 3. Sliders: General Defense */}
                         <div className="space-y-4">
-                            <h4 className="text-sm font-black text-indigo-400 tracking-tight">수비 일반</h4>
+                            <h4 className="text-sm font-black text-indigo-400 tracking-tight">수비 스타일</h4>
                             <div className="flex flex-col gap-6">
                                 <SliderControl 
                                     label="수비 압박 강도" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
@@ -287,8 +249,38 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                                 />
                             </div>
                         </div>
+                    </div>
 
-                        {/* 4. Sliders: Scheme */}
+                    {/* Col 2: System & Stopper */}
+                    <div className="space-y-6 lg:border-l lg:border-slate-800 lg:pl-8">
+                        
+                        <div className="space-y-2">
+                             <label className="text-[10px] font-black text-red-400 uppercase tracking-widest flex items-center gap-1.5">
+                                <ShieldAlert size={12} /> 에이스 스토퍼 (Ace Stopper)
+                            </label>
+                            <div className="relative group">
+                                <select 
+                                    value={stopperId || ""} 
+                                    onChange={(e) => handleStopperChange(e.target.value)}
+                                    disabled={currentDefense === 'ZoneDefense'}
+                                    className={`w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-xs font-bold text-white focus:outline-none focus:border-indigo-500 appearance-none shadow-inner transition-all ${currentDefense === 'ZoneDefense' ? 'opacity-50 cursor-not-allowed text-slate-500' : 'cursor-pointer hover:border-slate-500'}`}
+                                >
+                                    {currentDefense === 'ZoneDefense' ? (
+                                        <option value="">지역 방어 사용 중 (지정 불가)</option>
+                                    ) : (
+                                        <option value="">지정 안함 (팀 수비 모드)</option>
+                                    )}
+                                    
+                                    {currentDefense !== 'ZoneDefense' && sortedRoster.map(p => (
+                                        <option key={p.id} value={p.id}>{p.name} ({p.position}) - OVR {calculatePlayerOvr(p)}</option>
+                                    ))}
+                                </select>
+                                {!stopperId && currentDefense !== 'ZoneDefense' && <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" size={16} />}
+                            </div>
+                        </div>
+
+                        <div className="h-px bg-slate-800"></div>
+
                         <div className="space-y-4">
                             <h4 className="text-sm font-black text-fuchsia-400 tracking-tight">수비 시스템</h4>
                             <div className="flex flex-col gap-6">
@@ -303,7 +295,8 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                             </div>
                         </div>
                     </div>
-                )}
+
+                </div>
             </div>
         </div>
     );

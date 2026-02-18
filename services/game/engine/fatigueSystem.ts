@@ -24,6 +24,14 @@ export function calculateIncrementalFatigue(
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.3;
 
+    // [New] Full Court Press Fatigue Impact
+    // Pressing consumes significantly more energy.
+    // Scale: Level 1 (0% penalty) -> Level 10 (45% penalty)
+    if (sliders.fullCourtPress > 1) {
+        const pressPenalty = (sliders.fullCourtPress - 1) * 0.05;
+        drain *= (1.0 + pressPenalty);
+    }
+
     // [Fix] player.currentCondition이 0 미만으로 계산에 참여하지 않도록 Math.max 처리
     const effectiveCondition = Math.max(0, player.currentCondition);
     const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - effectiveCondition) * 0.012);
