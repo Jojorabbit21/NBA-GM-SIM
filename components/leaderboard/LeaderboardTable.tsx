@@ -104,7 +104,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
                                 if (mode === 'Players') {
                                     const p = item as Player & { teamName: string; teamId: string };
-                                    const s = p.stats;
+                                    const s = p.stats as any; // Cast to any to access dynamic zone keys
                                     const g = s.g || 1;
 
                                     if (col.key === 'rank') cellContent = rank;
@@ -119,10 +119,22 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     else if (col.key === 'position') cellContent = p.position;
                                     else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>;
                                     
-                                    // Custom Formatters for M/A
-                                    else if (col.key === 'rimM') cellContent = `${(s.rimM||0).toFixed(0)}/${(s.rimA||0).toFixed(0)}`;
-                                    else if (col.key === 'midM') cellContent = `${(s.midM||0).toFixed(0)}/${(s.midA||0).toFixed(0)}`;
-                                    else if (col.key === '3pM') cellContent = `${(s.p3m||0).toFixed(0)}/${(s.p3a||0).toFixed(0)}`;
+                                    // Handle Zone Stats (Dynamic Keys)
+                                    else if (col.key.startsWith('zone_')) {
+                                         // For Makers/Attempts, calculate per game
+                                         if (col.key.endsWith('_m') || col.key.endsWith('_a')) {
+                                             const val = (s[col.key] || 0) / g;
+                                             cellContent = val.toFixed(1);
+                                         }
+                                         // For PCT, use pre-calculated value
+                                         else if (col.key.endsWith('_pct')) {
+                                             const val = s[col.key] || 0;
+                                             cellContent = formatValue(val, col.format);
+                                             if (col.isHeatmap) {
+                                                 bgStyle = getHeatmapStyle(col.key, val, statRanges, showHeatmap, col.isInverse);
+                                             }
+                                         }
+                                    }
                                     
                                     // Standard Stats
                                     else {
@@ -143,8 +155,6 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                         else if (col.key === 'fg%') rawVal = s.fga>0 ? s.fgm/s.fga : 0;
                                         else if (col.key === '3p%') rawVal = s.p3a>0 ? s.p3m/s.p3a : 0;
                                         else if (col.key === 'ft%') rawVal = s.fta>0 ? s.ftm/s.fta : 0;
-                                        else if (col.key === 'rim%') rawVal = (s.rimA||0)>0 ? (s.rimM||0)/s.rimA : 0;
-                                        else if (col.key === 'mid%') rawVal = (s.midA||0)>0 ? (s.midM||0)/s.midA : 0;
                                         else if (col.key === 'ts%') {
                                             const tsa = s.fga + 0.44 * s.fta;
                                             rawVal = tsa>0 ? s.pts / (2*tsa) : 0;
@@ -174,10 +184,6 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     else if (col.key === 'losses') cellContent = t.losses;
                                     else if (col.key === 'winPct') cellContent = ((t.wins+t.losses)>0 ? t.wins/(t.wins+t.losses) : 0).toFixed(3);
                                     
-                                    else if (col.key === 'rimM') cellContent = `${(s.rimM||0).toFixed(0)}/${(s.rimA||0).toFixed(0)}`;
-                                    else if (col.key === 'midM') cellContent = `${(s.midM||0).toFixed(0)}/${(s.midA||0).toFixed(0)}`;
-                                    else if (col.key === '3pM') cellContent = `${(s.p3m||0).toFixed(0)}/${(s.p3a||0).toFixed(0)}`;
-
                                     else {
                                         // Team Stats are already pre-calculated averages in the hook
                                         let rawVal = s[col.key];

@@ -33,9 +33,9 @@ export const WIDTHS = {
     NAME: 200,
     POS: 50,
     OVR: 50,
-    STAT: 50,
+    STAT: 55,
     PCT: 60,
-    ZONE: 65,
+    ZONE: 45, // Narrower for dense zone stats
     W: 40,
     L: 40,
 };
@@ -59,10 +59,43 @@ export const STAT_OPTIONS = [
     { value: 'ftm', label: 'FTM' },
     { value: 'fta', label: 'FTA' },
     { value: 'ts%', label: 'TS%' },
-    { value: 'rim%', label: 'RIM%' },
-    { value: 'mid%', label: 'MID%' },
     { value: 'ovr', label: 'OVR' },
 ];
+
+// Zone Definitions
+const ZONES = [
+    { key: 'zone_rim', label: 'RIM' },
+    { key: 'zone_paint', label: 'PNT' },
+    { key: 'zone_mid_l', label: 'MID-L' },
+    { key: 'zone_mid_c', label: 'MID-C' },
+    { key: 'zone_mid_r', label: 'MID-R' },
+    { key: 'zone_c3_l', label: 'C3-L' },
+    { key: 'zone_c3_r', label: 'C3-R' },
+    { key: 'zone_atb3_l', label: 'ATB-L' },
+    { key: 'zone_atb3_c', label: 'ATB-C' },
+    { key: 'zone_atb3_r', label: 'ATB-R' },
+];
+
+// Helper to generate shooting columns
+const generateShootingColumns = (): ColumnDef[] => {
+    const cols: ColumnDef[] = [
+        { key: 'pts', label: 'PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
+        { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
+    ];
+
+    ZONES.forEach(z => {
+        cols.push(
+            { key: `${z.key}_m`, label: `${z.label} M`, width: WIDTHS.ZONE, sortable: true, category: 'Shooting', format: 'number' },
+            { key: `${z.key}_a`, label: `${z.label} A`, width: WIDTHS.ZONE, sortable: true, category: 'Shooting', format: 'number' },
+            { key: `${z.key}_pct`, label: `${z.label} %`, width: WIDTHS.ZONE + 10, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' }
+        );
+    });
+
+    return cols;
+};
+
+const SHOOTING_COLUMNS = generateShootingColumns();
+
 
 // Column Definitions for Players
 export const PLAYER_COLUMNS: ColumnDef[] = [
@@ -92,14 +125,7 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     { key: 'pm', label: '+/-', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
 
     // Shooting Stats
-    { key: 'pts', label: 'PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
-    { key: 'rimM', label: 'RIM M/A', width: WIDTHS.ZONE, category: 'Shooting', format: 'custom' },
-    { key: 'rim%', label: 'RIM%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    { key: 'midM', label: 'MID M/A', width: WIDTHS.ZONE, category: 'Shooting', format: 'custom' },
-    { key: 'mid%', label: 'MID%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    { key: '3pM', label: '3PT M/A', width: WIDTHS.ZONE, category: 'Shooting', format: 'custom' },
-    { key: '3p%', label: '3P%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
+    ...SHOOTING_COLUMNS
 ];
 
 // Column Definitions for Teams
@@ -130,12 +156,5 @@ export const TEAM_COLUMNS: ColumnDef[] = [
     { key: 'pm', label: '+/-', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
 
     // Shooting
-    { key: 'pts', label: 'PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
-    { key: 'rimM', label: 'RIM M/A', width: WIDTHS.ZONE, category: 'Shooting', format: 'custom' },
-    { key: 'rim%', label: 'RIM%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    { key: 'midM', label: 'MID M/A', width: WIDTHS.ZONE, category: 'Shooting', format: 'custom' },
-    { key: 'mid%', label: 'MID%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    { key: '3pM', label: '3PT M/A', width: WIDTHS.ZONE, category: 'Shooting', format: 'custom' },
-    { key: '3p%', label: '3P%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
+    ...SHOOTING_COLUMNS
 ];
