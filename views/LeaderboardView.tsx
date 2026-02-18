@@ -170,24 +170,49 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     const range = statRanges[key];
     if (!range || range.max === range.min) return undefined;
     
+    // Normalize value to 0..1
     let ratio = (value - range.min) / (range.max - range.min);
-    
-    // Inverse for TOV (High TOV = Bad = Low Ratio)
-    // For all other stats, Higher is Better (High Ratio = More Green)
-    if (key === 'tov') {
-        ratio = 1 - ratio;
+    ratio = Math.max(0, Math.min(1, ratio));
+
+    // Determine if "Higher is Better" or "Lower is Better"
+    // Inverse Stats: TOV, Losses, PA (Points Against)
+    const isInverse = ['tov', 'losses', 'pa'].includes(key);
+
+    let color = '';
+    let opacity = 0;
+
+    if (isInverse) {
+        // Inverse: Lower (0.0) is Better (Green), Higher (1.0) is Worse (Red)
+        if (ratio < 0.5) {
+            // Good Side (Green)
+            color = '16, 185, 129'; // Emerald-500
+            // Map 0.0->0.5 opacity (Best), 0.5->0.0 opacity (Avg)
+            opacity = (0.5 - ratio) * 2 * 0.5;
+        } else {
+            // Bad Side (Red)
+            color = '239, 68, 68'; // Red-500
+            // Map 1.0->0.5 opacity (Worst), 0.5->0.0 opacity (Avg)
+            opacity = (ratio - 0.5) * 2 * 0.5;
+        }
+    } else {
+        // Normal: Higher (1.0) is Better (Green), Lower (0.0) is Worse (Red)
+        if (ratio > 0.5) {
+            // Good Side (Green)
+            color = '16, 185, 129'; // Emerald-500
+            // Map 1.0->0.5 opacity (Best), 0.5->0.0 opacity (Avg)
+            opacity = (ratio - 0.5) * 2 * 0.5;
+        } else {
+            // Bad Side (Red)
+            color = '239, 68, 68'; // Red-500
+            // Map 0.0->0.5 opacity (Worst), 0.5->0.0 opacity (Avg)
+            opacity = (0.5 - ratio) * 2 * 0.5;
+        }
     }
     
-    // Clamp
-    ratio = Math.max(0, Math.min(1, ratio));
-    
-    // Max opacity 0.5 (bg-emerald-500/50)
-    const opacity = ratio * 0.5;
-    
-    // Don't style very low values to keep UI clean
+    // Filter noise near average (opacity < 0.05) to keep UI clean
     if (opacity < 0.05) return undefined;
 
-    return { backgroundColor: `rgba(16, 185, 129, ${opacity})` };
+    return { backgroundColor: `rgba(${color}, ${opacity})` };
   };
 
   // --- Sorting & Pagination Logic ---
