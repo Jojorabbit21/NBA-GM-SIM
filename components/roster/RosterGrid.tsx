@@ -355,7 +355,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             {tab === 'stats' && STATS_COLS.map(c => {
                                 // 출전 시간(MP)이 0이면 데이터 없음(-)으로 표시
                                 if (p.stats.mp === 0) {
-                                    return <TableCell key={c.key} align="center" className="font-mono font-medium text-xs text-slate-600 border-r border-slate-800/30" value="-" />;
+                                    return <TableCell key={c.key} align="center" className="border-r border-slate-800/30"><span className="font-mono font-medium text-xs text-slate-600">-</span></TableCell>;
                                 }
 
                                 const val = getSortValue(p, c.key);
@@ -374,7 +374,14 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                     else if (['mp', 'pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm'].includes(c.key)) displayVal = val.toFixed(1);
                                 }
-                                return <TableCell key={c.key} align="center" className={`font-mono font-medium text-xs ${textColor} border-r border-slate-800/30`} value={displayVal} variant="stat" />;
+                                
+                                return (
+                                    <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
+                                        <span className={`font-mono font-medium text-xs tabular-nums ${textColor}`}>
+                                            {displayVal}
+                                        </span>
+                                    </TableCell>
+                                );
                             })}
                             {tab === 'salary' && (
                                 <>
@@ -423,7 +430,14 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 if (c.key.includes('%')) displayVal = (val * 100).toFixed(1) + '%';
                                 else displayVal = val.toFixed(1);
                             }
-                            return <TableCell key={c.key} align="center" className={`font-mono font-medium text-xs ${textColor} border-r border-slate-800/30`} value={displayVal} variant="stat" />;
+                            
+                            return (
+                                <TableCell key={c.key} align="center" className="border-r border-slate-800/30">
+                                    <span className={`font-mono font-medium text-xs tabular-nums ${textColor}`}>
+                                        {displayVal}
+                                    </span>
+                                </TableCell>
+                            );
                         })}
                         {tab === 'salary' && (
                             <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-xs" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
