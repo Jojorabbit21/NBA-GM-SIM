@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair } from 'lucide-react';
+import { Filter, X, Plus, ChevronDown, Table as TableIcon, Crosshair } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
 import { STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
 
@@ -26,8 +26,6 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     const [filterCat, setFilterCat] = useState('pts');
     const [filterOp, setFilterOp] = useState<Operator>('>=');
     const [filterVal, setFilterVal] = useState('');
-    const [dateStart, setDateStart] = useState('');
-    const [dateEnd, setDateEnd] = useState('');
 
     const handleAddStatFilter = () => {
         if (!filterVal) return;
@@ -41,18 +39,6 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
             label: `${catLabel} ${filterOp} ${filterVal}`
         });
         setFilterVal('');
-    };
-
-    const handleAddDateFilter = () => {
-        if (!dateStart || !dateEnd) return;
-        addFilter({
-            id: Date.now().toString(),
-            type: 'date',
-            value: JSON.stringify({ start: dateStart, end: dateEnd }),
-            label: `${dateStart} ~ ${dateEnd}`
-        });
-        setDateStart('');
-        setDateEnd('');
     };
 
     return (
@@ -107,7 +93,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             색상 스케일
                         </div>
                         <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-800'}`}>
-                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'translate-x-4.5 left-0.5' : 'translate-x-0 left-0.5'}`} />
+                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'right-0.5' : 'left-0.5'}`} />
                         </div>
                     </div>
 
@@ -144,31 +130,6 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             onKeyDown={(e) => e.key === 'Enter' && handleAddStatFilter()}
                         />
                         <button onClick={handleAddStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-800 text-slate-500 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-lg">
-                            <Plus size={14} />
-                        </button>
-                    </div>
-
-                    {/* Date Filter */}
-                    <div className="flex items-center h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0">
-                        <div className="px-3 flex items-center justify-center border-r border-slate-800 h-full text-slate-500">
-                            <Calendar size={14} />
-                        </div>
-                        <div className="flex items-center h-full">
-                            <input 
-                                type="date" 
-                                className="h-full bg-transparent px-3 text-xs font-bold text-slate-400 outline-none w-28 [&::-webkit-calendar-picker-indicator]:hidden"
-                                value={dateStart}
-                                onChange={(e) => setDateStart(e.target.value)}
-                            />
-                            <span className="text-slate-700 text-xs px-1">~</span>
-                            <input 
-                                type="date" 
-                                className="h-full bg-transparent px-3 text-xs font-bold text-slate-400 outline-none w-28 [&::-webkit-calendar-picker-indicator]:hidden"
-                                value={dateEnd}
-                                onChange={(e) => setDateEnd(e.target.value)}
-                            />
-                        </div>
-                        <button onClick={handleAddDateFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-800 text-slate-500 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-lg">
                             <Plus size={14} />
                         </button>
                     </div>
