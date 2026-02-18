@@ -1,8 +1,8 @@
 
-import React, { useState } from 'react';
-import { Filter, X, Plus, ChevronDown, Table as TableIcon, Crosshair } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
-import { STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
+import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
 
 interface LeaderboardToolbarProps {
     mode: ViewMode;
@@ -22,14 +22,25 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     activeFilters, addFilter, removeFilter, clearFilters,
     showHeatmap, setShowHeatmap
 }) => {
+    // Determine available options based on category
+    const options = statCategory === 'Traditional' ? TRADITIONAL_STAT_OPTIONS : SHOOTING_STAT_OPTIONS;
+    const defaultOption = options[0].value;
+
     // Local state for filter inputs
-    const [filterCat, setFilterCat] = useState('pts');
+    const [filterCat, setFilterCat] = useState(defaultOption);
     const [filterOp, setFilterOp] = useState<Operator>('>=');
     const [filterVal, setFilterVal] = useState('');
+    const [dateStart, setDateStart] = useState('');
+    const [dateEnd, setDateEnd] = useState('');
+
+    // Reset filter cat when options change
+    useEffect(() => {
+        setFilterCat(defaultOption);
+    }, [statCategory, defaultOption]);
 
     const handleAddStatFilter = () => {
         if (!filterVal) return;
-        const catLabel = STAT_OPTIONS.find(o => o.value === filterCat)?.label || filterCat;
+        const catLabel = options.find(o => o.value === filterCat)?.label || filterCat;
         addFilter({
             id: Date.now().toString(),
             type: 'stat',
@@ -39,6 +50,18 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
             label: `${catLabel} ${filterOp} ${filterVal}`
         });
         setFilterVal('');
+    };
+
+    const handleAddDateFilter = () => {
+        if (!dateStart || !dateEnd) return;
+        addFilter({
+            id: Date.now().toString(),
+            type: 'date',
+            value: JSON.stringify({ start: dateStart, end: dateEnd }),
+            label: `${dateStart} ~ ${dateEnd}`
+        });
+        setDateStart('');
+        setDateEnd('');
     };
 
     return (
@@ -104,11 +127,11 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         </div>
                         <div className="relative h-full border-r border-slate-800">
                             <select 
-                                className="h-full bg-transparent pl-3 pr-7 text-xs font-bold text-white outline-none cursor-pointer appearance-none hover:bg-slate-900 transition-colors w-24"
+                                className="h-full bg-transparent pl-3 pr-7 text-xs font-bold text-white outline-none cursor-pointer appearance-none hover:bg-slate-900 transition-colors w-32"
                                 value={filterCat}
                                 onChange={(e) => setFilterCat(e.target.value)}
                             >
-                                {STAT_OPTIONS.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
+                                {options.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
                             </select>
                             <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
                         </div>
@@ -133,6 +156,10 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             <Plus size={14} />
                         </button>
                     </div>
+
+                    {/* Date Filter (Disabled removed logic here, but UI kept if revived later or just remove entirely if not used) */}
+                    {/* For now, removing date filter from UI as per previous instructions to disable it, but if it needs to be there visibly but non-functional, uncomment below.
+                        Currently removing it to match previous step's cleanup. */}
                 </div>
             </div>
 

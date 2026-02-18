@@ -44,11 +44,6 @@ export const useLeaderboardData = (
 
     // 2. Aggregate Team Stats including Zones
     const teamStats = useMemo(() => {
-        // [Logic Update] Removed Date Filter logic.
-        // Reason: Team.roster stats are static accumulated totals. Filtering the schedule (game count)
-        // while dividing static totals results in heavily inflated/incorrect averages.
-        // Until historical stats are available, date filtering is disabled.
-
         return teams.map(t => {
             const teamGames = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
             const playedCount = teamGames.length || 1; 
@@ -170,7 +165,7 @@ export const useLeaderboardData = (
                 stats
             };
         });
-    }, [teams, schedule]); // activeFilters dependency removed
+    }, [teams, schedule]);
 
     // 3. Calculate Global Min/Max for Color Scale (Heatmap)
     const statRanges = useMemo(() => {
@@ -248,35 +243,57 @@ export const useLeaderboardData = (
                     if (mode === 'Players') {
                         const p = item as Player;
                         const g = p.stats.g || 1;
-                        // Map filter category to value
-                        switch(filter.category) {
-                            case 'pts': itemVal = p.stats.pts / g; break;
-                            case 'reb': itemVal = p.stats.reb / g; break;
-                            case 'ast': itemVal = p.stats.ast / g; break;
-                            case 'stl': itemVal = p.stats.stl / g; break;
-                            case 'blk': itemVal = p.stats.blk / g; break;
-                            case 'tov': itemVal = p.stats.tov / g; break;
-                            case 'fg%': itemVal = (p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0) * 100; break;
-                            case '3p%': itemVal = (p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0) * 100; break;
-                            case 'ts%': {
-                                const tsa = p.stats.fga + 0.44 * p.stats.fta;
-                                itemVal = tsa > 0 ? (p.stats.pts / (2*tsa)) * 100 : 0;
-                                break;
+                        const s = p.stats as any;
+
+                        if (filter.category && filter.category.startsWith('zone_')) {
+                             // Zone Stats
+                             if (filter.category.endsWith('_pct')) {
+                                 itemVal = (s[filter.category] || 0) * 100;
+                             } else {
+                                 // M or A (Average per game)
+                                 itemVal = (s[filter.category] || 0) / g;
+                             }
+                        } else {
+                            // Traditional Stats
+                            switch(filter.category) {
+                                case 'pts': itemVal = p.stats.pts / g; break;
+                                case 'reb': itemVal = p.stats.reb / g; break;
+                                case 'ast': itemVal = p.stats.ast / g; break;
+                                case 'stl': itemVal = p.stats.stl / g; break;
+                                case 'blk': itemVal = p.stats.blk / g; break;
+                                case 'tov': itemVal = p.stats.tov / g; break;
+                                case 'fg%': itemVal = (p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0) * 100; break;
+                                case '3p%': itemVal = (p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0) * 100; break;
+                                case 'ts%': {
+                                    const tsa = p.stats.fga + 0.44 * p.stats.fta;
+                                    itemVal = tsa > 0 ? (p.stats.pts / (2*tsa)) * 100 : 0;
+                                    break;
+                                }
+                                case 'ovr': itemVal = calculatePlayerOvr(p); break;
+                                default: itemVal = 0;
                             }
-                            case 'ovr': itemVal = calculatePlayerOvr(p); break;
-                            default: itemVal = 0;
                         }
                     } else {
                         const t = item as typeof teamStats[0];
                         const s = t.stats;
-                        // Map filter category to team stat value
-                        switch(filter.category) {
-                            case 'pts': itemVal = s.pts; break;
-                            case 'reb': itemVal = s.reb; break;
-                            case 'ast': itemVal = s.ast; break;
-                            case 'fg%': itemVal = s['fg%'] * 100; break;
-                            case '3p%': itemVal = s['3p%'] * 100; break;
-                            default: itemVal = 0;
+                        
+                        if (filter.category && filter.category.startsWith('zone_')) {
+                             // Zone Stats (Team stats are already averaged/calculated)
+                             if (filter.category.endsWith('_pct')) {
+                                 itemVal = (s[filter.category] || 0) * 100;
+                             } else {
+                                 itemVal = s[filter.category] || 0;
+                             }
+                        } else {
+                            // Traditional Stats
+                            switch(filter.category) {
+                                case 'pts': itemVal = s.pts; break;
+                                case 'reb': itemVal = s.reb; break;
+                                case 'ast': itemVal = s.ast; break;
+                                case 'fg%': itemVal = s['fg%'] * 100; break;
+                                case '3p%': itemVal = s['3p%'] * 100; break;
+                                default: itemVal = 0;
+                            }
                         }
                     }
 
