@@ -40,8 +40,8 @@ export const WIDTHS = {
     L: 40,
 };
 
-// Filter Options
-export const STAT_OPTIONS = [
+// Filter Options - Traditional
+export const TRADITIONAL_STAT_OPTIONS = [
     { value: 'pts', label: 'PTS' },
     { value: 'reb', label: 'REB' },
     { value: 'oreb', label: 'OREB' },
@@ -76,12 +76,17 @@ const ZONES = [
     { key: 'zone_atb3_r', label: 'ATB-R' },
 ];
 
+// Filter Options - Shooting (Generated from Zones)
+export const SHOOTING_STAT_OPTIONS = ZONES.flatMap(z => [
+    { value: `${z.key}_m`, label: `${z.label} Makes` },
+    { value: `${z.key}_a`, label: `${z.label} Attempts` },
+    { value: `${z.key}_pct`, label: `${z.label} %` },
+]);
+
 // Helper to generate shooting columns
 const generateShootingColumns = (): ColumnDef[] => {
-    const cols: ColumnDef[] = [
-        { key: 'pts', label: 'PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'number' },
-        { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Shooting', format: 'percent' },
-    ];
+    const cols: ColumnDef[] = [];
+    // [Updated] Removed PTS and TS% from Shooting columns as requested
 
     ZONES.forEach(z => {
         cols.push(
@@ -105,9 +110,9 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     { key: 'position', label: 'POS', width: WIDTHS.POS, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME, category: 'Common' },
     { key: 'ovr', label: 'OVR', width: WIDTHS.OVR, sortable: true, stickyLeft: WIDTHS.RANK + WIDTHS.NAME + WIDTHS.POS, stickyShadow: true, category: 'Common' },
     
-    // Common Stats
-    { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Common' },
-    { key: 'mp', label: 'MIN', width: WIDTHS.STAT, sortable: true, category: 'Common', format: 'number' },
+    // [Updated] Moved G and MP to Traditional category so they are hidden in Shooting view
+    { key: 'g', label: 'G', width: WIDTHS.STAT, sortable: true, category: 'Traditional' },
+    { key: 'mp', label: 'MIN', width: WIDTHS.STAT, sortable: true, category: 'Traditional', format: 'number' },
 
     // Traditional Stats
     { key: 'pts', label: 'PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
