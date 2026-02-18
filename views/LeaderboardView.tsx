@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Team, Player, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { BarChart2, ChevronLeft, ChevronRight, Zap } from 'lucide-react';
+import { BarChart2, ChevronLeft, ChevronRight, Zap, Filter, Calendar, X, Plus } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -16,6 +16,16 @@ interface LeaderboardViewProps {
 
 type SortKey = 'name' | 'team' | 'position' | 'ovr' | 'g' | 'mp' | 'pts' | 'pa' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'fg%' | '3p%' | 'ft%' | 'ts%' | 'pm' | 'wins' | 'losses' | 'winPct';
 type ViewMode = 'Players' | 'Teams';
+type Operator = '>' | '<' | '>=' | '<=' | '=';
+
+interface FilterItem {
+    id: string;
+    type: 'stat' | 'date';
+    category?: string;
+    operator?: Operator;
+    value?: number | string;
+    label: string;
+}
 
 const ITEMS_PER_PAGE = 50;
 
@@ -33,12 +43,72 @@ const WIDTHS = {
     PCT: 65,
 };
 
+const STAT_OPTIONS = [
+    { value: 'pts', label: 'PTS (득점)' },
+    { value: 'reb', label: 'REB (리바운드)' },
+    { value: 'ast', label: 'AST (어시스트)' },
+    { value: 'stl', label: 'STL (스틸)' },
+    { value: 'blk', label: 'BLK (블록)' },
+    { value: 'tov', label: 'TOV (턴오버)' },
+    { value: 'fg%', label: 'FG% (야투율)' },
+    { value: '3p%', label: '3P% (3점슛)' },
+    { value: 'ovr', label: 'OVR (능력치)' },
+];
+
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
   const [currentPage, setCurrentPage] = useState(1);
   const [showHeatmap, setShowHeatmap] = useState(true);
+
+  // --- Filter State ---
+  const [activeFilters, setActiveFilters] = useState<FilterItem[]>([]);
+  
+  // Stat Filter Inputs
+  const [filterCat, setFilterCat] = useState('pts');
+  const [filterOp, setFilterOp] = useState<Operator>('>=');
+  const [filterVal, setFilterVal] = useState('');
+
+  // Date Filter Inputs
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+
+  // --- Filter Logic ---
+
+  const addStatFilter = () => {
+      if (!filterVal) return;
+      const catLabel = STAT_OPTIONS.find(o => o.value === filterCat)?.label || filterCat;
+      const newItem: FilterItem = {
+          id: Date.now().toString(),
+          type: 'stat',
+          category: filterCat,
+          operator: filterOp,
+          value: parseFloat(filterVal),
+          label: `${catLabel} ${filterOp} ${filterVal}`
+      };
+      setActiveFilters([...activeFilters, newItem]);
+      setFilterVal(''); // Reset input
+  };
+
+  const addDateFilter = () => {
+      if (!dateStart || !dateEnd) return;
+      // Remove existing date filters to avoid conflict
+      const cleanFilters = activeFilters.filter(f => f.type !== 'date');
+      const newItem: FilterItem = {
+          id: Date.now().toString(),
+          type: 'date',
+          value: JSON.stringify({ start: dateStart, end: dateEnd }),
+          label: `기간: ${dateStart} ~ ${dateEnd}`
+      };
+      setActiveFilters([...cleanFilters, newItem]);
+      setDateStart('');
+      setDateEnd('');
+  };
+
+  const removeFilter = (id: string) => {
+      setActiveFilters(activeFilters.filter(f => f.id !== id));
+  };
 
   // --- Data Processing ---
 
@@ -54,27 +124,51 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
     );
   }, [teams]);
 
-  // 2. Aggregate Team Stats
+  // 2. Aggregate Team Stats (Affected by Date Filter)
   const teamStats = useMemo(() => {
+    // Check for active date filter
+    const dateFilter = activeFilters.find(f => f.type === 'date');
+    let targetSchedule = schedule;
+
+    if (dateFilter && typeof dateFilter.value === 'string') {
+        const { start, end } = JSON.parse(dateFilter.value);
+        const sDate = new Date(start);
+        const eDate = new Date(end);
+        targetSchedule = schedule.filter(g => {
+            const gDate = new Date(g.date);
+            return gDate >= sDate && gDate <= eDate;
+        });
+    }
+
     return teams.map(t => {
         // Calculate precise scoring stats from schedule
-        const teamGames = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
-        const playedCount = teamGames.length || 1;
+        const teamGames = targetSchedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
+        const playedCount = teamGames.length || 1; // Avoid divide by zero if 0 games found in range
         
         let totalPts = 0;
         let totalPa = 0;
+        let wins = 0;
+        let losses = 0;
         
         teamGames.forEach(g => {
+            let myScore = 0;
+            let oppScore = 0;
             if (g.homeTeamId === t.id) {
-                totalPts += g.homeScore || 0;
-                totalPa += g.awayScore || 0;
+                myScore = g.homeScore || 0;
+                oppScore = g.awayScore || 0;
+                totalPts += myScore;
+                totalPa += oppScore;
             } else {
-                totalPts += g.awayScore || 0;
-                totalPa += g.homeScore || 0;
+                myScore = g.awayScore || 0;
+                oppScore = g.homeScore || 0;
+                totalPts += myScore;
+                totalPa += oppScore;
             }
+            if (myScore > oppScore) wins++;
+            else losses++;
         });
 
-        // Aggregate other stats from roster
+        // Aggregate other stats from roster (Note: Roster stats are total season, tough to date-filter without boxscore history)
         const totals = t.roster.reduce((acc, p) => ({
             reb: acc.reb + p.stats.reb,
             ast: acc.ast + p.stats.ast,
@@ -90,28 +184,35 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
         }), { reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
 
         const tsa = totals.fga + 0.44 * totals.fta;
+        // Adjust Per Game stats based on filtered games length? 
+        // Current implementation: Player stats are cumulative season stats in 'roster'. 
+        // Team stats from schedule are dynamic. 
+        // We will normalize roster aggregation by *82 games approx* if filtered, but simpler to keep season avg for roster based stats.
+        // For pure correctness with date filter: only W/L/PTS/PA/DIFF are strictly accurate range-based.
 
         return {
             ...t,
+            wins, // Override with filtered wins
+            losses, // Override with filtered losses
             stats: {
                 g: playedCount,
                 mp: 48,
                 pts: totalPts / playedCount,
                 pa: totalPa / playedCount,
-                reb: totals.reb / playedCount,
-                ast: totals.ast / playedCount,
-                stl: totals.stl / playedCount,
-                blk: totals.blk / playedCount,
-                tov: totals.tov / playedCount,
+                reb: totals.reb / (t.wins + t.losses || 1), // Keep season avg
+                ast: totals.ast / (t.wins + t.losses || 1),
+                stl: totals.stl / (t.wins + t.losses || 1),
+                blk: totals.blk / (t.wins + t.losses || 1),
+                tov: totals.tov / (t.wins + t.losses || 1),
                 fgPct: totals.fga > 0 ? totals.fgm / totals.fga : 0,
                 p3Pct: totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
                 ftPct: totals.fta > 0 ? totals.ftm / totals.fta : 0,
-                tsPct: tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0,
+                tsPct: tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0, // Approx
                 pm: (totalPts - totalPa) / playedCount,
             }
         };
     });
-  }, [teams, schedule]);
+  }, [teams, schedule, activeFilters]);
 
   // 3. Calculate Global Min/Max for Color Scale (Heatmap)
   const statRanges = useMemo(() => {
@@ -234,7 +335,55 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   };
 
   const sortedData = useMemo(() => {
-    const data = mode === 'Players' ? [...allPlayers.filter(p => p.stats.g > 0)] : [...teamStats];
+    // Explicitly type data as any[] to avoid TS union array mismatch errors
+    let data: any[] = mode === 'Players' ? [...allPlayers.filter(p => p.stats.g > 0)] : [...teamStats];
+
+    // --- APPLY STAT FILTERS ---
+    if (activeFilters.length > 0) {
+        data = data.filter(item => {
+            return activeFilters.every(filter => {
+                if (filter.type !== 'stat') return true; // Date filters handled in teamStats/preprocessing
+                
+                let itemVal = 0;
+                
+                // Helper to get value
+                if (mode === 'Players') {
+                    const p = item as Player;
+                    const g = p.stats.g || 1;
+                    if (filter.category === 'pts') itemVal = p.stats.pts / g;
+                    else if (filter.category === 'reb') itemVal = p.stats.reb / g;
+                    else if (filter.category === 'ast') itemVal = p.stats.ast / g;
+                    else if (filter.category === 'stl') itemVal = p.stats.stl / g;
+                    else if (filter.category === 'blk') itemVal = p.stats.blk / g;
+                    else if (filter.category === 'tov') itemVal = p.stats.tov / g;
+                    else if (filter.category === 'fg%') itemVal = (p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0) * 100;
+                    else if (filter.category === '3p%') itemVal = (p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0) * 100;
+                    else if (filter.category === 'ovr') itemVal = calculatePlayerOvr(p);
+                } else {
+                    const t = item as typeof teamStats[0];
+                    if (filter.category === 'pts') itemVal = t.stats.pts;
+                    else if (filter.category === 'reb') itemVal = t.stats.reb;
+                    else if (filter.category === 'ast') itemVal = t.stats.ast;
+                    else if (filter.category === 'stl') itemVal = t.stats.stl;
+                    else if (filter.category === 'blk') itemVal = t.stats.blk;
+                    else if (filter.category === 'tov') itemVal = t.stats.tov;
+                    else if (filter.category === 'fg%') itemVal = t.stats.fgPct * 100;
+                    else if (filter.category === '3p%') itemVal = t.stats.p3Pct * 100;
+                }
+
+                const criteria = filter.value as number;
+
+                switch (filter.operator) {
+                    case '>': return itemVal > criteria;
+                    case '<': return itemVal < criteria;
+                    case '>=': return itemVal >= criteria;
+                    case '<=': return itemVal <= criteria;
+                    case '=': return Math.abs(itemVal - criteria) < 0.1;
+                    default: return true;
+                }
+            });
+        });
+    }
 
     return data.sort((a, b) => {
         let valA: number | string = 0;
@@ -305,7 +454,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
         }
         return sortConfig.direction === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
     });
-  }, [allPlayers, teamStats, mode, sortConfig]);
+  }, [allPlayers, teamStats, mode, sortConfig, activeFilters]);
 
   const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
   const currentData = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -339,7 +488,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       position: 'sticky' as 'sticky',
       zIndex: 30,
       borderRight: isLast ? undefined : 'none', // Remove right border for seamless sticky unless last
-      boxShadow: isLast ? '4px 0 4px -2px rgba(0,0,0,0.5)' : 'none' // Shadow only on last
+      boxShadow: 'none' // [UPDATED] Removed all shadow
   });
 
   // Calculate Sticky Positions
@@ -379,11 +528,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       {/* Main Content Wrapper (Card Style) */}
       <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
           
-          {/* Top Toolbar: View Mode Selector & Heatmap Toggle */}
-          <div className="px-6 py-4 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
-              <div className="flex items-center gap-6">
-                  {/* View Mode */}
-                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+          {/* Top Toolbar: View Mode Selector & Filters & Heatmap Toggle */}
+          <div className="flex flex-col border-b border-slate-800 bg-slate-900">
+              <div className="px-6 py-4 flex flex-col xl:flex-row justify-between items-center gap-6">
+                  {/* Left: View Mode */}
+                  <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800 shrink-0">
                       <button 
                           onClick={() => { setMode('Players'); setCurrentPage(1); setSortConfig({key: 'pts', direction: 'desc'}); }}
                           className={`flex items-center gap-2 px-6 py-2 rounded-lg text-xs font-black uppercase transition-all ${mode === 'Players' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
@@ -398,9 +547,60 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                       </button>
                   </div>
 
-                  {/* Heatmap Toggle */}
+                  {/* Center: Filter Controls */}
+                  <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto overflow-x-auto">
+                      
+                      {/* Stat Filter */}
+                      <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50">
+                          <div className="p-1.5 bg-slate-700 rounded-lg text-slate-400"><Filter size={14} /></div>
+                          <select 
+                              className="bg-transparent text-xs font-bold text-white outline-none border-none cursor-pointer w-24"
+                              value={filterCat}
+                              onChange={(e) => setFilterCat(e.target.value)}
+                          >
+                              {STAT_OPTIONS.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
+                          </select>
+                          <select 
+                              className="bg-slate-900 text-xs font-bold text-white outline-none border border-slate-700 rounded px-1 py-1 cursor-pointer"
+                              value={filterOp}
+                              onChange={(e) => setFilterOp(e.target.value as Operator)}
+                          >
+                              {['>=', '<=', '>', '<', '='].map(op => <option key={op} value={op}>{op}</option>)}
+                          </select>
+                          <input 
+                              type="number" 
+                              placeholder="Value" 
+                              className="w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs font-bold text-white outline-none focus:border-indigo-500 transition-colors"
+                              value={filterVal}
+                              onChange={(e) => setFilterVal(e.target.value)}
+                              onKeyDown={(e) => e.key === 'Enter' && addStatFilter()}
+                          />
+                          <button onClick={addStatFilter} className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Plus size={14} /></button>
+                      </div>
+
+                      {/* Date Filter */}
+                      <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 rounded-xl border border-slate-700/50">
+                          <div className="p-1.5 bg-slate-700 rounded-lg text-slate-400"><Calendar size={14} /></div>
+                          <input 
+                              type="date" 
+                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-indigo-500"
+                              value={dateStart}
+                              onChange={(e) => setDateStart(e.target.value)}
+                          />
+                          <span className="text-slate-500 text-xs">-</span>
+                          <input 
+                              type="date" 
+                              className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-[10px] font-bold text-white outline-none focus:border-indigo-500"
+                              value={dateEnd}
+                              onChange={(e) => setDateEnd(e.target.value)}
+                          />
+                          <button onClick={addDateFilter} className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition-colors"><Plus size={14} /></button>
+                      </div>
+                  </div>
+
+                  {/* Right: Heatmap Toggle */}
                   <div 
-                      className="flex items-center gap-3 cursor-pointer group select-none" 
+                      className="flex items-center gap-3 cursor-pointer group select-none shrink-0" 
                       onClick={() => setShowHeatmap(!showHeatmap)}
                       title="스탯 분포 색상 표시 (Heatmap)"
                   >
@@ -409,10 +609,23 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                         </div>
                         <div className={`text-xs font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5 ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
                             <Zap size={14} className={showHeatmap ? 'fill-indigo-400' : ''} />
-                            <span>Heatmap {showHeatmap ? 'ON' : 'OFF'}</span>
+                            <span>Heatmap</span>
                         </div>
                   </div>
               </div>
+
+              {/* Active Filter Chips */}
+              {activeFilters.length > 0 && (
+                  <div className="px-6 pb-3 flex flex-wrap gap-2 animate-in slide-in-from-top-2">
+                      {activeFilters.map(filter => (
+                          <div key={filter.id} className="flex items-center gap-2 px-3 py-1 bg-indigo-900/30 border border-indigo-500/30 rounded-full text-xs font-bold text-indigo-300">
+                              <span>{filter.label}</span>
+                              <button onClick={() => removeFilter(filter.id)} className="hover:text-white transition-colors"><X size={12} /></button>
+                          </div>
+                      ))}
+                      <button onClick={() => setActiveFilters([])} className="text-[10px] font-bold text-slate-500 hover:text-red-400 underline decoration-slate-700 underline-offset-2 transition-colors ml-2">Clear All</button>
+                  </div>
+              )}
           </div>
 
           {/* Table Area (Auto Height) */}
