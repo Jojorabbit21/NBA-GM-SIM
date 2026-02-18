@@ -94,7 +94,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       
       <PageHeader 
         title="리그 리더보드" 
-        description={mode === 'Players' ? "2025-26 시즌 선수별 주요 스탯 랭킹" : "2025-26 시즌 팀별 평균 기록"}
         icon={<BarChart2 size={24} />}
       />
 
