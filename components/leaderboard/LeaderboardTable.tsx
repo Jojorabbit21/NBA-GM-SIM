@@ -192,8 +192,15 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
                                 const stickyClass = col.stickyLeft !== undefined ? stickyCellClass : "";
                                 const rankClass = col.key === 'rank' ? rankColor : "";
-                                const pmColor = col.key === 'pm' ? (parseFloat(cellContent as string) > 0 ? 'text-emerald-400' : parseFloat(cellContent as string) < 0 ? 'text-red-400' : 'text-slate-500') : "";
-                                const finalTextColor = col.key === 'pm' ? pmColor : contentTextClass;
+                                
+                                // [Fix] Correct text size and weight for +/- column
+                                let finalTextColor = contentTextClass;
+                                if (col.key === 'pm') {
+                                    const val = parseFloat(cellContent as string);
+                                    const color = val > 0 ? 'text-emerald-400' : val < 0 ? 'text-red-400' : 'text-slate-500';
+                                    finalTextColor = `text-xs font-medium font-mono tabular-nums ${color}`;
+                                }
+                                
                                 const alignClass = col.key === 'name' ? 'pl-4' : 'text-center';
 
                                 return (
