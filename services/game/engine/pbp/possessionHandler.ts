@@ -73,7 +73,7 @@ function identifyDefender(
 
 /**
  * Calculates Turnover/Steal Probability based on Defender Archetypes
- * Updated: Interceptor now uses Agility instead of Height
+ * Updated: Single-roll logic to prevent double-dipping and reduce excessive turnovers.
  */
 function calculateTurnoverChance(
     offTeam: TeamState,
@@ -86,105 +86,77 @@ function calculateTurnoverChance(
     const sliders = offTeam.tactics.sliders;
     const defIntensity = defTeam.tactics.sliders.defIntensity;
 
-    // 1. Base Turnover Chance (Mental & Handling)
-    // High ball movement (Pass heavy) slightly increases intercept risk but opens floor
-    const passRisk = sliders.ballMovement * 0.01;
-    const pressureRisk = defIntensity * 0.015;
+    // 1. Base Turnover Probability (Significantly Lowered)
+    // Old: ~25% base -> New: ~13% target average
+    let baseProb = 0.08; 
+
+    // 2. Modifiers
+    // Ball Movement: High passing increases risk slightly (0.005 per point > 5)
+    const passRisk = Math.max(0, (sliders.ballMovement - 5) * 0.004);
     
-    // Base chance ~10% modified by attributes
-    const handlingFactor = (100 - actor.attr.handling) * 0.002; // Bad handle = higher risk
-    const iqFactor = (100 - actor.attr.passIq) * 0.001; // Bad IQ = higher risk
+    // Defense Intensity: Pressure increases TOV (0.008 per point > 5)
+    const pressureRisk = Math.max(0, (defIntensity - 5) * 0.008);
+    
+    // Actor Attributes: Bad handle/IQ increases risk
+    // Handle 90 -> -0.02, Handle 50 -> +0.02
+    const handlingFactor = (70 - actor.attr.handling) * 0.001; 
+    const iqFactor = (70 - actor.attr.passIq) * 0.001;
 
-    let tovChance = 0.05 + passRisk + pressureRisk + handlingFactor + iqFactor;
+    // Play Type Context
+    let contextRisk = 0;
+    if (playType === 'Transition') contextRisk = 0.03; // Fast breaks are risky
+    else if (playType === 'Iso') contextRisk = 0.01;
+    else if (playType === 'PostUp') contextRisk = 0.02; // Crowded paint
 
-    // 2. Steal Calculation with Elite Archetypes
-    // We check if the primary defender OR a helper triggers a steal
-    let isTurnover = false;
+    // Calculate Total Turnover Probability
+    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + contextRisk;
+
+    // Cap Probability (Min 2%, Max 25%)
+    totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
+
+    // 3. Roll for Turnover
+    if (Math.random() > totalTovProb) {
+        return { isTurnover: false, isSteal: false };
+    }
+
+    // 4. If Turnover Occurred, Determine if it was a Steal
+    // This depends on the defender's ability
     let isSteal = false;
     let stealer: LivePlayer | undefined = undefined;
-    
-    let totalBonus = 0;
 
-    // A. Check Primary Defender Archetypes
+    // Base Steal Ratio (What % of turnovers are steals?)
+    // NBA Avg: ~55% of TOVs are Steals
+    let stealRatio = 0.50; 
+
+    // Defender Bonuses
     const d = defender.attr;
     
-    // Archetype 1: "The Glove" (On-Ball Lockdown)
-    // Criteria: High Steal + PerDef + Strength
-    if (d.stl >= 90 && d.perDef >= 85 && d.strength >= 70) {
-        totalBonus += 0.03; // Baseline Pressure
-        if (['Iso', 'PnR_Handler'].includes(playType)) {
-            totalBonus += 0.12; // Situational Boost (On-Ball)
-        }
-    } else if (d.stl >= 80 && d.perDef >= 80) {
-        totalBonus += 0.01; // Minor Baseline
-        if (['Iso', 'PnR_Handler'].includes(playType)) {
-            totalBonus += 0.04; // Minor Situational
-        }
-    }
+    // Archetype 1: "The Glove" (On-Ball)
+    if (d.stl >= 90) stealRatio += 0.20;
+    else if (d.stl >= 80) stealRatio += 0.10;
 
-    // Archetype 2: "The Interceptor" (Passing Lane / Reflex)
-    // Criteria: High Agility + High Pass Perception + Decent Steal
-    // [MODIFIED] Replaced Height check with Agility check
-    if (d.agility >= 85 && d.passPerc >= 85 && d.stl >= 75) {
-         totalBonus += 0.02; // Baseline: Quick reaction
-         if (['CatchShoot', 'Cut', 'PnR_Roll', 'PnR_Pop'].includes(playType)) {
-             totalBonus += 0.10; // Situational Boost: Jumping passing lanes
-         }
-    }
+    // Archetype 2: "Interceptor" (Passing Lanes)
+    if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.15;
 
-    // Archetype 3: "Grand Theft" (Raw Stat God)
-    // Criteria: Elite Steal Rating
-    if (d.stl >= 96) {
-        totalBonus += 0.08; // Pure instinct, always active
-    }
+    // Archetype 3: "The Shadow" (Help Defender)
+    // Check if a helper steals it instead of primary defender
+    const shadow = defTeam.onCourt.find(p => 
+        p.playerId !== defender.playerId && 
+        p.attr.stl >= 85 && 
+        p.attr.helpDefIq >= 90
+    );
 
-    // Archetype 4: "Cookie Monster" (Agility/Reaction)
-    // Criteria: Steal + Agility
-    if (d.stl >= 80 && d.agility >= 90) {
-        totalBonus += 0.02; // Baseline Reflex
-        if (['Handoff', 'Transition'].includes(playType)) {
-            totalBonus += 0.10; // Situational Boost (Chaos)
-        }
-    }
-
-    // Apply Primary Defender Steal Calculation
-    // Base TOV probability is influenced by defense intensity + actor mistakes
-    // Steal bonus is added on top.
-    if (Math.random() < (tovChance * 0.5 + totalBonus)) {
-        isTurnover = true;
+    if (Math.random() < stealRatio) {
         isSteal = true;
-        stealer = defender;
-    } 
-    else if (Math.random() < tovChance) {
-        // Unforced Turnover (Bad pass, dribble off foot, etc.)
-        isTurnover = true;
-        isSteal = false;
-    } else {
-        isTurnover = false;
-    }
-
-    // B. Archetype 5: "The Shadow" (Help Defender Steal - The Roamer)
-    // If no turnover yet, check if a helper snipes it
-    if (!isTurnover && ['PostUp', 'Cut', 'Iso'].includes(playType)) {
-        // Find best help stealer who isn't the primary defender
-        const shadow = defTeam.onCourt.find(p => 
-            p.playerId !== defender.playerId && 
-            p.attr.stl >= 85 && 
-            p.attr.helpDefIq >= 90
-        );
-
-        if (shadow) {
-            // Surprise double team steal chance
-            // Shadow trait gives flat chance to create turnover
-            if (Math.random() < 0.06) {
-                isTurnover = true;
-                isSteal = true;
-                stealer = shadow;
-            }
+        // 20% chance the steal comes from the helper (Shadow) if available
+        if (shadow && Math.random() < 0.20) {
+            stealer = shadow;
+        } else {
+            stealer = defender;
         }
     }
 
-    return { isTurnover, isSteal, stealer };
+    return { isTurnover: true, isSteal, stealer };
 }
 
 export function simulatePossession(state: GameState): PossessionResult {

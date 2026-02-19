@@ -60,10 +60,12 @@ export function calculateHitRate(
     
     // Apply Sliders
     // Def Intensity: Reduces Shot PCT
-    const intensityMod = (defTeam.tactics.sliders.defIntensity - 5) * 0.01;
+    // [Update] Reduced impact (0.01 -> 0.005) to prevent FG% crash
+    const intensityMod = (defTeam.tactics.sliders.defIntensity - 5) * 0.005;
     
     // Help Defense: Reduces Rim/Paint PCT
-    const helpMod = (defTeam.tactics.sliders.helpDef - 5) * 0.015;
+    // [Update] Reduced impact (0.015 -> 0.008)
+    const helpMod = (defTeam.tactics.sliders.helpDef - 5) * 0.008;
 
     hitRate += (offRating - defRating) * 0.003;
     hitRate -= intensityMod;
