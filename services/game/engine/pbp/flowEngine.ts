@@ -46,8 +46,8 @@ export function calculateHitRate(
         return { rate: 0.85, matchupEffect: 0, isAceTarget: false, isMismatch: false };
     }
 
-    // 1. Base Hit Rate
-    if (preferredZone === 'Rim') hitRate = S.INSIDE_BASE_PCT;
+    // 1. Base Hit Rate [EDITED BY USER! DO NOT CHANGE!]
+    if (preferredZone === 'Rim' || preferredZone === 'Paint') hitRate = S.INSIDE_BASE_PCT;
     else if (preferredZone === 'Mid') hitRate = S.MID_BASE_PCT;
     else if (preferredZone === '3PT') hitRate = S.THREE_BASE_PCT;
 
