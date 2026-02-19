@@ -290,12 +290,26 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                             <Sliders size={12} className="text-slate-600" />
                             <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest">Tactical Sliders</span>
                         </div>
-                        <SliderBar label="공격 페이스 (Pace)" value={tactics.pace || 5} color={teamColor} />
-                        <SliderBar label="공격 리바운드" value={tactics.sliders.offReb} color={teamColor} />
-                        <SliderBar label="수비 리바운드" value={tactics.sliders.defReb} color={teamColor} />
-                        <SliderBar label="수비 강도" value={tactics.sliders.defIntensity} color={teamColor} />
-                        <SliderBar label="풀 코트 프레스" value={tactics.sliders.fullCourtPress} color={teamColor} />
-                        <SliderBar label="존 디펜스 빈도" value={tactics.sliders.zoneUsage} color={teamColor} />
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                            <SliderBar label="공격 페이스" value={tactics.sliders.pace} color={teamColor} />
+                            <SliderBar label="공격 리바운드" value={tactics.sliders.offReb} color={teamColor} />
+                            <SliderBar label="수비 리바운드" value={tactics.sliders.defReb} color={teamColor} />
+                            <SliderBar label="수비 강도" value={tactics.sliders.defIntensity} color={teamColor} />
+                            <SliderBar label="풀 코트 프레스" value={tactics.sliders.fullCourtPress} color={teamColor} />
+                            <SliderBar label="존 디펜스 빈도" value={tactics.sliders.zoneUsage} color={teamColor} />
+                            <SliderBar label="볼 무브먼트" value={tactics.sliders.ballMovement} color={teamColor} />
+                            <SliderBar label="도움 수비" value={tactics.sliders.helpDef} color={teamColor} />
+                            <SliderBar label="스위치 빈도" value={tactics.sliders.switchFreq} color={teamColor} />
+                            <SliderBar label="아이솔레이션" value={tactics.sliders.play_iso} color={teamColor} />
+                            <SliderBar label="픽앤롤" value={tactics.sliders.play_pnr} color={teamColor} />
+                            <SliderBar label="포스트업" value={tactics.sliders.play_post} color={teamColor} />
+                            <SliderBar label="캐치앤슛" value={tactics.sliders.play_cns} color={teamColor} />
+                            <SliderBar label="돌파" value={tactics.sliders.play_drive} color={teamColor} />
+                            <SliderBar label="3점슛 비중" value={tactics.sliders.shot_3pt} color={teamColor} />
+                            <SliderBar label="중거리슛 비중" value={tactics.sliders.shot_mid} color={teamColor} />
+                            <SliderBar label="골밑슛 비중" value={tactics.sliders.shot_rim} color={teamColor} />
+                            <SliderBar label="풀업점퍼 비중" value={tactics.sliders.shot_pullup} color={teamColor} />
+                        </div>
                     </div>
                 )}
 
