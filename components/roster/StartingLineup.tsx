@@ -12,7 +12,7 @@ interface StartingLineupProps {
   roster: Player[];
 }
 
-const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }> = ({ player, positionLabel }) => {
+const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }> = React.memo(({ player, positionLabel }) => {
   const [imageError, setImageError] = useState(false);
 
   // Shared container class for aspect ratio and basic styling
@@ -82,9 +82,9 @@ const PlayerCard: React.FC<{ player: Player | undefined, positionLabel: string }
        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-50 pointer-events-none z-10"></div>
     </div>
   );
-};
+});
 
-export const StartingLineup: React.FC<StartingLineupProps> = ({ team, tactics, roster }) => {
+export const StartingLineup: React.FC<StartingLineupProps> = React.memo(({ team, tactics, roster }) => {
   const { starters } = tactics;
   // Fixed Order: PG -> SG -> SF -> PF -> C
   const positions: { key: keyof typeof starters; label: string }[] = [
@@ -111,4 +111,4 @@ export const StartingLineup: React.FC<StartingLineupProps> = ({ team, tactics, r
         })}
     </div>
   );
-};
+});
