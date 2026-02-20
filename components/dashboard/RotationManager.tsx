@@ -3,7 +3,7 @@ import React from 'react';
 import { Player, Team, GameTactics, DepthChart } from '../../types';
 import { DepthChartEditor } from './DepthChartEditor';
 import { StartingLineup } from '../roster/StartingLineup';
-import { RotationMatrix } from './RotationMatrix';
+import { RotationGanttChart } from './RotationGanttChart';
 
 interface RotationManagerProps {
     team: Team;
@@ -41,7 +41,7 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
                 </div>
             </div>
             <div className="flex-1 min-h-0 overflow-hidden">
-                <RotationMatrix 
+                <RotationGanttChart
                     team={team}
                     tactics={tactics}
                     depthChart={depthChart || null}

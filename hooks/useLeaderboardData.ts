@@ -30,8 +30,8 @@ export const useLeaderboardData = (
     // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {
         // --- Pass 1: 모든 팀의 rawTotals 및 경기 수를 미리 집계 ---
-        // Game.homeStats/awayStats 가 없는 환경에서 상대팀 스탯을
-        // 각 팀의 시즌 누계 평균으로 근사하기 위해 먼저 계산한다.
+        // Game.homeStats/awayStats (stateReplayer에서 부착)가 없는 경우 fallback으로
+        // 상대팀 시즌 평균으로 근사하기 위해 먼저 계산한다.
         const allRawTotals = new Map<string, any>();
         const allGameCounts = new Map<string, number>();
 
@@ -48,6 +48,7 @@ export const useLeaderboardData = (
                 acc.stl    += s.stl;
                 acc.blk    += s.blk;
                 acc.tov    += s.tov;
+                acc.pf     += (s.pf || 0);
                 acc.fgm    += s.fgm;
                 acc.fga    += s.fga;
                 acc.p3m    += s.p3m;
@@ -64,7 +65,7 @@ export const useLeaderboardData = (
                 });
                 return acc;
             }, {
-                reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
+                reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0,
                 fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
                 rimM: 0, rimA: 0, midM: 0, midA: 0
             });
@@ -105,7 +106,7 @@ export const useLeaderboardData = (
                     oppReb  += oppBoxScore.reb    || 0; oppOreb += oppBoxScore.offReb || 0;
                     oppDreb += oppBoxScore.defReb || 0; oppAst  += oppBoxScore.ast    || 0;
                     oppStl  += oppBoxScore.stl    || 0; oppBlk  += oppBoxScore.blk    || 0;
-                    oppTov  += oppBoxScore.tov    || 0;
+                    oppTov  += oppBoxScore.tov    || 0; oppPf   += oppBoxScore.pf     || 0;
                 } else {
                     // 게임 레벨 데이터 없음 → 상대팀 시즌 평균으로 근사
                     oppGameAccum.set(oppId, (oppGameAccum.get(oppId) || 0) + 1);
@@ -131,6 +132,7 @@ export const useLeaderboardData = (
                     oppStl  += oTotals.stl    * scale;
                     oppBlk  += oTotals.blk    * scale;
                     oppTov  += oTotals.tov    * scale;
+                    oppPf   += oTotals.pf     * scale;
                 }
             });
 
