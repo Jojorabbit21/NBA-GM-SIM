@@ -238,7 +238,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
 
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
-             <div className="px-6 py-4 bg-slate-800 border-t-2 border-t-indigo-500 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
+             <div className="px-6 py-4 bg-slate-800 border-t border-slate-700 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
                  <div className="flex items-center gap-3">
                     <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
                  </div>
@@ -342,7 +342,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                         </td>
                                         <td className={`sticky left-[250px] z-30 ${stickyBodyBg} text-center ${stickyBorder} ${stickyBottom}`}>
                                             <div className="flex items-center justify-center gap-1">
-                                                <span className={`text-xs font-semibold ${cond < 70 ? 'text-red-500' : cond < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{cond}</span>
+                                                <span className={`text-xs font-mono font-semibold ${cond < 70 ? 'text-red-500' : cond < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>{cond}</span>
                                                 {delta !== undefined && delta !== 0 && (
                                                     <span className={`text-[9px] font-bold ${delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                                         {delta > 0 ? '+' : ''}{delta}
