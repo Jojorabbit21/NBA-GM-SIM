@@ -70,6 +70,14 @@ export const replayGameState = (
         }
 
         if (res.box_score) {
+            // Attach team-level aggregates to the schedule Game object
+            // so that useLeaderboardData can use exact opponent stats
+            const idx = schedule.findIndex(g => g.id === res.game_id);
+            if (idx !== -1) {
+                if (res.box_score.home) (schedule[idx] as any).homeStats = sumTeamBoxScore(res.box_score.home);
+                if (res.box_score.away) (schedule[idx] as any).awayStats = sumTeamBoxScore(res.box_score.away);
+            }
+
             if (res.box_score.home) applyBoxScore(teamMap, res.home_team_id, res.box_score.home);
             if (res.box_score.away) applyBoxScore(teamMap, res.away_team_id, res.box_score.away);
         }
@@ -81,6 +89,26 @@ export const replayGameState = (
         currentSimDate: savedSimDate || '2025-10-20'
     };
 };
+
+function sumTeamBoxScore(box: PlayerBoxScore[]) {
+    return box.reduce((acc, s) => {
+        acc.fgm    += (s.fgm    || 0);
+        acc.fga    += (s.fga    || 0);
+        acc.p3m    += (s.p3m    || 0);
+        acc.p3a    += (s.p3a    || 0);
+        acc.ftm    += (s.ftm    || 0);
+        acc.fta    += (s.fta    || 0);
+        acc.reb    += (s.reb    || 0);
+        acc.offReb += (s.offReb || 0);
+        acc.defReb += (s.defReb || 0);
+        acc.ast    += (s.ast    || 0);
+        acc.stl    += (s.stl    || 0);
+        acc.blk    += (s.blk    || 0);
+        acc.tov    += (s.tov    || 0);
+        acc.pf     += (s.pf     || 0);
+        return acc;
+    }, { fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0 });
+}
 
 function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[]) {
     const team = teamMap.get(teamId);
