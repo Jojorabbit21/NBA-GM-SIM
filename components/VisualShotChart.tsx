@@ -1,7 +1,6 @@
 
 import React, { useMemo } from 'react';
 import { Player } from '../types';
-import { getProjectedZoneDensity } from '../services/game/engine/shotDistribution';
 
 // 435 x 403 Canvas Coordinate System (Derived from provided SVG)
 const ZONE_PATHS = {
@@ -65,8 +64,6 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
 
     // Use total FGA to determine mode: Scouting (Low sample) vs Data (High sample)
     const totalFGA = s.fga;
-    const isScoutingMode = totalFGA < 1; // Show projections if less than 20 shots [Edited by user! DO NOT CHANGE]
-
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
     const zData = useMemo(() => ({
@@ -83,9 +80,6 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
     }), [s]);
 
     const AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.35 };
-
-    // Get projected densities for Scouting Mode
-    const projected = useMemo(() => isScoutingMode ? getProjectedZoneDensity(player) : null, [player, isScoutingMode]);
 
     // Calculate Rank Helper
     // [Fix] Removed isScoutingMode check so ranks always show if data exists
@@ -134,11 +128,6 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
 
     // Helper to determine style
     const getZoneStyle = (key: string, makes: number, attempts: number, avg: number) => {
-        if (isScoutingMode && projected) {
-            // Scouting Mode: Show predicted hot zones in grayscale/slate
-            const density = projected[key as keyof typeof projected];
-            return { fill: '#94a3b8', opacity: 0.1 + (density * 0.4), isHot: false, isCold: false }; 
-        }
 
         // Data Mode: Show actual efficiency
         if (attempts === 0) return { fill: '#ef4444', opacity: 0.35, isHot: false, isCold: true }; 
@@ -235,20 +224,18 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                 <div className="flex flex-col gap-2 mt-2">
                      <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between">
                          <span>구역별 야투 효율</span>
-                         {isScoutingMode && <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">SCOUTING REPORT MODE</span>}
                      </h5>
                      <div className="w-full bg-slate-900/50 border border-slate-800 rounded-xl p-3 shadow-sm">
                          <div className="grid grid-cols-2 md:grid-cols-5 gap-y-2 gap-x-1">
                             {zones.map((z, i) => {
-                                 const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
-                                 const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                                const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
+                                const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
                                  
-                                 let colorClass = 'text-slate-400';
-                                 if (!isScoutingMode) {
-                                     if (style.isHot) colorClass = 'text-emerald-400';
-                                     else if (style.isCold) colorClass = 'text-red-400';
-                                     else if (z.data.a > 0) colorClass = 'text-yellow-400';
-                                 }
+                                let colorClass = 'text-slate-400';
+                                if (style.isHot) colorClass = 'text-emerald-400';
+                                else if (style.isCold) colorClass = 'text-red-400';
+                                else if (z.data.a > 0) colorClass = 'text-yellow-400';
+                             
 
                                  return (
                                      <div key={i} className="flex flex-col items-center justify-center p-1.5 text-center min-w-0">
@@ -268,15 +255,11 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                 <div className="flex flex-col gap-2 w-full max-w-[400px]">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between items-center">
                         <span>샷 차트</span>
-                        {!isScoutingMode ? (
-                            <div className="flex gap-3 text-[10px]">
-                                <span className="text-emerald-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></div> HOT</span>
-                                <span className="text-yellow-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-yellow-500 rounded-sm"></div> AVG</span>
-                                <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> COLD</span>
-                            </div>
-                        ) : (
-                            <span className="text-[10px] text-slate-400 flex items-center gap-1">PROJECTED ZONES</span>
-                        )}
+                        <div className="flex gap-3 text-[10px]">
+                            <span className="text-emerald-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></div> HOT</span>
+                            <span className="text-yellow-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-yellow-500 rounded-sm"></div> AVG</span>
+                            <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> COLD</span>
+                        </div>
                     </h5>
                     
                     <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden shadow-2xl border border-slate-800">
@@ -310,76 +293,74 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                             </g>
 
                              {/* Layer 3: Data Labels Overlay (Only in Data Mode) - Pill Design */}
-                             {!isScoutingMode && (
-                                 <g className="data-labels" pointerEvents="none">
-                                     {zones.map((z, i) => {
-                                        const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
-                                        
-                                        // Colors based on efficiency logic used in getZoneStyle
-                                        const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
-                                        
-                                        let pillFill = '#1e293b'; // slate-800
-                                        let textFill = '#94a3b8'; // slate-400
-                                        let borderStroke = '#334155'; // slate-700
+                            <g className="data-labels" pointerEvents="none">
+                                {zones.map((z, i) => {
+                                const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                                
+                                // Colors based on efficiency logic used in getZoneStyle
+                                const style = getZoneStyle(z.key, z.data.m, z.data.a, z.avg);
+                                
+                                let pillFill = '#1e293b'; // slate-800
+                                let textFill = '#94a3b8'; // slate-400
+                                let borderStroke = '#334155'; // slate-700
 
-                                        if (style.isHot) {
-                                            pillFill = '#064e3b'; // emerald-900
-                                            textFill = '#34d399'; // emerald-400
-                                            borderStroke = '#059669'; // emerald-600
-                                        } else if (style.isCold) {
-                                            // Handle Cold / No Data (Red)
-                                            pillFill = '#7f1d1d'; // red-900
-                                            textFill = '#f87171'; // red-400
-                                            borderStroke = '#dc2626'; // red-600
-                                        } else if (z.data.a > 0) {
-                                            // Avg (Yellow)
-                                            pillFill = '#713f12'; // yellow-900
-                                            textFill = '#facc15'; // yellow-400
-                                            borderStroke = '#ca8a04'; // yellow-600
-                                        }
+                                if (style.isHot) {
+                                    pillFill = '#064e3b'; // emerald-900
+                                    textFill = '#34d399'; // emerald-400
+                                    borderStroke = '#059669'; // emerald-600
+                                } else if (style.isCold) {
+                                    // Handle Cold / No Data (Red)
+                                    pillFill = '#7f1d1d'; // red-900
+                                    textFill = '#f87171'; // red-400
+                                    borderStroke = '#dc2626'; // red-600
+                                } else if (z.data.a > 0) {
+                                    // Avg (Yellow)
+                                    pillFill = '#713f12'; // yellow-900
+                                    textFill = '#facc15'; // yellow-400
+                                    borderStroke = '#ca8a04'; // yellow-600
+                                }
 
-                                        // Dynamic Width Calculation based on text content (Fix for 100% bug)
-                                        const isWide = pct.length >= 4; // e.g. "100%"
-                                        const width = isWide ? 60 : 48; // Increased from 48/38
-                                        const height = 36; // Increased from 26
+                                // Dynamic Width Calculation based on text content (Fix for 100% bug)
+                                const isWide = pct.length >= 4; // e.g. "100%"
+                                const width = isWide ? 60 : 48; // Increased from 48/38
+                                const height = 36; // Increased from 26
 
-                                        return (
-                                            <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                <rect 
-                                                    x={-width / 2} 
-                                                    y={-height / 2} 
-                                                    width={width} 
-                                                    height={height} 
-                                                    rx={6} 
-                                                    fill={pillFill} 
-                                                    stroke={borderStroke}
-                                                    strokeWidth={1}
-                                                    fillOpacity={0.95} // Increased opacity
-                                                />
-                                                <text 
-                                                    textAnchor="middle" 
-                                                    y={-4} 
-                                                    fill={textFill} 
-                                                    fontSize="13px" // Increased Font Size (Two steps up from 10/11px)
-                                                    fontWeight="800" 
-                                                    style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
-                                                >
-                                                    {pct}%
-                                                </text>
-                                                <text 
-                                                    textAnchor="middle" 
-                                                    y={12} 
-                                                    fill={'#ffffff'} // Changed from slate-400 to white
-                                                    fontSize="10px" // Increased from 9px to 10px
-                                                    fontWeight="600" 
-                                                >
-                                                    {z.data.m}/{z.data.a}
-                                                </text>
-                                            </g>
-                                        );
-                                     })}
-                                 </g>
-                             )}
+                                return (
+                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                        <rect 
+                                            x={-width / 2} 
+                                            y={-height / 2} 
+                                            width={width} 
+                                            height={height} 
+                                            rx={6} 
+                                            fill={pillFill} 
+                                            stroke={borderStroke}
+                                            strokeWidth={1}
+                                            fillOpacity={0.95} // Increased opacity
+                                        />
+                                        <text 
+                                            textAnchor="middle" 
+                                            y={-4} 
+                                            fill={textFill} 
+                                            fontSize="13px" // Increased Font Size (Two steps up from 10/11px)
+                                            fontWeight="800" 
+                                            style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
+                                        >
+                                            {pct}%
+                                        </text>
+                                        <text 
+                                            textAnchor="middle" 
+                                            y={12} 
+                                            fill={'#ffffff'} // Changed from slate-400 to white
+                                            fontSize="10px" // Increased from 9px to 10px
+                                            fontWeight="600" 
+                                        >
+                                            {z.data.m}/{z.data.a}
+                                        </text>
+                                    </g>
+                                );
+                                })}
+                            </g>
                         </svg>
                     </div>
                 </div>
