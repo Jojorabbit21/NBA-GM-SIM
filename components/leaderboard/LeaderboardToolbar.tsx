@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair } from 'lucide-react';
+import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair, Search, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
-import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
+import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
+import { Team } from '../../types';
+import { TeamLogo } from '../common/TeamLogo';
 
 interface LeaderboardToolbarProps {
     mode: ViewMode;
@@ -15,23 +17,39 @@ interface LeaderboardToolbarProps {
     clearFilters: () => void;
     showHeatmap: boolean;
     setShowHeatmap: (v: boolean) => void;
+    teams: Team[];
+    selectedTeams: string[];
+    setSelectedTeams: (ids: string[]) => void;
+    selectedPositions: string[];
+    setSelectedPositions: (pos: string[]) => void;
+    searchQuery: string;
+    setSearchQuery: (q: string) => void;
 }
 
 export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     mode, setMode, statCategory, setStatCategory,
     activeFilters, addFilter, removeFilter, clearFilters,
-    showHeatmap, setShowHeatmap
+    showHeatmap, setShowHeatmap,
+    teams, selectedTeams, setSelectedTeams,
+    selectedPositions, setSelectedPositions,
+    searchQuery, setSearchQuery
 }) => {
     // Determine available options based on category
-    const options = statCategory === 'Traditional' ? TRADITIONAL_STAT_OPTIONS : SHOOTING_STAT_OPTIONS;
-    const defaultOption = options[0].value;
+    let options = TRADITIONAL_STAT_OPTIONS;
+    if (statCategory === 'Shooting') options = SHOOTING_STAT_OPTIONS;
+    else if (statCategory === 'Advanced') options = ADVANCED_STAT_OPTIONS;
+    else if (statCategory === 'Opponent') options = OPPONENT_STAT_OPTIONS;
+
+    const defaultOption = options[0]?.value || '';
 
     // Local state for filter inputs
     const [filterCat, setFilterCat] = useState(defaultOption);
     const [filterOp, setFilterOp] = useState<Operator>('>=');
     const [filterVal, setFilterVal] = useState('');
-    const [dateStart, setDateStart] = useState('');
-    const [dateEnd, setDateEnd] = useState('');
+    
+    // Dropdown states
+    const [isTeamDropdownOpen, setIsTeamDropdownOpen] = useState(false);
+    const [isPosDropdownOpen, setIsPosDropdownOpen] = useState(false);
 
     // Reset filter cat when options change
     useEffect(() => {
@@ -52,17 +70,34 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
         setFilterVal('');
     };
 
-    const handleAddDateFilter = () => {
-        if (!dateStart || !dateEnd) return;
-        addFilter({
-            id: Date.now().toString(),
-            type: 'date',
-            value: JSON.stringify({ start: dateStart, end: dateEnd }),
-            label: `${dateStart} ~ ${dateEnd}`
-        });
-        setDateStart('');
-        setDateEnd('');
+    const toggleTeam = (teamId: string) => {
+        if (selectedTeams.includes(teamId)) {
+            setSelectedTeams(selectedTeams.filter(id => id !== teamId));
+        } else {
+            setSelectedTeams([...selectedTeams, teamId]);
+        }
     };
+
+    const togglePosition = (pos: string) => {
+        if (selectedPositions.includes(pos)) {
+            setSelectedPositions(selectedPositions.filter(p => p !== pos));
+        } else {
+            setSelectedPositions([...selectedPositions, pos]);
+        }
+    };
+
+    const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
+
+    // Category Items
+    const categoryItems = [
+        { id: 'Traditional', label: 'Traditional', onClick: () => setStatCategory('Traditional'), active: statCategory === 'Traditional' },
+        { id: 'Shooting', label: 'Shooting', onClick: () => setStatCategory('Shooting'), active: statCategory === 'Shooting' },
+        { id: 'Advanced', label: 'Advanced', onClick: () => setStatCategory('Advanced'), active: statCategory === 'Advanced' },
+    ];
+
+    if (mode === 'Teams') {
+        categoryItems.push({ id: 'Opponent', label: 'Opponent', onClick: () => setStatCategory('Opponent'), active: statCategory === 'Opponent' });
+    }
 
     return (
         <div className="flex flex-col border-b border-slate-800 bg-slate-900">
@@ -78,7 +113,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                            </button>
                         }
                         items={[
-                            { id: 'Players', label: 'Players', onClick: () => setMode('Players'), active: mode === 'Players' },
+                            { id: 'Players', label: 'Players', onClick: () => { setMode('Players'); if(statCategory === 'Opponent') setStatCategory('Traditional'); }, active: mode === 'Players' },
                             { id: 'Teams', label: 'Teams', onClick: () => setMode('Teams'), active: mode === 'Teams' }
                         ]}
                         width="w-32"
@@ -94,10 +129,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
                            </button>
                         }
-                        items={[
-                            { id: 'Traditional', label: 'Traditional (General)', onClick: () => setStatCategory('Traditional'), active: statCategory === 'Traditional' },
-                            { id: 'Shooting', label: 'Shooting (Zones)', onClick: () => setStatCategory('Shooting'), active: statCategory === 'Shooting' }
-                        ]}
+                        items={categoryItems}
                         width="w-48"
                         align="left"
                     />
@@ -106,6 +138,103 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                 {/* Right Group: Filters & Toggles */}
                 <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
                     
+                    {/* Search Input */}
+                    <div className="relative h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0 w-48">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
+                            <Search size={14} />
+                        </div>
+                        <input 
+                            type="text" 
+                            placeholder="Search Name..." 
+                            className="h-full w-full bg-transparent pl-9 pr-3 text-xs font-bold text-white outline-none placeholder:text-slate-600"
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                        />
+                        {searchQuery && (
+                            <button 
+                                onClick={() => setSearchQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
+                    </div>
+
+                    {/* Team Filter Dropdown */}
+                    <div className="relative">
+                        <button 
+                            className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-xs font-bold transition-colors ${selectedTeams.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 text-slate-400 hover:text-white'}`}
+                            onClick={() => setIsTeamDropdownOpen(!isTeamDropdownOpen)}
+                        >
+                            <span>Teams</span>
+                            {selectedTeams.length > 0 && (
+                                <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">{selectedTeams.length}</span>
+                            )}
+                            <ChevronDown size={12} />
+                        </button>
+                        
+                        {isTeamDropdownOpen && (
+                            <>
+                                <div className="fixed inset-0 z-[100]" onClick={() => setIsTeamDropdownOpen(false)} />
+                                <div className="absolute top-full mt-2 right-0 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150">
+                                    <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar space-y-1">
+                                        {teams.map(team => (
+                                            <div 
+                                                key={team.id}
+                                                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
+                                                onClick={() => toggleTeam(team.id)}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.includes(team.id) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                    {selectedTeams.includes(team.id) && <Check size={10} className="text-white" />}
+                                                </div>
+                                                <TeamLogo teamId={team.id} size="sm" />
+                                                <span className={`text-xs font-bold ${selectedTeams.includes(team.id) ? 'text-white' : 'text-slate-400'}`}>{team.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Position Filter Dropdown (Only for Players mode) */}
+                    {mode === 'Players' && (
+                        <div className="relative">
+                            <button 
+                                className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-xs font-bold transition-colors ${selectedPositions.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 text-slate-400 hover:text-white'}`}
+                                onClick={() => setIsPosDropdownOpen(!isPosDropdownOpen)}
+                            >
+                                <span>Positions</span>
+                                {selectedPositions.length > 0 && (
+                                    <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">{selectedPositions.length}</span>
+                                )}
+                                <ChevronDown size={12} />
+                            </button>
+                            
+                            {isPosDropdownOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-[100]" onClick={() => setIsPosDropdownOpen(false)} />
+                                    <div className="absolute top-full mt-2 right-0 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150">
+                                        <div className="p-2 space-y-1">
+                                            {POSITIONS.map(pos => (
+                                                <div 
+                                                    key={pos}
+                                                    className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
+                                                    onClick={() => togglePosition(pos)}
+                                                >
+                                                    <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedPositions.includes(pos) ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                        {selectedPositions.includes(pos) && <Check size={10} className="text-white" />}
+                                                    </div>
+                                                    <span className={`text-xs font-bold ${selectedPositions.includes(pos) ? 'text-white' : 'text-slate-400'}`}>{pos}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    )}
+
                     {/* Heatmap Toggle (Container Style) */}
                     <div 
                         className="flex items-center justify-between gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0" 
@@ -113,7 +242,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         title="스탯 분포 색상 표시"
                     >
                         <div className={`text-xs font-bold transition-colors ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
-                            색상 스케일
+                            Color Scale
                         </div>
                         <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-800'}`}>
                             <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'right-0.5' : 'left-0.5'}`} />
@@ -156,10 +285,6 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             <Plus size={14} />
                         </button>
                     </div>
-
-                    {/* Date Filter (Disabled removed logic here, but UI kept if revived later or just remove entirely if not used) */}
-                    {/* For now, removing date filter from UI as per previous instructions to disable it, but if it needs to be there visibly but non-functional, uncomment below.
-                        Currently removing it to match previous step's cleanup. */}
                 </div>
             </div>
 

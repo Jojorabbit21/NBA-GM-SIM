@@ -16,33 +16,12 @@ export const useLeaderboardData = (
     schedule: Game[],
     activeFilters: FilterItem[],
     sortConfig: { key: string; direction: 'asc' | 'desc' },
-    mode: ViewMode
+    mode: ViewMode,
+    selectedTeams: string[] = [],
+    selectedPositions: string[] = [],
+    searchQuery: string = ''
 ) => {
-    // 1. Flatten Players & Pre-calculate Zone %
-    const allPlayers = useMemo(() => {
-        return teams.flatMap(t => 
-            t.roster.map(p => {
-                const s = { ...p.stats } as any;
-                
-                // Pre-calculate zone percentages for sorting/filtering/display
-                ZONE_KEYS.forEach(z => {
-                    const m = s[`${z}_m`] || 0;
-                    const a = s[`${z}_a`] || 0;
-                    s[`${z}_pct`] = a > 0 ? m / a : 0;
-                });
-
-                return { 
-                    ...p, 
-                    stats: s,
-                    teamId: t.id, 
-                    teamName: t.name,
-                    teamCity: t.city
-                };
-            })
-        );
-    }, [teams]);
-
-    // 2. Aggregate Team Stats including Zones
+    // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {
         return teams.map(t => {
             const teamGames = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
@@ -53,25 +32,38 @@ export const useLeaderboardData = (
             let wins = 0;
             let losses = 0;
             
+            // Opponent Totals
+            let oppFgm = 0; let oppFga = 0;
+            let opp3pm = 0; let opp3pa = 0;
+            let oppFtm = 0; let oppFta = 0;
+            let oppReb = 0; let oppOreb = 0; let oppDreb = 0;
+            let oppAst = 0; let oppStl = 0; let oppBlk = 0;
+            let oppTov = 0; let oppPf = 0;
+
             teamGames.forEach(g => {
-                let myScore = 0;
-                let oppScore = 0;
-                if (g.homeTeamId === t.id) {
-                    myScore = g.homeScore || 0;
-                    oppScore = g.awayScore || 0;
-                    totalPts += myScore;
-                    totalPa += oppScore;
-                } else {
-                    myScore = g.awayScore || 0;
-                    oppScore = g.homeScore || 0;
-                    totalPts += myScore;
-                    totalPa += oppScore;
+                const isHome = g.homeTeamId === t.id;
+                const myScore = isHome ? g.homeScore : g.awayScore;
+                const oppScore = isHome ? g.awayScore : g.homeScore;
+                
+                if (myScore > oppScore) wins++; else losses++;
+                totalPts += myScore;
+                totalPa += oppScore;
+
+                // We assume Game object has homeStats and awayStats for box score summaries.
+                // If not available, these will be 0, but logic is prepared for when they are.
+                const oppStats = isHome ? (g as any).awayStats : (g as any).homeStats;
+                if (oppStats) {
+                    oppFgm += oppStats.fgm || 0; oppFga += oppStats.fga || 0;
+                    opp3pm += oppStats.p3m || 0; opp3pa += oppStats.p3a || 0;
+                    oppFtm += oppStats.ftm || 0; oppFta += oppStats.fta || 0;
+                    oppReb += oppStats.reb || 0; oppOreb += oppStats.offReb || 0; oppDreb += oppStats.defReb || 0;
+                    oppAst += oppStats.ast || 0; oppStl += oppStats.stl || 0; oppBlk += oppStats.blk || 0;
+                    oppTov += oppStats.tov || 0; 
+                    // oppPf might not be tracked in TeamStats
                 }
-                if (myScore > oppScore) wins++;
-                else losses++;
             });
 
-            // Aggregate totals from roster
+            // Aggregate totals from roster (My Team Stats)
             const totals = t.roster.reduce((acc: any, p) => {
                 const s = p.stats;
                 const newAcc = { ...acc };
@@ -106,10 +98,10 @@ export const useLeaderboardData = (
                 reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, 
                 fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
                 rimM: 0, rimA: 0, midM: 0, midA: 0 
-                // Zone keys implicitly handled by spread/dynamic assignment above
             });
 
             const tsa = totals.fga + 0.44 * totals.fta;
+            const teamPoss = totals.fga + 0.44 * totals.fta + totals.tov - totals.offReb; 
             
             // Build stats object
             const stats: any = {
@@ -138,16 +130,47 @@ export const useLeaderboardData = (
                 fta: totals.fta / (t.wins + t.losses || 1),
                 'ft%': totals.fta > 0 ? totals.ftm / totals.fta : 0,
                 
-                // Aggregated Zone Stats (Legacy)
+                // Aggregated Zone Stats
                 rimM: totals.rimM, rimA: totals.rimA,
                 'rim%': totals.rimA > 0 ? totals.rimM / totals.rimA : 0,
                 midM: totals.midM, midA: totals.midA,
                 'mid%': totals.midA > 0 ? totals.midM / totals.midA : 0,
                 '3pM': totals.p3m, 
 
-                'ts%': tsa > 0 ? (totalPts / playedCount) / (2 * (tsa/playedCount)) : 0, 
+                'ts%': tsa > 0 ? totalPts / (2 * tsa) : 0, 
                 pm: (totalPts - totalPa) / playedCount,
+
+                // --- Advanced Stats (Team) ---
+                'efg%': totals.fga > 0 ? (totals.fgm + 0.5 * totals.p3m) / totals.fga : 0,
+                'tov%': teamPoss > 0 ? totals.tov / teamPoss : 0,
+                'usg%': 1.0, 
+                'ast%': totals.fgm > 0 ? totals.ast / totals.fgm : 0,
+                'orb%': (totals.offReb + oppDreb) > 0 ? totals.offReb / (totals.offReb + oppDreb) : 0,
+                'drb%': (totals.defReb + oppOreb) > 0 ? totals.defReb / (totals.defReb + oppOreb) : 0,
+                'trb%': (totals.reb + oppReb) > 0 ? totals.reb / (totals.reb + oppReb) : 0,
+                'stl%': 0, // Calculated below
+                'blk%': 0, // Calculated below
+                '3par': totals.fga > 0 ? totals.p3a / totals.fga : 0,
+                'ftr': totals.fga > 0 ? totals.fta / totals.fga : 0,
+
+                // --- Opponent Stats ---
+                'opp_pts': totalPa / playedCount,
+                'opp_fg%': oppFga > 0 ? oppFgm / oppFga : 0,
+                'opp_3p%': opp3pa > 0 ? opp3pm / opp3pa : 0,
+                'opp_ast': oppAst / playedCount,
+                'opp_reb': oppReb / playedCount,
+                'opp_oreb': oppOreb / playedCount,
+                'opp_stl': oppStl / playedCount,
+                'opp_blk': oppBlk / playedCount,
+                'opp_tov': oppTov / playedCount,
+                'opp_pf': oppPf / playedCount,
             };
+
+            // Refine Advanced Stats that need Opponent Data
+            const oppPoss = oppFga + 0.44 * oppFta + oppTov - oppOreb;
+            stats['stl%'] = oppPoss > 0 ? totals.stl / oppPoss : 0;
+            const opp2pa = oppFga - opp3pa;
+            stats['blk%'] = opp2pa > 0 ? totals.blk / opp2pa : 0;
 
             // Calculate per-zone Percentages and Per-Game averages
             ZONE_KEYS.forEach(z => {
@@ -162,10 +185,105 @@ export const useLeaderboardData = (
                 ...t,
                 wins, 
                 losses,
-                stats
+                stats,
+                rawTotals: totals,
+                rawOppTotals: { oppFgm, oppFga, opp3pm, opp3pa, oppFtm, oppFta, oppReb, oppOreb, oppDreb, oppAst, oppStl, oppBlk, oppTov, oppPoss }
             };
         });
     }, [teams, schedule]);
+
+    // 1. Flatten Players & Pre-calculate Zone % AND Advanced Stats
+    const allPlayers = useMemo(() => {
+        return teams.flatMap(t => {
+            // Find team stat object to get Opponent stats for context
+            const tStat = teamStats.find(ts => ts.id === t.id);
+            const teamMin = (tStat?.stats.g || 1) * 48;
+            const teamFgm = tStat?.rawTotals.fgm || 0;
+            const teamPoss = (tStat?.rawTotals.fga || 0) + 0.44 * (tStat?.rawTotals.fta || 0) + (tStat?.rawTotals.tov || 0) - (tStat?.rawTotals.offReb || 0);
+            
+            const oppDreb = tStat?.rawOppTotals.oppDreb || 0;
+            const oppOreb = tStat?.rawOppTotals.oppOreb || 0;
+            const oppReb = tStat?.rawOppTotals.oppReb || 0;
+            const oppPoss = tStat?.rawOppTotals.oppPoss || 0;
+            const opp2pa = (tStat?.rawOppTotals.oppFga || 0) - (tStat?.rawOppTotals.opp3pa || 0);
+
+            return t.roster.map(p => {
+                const s = { ...p.stats } as any;
+                const g = s.g || 1;
+                const mp = s.mp || 1; // Total minutes played
+                
+                // Pre-calculate zone percentages
+                ZONE_KEYS.forEach(z => {
+                    const m = s[`${z}_m`] || 0;
+                    const a = s[`${z}_a`] || 0;
+                    s[`${z}_pct`] = a > 0 ? m / a : 0;
+                });
+
+                // --- Advanced Stats (Player) ---
+                const tsa = s.fga + 0.44 * s.fta;
+                s['ts%'] = tsa > 0 ? s.pts / (2 * tsa) : 0;
+                s['efg%'] = s.fga > 0 ? (s.fgm + 0.5 * s.p3m) / s.fga : 0;
+                s['tov%'] = (s.fga + 0.44 * s.fta + s.tov) > 0 ? s.tov / (s.fga + 0.44 * s.fta + s.tov) : 0;
+                
+                // USG%
+                const playerPossCount = s.fga + 0.44 * s.fta + s.tov;
+                if (mp > 0 && teamPoss > 0) {
+                    s['usg%'] = (playerPossCount * (teamMin / 5)) / (mp * teamPoss);
+                } else {
+                    s['usg%'] = 0;
+                }
+
+                // AST%
+                if (mp > 0) {
+                    const denominator = ((mp / (teamMin / 5)) * teamFgm) - s.fgm;
+                    s['ast%'] = denominator > 0 ? s.ast / denominator : 0;
+                } else {
+                    s['ast%'] = 0;
+                }
+
+                // ORB%
+                const teamOreb = tStat?.rawTotals.offReb || 0;
+                const totalOrebChances = teamOreb + oppDreb;
+                if (mp > 0 && totalOrebChances > 0) {
+                    s['orb%'] = (s.offReb * (teamMin / 5)) / (mp * totalOrebChances);
+                } else s['orb%'] = 0;
+
+                // DRB%
+                const teamDreb = tStat?.rawTotals.defReb || 0;
+                const totalDrebChances = teamDreb + oppOreb;
+                if (mp > 0 && totalDrebChances > 0) {
+                    s['drb%'] = (s.defReb * (teamMin / 5)) / (mp * totalDrebChances);
+                } else s['drb%'] = 0;
+
+                // TRB%
+                const totalRebChances = (tStat?.rawTotals.reb || 0) + oppReb;
+                if (mp > 0 && totalRebChances > 0) {
+                    s['trb%'] = (s.reb * (teamMin / 5)) / (mp * totalRebChances);
+                } else s['trb%'] = 0;
+
+                // STL%
+                if (mp > 0 && oppPoss > 0) {
+                    s['stl%'] = (s.stl * (teamMin / 5)) / (mp * oppPoss);
+                } else s['stl%'] = 0;
+
+                // BLK%
+                if (mp > 0 && opp2pa > 0) {
+                    s['blk%'] = (s.blk * (teamMin / 5)) / (mp * opp2pa);
+                } else s['blk%'] = 0;
+
+                s['3par'] = s.fga > 0 ? s.p3a / s.fga : 0;
+                s['ftr'] = s.fga > 0 ? s.fta / s.fga : 0;
+
+                return { 
+                    ...p, 
+                    stats: s,
+                    teamId: t.id, 
+                    teamName: t.name,
+                    teamCity: t.city
+                };
+            });
+        });
+    }, [teams, teamStats]);
 
     // 3. Calculate Global Min/Max for Color Scale (Heatmap)
     const statRanges = useMemo(() => {
@@ -210,6 +328,19 @@ export const useLeaderboardData = (
                     update(`${z}_a`, (s[`${z}_a`] || 0) / g);
                     update(`${z}_pct`, s[`${z}_pct`]);
                 });
+
+                // Advanced Stats
+                update('efg%', s['efg%']);
+                update('tov%', s['tov%']);
+                update('usg%', s['usg%']);
+                update('ast%', s['ast%']);
+                update('orb%', s['orb%']);
+                update('drb%', s['drb%']);
+                update('trb%', s['trb%']);
+                update('stl%', s['stl%']);
+                update('blk%', s['blk%']);
+                update('3par', s['3par']);
+                update('ftr', s['ftr']);
             });
         } else {
             teamStats.forEach(t => {
@@ -233,6 +364,32 @@ export const useLeaderboardData = (
     const sortedData = useMemo(() => {
         let data: any[] = mode === 'Players' ? [...allPlayers.filter(p => p.stats.g > 0)] : [...teamStats];
 
+        // --- APPLY NEW FILTERS (Team, Position, Search) ---
+        if (mode === 'Players') {
+            // Team Filter
+            if (selectedTeams.length > 0) {
+                data = data.filter(p => selectedTeams.includes(p.teamId));
+            }
+            // Position Filter
+            if (selectedPositions.length > 0) {
+                data = data.filter(p => selectedPositions.includes(p.position));
+            }
+            // Search Filter
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                data = data.filter(p => p.name.toLowerCase().includes(query));
+            }
+        } else {
+            // Team Mode Filters
+            if (selectedTeams.length > 0) {
+                data = data.filter(t => selectedTeams.includes(t.id));
+            }
+            if (searchQuery) {
+                const query = searchQuery.toLowerCase();
+                data = data.filter(t => t.name.toLowerCase().includes(query) || t.city.toLowerCase().includes(query));
+            }
+        }
+
         // --- APPLY STAT FILTERS ---
         if (activeFilters.length > 0) {
             data = data.filter(item => {
@@ -254,23 +411,27 @@ export const useLeaderboardData = (
                                  itemVal = (s[filter.category] || 0) / g;
                              }
                         } else {
-                            // Traditional Stats
-                            switch(filter.category) {
-                                case 'pts': itemVal = p.stats.pts / g; break;
-                                case 'reb': itemVal = p.stats.reb / g; break;
-                                case 'ast': itemVal = p.stats.ast / g; break;
-                                case 'stl': itemVal = p.stats.stl / g; break;
-                                case 'blk': itemVal = p.stats.blk / g; break;
-                                case 'tov': itemVal = p.stats.tov / g; break;
-                                case 'fg%': itemVal = (p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0) * 100; break;
-                                case '3p%': itemVal = (p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0) * 100; break;
-                                case 'ts%': {
-                                    const tsa = p.stats.fga + 0.44 * p.stats.fta;
-                                    itemVal = tsa > 0 ? (p.stats.pts / (2*tsa)) * 100 : 0;
-                                    break;
+                            // Traditional & Advanced Stats
+                            // Check if key exists in stats object directly (Advanced stats are pre-calced in s)
+                            if (s[filter.category!] !== undefined) {
+                                itemVal = s[filter.category!];
+                                // If it's a percentage stat (0-1), multiply by 100 for filter if user inputs 50 for 50%
+                                if (filter.category!.endsWith('%')) {
+                                    itemVal *= 100;
+                                } else if (!['usg%', 'ast%', 'orb%', 'drb%', 'trb%', 'stl%', 'blk%', '3par', 'ftr'].includes(filter.category!)) {
+                                    // Per Game for traditional counts
+                                    // Advanced stats are already ratios, so no /g
+                                    // Traditional counts need /g
+                                    if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'oreb', 'dreb', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(filter.category!)) {
+                                        itemVal = itemVal / g;
+                                    }
                                 }
-                                case 'ovr': itemVal = calculatePlayerOvr(p); break;
-                                default: itemVal = 0;
+                            } else {
+                                // Fallback for calculated on fly (like ovr)
+                                switch(filter.category) {
+                                    case 'ovr': itemVal = calculatePlayerOvr(p); break;
+                                    default: itemVal = 0;
+                                }
                             }
                         }
                     } else {
@@ -278,21 +439,17 @@ export const useLeaderboardData = (
                         const s = t.stats;
                         
                         if (filter.category && filter.category.startsWith('zone_')) {
-                             // Zone Stats (Team stats are already averaged/calculated)
                              if (filter.category.endsWith('_pct')) {
                                  itemVal = (s[filter.category] || 0) * 100;
                              } else {
                                  itemVal = s[filter.category] || 0;
                              }
                         } else {
-                            // Traditional Stats
-                            switch(filter.category) {
-                                case 'pts': itemVal = s.pts; break;
-                                case 'reb': itemVal = s.reb; break;
-                                case 'ast': itemVal = s.ast; break;
-                                case 'fg%': itemVal = s['fg%'] * 100; break;
-                                case '3p%': itemVal = s['3p%'] * 100; break;
-                                default: itemVal = 0;
+                            if (s[filter.category!] !== undefined) {
+                                itemVal = s[filter.category!];
+                                if (filter.category!.endsWith('%')) {
+                                    itemVal *= 100;
+                                }
                             }
                         }
                     }
@@ -325,39 +482,25 @@ export const useLeaderboardData = (
                     if (sortConfig.key === 'position') return p.position;
                     if (sortConfig.key === 'ovr') return calculatePlayerOvr(p);
                     
-                    // Stat keys
-                    if (sortConfig.key === 'mp') return s.mp / g;
-                    if (sortConfig.key === 'pts') return s.pts / g;
-                    if (sortConfig.key === 'reb') return s.reb / g;
-                    if (sortConfig.key === 'oreb') return (s.offReb || 0) / g;
-                    if (sortConfig.key === 'dreb') return (s.defReb || 0) / g;
-                    if (sortConfig.key === 'ast') return s.ast / g;
-                    if (sortConfig.key === 'stl') return s.stl / g;
-                    if (sortConfig.key === 'blk') return s.blk / g;
-                    if (sortConfig.key === 'tov') return s.tov / g;
-                    if (sortConfig.key === 'pm') return s.plusMinus / g;
-                    
-                    if (sortConfig.key === 'fg%') return s.fga > 0 ? s.fgm/s.fga : 0;
-                    if (sortConfig.key === '3p%') return s.p3a > 0 ? s.p3m/s.p3a : 0;
-                    if (sortConfig.key === 'ft%') return s.fta > 0 ? s.ftm/s.fta : 0;
-                    if (sortConfig.key === 'rim%') return (s.rimA||0) > 0 ? (s.rimM||0)/(s.rimA||0) : 0;
-                    if (sortConfig.key === 'mid%') return (s.midA||0) > 0 ? (s.midM||0)/(s.midA||0) : 0;
-                    if (sortConfig.key === 'ts%') {
-                        const tsa = s.fga + 0.44 * s.fta;
-                        return tsa > 0 ? s.pts / (2 * tsa) : 0;
+                    // Direct access for most keys now (including advanced)
+                    if (s[sortConfig.key] !== undefined) {
+                        const val = s[sortConfig.key];
+                        // If it's a count stat, average it. If ratio, use as is.
+                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pm', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
+                            return val / g;
+                        }
+                        return val;
                     }
                     
                     // Zone Keys (M, A, PCT)
-                    // If key ends with _m or _a, average it
                     if (sortConfig.key.endsWith('_m') || sortConfig.key.endsWith('_a')) {
                          return (s[sortConfig.key] || 0) / g;
                     }
-                    // If key ends with _pct, use pre-calculated
                     if (sortConfig.key.endsWith('_pct')) {
                          return s[sortConfig.key] || 0;
                     }
 
-                    return s[sortConfig.key] || 0;
+                    return 0;
                 } else {
                     const t = item as typeof teamStats[0];
                     if (sortConfig.key === 'name') return t.city;
@@ -378,7 +521,7 @@ export const useLeaderboardData = (
             return sortConfig.direction === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
         });
 
-    }, [allPlayers, teamStats, mode, sortConfig, activeFilters]);
+    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery]);
 
     return { sortedData, statRanges };
 };
