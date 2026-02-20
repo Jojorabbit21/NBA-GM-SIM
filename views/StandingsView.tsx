@@ -16,9 +16,9 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
 
   const divisions = ['Atlantic', 'Central', 'Southeast', 'Northwest', 'Pacific', 'Southwest'];
   
-  // Calculate Conference Ranks for Emoji Logic
-  const confRankMap = useMemo(() => {
-    const map: Record<string, number> = {};
+  // Calculate Playoff Status
+  const teamStatusMap = useMemo(() => {
+    const map: Record<string, 'clinched_playoff' | 'clinched_playin' | 'eliminated' | null> = {};
     ['East', 'West'].forEach(conf => {
         const confTeams = teams.filter(t => t.conference === conf);
         const sorted = [...confTeams].sort((a, b) => {
@@ -26,7 +26,40 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
             const bPct = (b.wins + b.losses === 0) ? 0 : b.wins / (b.wins + b.losses);
             return bPct - aPct || b.wins - a.wins;
         });
-        sorted.forEach((t, i) => map[t.id] = i + 1);
+
+        const rank7 = sorted[6]; // 7th place (First Play-in spot from top, or first out of Playoffs)
+        const rank10 = sorted[9]; // 10th place (Last Play-in spot)
+        const rank11 = sorted[10]; // 11th place (First Eliminated spot)
+
+        sorted.forEach(t => {
+            const remaining = 82 - (t.wins + t.losses);
+            const maxWins = t.wins + remaining;
+
+            // Eliminated: Cannot reach 10th place's current wins
+            if (rank10 && maxWins < rank10.wins) {
+                map[t.id] = 'eliminated';
+                return;
+            }
+
+            // Clinched Playoff (Top 6): Wins > 7th place's Max Wins
+            if (rank7) {
+                const rank7Max = rank7.wins + (82 - (rank7.wins + rank7.losses));
+                if (t.wins > rank7Max) {
+                    map[t.id] = 'clinched_playoff';
+                    return;
+                }
+            }
+
+            // Clinched Play-in (Top 10): Wins > 11th place's Max Wins
+            // Note: If already clinched playoff, this is skipped due to return above
+            if (rank11) {
+                const rank11Max = rank11.wins + (82 - (rank11.wins + rank11.losses));
+                if (t.wins > rank11Max) {
+                    map[t.id] = 'clinched_playin';
+                    return;
+                }
+            }
+        });
     });
     return map;
   }, [teams]);
@@ -55,7 +88,13 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
 
       {mode === 'Conference' && (
         <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8 items-start animate-in slide-in-from-bottom-4 duration-500">
-          <StandingTable teamList={teams} title="정규시즌 통합 순위" highlightColor="emerald" onTeamClick={onTeamClick} />
+          <StandingTable 
+            teamList={teams} 
+            title="정규시즌 통합 순위" 
+            highlightColor="emerald" 
+            onTeamClick={onTeamClick} 
+            teamStatusMap={teamStatusMap}
+          />
 
           <StandingTable 
             teamList={teams.filter(t => t.conference === 'East')} 
@@ -63,6 +102,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
             isConference={true}
             highlightColor="blue"
             onTeamClick={onTeamClick}
+            teamStatusMap={teamStatusMap}
           />
 
           <StandingTable 
@@ -71,6 +111,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
             isConference={true}
             highlightColor="red"
             onTeamClick={onTeamClick}
+            teamStatusMap={teamStatusMap}
           />
         </div>
       )}
@@ -85,17 +126,13 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
                 title={DIVISION_KOREAN[div] || div} 
                 onTeamClick={onTeamClick}
                 mode="Division"
-                confRankMap={confRankMap}
+                teamStatusMap={teamStatusMap}
               />
             ))}
           </div>
 
           <div className="flex justify-center mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
             <div className="bg-slate-900/80 border border-slate-800 rounded-full px-8 py-3 flex flex-wrap items-center gap-6 lg:gap-8 shadow-xl backdrop-blur-sm">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm filter drop-shadow-md">🏆</span>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">디비전 우승</span>
-                </div>
                 <div className="flex items-center gap-2">
                     <span className="text-sm filter drop-shadow-md">🔒</span>
                     <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">플레이오프 확정</span>
