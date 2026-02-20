@@ -27,11 +27,6 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
             <div className="flex-shrink-0 flex flex-col bg-slate-900/40 border-b border-slate-800">
-                /*
-                <div className="p-6 border-b border-white/5">
-                    <StartingLineup team={team} tactics={tactics} roster={team.roster} />
-                </div>
-                */
                 <div className="flex-col flex">
                     <DepthChartEditor 
                         team={team} 
