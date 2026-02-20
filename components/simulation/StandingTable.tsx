@@ -89,10 +89,12 @@ export const StandingTable: React.FC<StandingTableProps> = ({
                                 <React.Fragment key={t.id}>
                                     <TableRow className={rowClass}>
                                         <TableCell className={`pl-6 pr-2 ${dataTextClass} group-hover:text-slate-100`}>{rankVal}</TableCell>
-                                        <TableCell className="px-2">
+                                        <TableCell 
+                                            className="px-2 cursor-pointer"
+                                            onClick={() => onTeamClick(t.id)}
+                                        >
                                             <div 
-                                                className="flex items-center gap-2 max-w-[180px] group-hover:translate-x-1 transition-transform cursor-pointer"
-                                                onClick={() => onTeamClick(t.id)}
+                                                className="flex items-center gap-2 max-w-[180px] group-hover:translate-x-1 transition-transform"
                                             >
                                                 <TeamLogo teamId={t.id} size="sm" />
                                                 <span className={`font-semibold text-xs truncate transition-colors ${nameColorClass} group-hover:text-indigo-400`}>
