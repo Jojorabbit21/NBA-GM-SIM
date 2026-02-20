@@ -196,6 +196,13 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     ...ADVANCED_COLUMNS
 ];
 
+// Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE 추가)
+const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
+    ...ADVANCED_COLUMNS.filter(col => !['usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
+    { key: 'poss', label: 'POSS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
+    { key: 'pace', label: 'PACE', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
+];
+
 // Column Definitions for Teams
 export const TEAM_COLUMNS: ColumnDef[] = [
     // Sticky
@@ -226,8 +233,8 @@ export const TEAM_COLUMNS: ColumnDef[] = [
     // Shooting
     ...SHOOTING_COLUMNS,
 
-    // Advanced
-    ...ADVANCED_COLUMNS,
+    // Advanced (Teams 전용 컬럼셋)
+    ...TEAMS_ADVANCED_COLUMNS,
 
     // Opponent
     ...OPPONENT_COLUMNS
