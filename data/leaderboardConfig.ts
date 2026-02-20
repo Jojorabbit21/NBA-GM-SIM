@@ -2,7 +2,7 @@
 // Types
 export type SortKey = string;
 export type ViewMode = 'Players' | 'Teams';
-export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Opponent';
+export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Opponent' | 'Attributes';
 export type Operator = '>' | '<' | '>=' | '<=' | '=';
 
 export interface FilterItem {
@@ -25,6 +25,7 @@ export interface ColumnDef {
     stickyLeft?: number; // Pixel value for sticky positioning
     stickyShadow?: boolean; // Show shadow on this sticky column
     category?: StatCategory | 'Common'; // Which tab this column belongs to
+    playerProp?: string; // For Attributes columns: the actual Player object property name (when key differs)
 }
 
 // Column Widths
@@ -92,6 +93,56 @@ export const OPPONENT_STAT_OPTIONS = [
     { value: 'opp_pf', label: 'Opp PF' },
 ];
 
+// Filter Options - Attributes
+export const ATTRIBUTES_STAT_OPTIONS = [
+    { value: 'ins', label: 'INS' },
+    { value: 'out', label: 'OUT' },
+    { value: 'ath', label: 'ATH' },
+    { value: 'plm', label: 'PLM' },
+    { value: 'def', label: 'DEF' },
+    { value: 'attr_reb', label: 'REB' },
+    { value: 'layup', label: 'Layup' },
+    { value: 'dunk', label: 'Dunk' },
+    { value: 'closeShot', label: 'Close Shot' },
+    { value: 'postPlay', label: 'Post Play' },
+    { value: 'midRange', label: 'Mid Range' },
+    { value: 'threeTop', label: '3PT Top' },
+    { value: 'three45', label: '3PT 45°' },
+    { value: 'threeCorner', label: '3PT Corner' },
+    { value: 'ft', label: 'Free Throw' },
+    { value: 'shotIq', label: 'Shot IQ' },
+    { value: 'passAcc', label: 'Pass Acc' },
+    { value: 'handling', label: 'Handling' },
+    { value: 'spdBall', label: 'Spd w/ Ball' },
+    { value: 'passIq', label: 'Pass IQ' },
+    { value: 'intDef', label: 'Interior Def' },
+    { value: 'perDef', label: 'Perimeter Def' },
+    { value: 'steal', label: 'Steal' },
+    { value: 'attr_blk', label: 'Block' },
+    { value: 'helpDefIq', label: 'Help Def' },
+    { value: 'speed', label: 'Speed' },
+    { value: 'agility', label: 'Agility' },
+    { value: 'strength', label: 'Strength' },
+    { value: 'vertical', label: 'Vertical' },
+    { value: 'stamina', label: 'Stamina' },
+];
+
+// Attribute key → Player property mapping (only needed when they differ)
+export const ATTR_PLAYER_PROPS: Record<string, string> = {
+    'attr_reb': 'reb',
+    'attr_blk': 'blk',
+};
+
+// All attribute column keys (used by hooks for detection)
+export const ATTRIBUTE_KEYS = new Set([
+    'ins', 'out', 'ath', 'plm', 'def', 'attr_reb',
+    'layup', 'dunk', 'closeShot', 'postPlay',
+    'midRange', 'threeTop', 'three45', 'threeCorner', 'ft', 'shotIq',
+    'passAcc', 'handling', 'spdBall', 'passIq',
+    'intDef', 'perDef', 'steal', 'attr_blk', 'helpDefIq',
+    'speed', 'agility', 'strength', 'vertical', 'stamina',
+]);
+
 // Zone Definitions
 const ZONES = [
     { key: 'zone_rim', label: 'RIM' },
@@ -147,6 +198,47 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'ftr', label: 'FTr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
 ];
 
+// Attributes Columns (Players Only)
+const ATTR_W = 44; // Narrower for dense attribute ratings
+const ATTRIBUTES_COLUMNS: ColumnDef[] = [
+    // Category Ratings
+    { key: 'ins',      label: 'INS',     width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'out',      label: 'OUT',     width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'ath',      label: 'ATH',     width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'plm',      label: 'PLM',     width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'def',      label: 'DEF',     width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'attr_reb', label: 'REB',     width: ATTR_W, sortable: true, category: 'Attributes', playerProp: 'reb' },
+    // Finishing
+    { key: 'layup',     label: 'LAY',    width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'dunk',      label: 'DNK',    width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'closeShot', label: 'CLOSE',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'postPlay',  label: 'POST',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    // Outside Shooting
+    { key: 'midRange',    label: 'MID',    width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'threeTop',    label: '3PT-T',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'three45',     label: '3PT-45', width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'threeCorner', label: '3PT-C',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'ft',          label: 'FT',     width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'shotIq',      label: 'SHT IQ', width: ATTR_W, sortable: true, category: 'Attributes' },
+    // Playmaking
+    { key: 'passAcc',  label: 'PASS',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'handling', label: 'HANDL',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'spdBall',  label: 'SPDBL',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'passIq',   label: 'PSS IQ', width: ATTR_W, sortable: true, category: 'Attributes' },
+    // Defense
+    { key: 'intDef',    label: 'INT-D',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'perDef',    label: 'PER-D',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'steal',     label: 'STL-R',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'attr_blk',  label: 'BLK-R',  width: ATTR_W, sortable: true, category: 'Attributes', playerProp: 'blk' },
+    { key: 'helpDefIq', label: 'H-DEF',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    // Athleticism
+    { key: 'speed',    label: 'SPD',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'agility',  label: 'AGI',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'strength', label: 'STR',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'vertical', label: 'VERT',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'stamina',  label: 'STA',   width: ATTR_W, sortable: true, category: 'Attributes' },
+];
+
 // Opponent Columns (Teams Only)
 const OPPONENT_COLUMNS: ColumnDef[] = [
     { key: 'opp_pts', label: 'Opp PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
@@ -193,7 +285,10 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     ...SHOOTING_COLUMNS,
 
     // Advanced Stats
-    ...ADVANCED_COLUMNS
+    ...ADVANCED_COLUMNS,
+
+    // Attributes (Players Only)
+    ...ATTRIBUTES_COLUMNS
 ];
 
 // Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE 추가)

@@ -119,6 +119,12 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     else if (col.key === 'position') cellContent = p.position;
                                     else if (col.key === 'ovr') cellContent = <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>;
                                     
+                                    // Handle Attribute Columns (direct Player property access, no per-game division)
+                                    else if (col.category === 'Attributes') {
+                                        const prop = col.playerProp || col.key;
+                                        cellContent = (p as any)[prop] ?? 0;
+                                    }
+
                                     // Handle Zone Stats (Dynamic Keys)
                                     else if (col.key.startsWith('zone_')) {
                                          // For Makers/Attempts, calculate per game

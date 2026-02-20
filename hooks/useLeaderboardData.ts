@@ -2,7 +2,13 @@
 import { useMemo } from 'react';
 import { Team, Game, Player } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
-import { FilterItem, ViewMode } from '../data/leaderboardConfig';
+import { FilterItem, ViewMode, ATTRIBUTE_KEYS, ATTR_PLAYER_PROPS } from '../data/leaderboardConfig';
+
+// Helper: get attribute value from Player object
+const getAttrVal = (p: any, key: string): number => {
+    const prop = ATTR_PLAYER_PROPS[key] ?? key;
+    return (p[prop] as number) ?? 0;
+};
 
 const ZONE_KEYS = [
     'zone_rim', 'zone_paint', 
@@ -432,7 +438,10 @@ export const useLeaderboardData = (
                         const g = p.stats.g || 1;
                         const s = p.stats as any;
 
-                        if (filter.category && filter.category.startsWith('zone_')) {
+                        // Attribute filter: direct Player property access
+                        if (filter.category && ATTRIBUTE_KEYS.has(filter.category)) {
+                            itemVal = getAttrVal(p, filter.category);
+                        } else if (filter.category && filter.category.startsWith('zone_')) {
                              // Zone Stats
                              if (filter.category.endsWith('_pct')) {
                                  itemVal = (s[filter.category] || 0) * 100;
@@ -511,7 +520,12 @@ export const useLeaderboardData = (
                     if (sortConfig.key === 'name') return p.name;
                     if (sortConfig.key === 'position') return p.position;
                     if (sortConfig.key === 'ovr') return calculatePlayerOvr(p);
-                    
+
+                    // Attribute keys: access Player property directly, not stats
+                    if (ATTRIBUTE_KEYS.has(sortConfig.key)) {
+                        return getAttrVal(p, sortConfig.key);
+                    }
+
                     // Direct access for most keys now (including advanced)
                     if (s[sortConfig.key] !== undefined) {
                         const val = s[sortConfig.key];
