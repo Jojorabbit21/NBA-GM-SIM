@@ -23,167 +23,197 @@ export const useLeaderboardData = (
 ) => {
     // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {
+        // --- Pass 1: 모든 팀의 rawTotals 및 경기 수를 미리 집계 ---
+        // Game.homeStats/awayStats 가 없는 환경에서 상대팀 스탯을
+        // 각 팀의 시즌 누계 평균으로 근사하기 위해 먼저 계산한다.
+        const allRawTotals = new Map<string, any>();
+        const allGameCounts = new Map<string, number>();
+
+        teams.forEach(t => {
+            const gamesPlayed = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id)).length || 1;
+            allGameCounts.set(t.id, gamesPlayed);
+
+            const totals = t.roster.reduce((acc: any, p) => {
+                const s = p.stats;
+                acc.reb    += s.reb;
+                acc.offReb += (s.offReb || 0);
+                acc.defReb += (s.defReb || 0);
+                acc.ast    += s.ast;
+                acc.stl    += s.stl;
+                acc.blk    += s.blk;
+                acc.tov    += s.tov;
+                acc.fgm    += s.fgm;
+                acc.fga    += s.fga;
+                acc.p3m    += s.p3m;
+                acc.p3a    += s.p3a;
+                acc.ftm    += s.ftm;
+                acc.fta    += s.fta;
+                acc.rimM   += (s.rimM || 0);
+                acc.rimA   += (s.rimA || 0);
+                acc.midM   += (s.midM || 0);
+                acc.midA   += (s.midA || 0);
+                ZONE_KEYS.forEach(z => {
+                    acc[`${z}_m`] = (acc[`${z}_m`] || 0) + (s[`${z}_m`] || 0);
+                    acc[`${z}_a`] = (acc[`${z}_a`] || 0) + (s[`${z}_a`] || 0);
+                });
+                return acc;
+            }, {
+                reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
+                fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
+                rimM: 0, rimA: 0, midM: 0, midA: 0
+            });
+            allRawTotals.set(t.id, totals);
+        });
+
+        // --- Pass 2: 각 팀의 전체 스탯 계산 (상대팀 데이터 포함) ---
         return teams.map(t => {
             const teamGames = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
-            const playedCount = teamGames.length || 1; 
-            
-            let totalPts = 0;
-            let totalPa = 0;
-            let wins = 0;
-            let losses = 0;
-            
-            // Opponent Totals
-            let oppFgm = 0; let oppFga = 0;
-            let opp3pm = 0; let opp3pa = 0;
-            let oppFtm = 0; let oppFta = 0;
-            let oppReb = 0; let oppOreb = 0; let oppDreb = 0;
-            let oppAst = 0; let oppStl = 0; let oppBlk = 0;
-            let oppTov = 0; let oppPf = 0;
+            const playedCount = teamGames.length || 1;
+            const totals = allRawTotals.get(t.id)!;
+
+            let totalPts = 0, totalPa = 0, wins = 0, losses = 0;
+            let oppFgm = 0, oppFga = 0, opp3pm = 0, opp3pa = 0;
+            let oppFtm = 0, oppFta = 0;
+            let oppReb = 0, oppOreb = 0, oppDreb = 0;
+            let oppAst = 0, oppStl = 0, oppBlk = 0, oppTov = 0, oppPf = 0;
+
+            // 상대팀별 맞대결 수 집계 (게임 레벨 데이터 없을 때 시즌 평균 근사에 사용)
+            const oppGameAccum = new Map<string, number>();
 
             teamGames.forEach(g => {
                 const isHome = g.homeTeamId === t.id;
-                const myScore = isHome ? g.homeScore : g.awayScore;
+                const myScore  = isHome ? g.homeScore : g.awayScore;
                 const oppScore = isHome ? g.awayScore : g.homeScore;
-                
+                const oppId    = isHome ? g.awayTeamId : g.homeTeamId;
+
                 if (myScore > oppScore) wins++; else losses++;
                 totalPts += myScore;
-                totalPa += oppScore;
+                totalPa  += oppScore;
 
-                // We assume Game object has homeStats and awayStats for box score summaries.
-                // If not available, these will be 0, but logic is prepared for when they are.
-                const oppStats = isHome ? (g as any).awayStats : (g as any).homeStats;
-                if (oppStats) {
-                    oppFgm += oppStats.fgm || 0; oppFga += oppStats.fga || 0;
-                    opp3pm += oppStats.p3m || 0; opp3pa += oppStats.p3a || 0;
-                    oppFtm += oppStats.ftm || 0; oppFta += oppStats.fta || 0;
-                    oppReb += oppStats.reb || 0; oppOreb += oppStats.offReb || 0; oppDreb += oppStats.defReb || 0;
-                    oppAst += oppStats.ast || 0; oppStl += oppStats.stl || 0; oppBlk += oppStats.blk || 0;
-                    oppTov += oppStats.tov || 0; 
-                    // oppPf might not be tracked in TeamStats
+                // 게임 레벨 박스스코어 우선 사용
+                const oppBoxScore = isHome ? (g as any).awayStats : (g as any).homeStats;
+                if (oppBoxScore) {
+                    oppFgm  += oppBoxScore.fgm    || 0; oppFga  += oppBoxScore.fga    || 0;
+                    opp3pm  += oppBoxScore.p3m    || 0; opp3pa  += oppBoxScore.p3a    || 0;
+                    oppFtm  += oppBoxScore.ftm    || 0; oppFta  += oppBoxScore.fta    || 0;
+                    oppReb  += oppBoxScore.reb    || 0; oppOreb += oppBoxScore.offReb || 0;
+                    oppDreb += oppBoxScore.defReb || 0; oppAst  += oppBoxScore.ast    || 0;
+                    oppStl  += oppBoxScore.stl    || 0; oppBlk  += oppBoxScore.blk    || 0;
+                    oppTov  += oppBoxScore.tov    || 0;
+                } else {
+                    // 게임 레벨 데이터 없음 → 상대팀 시즌 평균으로 근사
+                    oppGameAccum.set(oppId, (oppGameAccum.get(oppId) || 0) + 1);
                 }
             });
 
-            // Aggregate totals from roster (My Team Stats)
-            const totals = t.roster.reduce((acc: any, p) => {
-                const s = p.stats;
-                const newAcc = { ...acc };
-
-                // Traditional
-                newAcc.reb += s.reb;
-                newAcc.offReb += (s.offReb || 0);
-                newAcc.defReb += (s.defReb || 0);
-                newAcc.ast += s.ast;
-                newAcc.stl += s.stl;
-                newAcc.blk += s.blk;
-                newAcc.tov += s.tov;
-                newAcc.fgm += s.fgm;
-                newAcc.fga += s.fga;
-                newAcc.p3m += s.p3m;
-                newAcc.p3a += s.p3a;
-                newAcc.ftm += s.ftm;
-                newAcc.fta += s.fta;
-                newAcc.rimM += (s.rimM || 0);
-                newAcc.rimA += (s.rimA || 0);
-                newAcc.midM += (s.midM || 0);
-                newAcc.midA += (s.midA || 0);
-
-                // Detailed Zones
-                ZONE_KEYS.forEach(z => {
-                    newAcc[`${z}_m`] = (newAcc[`${z}_m`] || 0) + (s[`${z}_m`] || 0);
-                    newAcc[`${z}_a`] = (newAcc[`${z}_a`] || 0) + (s[`${z}_a`] || 0);
-                });
-
-                return newAcc;
-            }, { 
-                reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, 
-                fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
-                rimM: 0, rimA: 0, midM: 0, midA: 0 
+            // 시즌 평균 근사 적용 (게임 레벨 데이터가 없는 상대팀에 대해)
+            oppGameAccum.forEach((count, oppId) => {
+                const oTotals = allRawTotals.get(oppId);
+                const oGames  = allGameCounts.get(oppId) || 1;
+                if (oTotals) {
+                    const scale = count / oGames;
+                    oppFga  += oTotals.fga    * scale;
+                    oppFtm  += oTotals.ftm    * scale;
+                    oppFta  += oTotals.fta    * scale;
+                    opp3pm  += oTotals.p3m    * scale;
+                    opp3pa  += oTotals.p3a    * scale;
+                    oppFgm  += oTotals.fgm    * scale;
+                    oppReb  += oTotals.reb    * scale;
+                    oppOreb += oTotals.offReb * scale;
+                    oppDreb += oTotals.defReb * scale;
+                    oppAst  += oTotals.ast    * scale;
+                    oppStl  += oTotals.stl    * scale;
+                    oppBlk  += oTotals.blk    * scale;
+                    oppTov  += oTotals.tov    * scale;
+                }
             });
 
-            const tsa = totals.fga + 0.44 * totals.fta;
-            const teamPoss = totals.fga + 0.44 * totals.fta + totals.tov - totals.offReb; 
-            
+            const tsa      = totals.fga + 0.44 * totals.fta;
+            const teamPoss = totals.fga + 0.44 * totals.fta + totals.tov - totals.offReb;
+            const oppPoss  = oppFga + 0.44 * oppFta + oppTov - oppOreb;
+            const opp2pa   = oppFga - opp3pa;
+
             // Build stats object
             const stats: any = {
-                g: playedCount,
-                mp: 48,
+                g:   playedCount,
+                mp:  48,
                 pts: totalPts / playedCount,
-                pa: totalPa / playedCount,
-                
-                reb: totals.reb / (t.wins + t.losses || 1), 
-                oreb: totals.offReb / (t.wins + t.losses || 1),
-                dreb: totals.defReb / (t.wins + t.losses || 1),
-                ast: totals.ast / (t.wins + t.losses || 1),
-                stl: totals.stl / (t.wins + t.losses || 1),
-                blk: totals.blk / (t.wins + t.losses || 1),
-                tov: totals.tov / (t.wins + t.losses || 1),
-                
-                fgm: totals.fgm / (t.wins + t.losses || 1),
-                fga: totals.fga / (t.wins + t.losses || 1),
+                pa:  totalPa  / playedCount,
+
+                reb:  totals.reb    / playedCount,
+                oreb: totals.offReb / playedCount,
+                dreb: totals.defReb / playedCount,
+                ast:  totals.ast    / playedCount,
+                stl:  totals.stl    / playedCount,
+                blk:  totals.blk    / playedCount,
+                tov:  totals.tov    / playedCount,
+
+                fgm: totals.fgm / playedCount,
+                fga: totals.fga / playedCount,
                 'fg%': totals.fga > 0 ? totals.fgm / totals.fga : 0,
-                
-                p3m: totals.p3m / (t.wins + t.losses || 1),
-                p3a: totals.p3a / (t.wins + t.losses || 1),
+
+                p3m: totals.p3m / playedCount,
+                p3a: totals.p3a / playedCount,
                 '3p%': totals.p3a > 0 ? totals.p3m / totals.p3a : 0,
-                
-                ftm: totals.ftm / (t.wins + t.losses || 1),
-                fta: totals.fta / (t.wins + t.losses || 1),
+
+                ftm: totals.ftm / playedCount,
+                fta: totals.fta / playedCount,
                 'ft%': totals.fta > 0 ? totals.ftm / totals.fta : 0,
-                
+
                 // Aggregated Zone Stats
                 rimM: totals.rimM, rimA: totals.rimA,
                 'rim%': totals.rimA > 0 ? totals.rimM / totals.rimA : 0,
                 midM: totals.midM, midA: totals.midA,
                 'mid%': totals.midA > 0 ? totals.midM / totals.midA : 0,
-                '3pM': totals.p3m, 
+                '3pM': totals.p3m,
 
-                'ts%': tsa > 0 ? totalPts / (2 * tsa) : 0, 
+                'ts%': tsa > 0 ? totalPts / (2 * tsa) : 0,
                 pm: (totalPts - totalPa) / playedCount,
 
                 // --- Advanced Stats (Team) ---
                 'efg%': totals.fga > 0 ? (totals.fgm + 0.5 * totals.p3m) / totals.fga : 0,
                 'tov%': teamPoss > 0 ? totals.tov / teamPoss : 0,
-                'usg%': 1.0, 
+                'usg%': 1.0,
                 'ast%': totals.fgm > 0 ? totals.ast / totals.fgm : 0,
                 'orb%': (totals.offReb + oppDreb) > 0 ? totals.offReb / (totals.offReb + oppDreb) : 0,
                 'drb%': (totals.defReb + oppOreb) > 0 ? totals.defReb / (totals.defReb + oppOreb) : 0,
-                'trb%': (totals.reb + oppReb) > 0 ? totals.reb / (totals.reb + oppReb) : 0,
-                'stl%': 0, // Calculated below
-                'blk%': 0, // Calculated below
+                'trb%': (totals.reb + oppReb)    > 0 ? totals.reb    / (totals.reb + oppReb)    : 0,
+                'stl%': oppPoss > 0 ? totals.stl / oppPoss : 0,
+                'blk%': opp2pa  > 0 ? totals.blk / opp2pa  : 0,
                 '3par': totals.fga > 0 ? totals.p3a / totals.fga : 0,
-                'ftr': totals.fga > 0 ? totals.fta / totals.fga : 0,
+                'ftr':  totals.fga > 0 ? totals.fta / totals.fga : 0,
+
+                // --- POSS / PACE ---
+                // POSS: 팀 포제션 수 per game (FGA + 0.44×FTA + TOV - ORB)
+                'poss': teamPoss / playedCount,
+                // PACE: 48분당 평균 포제션. 상대 포제션이 있으면 양팀 평균, 없으면 팀 단독값
+                'pace': oppPoss > 0 ? (teamPoss + oppPoss) / (2 * playedCount) : teamPoss / playedCount,
 
                 // --- Opponent Stats ---
-                'opp_pts': totalPa / playedCount,
-                'opp_fg%': oppFga > 0 ? oppFgm / oppFga : 0,
-                'opp_3p%': opp3pa > 0 ? opp3pm / opp3pa : 0,
-                'opp_ast': oppAst / playedCount,
-                'opp_reb': oppReb / playedCount,
+                'opp_pts':  totalPa / playedCount,
+                'opp_fg%':  oppFga  > 0 ? oppFgm / oppFga  : 0,
+                'opp_3p%':  opp3pa  > 0 ? opp3pm / opp3pa  : 0,
+                'opp_ast':  oppAst  / playedCount,
+                'opp_reb':  oppReb  / playedCount,
                 'opp_oreb': oppOreb / playedCount,
-                'opp_stl': oppStl / playedCount,
-                'opp_blk': oppBlk / playedCount,
-                'opp_tov': oppTov / playedCount,
-                'opp_pf': oppPf / playedCount,
+                'opp_stl':  oppStl  / playedCount,
+                'opp_blk':  oppBlk  / playedCount,
+                'opp_tov':  oppTov  / playedCount,
+                'opp_pf':   oppPf   / playedCount,
             };
-
-            // Refine Advanced Stats that need Opponent Data
-            const oppPoss = oppFga + 0.44 * oppFta + oppTov - oppOreb;
-            stats['stl%'] = oppPoss > 0 ? totals.stl / oppPoss : 0;
-            const opp2pa = oppFga - opp3pa;
-            stats['blk%'] = opp2pa > 0 ? totals.blk / opp2pa : 0;
 
             // Calculate per-zone Percentages and Per-Game averages
             ZONE_KEYS.forEach(z => {
                 const m = totals[`${z}_m`] || 0;
                 const a = totals[`${z}_a`] || 0;
-                stats[`${z}_m`] = m / playedCount; // Per Game
-                stats[`${z}_a`] = a / playedCount; // Per Game
+                stats[`${z}_m`]   = m / playedCount;
+                stats[`${z}_a`]   = a / playedCount;
                 stats[`${z}_pct`] = a > 0 ? m / a : 0;
             });
 
             return {
                 ...t,
-                wins, 
+                wins,
                 losses,
                 stats,
                 rawTotals: totals,
