@@ -305,7 +305,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3 !rounded-none`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center !rounded-none`}>OVR</th>
                             <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[55px] min-w-[55px] text-center !rounded-none`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${stickyHeaderBg} ${stickyBottom} w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>1Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>2Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>3Q</th>

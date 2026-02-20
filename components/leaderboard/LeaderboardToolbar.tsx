@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair, Search, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
-import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
+import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
 import { TeamLogo } from '../common/TeamLogo';
 
@@ -39,6 +39,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     if (statCategory === 'Shooting') options = SHOOTING_STAT_OPTIONS;
     else if (statCategory === 'Advanced') options = ADVANCED_STAT_OPTIONS;
     else if (statCategory === 'Opponent') options = OPPONENT_STAT_OPTIONS;
+    else if (statCategory === 'Attributes') options = ATTRIBUTES_STAT_OPTIONS;
 
     const defaultOption = options[0]?.value || '';
 
@@ -117,6 +118,9 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
         { id: 'Advanced', label: 'Advanced', onClick: () => setStatCategory('Advanced'), active: statCategory === 'Advanced' },
     ];
 
+    if (mode === 'Players') {
+        categoryItems.push({ id: 'Attributes', label: 'Attributes', onClick: () => setStatCategory('Attributes'), active: statCategory === 'Attributes' });
+    }
     if (mode === 'Teams') {
         categoryItems.push({ id: 'Opponent', label: 'Opponent', onClick: () => setStatCategory('Opponent'), active: statCategory === 'Opponent' });
     }
@@ -136,7 +140,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         }
                         items={[
                             { id: 'Players', label: 'Players', onClick: () => { setMode('Players'); if(statCategory === 'Opponent') setStatCategory('Traditional'); }, active: mode === 'Players' },
-                            { id: 'Teams', label: 'Teams', onClick: () => setMode('Teams'), active: mode === 'Teams' }
+                            { id: 'Teams', label: 'Teams', onClick: () => { setMode('Teams'); if(statCategory === 'Attributes') setStatCategory('Traditional'); }, active: mode === 'Teams' }
                         ]}
                         width="w-32"
                         align="left"

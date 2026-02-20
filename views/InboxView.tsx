@@ -334,9 +334,9 @@ const GameRecapViewer: React.FC<{
                 <div className="flex items-center gap-3 flex-wrap">
                     <TeamLogo teamId={awayTeam?.id || ''} size="sm" />
                     <span className="text-sm font-black uppercase oswald tracking-tight text-slate-300">{awayTeam?.name}</span>
-                    <span className={`text-2xl font-black oswald tabular-nums ${gameData.awayScore > gameData.homeScore ? 'text-white' : 'text-slate-500'}`}>{gameData.awayScore}</span>
+                    <span className={`text-sm font-black oswald tabular-nums ${gameData.awayScore > gameData.homeScore ? 'text-white' : 'text-slate-500'}`}>{gameData.awayScore}</span>
                     <span className="text-slate-600 font-bold text-lg">–</span>
-                    <span className={`text-2xl font-black oswald tabular-nums ${gameData.homeScore > gameData.awayScore ? 'text-white' : 'text-slate-500'}`}>{gameData.homeScore}</span>
+                    <span className={`text-sm font-black oswald tabular-nums ${gameData.homeScore > gameData.awayScore ? 'text-white' : 'text-slate-500'}`}>{gameData.homeScore}</span>
                     <span className="text-sm font-black uppercase oswald tracking-tight text-slate-300">{homeTeam?.name}</span>
                     <TeamLogo teamId={homeTeam?.id || ''} size="sm" />
                     <span className={`ml-1 text-[11px] font-black uppercase tracking-[0.15em] ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>

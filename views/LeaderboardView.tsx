@@ -22,6 +22,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const [statCategory, setStatCategory] = useState<StatCategory>('Traditional');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
+
+  // Reset sort key when category changes to Attributes
+  const handleStatCategoryChange = (cat: StatCategory) => {
+      setStatCategory(cat);
+      setCurrentPage(1);
+      if (cat === 'Attributes') {
+          setSortConfig({ key: 'ovr', direction: 'desc' });
+      }
+  };
   const [currentPage, setCurrentPage] = useState(1);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [activeFilters, setActiveFilters] = useState<FilterItem[]>([]);
@@ -89,6 +98,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       // Reset filters that don't apply
       if (newMode === 'Teams') {
           setSelectedPositions([]);
+          if (statCategory === 'Attributes') setStatCategory('Traditional');
       }
   };
 
@@ -112,11 +122,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       {/* Main Content Wrapper (Card Style) */}
       <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
           
-          <LeaderboardToolbar 
+          <LeaderboardToolbar
               mode={mode}
               setMode={handleModeChange}
               statCategory={statCategory}
-              setStatCategory={setStatCategory}
+              setStatCategory={handleStatCategoryChange}
               activeFilters={activeFilters}
               addFilter={addFilter}
               removeFilter={removeFilter}
