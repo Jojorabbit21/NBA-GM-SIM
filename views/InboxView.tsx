@@ -182,12 +182,13 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                        </div>
                        
                        <div className="prose prose-invert max-w-none">
-                           <MessageContentRenderer 
-                                type={selectedMessage.type} 
-                                content={selectedMessage.content} 
-                                teams={teams} 
+                           <MessageContentRenderer
+                                type={selectedMessage.type}
+                                content={selectedMessage.content}
+                                teams={teams}
+                                myTeamId={myTeamId}
                                 onPlayerClick={handlePlayerClick}
-                                onViewGameResult={onViewGameResult} 
+                                onViewGameResult={onViewGameResult}
                                 userId={userId}
                             />
                        </div>
@@ -209,21 +210,27 @@ type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' 
 const GameRecapViewer: React.FC<{
     gameData: GameRecapContent;
     teams: Team[];
+    myTeamId: string;
     onPlayerClick: (id: string) => void;
     handleViewDetails: (gameId: string) => void;
     isFetchingResult: boolean;
-}> = ({ gameData, teams, onPlayerClick, handleViewDetails, isFetchingResult }) => {
+}> = ({ gameData, teams, myTeamId, onPlayerClick, handleViewDetails, isFetchingResult }) => {
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'default', direction: 'desc' });
 
     const homeTeam = teams.find(t => t.id === gameData.homeTeamId);
     const awayTeam = teams.find(t => t.id === gameData.awayTeamId);
 
-    const hColor = TEAM_DATA[homeTeam?.id || '']?.colors.primary || '#ffffff';
-    const aColor = TEAM_DATA[awayTeam?.id || '']?.colors.primary || '#ffffff';
-    
-    // Safe check for black color to fallback to white for visibility
-    const hText = hColor === '#000000' ? '#ffffff' : hColor;
-    const aText = aColor === '#000000' ? '#ffffff' : aColor;
+    // Extract date from gameId (format: g_YYYY-MM-DD_...)
+    const gameDate = useMemo(() => {
+        const parts = gameData.gameId.split('_');
+        const datePart = parts.find(p => /^\d{4}-\d{2}-\d{2}$/.test(p));
+        return datePart || '';
+    }, [gameData.gameId]);
+
+    // Determine win/loss based on myTeamId
+    const isWin = gameData.homeTeamId === myTeamId
+        ? gameData.homeScore > gameData.awayScore
+        : gameData.awayScore > gameData.homeScore;
 
     const handleSort = (key: SortKey) => {
         setSortConfig(prev => ({
@@ -313,45 +320,39 @@ const GameRecapViewer: React.FC<{
     const totalCellClass = "py-3 px-2 text-center text-xs font-black text-slate-300 font-mono tabular-nums bg-slate-800/80 border-t border-slate-700";
 
     return (
-        <div className="space-y-10 max-w-5xl mx-auto">
-            {/* 1. Header Grid (3 Columns) */}
-            <div className="grid grid-cols-3 items-center w-full py-6 bg-slate-900/50 rounded-2xl border border-slate-800 shadow-sm">
-                
-                {/* Left: Away Team */}
-                <div className="flex flex-col items-center justify-center gap-3 border-r border-slate-800/50">
-                    <TeamLogo teamId={awayTeam?.id || ''} size="xl" className="drop-shadow-lg" />
-                    <span 
-                        className="text-xl font-black uppercase oswald tracking-tight text-center leading-none"
-                        style={{ color: aText }}
-                    >
-                        {awayTeam?.name}
+        <div className="space-y-8 max-w-5xl mx-auto">
+            {/* 1. Document-style Report Header */}
+            <div className="space-y-2">
+                {/* Game Date */}
+                {gameDate && (
+                    <p className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em]">
+                        {gameDate}
+                    </p>
+                )}
+
+                {/* Matchup Row — plain text layout */}
+                <div className="flex items-center gap-3 flex-wrap">
+                    <TeamLogo teamId={awayTeam?.id || ''} size="sm" />
+                    <span className="text-sm font-black uppercase oswald tracking-tight text-slate-300">{awayTeam?.name}</span>
+                    <span className={`text-2xl font-black oswald tabular-nums ${gameData.awayScore > gameData.homeScore ? 'text-white' : 'text-slate-500'}`}>{gameData.awayScore}</span>
+                    <span className="text-slate-600 font-bold text-lg">–</span>
+                    <span className={`text-2xl font-black oswald tabular-nums ${gameData.homeScore > gameData.awayScore ? 'text-white' : 'text-slate-500'}`}>{gameData.homeScore}</span>
+                    <span className="text-sm font-black uppercase oswald tracking-tight text-slate-300">{homeTeam?.name}</span>
+                    <TeamLogo teamId={homeTeam?.id || ''} size="sm" />
+                    <span className={`ml-1 text-[11px] font-black uppercase tracking-[0.15em] ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {isWin ? '▲ WIN' : '▼ LOSS'}
                     </span>
-                </div>
-                
-                {/* Center: Score */}
-                <div className="flex items-center justify-center gap-6">
-                    <span className={`text-5xl font-black ${gameData.awayScore > gameData.homeScore ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'text-slate-600'} oswald`}>{gameData.awayScore}</span>
-                    <span className="text-slate-700 font-black text-2xl">-</span>
-                    <span className={`text-5xl font-black ${gameData.homeScore > gameData.awayScore ? 'text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.4)]' : 'text-slate-600'} oswald`}>{gameData.homeScore}</span>
                 </div>
 
-                {/* Right: Home Team */}
-                <div className="flex flex-col items-center justify-center gap-3 border-l border-slate-800/50">
-                    <TeamLogo teamId={homeTeam?.id || ''} size="xl" className="drop-shadow-lg" />
-                    <span 
-                        className="text-xl font-black uppercase oswald tracking-tight text-center leading-none"
-                        style={{ color: hText }}
-                    >
-                        {homeTeam?.name}
-                    </span>
-                </div>
+                {/* Divider */}
+                <div className="border-t border-slate-700" />
             </div>
             
             {/* 2. Full Box Score */}
             {sortedBox.length > 0 && (
                 <div className="space-y-4">
-                    <h4 className="text-sm font-black text-slate-400 px-2 uppercase tracking-widest flex items-center gap-2">
-                        <BarChart2 size={16} /> Team Stats Summary
+                    <h4 className="text-sm font-black text-slate-400 px-2 uppercase tracking-widest">
+                        박스스코어
                     </h4>
                     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
                         <Table className="!rounded-none !border-0 !shadow-none">
@@ -412,9 +413,7 @@ const GameRecapViewer: React.FC<{
                                         <td className={totalCellClass}>{totals.p3m}/{totals.p3a}</td>
                                         <td className={totalCellClass}>{totals.ftm}/{totals.fta}</td>
                                         <td className={totalCellClass}>
-                                            <span className={totals.plusMinus > 0 ? 'text-emerald-400' : totals.plusMinus < 0 ? 'text-red-400' : 'text-slate-400'}>
-                                                {totals.plusMinus > 0 ? '+' : ''}{totals.plusMinus}
-                                            </span>
+                                            <span className="text-slate-600">—</span>
                                         </td>
                                     </tr>
                                 </TableFoot>
@@ -431,7 +430,7 @@ const GameRecapViewer: React.FC<{
                     disabled={isFetchingResult}
                     className="flex items-center gap-3 px-12 py-4 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-base font-black uppercase tracking-widest transition-all shadow-[0_10px_20px_rgba(79,70,229,0.3)] border border-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 group"
                 >
-                    {isFetchingResult ? <Loader2 className="animate-spin" size={20} /> : <BarChart2 size={20} />}
+                    {isFetchingResult && <Loader2 className="animate-spin" size={20} />}
                     <span>상세 보고서 보기</span>
                 </button>
             </div>
@@ -441,14 +440,15 @@ const GameRecapViewer: React.FC<{
 
 // --- Sub-Component: Content Renderer ---
 
-const MessageContentRenderer: React.FC<{ 
-    type: MessageType, 
-    content: any, 
-    teams: Team[], 
+const MessageContentRenderer: React.FC<{
+    type: MessageType,
+    content: any,
+    teams: Team[],
+    myTeamId: string,
     onPlayerClick: (id: string) => void,
     onViewGameResult: (result: any) => void,
     userId: string
-}> = ({ type, content, teams, onPlayerClick, onViewGameResult, userId }) => {
+}> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId }) => {
     
     const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -508,9 +508,10 @@ const MessageContentRenderer: React.FC<{
     switch (type) {
         case 'GAME_RECAP':
             return (
-                <GameRecapViewer 
+                <GameRecapViewer
                     gameData={content as GameRecapContent}
                     teams={teams}
+                    myTeamId={myTeamId}
                     onPlayerClick={onPlayerClick}
                     handleViewDetails={handleViewDetails}
                     isFetchingResult={isFetchingResult}

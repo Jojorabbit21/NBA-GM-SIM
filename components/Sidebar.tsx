@@ -1,9 +1,9 @@
 
 import React from 'react';
-import { 
-  LayoutDashboard, Users, Trophy, BarChart3, Swords, 
-  Calendar as CalendarIcon, ArrowLeftRight, Clock, 
-  RotateCcw, LogOut, FlaskConical, Mail 
+import {
+  LayoutDashboard, Users, Trophy, BarChart3, Swords,
+  Calendar as CalendarIcon, ArrowLeftRight, Clock,
+  RotateCcw, LogOut, Mail
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -14,7 +14,8 @@ interface SidebarProps {
   currentSimDate: string;
   currentView: AppView;
   isGuestMode: boolean;
-  unreadMessagesCount: number; // Added Prop
+  unreadMessagesCount: number;
+  isRegularSeasonOver: boolean;
   onNavigate: (view: AppView) => void;
   onResetClick: () => void;
   onLogout: () => void;
@@ -75,15 +76,16 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
   );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({ 
-  team, 
-  currentSimDate, 
-  currentView, 
-  isGuestMode, 
+export const Sidebar: React.FC<SidebarProps> = ({
+  team,
+  currentSimDate,
+  currentView,
+  isGuestMode,
   unreadMessagesCount,
-  onNavigate, 
-  onResetClick, 
-  onLogout 
+  isRegularSeasonOver,
+  onNavigate,
+  onResetClick,
+  onLogout
 }) => {
   
   const teamStatic = team ? TEAM_DATA[team.id] : null;
@@ -180,14 +182,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           color={navActiveColor}
           textColor={navTextColor}
         />
-        <NavItem 
-          active={currentView === 'Playoffs'} 
-          icon={<Swords size={20}/>} 
-          label="플레이오프" 
-          onClick={() => onNavigate('Playoffs')} 
-          color={navActiveColor}
-          textColor={navTextColor}
-        />
+        {isRegularSeasonOver && (
+          <NavItem
+            active={currentView === 'Playoffs'}
+            icon={<Swords size={20}/>}
+            label="플레이오프"
+            onClick={() => onNavigate('Playoffs')}
+            color={navActiveColor}
+            textColor={navTextColor}
+          />
+        )}
         <NavItem 
           active={currentView === 'Schedule'} 
           icon={<CalendarIcon size={20}/>} 
@@ -201,14 +205,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
           icon={<ArrowLeftRight size={20}/>} 
           label="트레이드" 
           onClick={() => onNavigate('Transactions')} 
-          color={navActiveColor}
-          textColor={navTextColor}
-        />
-        <NavItem 
-          active={currentView === 'OvrCalculator'} 
-          icon={<FlaskConical size={20}/>} 
-          label="OVR 실험실" 
-          onClick={() => onNavigate('OvrCalculator')} 
           color={navActiveColor}
           textColor={navTextColor}
         />

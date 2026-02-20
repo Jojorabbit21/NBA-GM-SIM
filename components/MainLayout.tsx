@@ -50,6 +50,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         return nextGame.date === currentSimDate && !nextGame.played;
     }, [nextGame, currentSimDate]);
 
+    const isRegularSeasonOver = useMemo(() => {
+        const regularGames = schedule.filter(g => !g.isPlayoff);
+        return regularGames.length > 0 && regularGames.every(g => g.played);
+    }, [schedule]);
+
     const currentSeries = useMemo(() => {
         if (!nextGame?.isPlayoff || !nextGame.seriesId || !playoffSeries) return undefined;
         return playoffSeries.find(s => s.id === nextGame.seriesId);
@@ -67,7 +72,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">
-            <Sidebar {...sidebarProps} />
+            <Sidebar {...sidebarProps} isRegularSeasonOver={isRegularSeasonOver} />
             <main className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
                 {/* Global Game Header */}
                 {team && (
