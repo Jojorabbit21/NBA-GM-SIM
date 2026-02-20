@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppView, Team } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { GameResultView } from '../views/GameResultView';
@@ -31,6 +31,14 @@ const AppRouter: React.FC<AppRouterProps> = ({
     view, setView, gameData, sim, session, unreadCount, refreshUnreadCount, setToastMessage 
 }) => {
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
+    const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+
+    // Reset selected team when leaving Roster view (unless navigating from Standings)
+    useEffect(() => {
+        if (view !== 'Roster') {
+            setSelectedTeamId(null);
+        }
+    }, [view]);
 
     if (view === 'GameSim' && sim.activeGame) {
         // [Fix] Pass pbpLogs AND pbpShotEvents to View so animation follows actual engine events
@@ -114,11 +122,19 @@ const AppRouter: React.FC<AppRouterProps> = ({
             }
             return null;
         case 'Roster':
-            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} />;
+            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} />;
         case 'Schedule':
             return <ScheduleView schedule={gameData.schedule} teamId={gameData.myTeamId!} teams={gameData.teams} onExport={() => {}} currentSimDate={gameData.currentSimDate} />;
         case 'Standings':
-            return <StandingsView teams={gameData.teams} onTeamClick={() => {}} />;
+            return (
+                <StandingsView 
+                    teams={gameData.teams} 
+                    onTeamClick={(id) => {
+                        setSelectedTeamId(id);
+                        setView('Roster');
+                    }} 
+                />
+            );
         case 'Leaderboard':
             return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} />;
         case 'Transactions':

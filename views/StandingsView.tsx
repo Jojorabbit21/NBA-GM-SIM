@@ -17,31 +17,35 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
   const divisions = ['Atlantic', 'Central', 'Southeast', 'Northwest', 'Pacific', 'Southwest'];
   
   // Calculate Playoff Status
+  // 각 팀의 승수와 잔여 경기를 기반으로 플레이오프 진출/탈락 여부를 계산합니다.
   const teamStatusMap = useMemo(() => {
     const map: Record<string, 'clinched_playoff' | 'clinched_playin' | 'eliminated' | null> = {};
     ['East', 'West'].forEach(conf => {
         const confTeams = teams.filter(t => t.conference === conf);
+        // 승률 순으로 정렬 (승률이 같으면 승수 우선)
         const sorted = [...confTeams].sort((a, b) => {
             const aPct = (a.wins + a.losses === 0) ? 0 : a.wins / (a.wins + a.losses);
             const bPct = (b.wins + b.losses === 0) ? 0 : b.wins / (b.wins + b.losses);
             return bPct - aPct || b.wins - a.wins;
         });
 
-        const rank7 = sorted[6]; // 7th place (First Play-in spot from top, or first out of Playoffs)
-        const rank10 = sorted[9]; // 10th place (Last Play-in spot)
-        const rank11 = sorted[10]; // 11th place (First Eliminated spot)
+        const rank7 = sorted[6]; // 7위 (플레이오프 직행 실패, 플레이인 상위 시드)
+        const rank10 = sorted[9]; // 10위 (플레이인 막차)
+        const rank11 = sorted[10]; // 11위 (플레이인 탈락, 시즌 아웃)
 
         sorted.forEach(t => {
-            const remaining = 82 - (t.wins + t.losses);
-            const maxWins = t.wins + remaining;
+            const remaining = 82 - (t.wins + t.losses); // 잔여 경기 수
+            const maxWins = t.wins + remaining; // 해당 팀이 달성 가능한 최대 승수
 
-            // Eliminated: Cannot reach 10th place's current wins
+            // 1. 시즌 탈락 (Eliminated)
+            // 해당 팀이 전승을 거둬도 현재 10위 팀의 승수를 넘을 수 없는 경우
             if (rank10 && maxWins < rank10.wins) {
                 map[t.id] = 'eliminated';
                 return;
             }
 
-            // Clinched Playoff (Top 6): Wins > 7th place's Max Wins
+            // 2. 플레이오프 직행 확정 (Clinched Playoff - Top 6)
+            // 현재 7위 팀이 남은 경기를 전승해도 해당 팀의 현재 승수를 넘을 수 없는 경우
             if (rank7) {
                 const rank7Max = rank7.wins + (82 - (rank7.wins + rank7.losses));
                 if (t.wins > rank7Max) {
@@ -50,8 +54,9 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
                 }
             }
 
-            // Clinched Play-in (Top 10): Wins > 11th place's Max Wins
-            // Note: If already clinched playoff, this is skipped due to return above
+            // 3. 플레이인 진출 확정 (Clinched Play-in - Top 10)
+            // 현재 11위 팀이 남은 경기를 전승해도 해당 팀의 현재 승수를 넘을 수 없는 경우
+            // (이미 플레이오프를 확정지은 팀은 위에서 return 되므로 제외됨)
             if (rank11) {
                 const rank11Max = rank11.wins + (82 - (rank11.wins + rank11.losses));
                 if (t.wins > rank11Max) {
@@ -71,7 +76,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
   );
 
   return (
-    <div>
+    <div className="flex flex-col gap-8">
       <PageHeader 
         title="리그 순위표" 
         icon={<Trophy size={24} />}
