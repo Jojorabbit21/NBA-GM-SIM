@@ -27,6 +27,9 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
     return (
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
             <div className="flex-shrink-0 flex flex-col bg-slate-900/40 border-b border-slate-800">
+                <div className="p-6 border-b border-white/5">
+                    <StartingLineup team={team} tactics={tactics} roster={team.roster} />
+                </div>
                 <div className="flex-col flex">
                     <DepthChartEditor 
                         team={team} 
@@ -37,17 +40,6 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
                     />
                 </div>
             </div>
-
-        </div>
-    );
-};
-
-// If you want to recover player cards above depth chart
-/*
-                <div className="p-6 border-b border-white/5">
-                    <StartingLineup team={team} tactics={tactics} roster={team.roster} />
-                </div>
-
             <div className="flex-1 min-h-0 overflow-hidden">
                 <RotationGanttChart
                     team={team}
@@ -58,4 +50,6 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
                     onViewPlayer={onViewPlayer}
                 />
             </div>
-*/
+        </div>
+    );
+};
