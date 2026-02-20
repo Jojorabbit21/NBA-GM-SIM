@@ -25,6 +25,11 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const [currentPage, setCurrentPage] = useState(1);
   const [showHeatmap, setShowHeatmap] = useState(true);
   const [activeFilters, setActiveFilters] = useState<FilterItem[]>([]);
+  
+  // New Filter States
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // --- Filter Handlers ---
   const addFilter = (item: FilterItem) => {
@@ -46,7 +51,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       schedule, 
       activeFilters, 
       sortConfig, 
-      mode
+      mode,
+      selectedTeams,
+      selectedPositions,
+      searchQuery
   );
 
   // --- Pagination ---
@@ -78,6 +86,10 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       setCurrentPage(1);
       // Reset sort to sensible default
       setSortConfig({ key: newMode === 'Players' ? 'pts' : 'wins', direction: 'desc' });
+      // Reset filters that don't apply
+      if (newMode === 'Teams') {
+          setSelectedPositions([]);
+      }
   };
 
   return (
@@ -108,9 +120,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               activeFilters={activeFilters}
               addFilter={addFilter}
               removeFilter={removeFilter}
-              clearFilters={() => setActiveFilters([])}
+              clearFilters={() => {
+                  setActiveFilters([]);
+                  setSelectedTeams([]);
+                  setSelectedPositions([]);
+                  setSearchQuery('');
+              }}
               showHeatmap={showHeatmap}
               setShowHeatmap={setShowHeatmap}
+              teams={teams}
+              selectedTeams={selectedTeams}
+              setSelectedTeams={setSelectedTeams}
+              selectedPositions={selectedPositions}
+              setSelectedPositions={setSelectedPositions}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
           />
 
           {/* Table Area (Auto Height) */}

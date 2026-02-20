@@ -2,7 +2,7 @@
 // Types
 export type SortKey = string;
 export type ViewMode = 'Players' | 'Teams';
-export type StatCategory = 'Traditional' | 'Shooting';
+export type StatCategory = 'Traditional' | 'Shooting' | 'Advanced' | 'Opponent';
 export type Operator = '>' | '<' | '>=' | '<=' | '=';
 
 export interface FilterItem {
@@ -62,6 +62,36 @@ export const TRADITIONAL_STAT_OPTIONS = [
     { value: 'ovr', label: 'OVR' },
 ];
 
+// Filter Options - Advanced
+export const ADVANCED_STAT_OPTIONS = [
+    { value: 'ts%', label: 'TS%' },
+    { value: 'efg%', label: 'eFG%' },
+    { value: 'tov%', label: 'TOV%' },
+    { value: 'usg%', label: 'USG%' },
+    { value: 'ast%', label: 'AST%' },
+    { value: 'orb%', label: 'ORB%' },
+    { value: 'drb%', label: 'DRB%' },
+    { value: 'trb%', label: 'TRB%' },
+    { value: 'stl%', label: 'STL%' },
+    { value: 'blk%', label: 'BLK%' },
+    { value: '3par', label: '3PAr' },
+    { value: 'ftr', label: 'FTr' },
+];
+
+// Filter Options - Opponent
+export const OPPONENT_STAT_OPTIONS = [
+    { value: 'opp_pts', label: 'Opp PTS' },
+    { value: 'opp_fg%', label: 'Opp FG%' },
+    { value: 'opp_3p%', label: 'Opp 3P%' },
+    { value: 'opp_ast', label: 'Opp AST' },
+    { value: 'opp_reb', label: 'Opp REB' },
+    { value: 'opp_oreb', label: 'Opp OREB' },
+    { value: 'opp_stl', label: 'Opp STL' },
+    { value: 'opp_blk', label: 'Opp BLK' },
+    { value: 'opp_tov', label: 'Opp TOV' },
+    { value: 'opp_pf', label: 'Opp PF' },
+];
+
 // Zone Definitions
 const ZONES = [
     { key: 'zone_rim', label: 'RIM' },
@@ -101,6 +131,36 @@ const generateShootingColumns = (): ColumnDef[] => {
 
 const SHOOTING_COLUMNS = generateShootingColumns();
 
+// Advanced Columns
+const ADVANCED_COLUMNS: ColumnDef[] = [
+    { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'efg%', label: 'eFG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'tov%', label: 'TOV%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'percent' },
+    { key: 'usg%', label: 'USG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'ast%', label: 'AST%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'orb%', label: 'ORB%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'drb%', label: 'DRB%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'trb%', label: 'TRB%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'stl%', label: 'STL%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'blk%', label: 'BLK%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: '3par', label: '3PAr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'ftr', label: 'FTr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+];
+
+// Opponent Columns (Teams Only)
+const OPPONENT_COLUMNS: ColumnDef[] = [
+    { key: 'opp_pts', label: 'Opp PTS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
+    { key: 'opp_fg%', label: 'Opp FG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'percent' },
+    { key: 'opp_3p%', label: 'Opp 3P%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'percent' },
+    { key: 'opp_ast', label: 'Opp AST', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
+    { key: 'opp_reb', label: 'Opp REB', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
+    { key: 'opp_oreb', label: 'Opp OREB', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
+    { key: 'opp_stl', label: 'Opp STL', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
+    { key: 'opp_blk', label: 'Opp BLK', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Opponent', format: 'number' },
+    { key: 'opp_tov', label: 'Opp TOV', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Opponent', format: 'number' }, // High opp TOV is good for us
+    { key: 'opp_pf', label: 'Opp PF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Opponent', format: 'number' }, // High opp PF is good for us
+];
+
 
 // Column Definitions for Players
 export const PLAYER_COLUMNS: ColumnDef[] = [
@@ -130,7 +190,10 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     { key: 'pm', label: '+/-', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
 
     // Shooting Stats
-    ...SHOOTING_COLUMNS
+    ...SHOOTING_COLUMNS,
+
+    // Advanced Stats
+    ...ADVANCED_COLUMNS
 ];
 
 // Column Definitions for Teams
@@ -161,5 +224,11 @@ export const TEAM_COLUMNS: ColumnDef[] = [
     { key: 'pm', label: '+/-', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
 
     // Shooting
-    ...SHOOTING_COLUMNS
+    ...SHOOTING_COLUMNS,
+
+    // Advanced
+    ...ADVANCED_COLUMNS,
+
+    // Opponent
+    ...OPPONENT_COLUMNS
 ];
