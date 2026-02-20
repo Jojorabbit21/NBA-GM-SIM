@@ -218,6 +218,10 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     const val = parseFloat(cellContent as string);
                                     const color = val > 0 ? 'text-emerald-400' : val < 0 ? 'text-red-400' : 'text-slate-500';
                                     finalTextColor = `text-xs font-medium font-mono tabular-nums ${color}`;
+                                } else if (col.category === 'Attributes') {
+                                    const val = Number(cellContent);
+                                    const color = val >= 90 ? 'text-fuchsia-400' : val >= 80 ? 'text-emerald-400' : val >= 70 ? 'text-amber-400' : 'text-slate-500';
+                                    finalTextColor = `text-xs font-black font-mono tabular-nums ${color}`;
                                 }
                                 
                                 const alignClass = col.key === 'name' ? 'pl-4' : 'text-center';
