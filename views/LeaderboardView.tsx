@@ -15,13 +15,12 @@ interface LeaderboardViewProps {
   schedule?: Game[];
 }
 
-const ITEMS_PER_PAGE = 50;
-
 export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
   const [statCategory, setStatCategory] = useState<StatCategory>('Traditional');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
+  const [itemsPerPage, setItemsPerPage] = useState(50);
 
   // Reset sort key when category changes to Attributes
   const handleStatCategoryChange = (cat: StatCategory) => {
@@ -67,8 +66,25 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   );
 
   // --- Pagination ---
-  const totalPages = Math.ceil(sortedData.length / ITEMS_PER_PAGE);
-  const currentData = sortedData.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+  const currentData = sortedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+  const handleItemsPerPageChange = (val: number) => {
+      setItemsPerPage(val);
+      setCurrentPage(1);
+  };
+
+  const getPageNumbers = (): (number | '...')[] => {
+      if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+      const left = Math.max(2, currentPage - 2);
+      const right = Math.min(totalPages - 1, currentPage + 2);
+      const pages: (number | '...')[] = [1];
+      if (left > 2) pages.push('...');
+      for (let i = left; i <= right; i++) pages.push(i);
+      if (right < totalPages - 1) pages.push('...');
+      pages.push(totalPages);
+      return pages;
+  };
 
   // --- Sorting Handler ---
   const handleSort = (key: string) => {
@@ -159,38 +175,64 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                   statRanges={statRanges}
                   showHeatmap={showHeatmap}
                   currentPage={currentPage}
-                  itemsPerPage={ITEMS_PER_PAGE}
+                  itemsPerPage={itemsPerPage}
               />
           </div>
 
           {/* Pagination Footer */}
-          <div className="flex items-center justify-between px-6 py-4 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.2)] flex-shrink-0 z-50">
-              <div className="text-xs font-bold text-slate-500">
-                  Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} - {Math.min(currentPage * ITEMS_PER_PAGE, sortedData.length)} of {sortedData.length}
+          <div className="relative flex items-center px-6 py-4 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.2)] flex-shrink-0 z-50">
+              {/* Left: Showing info */}
+              <div className="text-xs font-bold text-slate-500 w-48">
+                  Showing {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)} of {sortedData.length}
               </div>
-              
-              <div className="flex gap-2">
-                  <button 
+
+              {/* Center: Page buttons */}
+              <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
+                  <button
                       onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                       disabled={currentPage === 1}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                      <ChevronLeft size={16} />
+                      <ChevronLeft size={14} />
                   </button>
-                  
-                  <div className="flex items-center gap-1 px-2">
-                      <span className="text-sm font-black text-white">{currentPage}</span>
-                      <span className="text-xs font-bold text-slate-600">/</span>
-                      <span className="text-xs font-bold text-slate-500">{totalPages}</span>
-                  </div>
 
-                  <button 
+                  {getPageNumbers().map((page, idx) =>
+                      page === '...'
+                          ? <span key={`ellipsis-${idx}`} className="w-7 text-center text-xs text-slate-600 font-bold select-none">··</span>
+                          : <button
+                              key={page}
+                              onClick={() => setCurrentPage(page)}
+                              className={`w-7 h-7 text-xs font-bold rounded-lg transition-all ${
+                                  currentPage === page
+                                      ? 'bg-indigo-600 text-white'
+                                      : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                              }`}
+                          >
+                              {page}
+                          </button>
+                  )}
+
+                  <button
                       onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                      disabled={currentPage === totalPages}
-                      className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      disabled={currentPage === totalPages || totalPages === 0}
+                      className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
-                      <ChevronRight size={16} />
+                      <ChevronRight size={14} />
                   </button>
+              </div>
+
+              {/* Right: Items per page */}
+              <div className="ml-auto flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500">Rows</span>
+                  <select
+                      value={itemsPerPage}
+                      onChange={e => handleItemsPerPageChange(Number(e.target.value))}
+                      className="bg-slate-800 border border-slate-700 text-slate-300 text-xs font-bold rounded-lg px-2 py-1.5 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                  >
+                      {[25, 50, 75, 100].map(n => (
+                          <option key={n} value={n}>{n}</option>
+                      ))}
+                  </select>
               </div>
           </div>
       </div>
