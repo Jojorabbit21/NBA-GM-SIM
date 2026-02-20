@@ -3,7 +3,6 @@ import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePlayAction } from './playTypes';
 import { calculateHitRate, flattenPlayer } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
-import { calculatePlaymakingStats } from '../playmakingSystem';
 import { SIM_CONFIG } from '../../config/constants';
 import { PlayType } from '../../../../types';
 

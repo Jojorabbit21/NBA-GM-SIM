@@ -162,6 +162,10 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                             const tsa = s.fga + 0.44 * s.fta;
                                             rawVal = tsa>0 ? s.pts / (2*tsa) : 0;
                                         }
+                                        // Advanced stats: pre-calculated in useLeaderboardData (efg%, tov%, usg%, ast%, orb%, drb%, trb%, stl%, blk%, 3par, ftr)
+                                        else {
+                                            rawVal = typeof s[col.key] === 'number' ? s[col.key] : 0;
+                                        }
 
                                         cellContent = formatValue(rawVal, col.format);
                                         if (col.isHeatmap) {
