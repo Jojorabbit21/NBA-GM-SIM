@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair, Search, Check } from 'lucide-react';
 import { Dropdown } from '../common/Dropdown';
 import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
@@ -50,6 +50,28 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     // Dropdown states
     const [isTeamDropdownOpen, setIsTeamDropdownOpen] = useState(false);
     const [isPosDropdownOpen, setIsPosDropdownOpen] = useState(false);
+
+    // Refs & positions for fixed-positioned dropdowns (overflow-x-auto 컨테이너 클리핑 우회)
+    const teamBtnRef = useRef<HTMLButtonElement>(null);
+    const posBtnRef = useRef<HTMLButtonElement>(null);
+    const [teamDropdownPos, setTeamDropdownPos] = useState({ top: 0, right: 0 });
+    const [posDropdownPos, setPosDropdownPos] = useState({ top: 0, right: 0 });
+
+    const handleTeamDropdownToggle = () => {
+        if (!isTeamDropdownOpen && teamBtnRef.current) {
+            const rect = teamBtnRef.current.getBoundingClientRect();
+            setTeamDropdownPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+        }
+        setIsTeamDropdownOpen(v => !v);
+    };
+
+    const handlePosDropdownToggle = () => {
+        if (!isPosDropdownOpen && posBtnRef.current) {
+            const rect = posBtnRef.current.getBoundingClientRect();
+            setPosDropdownPos({ top: rect.bottom + 8, right: window.innerWidth - rect.right });
+        }
+        setIsPosDropdownOpen(v => !v);
+    };
 
     // Reset filter cat when options change
     useEffect(() => {
@@ -162,9 +184,10 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
 
                     {/* Team Filter Dropdown */}
                     <div className="relative">
-                        <button 
+                        <button
+                            ref={teamBtnRef}
                             className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-xs font-bold transition-colors ${selectedTeams.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 text-slate-400 hover:text-white'}`}
-                            onClick={() => setIsTeamDropdownOpen(!isTeamDropdownOpen)}
+                            onClick={handleTeamDropdownToggle}
                         >
                             <span>Teams</span>
                             {selectedTeams.length > 0 && (
@@ -172,14 +195,17 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             )}
                             <ChevronDown size={12} />
                         </button>
-                        
+
                         {isTeamDropdownOpen && (
                             <>
                                 <div className="fixed inset-0 z-[100]" onClick={() => setIsTeamDropdownOpen(false)} />
-                                <div className="absolute top-full mt-2 right-0 w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150">
+                                <div
+                                    className="fixed w-64 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150"
+                                    style={{ top: teamDropdownPos.top, right: teamDropdownPos.right }}
+                                >
                                     <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar space-y-1">
                                         {teams.map(team => (
-                                            <div 
+                                            <div
                                                 key={team.id}
                                                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
                                                 onClick={() => toggleTeam(team.id)}
@@ -200,9 +226,10 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                     {/* Position Filter Dropdown (Only for Players mode) */}
                     {mode === 'Players' && (
                         <div className="relative">
-                            <button 
+                            <button
+                                ref={posBtnRef}
                                 className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-xs font-bold transition-colors ${selectedPositions.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 text-slate-400 hover:text-white'}`}
-                                onClick={() => setIsPosDropdownOpen(!isPosDropdownOpen)}
+                                onClick={handlePosDropdownToggle}
                             >
                                 <span>Positions</span>
                                 {selectedPositions.length > 0 && (
@@ -210,14 +237,17 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                 )}
                                 <ChevronDown size={12} />
                             </button>
-                            
+
                             {isPosDropdownOpen && (
                                 <>
                                     <div className="fixed inset-0 z-[100]" onClick={() => setIsPosDropdownOpen(false)} />
-                                    <div className="absolute top-full mt-2 right-0 w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150">
+                                    <div
+                                        className="fixed w-48 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[101] animate-in fade-in zoom-in-95 duration-150"
+                                        style={{ top: posDropdownPos.top, right: posDropdownPos.right }}
+                                    >
                                         <div className="p-2 space-y-1">
                                             {POSITIONS.map(pos => (
-                                                <div 
+                                                <div
                                                     key={pos}
                                                     className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
                                                     onClick={() => togglePosition(pos)}
