@@ -68,8 +68,9 @@ const App: React.FC = () => {
     };
 
     const handleSelectTeamAndOnboard = useCallback(async (teamId: string) => {
+        setView('Onboarding' as any); // await 이전에 먼저 설정 → myTeamId 반영 시 이미 Onboarding
         const success = await gameData.handleSelectTeam(teamId);
-        if (success) setView('Onboarding' as any);
+        if (!success) setView('Dashboard');
         return success;
     }, [gameData.handleSelectTeam]);
 
@@ -80,9 +81,22 @@ const App: React.FC = () => {
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
     // 3. 로그인 후 게임 데이터 로딩: 랜덤 메세지
     if (gameData.isSaveLoading) return <FullScreenLoader />;
-    if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} />;
+    if (!gameData.myTeamId) {
+        // 팀 선택 처리 중(await 대기)이면 로더, 아니면 팀 선택 화면
+        if ((view as string) === 'Onboarding') return <FullScreenLoader message="잠시만 기다려주세요..." />;
+        return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} />;
+    }
 
     const myTeam = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
+
+    // OnboardingView는 MainLayout 없이 단독 full-screen 렌더링 (Dashboard flash 방지)
+    if ((view as string) === 'Onboarding' && myTeam) {
+        return (
+            <div className="fixed inset-0 z-[500]">
+                <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} />
+            </div>
+        );
+    }
 
     return (
         <>
@@ -120,11 +134,6 @@ const App: React.FC = () => {
                     onConfirm={handleResetConfirm}
                 />
             </MainLayout>
-            {(view as string) === 'Onboarding' && myTeam && (
-                <div className="fixed inset-0 z-[500]">
-                    <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} />
-                </div>
-            )}
         </>
     );
 };

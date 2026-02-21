@@ -1,6 +1,5 @@
 
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { LOADING_MESSAGES } from '../data/uiConstants';
 
 interface FullScreenLoaderProps {
@@ -39,23 +38,9 @@ const FullScreenLoader: React.FC<FullScreenLoaderProps> = ({ message }) => {
 
     return (
         <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center z-[1000]">
-            <div className="text-center space-y-8 p-6">
-                <div className="relative">
-                    <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full"></div>
-                    <Loader2 size={80} className="text-indigo-500 animate-spin mx-auto relative z-10 opacity-80" />
-                </div>
-                
-                <div className="space-y-3 max-w-2xl mx-auto">
-                    <p className="text-2xl md:text-4xl font-black pretendard text-slate-100 tracking-tight animate-pulse leading-relaxed break-keep drop-shadow-lg">
-                        {currentText}
-                    </p>
-                    {!message && (
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.3em]">
-                            Processing Simulation Data
-                        </p>
-                    )}
-                </div>
-            </div>
+            <p className="text-2xl md:text-4xl font-black pretendard text-slate-100 tracking-tight animate-pulse leading-relaxed break-keep text-center px-6">
+                {currentText}
+            </p>
         </div>
     );
 };
