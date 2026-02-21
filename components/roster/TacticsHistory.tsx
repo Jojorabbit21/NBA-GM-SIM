@@ -1,27 +1,10 @@
 
 import React from 'react';
-import { Target, Shield, ClipboardList, ShieldAlert, Zap } from 'lucide-react';
-import { Team, TacticStatRecord, OffenseTactic, DefenseTactic } from '../../types';
+import { Target, Shield, ClipboardList, ShieldAlert } from 'lucide-react';
+import { Team, TacticStatRecord } from '../../types';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 
-const OFFENSE_TACTIC_INFO: Record<OffenseTactic, { label: string, desc: string }> = {
-  'Balance': { label: '밸런스 오펜스', desc: '모든 공격 루트의 조화' },
-  'PaceAndSpace': { label: '페이스 & 스페이스', desc: '공간 창출 및 캐치앤슛' },
-  'PerimeterFocus': { label: '퍼리미터 포커스', desc: '픽앤롤 및 외곽 아이솔레이션' },
-  'PostFocus': { label: '포스트 포커스', desc: '빅맨의 높이와 파워를 이용한 골밑 장악' },
-  'Grind': { label: '그라인드', desc: '저득점 강제 및 에이스 집중' },
-  'SevenSeconds': { label: '세븐 세컨즈', desc: '7초 이내 빠른 공격' },
-  'Custom': { label: '사용자 설정', desc: '커스텀 전술' }
-};
-
-const DEFENSE_TACTIC_INFO: Record<DefenseTactic, { label: string, desc: string }> = {
-  'ManToManPerimeter': { label: '맨투맨', desc: '대인 방어 및 외곽 억제' },
-  'ZoneDefense': { label: '지역 방어', desc: '지역 방어 및 골밑 보호' },
-  'AceStopper': { label: '에이스 스토퍼', desc: '상대 주득점원 집중 견제' },
-  'Custom': { label: '사용자 설정', desc: '커스텀 수비' }
-};
-
-const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: any }> = ({ data, labels }) => {
+const TacticTable: React.FC<{ data: Record<string, TacticStatRecord> }> = ({ data }) => {
     const sorted = (Object.entries(data) as [string, TacticStatRecord][])
         .filter(([key]) => key !== 'AceStopper')
         .sort((a, b) => b[1].games - a[1].games);
@@ -32,7 +15,7 @@ const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: an
         <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
             <Table>
                 <TableHead>
-                    <TableHeaderCell align="left" className="px-6 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</TableHeaderCell>
+                    <TableHeaderCell align="left" className="px-6 w-40 sticky left-0 bg-slate-950 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic</TableHeaderCell>
                     <TableHeaderCell align="right" className="w-12">GP</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-16">W-L</TableHeaderCell>
                     <TableHeaderCell align="right" className="w-16">Win%</TableHeaderCell>
@@ -55,7 +38,7 @@ const TacticTable: React.FC<{ data: Record<string, TacticStatRecord>, labels: an
                         return (
                             <TableRow key={key}>
                                 <TableCell className="px-6 font-bold text-slate-300 text-xs sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">
-                                    {labels[key]?.label || key}
+                                    {key}
                                 </TableCell>
                                 <TableCell variant="stat" value={s.games} className="text-slate-400" />
                                 <TableCell align="center" className="font-mono text-sm text-slate-300">{s.wins}-{s.games - s.wins}</TableCell>
@@ -87,7 +70,7 @@ const StopperTacticTable: React.FC<{ stats?: TacticStatRecord }> = ({ stats }) =
         <div className="bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden shadow-xl animate-in slide-in-from-top-2 duration-500">
             <Table>
                 <TableHead>
-                    <TableHeaderCell align="left" className="px-6 w-40 sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic Name</TableHeaderCell>
+                    <TableHeaderCell align="left" className="px-6 w-40 sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">Tactic</TableHeaderCell>
                     <TableHeaderCell align="right" className="w-12">GP</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-16">W-L</TableHeaderCell>
                     <TableHeaderCell align="right" className="w-16">Win%</TableHeaderCell>
@@ -147,16 +130,18 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
   return (
     <div className="flex flex-col gap-14 min-h-[400px]">
       {/* Offensive Section */}
-      <div className="space-y-6">
-        <div className="flex items-center gap-3 border-l-4 border-orange-500 pl-4">
-          <Target size={24} className="text-orange-400" />
-          <div>
-            <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider oswald">Offensive Systems Efficiency</h4>
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Team Performance by Strategy</p>
+      {hasOffense && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-3 border-l-4 border-orange-500 pl-4">
+            <Target size={24} className="text-orange-400" />
+            <div>
+              <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider oswald">Offensive Systems Efficiency</h4>
+              <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Team Performance by Strategy</p>
+            </div>
           </div>
+          <TacticTable data={offenseStats} />
         </div>
-        <TacticTable data={offenseStats} labels={OFFENSE_TACTIC_INFO} />
-      </div>
+      )}
 
       {/* Defensive Section */}
       <div className="space-y-6">
@@ -167,19 +152,26 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Overall Team Defensive Impact</p>
           </div>
         </div>
-        
+
         <div className="space-y-4">
-            {/* Standard Defense Table (Man-to-Man, Zone) */}
-            <TacticTable data={defenseStats} labels={DEFENSE_TACTIC_INFO} />
-            
-            {/* Separate Stopper Table */}
-            <StopperTacticTable stats={stopperStats} />
-            
-            {!hasDefense && !hasStopper && (
-                <div className="text-center text-slate-500 py-8 font-bold text-sm bg-slate-900/30 rounded-2xl border border-slate-800">
-                    기록된 수비 전술 데이터가 없습니다.
-                </div>
-            )}
+          {hasDefense && <TacticTable data={defenseStats} />}
+
+          {/* Ace Stopper Table */}
+          {hasStopper && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 pl-1">
+                <ShieldAlert size={16} className="text-red-400" />
+                <span className="text-xs font-black text-red-400 uppercase tracking-widest">에이스 스토퍼 기록</span>
+              </div>
+              <StopperTacticTable stats={stopperStats} />
+            </div>
+          )}
+
+          {!hasDefense && !hasStopper && (
+              <div className="text-center text-slate-500 py-8 font-bold text-sm bg-slate-900/30 rounded-2xl border border-slate-800">
+                  기록된 수비 전술 데이터가 없습니다.
+              </div>
+          )}
         </div>
       </div>
     </div>

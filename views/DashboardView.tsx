@@ -1,10 +1,9 @@
 
-import React, { useMemo, useState, useEffect } from 'react';
-import { Team, Game, Player, PlayoffSeries, GameTactics, DepthChart, OffenseTactic, DefenseTactic } from '../types';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import { Team, Game, Player, PlayoffSeries, GameTactics, DepthChart } from '../types';
 import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
-import { calculateTacticScore } from '../utils/tacticUtils';
 
 // Import sub-components
 import { DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
@@ -25,14 +24,14 @@ interface DashboardViewProps {
   onShowPlayoffReview: () => void;
   hasPlayoffHistory?: boolean;
   playoffSeries?: PlayoffSeries[];
-  depthChart?: DepthChart | null; 
+  depthChart?: DepthChart | null;
   onUpdateDepthChart?: (dc: DepthChart) => void;
 }
 
 type DashboardTab = 'rotation' | 'tactics' | 'opponent';
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ 
-  team, teams, schedule, onSim, tactics, onUpdateTactics, 
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
   playoffSeries = [], depthChart, onUpdateDepthChart
 }) => {
@@ -74,7 +73,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   const healthySorted = useMemo(() => effectiveRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveRoster]);
   const oppHealthySorted = useMemo(() => effectiveOppRoster.filter(p => p.health !== 'Injured').sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [effectiveOppRoster]);
-  
+
   useEffect(() => {
     if (healthySorted.length >= 5 && Object.values(tactics.starters).every(v => v === '')) {
       const newStarters = {
@@ -88,15 +87,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     }
   }, [healthySorted, tactics.starters, tactics, onUpdateTactics]);
 
-  // [Fix] Added missing OffenseTactic and DefenseTactic to imports to fix "Cannot find name" errors
-  const handleCalculateTacticScore = (type: OffenseTactic | DefenseTactic) => {
-      return calculateTacticScore(type, { ...team, roster: effectiveRoster }, tactics);
-  };
-
-  const handleAutoSet = () => {
+  const handleAutoSet = useCallback(() => {
     const autoTactics = generateAutoTactics({ ...team, roster: effectiveRoster });
     onUpdateTactics(autoTactics);
-  };
+  }, [team, effectiveRoster, onUpdateTactics]);
 
   if (!team) return null;
 
@@ -105,10 +99,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   return (
     <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-6">
       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
-      
-      <DashboardReviewBanners 
-        onShowSeasonReview={onShowSeasonReview} 
-        onShowPlayoffReview={onShowPlayoffReview} 
+
+      <DashboardReviewBanners
+        onShowSeasonReview={onShowSeasonReview}
+        onShowPlayoffReview={onShowPlayoffReview}
         hasPlayoffHistory={hasPlayoffHistory}
         showSeasonBanner={isRegularSeasonFinished}
         showPlayoffBanner={isPostseasonOver}
@@ -116,23 +110,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
       {/* Main Content Area with Navigation */}
       <div className="w-full max-w-[1900px] flex flex-col min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
-          
+
           {/* Internal Tab Navigation */}
           <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-14 flex-shrink-0">
                 <div className="flex items-center gap-8 h-full">
-                    <button 
+                    <button
                         onClick={() => setActiveTab('rotation')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>뎁스차트 & 로테이션</span>
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('tactics')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>전술 관리</span>
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('opponent')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
@@ -143,7 +137,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
           <div className="flex-1 min-h-[600px]">
               {activeTab === 'rotation' && (
-                  <RotationManager 
+                  <RotationManager
                       team={team}
                       tactics={tactics}
                       depthChart={depthChart || null}
@@ -153,22 +147,21 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onUpdateDepthChart={onUpdateDepthChart}
                   />
               )}
-              
+
               {activeTab === 'tactics' && (
                   <div className="animate-in fade-in duration-500 h-full">
-                    <TacticsBoard 
-                        team={team} // [Updated] Pass full team object
+                    <TacticsBoard
+                        team={team}
                         tactics={tactics}
                         roster={effectiveRoster}
                         onUpdateTactics={onUpdateTactics}
                         onAutoSet={handleAutoSet}
-                        calculateTacticScore={handleCalculateTacticScore}
                     />
                   </div>
               )}
 
               {activeTab === 'opponent' && (
-                  <OpponentScoutPanel 
+                  <OpponentScoutPanel
                       opponent={teams.find(t => t.id !== team.id && t.roster.some(rp => rp.id === oppHealthySorted[0]?.id))}
                       oppHealthySorted={oppHealthySorted}
                       onViewPlayer={setViewPlayer}

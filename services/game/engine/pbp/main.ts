@@ -199,8 +199,6 @@ export function runFullGameSimulation(
     };
 
     const mapTactics = (t: GameTactics) => ({
-        offense: t.offenseTactics[0],
-        defense: t.defenseTactics.find(d => d !== 'AceStopper') || t.defenseTactics[0],
         stopperId: t.stopperId,
         pace: t.sliders.pace,
         sliders: t.sliders

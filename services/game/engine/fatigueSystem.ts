@@ -1,6 +1,6 @@
 
 import { LivePlayer } from './pbp/pbpTypes';
-import { TacticalSliders, OffenseTactic, DefenseTactic } from '../../../types';
+import { TacticalSliders } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 
 /**
@@ -11,9 +11,7 @@ export function calculateIncrementalFatigue(
     timeTakenSeconds: number,
     sliders: TacticalSliders,
     isB2B: boolean,
-    isStopper: boolean,
-    offTactic: OffenseTactic,
-    defTactic: DefenseTactic
+    isStopper: boolean
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;

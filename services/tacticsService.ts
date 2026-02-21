@@ -38,8 +38,6 @@ export const savePreset = async (
     
     // Filter data to only include strategy, not roster/lineup
     const tacticsData = {
-        offenseTactics: fullTactics.offenseTactics,
-        defenseTactics: fullTactics.defenseTactics,
         sliders: fullTactics.sliders
         // Note: Starters, Minutes, StopperID are excluded per requirement
     };

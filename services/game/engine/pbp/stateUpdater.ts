@@ -22,17 +22,14 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
 
             // Fatigue Calculation
             // Check if Ace Stopper
-            const isStopper = team.tactics.defenseTactics.includes('AceStopper') && 
-                              team.tactics.stopperId === p.playerId;
-            
+            const isStopper = team.tactics.stopperId === p.playerId;
+
             const fatigueRes = calculateIncrementalFatigue(
-                p, 
-                timeTaken, 
-                team.tactics.sliders, 
-                isB2B, 
-                isStopper, 
-                team.tactics.offenseTactics[0], 
-                team.tactics.defenseTactics[0]
+                p,
+                timeTaken,
+                team.tactics.sliders,
+                isB2B,
+                isStopper
             );
 
             // Apply Drain
