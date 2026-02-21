@@ -21,12 +21,13 @@ interface SidebarProps {
   onLogout: () => void;
 }
 
+// Moved outside component to avoid recreation on every render
+const hexToRgb = (hex: string) => {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229';
+};
+
 const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string, badge?: number }> = ({ active, icon, label, onClick, color, textColor, badge }) => {
-  // Convert Hex to RGB for opacity handling in shadows/hovers
-  const hexToRgb = (hex: string) => {
-    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229'; // Default Indigo
-  };
   const rgb = hexToRgb(color);
 
   return (
@@ -76,7 +77,7 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
   );
 };
 
-export const Sidebar: React.FC<SidebarProps> = ({
+export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
   currentSimDate,
   currentView,
@@ -231,4 +232,4 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
     </aside>
   );
-};
+});

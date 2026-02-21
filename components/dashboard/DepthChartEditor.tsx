@@ -15,7 +15,7 @@ interface DepthChartEditorProps {
 
 type AutoFillMode = 'Ability' | 'Stamina';
 
-export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
+const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
     team,
     tactics,
     depthChart,
@@ -287,3 +287,14 @@ export const DepthChartEditor: React.FC<DepthChartEditorProps> = ({
         </div>
     );
 };
+
+// rotationMap 변경 시에는 재렌더 불필요 — starters와 depthChart 변경 시에만 재렌더
+export const DepthChartEditor = React.memo(
+    DepthChartEditorInner,
+    (prev: DepthChartEditorProps, next: DepthChartEditorProps) =>
+        prev.depthChart === next.depthChart &&
+        prev.tactics.starters === next.tactics.starters &&
+        prev.team === next.team &&
+        prev.onUpdateDepthChart === next.onUpdateDepthChart &&
+        prev.onUpdateTactics === next.onUpdateTactics
+);
