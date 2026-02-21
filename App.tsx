@@ -66,11 +66,18 @@ const App: React.FC = () => {
         setIsResetModalOpen(false);
     };
 
+    const handleSelectTeamAndOnboard = useCallback(async (teamId: string) => {
+        const success = await gameData.handleSelectTeam(teamId);
+        if (success) setView('Onboarding' as any);
+        return success;
+    }, [gameData.handleSelectTeam]);
+
     // 전역 상태에 따른 가드 렌더링
-    // [Updated] No props needed for FullScreenLoader to enable random messages (default behavior)
-    if (authLoading || gameData.isSaveLoading) return <FullScreenLoader />;
+    // authLoading(인증 확인 중)에는 정적 메세지, isSaveLoading(게임 데이터 로딩)에는 랜덤 메세지
+    if (authLoading) return <FullScreenLoader message="잠시만 기다려주세요..." />;
+    if (gameData.isSaveLoading) return <FullScreenLoader />;
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
-    if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={gameData.handleSelectTeam} />;
+    if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} />;
 
     return (
         <MainLayout 
