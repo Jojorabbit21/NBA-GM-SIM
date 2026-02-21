@@ -38,7 +38,7 @@ const FullScreenLoader: React.FC<FullScreenLoaderProps> = ({ message }) => {
     }, [message]);
 
     return (
-        <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center z-[1000] backdrop-blur-xl animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center z-[1000]">
             <div className="text-center space-y-8 p-6">
                 <div className="relative">
                     <div className="absolute inset-0 bg-indigo-500/20 blur-2xl rounded-full"></div>
