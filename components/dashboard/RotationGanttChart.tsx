@@ -157,7 +157,7 @@ interface RotationGanttChartProps {
     onViewPlayer: (p: Player) => void;
 }
 
-export const RotationGanttChart: React.FC<RotationGanttChartProps> = ({
+const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
     team, tactics, depthChart, healthySorted, onUpdateTactics, onViewPlayer,
 }) => {
     const [dragging, setDragging] = useState<DragState | null>(null);
@@ -169,6 +169,14 @@ export const RotationGanttChart: React.FC<RotationGanttChartProps> = ({
     tacticsRef.current = tactics;
     const onUpdateRef = useRef(onUpdateTactics);
     onUpdateRef.current = onUpdateTactics;
+
+    // RAF handle for throttling drag mousemove updates to display refresh rate
+    const rafRef = useRef<number | null>(null);
+
+    // Cleanup RAF on unmount
+    useEffect(() => {
+        return () => { if (rafRef.current !== null) cancelAnimationFrame(rafRef.current); };
+    }, []);
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -259,9 +267,13 @@ export const RotationGanttChart: React.FC<RotationGanttChartProps> = ({
     }, []);
 
     const handleBarMouseMove = useCallback((playerId: string, minute: number) => {
-        setDragging(prev =>
-            prev && prev.currentMin !== minute ? { ...prev, currentMin: minute } : prev
-        );
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+            rafRef.current = null;
+            setDragging((prev: DragState | null) =>
+                prev && prev.currentMin !== minute ? { ...prev, currentMin: minute } : prev
+            );
+        });
     }, []);
 
     // Allocation preset handler
@@ -523,3 +535,14 @@ export const RotationGanttChart: React.FC<RotationGanttChartProps> = ({
         </div>
     );
 };
+
+export const RotationGanttChart = React.memo(
+    RotationGanttChartInner,
+    (prev: RotationGanttChartProps, next: RotationGanttChartProps) =>
+        prev.team === next.team &&
+        prev.tactics.rotationMap === next.tactics.rotationMap &&
+        prev.depthChart === next.depthChart &&
+        prev.healthySorted === next.healthySorted &&
+        prev.onUpdateTactics === next.onUpdateTactics &&
+        prev.onViewPlayer === next.onViewPlayer
+);
