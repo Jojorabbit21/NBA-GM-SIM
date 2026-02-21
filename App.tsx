@@ -73,10 +73,12 @@ const App: React.FC = () => {
     }, [gameData.handleSelectTeam]);
 
     // 전역 상태에 따른 가드 렌더링
-    // authLoading(인증 확인 중)에는 정적 메세지, isSaveLoading(게임 데이터 로딩)에는 랜덤 메세지
+    // 1. authLoading: 인증 확인 중 → 정적 메세지
     if (authLoading) return <FullScreenLoader message="잠시만 기다려주세요..." />;
-    if (gameData.isSaveLoading) return <FullScreenLoader />;
+    // 2. 미로그인: 인증 화면 (랜덤 메세지가 뜨지 않도록 isSaveLoading보다 먼저)
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
+    // 3. 로그인 후 게임 데이터 로딩: 랜덤 메세지
+    if (gameData.isSaveLoading) return <FullScreenLoader />;
     if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} />;
 
     return (
