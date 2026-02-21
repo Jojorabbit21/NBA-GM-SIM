@@ -81,8 +81,7 @@ export function calculateHitRate(
     }
 
     // 4. Ace Stopper Impact
-    const isStopperActive = defTeam.tactics.defenseTactics.includes('AceStopper') && 
-                            defTeam.tactics.stopperId === defender.playerId &&
+    const isStopperActive = defTeam.tactics.stopperId === defender.playerId &&
                             actor.playerId === acePlayerId;
     
     let matchupEffect = 0;

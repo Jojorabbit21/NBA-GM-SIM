@@ -1,7 +1,4 @@
 
-export type OffenseTactic = 'Balance' | 'PaceAndSpace' | 'PerimeterFocus' | 'PostFocus' | 'Grind' | 'SevenSeconds' | 'Custom';
-export type DefenseTactic = 'ManToManPerimeter' | 'ZoneDefense' | 'AceStopper' | 'Custom';
-
 export interface TacticalSliders {
     // A. Offense Style
     pace: number;          // 1-10: Game speed & transition frequency
@@ -19,18 +16,18 @@ export interface TacticalSliders {
     shot_3pt: number;      // Preference for 3PT shots
     shot_mid: number;      // Preference for Mid-range shots
     shot_rim: number;      // Preference for Rim attacks
-    shot_pullup: number;   // Preference for Pull-up jumpers vs Set shots
+    shot_pullup: number;   // [Dead] Preference for Pull-up jumpers (kept for DB compat)
 
     // D. Defense
     defIntensity: number;  // 1-10: Pressure on ball & passing lanes
     helpDef: number;       // 1-10: Rotation speed & Paint packing
     switchFreq: number;    // 1-10: Frequency of switching screens
-    defReb: number;        // 1-10: Box out focus vs Leak out
+    defReb: number;        // [Dead] Box out focus (kept for DB compat)
     zoneFreq: number;      // 1-10: Frequency of using Zone logic
-    
-    // [New] Added missing properties
+
+    // Additional
     fullCourtPress: number; // 1-10
-    zoneUsage: number;      // 1-10 (Redundant with zoneFreq? code seems to use zoneUsage in some places and zoneFreq in others. Unifying to zoneUsage in logic, keeping types compatible)
+    zoneUsage: number;      // [Dead] Kept for DB compat, synced with zoneFreq
 }
 
 export interface DepthChart {
@@ -42,19 +39,17 @@ export interface DepthChart {
 }
 
 export interface GameTactics {
-    offenseTactics: OffenseTactic[]; // Changed from offensePreset
-    defenseTactics: DefenseTactic[]; // Changed from defensePreset
     sliders: TacticalSliders;
     starters: { PG: string; SG: string; SF: string; PF: string; C: string };
-    rotationMap: Record<string, boolean[]>; 
+    rotationMap: Record<string, boolean[]>;
     stopperId?: string;
     minutesLimits: Record<string, number>;
-    depthChart?: DepthChart; 
+    depthChart?: DepthChart;
 }
 
 export interface TacticalSnapshot {
-    offense?: OffenseTactic;
-    defense?: DefenseTactic;
+    offense?: string;  // Kept as string for DB compat (no longer populated)
+    defense?: string;  // Kept as string for DB compat (no longer populated)
     stopperId?: string;
     pace?: number;
     sliders?: TacticalSliders;
