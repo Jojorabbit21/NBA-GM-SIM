@@ -13,7 +13,6 @@ import { PlayoffsView } from '../views/PlayoffsView';
 import { HelpView } from '../views/HelpView';
 import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
-import { OnboardingView } from '../views/OnboardingView';
 import { Loader2 } from 'lucide-react';
 
 interface AppRouterProps {
@@ -165,8 +164,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     }}
                 />
             );
-        case 'Onboarding':
-            return myTeam ? <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} /> : null;
         default:
             return null;
     }

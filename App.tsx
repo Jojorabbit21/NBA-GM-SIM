@@ -14,6 +14,7 @@ import FullScreenLoader from './components/FullScreenLoader';
 import MainLayout from './components/MainLayout';
 import AppRouter from './components/AppRouter';
 import { ResetDataModal } from './components/ResetDataModal';
+import { OnboardingView } from './views/OnboardingView';
 
 const App: React.FC = () => {
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
@@ -81,41 +82,50 @@ const App: React.FC = () => {
     if (gameData.isSaveLoading) return <FullScreenLoader />;
     if (!gameData.myTeamId) return <TeamSelectView teams={gameData.teams} isInitializing={gameData.isBaseDataLoading} onSelectTeam={handleSelectTeamAndOnboard} />;
 
+    const myTeam = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
+
     return (
-        <MainLayout 
-            sidebarProps={{
-                team: gameData.teams.find(t => t.id === gameData.myTeamId),
-                currentSimDate: gameData.currentSimDate,
-                currentView: view,
-                isGuestMode,
-                unreadMessagesCount: unreadCount,
-                onNavigate: setView,
-                onResetClick: handleResetClick,
-                onLogout: handleLogout
-            }}
-            gameHeaderProps={{
-                schedule: gameData.schedule,
-                teams: gameData.teams,
-                onSim: sim.handleExecuteSim,
-                isSimulating: sim.isSimulating,
-                playoffSeries: gameData.playoffSeries,
-                userTactics: gameData.userTactics
-            }}
-        >
-            <AppRouter 
-                view={view} setView={setView} gameData={gameData}
-                sim={sim} session={session} unreadCount={unreadCount}
-                refreshUnreadCount={refreshUnreadCount} setToastMessage={setToastMessage}
-            />
-            {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
-            
-            <ResetDataModal 
-                isOpen={isResetModalOpen}
-                isLoading={isResetting}
-                onClose={() => setIsResetModalOpen(false)}
-                onConfirm={handleResetConfirm}
-            />
-        </MainLayout>
+        <>
+            <MainLayout
+                sidebarProps={{
+                    team: myTeam,
+                    currentSimDate: gameData.currentSimDate,
+                    currentView: view,
+                    isGuestMode,
+                    unreadMessagesCount: unreadCount,
+                    onNavigate: setView,
+                    onResetClick: handleResetClick,
+                    onLogout: handleLogout
+                }}
+                gameHeaderProps={{
+                    schedule: gameData.schedule,
+                    teams: gameData.teams,
+                    onSim: sim.handleExecuteSim,
+                    isSimulating: sim.isSimulating,
+                    playoffSeries: gameData.playoffSeries,
+                    userTactics: gameData.userTactics
+                }}
+            >
+                <AppRouter
+                    view={view} setView={setView} gameData={gameData}
+                    sim={sim} session={session} unreadCount={unreadCount}
+                    refreshUnreadCount={refreshUnreadCount} setToastMessage={setToastMessage}
+                />
+                {toastMessage && <Toast message={toastMessage} onClose={() => setToastMessage(null)} />}
+
+                <ResetDataModal
+                    isOpen={isResetModalOpen}
+                    isLoading={isResetting}
+                    onClose={() => setIsResetModalOpen(false)}
+                    onConfirm={handleResetConfirm}
+                />
+            </MainLayout>
+            {(view as string) === 'Onboarding' && myTeam && (
+                <div className="fixed inset-0 z-[500]">
+                    <OnboardingView team={myTeam} onComplete={() => setView('Dashboard')} />
+                </div>
+            )}
+        </>
     );
 };
 
