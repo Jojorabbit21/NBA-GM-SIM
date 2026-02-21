@@ -21,12 +21,11 @@ const AuthAlert: React.FC<{ type: 'error' | 'success'; children: React.ReactNode
     );
 };
 
-export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
+export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin }) => {
   const [loading, setLoading] = useState(false);
-  const [bgLoaded, setBgLoaded] = useState(false); 
-  const [email, setEmail] = useState(''); 
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState(''); 
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
 
@@ -42,7 +41,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
     );
   }, [email, password, confirmPassword]);
 
-  // removed deviceId logic
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
     const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
     if (!data) {
@@ -91,19 +89,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
-      <div className={`absolute inset-0 w-full h-full pointer-events-none overflow-hidden transition-opacity duration-1000 ease-in-out ${bgLoaded ? 'opacity-100' : 'opacity-0'}`}>
-        <img 
-            src="https://buummihpewiaeltywdff.supabase.co/storage/v1/object/public/images/background3.png" 
-            alt="Background" 
-            className="w-full h-full object-cover opacity-30 blur-sm scale-110 transform-gpu"
-            onLoad={() => setBgLoaded(true)}
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-slate-950/80 via-slate-950/50 to-slate-950/80"></div>
-      </div>
-
-      <div className={`w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10 transition-all duration-1000 ease-in-out transform ${bgLoaded ? 'opacity-100 scale-100 translate-y-0' : 'opacity-0 scale-95 translate-y-4'}`}>
+      <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10">
         <div className="text-center mb-10">
-          <h1 className="text-4xl font-black text-white leading-tight oswald tracking-tighter uppercase italic">
+          <h1
+            style={{ fontFamily: "'SF Display Mono', 'SF Mono', ui-monospace, monospace" }}
+            className="text-4xl font-black text-white leading-tight tracking-tighter uppercase"
+          >
             Courtside GM
           </h1>
         </div>
@@ -131,9 +122,6 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin }) => {
         <div className="mt-8 text-center border-t border-slate-800 pt-6">
           <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
             {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
-          </button>
-          <button onClick={onGuestLogin} className="block w-full mt-4 text-slate-500 hover:text-white pretendard font-medium text-sm transition-all">
-            게스트로 체험하기 (저장 불가)
           </button>
         </div>
       </div>
