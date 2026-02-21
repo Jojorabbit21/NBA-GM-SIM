@@ -23,6 +23,7 @@ const App: React.FC = () => {
     const [unreadCount, setUnreadCount] = useState(0);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
+    const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
 
     const advanceDate = useCallback((newDate: string, overrides: any) => {
         gameData.setCurrentSimDate(newDate);
@@ -80,7 +81,7 @@ const App: React.FC = () => {
                 isGuestMode,
                 unreadMessagesCount: unreadCount,
                 onNavigate: setView,
-                onResetClick: () => setIsResetModalOpen(true),
+                onResetClick: handleResetClick,
                 onLogout: handleLogout
             }}
             gameHeaderProps={{
