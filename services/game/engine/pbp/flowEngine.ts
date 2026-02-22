@@ -81,7 +81,7 @@ export function calculateHitRate(
     // [Update] Reduced impact (0.015 -> 0.008)
     const helpMod = (defTeam.tactics.sliders.helpDef - 5) * 0.008;
 
-    hitRate += (offRating - defRating) * 0.003;
+    hitRate += (offRating - defRating) * 0.002;
     hitRate -= intensityMod;
 
     if (preferredZone === 'Rim' || preferredZone === 'Paint') {
