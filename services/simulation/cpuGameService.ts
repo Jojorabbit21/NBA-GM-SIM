@@ -1,7 +1,7 @@
 
 import { Team, Game, PlayoffSeries, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent } from '../../types';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
-import { updateTeamStats, updateSeriesState } from '../../utils/simulationUtils';
+import { updateTeamStats, updateSeriesState, applyBoxToRoster } from '../../utils/simulationUtils';
 
 export interface ProcessedCpuResults {
     gameResultsToSave: any[];
@@ -30,8 +30,10 @@ export const processCpuGames = (
         const away = teams.find(t => t.id === res.awayTeamId);
 
         if (home && away) {
-            // Update Stats (Mutates teams - ensure clones are passed)
+            // Update Stats (team wins/losses + player season stats)
             updateTeamStats(home, away, res.homeScore, res.awayScore);
+            if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home);
+            if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away);
 
             // Update Schedule (Mutates schedule)
             const gameIdx = schedule.findIndex(g => g.id === res.gameId);
