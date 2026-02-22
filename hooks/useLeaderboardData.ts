@@ -168,11 +168,15 @@ export const useLeaderboardData = (
                 fta: totals.fta / playedCount,
                 'ft%': totals.fta > 0 ? totals.ftm / totals.fta : 0,
 
-                // Aggregated Zone Stats
+                // Zone Stats — 10존 기반으로 교체 (rimM/rimA는 집계 중단, 호환성 유지)
                 rimM: totals.rimM, rimA: totals.rimA,
-                'rim%': totals.rimA > 0 ? totals.rimM / totals.rimA : 0,
+                'rim%': (totals['zone_rim_a'] + totals['zone_paint_a']) > 0
+                    ? (totals['zone_rim_m'] + totals['zone_paint_m']) / (totals['zone_rim_a'] + totals['zone_paint_a'])
+                    : 0,
                 midM: totals.midM, midA: totals.midA,
-                'mid%': totals.midA > 0 ? totals.midM / totals.midA : 0,
+                'mid%': (totals['zone_mid_l_a'] + totals['zone_mid_c_a'] + totals['zone_mid_r_a']) > 0
+                    ? (totals['zone_mid_l_m'] + totals['zone_mid_c_m'] + totals['zone_mid_r_m']) / (totals['zone_mid_l_a'] + totals['zone_mid_c_a'] + totals['zone_mid_r_a'])
+                    : 0,
                 '3pM': totals.p3m,
 
                 'ts%': tsa > 0 ? totalPts / (2 * tsa) : 0,
@@ -350,8 +354,13 @@ export const useLeaderboardData = (
                 update('fg%', s.fga > 0 ? s.fgm / s.fga : 0);
                 update('3p%', s.p3a > 0 ? s.p3m / s.p3a : 0);
                 update('ft%', s.fta > 0 ? s.ftm / s.fta : 0);
-                update('rim%', (s.rimA || 0) > 0 ? (s.rimM || 0) / s.rimA : 0);
-                update('mid%', (s.midA || 0) > 0 ? (s.midM || 0) / s.midA : 0);
+                // rim%/mid% — 10존 기반으로 교체 (zone_rim + zone_paint = 인사이드 전체)
+                update('rim%', ((s['zone_rim_a'] || 0) + (s['zone_paint_a'] || 0)) > 0
+                    ? ((s['zone_rim_m'] || 0) + (s['zone_paint_m'] || 0)) / ((s['zone_rim_a'] || 0) + (s['zone_paint_a'] || 0))
+                    : 0);
+                update('mid%', ((s['zone_mid_l_a'] || 0) + (s['zone_mid_c_a'] || 0) + (s['zone_mid_r_a'] || 0)) > 0
+                    ? ((s['zone_mid_l_m'] || 0) + (s['zone_mid_c_m'] || 0) + (s['zone_mid_r_m'] || 0)) / ((s['zone_mid_l_a'] || 0) + (s['zone_mid_c_a'] || 0) + (s['zone_mid_r_a'] || 0))
+                    : 0);
                 
                 const tsa = s.fga + 0.44 * s.fta;
                 update('ts%', tsa > 0 ? s.pts / (2 * tsa) : 0);

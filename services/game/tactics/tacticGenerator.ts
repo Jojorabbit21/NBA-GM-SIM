@@ -206,7 +206,6 @@ export const generateAutoTactics = (team: Team): GameTactics => {
             shot_3pt,
             shot_mid,
             shot_rim,
-            shot_pullup: DEFAULT_SLIDERS.shot_pullup, // dead code — default
             defIntensity,
             helpDef,
             switchFreq,

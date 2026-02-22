@@ -16,18 +16,17 @@ export interface TacticalSliders {
     shot_3pt: number;      // Preference for 3PT shots
     shot_mid: number;      // Preference for Mid-range shots
     shot_rim: number;      // Preference for Rim attacks
-    shot_pullup: number;   // [Dead] Preference for Pull-up jumpers (kept for DB compat)
 
     // D. Defense
     defIntensity: number;  // 1-10: Pressure on ball & passing lanes
     helpDef: number;       // 1-10: Rotation speed & Paint packing
     switchFreq: number;    // 1-10: Frequency of switching screens
-    defReb: number;        // [Dead] Box out focus (kept for DB compat)
+    defReb: number;        // 1-10: Defensive rebound commitment (box-out vs fast break)
     zoneFreq: number;      // 1-10: Frequency of using Zone logic
 
     // Additional
     fullCourtPress: number; // 1-10
-    zoneUsage: number;      // [Dead] Kept for DB compat, synced with zoneFreq
+    zoneUsage: number;      // 1-10: Zone execution quality (rotation speed & communication)
 }
 
 export interface DepthChart {

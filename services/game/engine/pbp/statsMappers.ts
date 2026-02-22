@@ -65,6 +65,11 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     // 2. Record Shot Event (Visualization)
     recordShotEvent(state, result);
 
+    // [New] Mismatch Announcement
+    if (isMismatch) {
+        addLog(state, offTeam.id, `⚡ 미스매치! ${actor.playerName}가 이점을 활용합니다.`, 'info');
+    }
+
     // 3. Apply Logic based on Result Type
     if (type === 'score') {
         // Update Actor Stats
@@ -77,8 +82,21 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         }
         if (zone) updateZoneStats(actor, zone, true);
         
-        // Update Assist
-        if (assister) assister.ast += 1;
+        // Update Assist (Play-type-based probability — not all secondary actors earn credit)
+        if (assister) {
+            const assistOdds: Record<string, number> = {
+                'CatchShoot': 0.90, // Kick-out to open shooter → almost always assisted
+                'Cut':        0.85, // Passer to cutting slasher
+                'PnR_Pop':    0.80, // Handler kicks to popping big
+                'PnR_Roll':   0.75, // Handler feeds rolling big
+                'Handoff':    0.65, // Ball-handler hands off
+                'Transition': 0.55, // Push-ahead pass on break
+                'PostUp':     0.45, // Entry pass to post
+                'Putback':    0.10, // Tip-in rarely credited
+            };
+            const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
+            if (Math.random() < prob) assister.ast += 1;
+        }
 
         // Update Team Score
         offTeam.score += points;

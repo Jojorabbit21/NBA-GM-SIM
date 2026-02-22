@@ -17,7 +17,7 @@ import { PLAY_TYPE_USAGE_WEIGHTS } from '../../config/usageWeights';
  */
 function calculateScoringGravity(p: LivePlayer): number {
     // 1. 기본 공격 스탯 (내외곽 슛 + 자유투)
-    const baseOffense = (p.attr.ins * 0.3) + (p.attr.out * 0.4) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
+    const baseOffense = (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
     
     // 2. 멘탈리티 (공격 적극성/기복/IQ) - 스타성을 결정하는 요소
     const mentality = (p.attr.offConsist * 0.4) + (p.attr.shotIq * 0.4) + (p.attr.pas * 0.2); // [Fix] intangibles -> pas/handling for creation
