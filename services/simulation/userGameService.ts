@@ -1,7 +1,7 @@
 
 import { Team, Game, PlayoffSeries, GameTactics, DepthChart, SimulationResult } from '../../types';
 import { simulateGame } from '../gameEngine';
-import { updateTeamStats, updateSeriesState } from '../../utils/simulationUtils';
+import { updateTeamStats, updateSeriesState, applyBoxToRoster } from '../../utils/simulationUtils';
 import { saveGameResults } from '../queries';
 import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
@@ -63,8 +63,10 @@ export const applyUserGameResult = async (
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
     const isHome = userGame.homeTeamId === myTeamId;
 
-    // 1. Update Stats
+    // 1. Update Stats (team wins/losses + player season stats)
     updateTeamStats(homeTeam, awayTeam, result.homeScore, result.awayScore);
+    applyBoxToRoster(homeTeam, result.homeBox);
+    applyBoxToRoster(awayTeam, result.awayBox);
 
     // 2. Update Roster (Fatigue/Injury)
     if (result.rosterUpdates) {

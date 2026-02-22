@@ -148,6 +148,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     console.log("🆕 New Game Started");
                     setTeams(JSON.parse(JSON.stringify(baseData.teams)));
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
+                    hasInitialLoadRef.current = true; // 재진입 방지 (baseData 재조회 시 중복 실행 차단)
                 }
 
             } catch (e) {
