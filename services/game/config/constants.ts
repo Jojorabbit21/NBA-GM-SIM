@@ -23,13 +23,12 @@ export const SIM_CONFIG = {
         TOV_USAGE_FACTOR: 0.20,
     },
     SHOOTING: {
-        // [Normalization] Raised base percentages to prevent < 70pt games
-        // Rim: 0.58 -> 0.62
-        // Mid: 0.40 -> 0.42
-        // 3PT: 0.35 -> 0.36
-        INSIDE_BASE_PCT: 0.62, 
-        MID_BASE_PCT: 0.42,    
-        THREE_BASE_PCT: 0.36,  
+        // [Normalization v3] bonusHitRate가 이제 실제 적용됨 → 기본값 하향 재조정
+        // bonusHitRate 미적용 시절 보상값 해제: Rim -5%, Mid -4%, 3PT -2%
+        // 목표 FG% (bonus 없이): Rim 57%, Mid 38%, 3PT 34%
+        INSIDE_BASE_PCT: 0.57,
+        MID_BASE_PCT: 0.38,
+        THREE_BASE_PCT: 0.34,
         
         // [Normalization] Reduced Defense Impact to prevent > 140pt games (or < 60)
         // Attribute gaps now matter slightly less, pulling results to average.

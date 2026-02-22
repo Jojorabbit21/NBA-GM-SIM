@@ -152,7 +152,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 actor,
                 preferredZone: zone,
                 shotType: shotTypeForZone(zone, actor, playType),
-                bonusHitRate: 0.00 // [Down] 0.02 -> 0.00 (Pure Skill)
+                bonusHitRate: 0.00 // Iso: 순수 스킬 기반
             };
         }
         case 'PnR_Handler': {
@@ -168,7 +168,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 secondaryActor: screener,
                 preferredZone: zone,
                 shotType: 'Pullup',
-                bonusHitRate: 0.03 // [Down] 0.05 -> 0.03
+                bonusHitRate: 0.01 // PnR_Handler: 스크린 풀업 소폭
             };
         }
         case 'PnR_Roll': {
@@ -181,7 +181,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 secondaryActor: handler, // Assister
                 preferredZone: 'Rim', // 고정: 롤맨은 항상 림으로
                 shotType: 'Dunk',
-                bonusHitRate: 0.06 // [Down] 0.08 -> 0.06
+                bonusHitRate: 0.03 // PnR_Roll: 롤맨 림 어택 이점
             };
         }
         case 'PnR_Pop': {
@@ -194,7 +194,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 secondaryActor: handler,
                 preferredZone: '3PT', // 고정: 팝아웃은 항상 3점
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.03 // [Down] 0.04 -> 0.03
+                bonusHitRate: 0.01 // PnR_Pop: 팝아웃 오픈 3점 소폭
             };
         }
         case 'PostUp': {
@@ -205,7 +205,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 actor,
                 preferredZone: 'Paint', // 고정: 포스트업은 항상 인사이드
                 shotType: 'Hook',
-                bonusHitRate: 0.01 // [Down] 0.03 -> 0.01
+                bonusHitRate: 0.01 // PostUp: Paint 인사이드 소폭
             };
         }
         case 'CatchShoot': {
@@ -218,7 +218,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 secondaryActor: passer,
                 preferredZone: '3PT', // 고정: 스팟업 캐치샷은 항상 3점
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.05 // [Down] 0.06 -> 0.05
+                bonusHitRate: 0.02 // CatchShoot: 오픈 3점 이점 (34+2=36% = NBA 평균 3P%)
             };
         }
         case 'Cut': {
@@ -231,7 +231,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 secondaryActor: passer,
                 preferredZone: 'Rim', // 고정: 커팅은 항상 림
                 shotType: 'Layup',
-                bonusHitRate: 0.06 // [Down] 0.08 -> 0.06
+                bonusHitRate: 0.03 // Cut: 커팅 타이밍 이점 (57+3=60%)
             };
         }
         case 'Handoff': {
@@ -247,7 +247,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 secondaryActor: big,
                 preferredZone: zone,
                 shotType: shotTypeForZone(zone, actor, playType),
-                bonusHitRate: 0.04 // [Down] 0.05 -> 0.04
+                bonusHitRate: 0.02 // Handoff: 캐치 후 즉시 릴리스 이점
             };
         }
         case 'Transition': {
@@ -261,7 +261,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 actor,
                 preferredZone: zone,
                 shotType: shotTypeForZone(zone, actor, playType),
-                bonusHitRate: 0.10 // [Down] 0.12 -> 0.10
+                bonusHitRate: 0.04 // Transition: 속공 오픈 이점 (Rim: 57+4=61%)
             };
         }
         case 'Putback': {
@@ -272,7 +272,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 actor,
                 preferredZone: 'Rim', // 고정: 세컨드찬스는 항상 림
                 shotType: 'Layup',
-                bonusHitRate: 0.12 // [Down] 0.15 -> 0.12
+                bonusHitRate: 0.05 // Putback: 세컨드찬스 이점 (57+5=62%)
             };
         }
         default: {

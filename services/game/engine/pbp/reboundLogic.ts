@@ -29,13 +29,17 @@ export function resolveRebound(homeTeam: TeamState, awayTeam: TeamState, shooter
 
         // Slider multiplier: 공격팀 or 수비팀 여부에 따라 적용
         const isOffPlayer = offTeam.onCourt.some(p2 => p2.playerId === p.playerId);
+        const isShooter = p.playerId === shooterId;
+        // 수비 포지셔닝 우위 반영: 수비팀은 박스아웃 포지션 선점, 공격팀(비슈터)은 역방향에서 뛰어와야 함
+        // 슈터는 shooterPenalty(0.3)이 이미 있으므로 중복 적용 안 함
+        const positioningPenalty = (isOffPlayer && !isShooter) ? 0.45 : 1.0;
         const sliderMult = isOffPlayer ? offRebMult : defRebMult;
 
         const score = (
             (p.attr.reb * 0.6) +
             (p.attr.vertical * 0.2) +
             ((p.attr.height - 180) * 0.5)
-        ) * posBonus * shooterPenalty * sliderMult * Math.random();
+        ) * posBonus * shooterPenalty * positioningPenalty * sliderMult * Math.random();
 
         return { p, score };
     });
