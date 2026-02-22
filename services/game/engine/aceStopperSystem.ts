@@ -109,8 +109,11 @@ function calculatePhysicalDelta(type: AceArchetype, ace: Player, stopper: Player
 
         case 'Balanced':
         default:
-             // Average athletic comparison
-             return stopper.ath - ace.ath;
+            // [Fix] stopper.ath / ace.ath = NaN on flattened LivePlayer (ath not in attr)
+            // Use speed + agility + strength composite as ath proxy
+            const acePhy  = (ace.speed  + ace.agility  + ace.strength)  / 3;
+            const stopPhy = (stopper.speed + stopper.agility + stopper.strength) / 3;
+            return stopPhy - acePhy;
     }
 }
 

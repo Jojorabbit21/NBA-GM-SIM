@@ -308,7 +308,6 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                             <SliderBar label="3점슛 비중" value={tactics.sliders.shot_3pt || 5} color={teamColor} />
                             <SliderBar label="중거리슛 비중" value={tactics.sliders.shot_mid || 5} color={teamColor} />
                             <SliderBar label="골밑슛 비중" value={tactics.sliders.shot_rim || 5} color={teamColor} />
-                            <SliderBar label="풀업점퍼 비중" value={tactics.sliders.shot_pullup || 5} color={teamColor} />
                         </div>
                     </div>
                 )}

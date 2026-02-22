@@ -1,28 +1,24 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePlayAction } from './playTypes';
-import { calculateHitRate, flattenPlayer } from './flowEngine';
+import { calculateHitRate } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
-import { SIM_CONFIG } from '../../config/constants';
 import { PlayType } from '../../../../types';
 
 /**
  * Identify Defender using Sliders
  */
 function identifyDefender(
-    defTeam: TeamState, 
-    actor: LivePlayer, 
-    secondaryActor: LivePlayer | undefined, 
+    defTeam: TeamState,
+    actor: LivePlayer,
+    secondaryActor: LivePlayer | undefined,
     playType: PlayType,
     isActorAce: boolean,
-    targetZone: 'Rim' | 'Paint' | 'Mid' | '3PT'
+    targetZone: 'Rim' | 'Paint' | 'Mid' | '3PT',
+    isZone: boolean  // Pre-calculated in simulatePossession (probabilistic: zoneFreq*0.08)
 ): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean } {
-    
+
     const sliders = defTeam.tactics.sliders;
-    
-    // 0. Zone Defense Override
-    // If zoneFreq is high (>=8), treat as Zone Defense
-    const isZone = sliders.zoneFreq >= 8;
 
     if (isZone) {
         // Funnel inside shots to Bigs
@@ -124,18 +120,19 @@ function calculateTurnoverChance(
     let stealer: LivePlayer | undefined = undefined;
 
     // Base Steal Ratio (What % of turnovers are steals?)
-    // NBA Avg: ~55% of TOVs are Steals
-    let stealRatio = 0.50; 
+    // NBA Avg: ~50% of TOVs result in steals (the rest are out-of-bounds, violations, etc.)
+    // [Fix] Reduced from 0.50 to 0.45 base; archetype bonuses cut to cap at ~0.70
+    let stealRatio = 0.45;
 
     // Defender Bonuses
     const d = defender.attr;
-    
-    // Archetype 1: "The Glove" (On-Ball)
-    if (d.stl >= 90) stealRatio += 0.20;
-    else if (d.stl >= 80) stealRatio += 0.10;
 
-    // Archetype 2: "Interceptor" (Passing Lanes)
-    if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.15;
+    // Archetype 1: "The Glove" (On-Ball) — was +0.20/+0.10, now +0.15/+0.08
+    if (d.stl >= 90) stealRatio += 0.15;
+    else if (d.stl >= 80) stealRatio += 0.08;
+
+    // Archetype 2: "Interceptor" (Passing Lanes) — was +0.15, now +0.10 (max combined ~0.70)
+    if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.10;
 
     // Archetype 3: "The Shadow" (Help Defender)
     // Check if a helper steals it instead of primary defender
@@ -169,7 +166,8 @@ export function simulatePossession(state: GameState): PossessionResult {
 
     if (state.shotClock === 14 && state.gameClock < 720) {
         // High OffReb slider increases immediate putback chance
-        const putbackChance = 0.5 + (sliders.offReb * 0.03); 
+        // [Fix] Reduced: was 0.5+(offReb*0.03) → max 80%. Now realistic 25-35%.
+        const putbackChance = 0.15 + (sliders.offReb * 0.02);
         if (Math.random() < putbackChance) {
             selectedPlayType = 'Putback';
             isSecondChance = true;
@@ -208,22 +206,38 @@ export function simulatePossession(state: GameState): PossessionResult {
         }
     }
 
-    const playCtx = resolvePlayAction(offTeam, selectedPlayType);
-    const { actor, secondaryActor, preferredZone, shotType, bonusHitRate } = playCtx;
+    const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
+    const { actor, secondaryActor, preferredZone, bonusHitRate } = playCtx;
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
+    // zoneFreq=1: 8% 발동, zoneFreq=5: 40%, zoneFreq=10: 80%
+    const isZone = Math.random() < defTeam.tactics.sliders.zoneFreq * 0.08;
     const { defender, isSwitch, isBotchedSwitch } = identifyDefender(
-        defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone
+        defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone
     );
 
     // 3. Defensive Foul Check (Intensity Slider)
+    // [Fix] Linear growth capped at 18%: intensity=5→15.5%, intensity>=7→18% cap
     const defIntensity = defTeam.tactics.sliders.defIntensity;
-    const baseFoulChance = 0.08 + (defIntensity * 0.015); // Higher intensity = More fouls
-    
+    const baseFoulChance = Math.min(0.18, 0.08 + (defIntensity * 0.015));
+
     if (Math.random() < baseFoulChance) {
+        // Shooting foul vs Team foul 구분
+        // [Fix] 파울 빈도는 18% 캡, 하지만 슈팅 파울 비율은 intensity로 차등 스케일링
+        // → intensity 7과 10은 파울 횟수는 같지만 10이 더 비싼 파울(슈팅파울)을 많이 유발
+        const isInsidePlay = preferredZone === 'Rim' || preferredZone === 'Paint';
+        const intensityBonus = Math.max(0, defIntensity - 5);
+        const shootingFoulChance = isInsidePlay
+            ? Math.min(0.60, 0.45 + intensityBonus * 0.015) // 5→45%, 7→48%, 10→52.5%
+            : preferredZone === 'Mid'
+            ? Math.min(0.35, 0.25 + intensityBonus * 0.012) // 5→25%, 7→27%, 10→31%
+            : Math.min(0.20, 0.10 + intensityBonus * 0.008); // 5→10%, 7→12%, 10→14%
+        const isShootingFoul = Math.random() < shootingFoulChance;
+
         return {
-            type: 'foul', offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
+            type: isShootingFoul ? 'freethrow' : 'foul',
+            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
         };
     }
 
@@ -241,17 +255,33 @@ export function simulatePossession(state: GameState): PossessionResult {
     }
 
     // 5. Shot Calculation
+    // Zone Quality Modifier: zoneUsage=10(숙련) → FG% -1.5%, zoneUsage=5(평균) → 0%, zoneUsage=1(부족) → +1.2%
+    const zoneQualityMod = isZone
+        ? (5 - defTeam.tactics.sliders.zoneUsage) * 0.003
+        : 0;
+
     const shotContext = calculateHitRate(
-        actor, defender, defTeam, 
-        selectedPlayType, preferredZone, 
+        actor, defender, defTeam,
+        selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate, 
+        bonusHitRate + zoneQualityMod,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch
     );
 
     const isScore = Math.random() < shotContext.rate;
-    
+
+    // And-1: 득점 성공 + 슈팅 파울 동시 발생 (Rim/Paint 공격에서만)
+    // defIntensity=5: 3%, defIntensity=10: 5%
+    let isAndOne = false;
+    if (isScore && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+        const andOneBase = 0.03;
+        const intensityMod = Math.max(0, (defIntensity - 5) * 0.004);
+        if (Math.random() < (andOneBase + intensityMod)) {
+            isAndOne = true;
+        }
+    }
+
     // Rebound & Block Resolution
     if (!isScore) {
         // --- BLOCK CALCULATION LOGIC START ---
@@ -261,43 +291,45 @@ export function simulatePossession(state: GameState): PossessionResult {
         // Only calc block if we have a defender context
         if (defender && preferredZone) {
             // A. Determine Base Probability by Zone
+            // [Fix] Halved base rates: old Rim 10% → 5%, Paint 5% → 3%, Mid 3.5% → 1.5%, 3PT 1% → 0.5%
             let blockProb = 0;
-            if (preferredZone === 'Rim') blockProb = 0.10;        // 10%
-            else if (preferredZone === 'Paint') blockProb = 0.05; // 5%
-            else if (preferredZone === 'Mid') blockProb = 0.035;  // 3.5%
-            else if (preferredZone === '3PT') blockProb = 0.01;   // 1%
+            if (preferredZone === 'Rim') blockProb = 0.05;        // 5%
+            else if (preferredZone === 'Paint') blockProb = 0.03; // 3%
+            else if (preferredZone === 'Mid') blockProb = 0.015;  // 1.5%
+            else if (preferredZone === '3PT') blockProb = 0.005;  // 0.5%
 
             // B. Defender Attribute Modifiers
             const defBlk = defender.attr.blk;
             const defVert = defender.attr.vertical;
             const defHeight = defender.attr.height;
             const defIQ = defender.attr.helpDefIq;
-            
-            // Height bonus: +1% per 10cm over 200cm
-            const heightBonus = Math.max(0, (defHeight - 200) * 0.001); 
-            // Stat bonus: Average impact
-            const statBonus = ((defBlk - 70) * 0.001) + ((defVert - 70) * 0.0005);
-            
+
+            // Height bonus: +0.5% per 10cm over 200cm
+            const heightBonus = Math.max(0, (defHeight - 200) * 0.0005);
+            // Stat bonus: Reduced by half
+            const statBonus = ((defBlk - 70) * 0.0005) + ((defVert - 70) * 0.00025);
+
             blockProb += (heightBonus + statBonus);
 
             // C. ELITE THRESHOLD BONUSES (Blocker Archetypes)
+            // [Fix] Reduced archetype bonuses: max combined rate ~12-15% for elite blockers
             let archetypeBonus = 0;
 
-            // Type 1: "The Wall" (Elite Rating)
+            // Type 1: "The Wall" (Elite Rating) — was 12%, now 4.5%
             if (defBlk >= 97) {
-                archetypeBonus = 0.12; 
-            } 
-            // Type 2: "The Alien" (Length Freak)
+                archetypeBonus = 0.045;
+            }
+            // Type 2: "The Alien" (Length Freak) — was 10%, now 3%
             else if (defHeight >= 216 && defBlk >= 80) {
-                archetypeBonus = 0.10;
+                archetypeBonus = 0.03;
             }
-            // Type 3: "Skywalker" (Athletic Beast)
+            // Type 3: "Skywalker" (Athletic Beast) — was 8%, now 2.5%
             else if (defVert >= 95 && defBlk >= 75) {
-                archetypeBonus = 0.08;
+                archetypeBonus = 0.025;
             }
-            // Type 4: "Defensive Anchor" (High IQ Positioning)
+            // Type 4: "Defensive Anchor" (High IQ Positioning) — was 6%, now 1.5%
             else if (defIQ >= 92 && defBlk >= 80) {
-                archetypeBonus = 0.06;
+                archetypeBonus = 0.015;
             }
 
             blockProb += archetypeBonus;
@@ -310,8 +342,9 @@ export function simulatePossession(state: GameState): PossessionResult {
             // E. Roll Primary Block
             if (Math.random() < Math.max(0, blockProb)) {
                 isBlock = true;
-            } 
+            }
             // F. Help Defense Block (Only inside)
+            // [Fix] Reduced help block cap: was up to 9%, now max 5%
             else if ((preferredZone === 'Rim' || preferredZone === 'Paint') && !isBlock) {
                  // Find best blocker on team who isn't the primary defender
                  const potentialHelpers = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
@@ -320,11 +353,11 @@ export function simulatePossession(state: GameState): PossessionResult {
 
                  if (helper) {
                      // Helper base chance is lower because they have to rotate
-                     let helpChance = 0.02; 
+                     let helpChance = 0.01;
                      // Helper attributes
-                     if (helper.attr.blk >= 90) helpChance += 0.04;
-                     if (helper.archetypes.rimProtector > 80) helpChance += 0.03;
-                     
+                     if (helper.attr.blk >= 90) helpChance += 0.02;
+                     if (helper.archetypes.rimProtector > 80) helpChance += 0.02;
+
                      if (Math.random() < helpChance) {
                          isBlock = true;
                          finalDefender = helper; // Switch credit to helper
@@ -356,6 +389,6 @@ export function simulatePossession(state: GameState): PossessionResult {
 
     const points = preferredZone === '3PT' ? 3 : 2;
     return {
-        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, isAndOne: false, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch
+        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch
     };
 }

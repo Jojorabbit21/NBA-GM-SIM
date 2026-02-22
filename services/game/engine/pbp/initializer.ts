@@ -18,7 +18,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             sliders: {
                 pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 5, zoneUsage: 5,
                 ballMovement: 5, play_pnr: 5, play_post: 5, play_iso: 5, play_cns: 5, play_drive: 5,
-                shot_3pt: 5, shot_mid: 5, shot_rim: 5, shot_pullup: 5, helpDef: 5, switchFreq: 5, zoneFreq: 5,
+                shot_3pt: 5, shot_mid: 5, shot_rim: 5, helpDef: 5, switchFreq: 5, zoneFreq: 5,
                 ...tactics.sliders
             }
         };

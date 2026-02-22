@@ -52,12 +52,12 @@ export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: n
     const normWeight = Math.max(0, (attr.weight - 80) * 1.6);
 
     return {
-        // 1. Handler (Handling + Pass IQ + Vision + Pass Acc)
+        // 1. Handler (Handling + Pass IQ + Pass Vision + Pass Accuracy)
         handler: getVal(
-            (attr.handling * 0.35) + 
-            (attr.passIq * 0.25) + 
-            (attr.passVision * 0.20) + 
-            (attr.pas * 0.20)
+            (attr.handling  * 0.30) +
+            (attr.passIq    * 0.25) +
+            (attr.passVision * 0.25) +
+            (attr.passAcc   * 0.20)
         ),
 
         // 2. Spacer (3PT + Shot IQ + Off Consist)

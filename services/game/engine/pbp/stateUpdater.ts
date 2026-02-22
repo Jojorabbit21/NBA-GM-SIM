@@ -35,8 +35,9 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
             // Apply Drain
             p.currentCondition = Math.max(0, p.currentCondition - fatigueRes.drain);
 
-            // Injury Check
-            if (fatigueRes.injuryOccurred && p.health === 'Healthy') {
+            // Injury Check — 비활성화 중 (테스트 모드). 활성화: INJURIES_ENABLED = true
+            const INJURIES_ENABLED = false;
+            if (INJURIES_ENABLED && fatigueRes.injuryOccurred && p.health === 'Healthy') {
                 const injuryTypes = ['Ankle Sprain', 'Hamstring Strain', 'Knee Soreness', 'Calf Strain', 'Back Spasms'];
                 const durations = ['1 Week', '2 Weeks', '1 Month', 'Day-to-Day', '3 Days'];
                 
