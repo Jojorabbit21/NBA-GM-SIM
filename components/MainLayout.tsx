@@ -86,7 +86,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         opponentOvrValue={opponentOvrValue}
                         isGameToday={isGameToday}
                         isSimulating={isSimulating}
-                        onSimClick={() => userTactics && onLiveSim(userTactics)}
+                        onSimClick={() => userTactics && (isGameToday ? onLiveSim(userTactics) : onSim(userTactics, false))}
                         onAutoSimClick={() => userTactics && onSim(userTactics, true)}
                         currentSeries={currentSeries}
                         currentSimDate={currentSimDate}
