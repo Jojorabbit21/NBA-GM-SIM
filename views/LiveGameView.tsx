@@ -333,33 +333,38 @@ const getSmoothPath = (points: { x: number; y: number }[]) => {
 const CompactWPGraph: React.FC<{
     allLogs: PbpLog[];
     homeTeamId: string;
+    currentMinute: number;
     homeColor: string;
     awayColor: string;
     homeLogo: string;
     awayLogo: string;
-}> = ({ allLogs, homeTeamId, homeColor, awayColor, homeLogo, awayLogo }) => {
+}> = ({ allLogs, homeTeamId, currentMinute, homeColor, awayColor, homeLogo, awayLogo }) => {
     const W = 100, H = 50, MID = 25, TOTAL = 48;
 
-    const { points, fillPath, pathData, currentWP, endX, endY } = useMemo(() => {
-        // Build per-minute WP snapshots from logs
-        const snaps: { wp: number }[] = [{ wp: 50 }];
-        let hScore = 0, aScore = 0, logIdx = 0;
-        for (let m = 1; m <= TOTAL; m++) {
-            const targetSec = m * 60;
-            while (logIdx < allLogs.length) {
-                const log = allLogs[logIdx];
-                const [mm, ss] = log.timeRemaining.split(':').map(Number);
-                const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
-                if (elapsed > targetSec) break;
-                if (log.type === 'score' || log.type === 'freethrow') {
-                    const pts = log.points ?? 0;
-                    if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
-                }
-                logIdx++;
-            }
-            snaps.push({ wp: calculateWinProbability(hScore, aScore, m) });
-        }
+    // 스냅샷을 ref에 누적 — currentMinute 변경 시에만 새 점 추가
+    const snapsRef = useRef<{ wp: number }[]>([{ wp: 50 }]);
 
+    useEffect(() => {
+        const targetMinute = currentMinute + 1; // currentMinute 0 → 분 1 스냅샷
+        if (targetMinute <= 0 || targetMinute > 48) return;
+        if (snapsRef.current.length > targetMinute) return; // 이미 기록됨
+
+        let hScore = 0, aScore = 0;
+        const targetSec = targetMinute * 60;
+        for (const log of allLogs) {
+            const [mm, ss] = log.timeRemaining.split(':').map(Number);
+            const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
+            if (elapsed > targetSec) break;
+            if (log.type === 'score' || log.type === 'freethrow') {
+                const pts = log.points ?? 0;
+                if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
+            }
+        }
+        snapsRef.current.push({ wp: calculateWinProbability(hScore, aScore, targetMinute) });
+    }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const { points, fillPath, pathData, currentWP, endX, endY } = useMemo(() => {
+        const snaps = snapsRef.current;
         const pts = snaps.map((d, i) => ({ x: (i / TOTAL) * W, y: (d.wp / 100) * H }));
         const pd = getSmoothPath(pts);
         const sX = pts[0].x, sY = pts[0].y;
@@ -369,7 +374,7 @@ const CompactWPGraph: React.FC<{
         if (ci !== -1) cc = pd.substring(ci);
         const fp = `M 0,${MID} L ${sX},${sY} ${cc} L ${eX},${MID} Z`;
         return { points: pts, fillPath: fp, pathData: pd, currentWP: snaps[snaps.length - 1].wp, endX: eX, endY: eY };
-    }, [allLogs, homeTeamId]);
+    }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const homeProb = Math.round(currentWP);
     const awayProb = 100 - homeProb;
@@ -975,6 +980,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     <CompactWPGraph
                                         allLogs={allLogs}
                                         homeTeamId={homeTeam.id}
+                                        currentMinute={currentMinute}
                                         homeColor={homeData?.colors.primary ?? '#6366f1'}
                                         awayColor={awayData?.colors.primary ?? '#6366f1'}
                                         homeLogo={homeTeam.logo}
@@ -1167,6 +1173,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     <CompactWPGraph
                                         allLogs={allLogs}
                                         homeTeamId={homeTeam.id}
+                                        currentMinute={currentMinute}
                                         homeColor={homeData?.colors.primary ?? '#6366f1'}
                                         awayColor={awayData?.colors.primary ?? '#6366f1'}
                                         homeLogo={homeTeam.logo}
