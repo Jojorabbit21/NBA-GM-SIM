@@ -76,7 +76,7 @@ function sortByPosition(players: LivePlayer[]): LivePlayer[] {
 }
 
 // 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG%|3P%
-const PLAYER_GRID = 'minmax(0,80px) 18px 28px 20px 20px 20px 20px 18px 18px 18px 18px 28px 28px';
+const PLAYER_GRID = 'minmax(0,80px) repeat(12, 1fr)';
 
 // ─────────────────────────────────────────────────────────────
 // PlayerRow (on-court + bench 공통)
@@ -135,12 +135,12 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
     );
 };
 
-const PlayerRowHeader: React.FC = () => (
+const PlayerRowHeader: React.FC<{ label?: string }> = ({ label = '선수' }) => (
     <div
         className="grid gap-x-0.5 px-2 py-1 text-[10px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-800 shrink-0"
         style={{ gridTemplateColumns: PLAYER_GRID }}
     >
-        <span>선수</span>
+        <span>{label}</span>
         <span className="text-center">P</span>
         <span className="text-right">STM</span>
         <span className="text-right">MP</span>
@@ -193,7 +193,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                     On Court
                 </span>
             </div>
-            <PlayerRowHeader />
+            <PlayerRowHeader label="현재 뛰는 중" />
             {/* 스크롤 영역 */}
             <div
                 className="flex-1 min-h-0 overflow-y-auto"
@@ -217,7 +217,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                 ))}
                 {/* 벤치 구분선 */}
                 <div className="flex items-center gap-2 px-2 py-0.5 mt-0.5 border-t border-slate-800/60">
-                    <span className="text-[9px] text-slate-600 font-bold uppercase tracking-wider">BENCH</span>
+                    <span className="text-[10px] text-slate-600 font-bold tracking-wider">휴식 중</span>
                     {isUser && (
                         <span className="text-[9px] text-slate-700 font-normal">← 드래그로 교체</span>
                     )}
@@ -272,6 +272,8 @@ const LiveShotChart: React.FC<{
         <g fill="none" stroke="#334155" strokeWidth="0.5">
             <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
             <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
+            <line x1="0" y1="3" x2="14" y2="3" />
+            <line x1="0" y1="47" x2="14" y2="47" />
             <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
             <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
             <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
@@ -283,6 +285,8 @@ const LiveShotChart: React.FC<{
         <g fill="none" stroke="#334155" strokeWidth="0.5" transform={`scale(-1,1) translate(-${COURT_WIDTH},0)`}>
             <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
             <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
+            <line x1="0" y1="3" x2="14" y2="3" />
+            <line x1="0" y1="47" x2="14" y2="47" />
             <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
             <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
             <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
@@ -299,16 +303,6 @@ const LiveShotChart: React.FC<{
                 <line x1="47" y1="0" x2="47" y2={COURT_HEIGHT} stroke="#334155" strokeWidth="0.5" />
                 <circle cx="47" cy={HOOP_Y_CENTER} r="6" fill="none" stroke="#334155" strokeWidth="0.5" />
                 <circle cx="47" cy={HOOP_Y_CENTER} r="2" fill="none" stroke="#334155" strokeWidth="0.5" />
-                {/* 홈팀 로고 중앙 */}
-                <image
-                    href={homeTeam.logo}
-                    x={COURT_WIDTH / 2 - 5}
-                    y={COURT_HEIGHT / 2 - 5}
-                    width="10"
-                    height="10"
-                    opacity="0.15"
-                    preserveAspectRatio="xMidYMid meet"
-                />
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
                     return (
@@ -324,6 +318,16 @@ const LiveShotChart: React.FC<{
                         </g>
                     );
                 })}
+                {/* 홈팀 로고 (최상위 레이어) */}
+                <image
+                    href={homeTeam.logo}
+                    x={COURT_WIDTH / 2 - 5}
+                    y={COURT_HEIGHT / 2 - 5}
+                    width="10"
+                    height="10"
+                    opacity="1"
+                    preserveAspectRatio="xMidYMid meet"
+                />
             </svg>
         </div>
     );
