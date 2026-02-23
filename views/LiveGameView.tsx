@@ -171,23 +171,22 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
     const sortedOnCourt = useMemo(() => sortByPosition(onCourt), [onCourt]);
     const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
 
-    // 팀 평균 계산 (출전 중 + 휴식 중 전원)
-    const teamAvg = useMemo(() => {
+    // 팀 합계 계산 (출전 중 + 휴식 중 전원, FG%/3P%만 평균)
+    const teamTotal = useMemo(() => {
         const all = [...onCourt, ...bench];
         if (all.length === 0) return null;
-        const n = all.length;
         const sum = (fn: (p: LivePlayer) => number) => all.reduce((acc, p) => acc + fn(p), 0);
         const totalFga = sum(p => p.fga);
         const totalP3a = sum(p => p.p3a);
         return {
-            mp: Math.round(sum(p => p.mp ?? 0) / n),
-            pts: (sum(p => p.pts) / n).toFixed(1),
-            reb: (sum(p => p.reb) / n).toFixed(1),
-            ast: (sum(p => p.ast) / n).toFixed(1),
-            stl: (sum(p => p.stl) / n).toFixed(1),
-            blk: (sum(p => p.blk) / n).toFixed(1),
-            tov: (sum(p => p.tov) / n).toFixed(1),
-            pf: (sum(p => p.pf ?? 0) / n).toFixed(1),
+            mp: Math.round(sum(p => p.mp ?? 0)),
+            pts: sum(p => p.pts),
+            reb: sum(p => p.reb),
+            ast: sum(p => p.ast),
+            stl: sum(p => p.stl),
+            blk: sum(p => p.blk),
+            tov: sum(p => p.tov),
+            pf: sum(p => p.pf ?? 0),
             fgPct: totalFga > 0 ? `${Math.round(sum(p => p.fgm) / totalFga * 100)}%` : '—',
             p3Pct: totalP3a > 0 ? `${Math.round(sum(p => p.p3m) / totalP3a * 100)}%` : '—',
         };
@@ -247,26 +246,26 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                     />
                 ))}
                 {/* 팀 평균 행 */}
-                {teamAvg && (
+                {teamTotal && (
                     <>
                         <div className="border-t border-slate-700/60" />
                         <div
                             className="grid items-center gap-x-0.5 px-2 py-1.5 bg-slate-800/40"
                             style={{ gridTemplateColumns: PLAYER_GRID }}
                         >
-                            <span className="text-xs font-black text-slate-400 truncate">TEAM AVG</span>
+                            <span className="text-xs font-black text-slate-400 truncate">TEAM</span>
                             <span className="text-xs text-center" />
                             <span className="text-xs text-right" />
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.mp}</span>
-                            <span className="text-xs font-mono text-white text-right">{teamAvg.pts}</span>
-                            <span className="text-xs font-mono text-slate-300 text-right">{teamAvg.reb}</span>
-                            <span className="text-xs font-mono text-slate-300 text-right">{teamAvg.ast}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.stl}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.blk}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.tov}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.pf}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.fgPct}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.p3Pct}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.mp}</span>
+                            <span className="text-xs font-mono text-white text-right">{teamTotal.pts}</span>
+                            <span className="text-xs font-mono text-slate-300 text-right">{teamTotal.reb}</span>
+                            <span className="text-xs font-mono text-slate-300 text-right">{teamTotal.ast}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.stl}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.blk}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.tov}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.pf}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fgPct}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3Pct}</span>
                         </div>
                     </>
                 )}
@@ -583,8 +582,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     }, [isGameEnd, getResult, onGameEnd]);
 
     const quarterLabel = quarter <= 4 ? `Q${quarter}` : 'Final';
-    const isUserTeam = (teamId: string) => teamId === userTeamId;
-
     const pauseLabel = pauseReason === 'halftime'   ? '하프타임'
                      : pauseReason === 'timeout'    ? '타임아웃'
                      : pauseReason === 'quarterEnd' ? `Q${quarter} 종료`
@@ -608,115 +605,124 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
 
             {/* ── 스코어버그 헤더 ── */}
-            <div className="bg-slate-900 border-b border-slate-800 py-2 shrink-0">
-                <div className="flex flex-col items-center gap-1.5">
+            <div className="relative bg-slate-900 border-b border-slate-800 py-5 px-[20%] shrink-0 overflow-hidden">
 
-                    {/* Row 1: 원정 | 시계 | 홈 */}
-                    <div className="flex items-center">
+                {/* 원정 로고 — 왼쪽 극단, 크롭 */}
+                <img
+                    src={awayTeam.logo}
+                    className="absolute left-[8%] top-1/2 -translate-y-1/2 w-28 h-28 object-contain opacity-20 pointer-events-none select-none"
+                    alt=""
+                />
+                {/* 홈 로고 — 오른쪽 극단, 크롭 */}
+                <img
+                    src={homeTeam.logo}
+                    className="absolute right-[8%] top-1/2 -translate-y-1/2 w-28 h-28 object-contain opacity-20 pointer-events-none select-none"
+                    alt=""
+                />
 
-                        {/* Away */}
-                        <div className="w-60 flex items-center justify-end gap-2 pr-4">
-                            <div className="text-right leading-none min-w-0">
-                                <p className="text-lg font-black uppercase tracking-wide whitespace-nowrap truncate">
+                <div className="relative z-10 flex flex-col items-center gap-2">
+
+                    {/* Row 1: 원정팀 | 시계 | 홈팀 */}
+                    <div className="flex items-center w-full justify-center">
+
+                        {/* Away: 로고+팀명 | 점수 */}
+                        <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                                <img src={awayTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
+                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap">
                                     {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
-                                </p>
+                                </span>
                             </div>
-                            <img src={awayTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
-                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">{awayScore}</span>
+                            <span className="text-5xl font-black oswald tabular-nums leading-none text-white">{awayScore}</span>
                         </div>
 
-                        {/* Center */}
-                        <div className="w-44 flex flex-col items-center justify-center px-3">
+                        {/* Center: 시계 + 런 + 파울/TO */}
+                        <div className="mx-8 flex flex-col items-center gap-1 min-w-[160px]">
                             {pauseReason && pauseReason !== 'gameEnd' ? (
-                                <>
-                                    <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">{pauseLabel}</span>
-                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-tight">{pauseCountdown}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-black oswald tabular-nums text-amber-400 leading-none">{pauseLabel}</span>
+                                    <span className="text-2xl font-black oswald tabular-nums text-amber-400 leading-none">{pauseCountdown}</span>
                                     <button
                                         onClick={resume}
-                                        className="mt-0.5 px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
+                                        className="px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
                                     >
                                         종료
                                     </button>
-                                </>
+                                </div>
                             ) : (
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{quarterLabel}</span>
-                                    <span className="text-2xl font-black tabular-nums text-white leading-none">{formatClock(gameClock)}</span>
+                                    <span className="text-2xl font-black oswald tabular-nums text-white leading-none">{quarterLabel}</span>
+                                    <span className="text-2xl font-black oswald tabular-nums text-white leading-none">{formatClock(gameClock)}</span>
                                 </div>
                             )}
-                        </div>
-
-                        {/* Home */}
-                        <div className="w-60 flex items-center justify-start gap-2 pl-4">
-                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">{homeScore}</span>
-                            <img src={homeTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
-                            <div className="leading-none min-w-0">
-                                <p className="text-lg font-black uppercase tracking-wide whitespace-nowrap truncate">
-                                    {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Row 2: 파울+TO | 런 인디케이터 | TO+파울 */}
-                    <div className="flex items-center">
-                        <div className="w-60 flex items-center justify-end gap-2.5 pr-4 text-[10px] text-slate-400">
-                            <span>파울 <span className="text-white font-bold">{awayFouls}</span></span>
-                            <span className="flex gap-0.5">
-                                {Array.from({ length: 4 }).map((_, i) => (
-                                    <span key={i} className={i < timeoutsLeft.away ? 'text-indigo-400' : 'text-slate-700'}>●</span>
-                                ))}
-                            </span>
-                        </div>
-
-                        <div className="w-44 flex items-center justify-center px-3 min-h-[18px] overflow-hidden">
-                            {activeRun && !pauseReason && (() => {
-                                const diff = activeRun.teamPts - activeRun.oppPts;
-                                const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
-                                return (
-                                    <div className="flex items-center gap-1 whitespace-nowrap">
-                                        <span className="text-[10px] font-black text-white">
-                                            🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}
-                                        </span>
-                                        <span className="text-[10px] font-bold text-white">
+                            {/* 파울 + TO + 런 인디케이터 */}
+                            <div className="flex items-center gap-4 text-[10px] text-slate-400">
+                                <div className="flex items-center gap-1.5">
+                                    <span>F:<span className="text-white font-bold">{awayFouls}</span></span>
+                                    <span className="flex gap-0.5">
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <span key={i} className={i < timeoutsLeft.away ? 'text-indigo-400' : 'text-slate-700'}>●</span>
+                                        ))}
+                                    </span>
+                                </div>
+                                {activeRun && !pauseReason && (() => {
+                                    const diff = activeRun.teamPts - activeRun.oppPts;
+                                    const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
+                                    return (
+                                        <span className="text-[10px] font-bold text-white whitespace-nowrap">
+                                            🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}{' '}
                                             {activeRun.teamPts}-{activeRun.oppPts}
                                             {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
                                         </span>
-                                    </div>
-                                );
-                            })()}
+                                    );
+                                })()}
+                                <div className="flex items-center gap-1.5">
+                                    <span className="flex gap-0.5">
+                                        {Array.from({ length: 4 }).map((_, i) => (
+                                            <span key={i} className={i < timeoutsLeft.home ? 'text-indigo-400' : 'text-slate-700'}>●</span>
+                                        ))}
+                                    </span>
+                                    <span>F:<span className="text-white font-bold">{homeFouls}</span></span>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="w-60 flex items-center justify-start gap-2.5 pl-4 text-[10px] text-slate-400">
-                            <span className="flex gap-0.5">
-                                {Array.from({ length: 4 }).map((_, i) => (
-                                    <span key={i} className={i < timeoutsLeft.home ? 'text-indigo-400' : 'text-slate-700'}>●</span>
-                                ))}
-                            </span>
-                            <span>파울 <span className="text-white font-bold">{homeFouls}</span></span>
+                        {/* Home: 점수 | 로고+팀명 */}
+                        <div className="flex items-center gap-3">
+                            <span className="text-5xl font-black oswald tabular-nums leading-none text-white">{homeScore}</span>
+                            <div className="flex items-center gap-2">
+                                <img src={homeTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
+                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap">
+                                    {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
+                                </span>
+                            </div>
                         </div>
                     </div>
+                </div>
+            </div>
 
-                    {/* Row 3: 컨트롤 */}
-                    <div className="flex items-center gap-3">
-                        {/* 배속 버튼 그룹 */}
-                        <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                            {([0.5, 1, 2, 4] as GameSpeed[]).map((s, idx) => (
-                                <button
-                                    key={s}
-                                    onClick={() => setSpeed(s)}
-                                    className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors
-                                        ${idx > 0 ? 'border-l border-slate-700' : ''}
-                                        ${speed === s
-                                            ? 'bg-indigo-600 text-white'
-                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
-                                        }`}
-                                >
-                                    {s}x
-                                </button>
-                            ))}
-                        </div>
-                        {(isUserTeam(homeTeam.id) || isUserTeam(awayTeam.id)) && (
+            {/* ── 탭 바 (3등분: 유저측 컨트롤 | 탭 | 빈칸 또는 반대) ── */}
+            <div className="grid grid-cols-3 items-center px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0">
+                {/* 왼쪽 */}
+                <div className={`flex items-center gap-2 ${isUserHome ? 'justify-start' : 'justify-start'}`}>
+                    {!isUserHome && (
+                        <>
+                            <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                                {([0.5, 1, 2, 4] as GameSpeed[]).map((s, idx) => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setSpeed(s)}
+                                        className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors
+                                            ${idx > 0 ? 'border-l border-slate-700' : ''}
+                                            ${speed === s
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                            }`}
+                                    >
+                                        {s}x
+                                    </button>
+                                ))}
+                            </div>
                             <button
                                 onClick={callTimeout}
                                 disabled={pauseReason !== null || userTimeoutsLeft <= 0}
@@ -726,36 +732,75 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             >
                                 타임아웃 ({userTimeoutsLeft})
                             </button>
-                        )}
-                        <button
-                            onClick={pauseReason ? resume : pause}
-                            disabled={isGameEnd}
-                            className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
-                                       disabled:opacity-40 disabled:cursor-not-allowed
-                                       text-slate-300 text-[10px] font-bold transition-colors"
-                        >
-                            {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
-                        </button>
-                    </div>
-
+                            <button
+                                onClick={pauseReason ? resume : pause}
+                                disabled={isGameEnd}
+                                className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-slate-300 text-[10px] font-bold transition-colors"
+                            >
+                                {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
+                            </button>
+                        </>
+                    )}
                 </div>
-            </div>
-
-            {/* ── 탭 바 ── */}
-            <div className="flex items-center justify-center gap-1 px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0">
-                {TABS.map(({ key, label }) => (
-                    <button
-                        key={key}
-                        onClick={() => setActiveTab(key)}
-                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
-                            activeTab === key
-                                ? 'bg-indigo-600 text-white'
-                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
-                        }`}
-                    >
-                        {label}
-                    </button>
-                ))}
+                {/* 중앙: 탭 */}
+                <div className="flex items-center justify-center gap-1">
+                    {TABS.map(({ key, label }) => (
+                        <button
+                            key={key}
+                            onClick={() => setActiveTab(key)}
+                            className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                                activeTab === key
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
+                </div>
+                {/* 오른쪽 */}
+                <div className={`flex items-center gap-2 ${isUserHome ? 'justify-end' : 'justify-end'}`}>
+                    {isUserHome && (
+                        <>
+                            <button
+                                onClick={pauseReason ? resume : pause}
+                                disabled={isGameEnd}
+                                className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-slate-300 text-[10px] font-bold transition-colors"
+                            >
+                                {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
+                            </button>
+                            <button
+                                onClick={callTimeout}
+                                disabled={pauseReason !== null || userTimeoutsLeft <= 0}
+                                className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-white text-[10px] font-bold transition-colors"
+                            >
+                                타임아웃 ({userTimeoutsLeft})
+                            </button>
+                            <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                                {([0.5, 1, 2, 4] as GameSpeed[]).map((s, idx) => (
+                                    <button
+                                        key={s}
+                                        onClick={() => setSpeed(s)}
+                                        className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors
+                                            ${idx > 0 ? 'border-l border-slate-700' : ''}
+                                            ${speed === s
+                                                ? 'bg-indigo-600 text-white'
+                                                : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                            }`}
+                                    >
+                                        {s}x
+                                    </button>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
 
             {/* ── Body ── */}
