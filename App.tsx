@@ -59,6 +59,7 @@ const App: React.FC = () => {
     useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
     useEffect(() => { if (sim.activeGame) setView('GameSim' as any); }, [sim.activeGame]);
     useEffect(() => { if (sim.lastGameResult) setView('GameResult' as any); }, [sim.lastGameResult]);
+    useEffect(() => { if (sim.liveGameTarget) setView('LiveGame' as any); }, [sim.liveGameTarget]);
 
     const handleResetConfirm = async () => {
         setIsResetting(true);
@@ -115,6 +116,7 @@ const App: React.FC = () => {
                     schedule: gameData.schedule,
                     teams: gameData.teams,
                     onSim: sim.handleExecuteSim,
+                    onLiveSim: sim.handleStartLiveGame,
                     isSimulating: sim.isSimulating,
                     playoffSeries: gameData.playoffSeries,
                     userTactics: gameData.userTactics

@@ -23,6 +23,7 @@ interface MainLayoutProps {
         schedule: Game[];
         teams: Team[];
         onSim: (tactics: GameTactics, skipAnimation?: boolean) => void;
+        onLiveSim: (tactics: GameTactics) => void;
         isSimulating: boolean;
         playoffSeries: PlayoffSeries[];
         userTactics: GameTactics | null;
@@ -31,7 +32,7 @@ interface MainLayoutProps {
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { team, currentSimDate } = sidebarProps;
-    const { schedule, teams, onSim, isSimulating, playoffSeries, userTactics } = gameHeaderProps;
+    const { schedule, teams, onSim, onLiveSim, isSimulating, playoffSeries, userTactics } = gameHeaderProps;
 
     // Common logic moved from DashboardView to Layout level
     const nextGame = useMemo(() => {
@@ -85,7 +86,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         opponentOvrValue={opponentOvrValue}
                         isGameToday={isGameToday}
                         isSimulating={isSimulating}
-                        onSimClick={() => userTactics && onSim(userTactics, false)}
+                        onSimClick={() => userTactics && onLiveSim(userTactics)}
                         onAutoSimClick={() => userTactics && onSim(userTactics, true)}
                         currentSeries={currentSeries}
                         currentSimDate={currentSimDate}

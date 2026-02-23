@@ -155,7 +155,25 @@ function calculateTurnoverChance(
     return { isTurnover: true, isSteal, stealer };
 }
 
-export function simulatePossession(state: GameState): PossessionResult {
+/**
+ * 모멘텀 런 보너스 계산 (에포크 diff 기반)
+ * 런 팀의 hitRate에 소폭 보너스 적용. 타임아웃이 유일한 차단 수단.
+ */
+function getMomentumBonus(state: GameState, offTeamId: string): number {
+    const m = state.momentum;
+    if (!m.activeRun || m.activeRun.teamId !== offTeamId) return 0;
+
+    const diff = offTeamId === state.home.id
+        ? m.homeEpochPts - m.awayEpochPts
+        : m.awayEpochPts - m.homeEpochPts;
+
+    if (diff < 8)  return 0;
+    if (diff < 12) return 0.015; //  8-11pt 런: +1.5%
+    if (diff < 16) return 0.025; // 12-15pt 런: +2.5%
+    return 0.035;                 // 16pt+  런: +3.5% (상한)
+}
+
+export function simulatePossession(state: GameState, options?: { minHitRate?: number }): PossessionResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
     const sliders = offTeam.tactics.sliders;
@@ -264,9 +282,10 @@ export function simulatePossession(state: GameState): PossessionResult {
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id),
         offTeam.acePlayerId,
-        isBotchedSwitch, isSwitch
+        isBotchedSwitch, isSwitch,
+        options?.minHitRate
     );
 
     const isScore = Math.random() < shotContext.rate;

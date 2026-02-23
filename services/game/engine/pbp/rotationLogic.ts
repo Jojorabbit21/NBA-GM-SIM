@@ -44,7 +44,7 @@ function findResCandidate(team: TeamState, targetPosition: string, excludeIds: S
  * 로테이션 맵(스케줄) 승계 (Source -> Target)
  * Source의 남은 출전 시간을 Target에게 모두 넘기고, Source는 0분으로 만듦
  */
-function transferSchedule(team: TeamState, sourceId: string | null, targetId: string | null, currentMinute: number) {
+export function transferSchedule(team: TeamState, sourceId: string | null, targetId: string | null, currentMinute: number) {
     if (!sourceId || !targetId || !team.tactics.rotationMap) return;
     
     // 맵 초기화 확인
