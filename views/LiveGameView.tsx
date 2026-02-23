@@ -375,9 +375,9 @@ const CompactWPGraph: React.FC<{
     const awayProb = 100 - homeProb;
 
     return (
-        <div className="w-full px-3 py-3">
+        <div className="flex-1 min-h-0 flex flex-col px-3 py-3">
             {/* Header */}
-            <div className="flex items-center justify-between mb-2">
+            <div className="shrink-0 flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                     <img src={awayLogo} className="w-4 h-4 object-contain" alt="" />
                     <span className="text-xs font-black oswald text-white">{awayProb}%</span>
@@ -389,7 +389,7 @@ const CompactWPGraph: React.FC<{
                 </div>
             </div>
             {/* Graph */}
-            <div className="w-full h-20 bg-slate-900 border border-slate-800 rounded-xl relative overflow-hidden">
+            <div className="flex-1 min-h-0 w-full relative overflow-hidden">
                 <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
                     <defs>
                         <linearGradient id="lwpGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={H}>
@@ -417,7 +417,7 @@ const CompactWPGraph: React.FC<{
                 )}
             </div>
             {/* X-Axis */}
-            <div className="flex mt-1 text-[8px] font-bold text-slate-600 uppercase tracking-wider relative h-3">
+            <div className="shrink-0 flex mt-1 text-[8px] font-bold text-slate-600 uppercase tracking-wider relative h-3">
                 <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
                 <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>
                 <span className="absolute left-[62.5%] -translate-x-1/2">3Q</span>
@@ -957,9 +957,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 onSubstitute={makeSubstitution}
                             />
                             {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
-                            <div className="shrink-0 border-t border-slate-800">
+                            <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col">
                                 {!isUserHome ? (
-                                    <div className="overflow-y-auto max-h-[280px]" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+                                    <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                         <div className="px-3 pt-2 pb-1">
                                             <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Tactics</p>
                                         </div>
@@ -996,7 +996,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             </div>
 
                             {/* PBP 로그 */}
-                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden mt-2 mx-2 rounded-xl border border-slate-800 bg-slate-900">
+                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                                 {/* 헤더 + 필터 */}
                                 <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-slate-800">
                                     <div className="flex items-center gap-3">
@@ -1149,9 +1149,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 onSubstitute={makeSubstitution}
                             />
                             {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
-                            <div className="shrink-0 border-t border-slate-800">
+                            <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col">
                                 {isUserHome ? (
-                                    <div className="overflow-y-auto max-h-[280px]" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+                                    <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                         <div className="px-3 pt-2 pb-1">
                                             <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Tactics</p>
                                         </div>
