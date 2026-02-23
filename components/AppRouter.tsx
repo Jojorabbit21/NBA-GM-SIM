@@ -47,19 +47,22 @@ const AppRouter: React.FC<AppRouterProps> = ({
         const homeDepthChart = homeTeam.id === gameData.myTeamId ? gameData.depthChart : null;
         const awayDepthChart = awayTeam.id === gameData.myTeamId ? gameData.depthChart : null;
 
+        // 전체화면 오버레이 — 사이드바/헤더를 완전히 덮음
         return (
-            <LiveGameView
-                homeTeam={homeTeam}
-                awayTeam={awayTeam}
-                userTeamId={gameData.myTeamId!}
-                userTactics={userTactics}
-                homeDepthChart={homeDepthChart}
-                awayDepthChart={awayDepthChart}
-                onGameEnd={async (result) => {
-                    await sim.finalizeLiveGame(result);
-                    setView('GameResult');
-                }}
-            />
+            <div className="fixed inset-0 z-[9999] bg-slate-950">
+                <LiveGameView
+                    homeTeam={homeTeam}
+                    awayTeam={awayTeam}
+                    userTeamId={gameData.myTeamId!}
+                    userTactics={userTactics}
+                    homeDepthChart={homeDepthChart}
+                    awayDepthChart={awayDepthChart}
+                    onGameEnd={async (result) => {
+                        await sim.finalizeLiveGame(result);
+                        setView('GameResult');
+                    }}
+                />
+            </div>
         );
     }
 

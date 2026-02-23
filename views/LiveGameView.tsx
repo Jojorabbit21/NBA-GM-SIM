@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog } from '../types';
 import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
 import { LivePlayer } from '../services/game/engine/pbp/pbpTypes';
@@ -232,7 +232,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         timeoutsLeft, homeOnCourt, awayOnCourt, activeRun, speed,
     } = displayState;
 
-    const logEndRef = useRef<HTMLDivElement>(null);
+    const logContainerRef = useRef<HTMLDivElement>(null);
+    const isAtBottomRef = useRef(true);
     const [subOutId, setSubOutId] = useState<string | null>(null);
     const isUserHome = homeTeam.id === userTeamId;
 
@@ -251,9 +252,19 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         }
     }, [isGameEnd, getResult, onGameEnd]);
 
-    // PBP 로그 자동 스크롤
+    // 스크롤 위치 추적 — 유저가 위로 올렸으면 자동 스크롤 중단
+    const handleLogScroll = useCallback(() => {
+        const el = logContainerRef.current;
+        if (!el) return;
+        isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    }, []);
+
+    // PBP 로그 자동 스크롤 — scrollTop 직접 제어 (scrollIntoView는 페이지 전체를 스크롤함)
     useEffect(() => {
-        logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (isAtBottomRef.current) {
+            const el = logContainerRef.current;
+            if (el) el.scrollTop = el.scrollHeight;
+        }
     }, [allLogs.length]);
 
     const quarterLabel = quarter <= 4 ? `Q${quarter}` : 'Final';
@@ -372,7 +383,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                 {/* CENTER: PBP 로그 */}
                 <div className="flex-1 flex flex-col bg-slate-950">
                     {/* PBP 로그 */}
-                    <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
+                    <div
+                        ref={logContainerRef}
+                        onScroll={handleLogScroll}
+                        className="flex-1 overflow-y-auto p-3 space-y-0.5"
+                    >
                         <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Play-by-Play</p>
                         {allLogs.map((log, i) => (
                             <div key={i} className="flex gap-2 text-xs py-0.5">
@@ -384,7 +399,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 </span>
                             </div>
                         ))}
-                        <div ref={logEndRef} />
                     </div>
                 </div>
 
