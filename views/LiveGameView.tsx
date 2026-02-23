@@ -1,13 +1,13 @@
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
+import { Team, GameTactics, DepthChart, SimulationResult, PbpLog } from '../types';
 import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
 import { LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
 import { TEAM_DATA } from '../data/teamData';
-import { BoxScoreTable, GameStatLeaders } from '../components/game/BoxScoreTable';
 import { TacticsSlidersPanel } from '../components/dashboard/tactics/TacticsSlidersPanel';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
 import { UserPlus, UserMinus, Clock } from 'lucide-react';
+import { calculateWinProbability } from '../utils/simulationMath';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -25,7 +25,7 @@ interface LiveGameViewProps {
     onGameEnd: (result: SimulationResult) => void;
 }
 
-type ActiveTab = 'court' | 'boxscore' | 'shotchart' | 'rotation' | 'tactics';
+type ActiveTab = 'court' | 'rotation' | 'tactics';
 
 // ─────────────────────────────────────────────────────────────
 // Util
@@ -43,19 +43,6 @@ function formatDuration(sec: number): string {
     return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-
-function computeLeaders(homeBox: PlayerBoxScore[], awayBox: PlayerBoxScore[]): GameStatLeaders {
-    const all = [...homeBox, ...awayBox];
-    if (all.length === 0) return { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0 };
-    return {
-        pts: Math.max(...all.map(p => p.pts)),
-        reb: Math.max(...all.map(p => p.reb)),
-        ast: Math.max(...all.map(p => p.ast)),
-        stl: Math.max(...all.map(p => p.stl)),
-        blk: Math.max(...all.map(p => p.blk)),
-        tov: Math.max(...all.map(p => p.tov)),
-    };
-}
 
 const POSITION_ORDER: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
 
@@ -316,6 +303,131 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────
+// Compact Win Probability Graph (sidebar)
+// ─────────────────────────────────────────────────────────────
+
+const getSmoothPath = (points: { x: number; y: number }[]) => {
+    if (points.length === 0) return '';
+    if (points.length === 1) return `M ${points[0].x},${points[0].y}`;
+    let d = `M ${points[0].x},${points[0].y}`;
+    const smoothing = 0.2;
+    const line = (p0: { x: number; y: number }, p1: { x: number; y: number }) => ({
+        length: Math.sqrt((p1.x - p0.x) ** 2 + (p1.y - p0.y) ** 2),
+        angle: Math.atan2(p1.y - p0.y, p1.x - p0.x),
+    });
+    const cp = (cur: { x: number; y: number }, prev: { x: number; y: number } | undefined, next: { x: number; y: number } | undefined, rev: boolean) => {
+        const p = prev || cur, n = next || cur;
+        const o = line(p, n);
+        const a = o.angle + (rev ? Math.PI : 0);
+        const l = o.length * smoothing;
+        return { x: cur.x + Math.cos(a) * l, y: cur.y + Math.sin(a) * l };
+    };
+    for (let i = 0; i < points.length - 1; i++) {
+        const c1 = cp(points[i], points[i - 1], points[i + 1], false);
+        const c2 = cp(points[i + 1], points[i], points[i + 2], true);
+        d += ` C ${c1.x},${c1.y} ${c2.x},${c2.y} ${points[i + 1].x},${points[i + 1].y}`;
+    }
+    return d;
+};
+
+const CompactWPGraph: React.FC<{
+    allLogs: PbpLog[];
+    homeTeamId: string;
+    homeColor: string;
+    awayColor: string;
+    homeLogo: string;
+    awayLogo: string;
+}> = ({ allLogs, homeTeamId, homeColor, awayColor, homeLogo, awayLogo }) => {
+    const W = 100, H = 50, MID = 25, TOTAL = 48;
+
+    const { points, fillPath, pathData, currentWP, endX, endY } = useMemo(() => {
+        // Build per-minute WP snapshots from logs
+        const snaps: { wp: number }[] = [{ wp: 50 }];
+        let hScore = 0, aScore = 0, logIdx = 0;
+        for (let m = 1; m <= TOTAL; m++) {
+            const targetSec = m * 60;
+            while (logIdx < allLogs.length) {
+                const log = allLogs[logIdx];
+                const [mm, ss] = log.timeRemaining.split(':').map(Number);
+                const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
+                if (elapsed > targetSec) break;
+                if (log.type === 'score' || log.type === 'freethrow') {
+                    const pts = log.points ?? 0;
+                    if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
+                }
+                logIdx++;
+            }
+            snaps.push({ wp: calculateWinProbability(hScore, aScore, m) });
+        }
+
+        const pts = snaps.map((d, i) => ({ x: (i / TOTAL) * W, y: (d.wp / 100) * H }));
+        const pd = getSmoothPath(pts);
+        const sX = pts[0].x, sY = pts[0].y;
+        const eX = pts[pts.length - 1].x, eY = pts[pts.length - 1].y;
+        let cc = '';
+        const ci = pd.indexOf('C');
+        if (ci !== -1) cc = pd.substring(ci);
+        const fp = `M 0,${MID} L ${sX},${sY} ${cc} L ${eX},${MID} Z`;
+        return { points: pts, fillPath: fp, pathData: pd, currentWP: snaps[snaps.length - 1].wp, endX: eX, endY: eY };
+    }, [allLogs, homeTeamId]);
+
+    const homeProb = Math.round(currentWP);
+    const awayProb = 100 - homeProb;
+
+    return (
+        <div className="w-full px-3 py-3">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-1.5">
+                    <img src={awayLogo} className="w-4 h-4 object-contain" alt="" />
+                    <span className="text-xs font-black oswald text-white">{awayProb}%</span>
+                </div>
+                <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Win Prob</p>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-black oswald text-white">{homeProb}%</span>
+                    <img src={homeLogo} className="w-4 h-4 object-contain" alt="" />
+                </div>
+            </div>
+            {/* Graph */}
+            <div className="w-full h-20 bg-slate-900 border border-slate-800 rounded-xl relative overflow-hidden">
+                <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="none">
+                    <defs>
+                        <linearGradient id="lwpGrad" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="0" y2={H}>
+                            <stop offset="0" stopColor={awayColor} stopOpacity="0.4" />
+                            <stop offset="0.5" stopColor={awayColor} stopOpacity="0" />
+                            <stop offset="0.5" stopColor={homeColor} stopOpacity="0" />
+                            <stop offset="1" stopColor={homeColor} stopOpacity="0.4" />
+                        </linearGradient>
+                    </defs>
+                    <rect width="100%" height="100%" fill="#0f172a" opacity="0.6" />
+                    <line x1="25" y1="0" x2="25" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
+                    <line x1="50" y1="0" x2="50" y2={H} stroke="#334155" strokeWidth="0.4" />
+                    <line x1="75" y1="0" x2="75" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
+                    <line x1="0" y1={MID} x2={W} y2={MID} stroke="#475569" strokeWidth="0.3" strokeDasharray="2 2" />
+                    <path d={fillPath} fill="url(#lwpGrad)" stroke="none" />
+                    <path d={pathData} fill="none" stroke="#e2e8f0" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                </svg>
+                {points.length > 1 && (
+                    <div
+                        className="absolute w-1.5 h-1.5 bg-white rounded-full shadow-[0_0_6px_white] -translate-x-1/2 -translate-y-1/2 transition-all duration-100"
+                        style={{ left: `${endX}%`, top: `${(endY / H) * 100}%` }}
+                    >
+                        <div className="absolute inset-0 bg-white/50 rounded-full animate-ping" />
+                    </div>
+                )}
+            </div>
+            {/* X-Axis */}
+            <div className="flex mt-1 text-[8px] font-bold text-slate-600 uppercase tracking-wider relative h-3">
+                <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
+                <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>
+                <span className="absolute left-[62.5%] -translate-x-1/2">3Q</span>
+                <span className="absolute left-[87.5%] -translate-x-1/2">4Q</span>
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
 // Full Court Shot Chart
 // ─────────────────────────────────────────────────────────────
 
@@ -406,30 +518,6 @@ const LiveShotChart: React.FC<{
                     preserveAspectRatio="xMidYMid meet"
                 />
             </svg>
-        </div>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────
-// Box Score Tab
-// ─────────────────────────────────────────────────────────────
-
-const LiveBoxScoreTab: React.FC<{
-    homeTeam: Team;
-    awayTeam: Team;
-    homeBox: PlayerBoxScore[];
-    awayBox: PlayerBoxScore[];
-}> = ({ homeTeam, awayTeam, homeBox, awayBox }) => {
-    const leaders = computeLeaders(homeBox, awayBox);
-    const allBox = [...homeBox, ...awayBox];
-    const mvpId = allBox.length > 0
-        ? allBox.reduce((best, p) => p.pts > best.pts ? p : best, allBox[0]).playerId
-        : undefined;
-
-    return (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6">
-            <BoxScoreTable team={awayTeam} box={awayBox} leaders={leaders} mvpId={mvpId} />
-            <BoxScoreTable team={homeTeam} box={homeBox} leaders={leaders} mvpId={mvpId} isFirst />
         </div>
     );
 };
@@ -636,8 +724,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
     const TABS: { key: ActiveTab; label: string }[] = [
         { key: 'court',    label: '중계' },
-        { key: 'boxscore', label: '박스스코어' },
-        { key: 'shotchart',label: '샷차트' },
         { key: 'rotation', label: '로테이션' },
         { key: 'tactics',  label: '전술 슬라이더' },
     ];
@@ -870,6 +956,32 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={!isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
+                            {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
+                            <div className="shrink-0 border-t border-slate-800">
+                                {!isUserHome ? (
+                                    <div className="overflow-y-auto max-h-[280px]" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+                                        <div className="px-3 pt-2 pb-1">
+                                            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Tactics</p>
+                                        </div>
+                                        <div className="px-2 pb-2">
+                                            <TacticsSlidersPanel
+                                                tactics={liveTactics}
+                                                onUpdateTactics={(t) => applyTactics(t.sliders)}
+                                                roster={userTeam.roster}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <CompactWPGraph
+                                        allLogs={allLogs}
+                                        homeTeamId={homeTeam.id}
+                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                        homeLogo={homeTeam.logo}
+                                        awayLogo={awayTeam.logo}
+                                    />
+                                )}
+                            </div>
                         </div>
 
                         {/* CENTER: 샷차트(상단) + PBP 로그(하단) */}
@@ -884,9 +996,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             </div>
 
                             {/* PBP 로그 */}
-                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden mt-2 mx-2 rounded-xl border border-slate-800 bg-slate-900">
                                 {/* 헤더 + 필터 */}
-                                <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-950 border-b border-slate-800/60">
+                                <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-slate-800">
                                     <div className="flex items-center gap-3">
                                         <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
                                             Play-by-Play
@@ -928,7 +1040,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
                                             if (isFlowEvent) {
                                                 return (
-                                                    <div key={i} className="flex items-center justify-center py-2.5 bg-slate-800/40 border-y border-slate-800">
+                                                    <div key={i} className={`flex items-center justify-center py-2.5 border-y border-slate-800 ${i % 2 === 0 ? 'bg-slate-800/40' : 'bg-slate-800/20'}`}>
                                                         <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-[10px] uppercase tracking-widest">
                                                             <Clock size={12} />
                                                             <span>{log.text}</span>
@@ -945,7 +1057,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     const inPlayers = inMatch[1].split(',').map(s => s.trim());
                                                     const outPlayers = outMatch[1].split(',').map(s => s.trim());
                                                     return (
-                                                        <div key={i} className="flex items-start py-2 px-3 gap-3 hover:bg-white/5 transition-colors">
+                                                        <div key={i} className={`flex items-start py-2 px-3 gap-3 ${i % 2 === 0 ? 'bg-slate-800/30' : ''}`}>
                                                             <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-[10px] text-center pt-0.5">
                                                                 {log.quarter}Q
                                                             </div>
@@ -981,8 +1093,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             else if (isTurnover) textColor = 'text-red-400';
                                             else if (isBlock) textColor = 'text-blue-400';
 
-                                            let bgClass = 'hover:bg-white/5 transition-colors';
-                                            if (isInfo) bgClass = 'bg-slate-800/30';
+                                            const bgClass = i % 2 === 0 ? 'bg-slate-800/30' : '';
 
                                             return (
                                                 <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>
@@ -1037,33 +1148,37 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
+                            {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
+                            <div className="shrink-0 border-t border-slate-800">
+                                {isUserHome ? (
+                                    <div className="overflow-y-auto max-h-[280px]" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+                                        <div className="px-3 pt-2 pb-1">
+                                            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Tactics</p>
+                                        </div>
+                                        <div className="px-2 pb-2">
+                                            <TacticsSlidersPanel
+                                                tactics={liveTactics}
+                                                onUpdateTactics={(t) => applyTactics(t.sliders)}
+                                                roster={userTeam.roster}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <CompactWPGraph
+                                        allLogs={allLogs}
+                                        homeTeamId={homeTeam.id}
+                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                        homeLogo={homeTeam.logo}
+                                        awayLogo={awayTeam.logo}
+                                    />
+                                )}
+                            </div>
                         </div>
                     </>
                 )}
 
                 {/* ── 박스스코어 탭 ── */}
-                {activeTab === 'boxscore' && (
-                    <LiveBoxScoreTab
-                        homeTeam={homeTeam}
-                        awayTeam={awayTeam}
-                        homeBox={homeBox}
-                        awayBox={awayBox}
-                    />
-                )}
-
-                {/* ── 샷차트 탭 ── */}
-                {activeTab === 'shotchart' && (
-                    <div className="flex-1 overflow-auto bg-slate-950 p-4 flex items-start justify-center">
-                        <div style={{ width: '100%', maxWidth: '900px' }}>
-                            <LiveShotChart
-                                shotEvents={shotEvents}
-                                homeTeam={homeTeam}
-                                awayTeam={awayTeam}
-                            />
-                        </div>
-                    </div>
-                )}
-
                 {/* ── 로테이션 탭 ── */}
                 {activeTab === 'rotation' && (
                     <LiveRotationTab
