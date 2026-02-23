@@ -217,9 +217,23 @@ export function stepPossession(state: GameState): StepResult {
     }
 
     const newLogs = state.logs.slice(logsBefore);
-    const isQuarterEnd = state.gameClock <= 0;
 
-    return { result, isQuarterEnd, isGameEnd: false, newLogs };
+    if (state.gameClock <= 0) {
+        // Q4 종료 = 즉시 게임 종료 (30초 타이머 없음)
+        if (state.quarter >= 4) {
+            state.quarter = 5;
+            const gameEndResult = _handleGameEnd(state);
+            return {
+                result: gameEndResult.result,
+                isQuarterEnd: false,
+                isGameEnd: true,
+                newLogs: [...newLogs, ...gameEndResult.newLogs],
+            };
+        }
+        return { result, isQuarterEnd: true, isGameEnd: false, newLogs };
+    }
+
+    return { result, isQuarterEnd: false, isGameEnd: false, newLogs };
 }
 
 // ─────────────────────────────────────────────────────────────

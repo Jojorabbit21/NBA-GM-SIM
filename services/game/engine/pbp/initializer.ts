@@ -154,7 +154,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         depthChart: effectiveDepthChart || undefined,
         onCourt,
         bench,
-        timeouts: 7,
+        timeouts: 4,
         fouls: 0,
         bonus: false,
         acePlayerId: acePlayer ? acePlayer.playerId : undefined // Assign Ace ID
