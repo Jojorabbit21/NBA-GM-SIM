@@ -623,21 +623,35 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                 {/* 3-column grid: Away(1fr) | Center(auto, 고정폭) | Home(1fr) */}
                 <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center">
 
-                    {/* Away: 팀명+로고 | 점수 — 오른쪽 정렬 */}
+                    {/* Away: 팀명+로고 + 파울/TO | 점수 — 오른쪽 정렬 */}
                     <div className="flex items-center justify-end gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <img src={awayTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
-                            <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">
-                                {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
-                            </span>
+                        <div className="flex flex-col items-end gap-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                                <img src={awayTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
+                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                    {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                {awayFouls >= 5 ? (
+                                    <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
+                                ) : (
+                                    <span>파울 <span className="text-white font-bold tabular-nums">{awayFouls}</span></span>
+                                )}
+                                <span className="flex gap-0.5">
+                                    {Array.from({ length: 4 }).map((_, i) => (
+                                        <span key={i} className={i < timeoutsLeft.away ? 'text-amber-400' : 'text-slate-700'}>●</span>
+                                    ))}
+                                </span>
+                            </div>
                         </div>
                         <span className="text-5xl font-black oswald tabular-nums leading-none text-white w-[4ch] text-right shrink-0">{awayScore}</span>
                     </div>
 
-                    {/* Center: 시계 + 파울/TO/런 — 고정 폭 */}
-                    <div className="w-[280px] flex flex-col items-center gap-1 mx-4">
+                    {/* Center: 시계 + 런(조건부) — 고정 폭 */}
+                    <div className="w-[280px] flex flex-col items-center justify-center mx-4">
                         {/* 시계 / 일시정지 */}
-                        <div className="flex items-center justify-center gap-2 h-8">
+                        <div className="flex items-center justify-center gap-2">
                             {pauseReason && pauseReason !== 'gameEnd' ? (
                                 <>
                                     <span className="text-2xl font-black oswald tabular-nums text-amber-400 leading-none">{pauseLabel}</span>
@@ -656,49 +670,44 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 </>
                             )}
                         </div>
-                        {/* 파울 + TO + 런 인디케이터 — 항상 같은 높이 확보 */}
-                        <div className="flex items-center justify-center gap-4 text-[10px] text-slate-400 h-4">
-                            <div className="flex items-center gap-1.5 shrink-0">
-                                <span>F:<span className="text-white font-bold tabular-nums w-[1.5ch] inline-block text-center">{awayFouls}</span></span>
-                                <span className="flex gap-0.5">
-                                    {Array.from({ length: 4 }).map((_, i) => (
-                                        <span key={i} className={i < timeoutsLeft.away ? 'text-indigo-400' : 'text-slate-700'}>●</span>
-                                    ))}
-                                </span>
-                            </div>
-                            {/* 런 인디케이터: 항상 공간 차지 (invisible 포함) */}
-                            <div className="w-[120px] text-center overflow-hidden">
-                                {activeRun && !pauseReason ? (() => {
-                                    const diff = activeRun.teamPts - activeRun.oppPts;
-                                    const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
-                                    return (
-                                        <span className="text-[10px] font-bold text-white whitespace-nowrap">
-                                            🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}{' '}
-                                            {activeRun.teamPts}-{activeRun.oppPts}
-                                            {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
-                                        </span>
-                                    );
-                                })() : null}
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                                <span className="flex gap-0.5">
-                                    {Array.from({ length: 4 }).map((_, i) => (
-                                        <span key={i} className={i < timeoutsLeft.home ? 'text-indigo-400' : 'text-slate-700'}>●</span>
-                                    ))}
-                                </span>
-                                <span>F:<span className="text-white font-bold tabular-nums w-[1.5ch] inline-block text-center">{homeFouls}</span></span>
-                            </div>
-                        </div>
+                        {/* 런 인디케이터 — 없으면 완전히 숨김 */}
+                        {activeRun && !pauseReason && (() => {
+                            const diff = activeRun.teamPts - activeRun.oppPts;
+                            const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
+                            return (
+                                <div className="mt-1 text-center">
+                                    <span className="text-[10px] font-bold text-white whitespace-nowrap">
+                                        🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}{' '}
+                                        {activeRun.teamPts}-{activeRun.oppPts}
+                                        {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
+                                    </span>
+                                </div>
+                            );
+                        })()}
                     </div>
 
-                    {/* Home: 점수 | 로고+팀명 — 왼쪽 정렬 */}
+                    {/* Home: 점수 | 로고+팀명 + 파울/TO — 왼쪽 정렬 */}
                     <div className="flex items-center justify-start gap-3">
                         <span className="text-5xl font-black oswald tabular-nums leading-none text-white w-[4ch] text-left shrink-0">{homeScore}</span>
-                        <div className="flex items-center gap-2 min-w-0">
-                            <img src={homeTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
-                            <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">
-                                {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
-                            </span>
+                        <div className="flex flex-col items-start gap-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                                <img src={homeTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />
+                                <span className="text-xl font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                    {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-2 text-[10px] text-slate-400">
+                                <span className="flex gap-0.5">
+                                    {Array.from({ length: 4 }).map((_, i) => (
+                                        <span key={i} className={i < timeoutsLeft.home ? 'text-amber-400' : 'text-slate-700'}>●</span>
+                                    ))}
+                                </span>
+                                {homeFouls >= 5 ? (
+                                    <span className="px-1.5 py-0 rounded text-[9px] font-black bg-amber-500 text-slate-900 leading-relaxed">BONUS</span>
+                                ) : (
+                                    <span>파울 <span className="text-white font-bold tabular-nums">{homeFouls}</span></span>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
