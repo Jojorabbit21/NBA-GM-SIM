@@ -32,3 +32,6 @@ build/
 
 # Vite
 vite.config.ts.timestamp-*
+
+# SQL Datas
+sql/

@@ -171,31 +171,21 @@ function normalizeShotForDisplay(shot: ShotEvent, isHomeTeam: boolean): { x: num
     return { x, y };
 }
 
-type ShotFilter = 'all' | 'home' | 'away';
-
 const LiveShotChart: React.FC<{
     shotEvents: ShotEvent[];
     homeTeam: Team;
     awayTeam: Team;
 }> = ({ shotEvents, homeTeam, awayTeam }) => {
-    const [filter, setFilter] = useState<ShotFilter>('all');
-
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
     const homeColor = homeData?.colors.primary || '#6366f1';
     const awayColor = awayData?.colors.primary || '#f59e0b';
 
-    const displayShots = shotEvents
-        .filter(s => {
-            if (filter === 'home') return s.teamId === homeTeam.id;
-            if (filter === 'away') return s.teamId === awayTeam.id;
-            return true;
-        })
-        .map(s => {
-            const isHome = s.teamId === homeTeam.id;
-            const norm = normalizeShotForDisplay(s, isHome);
-            return { ...s, ...norm, isHome };
-        });
+    const displayShots = shotEvents.map(s => {
+        const isHome = s.teamId === homeTeam.id;
+        const norm = normalizeShotForDisplay(s, isHome);
+        return { ...s, ...norm, isHome };
+    });
 
     const LeftBasketLines = () => (
         <g fill="none" stroke="#334155" strokeWidth="0.5">
@@ -224,82 +214,35 @@ const LiveShotChart: React.FC<{
     );
 
     return (
-        <div className="flex flex-col h-full p-4 gap-3">
-            <div className="flex items-center justify-between">
-                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Shot Chart — Full Court</p>
-                <div className="flex gap-1">
-                    {([
-                        { key: 'all', label: '전체' },
-                        { key: 'away', label: awayData?.name || awayTeam.name },
-                        { key: 'home', label: homeData?.name || homeTeam.name },
-                    ] as { key: ShotFilter; label: string }[]).map(({ key, label }) => (
-                        <button
-                            key={key}
-                            onClick={() => setFilter(key)}
-                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-colors ${
-                                filter === key ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                            }`}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            <div className="flex-1 flex items-center justify-center">
-                <div className="relative w-full" style={{ maxHeight: '100%', aspectRatio: `${COURT_WIDTH}/${COURT_HEIGHT}` }}>
-                    <svg
-                        viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`}
-                        className="w-full h-full"
-                    >
-                        <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" rx="1" />
-                        <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="none" stroke="#334155" strokeWidth="0.5" />
-                        <LeftBasketLines />
-                        <RightBasketLines />
-                        <line x1="47" y1="0" x2="47" y2={COURT_HEIGHT} stroke="#334155" strokeWidth="0.5" />
-                        <circle cx="47" cy={HOOP_Y_CENTER} r="6" fill="none" stroke="#334155" strokeWidth="0.5" />
-                        <circle cx="47" cy={HOOP_Y_CENTER} r="2" fill="none" stroke="#334155" strokeWidth="0.5" />
-                        <text x="23.5" y="3.5" textAnchor="middle" fontSize="2" fill={awayColor} fontWeight="bold" opacity="0.7">
-                            {awayData?.name || awayTeam.name}
-                        </text>
-                        <text x="70.5" y="3.5" textAnchor="middle" fontSize="2" fill={homeColor} fontWeight="bold" opacity="0.7">
-                            {homeData?.name || homeTeam.name}
-                        </text>
-                        {displayShots.map((shot, i) => {
-                            const color = shot.isHome ? homeColor : awayColor;
-                            return (
-                                <g key={`${shot.id}-${i}`}>
-                                    {shot.isMake ? (
-                                        <circle cx={shot.x} cy={shot.y} r={0.65} fill={color} stroke="white" strokeWidth="0.1" opacity="0.9" />
-                                    ) : (
-                                        <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.6">
-                                            <line x1="-0.5" y1="-0.5" x2="0.5" y2="0.5" stroke="#cbd5e1" strokeWidth="0.25" />
-                                            <line x1="-0.5" y1="0.5" x2="0.5" y2="-0.5" stroke="#cbd5e1" strokeWidth="0.25" />
-                                        </g>
-                                    )}
+        <div className="w-full h-full overflow-hidden">
+            <svg
+                viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`}
+                className="w-full h-full"
+                preserveAspectRatio="xMidYMid meet"
+            >
+                <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" rx="1" />
+                <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="none" stroke="#334155" strokeWidth="0.5" />
+                <LeftBasketLines />
+                <RightBasketLines />
+                <line x1="47" y1="0" x2="47" y2={COURT_HEIGHT} stroke="#334155" strokeWidth="0.5" />
+                <circle cx="47" cy={HOOP_Y_CENTER} r="6" fill="none" stroke="#334155" strokeWidth="0.5" />
+                <circle cx="47" cy={HOOP_Y_CENTER} r="2" fill="none" stroke="#334155" strokeWidth="0.5" />
+                {displayShots.map((shot, i) => {
+                    const color = shot.isHome ? homeColor : awayColor;
+                    return (
+                        <g key={`${shot.id}-${i}`}>
+                            {shot.isMake ? (
+                                <circle cx={shot.x} cy={shot.y} r={0.65} fill={color} stroke="white" strokeWidth="0.1" opacity="0.9" />
+                            ) : (
+                                <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.6">
+                                    <line x1="-0.5" y1="-0.5" x2="0.5" y2="0.5" stroke="#cbd5e1" strokeWidth="0.25" />
+                                    <line x1="-0.5" y1="0.5" x2="0.5" y2="-0.5" stroke="#cbd5e1" strokeWidth="0.25" />
                                 </g>
-                            );
-                        })}
-                    </svg>
-                </div>
-            </div>
-
-            <div className="flex items-center justify-center gap-6 text-[10px] font-bold text-slate-400">
-                <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: awayColor }}></div>
-                    <span>{awayData?.name || '원정'} 성공</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: homeColor }}></div>
-                    <span>{homeData?.name || '홈'} 성공</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                    <span className="text-slate-300 text-xs font-black">✕</span>
-                    <span>미스</span>
-                </div>
-                <span className="text-slate-600">|</span>
-                <span>총 {displayShots.length}샷 · 성공 {displayShots.filter(s => s.isMake).length}</span>
-            </div>
+                            )}
+                        </g>
+                    );
+                })}
+            </svg>
         </div>
     );
 };
@@ -731,8 +674,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     awayTeam={awayTeam}
                                 />
                             </div>
-                            {/* PBP 로그 (하단 60%) */}
-                            <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
+                            {/* PBP 로그 (나머지 공간 채움) */}
+                            <div
+                                className="flex-1 min-h-0 overflow-y-auto p-3 space-y-0.5"
+                                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+                            >
                                 <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">
                                     Play-by-Play <span className="text-slate-700 font-normal normal-case">(최신 순)</span>
                                 </p>
