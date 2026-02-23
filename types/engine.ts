@@ -42,6 +42,8 @@ export interface PbpLog {
     text: string;
     type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info';
     points?: 1 | 2 | 3;
+    homeScore?: number;   // 이 이벤트 시점의 홈팀 누적 점수
+    awayScore?: number;   // 이 이벤트 시점의 원정팀 누적 점수
 }
 
 export type RotationData = Record<string, { in: number, out: number }[]>;
