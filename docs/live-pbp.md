@@ -437,3 +437,153 @@ if (state.quarter === 4 && state.gameClock <= 0) {
 7. 경기 종료 → `extractSimResult()` → GameResultView 정상 전환
 8. CPU 경기 → 기존 배치 방식 유지 (LiveGameView 미사용)
 9. Q4 강제 동점 → 버저비터 포세션 발생 확인 + PBP 로그 자연스러움 확인 (연장 없음)
+
+---
+
+## LiveGameView 1차 초안 — 탭 바 + 풀코트 샷차트 + PBP 역순
+
+> 구현 완료: 2026-02
+
+### 변경 파일
+
+| 파일 | 변경 | 내용 |
+|------|------|------|
+| `hooks/useLiveGame.ts` | 수정 | LiveDisplayState에 shotEvents/box/fouls/userTactics 필드 추가 |
+| `views/LiveGameView.tsx` | 대규모 수정 | 탭 바 + 5탭 바디 + 풀코트 샷차트 + PBP 역순 |
+
+---
+
+### useLiveGame.ts — LiveDisplayState 추가 필드
+
+```typescript
+// 탭 바 전용 데이터
+shotEvents: ShotEvent[];             // state.shotEvents
+homeBox: PlayerBoxScore[];           // onCourt + bench
+awayBox: PlayerBoxScore[];
+homeFouls: number;                   // state.home.fouls (쿼터 팀 파울)
+awayFouls: number;
+userTactics: GameTactics;            // 유저 팀 현재 전술 (전술 탭 초기값)
+```
+
+`_buildDisplay()` 시그니처에 `userTeamId: string` 파라미터 추가:
+```typescript
+const userTeam = state.home.id === userTeamId ? state.home : state.away;
+// 추가 필드 계산:
+shotEvents: [...state.shotEvents],
+homeBox: [...state.home.onCourt, ...state.home.bench] as PlayerBoxScore[],
+awayBox: [...state.away.onCourt, ...state.away.bench] as PlayerBoxScore[],
+homeFouls: state.home.fouls,
+awayFouls: state.away.fouls,
+userTactics: userTeam.tactics,
+```
+
+---
+
+### LiveGameView.tsx — 탭 레이아웃
+
+```
+┌────────────────────────────────────────────────────────┐
+│ Header Row 1: 스코어보드                                │
+│ Header Row 2: 파울/TO/런 인디케이터/속도/타임아웃        │
+│ Header Row 3: 탭 바 [코트|박스스코어|샷차트|로테이션|전술]│
+├────────────────────────────────────────────────────────┤
+│ BODY — 탭에 따라 전환                                   │
+│ [코트]     away on-court | PBP 역순 | home on-court     │
+│ [박스스코어] BoxScoreTable × 2 (away/home)              │
+│ [샷차트]   풀코트 SVG (away=왼쪽 고정, home=오른쪽 고정)│
+│ [로테이션] 48분 그리드 read-only (1차 초안)             │
+│ [전술]     TacticsSlidersPanel (유저팀 슬라이더)        │
+└────────────────────────────────────────────────────────┘
+```
+
+---
+
+### PBP 로그 역순
+
+```typescript
+allLogs.slice().reverse().map((log, i) => ...)
+```
+
+역순(최신=상단)이므로 자동 스크롤 로직(`logContainerRef`, `isAtBottomRef`, `handleLogScroll`, 스크롤 useEffect) **모두 제거**.
+
+---
+
+### 풀코트 샷차트 (LiveShotChart)
+
+**정규화 원칙** (하프타임 무관 고정):
+- 원정팀 샷 → 왼쪽 코트 `(x < COURT_WIDTH/2)`: `if x > COURT_WIDTH/2 → x=94-x, y=50-y`
+- 홈팀 샷 → 오른쪽 코트 `(x > COURT_WIDTH/2)`: `if x < COURT_WIDTH/2 → x=94-x, y=50-y`
+
+```typescript
+function normalizeShotForDisplay(shot: ShotEvent, isHomeTeam: boolean): { x: number; y: number } {
+    let { x, y } = shot;
+    if (isHomeTeam) {
+        if (x < COURT_WIDTH / 2) { x = COURT_WIDTH - x; y = COURT_HEIGHT - y; }
+    } else {
+        if (x > COURT_WIDTH / 2) { x = COURT_WIDTH - x; y = COURT_HEIGHT - y; }
+    }
+    return { x, y };
+}
+```
+
+**SVG 구조** (`viewBox="0 0 94 50"`):
+- 왼쪽 바스켓 + 라인 (기존 `GameShotChartTab`의 `<g>` 재사용)
+- 오른쪽 바스켓: SVG `transform="scale(-1,1) translate(-94,0)"` 미러 적용
+- 센터라인 `<line x1="47" y1="0" x2="47" y2="50" />`
+- 센터서클 `<circle cx="47" cy="25" r="6" />`
+- 팀 필터: 원정만 / 홈만 / 전체 (3버튼 토글)
+
+---
+
+### 박스스코어 탭 (LiveBoxScoreTab)
+
+`BoxScoreTable` 재사용. `LivePlayer extends PlayerBoxScore`이므로 타입 캐스트 안전:
+
+```typescript
+function computeLeaders(homeBox: PlayerBoxScore[], awayBox: PlayerBoxScore[]): GameStatLeaders {
+    const all = [...homeBox, ...awayBox];
+    if (all.length === 0) return { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0 };
+    return {
+        pts: Math.max(...all.map(p => p.pts)),
+        reb: Math.max(...all.map(p => p.reb)),
+        ast: Math.max(...all.map(p => p.ast)),
+        stl: Math.max(...all.map(p => p.stl)),
+        blk: Math.max(...all.map(p => p.blk)),
+        tov: Math.max(...all.map(p => p.tov)),
+    };
+}
+```
+
+레이아웃: 세로 스택 — 원정팀 표 → 홈팀 표.
+
+---
+
+### 로테이션 탭 (LiveRotationTab) — 1차 초안: 읽기 전용
+
+- 유저팀 `rotationMap` (Record<string, boolean[]>) 렌더
+- 현재 분 열 강조 (indigo 테두리)
+- Q1(0-11) / Q2(12-23) / Q3(24-35) / Q4(36-47) 구분선
+- `true` 슬롯: 팀 컬러 배경 / `false`: slate-800
+- 편집 기능: 추후 구현 (쿼터 사이/하프타임 잠금 해제 예정)
+
+---
+
+### 전술 탭 (LiveTacticsTab)
+
+`TacticsSlidersPanel` 재사용. 어댑터 패턴으로 인터페이스 연결:
+
+```typescript
+// TacticsSlidersPanel.onUpdateTactics: (t: GameTactics) => void
+// applyTactics: (sliders: GameTactics['sliders']) => void
+const handleUpdate = (t: GameTactics) => onApplyTactics(t.sliders);
+```
+
+---
+
+### 1차 초안 검증 포인트
+
+1. PBP 역순: 새 포세션 후 최신 항목이 최상단에 표시
+2. 샷차트: 원정 샷 왼쪽, 홈 샷 오른쪽 (Q3+Q4에도 고정)
+3. 박스스코어: 포세션마다 PTS/REB/AST 실시간 증가
+4. 전술 탭: 슬라이더 변경 → applyTactics → 다음 포세션 반영
+5. 탭 전환: 경기 루프와 독립적 동작 (전환 중에도 엔진 계속 진행)

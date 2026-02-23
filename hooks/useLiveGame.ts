@@ -1,7 +1,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { Team, GameTactics, DepthChart, SimulationResult, PbpLog } from '../types';
-import { GameState, LivePlayer } from '../services/game/engine/pbp/pbpTypes';
+import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
+import { GameState, LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
 import {
     createGameState,
     stepPossession,
@@ -40,6 +40,13 @@ export interface LiveDisplayState {
         durationSec: number;    // diff ≥ 8 이후 경과초
     } | null;
     speed: GameSpeed;
+    // 탭 바 전용 데이터
+    shotEvents: ShotEvent[];
+    homeBox: PlayerBoxScore[];
+    awayBox: PlayerBoxScore[];
+    homeFouls: number;          // 현재 쿼터 팀 파울
+    awayFouls: number;
+    userTactics: GameTactics;   // 유저 팀 현재 전술 (전술 탭 초기값)
 }
 
 export interface UseLiveGameReturn {
@@ -85,7 +92,7 @@ export function useLiveGame(
     const speedRef = useRef<GameSpeed>(1);
 
     const [displayState, setDisplayState] = useState<LiveDisplayState>(() =>
-        _buildDisplay(gameStateRef.current, null, false, 1)
+        _buildDisplay(gameStateRef.current, null, false, 1, userTeamId)
     );
 
     // ── 디스플레이 동기화 헬퍼 ──
@@ -94,9 +101,10 @@ export function useLiveGame(
             gameStateRef.current,
             pauseReasonRef.current,
             isGameEndRef.current,
-            speedRef.current
+            speedRef.current,
+            userTeamId
         ));
-    }, []);
+    }, [userTeamId]);
 
     // ── Interval 시작/중단 ──
     const startInterval = useCallback(() => {
@@ -232,7 +240,8 @@ function _buildDisplay(
     state: GameState,
     pauseReason: PauseReason | null,
     isGameEnd: boolean,
-    speed: GameSpeed
+    speed: GameSpeed,
+    userTeamId: string
 ): LiveDisplayState {
     const m = state.momentum;
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
@@ -245,6 +254,8 @@ function _buildDisplay(
         const durationSec = Math.max(0, currentTotalSec - m.activeRun.startTotalSec);
         activeRun = { teamId: m.activeRun.teamId, teamPts, oppPts, durationSec };
     }
+
+    const userTeam = state.home.id === userTeamId ? state.home : state.away;
 
     return {
         homeScore: state.home.score,
@@ -260,6 +271,12 @@ function _buildDisplay(
         awayOnCourt: [...state.away.onCourt],
         activeRun,
         speed,
+        shotEvents: [...state.shotEvents],
+        homeBox: [...state.home.onCourt, ...state.home.bench] as PlayerBoxScore[],
+        awayBox: [...state.away.onCourt, ...state.away.bench] as PlayerBoxScore[],
+        homeFouls: state.home.fouls,
+        awayFouls: state.away.fouls,
+        userTactics: userTeam.tactics,
     };
 }
 

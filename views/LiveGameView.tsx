@@ -1,9 +1,12 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Team, GameTactics, DepthChart, SimulationResult, PbpLog } from '../types';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
 import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
-import { LivePlayer } from '../services/game/engine/pbp/pbpTypes';
+import { LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
 import { TEAM_DATA } from '../data/teamData';
+import { BoxScoreTable, GameStatLeaders } from '../components/game/BoxScoreTable';
+import { TacticsSlidersPanel } from '../components/dashboard/tactics/TacticsSlidersPanel';
+import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -20,6 +23,8 @@ interface LiveGameViewProps {
     awayDepthChart?: DepthChart | null;
     onGameEnd: (result: SimulationResult) => void;
 }
+
+type ActiveTab = 'court' | 'boxscore' | 'shotchart' | 'rotation' | 'tactics';
 
 // ─────────────────────────────────────────────────────────────
 // Util
@@ -39,51 +44,73 @@ function formatDuration(sec: number): string {
 
 function logTypeClass(type: PbpLog['type']): string {
     switch (type) {
-        case 'score':    return 'text-emerald-400';
-        case 'miss':     return 'text-slate-400';
-        case 'block':    return 'text-blue-400';
-        case 'turnover': return 'text-red-400';
-        case 'foul':     return 'text-amber-400';
-        case 'freethrow':return 'text-cyan-400';
-        default:         return 'text-slate-500';
+        case 'score':     return 'text-emerald-400';
+        case 'miss':      return 'text-slate-400';
+        case 'block':     return 'text-blue-400';
+        case 'turnover':  return 'text-red-400';
+        case 'foul':      return 'text-amber-400';
+        case 'freethrow': return 'text-cyan-400';
+        default:          return 'text-slate-500';
     }
 }
 
+function computeLeaders(homeBox: PlayerBoxScore[], awayBox: PlayerBoxScore[]): GameStatLeaders {
+    const all = [...homeBox, ...awayBox];
+    if (all.length === 0) return { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0 };
+    return {
+        pts: Math.max(...all.map(p => p.pts)),
+        reb: Math.max(...all.map(p => p.reb)),
+        ast: Math.max(...all.map(p => p.ast)),
+        stl: Math.max(...all.map(p => p.stl)),
+        blk: Math.max(...all.map(p => p.blk)),
+        tov: Math.max(...all.map(p => p.tov)),
+    };
+}
+
 // ─────────────────────────────────────────────────────────────
-// Sub-components
+// OnCourt Row (테이블 행 형식)
 // ─────────────────────────────────────────────────────────────
 
-const ConditionBar: React.FC<{ value: number }> = ({ value }) => {
-    const color = value >= 70 ? 'bg-emerald-500' : value >= 40 ? 'bg-amber-500' : 'bg-red-500';
+const OnCourtRow: React.FC<{
+    player: LivePlayer;
+    isUser: boolean;
+    onSub?: (id: string) => void;
+}> = ({ player, isUser, onSub }) => {
+    const stamina = Math.round(player.currentCondition);
+    const staminaColor = stamina > 60 ? 'text-emerald-400'
+                       : stamina > 30 ? 'text-amber-400'
+                       : 'text-red-400';
+
     return (
-        <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${color}`} style={{ width: `${value}%` }} />
+        <div
+            className={`grid items-center gap-x-2 px-3 py-1.5 transition-colors
+                ${isUser && onSub ? 'cursor-pointer hover:bg-slate-800/60 active:bg-slate-700/60' : 'hover:bg-slate-800/30'}`}
+            style={{ gridTemplateColumns: '1fr auto auto auto auto auto' }}
+            onClick={isUser && onSub ? () => onSub(player.playerId) : undefined}
+        >
+            <span className="text-xs font-bold text-slate-200 truncate">{player.playerName}</span>
+            <span className="text-[10px] text-slate-500 w-6 text-center font-mono">{player.position}</span>
+            <span className={`text-[10px] font-mono font-bold w-9 text-right ${staminaColor}`}>
+                {stamina}%
+            </span>
+            <span className="text-[10px] font-mono text-white w-6 text-right">{player.pts ?? 0}</span>
+            <span className="text-[10px] font-mono text-slate-400 w-6 text-right">{player.reb ?? 0}</span>
+            <span className="text-[10px] font-mono text-slate-400 w-6 text-right">{player.ast ?? 0}</span>
         </div>
     );
 };
 
-const PlayerCard: React.FC<{ player: LivePlayer; isUser: boolean; onSub?: (id: string) => void }> = ({
-    player, isUser, onSub
-}) => (
-    <div className="bg-slate-800 rounded-xl p-2.5 border border-slate-700 text-xs">
-        <div className="flex justify-between items-center mb-1">
-            <span className="font-semibold text-slate-200 truncate max-w-[80px]">{player.playerName}</span>
-            <span className="text-slate-400">{player.position}</span>
-        </div>
-        <div className="flex justify-between text-slate-400 mb-1.5">
-            <span>OVR <span className="text-indigo-400 font-bold">{player.ovr}</span></span>
-            <span>PF <span className={player.pf >= 5 ? 'text-red-400' : 'text-slate-300'}>{player.pf}</span></span>
-            <span>{Math.round(player.currentCondition)}%</span>
-        </div>
-        <ConditionBar value={player.currentCondition} />
-        {isUser && onSub && (
-            <button
-                onClick={() => onSub(player.playerId)}
-                className="mt-1.5 w-full text-[10px] py-0.5 rounded bg-slate-700 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors"
-            >
-                교체
-            </button>
-        )}
+const OnCourtHeader: React.FC = () => (
+    <div
+        className="grid gap-x-2 px-3 py-1 text-[9px] font-bold text-slate-600 uppercase tracking-widest border-b border-slate-800"
+        style={{ gridTemplateColumns: '1fr auto auto auto auto auto' }}
+    >
+        <span>선수</span>
+        <span className="w-6 text-center">P</span>
+        <span className="w-9 text-right">STM</span>
+        <span className="w-6 text-right">PTS</span>
+        <span className="w-6 text-right">REB</span>
+        <span className="w-6 text-right">AST</span>
     </div>
 );
 
@@ -131,80 +158,287 @@ const SubModal: React.FC<{
 );
 
 // ─────────────────────────────────────────────────────────────
-// Pause Overlay
+// Full Court Shot Chart
 // ─────────────────────────────────────────────────────────────
 
-const PauseOverlay: React.FC<{
-    reason: PauseReason;
-    quarter: number;
-    gameClock: number;
-    homeTeamName: string;
-    awayTeamName: string;
-    timeoutsLeft: number;
-    userOnCourt: LivePlayer[];
-    userBench: LivePlayer[];
-    onSub: (outId: string, inId: string) => void;
-    onResume: () => void;
-}> = ({ reason, quarter, gameClock, homeTeamName, awayTeamName, timeoutsLeft, userOnCourt, userBench, onSub, onResume }) => {
-    const [pendingOut, setPendingOut] = useState<string | null>(null);
+function normalizeShotForDisplay(shot: ShotEvent, isHomeTeam: boolean): { x: number; y: number } {
+    let { x, y } = shot;
+    if (isHomeTeam) {
+        if (x < COURT_WIDTH / 2) { x = COURT_WIDTH - x; y = COURT_HEIGHT - y; }
+    } else {
+        if (x > COURT_WIDTH / 2) { x = COURT_WIDTH - x; y = COURT_HEIGHT - y; }
+    }
+    return { x, y };
+}
 
-    const titleMap: Record<PauseReason, string> = {
-        timeout: `⏸ 타임아웃 — Q${quarter} ${formatClock(gameClock)}`,
-        quarterEnd: `Q${quarter} 종료`,
-        halftime: '하프타임',
-        gameEnd: '경기 종료',
-    };
+type ShotFilter = 'all' | 'home' | 'away';
+
+const LiveShotChart: React.FC<{
+    shotEvents: ShotEvent[];
+    homeTeam: Team;
+    awayTeam: Team;
+}> = ({ shotEvents, homeTeam, awayTeam }) => {
+    const [filter, setFilter] = useState<ShotFilter>('all');
+
+    const homeData = TEAM_DATA[homeTeam.id];
+    const awayData = TEAM_DATA[awayTeam.id];
+    const homeColor = homeData?.colors.primary || '#6366f1';
+    const awayColor = awayData?.colors.primary || '#f59e0b';
+
+    const displayShots = shotEvents
+        .filter(s => {
+            if (filter === 'home') return s.teamId === homeTeam.id;
+            if (filter === 'away') return s.teamId === awayTeam.id;
+            return true;
+        })
+        .map(s => {
+            const isHome = s.teamId === homeTeam.id;
+            const norm = normalizeShotForDisplay(s, isHome);
+            return { ...s, ...norm, isHome };
+        });
+
+    const LeftBasketLines = () => (
+        <g fill="none" stroke="#334155" strokeWidth="0.5">
+            <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
+            <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
+            <line x1="0" y1="3" x2="14" y2="3" />
+            <line x1="0" y1="47" x2="14" y2="47" />
+            <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
+            <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
+            <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
+            <path d={`M ${HOOP_X_LEFT},${HOOP_Y_CENTER - 4} A 4 4 0 0 1 ${HOOP_X_LEFT},${HOOP_Y_CENTER + 4}`} />
+        </g>
+    );
+
+    const RightBasketLines = () => (
+        <g fill="none" stroke="#334155" strokeWidth="0.5" transform={`scale(-1,1) translate(-${COURT_WIDTH},0)`}>
+            <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
+            <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
+            <line x1="0" y1="3" x2="14" y2="3" />
+            <line x1="0" y1="47" x2="14" y2="47" />
+            <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
+            <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
+            <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
+            <path d={`M ${HOOP_X_LEFT},${HOOP_Y_CENTER - 4} A 4 4 0 0 1 ${HOOP_X_LEFT},${HOOP_Y_CENTER + 4}`} />
+        </g>
+    );
 
     return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-40">
-            <div className="bg-slate-900 border border-slate-700 rounded-3xl p-6 w-[420px] space-y-4">
-                <div className="text-center">
-                    <h2 className="text-lg font-bold text-white">{titleMap[reason]}</h2>
-                    {reason === 'timeout' && (
-                        <p className="text-slate-400 text-xs mt-1">타임아웃 잔여: <span className="text-amber-400 font-bold">{timeoutsLeft}회</span></p>
-                    )}
+        <div className="flex flex-col h-full p-4 gap-3">
+            <div className="flex items-center justify-between">
+                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">Shot Chart — Full Court</p>
+                <div className="flex gap-1">
+                    {([
+                        { key: 'all', label: '전체' },
+                        { key: 'away', label: awayData?.name || awayTeam.name },
+                        { key: 'home', label: homeData?.name || homeTeam.name },
+                    ] as { key: ShotFilter; label: string }[]).map(({ key, label }) => (
+                        <button
+                            key={key}
+                            onClick={() => setFilter(key)}
+                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-colors ${
+                                filter === key ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                            }`}
+                        >
+                            {label}
+                        </button>
+                    ))}
                 </div>
-
-                {/* 선수 교체 */}
-                <div>
-                    <p className="text-xs text-slate-400 mb-2 font-semibold">코트 위 선수 (교체 선택)</p>
-                    <div className="space-y-1.5">
-                        {userOnCourt.map(p => (
-                            <div key={p.playerId} className="flex justify-between items-center p-2 rounded-xl bg-slate-800 border border-slate-700">
-                                <div className="text-xs">
-                                    <span className="text-slate-200 font-semibold">{p.playerName}</span>
-                                    <span className="text-slate-500 ml-2">{p.position}</span>
-                                    <span className="text-slate-400 ml-2">체력 {Math.round(p.currentCondition)}%</span>
-                                </div>
-                                <button
-                                    onClick={() => setPendingOut(p.playerId)}
-                                    className="text-[10px] px-2 py-1 rounded-lg bg-slate-700 hover:bg-indigo-600 text-slate-300 hover:text-white transition-colors"
-                                >
-                                    교체
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                {reason !== 'gameEnd' && (
-                    <button
-                        onClick={onResume}
-                        className="w-full py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-colors"
-                    >
-                        ▶ 경기 재개
-                    </button>
-                )}
-
-                {pendingOut && (
-                    <SubModal
-                        outPlayer={userOnCourt.find(p => p.playerId === pendingOut)!}
-                        bench={userBench}
-                        onSub={(inId) => { onSub(pendingOut, inId); setPendingOut(null); }}
-                        onClose={() => setPendingOut(null)}
-                    />
-                )}
             </div>
+
+            <div className="flex-1 flex items-center justify-center">
+                <div className="relative w-full" style={{ maxHeight: '100%', aspectRatio: `${COURT_WIDTH}/${COURT_HEIGHT}` }}>
+                    <svg
+                        viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`}
+                        className="w-full h-full"
+                        style={{ maxHeight: 'calc(100vh - 280px)' }}
+                    >
+                        <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" rx="1" />
+                        <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="none" stroke="#334155" strokeWidth="0.5" />
+                        <LeftBasketLines />
+                        <RightBasketLines />
+                        <line x1="47" y1="0" x2="47" y2={COURT_HEIGHT} stroke="#334155" strokeWidth="0.5" />
+                        <circle cx="47" cy={HOOP_Y_CENTER} r="6" fill="none" stroke="#334155" strokeWidth="0.5" />
+                        <circle cx="47" cy={HOOP_Y_CENTER} r="2" fill="none" stroke="#334155" strokeWidth="0.5" />
+                        <text x="23.5" y="3.5" textAnchor="middle" fontSize="2" fill={awayColor} fontWeight="bold" opacity="0.7">
+                            {awayData?.name || awayTeam.name}
+                        </text>
+                        <text x="70.5" y="3.5" textAnchor="middle" fontSize="2" fill={homeColor} fontWeight="bold" opacity="0.7">
+                            {homeData?.name || homeTeam.name}
+                        </text>
+                        {displayShots.map((shot, i) => {
+                            const color = shot.isHome ? homeColor : awayColor;
+                            return (
+                                <g key={`${shot.id}-${i}`}>
+                                    {shot.isMake ? (
+                                        <circle cx={shot.x} cy={shot.y} r={0.65} fill={color} stroke="white" strokeWidth="0.1" opacity="0.9" />
+                                    ) : (
+                                        <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.6">
+                                            <line x1="-0.5" y1="-0.5" x2="0.5" y2="0.5" stroke="#cbd5e1" strokeWidth="0.25" />
+                                            <line x1="-0.5" y1="0.5" x2="0.5" y2="-0.5" stroke="#cbd5e1" strokeWidth="0.25" />
+                                        </g>
+                                    )}
+                                </g>
+                            );
+                        })}
+                    </svg>
+                </div>
+            </div>
+
+            <div className="flex items-center justify-center gap-6 text-[10px] font-bold text-slate-400">
+                <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: awayColor }}></div>
+                    <span>{awayData?.name || '원정'} 성공</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: homeColor }}></div>
+                    <span>{homeData?.name || '홈'} 성공</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <span className="text-slate-300 text-xs font-black">✕</span>
+                    <span>미스</span>
+                </div>
+                <span className="text-slate-600">|</span>
+                <span>총 {displayShots.length}샷 · 성공 {displayShots.filter(s => s.isMake).length}</span>
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Box Score Tab
+// ─────────────────────────────────────────────────────────────
+
+const LiveBoxScoreTab: React.FC<{
+    homeTeam: Team;
+    awayTeam: Team;
+    homeBox: PlayerBoxScore[];
+    awayBox: PlayerBoxScore[];
+}> = ({ homeTeam, awayTeam, homeBox, awayBox }) => {
+    const leaders = computeLeaders(homeBox, awayBox);
+    const allBox = [...homeBox, ...awayBox];
+    const mvpId = allBox.length > 0
+        ? allBox.reduce((best, p) => p.pts > best.pts ? p : best, allBox[0]).playerId
+        : undefined;
+
+    return (
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+            <BoxScoreTable team={awayTeam} box={awayBox} leaders={leaders} mvpId={mvpId} />
+            <BoxScoreTable team={homeTeam} box={homeBox} leaders={leaders} mvpId={mvpId} isFirst />
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Rotation Tab (읽기 전용)
+// ─────────────────────────────────────────────────────────────
+
+const LiveRotationTab: React.FC<{
+    userTactics: GameTactics;
+    userTeam: Team;
+    currentMinute: number;
+    pauseReason: PauseReason | null;
+}> = ({ userTactics, userTeam, currentMinute, pauseReason }) => {
+    const rotMap = userTactics.rotationMap || {};
+    const roster = userTeam.roster;
+    const scheduledPlayers = roster.filter(p => rotMap[p.id]?.some(Boolean));
+    const canEdit = pauseReason === 'quarterEnd' || pauseReason === 'halftime';
+    const quarterBoundaries = [0, 12, 24, 36, 48];
+    const quarterLabels = ['Q1', 'Q2', 'Q3', 'Q4'];
+
+    return (
+        <div className="flex-1 overflow-auto p-4">
+            {canEdit ? (
+                <div className="mb-3 px-3 py-2 bg-emerald-900/30 border border-emerald-700/40 rounded-xl text-xs text-emerald-400 font-semibold">
+                    ✓ 쿼터 사이 — 로테이션 편집이 활성화됩니다 (다음 버전에서 구현 예정)
+                </div>
+            ) : (
+                <div className="mb-3 px-3 py-2 bg-slate-800/50 border border-slate-700/40 rounded-xl text-xs text-slate-500 font-semibold">
+                    경기 중 읽기 전용 — 쿼터 종료/하프타임 시 편집 가능
+                </div>
+            )}
+
+            <div className="overflow-x-auto">
+                <table className="text-[10px] border-collapse w-full">
+                    <thead>
+                        <tr>
+                            <th className="sticky left-0 bg-slate-950 text-slate-500 text-left px-2 py-1 font-semibold min-w-[100px]">선수</th>
+                            {Array.from({ length: 48 }, (_, i) => {
+                                const isQBoundary = quarterBoundaries.slice(1, -1).includes(i);
+                                const isCurrentMin = i === currentMinute;
+                                const qLabel = i % 12 === 0 ? quarterLabels[Math.floor(i / 12)] : null;
+                                return (
+                                    <th
+                                        key={i}
+                                        className={`w-4 h-6 text-center font-bold transition-colors ${
+                                            isCurrentMin
+                                                ? 'text-indigo-400 border-l border-r border-indigo-500'
+                                                : isQBoundary
+                                                ? 'border-l border-slate-600 text-slate-600'
+                                                : 'text-slate-700'
+                                        }`}
+                                    >
+                                        {qLabel || (i % 6 === 0 ? i : '')}
+                                    </th>
+                                );
+                            })}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {scheduledPlayers.map(p => {
+                            const schedule = rotMap[p.id] || Array(48).fill(false);
+                            return (
+                                <tr key={p.id} className="border-t border-slate-800/50">
+                                    <td className="sticky left-0 bg-slate-950 px-2 py-0.5 text-slate-300 font-semibold truncate max-w-[100px]">
+                                        {p.name}
+                                    </td>
+                                    {schedule.map((active: boolean, min: number) => {
+                                        const isCurrentMin = min === currentMinute;
+                                        return (
+                                            <td
+                                                key={min}
+                                                className={`w-4 h-5 border border-slate-800/30 ${
+                                                    isCurrentMin
+                                                        ? active
+                                                            ? 'bg-indigo-500 border-indigo-400'
+                                                            : 'bg-slate-800 border-indigo-500'
+                                                        : active
+                                                        ? 'bg-indigo-600/60'
+                                                        : 'bg-slate-900'
+                                                }`}
+                                            />
+                                        );
+                                    })}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Tactics Tab
+// ─────────────────────────────────────────────────────────────
+
+const LiveTacticsTab: React.FC<{
+    userTactics: GameTactics;
+    userTeam: Team;
+    onApplyTactics: (sliders: GameTactics['sliders']) => void;
+}> = ({ userTactics, userTeam, onApplyTactics }) => {
+    const handleUpdate = useCallback((t: GameTactics) => {
+        onApplyTactics(t.sliders);
+    }, [onApplyTactics]);
+
+    return (
+        <div className="flex-1 overflow-y-auto p-4">
+            <TacticsSlidersPanel
+                tactics={userTactics}
+                onUpdateTactics={handleUpdate}
+                roster={userTeam.roster}
+            />
         </div>
     );
 };
@@ -218,7 +452,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, onGameEnd,
 }) => {
     const {
-        displayState, callTimeout, applyTactics: _applyTactics,
+        displayState, callTimeout, applyTactics,
         makeSubstitution, resume, getResult,
         userOnCourt, userBench, setSpeed,
     } = useLiveGame(
@@ -230,210 +464,357 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         homeScore, awayScore, quarter, gameClock,
         allLogs, pauseReason, isGameEnd,
         timeoutsLeft, homeOnCourt, awayOnCourt, activeRun, speed,
+        shotEvents, homeBox, awayBox, homeFouls, awayFouls, userTactics: liveTactics,
     } = displayState;
 
-    const logContainerRef = useRef<HTMLDivElement>(null);
-    const isAtBottomRef = useRef(true);
+    const [activeTab, setActiveTab] = useState<ActiveTab>('court');
     const [subOutId, setSubOutId] = useState<string | null>(null);
-    const isUserHome = homeTeam.id === userTeamId;
+    const [pauseCountdown, setPauseCountdown] = useState<number>(30);
+    const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const resumeRef = useRef(resume);
 
+    // resume ref 최신 유지
+    useEffect(() => { resumeRef.current = resume; });
+
+    const isUserHome = homeTeam.id === userTeamId;
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
+
+    const userTeam = isUserHome ? homeTeam : awayTeam;
+    const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
+
+    const currentMinute = Math.min(47, Math.floor(((quarter - 1) * 720 + (720 - gameClock)) / 60));
+
+    // 30초 카운트다운 (타임아웃/하프타임/쿼터 종료)
+    useEffect(() => {
+        if (countdownRef.current) clearInterval(countdownRef.current);
+
+        if (pauseReason === null || isGameEnd) {
+            setPauseCountdown(30);
+            return;
+        }
+
+        setPauseCountdown(30);
+        countdownRef.current = setInterval(() => {
+            setPauseCountdown(prev => {
+                if (prev <= 1) {
+                    clearInterval(countdownRef.current!);
+                    countdownRef.current = null;
+                    resumeRef.current();
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => {
+            if (countdownRef.current) {
+                clearInterval(countdownRef.current);
+                countdownRef.current = null;
+            }
+        };
+    }, [pauseReason, isGameEnd]);
 
     // 경기 종료 처리
     useEffect(() => {
         if (isGameEnd) {
             const result = getResult();
             if (result) {
-                // 2초 딜레이 후 콜백 (종료 overlay 보이게)
                 const timer = setTimeout(() => onGameEnd(result), 2500);
                 return () => clearTimeout(timer);
             }
         }
     }, [isGameEnd, getResult, onGameEnd]);
 
-    // 스크롤 위치 추적 — 유저가 위로 올렸으면 자동 스크롤 중단
-    const handleLogScroll = useCallback(() => {
-        const el = logContainerRef.current;
-        if (!el) return;
-        isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    }, []);
-
-    // PBP 로그 자동 스크롤 — scrollTop 직접 제어 (scrollIntoView는 페이지 전체를 스크롤함)
-    useEffect(() => {
-        if (isAtBottomRef.current) {
-            const el = logContainerRef.current;
-            if (el) el.scrollTop = el.scrollHeight;
-        }
-    }, [allLogs.length]);
-
     const quarterLabel = quarter <= 4 ? `Q${quarter}` : 'Final';
     const isUserTeam = (teamId: string) => teamId === userTeamId;
+
+    const pauseLabel = pauseReason === 'halftime'   ? '하프타임'
+                     : pauseReason === 'timeout'    ? '타임아웃'
+                     : pauseReason === 'quarterEnd' ? `Q${quarter} 종료`
+                     : '';
+
+    const TABS: { key: ActiveTab; label: string }[] = [
+        { key: 'court', label: '코트' },
+        { key: 'boxscore', label: '박스스코어' },
+        { key: 'shotchart', label: '샷차트' },
+        { key: 'rotation', label: '로테이션' },
+        { key: 'tactics', label: '전술 슬라이더' },
+    ];
 
     return (
         <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
 
-            {/* ── 헤더 Row 1: 스코어보드 ── */}
-            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-900 border-b border-slate-800">
-                {/* 원정팀 */}
-                <div className="flex items-center gap-2 w-1/3">
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                        style={{ backgroundColor: awayData?.colors.primary || '#334155', color: awayData?.colors.text || '#fff' }}>
-                        {awayTeam.id.toUpperCase().slice(0, 3)}
-                    </div>
-                    <div>
-                        <p className="text-[10px] text-slate-400">{awayData?.city}</p>
-                        <p className="text-sm font-bold">{awayData?.name || awayTeam.name}</p>
-                    </div>
-                    <span className="text-3xl font-black ml-2">{awayScore}</span>
-                </div>
+            {/* ── 스코어버그 헤더 ── */}
+            <div className="bg-slate-900 border-b border-slate-800 px-4 pt-3 pb-2 shrink-0">
 
-                {/* 중앙: 쿼터 + 시계 */}
-                <div className="flex flex-col items-center">
-                    <span className="text-xs text-slate-400 font-semibold">{quarterLabel}</span>
-                    <span className="text-2xl font-black tabular-nums">{formatClock(gameClock)}</span>
-                </div>
+                {/* 3분할 카드 그리드 */}
+                <div className="grid gap-3 items-stretch mb-2" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
 
-                {/* 홈팀 */}
-                <div className="flex items-center justify-end gap-2 w-1/3">
-                    <span className="text-3xl font-black mr-2">{homeScore}</span>
-                    <div className="text-right">
-                        <p className="text-[10px] text-slate-400">{homeData?.city}</p>
-                        <p className="text-sm font-bold">{homeData?.name || homeTeam.name}</p>
-                    </div>
-                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
-                        style={{ backgroundColor: homeData?.colors.primary || '#334155', color: homeData?.colors.text || '#fff' }}>
-                        {homeTeam.id.toUpperCase().slice(0, 3)}
-                    </div>
-                </div>
-            </div>
-
-            {/* ── 헤더 Row 2: 메타 정보 ── */}
-            <div className="flex items-center justify-between px-4 py-1.5 bg-slate-900 border-b border-slate-800 text-xs">
-                {/* 원정팀 메타 */}
-                <div className="flex items-center gap-3 text-slate-400">
-                    <span>TO {timeoutsLeft.away}회</span>
-                    <span>파울 —</span>
-                </div>
-
-                {/* 런 인디케이터 + 속도 */}
-                <div className="flex items-center gap-4">
-                    {activeRun && (() => {
-                        const runTeam = activeRun.teamId === homeTeam.id ? homeData : awayData;
-                        const diff = activeRun.teamPts - activeRun.oppPts;
-                        const showTimer = diff >= 8;
-                        return (
-                            <span className="font-bold" style={{ color: runTeam?.colors.primary || '#6366f1' }}>
-                                🔥 {runTeam?.name || activeRun.teamId.toUpperCase()} {activeRun.teamPts}-{activeRun.oppPts}
-                                {showTimer && ` · ${formatDuration(activeRun.durationSec)}`}
+                    {/* LEFT: 원정 카드 */}
+                    <div
+                        className="bg-slate-800/60 rounded-2xl px-4 py-2.5 border-l-4 flex flex-col gap-1"
+                        style={{ borderLeftColor: awayData?.colors.primary || '#334155' }}
+                    >
+                        <div className="flex items-center gap-2">
+                            {awayTeam.logo ? (
+                                <img src={awayTeam.logo} className="w-7 h-7 object-contain" alt="" />
+                            ) : (
+                                <div
+                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                                    style={{ backgroundColor: awayData?.colors.primary || '#334155', color: awayData?.colors.text || '#fff' }}
+                                >
+                                    {awayTeam.id.slice(0, 3).toUpperCase()}
+                                </div>
+                            )}
+                            <div>
+                                <p className="text-[9px] text-slate-400 leading-none">{awayData?.city || ''}</p>
+                                <p className="text-xs font-black uppercase tracking-wide leading-tight">{awayData?.name || awayTeam.name}</p>
+                            </div>
+                        </div>
+                        <span className="text-4xl font-black tabular-nums leading-none">{awayScore}</span>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                            <span>파울 <span className="text-white font-bold">{awayFouls}</span></span>
+                            <span className="flex gap-0.5">
+                                {Array.from({ length: 4 }).map((_, i) => (
+                                    <span key={i} className={i < timeoutsLeft.away ? 'text-indigo-400' : 'text-slate-700'}>●</span>
+                                ))}
                             </span>
-                        );
-                    })()}
+                        </div>
+                    </div>
 
-                    {/* 속도 토글 */}
+                    {/* CENTER: 시계 + 런 / 카운트다운 */}
+                    <div className="flex flex-col items-center justify-center gap-1 min-w-[120px] px-2">
+                        {pauseReason && pauseReason !== 'gameEnd' ? (
+                            // 일시정지 상태: 카운트다운 표시
+                            <>
+                                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest leading-none">
+                                    {pauseLabel}
+                                </span>
+                                <span className="text-3xl font-black tabular-nums text-amber-400 leading-none">
+                                    {pauseCountdown}
+                                </span>
+                                <button
+                                    onClick={resume}
+                                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
+                                >
+                                    종료
+                                </button>
+                            </>
+                        ) : (
+                            // 경기 중: 쿼터 + 시계 + 런
+                            <>
+                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
+                                    {quarterLabel}
+                                </span>
+                                <span className="text-3xl font-black tabular-nums text-white leading-none">
+                                    {formatClock(gameClock)}
+                                </span>
+                                {activeRun ? (
+                                    <div className="text-center leading-tight">
+                                        <span
+                                            className="text-[10px] font-black"
+                                            style={{ color: (activeRun.teamId === homeTeam.id ? homeData : awayData)?.colors.primary }}
+                                        >
+                                            🔥 {(activeRun.teamId === homeTeam.id ? homeData?.name : awayData?.name)?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}
+                                        </span>
+                                        <span className="text-[10px] font-bold text-white">
+                                            {' '}{activeRun.teamPts}-{activeRun.oppPts}
+                                            {(activeRun.teamPts - activeRun.oppPts) >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="h-4" />
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    {/* RIGHT: 홈 카드 */}
+                    <div
+                        className="bg-slate-800/60 rounded-2xl px-4 py-2.5 border-r-4 flex flex-col gap-1 items-end"
+                        style={{ borderRightColor: homeData?.colors.primary || '#334155' }}
+                    >
+                        <div className="flex items-center gap-2">
+                            <div className="text-right">
+                                <p className="text-[9px] text-slate-400 leading-none">{homeData?.city || ''}</p>
+                                <p className="text-xs font-black uppercase tracking-wide leading-tight">{homeData?.name || homeTeam.name}</p>
+                            </div>
+                            {homeTeam.logo ? (
+                                <img src={homeTeam.logo} className="w-7 h-7 object-contain" alt="" />
+                            ) : (
+                                <div
+                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
+                                    style={{ backgroundColor: homeData?.colors.primary || '#334155', color: homeData?.colors.text || '#fff' }}
+                                >
+                                    {homeTeam.id.slice(0, 3).toUpperCase()}
+                                </div>
+                            )}
+                        </div>
+                        <span className="text-4xl font-black tabular-nums leading-none">{homeScore}</span>
+                        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                            <span className="flex gap-0.5">
+                                {Array.from({ length: 4 }).map((_, i) => (
+                                    <span key={i} className={i < timeoutsLeft.home ? 'text-indigo-400' : 'text-slate-700'}>●</span>
+                                ))}
+                            </span>
+                            <span>파울 <span className="text-white font-bold">{homeFouls}</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* 컨트롤 바: 속도 + 타임아웃 */}
+                <div className="flex items-center justify-center gap-4">
                     <div className="flex gap-1">
                         {([1, 2, 4] as GameSpeed[]).map(s => (
                             <button
                                 key={s}
                                 onClick={() => setSpeed(s)}
-                                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-colors ${speed === s ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                                className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-colors
+                                    ${speed === s ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
                             >
                                 {s}x
                             </button>
                         ))}
                     </div>
-
-                    {/* 타임아웃 버튼 */}
-                    {isUserTeam(homeTeam.id) || isUserTeam(awayTeam.id) ? (
+                    {(isUserTeam(homeTeam.id) || isUserTeam(awayTeam.id)) && (
                         <button
                             onClick={callTimeout}
-                            disabled={pauseReason !== null || (isUserTeam(homeTeam.id) ? timeoutsLeft.home : timeoutsLeft.away) <= 0}
-                            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[10px] font-bold transition-colors"
+                            disabled={pauseReason !== null || userTimeoutsLeft <= 0}
+                            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500
+                                       disabled:opacity-40 disabled:cursor-not-allowed
+                                       text-white text-[10px] font-bold transition-colors"
                         >
-                            ⏸ 타임아웃 ({isUserTeam(homeTeam.id) ? timeoutsLeft.home : timeoutsLeft.away})
+                            ⏸ 타임아웃 ({userTimeoutsLeft})
                         </button>
-                    ) : null}
-                </div>
-
-                {/* 홈팀 메타 */}
-                <div className="flex items-center gap-3 text-slate-400 justify-end">
-                    <span>파울 —</span>
-                    <span>TO {timeoutsLeft.home}회</span>
+                    )}
                 </div>
             </div>
 
-            {/* ── 바디: 3컬럼 ── */}
+            {/* ── 탭 바 ── */}
+            <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0">
+                {TABS.map(({ key, label }) => (
+                    <button
+                        key={key}
+                        onClick={() => setActiveTab(key)}
+                        className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                            activeTab === key
+                                ? 'bg-indigo-600 text-white'
+                                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                    >
+                        {label}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── Body ── */}
             <div className="flex flex-1 overflow-hidden">
 
-                {/* LEFT: 원정팀 OnCourt */}
-                <div className="w-1/4 p-3 border-r border-slate-800 overflow-y-auto space-y-2 bg-slate-950">
-                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">
-                        {awayData?.name || awayTeam.name} — 코트
-                    </p>
-                    {awayOnCourt.map(p => (
-                        <PlayerCard
-                            key={p.playerId}
-                            player={p}
-                            isUser={!isUserHome}
-                            onSub={!isUserHome ? (id) => setSubOutId(id) : undefined}
-                        />
-                    ))}
-                </div>
-
-                {/* CENTER: PBP 로그 */}
-                <div className="flex-1 flex flex-col bg-slate-950">
-                    {/* PBP 로그 */}
-                    <div
-                        ref={logContainerRef}
-                        onScroll={handleLogScroll}
-                        className="flex-1 overflow-y-auto p-3 space-y-0.5"
-                    >
-                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">Play-by-Play</p>
-                        {allLogs.map((log, i) => (
-                            <div key={i} className="flex gap-2 text-xs py-0.5">
-                                <span className="text-slate-600 shrink-0 tabular-nums w-16">
-                                    Q{log.quarter} {log.timeRemaining}
-                                </span>
-                                <span className={logTypeClass(log.type)}>
-                                    {log.text}
-                                </span>
+                {/* ── 코트 탭 ── */}
+                {activeTab === 'court' && (
+                    <>
+                        {/* LEFT: 원정팀 OnCourt */}
+                        <div className="w-1/4 border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+                            <div className="px-3 py-2 border-b border-slate-800/50 shrink-0">
+                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                    {awayData?.name || awayTeam.name} — 코트
+                                </p>
                             </div>
-                        ))}
-                    </div>
-                </div>
+                            <OnCourtHeader />
+                            <div className="flex-1 overflow-y-auto">
+                                {awayOnCourt.map(p => (
+                                    <OnCourtRow
+                                        key={p.playerId}
+                                        player={p}
+                                        isUser={!isUserHome}
+                                        onSub={!isUserHome ? (id) => setSubOutId(id) : undefined}
+                                    />
+                                ))}
+                            </div>
+                        </div>
 
-                {/* RIGHT: 홈팀 OnCourt */}
-                <div className="w-1/4 p-3 border-l border-slate-800 overflow-y-auto space-y-2 bg-slate-950">
-                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1">
-                        {homeData?.name || homeTeam.name} — 코트
-                    </p>
-                    {homeOnCourt.map(p => (
-                        <PlayerCard
-                            key={p.playerId}
-                            player={p}
-                            isUser={isUserHome}
-                            onSub={isUserHome ? (id) => setSubOutId(id) : undefined}
-                        />
-                    ))}
-                </div>
+                        {/* CENTER: PBP 로그 (역순 — 최신이 상단) */}
+                        <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+                            <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
+                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">
+                                    Play-by-Play <span className="text-slate-700 font-normal normal-case">(최신 순)</span>
+                                </p>
+                                {allLogs.slice().reverse().map((log, i) => (
+                                    <div key={i} className="flex gap-2 text-xs py-0.5">
+                                        <span className="text-slate-600 shrink-0 tabular-nums w-16">
+                                            Q{log.quarter} {log.timeRemaining}
+                                        </span>
+                                        <span className={logTypeClass(log.type)}>
+                                            {log.text}
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* RIGHT: 홈팀 OnCourt */}
+                        <div className="w-1/4 border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+                            <div className="px-3 py-2 border-b border-slate-800/50 shrink-0">
+                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                    {homeData?.name || homeTeam.name} — 코트
+                                </p>
+                            </div>
+                            <OnCourtHeader />
+                            <div className="flex-1 overflow-y-auto">
+                                {homeOnCourt.map(p => (
+                                    <OnCourtRow
+                                        key={p.playerId}
+                                        player={p}
+                                        isUser={isUserHome}
+                                        onSub={isUserHome ? (id) => setSubOutId(id) : undefined}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    </>
+                )}
+
+                {/* ── 박스스코어 탭 ── */}
+                {activeTab === 'boxscore' && (
+                    <LiveBoxScoreTab
+                        homeTeam={homeTeam}
+                        awayTeam={awayTeam}
+                        homeBox={homeBox}
+                        awayBox={awayBox}
+                    />
+                )}
+
+                {/* ── 샷차트 탭 ── */}
+                {activeTab === 'shotchart' && (
+                    <LiveShotChart
+                        shotEvents={shotEvents}
+                        homeTeam={homeTeam}
+                        awayTeam={awayTeam}
+                    />
+                )}
+
+                {/* ── 로테이션 탭 ── */}
+                {activeTab === 'rotation' && (
+                    <LiveRotationTab
+                        userTactics={liveTactics}
+                        userTeam={userTeam}
+                        currentMinute={currentMinute}
+                        pauseReason={pauseReason}
+                    />
+                )}
+
+                {/* ── 전술 탭 ── */}
+                {activeTab === 'tactics' && (
+                    <LiveTacticsTab
+                        userTactics={liveTactics}
+                        userTeam={userTeam}
+                        onApplyTactics={applyTactics}
+                    />
+                )}
             </div>
 
-            {/* ── Pause Overlay ── */}
-            {pauseReason && pauseReason !== 'gameEnd' && (
-                <PauseOverlay
-                    reason={pauseReason}
-                    quarter={quarter}
-                    gameClock={gameClock}
-                    homeTeamName={homeData?.name || homeTeam.name}
-                    awayTeamName={awayData?.name || awayTeam.name}
-                    timeoutsLeft={isUserHome ? timeoutsLeft.home : timeoutsLeft.away}
-                    userOnCourt={userOnCourt}
-                    userBench={userBench}
-                    onSub={makeSubstitution}
-                    onResume={resume}
-                />
-            )}
-
+            {/* ── 경기 종료 오버레이 ── */}
             {isGameEnd && (
                 <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
                     <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 text-center">
@@ -448,7 +829,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                 </div>
             )}
 
-            {/* 인라인 교체 Modal (경기 중) */}
+            {/* ── 교체 Modal ── */}
             {subOutId && (
                 <SubModal
                     outPlayer={userOnCourt.find(p => p.playerId === subOutId)!}
