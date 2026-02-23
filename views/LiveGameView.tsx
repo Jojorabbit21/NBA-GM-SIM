@@ -65,8 +65,19 @@ function sortByPosition(players: LivePlayer[]): LivePlayer[] {
     );
 }
 
-// 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG%|3P%
+// 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG|3P
 const PLAYER_GRID = 'minmax(0,80px) repeat(12, 1fr)';
+
+// stat key → column index (0-based from first stat column)
+type StatKey = 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'fgm' | 'fga' | 'p3m' | 'p3a';
+const TRACKED_STATS: StatKey[] = ['pts', 'reb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a'];
+
+function getStatSnapshot(p: LivePlayer): Record<StatKey, number> {
+    return { pts: p.pts, reb: p.reb, ast: p.ast, stl: p.stl, blk: p.blk, tov: p.tov, pf: p.pf ?? 0, fgm: p.fgm, fga: p.fga, p3m: p.p3m, p3a: p.p3a };
+}
+
+// 셀 하이라이트 키: "playerId:statKey"
+type HighlightKey = string;
 
 // ─────────────────────────────────────────────────────────────
 // PlayerRow (on-court + bench 공통)
@@ -77,6 +88,7 @@ interface PlayerRowProps {
     dimmed?: boolean;
     draggable?: boolean;
     isDropTarget?: boolean;
+    highlightedStats?: Set<HighlightKey>;
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onDragOver?: (e: React.DragEvent) => void;
@@ -84,15 +96,17 @@ interface PlayerRowProps {
     onDrop?: (e: React.DragEvent) => void;
 }
 
+const hlBg = 'bg-amber-400/25';
+
 const PlayerRow: React.FC<PlayerRowProps> = ({
     player, dimmed = false, draggable = false, isDropTarget = false,
+    highlightedStats,
     onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
 }) => {
     const stamina = Math.round(player.currentCondition ?? 100);
     const staminaColor = stamina > 60 ? 'text-emerald-400' : stamina > 30 ? 'text-amber-400' : 'text-red-400';
-    const fgPct = player.fga > 0 ? Math.round(player.fgm / player.fga * 100) : null;
-    const p3Pct = player.p3a > 0 ? Math.round(player.p3m / player.p3a * 100) : null;
     const mp = Math.round(player.mp ?? 0);
+    const hl = (stat: StatKey) => highlightedStats?.has(`${player.playerId}:${stat}`) ? hlBg : '';
 
     return (
         <div
@@ -112,15 +126,15 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
             <span className="text-xs text-slate-500 text-center font-mono">{player.position}</span>
             <span className={`text-xs font-mono font-bold text-right ${staminaColor}`}>{stamina}%</span>
             <span className="text-xs font-mono text-slate-400 text-right">{mp}</span>
-            <span className="text-xs font-mono text-white text-right">{player.pts ?? 0}</span>
-            <span className="text-xs font-mono text-slate-300 text-right">{player.reb ?? 0}</span>
-            <span className="text-xs font-mono text-slate-300 text-right">{player.ast ?? 0}</span>
-            <span className="text-xs font-mono text-slate-400 text-right">{player.stl ?? 0}</span>
-            <span className="text-xs font-mono text-slate-400 text-right">{player.blk ?? 0}</span>
-            <span className="text-xs font-mono text-slate-400 text-right">{player.tov ?? 0}</span>
-            <span className={`text-xs font-mono text-right ${(player.pf ?? 0) >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{player.pf ?? 0}</span>
-            <span className="text-xs font-mono text-slate-400 text-right">{fgPct !== null ? `${fgPct}%` : '—'}</span>
-            <span className="text-xs font-mono text-slate-400 text-right">{p3Pct !== null ? `${p3Pct}%` : '—'}</span>
+            <span className={`text-xs font-mono text-white text-right transition-colors duration-300 ${hl('pts')}`}>{player.pts ?? 0}</span>
+            <span className={`text-xs font-mono text-slate-300 text-right transition-colors duration-300 ${hl('reb')}`}>{player.reb ?? 0}</span>
+            <span className={`text-xs font-mono text-slate-300 text-right transition-colors duration-300 ${hl('ast')}`}>{player.ast ?? 0}</span>
+            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('stl')}`}>{player.stl ?? 0}</span>
+            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('blk')}`}>{player.blk ?? 0}</span>
+            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('tov')}`}>{player.tov ?? 0}</span>
+            <span className={`text-xs font-mono text-right transition-colors duration-300 ${(player.pf ?? 0) >= 5 ? 'text-red-400' : 'text-slate-400'} ${hl('pf')}`}>{player.pf ?? 0}</span>
+            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('fgm') || hl('fga')}`}>{player.fgm}-{player.fga}</span>
+            <span className={`text-xs font-mono text-slate-400 text-right transition-colors duration-300 ${hl('p3m') || hl('p3a')}`}>{player.p3m}-{player.p3a}</span>
         </div>
     );
 };
@@ -141,8 +155,8 @@ const PlayerRowHeader: React.FC<{ label?: string }> = ({ label = '선수' }) => 
         <span className="text-right">BLK</span>
         <span className="text-right">TOV</span>
         <span className="text-right">PF</span>
-        <span className="text-right">FG%</span>
-        <span className="text-right">3P%</span>
+        <span className="text-right">FG</span>
+        <span className="text-right">3P</span>
     </div>
 );
 
@@ -154,30 +168,63 @@ interface OnCourtPanelProps {
     onCourt: LivePlayer[];
     bench: LivePlayer[];
     isUser: boolean;
-    primaryColor: string;
-    textColor: string;
-    teamName: string;
-    teamLogo: string;
-    isHome: boolean;
     onSubstitute: (outId: string, inId: string) => void;
 }
 
 const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
-    onCourt, bench, isUser, primaryColor, textColor, teamName: _teamName, teamLogo, isHome, onSubstitute,
+    onCourt, bench, isUser, onSubstitute,
 }) => {
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+    const [highlightedStats, setHighlightedStats] = useState<Set<HighlightKey>>(new Set());
+    const prevStatsRef = useRef<Record<string, Record<StatKey, number>>>({});
 
     const sortedOnCourt = useMemo(() => sortByPosition(onCourt), [onCourt]);
     const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
 
-    // 팀 합계 계산 (출전 중 + 휴식 중 전원, FG%/3P%만 평균)
+    // 스탯 변화 감지 → 하이라이트
+    useEffect(() => {
+        const allPlayers = [...onCourt, ...bench];
+        const prev = prevStatsRef.current;
+        const newHighlights: HighlightKey[] = [];
+
+        for (const p of allPlayers) {
+            const snap = getStatSnapshot(p);
+            const old = prev[p.playerId];
+            if (old) {
+                for (const k of TRACKED_STATS) {
+                    if (snap[k] !== old[k]) {
+                        newHighlights.push(`${p.playerId}:${k}`);
+                    }
+                }
+            }
+            prev[p.playerId] = snap;
+        }
+
+        if (newHighlights.length > 0) {
+            setHighlightedStats(s => {
+                const next = new Set(s);
+                for (const h of newHighlights) next.add(h);
+                return next;
+            });
+
+            const timer = setTimeout(() => {
+                setHighlightedStats(s => {
+                    const next = new Set(s);
+                    for (const h of newHighlights) next.delete(h);
+                    return next;
+                });
+            }, 800);
+
+            return () => clearTimeout(timer);
+        }
+    }, [onCourt, bench]);
+
+    // 팀 합계 계산 (FG/3P는 합산)
     const teamTotal = useMemo(() => {
         const all = [...onCourt, ...bench];
         if (all.length === 0) return null;
         const sum = (fn: (p: LivePlayer) => number) => all.reduce((acc, p) => acc + fn(p), 0);
-        const totalFga = sum(p => p.fga);
-        const totalP3a = sum(p => p.p3a);
         return {
             mp: Math.round(sum(p => p.mp ?? 0)),
             pts: sum(p => p.pts),
@@ -187,23 +234,15 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
             blk: sum(p => p.blk),
             tov: sum(p => p.tov),
             pf: sum(p => p.pf ?? 0),
-            fgPct: totalFga > 0 ? `${Math.round(sum(p => p.fgm) / totalFga * 100)}%` : '—',
-            p3Pct: totalP3a > 0 ? `${Math.round(sum(p => p.p3m) / totalP3a * 100)}%` : '—',
+            fgm: sum(p => p.fgm),
+            fga: sum(p => p.fga),
+            p3m: sum(p => p.p3m),
+            p3a: sum(p => p.p3a),
         };
     }, [onCourt, bench]);
 
     return (
         <div className="flex flex-col h-full overflow-hidden">
-            {/* 헤더 */}
-            <div
-                className={`shrink-0 px-3 py-2.5 border-b border-slate-800 flex items-center gap-2 ${isHome ? 'flex-row-reverse' : ''}`}
-                style={{ backgroundColor: primaryColor }}
-            >
-                <img src={teamLogo} className="w-6 h-6 object-contain shrink-0" alt="" />
-                <span className="text-xs font-black uppercase tracking-wider" style={{ color: textColor }}>
-                    On Court
-                </span>
-            </div>
             <PlayerRowHeader label="현재 뛰는 중" />
             {/* 스크롤 영역 */}
             <div
@@ -215,6 +254,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                     <PlayerRow
                         key={p.playerId}
                         player={p}
+                        highlightedStats={highlightedStats}
                         isDropTarget={isUser && draggedId !== null && dropTargetId === p.playerId}
                         onDragOver={isUser ? (e) => { e.preventDefault(); setDropTargetId(p.playerId); } : undefined}
                         onDragLeave={isUser ? () => setDropTargetId(null) : undefined}
@@ -240,12 +280,13 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                     <PlayerRow
                         key={p.playerId}
                         player={p}
+                        highlightedStats={highlightedStats}
                         draggable={isUser}
                         onDragStart={isUser ? () => setDraggedId(p.playerId) : undefined}
                         onDragEnd={isUser ? () => { setDraggedId(null); setDropTargetId(null); } : undefined}
                     />
                 ))}
-                {/* 팀 평균 행 */}
+                {/* 팀 합계 행 */}
                 {teamTotal && (
                     <>
                         <div className="border-t border-slate-700/60" />
@@ -264,8 +305,8 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.blk}</span>
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.tov}</span>
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.pf}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fgPct}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3Pct}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fgm}-{teamTotal.fga}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3m}-{teamTotal.p3a}</span>
                         </div>
                     </>
                 )}
@@ -827,11 +868,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 onCourt={awayOnCourt}
                                 bench={awayBench}
                                 isUser={!isUserHome}
-                                primaryColor={awayData?.colors.primary || '#6366f1'}
-                                textColor={awayData?.colors.text || '#ffffff'}
-                                teamName={awayData?.name || awayTeam.name}
-                                teamLogo={awayTeam.logo}
-                                isHome={false}
                                 onSubstitute={makeSubstitution}
                             />
                         </div>
@@ -999,11 +1035,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 onCourt={homeOnCourt}
                                 bench={homeBench}
                                 isUser={isUserHome}
-                                primaryColor={homeData?.colors.primary || '#6366f1'}
-                                textColor={homeData?.colors.text || '#ffffff'}
-                                teamName={homeData?.name || homeTeam.name}
-                                teamLogo={homeTeam.logo}
-                                isHome={true}
                                 onSubstitute={makeSubstitution}
                             />
                         </div>
