@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
 import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
 import { LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
@@ -67,95 +67,173 @@ function computeLeaders(homeBox: PlayerBoxScore[], awayBox: PlayerBoxScore[]): G
     };
 }
 
+const POSITION_ORDER: Record<string, number> = { PG: 0, SG: 1, SF: 2, PF: 3, C: 4 };
+
+function sortByPosition(players: LivePlayer[]): LivePlayer[] {
+    return [...players].sort((a, b) =>
+        (POSITION_ORDER[a.position] ?? 5) - (POSITION_ORDER[b.position] ?? 5)
+    );
+}
+
+// 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG%|3P%
+const PLAYER_GRID = '1fr 20px 28px 18px 18px 18px 18px 16px 16px 16px 16px 26px 26px';
+
 // ─────────────────────────────────────────────────────────────
-// OnCourt Row (테이블 행 형식)
+// PlayerRow (on-court + bench 공통)
 // ─────────────────────────────────────────────────────────────
 
-const OnCourtRow: React.FC<{
+interface PlayerRowProps {
     player: LivePlayer;
-    isUser: boolean;
-    onSub?: (id: string) => void;
-}> = ({ player, isUser, onSub }) => {
-    const stamina = Math.round(player.currentCondition);
-    const staminaColor = stamina > 60 ? 'text-emerald-400'
-                       : stamina > 30 ? 'text-amber-400'
-                       : 'text-red-400';
+    dimmed?: boolean;
+    draggable?: boolean;
+    isDropTarget?: boolean;
+    onDragStart?: () => void;
+    onDragEnd?: () => void;
+    onDragOver?: (e: React.DragEvent) => void;
+    onDragLeave?: () => void;
+    onDrop?: (e: React.DragEvent) => void;
+}
+
+const PlayerRow: React.FC<PlayerRowProps> = ({
+    player, dimmed = false, draggable = false, isDropTarget = false,
+    onDragStart, onDragEnd, onDragOver, onDragLeave, onDrop,
+}) => {
+    const stamina = Math.round(player.currentCondition ?? 100);
+    const staminaColor = stamina > 60 ? 'text-emerald-400' : stamina > 30 ? 'text-amber-400' : 'text-red-400';
+    const fgPct = player.fga > 0 ? Math.round(player.fgm / player.fga * 100) : null;
+    const p3Pct = player.p3a > 0 ? Math.round(player.p3m / player.p3a * 100) : null;
+    const mp = Math.round(player.mp ?? 0);
 
     return (
         <div
-            className={`grid items-center gap-x-2 px-3 py-1.5 transition-colors
-                ${isUser && onSub ? 'cursor-pointer hover:bg-slate-800/60 active:bg-slate-700/60' : 'hover:bg-slate-800/30'}`}
-            style={{ gridTemplateColumns: '1fr auto auto auto auto auto' }}
-            onClick={isUser && onSub ? () => onSub(player.playerId) : undefined}
+            draggable={draggable}
+            onDragStart={onDragStart}
+            onDragEnd={onDragEnd}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            className={`grid items-center gap-x-0.5 px-2 py-1 transition-colors select-none
+                ${dimmed ? 'opacity-60' : ''}
+                ${draggable ? 'cursor-grab active:cursor-grabbing hover:bg-slate-800/50' : 'hover:bg-slate-800/30'}
+                ${isDropTarget ? 'bg-indigo-800/40 ring-1 ring-inset ring-indigo-500/60' : ''}`}
+            style={{ gridTemplateColumns: PLAYER_GRID }}
         >
-            <span className="text-xs font-bold text-slate-200 truncate">{player.playerName}</span>
-            <span className="text-[10px] text-slate-500 w-6 text-center font-mono">{player.position}</span>
-            <span className={`text-[10px] font-mono font-bold w-9 text-right ${staminaColor}`}>
-                {stamina}%
-            </span>
-            <span className="text-[10px] font-mono text-white w-6 text-right">{player.pts ?? 0}</span>
-            <span className="text-[10px] font-mono text-slate-400 w-6 text-right">{player.reb ?? 0}</span>
-            <span className="text-[10px] font-mono text-slate-400 w-6 text-right">{player.ast ?? 0}</span>
+            <span className="text-[10px] font-semibold text-slate-200 truncate">{player.playerName}</span>
+            <span className="text-[9px] text-slate-500 text-center font-mono">{player.position}</span>
+            <span className={`text-[9px] font-mono font-bold text-right ${staminaColor}`}>{stamina}%</span>
+            <span className="text-[9px] font-mono text-slate-400 text-right">{mp}</span>
+            <span className="text-[9px] font-mono text-white text-right">{player.pts ?? 0}</span>
+            <span className="text-[9px] font-mono text-slate-300 text-right">{player.reb ?? 0}</span>
+            <span className="text-[9px] font-mono text-slate-300 text-right">{player.ast ?? 0}</span>
+            <span className="text-[9px] font-mono text-slate-400 text-right">{player.stl ?? 0}</span>
+            <span className="text-[9px] font-mono text-slate-400 text-right">{player.blk ?? 0}</span>
+            <span className="text-[9px] font-mono text-slate-400 text-right">{player.tov ?? 0}</span>
+            <span className={`text-[9px] font-mono text-right ${(player.pf ?? 0) >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{player.pf ?? 0}</span>
+            <span className="text-[9px] font-mono text-slate-400 text-right">{fgPct !== null ? `${fgPct}%` : '—'}</span>
+            <span className="text-[9px] font-mono text-slate-400 text-right">{p3Pct !== null ? `${p3Pct}%` : '—'}</span>
         </div>
     );
 };
 
-const OnCourtHeader: React.FC = () => (
+const PlayerRowHeader: React.FC = () => (
     <div
-        className="grid gap-x-2 px-3 py-1 text-[9px] font-bold text-slate-600 uppercase tracking-widest border-b border-slate-800"
-        style={{ gridTemplateColumns: '1fr auto auto auto auto auto' }}
+        className="grid gap-x-0.5 px-2 py-1 text-[9px] font-bold text-slate-600 uppercase tracking-widest border-b border-slate-800 shrink-0"
+        style={{ gridTemplateColumns: PLAYER_GRID }}
     >
         <span>선수</span>
-        <span className="w-6 text-center">P</span>
-        <span className="w-9 text-right">STM</span>
-        <span className="w-6 text-right">PTS</span>
-        <span className="w-6 text-right">REB</span>
-        <span className="w-6 text-right">AST</span>
+        <span className="text-center">P</span>
+        <span className="text-right">STM</span>
+        <span className="text-right">MP</span>
+        <span className="text-right">PTS</span>
+        <span className="text-right">REB</span>
+        <span className="text-right">AST</span>
+        <span className="text-right">STL</span>
+        <span className="text-right">BLK</span>
+        <span className="text-right">TOV</span>
+        <span className="text-right">PF</span>
+        <span className="text-right">FG%</span>
+        <span className="text-right">3P%</span>
     </div>
 );
 
 // ─────────────────────────────────────────────────────────────
-// Substitution Modal
+// OnCourt Panel (출전 중 + 벤치, 한 쪽 팀)
 // ─────────────────────────────────────────────────────────────
 
-const SubModal: React.FC<{
-    outPlayer: LivePlayer;
+interface OnCourtPanelProps {
+    onCourt: LivePlayer[];
     bench: LivePlayer[];
-    onSub: (inId: string) => void;
-    onClose: () => void;
-}> = ({ outPlayer, bench, onSub, onClose }) => (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-        <div className="bg-slate-900 border border-slate-700 rounded-2xl p-5 w-80" onClick={e => e.stopPropagation()}>
-            <h3 className="text-sm font-bold text-slate-200 mb-3">
-                <span className="text-red-400">{outPlayer.playerName}</span> OUT → 교체 선수 선택
-            </h3>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-                {bench.filter(p => p.health === 'Healthy' && p.pf < 6).map(p => (
-                    <button
-                        key={p.playerId}
-                        onClick={() => { onSub(p.playerId); onClose(); }}
-                        className="w-full flex justify-between items-center p-2.5 rounded-xl bg-slate-800 hover:bg-indigo-700 border border-slate-700 text-xs transition-colors"
-                    >
-                        <div className="text-left">
-                            <span className="text-slate-200 font-semibold">{p.playerName}</span>
-                            <span className="text-slate-500 ml-2">{p.position}</span>
-                        </div>
-                        <div className="text-right">
-                            <span className="text-indigo-400 font-bold">OVR {p.ovr}</span>
-                            <span className="text-slate-400 ml-2">{Math.round(p.currentCondition)}%</span>
-                        </div>
-                    </button>
-                ))}
-                {bench.filter(p => p.health === 'Healthy' && p.pf < 6).length === 0 && (
-                    <p className="text-slate-500 text-xs text-center py-4">가용 선수 없음</p>
-                )}
+    isUser: boolean;
+    primaryColor: string;
+    teamName: string;
+    onSubstitute: (outId: string, inId: string) => void;
+}
+
+const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
+    onCourt, bench, isUser, primaryColor, teamName, onSubstitute,
+}) => {
+    const [draggedId, setDraggedId] = useState<string | null>(null);
+    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+
+    const sortedOnCourt = useMemo(() => sortByPosition(onCourt), [onCourt]);
+    const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
+
+    return (
+        <div className="flex flex-col h-full overflow-hidden">
+            {/* 헤더 */}
+            <div
+                className="shrink-0 px-3 py-1.5 border-b border-slate-800 flex items-center gap-1.5"
+                style={{ backgroundColor: primaryColor + '28' }}
+            >
+                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: primaryColor }}>
+                    출전 중
+                </span>
+                <span className="text-[9px] text-slate-500">{teamName}</span>
             </div>
-            <button onClick={onClose} className="mt-3 w-full py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs transition-colors">
-                취소
-            </button>
+            <PlayerRowHeader />
+            {/* 스크롤 영역 */}
+            <div
+                className="flex-1 min-h-0 overflow-y-auto"
+                style={{ scrollbarWidth: 'none' } as React.CSSProperties}
+            >
+                {/* 코트 선수 */}
+                {sortedOnCourt.map(p => (
+                    <PlayerRow
+                        key={p.playerId}
+                        player={p}
+                        isDropTarget={isUser && draggedId !== null && dropTargetId === p.playerId}
+                        onDragOver={isUser ? (e) => { e.preventDefault(); setDropTargetId(p.playerId); } : undefined}
+                        onDragLeave={isUser ? () => setDropTargetId(null) : undefined}
+                        onDrop={isUser ? (e) => {
+                            e.preventDefault();
+                            if (draggedId) onSubstitute(p.playerId, draggedId);
+                            setDraggedId(null);
+                            setDropTargetId(null);
+                        } : undefined}
+                    />
+                ))}
+                {/* 벤치 구분선 */}
+                <div className="flex items-center gap-2 px-2 py-0.5 mt-0.5 border-t border-slate-800/60">
+                    <span className="text-[9px] text-slate-600 font-bold uppercase tracking-wider">BENCH</span>
+                    {isUser && (
+                        <span className="text-[9px] text-slate-700 font-normal">← 드래그로 교체</span>
+                    )}
+                </div>
+                {/* 벤치 선수 */}
+                {sortedBench.map(p => (
+                    <PlayerRow
+                        key={p.playerId}
+                        player={p}
+                        dimmed
+                        draggable={isUser}
+                        onDragStart={isUser ? () => setDraggedId(p.playerId) : undefined}
+                        onDragEnd={isUser ? () => { setDraggedId(null); setDropTargetId(null); } : undefined}
+                    />
+                ))}
+            </div>
         </div>
-    </div>
-);
+    );
+};
 
 // ─────────────────────────────────────────────────────────────
 // Full Court Shot Chart
@@ -181,11 +259,11 @@ const LiveShotChart: React.FC<{
     const homeColor = homeData?.colors.primary || '#6366f1';
     const awayColor = awayData?.colors.primary || '#f59e0b';
 
-    const displayShots = shotEvents.map(s => {
+    const displayShots = useMemo(() => shotEvents.map(s => {
         const isHome = s.teamId === homeTeam.id;
         const norm = normalizeShotForDisplay(s, isHome);
         return { ...s, ...norm, isHome };
-    });
+    }), [shotEvents, homeTeam.id]);
 
     const LeftBasketLines = () => (
         <g fill="none" stroke="#334155" strokeWidth="0.5">
@@ -214,12 +292,8 @@ const LiveShotChart: React.FC<{
     );
 
     return (
-        <div className="w-full h-full overflow-hidden">
-            <svg
-                viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`}
-                className="w-full h-full"
-                preserveAspectRatio="xMidYMid meet"
-            >
+        <div className="w-full" style={{ aspectRatio: `${COURT_WIDTH}/${COURT_HEIGHT}` }}>
+            <svg viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`} className="w-full h-full">
                 <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" rx="1" />
                 <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="none" stroke="#334155" strokeWidth="0.5" />
                 <LeftBasketLines />
@@ -299,7 +373,6 @@ const LiveRotationTab: React.FC<{
                     경기 중 읽기 전용 — 쿼터 종료/하프타임 시 편집 가능
                 </div>
             )}
-
             <div className="overflow-x-auto">
                 <table className="text-[10px] border-collapse w-full">
                     <thead>
@@ -396,7 +469,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const {
         displayState, callTimeout, applyTactics,
         makeSubstitution, resume, getResult,
-        userOnCourt, userBench, setSpeed,
+        setSpeed,
     } = useLiveGame(
         homeTeam, awayTeam, userTeamId, userTactics,
         isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart
@@ -405,37 +478,36 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const {
         homeScore, awayScore, quarter, gameClock,
         allLogs, pauseReason, isGameEnd,
-        timeoutsLeft, homeOnCourt, awayOnCourt, activeRun, speed,
-        shotEvents, homeBox, awayBox, homeFouls, awayFouls, userTactics: liveTactics,
+        timeoutsLeft, homeOnCourt, awayOnCourt,
+        homeBench, awayBench,
+        activeRun, speed,
+        shotEvents, homeBox, awayBox,
+        homeFouls, awayFouls, userTactics: liveTactics,
     } = displayState;
 
     const [activeTab, setActiveTab] = useState<ActiveTab>('court');
-    const [subOutId, setSubOutId] = useState<string | null>(null);
+    const [pbpQuarterFilter, setPbpQuarterFilter] = useState<0 | 1 | 2 | 3 | 4>(0);
     const [pauseCountdown, setPauseCountdown] = useState<number>(30);
     const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const resumeRef = useRef(resume);
 
-    // resume ref 최신 유지
     useEffect(() => { resumeRef.current = resume; });
 
     const isUserHome = homeTeam.id === userTeamId;
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
-
     const userTeam = isUserHome ? homeTeam : awayTeam;
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
-
     const currentMinute = Math.min(47, Math.floor(((quarter - 1) * 720 + (720 - gameClock)) / 60));
+    const maxSelectableQ = (isGameEnd ? 4 : quarter) as 0 | 1 | 2 | 3 | 4;
 
-    // 30초 카운트다운 (타임아웃/하프타임/쿼터 종료)
+    // 30초 카운트다운
     useEffect(() => {
         if (countdownRef.current) clearInterval(countdownRef.current);
-
         if (pauseReason === null || isGameEnd) {
             setPauseCountdown(30);
             return;
         }
-
         setPauseCountdown(30);
         countdownRef.current = setInterval(() => {
             setPauseCountdown(prev => {
@@ -448,16 +520,12 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                 return prev - 1;
             });
         }, 1000);
-
         return () => {
-            if (countdownRef.current) {
-                clearInterval(countdownRef.current);
-                countdownRef.current = null;
-            }
+            if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; }
         };
     }, [pauseReason, isGameEnd]);
 
-    // 경기 종료 처리 — 즉시 콜백 (팝업 없음)
+    // 경기 종료 처리
     useEffect(() => {
         if (isGameEnd) {
             const result = getResult();
@@ -473,12 +541,18 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                      : pauseReason === 'quarterEnd' ? `Q${quarter} 종료`
                      : '';
 
+    // PBP 필터링
+    const filteredLogs = useMemo(() => {
+        if (pbpQuarterFilter === 0) return allLogs.slice().reverse();
+        return allLogs.filter(l => l.quarter === pbpQuarterFilter).slice().reverse();
+    }, [allLogs, pbpQuarterFilter]);
+
     const TABS: { key: ActiveTab; label: string }[] = [
-        { key: 'court', label: '중계' },
+        { key: 'court',    label: '중계' },
         { key: 'boxscore', label: '박스스코어' },
-        { key: 'shotchart', label: '샷차트' },
+        { key: 'shotchart',label: '샷차트' },
         { key: 'rotation', label: '로테이션' },
-        { key: 'tactics', label: '전술 슬라이더' },
+        { key: 'tactics',  label: '전술 슬라이더' },
     ];
 
     return (
@@ -488,31 +562,26 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
             <div className="bg-slate-900 border-b border-slate-800 py-2 shrink-0">
                 <div className="flex flex-col items-center gap-1.5">
 
-                    {/* ── Row 1: 원정팀 정보+점수 | 시계+쿼터 | 홈팀 점수+정보 ── */}
+                    {/* Row 1: 원정 | 시계 | 홈 */}
                     <div className="flex items-center">
 
-                        {/* Away: 팀명 + 로고 + 점수 (우측 정렬) */}
+                        {/* Away */}
                         <div className="w-56 flex items-center justify-end gap-2 pr-4 border-r border-slate-700/60">
-                            <div className="text-right leading-tight min-w-0">
-                                <p className="text-[9px] text-slate-500 leading-none whitespace-nowrap truncate">{awayData?.city || ''}</p>
-                                <p className="text-[11px] font-black uppercase tracking-wide whitespace-nowrap truncate">{awayData?.name || awayTeam.name}</p>
+                            <div className="text-right leading-none min-w-0">
+                                <p className="text-xs font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                    {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
+                                </p>
                             </div>
                             <img src={awayTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
-                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">
-                                {awayScore}
-                            </span>
+                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">{awayScore}</span>
                         </div>
 
-                        {/* Center: 쿼터 + 시계 (경기 중) / 카운트다운 (일시정지) */}
+                        {/* Center */}
                         <div className="w-44 flex flex-col items-center justify-center px-3">
                             {pauseReason && pauseReason !== 'gameEnd' ? (
                                 <>
-                                    <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">
-                                        {pauseLabel}
-                                    </span>
-                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-tight">
-                                        {pauseCountdown}
-                                    </span>
+                                    <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">{pauseLabel}</span>
+                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-tight">{pauseCountdown}</span>
                                     <button
                                         onClick={resume}
                                         className="mt-0.5 px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
@@ -522,33 +591,26 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 </>
                             ) : (
                                 <>
-                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
-                                        {quarterLabel}
-                                    </span>
-                                    <span className="text-2xl font-black tabular-nums text-white leading-tight">
-                                        {formatClock(gameClock)}
-                                    </span>
+                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">{quarterLabel}</span>
+                                    <span className="text-2xl font-black tabular-nums text-white leading-tight">{formatClock(gameClock)}</span>
                                 </>
                             )}
                         </div>
 
-                        {/* Home: 점수 + 로고 + 팀명 (좌측 정렬) */}
+                        {/* Home */}
                         <div className="w-56 flex items-center justify-start gap-2 pl-4 border-l border-slate-700/60">
-                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">
-                                {homeScore}
-                            </span>
+                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">{homeScore}</span>
                             <img src={homeTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
-                            <div className="leading-tight min-w-0">
-                                <p className="text-[9px] text-slate-500 leading-none whitespace-nowrap truncate">{homeData?.city || ''}</p>
-                                <p className="text-[11px] font-black uppercase tracking-wide whitespace-nowrap truncate">{homeData?.name || homeTeam.name}</p>
+                            <div className="leading-none min-w-0">
+                                <p className="text-xs font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                    {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
+                                </p>
                             </div>
                         </div>
                     </div>
 
-                    {/* ── Row 2: 파울+타임아웃 | 런 인디케이터 | 파울+타임아웃 ── */}
+                    {/* Row 2: 파울+TO | 런 인디케이터 | TO+파울 */}
                     <div className="flex items-center">
-
-                        {/* Away meta (우측 정렬) */}
                         <div className="w-56 flex items-center justify-end gap-2.5 pr-4 text-[10px] text-slate-400">
                             <span>파울 <span className="text-white font-bold">{awayFouls}</span></span>
                             <span className="flex gap-0.5">
@@ -558,17 +620,13 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             </span>
                         </div>
 
-                        {/* Center: 런 인디케이터 */}
                         <div className="w-44 flex items-center justify-center px-3 min-h-[18px] overflow-hidden">
                             {activeRun && !pauseReason && (() => {
-                                const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
                                 const diff = activeRun.teamPts - activeRun.oppPts;
+                                const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
                                 return (
                                     <div className="flex items-center gap-1 whitespace-nowrap">
-                                        <span
-                                            className="text-[10px] font-black"
-                                            style={{ color: runTeamData?.colors.primary }}
-                                        >
+                                        <span className="text-[10px] font-black text-white">
                                             🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}
                                         </span>
                                         <span className="text-[10px] font-bold text-white">
@@ -580,7 +638,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             })()}
                         </div>
 
-                        {/* Home meta (좌측 정렬) */}
                         <div className="w-56 flex items-center justify-start gap-2.5 pl-4 text-[10px] text-slate-400">
                             <span className="flex gap-0.5">
                                 {Array.from({ length: 4 }).map((_, i) => (
@@ -591,15 +648,20 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         </div>
                     </div>
 
-                    {/* ── Row 3: 컨트롤 (배속 + 타임아웃) ── */}
+                    {/* Row 3: 컨트롤 */}
                     <div className="flex items-center gap-3">
-                        <div className="flex gap-1">
-                            {([1, 2, 4] as GameSpeed[]).map(s => (
+                        {/* 배속 버튼 그룹 */}
+                        <div className="flex rounded-lg overflow-hidden border border-slate-700">
+                            {([1, 2, 4] as GameSpeed[]).map((s, idx) => (
                                 <button
                                     key={s}
                                     onClick={() => setSpeed(s)}
-                                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-colors
-                                        ${speed === s ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                                    className={`px-3 py-0.5 text-[10px] font-bold transition-colors
+                                        ${idx > 0 ? 'border-l border-slate-700' : ''}
+                                        ${speed === s
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white'
+                                        }`}
                                 >
                                     {s}x
                                 </button>
@@ -613,7 +675,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                            disabled:opacity-40 disabled:cursor-not-allowed
                                            text-white text-[10px] font-bold transition-colors"
                             >
-                                ⏸ 타임아웃 ({userTimeoutsLeft})
+                                타임아웃 ({userTimeoutsLeft})
                             </button>
                         )}
                     </div>
@@ -641,78 +703,102 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
             {/* ── Body ── */}
             <div className="flex flex-1 overflow-hidden">
 
-                {/* ── 코트 탭 ── */}
+                {/* ── 중계 탭 ── */}
                 {activeTab === 'court' && (
                     <>
-                        {/* LEFT: 원정팀 OnCourt */}
-                        <div className="w-1/4 border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                            <div className="px-3 py-2 border-b border-slate-800/50 shrink-0">
-                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-                                    {awayData?.name || awayTeam.name} — 코트
-                                </p>
-                            </div>
-                            <OnCourtHeader />
-                            <div className="flex-1 overflow-y-auto">
-                                {awayOnCourt.map(p => (
-                                    <OnCourtRow
-                                        key={p.playerId}
-                                        player={p}
-                                        isUser={!isUserHome}
-                                        onSub={!isUserHome ? (id) => setSubOutId(id) : undefined}
-                                    />
-                                ))}
-                            </div>
+                        {/* LEFT: 원정팀 */}
+                        <div className="w-[30%] border-r border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+                            <OnCourtPanel
+                                onCourt={awayOnCourt}
+                                bench={awayBench}
+                                isUser={!isUserHome}
+                                primaryColor={awayData?.colors.primary || '#6366f1'}
+                                teamName={awayData?.name || awayTeam.name}
+                                onSubstitute={makeSubstitution}
+                            />
                         </div>
 
                         {/* CENTER: 샷차트(상단) + PBP 로그(하단) */}
                         <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
-                            {/* 샷차트 (상단 40%) */}
-                            <div className="h-[40%] border-b border-slate-800 shrink-0 overflow-hidden">
+                            {/* 샷차트 */}
+                            <div className="shrink-0 border-b border-slate-800">
                                 <LiveShotChart
                                     shotEvents={shotEvents}
                                     homeTeam={homeTeam}
                                     awayTeam={awayTeam}
                                 />
                             </div>
-                            {/* PBP 로그 (나머지 공간 채움) */}
-                            <div
-                                className="flex-1 min-h-0 overflow-y-auto p-3 space-y-0.5"
-                                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
-                            >
-                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">
-                                    Play-by-Play <span className="text-slate-700 font-normal normal-case">(최신 순)</span>
-                                </p>
-                                {allLogs.slice().reverse().map((log, i) => (
-                                    <div key={i} className="flex gap-2 text-xs py-0.5">
-                                        <span className="text-slate-600 shrink-0 tabular-nums w-16">
-                                            Q{log.quarter} {log.timeRemaining}
-                                        </span>
-                                        <span className={logTypeClass(log.type)}>
-                                            {log.text}
-                                        </span>
+
+                            {/* PBP 로그 */}
+                            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+                                {/* 헤더 + 필터 */}
+                                <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-950 border-b border-slate-800/60">
+                                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
+                                        Play-by-Play
+                                    </p>
+                                    <div className="flex gap-1">
+                                        {([0, 1, 2, 3, 4] as const).map(q => (
+                                            <button
+                                                key={q}
+                                                onClick={() => setPbpQuarterFilter(q)}
+                                                disabled={q > maxSelectableQ}
+                                                className={`px-2 py-0.5 rounded text-[9px] font-bold transition-colors
+                                                    disabled:opacity-30 disabled:cursor-not-allowed
+                                                    ${pbpQuarterFilter === q
+                                                        ? 'bg-indigo-600 text-white'
+                                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                                    }`}
+                                            >
+                                                {q === 0 ? '전체' : `${q}Q`}
+                                            </button>
+                                        ))}
                                     </div>
-                                ))}
+                                </div>
+                                {/* 스크롤 로그 */}
+                                <div
+                                    className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5"
+                                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
+                                >
+                                    {filteredLogs.map((log, i) => {
+                                        const isScoreEvent = log.type === 'score' || log.type === 'freethrow';
+                                        const awayScoreWhite = isScoreEvent && log.teamId === awayTeam.id;
+                                        const homeScoreWhite = isScoreEvent && log.teamId === homeTeam.id;
+                                        return (
+                                            <div key={i} className="flex items-baseline gap-1.5 text-[10px] py-0.5">
+                                                <span className="text-slate-600 shrink-0 tabular-nums w-14">
+                                                    Q{log.quarter} {log.timeRemaining}
+                                                </span>
+                                                {log.awayScore !== undefined && (
+                                                    <span className="shrink-0 tabular-nums text-[9px] w-10 text-right">
+                                                        <span className={awayScoreWhite ? 'text-white font-bold' : 'text-slate-600'}>
+                                                            {log.awayScore}
+                                                        </span>
+                                                        <span className="text-slate-700">-</span>
+                                                        <span className={homeScoreWhite ? 'text-white font-bold' : 'text-slate-600'}>
+                                                            {log.homeScore}
+                                                        </span>
+                                                    </span>
+                                                )}
+                                                <span className={`${logTypeClass(log.type)} min-w-0`}>
+                                                    {log.text}
+                                                </span>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         </div>
 
-                        {/* RIGHT: 홈팀 OnCourt */}
-                        <div className="w-1/4 border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-                            <div className="px-3 py-2 border-b border-slate-800/50 shrink-0">
-                                <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-                                    {homeData?.name || homeTeam.name} — 코트
-                                </p>
-                            </div>
-                            <OnCourtHeader />
-                            <div className="flex-1 overflow-y-auto">
-                                {homeOnCourt.map(p => (
-                                    <OnCourtRow
-                                        key={p.playerId}
-                                        player={p}
-                                        isUser={isUserHome}
-                                        onSub={isUserHome ? (id) => setSubOutId(id) : undefined}
-                                    />
-                                ))}
-                            </div>
+                        {/* RIGHT: 홈팀 */}
+                        <div className="w-[30%] border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+                            <OnCourtPanel
+                                onCourt={homeOnCourt}
+                                bench={homeBench}
+                                isUser={isUserHome}
+                                primaryColor={homeData?.colors.primary || '#6366f1'}
+                                teamName={homeData?.name || homeTeam.name}
+                                onSubstitute={makeSubstitution}
+                            />
                         </div>
                     </>
                 )}
@@ -729,11 +815,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
                 {/* ── 샷차트 탭 ── */}
                 {activeTab === 'shotchart' && (
-                    <LiveShotChart
-                        shotEvents={shotEvents}
-                        homeTeam={homeTeam}
-                        awayTeam={awayTeam}
-                    />
+                    <div className="flex-1 overflow-auto bg-slate-950 p-4 flex items-start justify-center">
+                        <div style={{ width: '100%', maxWidth: '900px' }}>
+                            <LiveShotChart
+                                shotEvents={shotEvents}
+                                homeTeam={homeTeam}
+                                awayTeam={awayTeam}
+                            />
+                        </div>
+                    </div>
                 )}
 
                 {/* ── 로테이션 탭 ── */}
@@ -755,16 +845,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     />
                 )}
             </div>
-
-            {/* ── 교체 Modal ── */}
-            {subOutId && (
-                <SubModal
-                    outPlayer={userOnCourt.find(p => p.playerId === subOutId)!}
-                    bench={userBench}
-                    onSub={(inId) => { makeSubstitution(subOutId, inId); setSubOutId(null); }}
-                    onClose={() => setSubOutId(null)}
-                />
-            )}
         </div>
     );
 };

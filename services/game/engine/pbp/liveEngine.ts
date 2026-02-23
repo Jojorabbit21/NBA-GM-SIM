@@ -218,6 +218,10 @@ export function stepPossession(state: GameState): StepResult {
 
     const newLogs = state.logs.slice(logsBefore);
 
+    // 각 로그에 현재 스코어 스냅샷 기록 (포세션 결과 적용 후)
+    { const sh = state.home.score, sa = state.away.score;
+      newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; }); }
+
     if (state.gameClock <= 0) {
         // Q4 종료 = 즉시 게임 종료 (30초 타이머 없음)
         if (state.quarter >= 4) {
@@ -275,6 +279,8 @@ function _handleGameEnd(state: GameState): StepResult {
     });
 
     const newLogs = state.logs.slice(logsBefore);
+    { const sh = state.home.score, sa = state.away.score;
+      newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; }); }
     return { result: null, isQuarterEnd: false, isGameEnd: true, newLogs };
 }
 

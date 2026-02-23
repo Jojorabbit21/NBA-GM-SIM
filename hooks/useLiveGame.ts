@@ -33,6 +33,8 @@ export interface LiveDisplayState {
     timeoutsLeft: { home: number; away: number };
     homeOnCourt: LivePlayer[];
     awayOnCourt: LivePlayer[];
+    homeBench: LivePlayer[];
+    awayBench: LivePlayer[];
     activeRun: {
         teamId: string;
         teamPts: number;        // 런 팀의 에포크 득점
@@ -136,6 +138,36 @@ export function useLiveGame(
             }
 
             syncDisplay();
+
+            // ── AI 타임아웃: 유저가 8pt+ 런 중이면 AI가 타임아웃 선언 ──
+            const m2 = state.momentum;
+            if (
+                m2.activeRun &&
+                m2.activeRun.teamId === userTeamId &&
+                pauseReasonRef.current === null
+            ) {
+                const userEpochPts = userTeamId === state.home.id ? m2.homeEpochPts : m2.awayEpochPts;
+                const aiEpochPts   = userTeamId === state.home.id ? m2.awayEpochPts : m2.homeEpochPts;
+                if (userEpochPts - aiEpochPts >= 8) {
+                    const aiTeam = state.home.id === userTeamId ? state.away : state.home;
+                    if (aiTeam.timeouts > 0) {
+                        clearInterval(intervalRef.current!);
+                        intervalRef.current = null;
+                        aiTeam.timeouts -= 1;
+                        const ts = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+                        resetMomentum(state, ts);
+                        state.logs.push({
+                            quarter: state.quarter,
+                            timeRemaining: _formatTime(state.gameClock),
+                            teamId: aiTeam.id,
+                            text: `타임아웃 (잔여: ${aiTeam.timeouts}회)`,
+                            type: 'info',
+                        });
+                        pauseReasonRef.current = 'timeout';
+                        syncDisplay();
+                    }
+                }
+            }
         }, BASE_INTERVAL_MS / speedRef.current);
     }, [syncDisplay]);
 
@@ -269,6 +301,8 @@ function _buildDisplay(
         timeoutsLeft: { home: state.home.timeouts, away: state.away.timeouts },
         homeOnCourt: [...state.home.onCourt],
         awayOnCourt: [...state.away.onCourt],
+        homeBench: [...state.home.bench] as LivePlayer[],
+        awayBench: [...state.away.bench] as LivePlayer[],
         activeRun,
         speed,
         shotEvents: [...state.shotEvents],
