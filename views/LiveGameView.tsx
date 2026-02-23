@@ -76,7 +76,7 @@ function sortByPosition(players: LivePlayer[]): LivePlayer[] {
 }
 
 // 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG%|3P%
-const PLAYER_GRID = '1fr 20px 28px 18px 18px 18px 18px 16px 16px 16px 16px 26px 26px';
+const PLAYER_GRID = 'minmax(0,80px) 18px 28px 20px 20px 20px 20px 18px 18px 18px 18px 28px 28px';
 
 // ─────────────────────────────────────────────────────────────
 // PlayerRow (on-court + bench 공통)
@@ -118,26 +118,26 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
                 ${isDropTarget ? 'bg-indigo-800/40 ring-1 ring-inset ring-indigo-500/60' : ''}`}
             style={{ gridTemplateColumns: PLAYER_GRID }}
         >
-            <span className="text-[10px] font-semibold text-slate-200 truncate">{player.playerName}</span>
-            <span className="text-[9px] text-slate-500 text-center font-mono">{player.position}</span>
-            <span className={`text-[9px] font-mono font-bold text-right ${staminaColor}`}>{stamina}%</span>
-            <span className="text-[9px] font-mono text-slate-400 text-right">{mp}</span>
-            <span className="text-[9px] font-mono text-white text-right">{player.pts ?? 0}</span>
-            <span className="text-[9px] font-mono text-slate-300 text-right">{player.reb ?? 0}</span>
-            <span className="text-[9px] font-mono text-slate-300 text-right">{player.ast ?? 0}</span>
-            <span className="text-[9px] font-mono text-slate-400 text-right">{player.stl ?? 0}</span>
-            <span className="text-[9px] font-mono text-slate-400 text-right">{player.blk ?? 0}</span>
-            <span className="text-[9px] font-mono text-slate-400 text-right">{player.tov ?? 0}</span>
-            <span className={`text-[9px] font-mono text-right ${(player.pf ?? 0) >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{player.pf ?? 0}</span>
-            <span className="text-[9px] font-mono text-slate-400 text-right">{fgPct !== null ? `${fgPct}%` : '—'}</span>
-            <span className="text-[9px] font-mono text-slate-400 text-right">{p3Pct !== null ? `${p3Pct}%` : '—'}</span>
+            <span className="text-xs font-semibold text-slate-200 truncate">{player.playerName}</span>
+            <span className="text-xs text-slate-500 text-center font-mono">{player.position}</span>
+            <span className={`text-xs font-mono font-bold text-right ${staminaColor}`}>{stamina}%</span>
+            <span className="text-xs font-mono text-slate-400 text-right">{mp}</span>
+            <span className="text-xs font-mono text-white text-right">{player.pts ?? 0}</span>
+            <span className="text-xs font-mono text-slate-300 text-right">{player.reb ?? 0}</span>
+            <span className="text-xs font-mono text-slate-300 text-right">{player.ast ?? 0}</span>
+            <span className="text-xs font-mono text-slate-400 text-right">{player.stl ?? 0}</span>
+            <span className="text-xs font-mono text-slate-400 text-right">{player.blk ?? 0}</span>
+            <span className="text-xs font-mono text-slate-400 text-right">{player.tov ?? 0}</span>
+            <span className={`text-xs font-mono text-right ${(player.pf ?? 0) >= 5 ? 'text-red-400' : 'text-slate-400'}`}>{player.pf ?? 0}</span>
+            <span className="text-xs font-mono text-slate-400 text-right">{fgPct !== null ? `${fgPct}%` : '—'}</span>
+            <span className="text-xs font-mono text-slate-400 text-right">{p3Pct !== null ? `${p3Pct}%` : '—'}</span>
         </div>
     );
 };
 
 const PlayerRowHeader: React.FC = () => (
     <div
-        className="grid gap-x-0.5 px-2 py-1 text-[9px] font-bold text-slate-600 uppercase tracking-widest border-b border-slate-800 shrink-0"
+        className="grid gap-x-0.5 px-2 py-1 text-[10px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-800 shrink-0"
         style={{ gridTemplateColumns: PLAYER_GRID }}
     >
         <span>선수</span>
@@ -165,12 +165,15 @@ interface OnCourtPanelProps {
     bench: LivePlayer[];
     isUser: boolean;
     primaryColor: string;
+    textColor: string;
     teamName: string;
+    teamLogo: string;
+    isHome: boolean;
     onSubstitute: (outId: string, inId: string) => void;
 }
 
 const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
-    onCourt, bench, isUser, primaryColor, teamName, onSubstitute,
+    onCourt, bench, isUser, primaryColor, textColor, teamName: _teamName, teamLogo, isHome, onSubstitute,
 }) => {
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -182,13 +185,13 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
         <div className="flex flex-col h-full overflow-hidden">
             {/* 헤더 */}
             <div
-                className="shrink-0 px-3 py-1.5 border-b border-slate-800 flex items-center gap-1.5"
-                style={{ backgroundColor: primaryColor + '28' }}
+                className={`shrink-0 px-3 py-2.5 border-b border-slate-800 flex items-center gap-2 ${isHome ? 'flex-row-reverse' : ''}`}
+                style={{ backgroundColor: primaryColor }}
             >
-                <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: primaryColor }}>
-                    출전 중
+                <img src={teamLogo} className="w-6 h-6 object-contain shrink-0" alt="" />
+                <span className="text-xs font-black uppercase tracking-wider" style={{ color: textColor }}>
+                    On Court
                 </span>
-                <span className="text-[9px] text-slate-500">{teamName}</span>
             </div>
             <PlayerRowHeader />
             {/* 스크롤 영역 */}
@@ -269,8 +272,6 @@ const LiveShotChart: React.FC<{
         <g fill="none" stroke="#334155" strokeWidth="0.5">
             <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
             <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
-            <line x1="0" y1="3" x2="14" y2="3" />
-            <line x1="0" y1="47" x2="14" y2="47" />
             <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
             <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
             <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
@@ -282,8 +283,6 @@ const LiveShotChart: React.FC<{
         <g fill="none" stroke="#334155" strokeWidth="0.5" transform={`scale(-1,1) translate(-${COURT_WIDTH},0)`}>
             <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
             <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
-            <line x1="0" y1="3" x2="14" y2="3" />
-            <line x1="0" y1="47" x2="14" y2="47" />
             <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
             <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
             <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
@@ -294,13 +293,22 @@ const LiveShotChart: React.FC<{
     return (
         <div className="w-full" style={{ aspectRatio: `${COURT_WIDTH}/${COURT_HEIGHT}` }}>
             <svg viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`} className="w-full h-full">
-                <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" rx="1" />
-                <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="none" stroke="#334155" strokeWidth="0.5" />
+                <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#020617" />
                 <LeftBasketLines />
                 <RightBasketLines />
                 <line x1="47" y1="0" x2="47" y2={COURT_HEIGHT} stroke="#334155" strokeWidth="0.5" />
                 <circle cx="47" cy={HOOP_Y_CENTER} r="6" fill="none" stroke="#334155" strokeWidth="0.5" />
                 <circle cx="47" cy={HOOP_Y_CENTER} r="2" fill="none" stroke="#334155" strokeWidth="0.5" />
+                {/* 홈팀 로고 중앙 */}
+                <image
+                    href={homeTeam.logo}
+                    x={COURT_WIDTH / 2 - 5}
+                    y={COURT_HEIGHT / 2 - 5}
+                    width="10"
+                    height="10"
+                    opacity="0.15"
+                    preserveAspectRatio="xMidYMid meet"
+                />
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
                     return (
@@ -566,9 +574,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     <div className="flex items-center">
 
                         {/* Away */}
-                        <div className="w-56 flex items-center justify-end gap-2 pr-4 border-r border-slate-700/60">
+                        <div className="w-60 flex items-center justify-end gap-2 pr-4 border-r border-slate-700/60">
                             <div className="text-right leading-none min-w-0">
-                                <p className="text-xs font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                <p className="text-sm font-black uppercase tracking-wide whitespace-nowrap truncate">
                                     {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
                                 </p>
                             </div>
@@ -598,11 +606,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         </div>
 
                         {/* Home */}
-                        <div className="w-56 flex items-center justify-start gap-2 pl-4 border-l border-slate-700/60">
+                        <div className="w-60 flex items-center justify-start gap-2 pl-4 border-l border-slate-700/60">
                             <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">{homeScore}</span>
                             <img src={homeTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
                             <div className="leading-none min-w-0">
-                                <p className="text-xs font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                <p className="text-sm font-black uppercase tracking-wide whitespace-nowrap truncate">
                                     {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
                                 </p>
                             </div>
@@ -611,7 +619,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
                     {/* Row 2: 파울+TO | 런 인디케이터 | TO+파울 */}
                     <div className="flex items-center">
-                        <div className="w-56 flex items-center justify-end gap-2.5 pr-4 text-[10px] text-slate-400">
+                        <div className="w-60 flex items-center justify-end gap-2.5 pr-4 text-[10px] text-slate-400">
                             <span>파울 <span className="text-white font-bold">{awayFouls}</span></span>
                             <span className="flex gap-0.5">
                                 {Array.from({ length: 4 }).map((_, i) => (
@@ -638,7 +646,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             })()}
                         </div>
 
-                        <div className="w-56 flex items-center justify-start gap-2.5 pl-4 text-[10px] text-slate-400">
+                        <div className="w-60 flex items-center justify-start gap-2.5 pl-4 text-[10px] text-slate-400">
                             <span className="flex gap-0.5">
                                 {Array.from({ length: 4 }).map((_, i) => (
                                     <span key={i} className={i < timeoutsLeft.home ? 'text-indigo-400' : 'text-slate-700'}>●</span>
@@ -652,11 +660,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     <div className="flex items-center gap-3">
                         {/* 배속 버튼 그룹 */}
                         <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                            {([1, 2, 4] as GameSpeed[]).map((s, idx) => (
+                            {([0.5, 1, 2, 4] as GameSpeed[]).map((s, idx) => (
                                 <button
                                     key={s}
                                     onClick={() => setSpeed(s)}
-                                    className={`px-3 py-0.5 text-[10px] font-bold transition-colors
+                                    className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors
                                         ${idx > 0 ? 'border-l border-slate-700' : ''}
                                         ${speed === s
                                             ? 'bg-indigo-600 text-white'
@@ -713,7 +721,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 bench={awayBench}
                                 isUser={!isUserHome}
                                 primaryColor={awayData?.colors.primary || '#6366f1'}
+                                textColor={awayData?.colors.text || '#ffffff'}
                                 teamName={awayData?.name || awayTeam.name}
+                                teamLogo={awayTeam.logo}
+                                isHome={false}
                                 onSubstitute={makeSubstitution}
                             />
                         </div>
@@ -796,7 +807,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 bench={homeBench}
                                 isUser={isUserHome}
                                 primaryColor={homeData?.colors.primary || '#6366f1'}
+                                textColor={homeData?.colors.text || '#ffffff'}
                                 teamName={homeData?.name || homeTeam.name}
+                                teamLogo={homeTeam.logo}
+                                isHome={true}
                                 onSubstitute={makeSubstitution}
                             />
                         </div>
