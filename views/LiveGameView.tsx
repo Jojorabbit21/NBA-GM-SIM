@@ -251,7 +251,6 @@ const LiveShotChart: React.FC<{
                     <svg
                         viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`}
                         className="w-full h-full"
-                        style={{ maxHeight: 'calc(100vh - 280px)' }}
                     >
                         <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#0f172a" rx="1" />
                         <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="none" stroke="#334155" strokeWidth="0.5" />
@@ -515,14 +514,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         };
     }, [pauseReason, isGameEnd]);
 
-    // 경기 종료 처리
+    // 경기 종료 처리 — 즉시 콜백 (팝업 없음)
     useEffect(() => {
         if (isGameEnd) {
             const result = getResult();
-            if (result) {
-                const timer = setTimeout(() => onGameEnd(result), 2500);
-                return () => clearTimeout(timer);
-            }
+            if (result) onGameEnd(result);
         }
     }, [isGameEnd, getResult, onGameEnd]);
 
@@ -535,7 +531,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                      : '';
 
     const TABS: { key: ActiveTab; label: string }[] = [
-        { key: 'court', label: '코트' },
+        { key: 'court', label: '중계' },
         { key: 'boxscore', label: '박스스코어' },
         { key: 'shotchart', label: '샷차트' },
         { key: 'rotation', label: '로테이션' },
@@ -554,21 +550,18 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
                         {/* Away: 팀명 + 로고 + 점수 (우측 정렬) */}
                         <div className="w-56 flex items-center justify-end gap-2 pr-4 border-r border-slate-700/60">
-                            <div className="text-right leading-tight">
-                                <p className="text-[9px] text-slate-500 leading-none">{awayData?.city || ''}</p>
-                                <p className="text-[11px] font-black uppercase tracking-wide">{awayData?.name || awayTeam.name}</p>
+                            <div className="text-right leading-tight min-w-0">
+                                <p className="text-[9px] text-slate-500 leading-none whitespace-nowrap truncate">{awayData?.city || ''}</p>
+                                <p className="text-[11px] font-black uppercase tracking-wide whitespace-nowrap truncate">{awayData?.name || awayTeam.name}</p>
                             </div>
                             <img src={awayTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
-                            <span
-                                className="text-3xl font-black tabular-nums leading-none"
-                                style={{ color: awayData?.colors.primary || '#e2e8f0' }}
-                            >
+                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">
                                 {awayScore}
                             </span>
                         </div>
 
                         {/* Center: 쿼터 + 시계 (경기 중) / 카운트다운 (일시정지) */}
-                        <div className="w-28 flex flex-col items-center justify-center px-3">
+                        <div className="w-44 flex flex-col items-center justify-center px-3">
                             {pauseReason && pauseReason !== 'gameEnd' ? (
                                 <>
                                     <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">
@@ -598,16 +591,13 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
                         {/* Home: 점수 + 로고 + 팀명 (좌측 정렬) */}
                         <div className="w-56 flex items-center justify-start gap-2 pl-4 border-l border-slate-700/60">
-                            <span
-                                className="text-3xl font-black tabular-nums leading-none"
-                                style={{ color: homeData?.colors.primary || '#e2e8f0' }}
-                            >
+                            <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">
                                 {homeScore}
                             </span>
                             <img src={homeTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
-                            <div className="leading-tight">
-                                <p className="text-[9px] text-slate-500 leading-none">{homeData?.city || ''}</p>
-                                <p className="text-[11px] font-black uppercase tracking-wide">{homeData?.name || homeTeam.name}</p>
+                            <div className="leading-tight min-w-0">
+                                <p className="text-[9px] text-slate-500 leading-none whitespace-nowrap truncate">{homeData?.city || ''}</p>
+                                <p className="text-[11px] font-black uppercase tracking-wide whitespace-nowrap truncate">{homeData?.name || homeTeam.name}</p>
                             </div>
                         </div>
                     </div>
@@ -626,12 +616,12 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         </div>
 
                         {/* Center: 런 인디케이터 */}
-                        <div className="w-28 flex items-center justify-center px-3 min-h-[18px]">
+                        <div className="w-44 flex items-center justify-center px-3 min-h-[18px] overflow-hidden">
                             {activeRun && !pauseReason && (() => {
                                 const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
                                 const diff = activeRun.teamPts - activeRun.oppPts;
                                 return (
-                                    <div className="text-center leading-tight">
+                                    <div className="flex items-center gap-1 whitespace-nowrap">
                                         <span
                                             className="text-[10px] font-black"
                                             style={{ color: runTeamData?.colors.primary }}
@@ -639,7 +629,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}
                                         </span>
                                         <span className="text-[10px] font-bold text-white">
-                                            {' '}{activeRun.teamPts}-{activeRun.oppPts}
+                                            {activeRun.teamPts}-{activeRun.oppPts}
                                             {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
                                         </span>
                                     </div>
@@ -689,7 +679,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
             </div>
 
             {/* ── 탭 바 ── */}
-            <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0">
+            <div className="flex items-center justify-center gap-1 px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0">
                 {TABS.map(({ key, label }) => (
                     <button
                         key={key}
@@ -731,8 +721,17 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             </div>
                         </div>
 
-                        {/* CENTER: PBP 로그 (역순 — 최신이 상단) */}
+                        {/* CENTER: 샷차트(상단) + PBP 로그(하단) */}
                         <div className="flex-1 flex flex-col bg-slate-950 overflow-hidden">
+                            {/* 샷차트 (상단 40%) */}
+                            <div className="h-[40%] border-b border-slate-800 shrink-0 overflow-hidden">
+                                <LiveShotChart
+                                    shotEvents={shotEvents}
+                                    homeTeam={homeTeam}
+                                    awayTeam={awayTeam}
+                                />
+                            </div>
+                            {/* PBP 로그 (하단 60%) */}
                             <div className="flex-1 overflow-y-auto p-3 space-y-0.5">
                                 <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-2">
                                     Play-by-Play <span className="text-slate-700 font-normal normal-case">(최신 순)</span>
@@ -810,21 +809,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     />
                 )}
             </div>
-
-            {/* ── 경기 종료 오버레이 ── */}
-            {isGameEnd && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-                    <div className="bg-slate-900 border border-slate-700 rounded-3xl p-8 text-center">
-                        <p className="text-2xl font-black text-white mb-2">경기 종료</p>
-                        <p className="text-4xl font-black">
-                            <span style={{ color: awayData?.colors.primary || '#6366f1' }}>{awayScore}</span>
-                            <span className="text-slate-400 mx-3">–</span>
-                            <span style={{ color: homeData?.colors.primary || '#6366f1' }}>{homeScore}</span>
-                        </p>
-                        <p className="text-slate-400 text-sm mt-3">결과 화면으로 이동 중...</p>
-                    </div>
-                </div>
-            )}
 
             {/* ── 교체 Modal ── */}
             {subOutId && (
