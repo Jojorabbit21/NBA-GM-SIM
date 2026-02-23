@@ -34,7 +34,7 @@ type ActiveTab = 'court' | 'boxscore' | 'shotchart' | 'rotation' | 'tactics';
 function formatClock(seconds: number): string {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 function formatDuration(sec: number): string {
@@ -171,6 +171,28 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
     const sortedOnCourt = useMemo(() => sortByPosition(onCourt), [onCourt]);
     const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
 
+    // 팀 평균 계산 (출전 중 + 휴식 중 전원)
+    const teamAvg = useMemo(() => {
+        const all = [...onCourt, ...bench];
+        if (all.length === 0) return null;
+        const n = all.length;
+        const sum = (fn: (p: LivePlayer) => number) => all.reduce((acc, p) => acc + fn(p), 0);
+        const totalFga = sum(p => p.fga);
+        const totalP3a = sum(p => p.p3a);
+        return {
+            mp: Math.round(sum(p => p.mp ?? 0) / n),
+            pts: (sum(p => p.pts) / n).toFixed(1),
+            reb: (sum(p => p.reb) / n).toFixed(1),
+            ast: (sum(p => p.ast) / n).toFixed(1),
+            stl: (sum(p => p.stl) / n).toFixed(1),
+            blk: (sum(p => p.blk) / n).toFixed(1),
+            tov: (sum(p => p.tov) / n).toFixed(1),
+            pf: (sum(p => p.pf ?? 0) / n).toFixed(1),
+            fgPct: totalFga > 0 ? `${Math.round(sum(p => p.fgm) / totalFga * 100)}%` : '—',
+            p3Pct: totalP3a > 0 ? `${Math.round(sum(p => p.p3m) / totalP3a * 100)}%` : '—',
+        };
+    }, [onCourt, bench]);
+
     return (
         <div className="flex flex-col h-full overflow-hidden">
             {/* 헤더 */}
@@ -205,11 +227,13 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                         } : undefined}
                     />
                 ))}
-                {/* 벤치 구분선 */}
-                <div className="flex items-center gap-2 px-2 py-0.5 mt-0.5 border-t border-slate-800/60">
-                    <span className="text-[10px] text-slate-600 font-bold tracking-wider">휴식 중</span>
+                {/* 출전/휴식 구분선 */}
+                <div className="border-t-2 border-slate-700/80 mt-1" />
+                {/* 휴식 중 헤더 */}
+                <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700/60">
+                    <span className="text-[10px] text-slate-500 font-bold tracking-wider">휴식 중</span>
                     {isUser && (
-                        <span className="text-[9px] text-slate-700 font-normal">← 드래그로 교체</span>
+                        <span className="text-[9px] text-slate-600 font-normal">← 드래그로 교체</span>
                     )}
                 </div>
                 {/* 벤치 선수 */}
@@ -217,12 +241,35 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                     <PlayerRow
                         key={p.playerId}
                         player={p}
-                        dimmed
                         draggable={isUser}
                         onDragStart={isUser ? () => setDraggedId(p.playerId) : undefined}
                         onDragEnd={isUser ? () => { setDraggedId(null); setDropTargetId(null); } : undefined}
                     />
                 ))}
+                {/* 팀 평균 행 */}
+                {teamAvg && (
+                    <>
+                        <div className="border-t border-slate-700/60" />
+                        <div
+                            className="grid items-center gap-x-0.5 px-2 py-1.5 bg-slate-800/40"
+                            style={{ gridTemplateColumns: PLAYER_GRID }}
+                        >
+                            <span className="text-xs font-black text-slate-400 truncate">TEAM AVG</span>
+                            <span className="text-xs text-center" />
+                            <span className="text-xs text-right" />
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.mp}</span>
+                            <span className="text-xs font-mono text-white text-right">{teamAvg.pts}</span>
+                            <span className="text-xs font-mono text-slate-300 text-right">{teamAvg.reb}</span>
+                            <span className="text-xs font-mono text-slate-300 text-right">{teamAvg.ast}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.stl}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.blk}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.tov}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.pf}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.fgPct}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamAvg.p3Pct}</span>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -470,7 +517,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 }) => {
     const {
         displayState, callTimeout, applyTactics,
-        makeSubstitution, resume, getResult,
+        makeSubstitution, resume, pause, getResult,
         setSpeed,
     } = useLiveGame(
         homeTeam, awayTeam, userTeamId, userTactics,
@@ -568,9 +615,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     <div className="flex items-center">
 
                         {/* Away */}
-                        <div className="w-60 flex items-center justify-end gap-2 pr-4 border-r border-slate-700/60">
+                        <div className="w-60 flex items-center justify-end gap-2 pr-4">
                             <div className="text-right leading-none min-w-0">
-                                <p className="text-sm font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                <p className="text-lg font-black uppercase tracking-wide whitespace-nowrap truncate">
                                     {awayData ? `${awayData.city} ${awayData.name}` : awayTeam.name}
                                 </p>
                             </div>
@@ -592,19 +639,19 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     </button>
                                 </>
                             ) : (
-                                <>
-                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">{quarterLabel}</span>
-                                    <span className="text-2xl font-black tabular-nums text-white leading-tight">{formatClock(gameClock)}</span>
-                                </>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">{quarterLabel}</span>
+                                    <span className="text-2xl font-black tabular-nums text-white leading-none">{formatClock(gameClock)}</span>
+                                </div>
                             )}
                         </div>
 
                         {/* Home */}
-                        <div className="w-60 flex items-center justify-start gap-2 pl-4 border-l border-slate-700/60">
+                        <div className="w-60 flex items-center justify-start gap-2 pl-4">
                             <span className="text-3xl font-black tabular-nums leading-none text-white shrink-0">{homeScore}</span>
                             <img src={homeTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
                             <div className="leading-none min-w-0">
-                                <p className="text-sm font-black uppercase tracking-wide whitespace-nowrap truncate">
+                                <p className="text-lg font-black uppercase tracking-wide whitespace-nowrap truncate">
                                     {homeData ? `${homeData.city} ${homeData.name}` : homeTeam.name}
                                 </p>
                             </div>
@@ -680,6 +727,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 타임아웃 ({userTimeoutsLeft})
                             </button>
                         )}
+                        <button
+                            onClick={pauseReason ? resume : pause}
+                            disabled={isGameEnd}
+                            className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
+                                       disabled:opacity-40 disabled:cursor-not-allowed
+                                       text-slate-300 text-[10px] font-bold transition-colors"
+                        >
+                            {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
+                        </button>
                     </div>
 
                 </div>
