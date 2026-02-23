@@ -16,7 +16,7 @@ import {
 
 export type PauseReason = 'timeout' | 'quarterEnd' | 'halftime' | 'gameEnd';
 
-export type GameSpeed = 1 | 2 | 4; // 포세션 간격 배수
+export type GameSpeed = 0.5 | 1 | 2 | 4; // 포세션 간격 배수
 
 /** 포세션당 ms (1x = 600ms) */
 const BASE_INTERVAL_MS = 600;
