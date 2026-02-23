@@ -7,6 +7,7 @@ import { TEAM_DATA } from '../data/teamData';
 import { BoxScoreTable, GameStatLeaders } from '../components/game/BoxScoreTable';
 import { TacticsSlidersPanel } from '../components/dashboard/tactics/TacticsSlidersPanel';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
+import { UserPlus, UserMinus, Clock } from 'lucide-react';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -42,17 +43,6 @@ function formatDuration(sec: number): string {
     return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function logTypeClass(type: PbpLog['type']): string {
-    switch (type) {
-        case 'score':     return 'text-emerald-400';
-        case 'miss':      return 'text-slate-400';
-        case 'block':     return 'text-blue-400';
-        case 'turnover':  return 'text-red-400';
-        case 'foul':      return 'text-amber-400';
-        case 'freethrow': return 'text-cyan-400';
-        default:          return 'text-slate-500';
-    }
-}
 
 function computeLeaders(homeBox: PlayerBoxScore[], awayBox: PlayerBoxScore[]): GameStatLeaders {
     const all = [...homeBox, ...awayBox];
@@ -748,58 +738,144 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                                 {/* 헤더 + 필터 */}
                                 <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-950 border-b border-slate-800/60">
-                                    <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5">
-                                        Play-by-Play
-                                    </p>
-                                    <div className="flex gap-1">
-                                        {([0, 1, 2, 3, 4] as const).map(q => (
-                                            <button
-                                                key={q}
-                                                onClick={() => setPbpQuarterFilter(q)}
-                                                disabled={q > maxSelectableQ}
-                                                className={`px-2 py-0.5 rounded text-[9px] font-bold transition-colors
-                                                    disabled:opacity-30 disabled:cursor-not-allowed
-                                                    ${pbpQuarterFilter === q
-                                                        ? 'bg-indigo-600 text-white'
-                                                        : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-                                                    }`}
-                                            >
-                                                {q === 0 ? '전체' : `${q}Q`}
-                                            </button>
-                                        ))}
+                                    <div className="flex items-center gap-3">
+                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                            Play-by-Play
+                                        </p>
+                                        <div className="flex gap-1">
+                                            {([0, 1, 2, 3, 4] as const).map(q => (
+                                                <button
+                                                    key={q}
+                                                    onClick={() => setPbpQuarterFilter(q)}
+                                                    disabled={q > maxSelectableQ}
+                                                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition-colors
+                                                        disabled:opacity-30 disabled:cursor-not-allowed
+                                                        ${pbpQuarterFilter === q
+                                                            ? 'bg-indigo-600 text-white'
+                                                            : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                                                        }`}
+                                                >
+                                                    {q === 0 ? '전체' : `${q}Q`}
+                                                </button>
+                                            ))}
+                                        </div>
                                     </div>
                                 </div>
                                 {/* 스크롤 로그 */}
                                 <div
-                                    className="flex-1 min-h-0 overflow-y-auto px-3 py-2 space-y-0.5"
+                                    className="flex-1 min-h-0 overflow-y-auto font-mono text-xs"
                                     style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' } as React.CSSProperties}
                                 >
-                                    {filteredLogs.map((log, i) => {
-                                        const isScoreEvent = log.type === 'score' || log.type === 'freethrow';
-                                        const awayScoreWhite = isScoreEvent && log.teamId === awayTeam.id;
-                                        const homeScoreWhite = isScoreEvent && log.teamId === homeTeam.id;
-                                        return (
-                                            <div key={i} className="flex items-baseline gap-1.5 text-[10px] py-0.5">
-                                                <span className="text-slate-600 shrink-0 tabular-nums w-14">
-                                                    Q{log.quarter} {log.timeRemaining}
-                                                </span>
-                                                {log.awayScore !== undefined && (
-                                                    <span className="shrink-0 tabular-nums text-[9px] w-10 text-right">
-                                                        <span className={awayScoreWhite ? 'text-white font-bold' : 'text-slate-600'}>
-                                                            {log.awayScore}
-                                                        </span>
-                                                        <span className="text-slate-700">-</span>
-                                                        <span className={homeScoreWhite ? 'text-white font-bold' : 'text-slate-600'}>
-                                                            {log.homeScore}
-                                                        </span>
-                                                    </span>
-                                                )}
-                                                <span className={`${logTypeClass(log.type)} min-w-0`}>
-                                                    {log.text}
-                                                </span>
+                                    <div className="divide-y divide-slate-800/50">
+                                        {filteredLogs.map((log, i) => {
+                                            const isHome = log.teamId === homeTeam.id;
+                                            const isScore = log.type === 'score';
+                                            const isFT = log.type === 'freethrow';
+                                            const isFoul = log.type === 'foul';
+                                            const isTurnover = log.type === 'turnover';
+                                            const isBlock = log.type === 'block';
+                                            const isInfo = log.type === 'info';
+                                            const isFlowEvent = log.text.includes('경기 시작') || log.text.includes('종료') || log.text.includes('하프 타임');
+
+                                            if (isFlowEvent) {
+                                                return (
+                                                    <div key={i} className="flex items-center justify-center py-2.5 bg-slate-800/40 border-y border-slate-800">
+                                                        <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-[10px] uppercase tracking-widest">
+                                                            <Clock size={12} />
+                                                            <span>{log.text}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            }
+
+                                            // 교체 로그
+                                            if (log.text.startsWith('교체:')) {
+                                                const inMatch = log.text.match(/IN \[(.*?)\]/);
+                                                const outMatch = log.text.match(/OUT \[(.*?)\]/);
+                                                if (inMatch && outMatch) {
+                                                    const inPlayers = inMatch[1].split(',').map(s => s.trim());
+                                                    const outPlayers = outMatch[1].split(',').map(s => s.trim());
+                                                    return (
+                                                        <div key={i} className="flex items-start py-2 px-3 gap-3 hover:bg-white/5 transition-colors">
+                                                            <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-[10px] text-center pt-0.5">
+                                                                {log.quarter}Q
+                                                            </div>
+                                                            <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-[10px] text-center pt-0.5">
+                                                                {log.timeRemaining || '-'}
+                                                            </div>
+                                                            <div className="flex-1 flex flex-col gap-0.5 text-[10px]">
+                                                                <div className="flex items-center gap-1.5 text-emerald-400">
+                                                                    <UserPlus size={11} />
+                                                                    <span>IN:</span>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {inPlayers.map((p, j) => <span key={j} className="font-bold">{p}</span>)}
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center gap-1.5 text-red-400">
+                                                                    <UserMinus size={11} />
+                                                                    <span>OUT:</span>
+                                                                    <div className="flex flex-wrap gap-1.5">
+                                                                        {outPlayers.map((p, j) => <span key={j} className="font-bold opacity-80">{p}</span>)}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                            }
+
+                                            let textColor = 'text-slate-400';
+                                            if (isInfo) textColor = 'text-slate-300';
+                                            else if (isScore) textColor = 'text-slate-200';
+                                            else if (isFT) textColor = 'text-cyan-400';
+                                            else if (isFoul) textColor = 'text-orange-400';
+                                            else if (isTurnover) textColor = 'text-red-400';
+                                            else if (isBlock) textColor = 'text-blue-400';
+
+                                            let bgClass = 'hover:bg-white/5 transition-colors';
+                                            if (isInfo) bgClass = 'bg-slate-800/30';
+
+                                            return (
+                                                <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>
+                                                    {/* 쿼터 */}
+                                                    <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-[10px] text-center">
+                                                        {log.quarter}Q
+                                                    </div>
+                                                    {/* 시간 */}
+                                                    <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-[10px] text-center">
+                                                        {log.timeRemaining || '-'}
+                                                    </div>
+                                                    {/* 원정 로고 */}
+                                                    <div className="flex-shrink-0 w-5 flex justify-center">
+                                                        <img src={awayTeam.logo} className={`w-4 h-4 object-contain ${!isHome ? 'opacity-100' : 'opacity-30 grayscale'}`} alt="" />
+                                                    </div>
+                                                    {/* 스코어 */}
+                                                    <div className="flex-shrink-0 w-12 text-center">
+                                                        {log.awayScore !== undefined && (
+                                                            <div className="font-black text-slate-500 text-[10px] tracking-tight">
+                                                                <span className={!isHome && (isScore || isFT) ? 'text-white' : ''}>{log.awayScore}</span>
+                                                                <span className="mx-0.5 text-slate-700">:</span>
+                                                                <span className={isHome && (isScore || isFT) ? 'text-white' : ''}>{log.homeScore}</span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {/* 홈 로고 */}
+                                                    <div className="flex-shrink-0 w-5 flex justify-center">
+                                                        <img src={homeTeam.logo} className={`w-4 h-4 object-contain ${isHome ? 'opacity-100' : 'opacity-30 grayscale'}`} alt="" />
+                                                    </div>
+                                                    {/* 메시지 */}
+                                                    <div className={`flex-1 break-words leading-relaxed text-[10px] ${textColor}`}>
+                                                        {log.text}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                        {filteredLogs.length === 0 && (
+                                            <div className="py-10 text-center text-slate-600 text-xs">
+                                                해당 쿼터의 기록이 없습니다.
                                             </div>
-                                        );
-                                    })}
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
