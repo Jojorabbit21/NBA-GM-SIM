@@ -229,7 +229,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
     }, [onCourt, bench]);
 
     return (
-        <div className="flex flex-col h-full overflow-hidden">
+        <div className="flex flex-col min-h-0 overflow-hidden shrink">
             <PlayerRowHeader label="현재 뛰는 중" />
             {/* 스크롤 영역 */}
             <div
@@ -957,7 +957,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 onSubstitute={makeSubstitution}
                             />
                             {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
-                            <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col">
+                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col">
                                 {!isUserHome ? (
                                     <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                         <div className="px-3 pt-2 pb-1">
@@ -998,7 +998,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             {/* PBP 로그 */}
                             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                                 {/* 헤더 + 필터 */}
-                                <div className="shrink-0 px-3 pt-2 pb-1.5 border-b border-slate-800">
+                                <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-900 border-b border-slate-800">
                                     <div className="flex items-center gap-3">
                                         <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
                                             Play-by-Play
@@ -1149,7 +1149,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 onSubstitute={makeSubstitution}
                             />
                             {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
-                            <div className="flex-1 min-h-0 border-t border-slate-800 flex flex-col">
+                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col">
                                 {isUserHome ? (
                                     <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                         <div className="px-3 pt-2 pb-1">
