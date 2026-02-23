@@ -546,34 +546,77 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
 
             {/* ── 스코어버그 헤더 ── */}
-            <div className="bg-slate-900 border-b border-slate-800 px-4 pt-3 pb-2 shrink-0">
+            <div className="bg-slate-900 border-b border-slate-800 py-2 shrink-0">
+                <div className="flex flex-col items-center gap-1.5">
 
-                {/* 3분할 카드 그리드 */}
-                <div className="grid gap-3 items-stretch mb-2" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
+                    {/* ── Row 1: 원정팀 정보+점수 | 시계+쿼터 | 홈팀 점수+정보 ── */}
+                    <div className="flex items-center">
 
-                    {/* LEFT: 원정 카드 */}
-                    <div
-                        className="bg-slate-800/60 rounded-2xl px-4 py-2.5 border-l-4 flex flex-col gap-1"
-                        style={{ borderLeftColor: awayData?.colors.primary || '#334155' }}
-                    >
-                        <div className="flex items-center gap-2">
-                            {awayTeam.logo ? (
-                                <img src={awayTeam.logo} className="w-7 h-7 object-contain" alt="" />
+                        {/* Away: 팀명 + 로고 + 점수 (우측 정렬) */}
+                        <div className="w-56 flex items-center justify-end gap-2 pr-4 border-r border-slate-700/60">
+                            <div className="text-right leading-tight">
+                                <p className="text-[9px] text-slate-500 leading-none">{awayData?.city || ''}</p>
+                                <p className="text-[11px] font-black uppercase tracking-wide">{awayData?.name || awayTeam.name}</p>
+                            </div>
+                            <img src={awayTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
+                            <span
+                                className="text-3xl font-black tabular-nums leading-none"
+                                style={{ color: awayData?.colors.primary || '#e2e8f0' }}
+                            >
+                                {awayScore}
+                            </span>
+                        </div>
+
+                        {/* Center: 쿼터 + 시계 (경기 중) / 카운트다운 (일시정지) */}
+                        <div className="w-28 flex flex-col items-center justify-center px-3">
+                            {pauseReason && pauseReason !== 'gameEnd' ? (
+                                <>
+                                    <span className="text-[9px] font-bold text-amber-400 uppercase tracking-widest leading-none">
+                                        {pauseLabel}
+                                    </span>
+                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-tight">
+                                        {pauseCountdown}
+                                    </span>
+                                    <button
+                                        onClick={resume}
+                                        className="mt-0.5 px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
+                                    >
+                                        종료
+                                    </button>
+                                </>
                             ) : (
-                                <div
-                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
-                                    style={{ backgroundColor: awayData?.colors.primary || '#334155', color: awayData?.colors.text || '#fff' }}
-                                >
-                                    {awayTeam.id.slice(0, 3).toUpperCase()}
-                                </div>
+                                <>
+                                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-widest leading-none">
+                                        {quarterLabel}
+                                    </span>
+                                    <span className="text-2xl font-black tabular-nums text-white leading-tight">
+                                        {formatClock(gameClock)}
+                                    </span>
+                                </>
                             )}
-                            <div>
-                                <p className="text-[9px] text-slate-400 leading-none">{awayData?.city || ''}</p>
-                                <p className="text-xs font-black uppercase tracking-wide leading-tight">{awayData?.name || awayTeam.name}</p>
+                        </div>
+
+                        {/* Home: 점수 + 로고 + 팀명 (좌측 정렬) */}
+                        <div className="w-56 flex items-center justify-start gap-2 pl-4 border-l border-slate-700/60">
+                            <span
+                                className="text-3xl font-black tabular-nums leading-none"
+                                style={{ color: homeData?.colors.primary || '#e2e8f0' }}
+                            >
+                                {homeScore}
+                            </span>
+                            <img src={homeTeam.logo} className="w-7 h-7 object-contain shrink-0" alt="" />
+                            <div className="leading-tight">
+                                <p className="text-[9px] text-slate-500 leading-none">{homeData?.city || ''}</p>
+                                <p className="text-[11px] font-black uppercase tracking-wide">{homeData?.name || homeTeam.name}</p>
                             </div>
                         </div>
-                        <span className="text-4xl font-black tabular-nums leading-none">{awayScore}</span>
-                        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+                    </div>
+
+                    {/* ── Row 2: 파울+타임아웃 | 런 인디케이터 | 파울+타임아웃 ── */}
+                    <div className="flex items-center">
+
+                        {/* Away meta (우측 정렬) */}
+                        <div className="w-56 flex items-center justify-end gap-2.5 pr-4 text-[10px] text-slate-400">
                             <span>파울 <span className="text-white font-bold">{awayFouls}</span></span>
                             <span className="flex gap-0.5">
                                 {Array.from({ length: 4 }).map((_, i) => (
@@ -581,78 +624,31 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 ))}
                             </span>
                         </div>
-                    </div>
 
-                    {/* CENTER: 시계 + 런 / 카운트다운 */}
-                    <div className="flex flex-col items-center justify-center gap-1 min-w-[120px] px-2">
-                        {pauseReason && pauseReason !== 'gameEnd' ? (
-                            // 일시정지 상태: 카운트다운 표시
-                            <>
-                                <span className="text-[10px] font-bold text-amber-400 uppercase tracking-widest leading-none">
-                                    {pauseLabel}
-                                </span>
-                                <span className="text-3xl font-black tabular-nums text-amber-400 leading-none">
-                                    {pauseCountdown}
-                                </span>
-                                <button
-                                    onClick={resume}
-                                    className="px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
-                                >
-                                    종료
-                                </button>
-                            </>
-                        ) : (
-                            // 경기 중: 쿼터 + 시계 + 런
-                            <>
-                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-                                    {quarterLabel}
-                                </span>
-                                <span className="text-3xl font-black tabular-nums text-white leading-none">
-                                    {formatClock(gameClock)}
-                                </span>
-                                {activeRun ? (
+                        {/* Center: 런 인디케이터 */}
+                        <div className="w-28 flex items-center justify-center px-3 min-h-[18px]">
+                            {activeRun && !pauseReason && (() => {
+                                const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
+                                const diff = activeRun.teamPts - activeRun.oppPts;
+                                return (
                                     <div className="text-center leading-tight">
                                         <span
                                             className="text-[10px] font-black"
-                                            style={{ color: (activeRun.teamId === homeTeam.id ? homeData : awayData)?.colors.primary }}
+                                            style={{ color: runTeamData?.colors.primary }}
                                         >
-                                            🔥 {(activeRun.teamId === homeTeam.id ? homeData?.name : awayData?.name)?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}
+                                            🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}
                                         </span>
                                         <span className="text-[10px] font-bold text-white">
                                             {' '}{activeRun.teamPts}-{activeRun.oppPts}
-                                            {(activeRun.teamPts - activeRun.oppPts) >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
+                                            {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
                                         </span>
                                     </div>
-                                ) : (
-                                    <div className="h-4" />
-                                )}
-                            </>
-                        )}
-                    </div>
-
-                    {/* RIGHT: 홈 카드 */}
-                    <div
-                        className="bg-slate-800/60 rounded-2xl px-4 py-2.5 border-r-4 flex flex-col gap-1 items-end"
-                        style={{ borderRightColor: homeData?.colors.primary || '#334155' }}
-                    >
-                        <div className="flex items-center gap-2">
-                            <div className="text-right">
-                                <p className="text-[9px] text-slate-400 leading-none">{homeData?.city || ''}</p>
-                                <p className="text-xs font-black uppercase tracking-wide leading-tight">{homeData?.name || homeTeam.name}</p>
-                            </div>
-                            {homeTeam.logo ? (
-                                <img src={homeTeam.logo} className="w-7 h-7 object-contain" alt="" />
-                            ) : (
-                                <div
-                                    className="w-7 h-7 rounded-full flex items-center justify-center text-[9px] font-black shrink-0"
-                                    style={{ backgroundColor: homeData?.colors.primary || '#334155', color: homeData?.colors.text || '#fff' }}
-                                >
-                                    {homeTeam.id.slice(0, 3).toUpperCase()}
-                                </div>
-                            )}
+                                );
+                            })()}
                         </div>
-                        <span className="text-4xl font-black tabular-nums leading-none">{homeScore}</span>
-                        <div className="flex items-center gap-3 text-[10px] text-slate-400">
+
+                        {/* Home meta (좌측 정렬) */}
+                        <div className="w-56 flex items-center justify-start gap-2.5 pl-4 text-[10px] text-slate-400">
                             <span className="flex gap-0.5">
                                 {Array.from({ length: 4 }).map((_, i) => (
                                     <span key={i} className={i < timeoutsLeft.home ? 'text-indigo-400' : 'text-slate-700'}>●</span>
@@ -661,33 +657,34 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <span>파울 <span className="text-white font-bold">{homeFouls}</span></span>
                         </div>
                     </div>
-                </div>
 
-                {/* 컨트롤 바: 속도 + 타임아웃 */}
-                <div className="flex items-center justify-center gap-4">
-                    <div className="flex gap-1">
-                        {([1, 2, 4] as GameSpeed[]).map(s => (
+                    {/* ── Row 3: 컨트롤 (배속 + 타임아웃) ── */}
+                    <div className="flex items-center gap-3">
+                        <div className="flex gap-1">
+                            {([1, 2, 4] as GameSpeed[]).map(s => (
+                                <button
+                                    key={s}
+                                    onClick={() => setSpeed(s)}
+                                    className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-colors
+                                        ${speed === s ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                                >
+                                    {s}x
+                                </button>
+                            ))}
+                        </div>
+                        {(isUserTeam(homeTeam.id) || isUserTeam(awayTeam.id)) && (
                             <button
-                                key={s}
-                                onClick={() => setSpeed(s)}
-                                className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-colors
-                                    ${speed === s ? 'bg-indigo-600 text-white' : 'bg-slate-700 text-slate-400 hover:bg-slate-600'}`}
+                                onClick={callTimeout}
+                                disabled={pauseReason !== null || userTimeoutsLeft <= 0}
+                                className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-white text-[10px] font-bold transition-colors"
                             >
-                                {s}x
+                                ⏸ 타임아웃 ({userTimeoutsLeft})
                             </button>
-                        ))}
+                        )}
                     </div>
-                    {(isUserTeam(homeTeam.id) || isUserTeam(awayTeam.id)) && (
-                        <button
-                            onClick={callTimeout}
-                            disabled={pauseReason !== null || userTimeoutsLeft <= 0}
-                            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-500
-                                       disabled:opacity-40 disabled:cursor-not-allowed
-                                       text-white text-[10px] font-bold transition-colors"
-                        >
-                            ⏸ 타임아웃 ({userTimeoutsLeft})
-                        </button>
-                    )}
+
                 </div>
             </div>
 
