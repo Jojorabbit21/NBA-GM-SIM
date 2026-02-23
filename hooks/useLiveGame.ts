@@ -58,6 +58,7 @@ export interface UseLiveGameReturn {
     applyTactics: (newSliders: GameTactics['sliders']) => void;
     makeSubstitution: (outId: string, inId: string) => void;
     resume: () => void;
+    pause: () => void;           // 개발/디버그용 일시정지
     // 경기 종료 후
     getResult: () => SimulationResult | null;
     // OnCourt / Bench (교체 UI용 — 유저 팀만)
@@ -230,6 +231,17 @@ export function useLiveGame(
         startInterval();
     }, [startInterval]);
 
+    const pause = useCallback(() => {
+        if (isGameEndRef.current) return;
+        if (pauseReasonRef.current !== null) return; // 이미 정지 중
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        pauseReasonRef.current = 'timeout';
+        syncDisplay();
+    }, [syncDisplay]);
+
     const getResult = useCallback((): SimulationResult | null => {
         if (!isGameEndRef.current) return null;
         return extractSimResult(gameStateRef.current);
@@ -257,6 +269,7 @@ export function useLiveGame(
         applyTactics,
         makeSubstitution,
         resume,
+        pause,
         getResult,
         userOnCourt: userTeam.onCourt,
         userBench: userTeam.bench,
