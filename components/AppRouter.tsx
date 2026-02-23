@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { AppView, Team } from '../types';
+import { AppView, Team, GameTactics } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
+import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
 import { DashboardView } from '../views/DashboardView';
 import { RosterView } from '../views/RosterView';
@@ -38,6 +39,29 @@ const AppRouter: React.FC<AppRouterProps> = ({
             setSelectedTeamId(null);
         }
     }, [view]);
+
+    // Live Game Mode (인터랙티브 경기)
+    if (view === 'LiveGame' && sim.liveGameTarget) {
+        const { homeTeam, awayTeam, userGame } = sim.liveGameTarget;
+        const userTactics: GameTactics = gameData.userTactics!;
+        const homeDepthChart = homeTeam.id === gameData.myTeamId ? gameData.depthChart : null;
+        const awayDepthChart = awayTeam.id === gameData.myTeamId ? gameData.depthChart : null;
+
+        return (
+            <LiveGameView
+                homeTeam={homeTeam}
+                awayTeam={awayTeam}
+                userTeamId={gameData.myTeamId!}
+                userTactics={userTactics}
+                homeDepthChart={homeDepthChart}
+                awayDepthChart={awayDepthChart}
+                onGameEnd={async (result) => {
+                    await sim.finalizeLiveGame(result);
+                    setView('GameResult');
+                }}
+            />
+        );
+    }
 
     if (view === 'GameSim' && sim.activeGame) {
         // [Fix] Pass pbpLogs AND pbpShotEvents to View so animation follows actual engine events

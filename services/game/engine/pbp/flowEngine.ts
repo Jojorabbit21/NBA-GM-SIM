@@ -36,7 +36,8 @@ export function calculateHitRate(
     bonusHitRate: number,
     acePlayerId?: string,
     isBotchedSwitch: boolean = false,
-    isSwitch: boolean = false
+    isSwitch: boolean = false,
+    minHitRate?: number // [New] Buzzer beater: enforce hit rate lower bound
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -146,8 +147,12 @@ export function calculateHitRate(
         hitRate -= (offSliders.pace - 5) * 0.01;
     }
 
+    let finalRate = Math.max(0.05, Math.min(0.95, hitRate));
+    // Buzzer beater: enforce lower bound (minHitRate) if provided
+    if (minHitRate !== undefined) finalRate = Math.max(finalRate, minHitRate);
+
     return {
-        rate: Math.max(0.05, Math.min(0.95, hitRate)),
+        rate: finalRate,
         matchupEffect,
         isAceTarget: isStopperActive,
         isMismatch

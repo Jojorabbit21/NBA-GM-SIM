@@ -109,31 +109,45 @@ export interface InjuryEvent {
     timeRemaining: string;
 }
 
+// [New] Momentum/Run tracking for Live Game Mode
+export interface MomentumState {
+    homeEpochPts: number;       // 현재 에포크 내 홈팀 누적 득점
+    awayEpochPts: number;       // 현재 에포크 내 원정팀 누적 득점
+    epochStartTotalSec: number; // 에포크 시작 시점 (경기 총 경과초)
+    activeRun: {
+        teamId: string;
+        startTotalSec: number;  // diff ≥ 8 달성 순간 (타이머 기준)
+    } | null;
+}
+
 export interface GameState {
     home: TeamState;
     away: TeamState;
-    
-    quarter: number; 
-    gameClock: number; 
-    shotClock: number; 
-    
+
+    quarter: number;
+    gameClock: number;
+    shotClock: number;
+
     possession: 'home' | 'away';
     isDeadBall: boolean;
-    
+
     logs: PbpLog[];
-    
+
     // Config
     isHomeB2B: boolean;
     isAwayB2B: boolean;
 
     // [New] Rotation Tracking
     rotationHistory: RotationData;
-    
+
     // [New] Shot Chart Data
     shotEvents: ShotEvent[];
 
     // [New] Injury Tracking
     injuries: InjuryEvent[];
+
+    // [New] Momentum/Run System (Live Game Mode)
+    momentum: MomentumState;
 }
 
 export interface PossessionResult {
