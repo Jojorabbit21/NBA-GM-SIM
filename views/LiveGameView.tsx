@@ -689,13 +689,13 @@ const LiveShotChart: React.FC<{
         <div className="w-full" style={{ aspectRatio: '940/500' }}>
             <svg viewBox="0 0 940 500" className="w-full h-full">
                 {/* Court Background */}
-                <rect width="940" height="500" fill="#020617" />
+                <rect width="940" height="500" fill="rgb(221,200,173)" />
                 {/* Paint Fills */}
-                <rect y="170" width="190" height="160" fill="#0f172a" />
-                <rect x="750" y="170" width="190" height="160" fill="#0f172a" />
+                <rect y="170" width="190" height="160" fill="rgb(195,172,145)" />
+                <rect x="750" y="170" width="190" height="160" fill="rgb(195,172,145)" />
 
                 {/* ── Court Lines ── */}
-                <g fill="none" stroke="#334155" strokeWidth="2" strokeMiterlimit="10">
+                <g fill="none" stroke="#4a3728" strokeWidth="2" strokeMiterlimit="10">
                     {/* Left 3-Point Line */}
                     <path d="M0,30h140s150,55,150,220-150,220,-150,220H0" />
                     {/* Left Paint (open on baseline) */}
@@ -724,9 +724,9 @@ const LiveShotChart: React.FC<{
                     <line x1="85" y1="182" x2="85" y2="190" />
                     <line x1="70" y1="182" x2="70" y2="190" />
                     {/* Left Backboard */}
-                    <line x1="40" y1="222" x2="40" y2="278" stroke="white" />
+                    <line x1="40" y1="222" x2="40" y2="278" stroke="#333" />
                     {/* Left Basket */}
-                    <circle cx="48" cy="250" r="7.5" stroke="white" />
+                    <circle cx="48" cy="250" r="7.5" stroke="#e65100" />
 
                     {/* Center Line */}
                     <line x1="470" x2="470" y2="500" />
@@ -762,9 +762,9 @@ const LiveShotChart: React.FC<{
                     <line x1="855" y1="318" x2="855" y2="310" />
                     <line x1="870" y1="318" x2="870" y2="310" />
                     {/* Right Backboard */}
-                    <line x1="900" y1="278" x2="900" y2="222" stroke="white" />
+                    <line x1="900" y1="278" x2="900" y2="222" stroke="#333" />
                     {/* Right Basket */}
-                    <circle cx="892" cy="250" r="7.5" stroke="white" />
+                    <circle cx="892" cy="250" r="7.5" stroke="#e65100" />
                 </g>
 
                 {/* Shot Dots (coords in 94x50, scaled to 940x500) */}
@@ -773,11 +773,11 @@ const LiveShotChart: React.FC<{
                     return (
                         <g key={`${shot.id}-${i}`}>
                             {shot.isMake ? (
-                                <circle cx={shot.x * S} cy={shot.y * S} r={6.5} fill={color} stroke="white" strokeWidth="1" opacity="0.9" />
+                                <circle cx={shot.x * S} cy={shot.y * S} r={6.5} fill={color} stroke="#333" strokeWidth="1" opacity="0.9" />
                             ) : (
-                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`} opacity="0.6">
-                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke="#cbd5e1" strokeWidth="2.5" />
-                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke="#cbd5e1" strokeWidth="2.5" />
+                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`} opacity="0.7">
+                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke="#64748b" strokeWidth="2.5" />
+                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke="#64748b" strokeWidth="2.5" />
                                 </g>
                             )}
                         </g>
