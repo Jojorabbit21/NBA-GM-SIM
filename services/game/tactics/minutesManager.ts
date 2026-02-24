@@ -1,5 +1,6 @@
 
 import { Player, TacticalSliders } from '../../../types';
+import { calculatePlayerOvr } from '../../../utils/constants';
 
 // ==========================================================================================
 //  MINUTES MANAGER
@@ -7,7 +8,7 @@ import { Player, TacticalSliders } from '../../../types';
 // ==========================================================================================
 
 // Stable Sort Helper: OVR desc, then ID asc (to ensure deterministic results)
-export const stableSort = (a: Player, b: Player) => b.ovr - a.ovr || a.id.localeCompare(b.id);
+export const stableSort = (a: Player, b: Player) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id);
 
 export function distributeMinutes(roster: Player[], isStarter: boolean[], limits: Record<string, number>, sliders: TacticalSliders): number[] {
     const totalMinutes = 240;

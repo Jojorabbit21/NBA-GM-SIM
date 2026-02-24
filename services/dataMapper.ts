@@ -140,12 +140,7 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']) || 'fa';
     const teamId = resolveTeamId(rawTeamId);
     
-    // 3. Determine OVR (ALWAYS CALCULATE FROM STATS)
-    const ovr = calculateOvr(statsObj, position);
-    
-    // Determine Potential
     const potentialRaw = Number(getCol(p, ['pot', 'potential', 'POT', 'Potential']));
-    const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Handle Known Injuries - Enhanced Matching Logic
     let health = (getCol(p, ['health']) || 'Healthy') as 'Healthy' | 'Injured' | 'Day-to-Day';
@@ -187,6 +182,11 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const calculatedDef = Math.round((statsObj.intDef + statsObj.perDef + statsObj.steal + statsObj.blk + statsObj.helpDefIq + statsObj.passPerc + statsObj.defConsist) / 7);
     const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb) / 2);
     const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
+
+    // 3. Determine OVR from recalculated categories (ensures player.ovr === calculatePlayerOvr(player))
+    const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth };
+    const ovr = calculateOvr(ovrInput, position);
+    const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Zero-initialize zone stats in fallback to prevent undefined errors in UI
     const defaultStats = { 

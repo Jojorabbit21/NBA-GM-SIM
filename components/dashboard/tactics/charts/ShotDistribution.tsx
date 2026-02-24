@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { TacticalSliders, Player } from '../../../../types';
+import { calculatePlayerOvr } from '../../../../utils/constants';
 import { PLAY_TYPES } from './playTypeConstants';
 
 interface ShotDistributionProps {
@@ -40,7 +41,7 @@ const calcZoneProbs = (
 
 export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, roster }) => {
     const data = useMemo(() => {
-        const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
+        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
         const rot = sorted.slice(0, Math.min(8, sorted.length));
         const avg = (key: string) => rot.length > 0
             ? rot.reduce((s, p) => s + ((p as any)[key] || 70), 0) / rot.length

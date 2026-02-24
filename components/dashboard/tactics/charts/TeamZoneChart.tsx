@@ -77,22 +77,20 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                         })}
                     </g>
 
-                    {/* Court Lines */}
-                    <g fill="none" stroke="#0f172a" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
+                    {/* Court Lines — brighter for visibility */}
+                    <g fill="none" stroke="#334155" strokeWidth="1.5" strokeOpacity="1" pointerEvents="none">
                         {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
                     </g>
 
-                    {/* Zone Labels */}
+                    {/* Zone Labels — FG% and M/A only (no delta) */}
                     <g pointerEvents="none">
                         {zones.map((z, i) => {
                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
                             const style = getZoneStyle(z.data.m, z.data.a, z.avg);
                             const colors = getZonePillColors(style.delta, z.data.a > 0);
-                            const deltaPct = Math.round(style.delta * 100);
-                            const deltaStr = deltaPct >= 0 ? `+${deltaPct}` : `${deltaPct}`;
                             const hasData = z.data.a > 0;
-                            const width = 52;
-                            const height = hasData ? 44 : 30;
+                            const width = 54;
+                            const height = hasData ? 36 : 26;
 
                             return (
                                 <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -105,18 +103,13 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                                         strokeWidth={1}
                                         fillOpacity={0.95}
                                     />
-                                    <text textAnchor="middle" y={hasData ? -10 : -1} fill={colors.textFill} fontSize="12" fontWeight="800">
+                                    <text textAnchor="middle" y={hasData ? -6 : 1} fill={colors.textFill} fontSize="14" fontWeight="800">
                                         {pct}%
                                     </text>
                                     {hasData && (
-                                        <>
-                                            <text textAnchor="middle" y={3} fill="#ffffff" fontSize="9" fontWeight="600">
-                                                {z.data.m}/{z.data.a}
-                                            </text>
-                                            <text textAnchor="middle" y={15} fill={deltaPct >= 0 ? '#34d399' : '#64748b'} fontSize="8" fontWeight="700">
-                                                {deltaStr}
-                                            </text>
-                                        </>
+                                        <text textAnchor="middle" y={10} fill="#ffffff" fontSize="11" fontWeight="600">
+                                            {z.data.m}/{z.data.a}
+                                        </text>
                                     )}
                                 </g>
                             );

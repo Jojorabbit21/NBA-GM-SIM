@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
-import { TacticalSliders, Player } from '../../../types';
+import { TacticalSliders, Player, Game } from '../../../types';
+import { calculatePlayerOvr } from '../../../utils/constants';
 import { RadarChart } from './charts/RadarChart';
 import { TeamZoneChart } from './charts/TeamZoneChart';
 import { PlayTypePPP } from './charts/PlayTypePPP';
@@ -12,24 +13,26 @@ import { calcGravity } from './charts/UsagePrediction';
 interface TacticsDataPanelProps {
     sliders: TacticalSliders;
     roster: Player[];
+    schedule: Game[];
+    teamId: string;
 }
 
-// Compact inline risk bar — indigo single color
+// Compact inline risk bar — indigo single color, 0-100 index
 const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ label, value, desc }) => {
     const pct = Math.min(100, Math.max(0, value));
     return (
         <div className="flex items-center gap-3">
-            <span className="text-xs font-black text-slate-300 uppercase tracking-widest w-20 shrink-0">{label}</span>
+            <span className="text-xs font-bold text-slate-300 w-20 shrink-0">{label}</span>
             <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: '#6366f1', opacity: 0.6 }} />
             </div>
-            <span className="text-[13px] font-black text-white tabular-nums w-7 text-right">{Math.round(pct)}</span>
+            <span className="text-[13px] font-black text-white tabular-nums w-14 text-right">{Math.round(pct)}<span className="text-[10px] font-bold text-slate-500"> /100</span></span>
             <span className="text-xs text-slate-400 w-32 text-right truncate">{desc}</span>
         </div>
     );
 };
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, schedule, teamId }) => {
 
     // Offense risk values
     const offenseRisk = useMemo(() => {
@@ -44,7 +47,7 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
             + (isoShare / 100) * 25
             + 10;
 
-        const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
+        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
         const rot = sorted.slice(0, Math.min(8, sorted.length));
         const teamAvgDrawFoul = rot.length > 0
             ? rot.reduce((s, p) => s + ((p as any).drawFoul || 70), 0) / rot.length
@@ -67,8 +70,8 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
         };
     }, [sliders, roster]);
 
-    // Season ORTG
-    const seasonOrtg = useMemo(() => {
+    // Season Ratings: ORTG + DRTG + NetRTG
+    const seasonRatings = useMemo(() => {
         const totalPts = roster.reduce((s, p) => s + p.stats.pts, 0);
         const totalFGA = roster.reduce((s, p) => s + p.stats.fga, 0);
         const totalFTA = roster.reduce((s, p) => s + p.stats.fta, 0);
@@ -77,8 +80,29 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
         const totalG = roster.length > 0 ? Math.max(...roster.map(p => p.stats.g)) : 0;
         const teamPoss = totalFGA + 0.44 * totalFTA - totalORB + totalTOV;
         const ortg = teamPoss > 0 ? (totalPts / teamPoss) * 100 : 0;
-        return { ortg: Math.round(ortg * 10) / 10, games: totalG };
-    }, [roster]);
+
+        // DRTG from schedule: sum opponent scores / team possessions × 100
+        const playedGames = schedule.filter(g =>
+            g.played && (g.homeTeamId === teamId || g.awayTeamId === teamId)
+        );
+        let totalPtsAllowed = 0;
+        for (const g of playedGames) {
+            if (g.homeTeamId === teamId) {
+                totalPtsAllowed += g.awayScore || 0;
+            } else {
+                totalPtsAllowed += g.homeScore || 0;
+            }
+        }
+        const drtg = teamPoss > 0 ? (totalPtsAllowed / teamPoss) * 100 : 0;
+        const netRtg = ortg > 0 && drtg > 0 ? ortg - drtg : 0;
+
+        return {
+            ortg: Math.round(ortg * 10) / 10,
+            drtg: Math.round(drtg * 10) / 10,
+            netRtg: Math.round(netRtg * 10) / 10,
+            games: totalG,
+        };
+    }, [roster, schedule, teamId]);
 
     // Defense risk values
     const defRiskValues = useMemo(() => {
@@ -104,18 +128,34 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 <UsagePrediction roster={roster} />
             </div>
 
-            {/* Row 4: ORTG */}
-            {seasonOrtg.games > 0 && (
-                <div className="flex items-baseline gap-3">
-                    <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">ORTG</span>
-                    <span className="text-2xl font-black text-white tabular-nums">{seasonOrtg.ortg || '—'}</span>
-                    <span className="text-xs text-slate-400">{seasonOrtg.games}G 기준</span>
+            {/* Row 4: Season Ratings — ORTG / DRTG / NetRTG */}
+            {seasonRatings.games > 0 && (
+                <div className="flex items-center gap-6">
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">ORTG</span>
+                        <span className="text-2xl font-black text-white tabular-nums">{seasonRatings.ortg || '—'}</span>
+                    </div>
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-black text-red-400 uppercase tracking-widest">DRTG</span>
+                        <span className="text-2xl font-black text-white tabular-nums">{seasonRatings.drtg || '—'}</span>
+                    </div>
+                    <div className="w-px h-6 bg-slate-700" />
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">NET</span>
+                        <span className={`text-2xl font-black tabular-nums ${seasonRatings.netRtg > 0 ? 'text-emerald-400' : seasonRatings.netRtg < 0 ? 'text-red-400' : 'text-white'}`}>
+                            {seasonRatings.netRtg > 0 ? '+' : ''}{seasonRatings.netRtg}
+                        </span>
+                    </div>
+                    <span className="text-xs text-slate-400 ml-auto">{seasonRatings.games}G 기준</span>
                 </div>
             )}
 
             {/* Row 5: Combined Risk Analysis */}
             <div className="flex flex-col gap-2.5">
-                <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">리스크 분석</h5>
+                <div className="flex items-center justify-between">
+                    <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">리스크 분석</h5>
+                    <span className="text-[11px] text-slate-500">0-100 위험 지수</span>
+                </div>
                 <RiskBar label="턴오버 위험" value={offenseRisk.tovRisk} desc={`페이스 ${sliders.pace} · 볼무브 ${sliders.ballMovement}`} />
                 <RiskBar label="파울 유발력" value={offenseRisk.foulDraw} desc={`드라이브 ${offenseRisk.driveShare.toFixed(0)}% · DF ${offenseRisk.teamAvgDrawFoul}`} />
                 <RiskBar label="에이스 의존" value={offenseRisk.aceDep} desc={`1옵션 USG ${offenseRisk.topUsage}%`} />

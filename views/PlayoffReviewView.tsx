@@ -7,6 +7,7 @@ import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewCo
 import { TeamLogo } from '../components/common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { generatePlayoffReport } from '../services/reportGenerator';
+import { calculatePlayerOvr } from '../utils/constants';
 
 interface PlayoffReviewViewProps {
   team: Team;
@@ -228,7 +229,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                       <TableRow key={p.id} className={isMvp ? 'bg-amber-900/10' : ''}>
                                           <TableCell className="px-6 sticky left-0 bg-slate-900 group-hover:bg-slate-800 transition-colors z-10 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.5)]">
                                               <div className="flex items-center gap-3">
-                                                  <OvrBadge value={p.ovr} size="md" className="!w-8 !h-8 !text-xs !mx-0 flex-shrink-0" />
+                                                  <OvrBadge value={calculatePlayerOvr(p)} size="md" className="!w-8 !h-8 !text-xs !mx-0 flex-shrink-0" />
                                                   <div>
                                                       <div className="flex items-center gap-1.5">
                                                           <span className={`font-bold text-sm ${isMvp ? 'text-amber-100' : 'text-slate-200'} group-hover:text-white`}>{p.name}</span>

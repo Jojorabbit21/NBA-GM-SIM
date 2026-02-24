@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Team, Player } from '../types';
 import { TEAM_DATA } from '../data/teamData';
+import { calculatePlayerOvr } from '../utils/constants';
 import { DraftHeader } from '../components/draft/DraftHeader';
 import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
@@ -29,7 +30,7 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 function collectAllPlayers(teams: Team[]): Player[] {
     const all: Player[] = [];
     teams.forEach(t => t.roster.forEach(p => all.push(p)));
-    all.sort((a, b) => b.ovr - a.ovr || a.id.localeCompare(b.id));
+    all.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     return all;
 }
 
@@ -58,7 +59,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 teamId,
                 playerId: player.id,
                 playerName: player.name,
-                ovr: player.ovr,
+                ovr: calculatePlayerOvr(player),
                 position: player.position,
             });
         }
@@ -97,7 +98,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             teamId: myTeamId,
             playerId: player.id,
             playerName: player.name,
-            ovr: player.ovr,
+            ovr: calculatePlayerOvr(player),
             position: player.position,
         };
         setPicks(prev => [...prev, newPick]);
@@ -124,7 +125,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 teamId: tid,
                 playerId: player.id,
                 playerName: player.name,
-                ovr: player.ovr,
+                ovr: calculatePlayerOvr(player),
                 position: player.position,
             });
             idx++;

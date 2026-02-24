@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Team, ShotEvent } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
+import { calculatePlayerOvr } from '../../../utils/constants';
 import { Check } from 'lucide-react';
 import { COURT_WIDTH, COURT_HEIGHT } from '../../../utils/courtCoordinates';
 
@@ -242,7 +243,7 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                         
                         <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
                             {activeTeam.roster
-                                .sort((a, b) => b.ovr - a.ovr)
+                                .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a))
                                 .map(player => {
                                     const isSelected = selectedPlayerIds.has(player.id);
                                     

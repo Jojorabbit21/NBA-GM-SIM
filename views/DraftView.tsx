@@ -6,6 +6,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { getRankStyle } from '../components/SharedComponents';
 import { useScoutingReport } from '../services/queries';
 import { PageHeader } from '../components/common/PageHeader';
+import { calculatePlayerOvr } from '../utils/constants';
 
 interface DraftViewProps {
   prospects: Player[];
@@ -81,7 +82,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                 onClick={() => setSelectedId(p.id)}
                 className={`w-full flex items-center gap-4 p-4 rounded-2xl border transition-all ${selectedId === p.id ? 'bg-indigo-600 border-indigo-400 shadow-lg' : 'bg-slate-900/40 border-slate-800 hover:border-slate-700'}`}
               >
-                <OvrBadge value={p.ovr} size="md" className="!mx-0 !w-10 !h-10 !text-xl" />
+                <OvrBadge value={calculatePlayerOvr(p)} size="md" className="!mx-0 !w-10 !h-10 !text-xl" />
                 <div className="text-left flex-1 min-w-0">
                   <div className={`font-black text-sm truncate ${selectedId === p.id ? 'text-white' : 'text-slate-200'}`}>{p.name}</div>
                   <div className={`text-[10px] font-black uppercase tracking-tighter ${selectedId === p.id ? 'text-indigo-200' : 'text-slate-500'}`}>
@@ -101,7 +102,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
             <div className="flex-1 flex flex-col min-h-0">
               <div className="p-8 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
                 <div className="flex items-center gap-6">
-                  <OvrBadge value={selectedProspect.ovr} size="xl" className="!w-16 !h-16 !text-3xl !rounded-2xl" />
+                  <OvrBadge value={calculatePlayerOvr(selectedProspect)} size="xl" className="!w-16 !h-16 !text-3xl !rounded-2xl" />
                   <div>
                     <h3 className="text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{selectedProspect.name}</h3>
                     <div className="mt-2 flex gap-3">
@@ -193,7 +194,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                       <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-2">장점 (Potential Assets)</span>
                       <div className="bg-emerald-500/5 border border-emerald-500/20 p-4 rounded-2xl">
                          <p className="text-xs text-emerald-400/80 leading-relaxed font-bold">
-                            {selectedProspect.ovr > 70 ? "검증된 신체 툴과 농구 IQ를 보유하고 있습니다. 즉시 전력감으로 활용이 가능한 수준입니다." : "뛰어난 성장 가능성과 원석으로서의 가치가 매우 높습니다."}
+                            {calculatePlayerOvr(selectedProspect) > 70 ? "검증된 신체 툴과 농구 IQ를 보유하고 있습니다. 즉시 전력감으로 활용이 가능한 수준입니다." : "뛰어난 성장 가능성과 원석으로서의 가치가 매우 높습니다."}
                          </p>
                       </div>
                    </div>
