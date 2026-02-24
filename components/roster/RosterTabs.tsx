@@ -2,15 +2,14 @@
 import React from 'react';
 
 interface RosterTabsProps {
-    activeTab: 'roster' | 'stats' | 'salary';
-    onTabChange: (tab: 'roster' | 'stats' | 'salary') => void;
+    activeTab: 'roster' | 'stats';
+    onTabChange: (tab: 'roster' | 'stats') => void;
 }
 
 export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => {
     const tabs = [
         { id: 'roster', label: '능력치' },
         { id: 'stats', label: '시즌 기록' },
-        { id: 'salary', label: '계약 현황' }
     ];
 
     return (

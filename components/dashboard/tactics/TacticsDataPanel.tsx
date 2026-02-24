@@ -1,21 +1,23 @@
 
 import React, { useMemo } from 'react';
-import { TacticalSliders, Player, Game } from '../../../types';
+import { TacticalSliders, Player } from '../../../types';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { RadarChart } from './charts/RadarChart';
 import { TeamZoneChart } from './charts/TeamZoneChart';
 import { PlayTypePPP } from './charts/PlayTypePPP';
-import { ShotDistribution } from './charts/ShotDistribution';
-import { UsagePrediction } from './charts/UsagePrediction';
 import { PLAY_TYPES, getPlayTypeDistribution } from './charts/playTypeConstants';
-import { calcGravity } from './charts/UsagePrediction';
 
 interface TacticsDataPanelProps {
     sliders: TacticalSliders;
     roster: Player[];
-    schedule: Game[];
-    teamId: string;
 }
+
+// Mirror engine's calculateScoringGravity (usageSystem.ts)
+const calcGravity = (p: Player): number => {
+    const baseOffense = ((p as any).ins * 0.4) + ((p as any).out * 0.3) + ((p as any).midRange * 0.2) + ((p as any).ft * 0.1);
+    const mentality = ((p as any).offConsist * 0.4) + ((p as any).shotIq * 0.4) + ((p as any).plm * 0.2);
+    return baseOffense * 0.6 + mentality * 0.4;
+};
 
 // Compact inline risk bar — indigo single color, 0-100 index
 const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ label, value, desc }) => {
@@ -32,7 +34,7 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
     );
 };
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, schedule, teamId }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster }) => {
 
     // Offense risk values
     const offenseRisk = useMemo(() => {
@@ -70,40 +72,6 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
         };
     }, [sliders, roster]);
 
-    // Season Ratings: ORTG + DRTG + NetRTG
-    const seasonRatings = useMemo(() => {
-        const totalPts = roster.reduce((s, p) => s + p.stats.pts, 0);
-        const totalFGA = roster.reduce((s, p) => s + p.stats.fga, 0);
-        const totalFTA = roster.reduce((s, p) => s + p.stats.fta, 0);
-        const totalORB = roster.reduce((s, p) => s + p.stats.offReb, 0);
-        const totalTOV = roster.reduce((s, p) => s + p.stats.tov, 0);
-        const totalG = roster.length > 0 ? Math.max(...roster.map(p => p.stats.g)) : 0;
-        const teamPoss = totalFGA + 0.44 * totalFTA - totalORB + totalTOV;
-        const ortg = teamPoss > 0 ? (totalPts / teamPoss) * 100 : 0;
-
-        // DRTG from schedule: sum opponent scores / team possessions × 100
-        const playedGames = schedule.filter(g =>
-            g.played && (g.homeTeamId === teamId || g.awayTeamId === teamId)
-        );
-        let totalPtsAllowed = 0;
-        for (const g of playedGames) {
-            if (g.homeTeamId === teamId) {
-                totalPtsAllowed += g.awayScore || 0;
-            } else {
-                totalPtsAllowed += g.homeScore || 0;
-            }
-        }
-        const drtg = teamPoss > 0 ? (totalPtsAllowed / teamPoss) * 100 : 0;
-        const netRtg = ortg > 0 && drtg > 0 ? ortg - drtg : 0;
-
-        return {
-            ortg: Math.round(ortg * 10) / 10,
-            drtg: Math.round(drtg * 10) / 10,
-            netRtg: Math.round(netRtg * 10) / 10,
-            games: totalG,
-        };
-    }, [roster, schedule, teamId]);
-
     // Defense risk values
     const defRiskValues = useMemo(() => {
         const foul = ((sliders.defIntensity - 1) / 9) * 50 + ((sliders.fullCourtPress - 1) / 9) * 30 + 10;
@@ -127,38 +95,6 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
             <div className="col-span-2">
                 <PlayTypePPP sliders={sliders} roster={roster} />
             </div>
-
-            {/* Shot Distribution */}
-            <div>
-                <ShotDistribution sliders={sliders} roster={roster} />
-            </div>
-
-            {/* Usage Prediction */}
-            <div>
-                <UsagePrediction roster={roster} />
-            </div>
-
-            {/* Season Ratings — ORTG / DRTG / NetRTG — full width */}
-            {seasonRatings.games > 0 && (
-                <div className="col-span-2 flex items-center gap-6">
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">ORTG</span>
-                        <span className="text-2xl font-black text-white tabular-nums">{seasonRatings.ortg || '—'}</span>
-                    </div>
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-xs font-black text-red-400 uppercase tracking-widest">DRTG</span>
-                        <span className="text-2xl font-black text-white tabular-nums">{seasonRatings.drtg || '—'}</span>
-                    </div>
-                    <div className="w-px h-6 bg-slate-700" />
-                    <div className="flex items-baseline gap-2">
-                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">NET</span>
-                        <span className={`text-2xl font-black tabular-nums ${seasonRatings.netRtg > 0 ? 'text-emerald-400' : seasonRatings.netRtg < 0 ? 'text-red-400' : 'text-white'}`}>
-                            {seasonRatings.netRtg > 0 ? '+' : ''}{seasonRatings.netRtg}
-                        </span>
-                    </div>
-                    <span className="text-xs text-slate-400 ml-auto">{seasonRatings.games}G 기준</span>
-                </div>
-            )}
 
             {/* Combined Risk Analysis — full width */}
             <div className="col-span-2 flex flex-col gap-2.5">

@@ -8,7 +8,7 @@ import { Target } from 'lucide-react';
 
 interface RosterGridProps {
     team: Team;
-    tab: 'roster' | 'stats' | 'salary';
+    tab: 'roster' | 'stats';
     onPlayerClick: (player: Player) => void;
 }
 
@@ -22,7 +22,6 @@ const WIDTHS = {
     OVR: 60,
     ATTR: 54,
     STAT: 60,
-    SALARY: 100,
     ZONE_STAT: 70
 };
 
@@ -86,12 +85,6 @@ const STATS_COLS = [
     { key: 'ft%', label: 'FT%' }, { key: 'ts%', label: 'TS%' }, { key: 'pm', label: '+/-' }
 ];
 
-const SALARY_COLS = [
-    { key: 'salary', label: 'THIS YEAR' }, 
-    { key: 'contractYears', label: 'YEARS' }, 
-    { key: 'totalValue', label: 'TOTAL REMAINING' },
-];
-
 const ZONE_CONFIG = [
     { id: 'rim', label: 'RIM', keyM: 'zone_rim_m', keyA: 'zone_rim_a' },
     { id: 'paint', label: 'PAINT', keyM: 'zone_paint_m', keyA: 'zone_paint_a' },
@@ -139,15 +132,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             return tsa > 0 ? p.stats.pts / (2 * tsa) : 0; 
         }
 
-        // 3. Salary Logic
-        if (key === 'salary') return p.salary;
-        if (key === 'contractYears') return p.contractYears;
-        if (key === 'totalValue') return p.salary * p.contractYears;
-
-        // 4. Attribute Fallback (Root properties like 'ins', 'out', 'speed', etc.)
+        // 3. Attribute Fallback (Root properties like 'ins', 'out', 'speed', etc.)
         if (key in p) return (p as any)[key];
 
-        // 5. Zone Stats for Sorting
+        // 4. Zone Stats for Sorting
         if (key.startsWith('zone_pct_')) {
             const zId = key.replace('zone_pct_', '');
             const zCfg = ZONE_CONFIG.find(z => z.id === zId);
@@ -209,7 +197,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
             zoneAvg[z.id] = { m, a, pct: a > 0 ? m/a : 0 };
         });
 
-        return { attr: attrAvg, stat: statAvg, salary: team.roster.reduce((s, p) => s + p.salary, 0), zone: zoneAvg };
+        return { attr: attrAvg, stat: statAvg, zone: zoneAvg };
     }, [team.roster]);
 
     // Calculate left positions for sticky columns
@@ -240,7 +228,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <col style={{ width: WIDTHS.OVR }} />
                     {tab === 'roster' && ATTR_GROUPS.flatMap(g => g.keys).map((_, i) => <col key={`attr-${i}`} style={{ width: WIDTHS.ATTR }} />)}
                     {tab === 'stats' && STATS_COLS.map((_, i) => <col key={`stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
-                    {tab === 'salary' && SALARY_COLS.map((_, i) => <col key={`sal-${i}`} style={{ width: WIDTHS.SALARY }} />)}
                 </colgroup>
                 <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                     {/* Header Row 1: Groups */}
@@ -261,13 +248,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
                                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
-                                </div>
-                            </th>
-                        )}
-                        {tab === 'salary' && (
-                            <th colSpan={SALARY_COLS.length} className="bg-slate-900 border-b border-slate-800 px-2 align-middle">
-                                <div className="h-full flex items-center justify-center">
-                                    <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Contract & Financials</span>
                                 </div>
                             </th>
                         )}
@@ -317,9 +297,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => (
                             <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
-                        ))}
-                        {tab === 'salary' && SALARY_COLS.map(c => (
-                            <TableHeaderCell key={c.key} width={WIDTHS.SALARY} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>
                         ))}
                     </tr>
                 </thead>
@@ -383,13 +360,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     </TableCell>
                                 );
                             })}
-                            {tab === 'salary' && (
-                                <>
-                                    <TableCell align="center" className="font-mono font-semibold text-xs text-emerald-400 border-r border-slate-800/30" value={`$${p.salary.toFixed(1)}M`} />
-                                    <TableCell align="center" className="font-mono font-semibold text-xs text-slate-400 border-r border-slate-800/30" value={`${p.contractYears} yrs`} />
-                                    <TableCell align="center" className="font-mono font-semibold text-xs text-slate-300 border-r border-slate-800/30" value={`$${(p.salary * p.contractYears).toFixed(1)}M`} />
-                                </>
-                            )}
                         </TableRow>
                     ))}
                 </TableBody>
@@ -439,9 +409,6 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 </TableCell>
                             );
                         })}
-                        {tab === 'salary' && (
-                            <TableCell colSpan={3} className="py-2 px-6 text-right font-black font-mono text-emerald-400 text-xs" value={`TOTAL: $${averages.salary.toFixed(1)}M`} />
-                        )}
                     </tr>
                 </TableFoot>
             </Table>
