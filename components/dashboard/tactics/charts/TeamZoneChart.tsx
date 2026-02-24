@@ -93,7 +93,7 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                                     strokeWidth={1}
                                     fillOpacity={0.95}
                                 />
-                                <text textAnchor="middle" y={hasData ? -6 : 2} fill={colors.textFill} fontSize="15" fontWeight="800">
+                                <text textAnchor="middle" y={hasData ? -6 : 2} fill="#ffffff" fontSize="15" fontWeight="800">
                                     {pct}%
                                 </text>
                                 {hasData && (
