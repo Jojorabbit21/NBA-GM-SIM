@@ -49,6 +49,15 @@ export function getTeamOptionRanks(team: TeamState): Map<string, number> {
 }
 
 /**
+ * 현재 코트 위 1옵션의 Scoring Gravity를 반환합니다.
+ * possessionHandler에서 Star Gravity boost 계산에 사용.
+ */
+export function getTopPlayerGravity(team: TeamState): number {
+    if (team.onCourt.length === 0) return 0;
+    return Math.max(...team.onCourt.map(p => calculateScoringGravity(p)));
+}
+
+/**
  * 플레이 타입과 옵션 순위에 따른 최종 멀티플라이어를 반환합니다.
  */
 export function getContextualMultiplier(
