@@ -44,16 +44,19 @@ export const UsagePrediction: React.FC<UsagePredictionProps> = ({ roster }) => {
             .map(({ player, gravity }) => {
                 const predUsage = totalGravity > 0 ? (gravity / totalGravity) * 100 : 12.5;
 
+                // Basketball-Reference 표준 USG% 공식
+                // USG% = (FGA + 0.44×FTA + TOV) × (TmMP / 5) / (MP × (TmFGA + 0.44×TmFTA + TmTOV))
                 let actualUsage: number | null = null;
                 const s = player.stats;
                 if (s.g > 0 && s.mp > 0) {
                     const playerPoss = s.fga + 0.44 * s.fta + s.tov;
-                    const perGamePoss = playerPoss / s.g;
-                    const teamTotal = roster.reduce((sum, p2) => {
-                        if (p2.stats.g === 0) return sum;
-                        return sum + (p2.stats.fga + 0.44 * p2.stats.fta + p2.stats.tov) / p2.stats.g;
+                    const teamMin = roster.reduce((sum, p2) => sum + (p2.stats.mp || 0), 0);
+                    const teamUsage = roster.reduce((sum, p2) => {
+                        return sum + p2.stats.fga + 0.44 * p2.stats.fta + p2.stats.tov;
                     }, 0);
-                    actualUsage = teamTotal > 0 ? (perGamePoss / teamTotal) * 100 : null;
+                    actualUsage = (s.mp > 0 && teamUsage > 0 && teamMin > 0)
+                        ? (playerPoss * (teamMin / 5)) / (s.mp * teamUsage) * 100
+                        : null;
                 }
 
                 return {
