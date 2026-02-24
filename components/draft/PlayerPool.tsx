@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
+import { calculatePlayerOvr } from '../../utils/constants';
 
 interface PlayerPoolProps {
     players: Player[];
@@ -133,7 +134,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                         onClick={() => onSelectPlayer(player)}
                                     >
                                         <td className="px-2 py-0.5">
-                                            <OvrBadge value={player.ovr} size="sm" />
+                                            <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
                                         </td>
                                         <td className="px-1 py-0.5 text-center text-slate-400">{player.position}</td>
                                         <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
@@ -150,7 +151,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                         <tr className="bg-slate-900/60 border-b border-indigo-500/30">
                                             <td colSpan={10} className="px-3 py-2">
                                                 <div className="flex items-center gap-3">
-                                                    <OvrBadge value={selectedPlayer.ovr} size="md" />
+                                                    <OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="md" />
                                                     <div>
                                                         <div className="text-xs font-bold text-slate-200">{selectedPlayer.name}</div>
                                                         <div className="text-[10px] text-slate-400">

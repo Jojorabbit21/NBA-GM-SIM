@@ -6,6 +6,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
 import { PageHeader } from '../components/common/PageHeader';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
+import { calculatePlayerOvr } from '../utils/constants';
 
 interface OvrCalculatorViewProps {
   teams: Team[];
@@ -77,9 +78,9 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
         return {
             id: p.id,
             name: p.name,
-            oldOvr: p.ovr,
+            oldOvr: calculatePlayerOvr(p),
             newOvr,
-            delta: newOvr - p.ovr
+            delta: newOvr - calculatePlayerOvr(p)
         };
     });
 

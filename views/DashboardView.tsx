@@ -155,6 +155,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         team={team}
                         tactics={tactics}
                         roster={effectiveRoster}
+                        schedule={schedule}
                         onUpdateTactics={onUpdateTactics}
                         onAutoSet={handleAutoSet}
                         onForceSave={onForceSave}

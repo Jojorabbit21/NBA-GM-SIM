@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Player } from '../../types';
+import { calculatePlayerOvr } from '../../utils/constants';
 
 interface MyRosterProps {
     players: Player[];
@@ -63,7 +64,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, latestPlayerId }) =
                             <span className="text-[9px] font-bold text-slate-600 w-5 shrink-0">{pos}</span>
                             {player ? (
                                 <>
-                                    <span className="text-[10px] font-bold text-indigo-400 w-6 text-right">{player.ovr}</span>
+                                    <span className="text-[10px] font-bold text-indigo-400 w-6 text-right">{calculatePlayerOvr(player)}</span>
                                     <span className="text-xs font-semibold text-slate-200 truncate">{player.name}</span>
                                 </>
                             ) : (
@@ -87,7 +88,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, latestPlayerId }) =
                         <span className="text-[9px] font-bold text-slate-700 w-5 shrink-0">Res</span>
                         {player ? (
                             <>
-                                <span className="text-[10px] font-bold text-indigo-400 w-6 text-right">{player.ovr}</span>
+                                <span className="text-[10px] font-bold text-indigo-400 w-6 text-right">{calculatePlayerOvr(player)}</span>
                                 <span className="text-xs font-semibold text-slate-200 truncate">{player.name}</span>
                             </>
                         ) : (

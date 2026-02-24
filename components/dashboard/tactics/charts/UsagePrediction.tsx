@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { Player } from '../../../../types';
+import { calculatePlayerOvr } from '../../../../utils/constants';
 
 interface UsagePredictionProps {
     roster: Player[];
@@ -27,7 +28,7 @@ export const UsagePrediction: React.FC<UsagePredictionProps> = ({ roster }) => {
     const data = useMemo(() => {
         if (roster.length === 0) return [];
 
-        const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
+        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
         const rotationPlayers = sorted.slice(0, Math.min(8, sorted.length));
 
         const gravities = rotationPlayers.map(p => ({

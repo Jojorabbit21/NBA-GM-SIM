@@ -1,6 +1,7 @@
 
 import React, { useMemo } from 'react';
 import { TacticalSliders, Player } from '../../../../types';
+import { calculatePlayerOvr } from '../../../../utils/constants';
 import { PLAY_TYPES, PLAY_ATTR_MAP, PNR_HANDLER_MAP, PNR_ROLLER_MAP } from './playTypeConstants';
 
 interface PlayTypePPPProps {
@@ -45,7 +46,7 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         const distribution = rawWeights.map(w => (w / totalWeight) * 100);
 
         // Top 8 rotation players
-        const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
+        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
         const rotationPlayers = sorted.slice(0, Math.min(8, sorted.length));
 
         return PLAY_TYPES.map((pt, i) => {
@@ -68,7 +69,6 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
             let players: string = '';
             if (rotationPlayers.length > 0) {
                 if (pt.key === 'pnr') {
-                    // PnR: handler + roller pair
                     const handler = findBestPlayer(rotationPlayers, PNR_HANDLER_MAP);
                     const roller = findBestPlayer(rotationPlayers, PNR_ROLLER_MAP, handler?.name ? rotationPlayers.find(p => p.name === handler.name)?.id : undefined);
                     const parts = [];
@@ -90,38 +90,50 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         });
     }, [sliders, roster]);
 
-    const maxPPP = Math.max(...data.map(d => d.predictedPPP), 1.2);
+    const maxDist = Math.max(...data.map(d => d.distribution), 30);
 
     return (
         <div className="flex flex-col gap-3">
             <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 효율</h5>
-            <div className="space-y-3">
+
+            {/* Column headers */}
+            <div className="flex items-center gap-2 px-1">
+                <span className="w-[72px] shrink-0" />
+                <span className="flex-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">비중</span>
+                <span className="w-11 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">PPP</span>
+                <span className="w-[110px] text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">핵심선수</span>
+            </div>
+
+            {/* Play type rows */}
+            <div className="space-y-2">
                 {data.map(item => {
-                    const barWidth = (item.predictedPPP / maxPPP) * 100;
+                    const barWidth = (item.distribution / maxDist) * 100;
                     return (
-                        <div key={item.key} className="space-y-1">
-                            <div className="flex justify-between items-center">
-                                <span className="text-xs font-bold text-slate-300">{item.label}</span>
-                                <div className="flex items-center gap-2">
-                                    <span className="text-xs font-bold text-slate-400 tabular-nums">{item.distribution.toFixed(0)}%</span>
-                                    <span className="text-[13px] font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3">
+                        <div key={item.key} className="flex items-center gap-2 px-1">
+                            {/* Play type name */}
+                            <span className="w-[72px] shrink-0 text-xs font-bold text-slate-300 truncate">{item.label}</span>
+
+                            {/* Distribution bar + % */}
+                            <div className="flex-1 flex items-center gap-2">
                                 <div className="flex-1 h-2 bg-slate-900 rounded-full overflow-hidden">
                                     <div
                                         className="h-full rounded-full transition-all duration-300"
                                         style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}
                                     />
                                 </div>
-                                {item.players && (
-                                    <span className="text-xs font-bold text-slate-400 shrink-0 max-w-[120px] truncate">{item.players}</span>
-                                )}
+                                <span className="text-xs font-bold text-slate-400 tabular-nums w-8 text-right">{item.distribution.toFixed(0)}%</span>
                             </div>
+
+                            {/* PPP value */}
+                            <span className="w-11 text-[13px] font-black text-white tabular-nums text-center">{item.predictedPPP.toFixed(2)}</span>
+
+                            {/* Key player */}
+                            <span className="w-[110px] text-xs font-bold text-slate-400 text-right truncate">{item.players || '—'}</span>
                         </div>
                     );
                 })}
             </div>
+
             <div className="text-xs text-slate-400 text-right">* 로스터 능력치 기반 예측값</div>
         </div>
     );

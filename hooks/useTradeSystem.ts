@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Team, Player, TradeOffer, Transaction, TradeAlertContent } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
-import { TRADE_DEADLINE } from '../utils/constants';
+import { TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
 import { logEvent } from '../services/analytics';
 import { saveUserTransaction } from '../services/queries';
 import { sendMessage } from '../services/messageService';
@@ -155,8 +155,8 @@ export const useTradeSystem = (
                 teamId: team.id,
                 description: `${targetTeam.name}와의 트레이드 합의`,
                 details: {
-                    acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
-                    traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr, position: p.position })),
+                    acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(p), position: p.position })),
+                    traded: userAssets.map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(p), position: p.position })),
                     partnerTeamId: targetTeam.id,
                     partnerTeamName: targetTeam.name
                 }
@@ -177,8 +177,8 @@ export const useTradeSystem = (
                         team1Name: team.name,
                         team2Id: targetTeam.id,
                         team2Name: targetTeam.name,
-                        team1Acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 70 })),
-                        team2Acquired: userAssets.map(p => ({ id: p.id, name: p.name, ovr: p.ovr || 70 }))
+                        team1Acquired: targetAssets.map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(p) })),
+                        team2Acquired: userAssets.map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(p) }))
                     }]
                 };
                 

@@ -6,6 +6,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { generateSeasonReport } from '../services/reportGenerator';
+import { calculatePlayerOvr } from '../utils/constants';
 
 interface SeasonReviewViewProps {
   team: Team;
@@ -29,7 +30,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
   const getSnapshot = (id: string) => {
       for (const t of teams) {
           const p = t.roster.find(rp => rp.id === id);
-          if (p) return { ovr: p.ovr, pos: p.position };
+          if (p) return { ovr: calculatePlayerOvr(p), pos: p.position };
       }
       return { ovr: 0, pos: '-' };
   };
@@ -154,7 +155,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                       
                       <div className="relative z-10 flex flex-col items-center">
                            <div className="w-24 h-24 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center shadow-2xl mb-3">
-                               <OvrBadge value={mvp.ovr} size="lg" className="!w-12 !h-12 !text-2xl" />
+                               <OvrBadge value={calculatePlayerOvr(mvp)} size="lg" className="!w-12 !h-12 !text-2xl" />
                            </div>
                            <div className="px-3 py-1 bg-amber-500/20 border border-amber-500/50 rounded-full flex items-center gap-2">
                                <Crown size={12} className="text-amber-400 fill-amber-400" />
