@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { AppView, Team, GameTactics } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
@@ -32,6 +32,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
 }) => {
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+    const previousViewRef = useRef<AppView>('Dashboard');
 
     // Reset selected team when leaving Roster view (unless navigating from Standings)
     useEffect(() => {
@@ -105,10 +106,10 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     const resultDate = new Date(sim.lastGameResult.date);
                     const currentDate = new Date(gameData.currentSimDate);
                     
-                    // If result is from the past, just close view.
+                    // If result is from the past, go back to wherever we came from
                     if (resultDate < currentDate) {
                         sim.clearLastGameResult();
-                        setView('Inbox'); // Go back to Inbox if it was a replay
+                        setView(previousViewRef.current);
                     } else {
                         // Live Sim completion logic
                         const d = new Date(gameData.currentSimDate);
@@ -150,7 +151,20 @@ const AppRouter: React.FC<AppRouterProps> = ({
         case 'Roster':
             return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} />;
         case 'Schedule':
-            return <ScheduleView schedule={gameData.schedule} teamId={gameData.myTeamId!} teams={gameData.teams} onExport={() => {}} currentSimDate={gameData.currentSimDate} />;
+            return (
+                <ScheduleView
+                    schedule={gameData.schedule}
+                    teamId={gameData.myTeamId!}
+                    teams={gameData.teams}
+                    currentSimDate={gameData.currentSimDate}
+                    userId={session?.user?.id}
+                    onViewGameResult={(result) => {
+                        previousViewRef.current = 'Schedule';
+                        sim.loadSavedGameResult(result);
+                        setView('GameResult');
+                    }}
+                />
+            );
         case 'Standings':
             return (
                 <StandingsView 
@@ -186,6 +200,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     teams={gameData.teams} 
                     onUpdateUnreadCount={refreshUnreadCount}
                     onViewGameResult={(result) => {
+                        previousViewRef.current = 'Inbox';
                         sim.loadSavedGameResult(result);
                         setView('GameResult');
                     }}

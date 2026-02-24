@@ -1,9 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Save, Calendar, CheckCircle2, Search, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Search, Loader2, List, LayoutGrid, FileText } from 'lucide-react';
 import { Team, Game } from '../types';
-import { useMonthlySchedule } from '../services/queries';
-import { supabase } from '../services/supabaseClient';
+import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { PageHeader } from '../components/common/PageHeader';
@@ -13,11 +12,12 @@ interface ScheduleViewProps {
   schedule: Game[]; // From App state (Local Source of Truth)
   teamId: string;
   teams: Team[];
-  onExport: () => void;
   currentSimDate: string;
+  userId: string;
+  onViewGameResult: (result: any) => void;
 }
 
-export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, onExport, currentSimDate }) => {
+export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, onViewGameResult }) => {
   const [currentDate, setCurrentDate] = useState(() => {
     if (currentSimDate) {
       const d = new Date(currentSimDate);
@@ -28,15 +28,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   const [selectedTeamId, setSelectedTeamId] = useState<string>(teamId);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-
-  // [Pagination] Fetch ONLY Game Results for the current month
-  const [userId, setUserId] = useState<string | undefined>(undefined);
-  
-  useEffect(() => {
-      (supabase.auth as any).getUser().then(({ data }: any) => {
-          setUserId(data.user?.id);
-      });
-  }, []);
+  const [showLeagueSchedule, setShowLeagueSchedule] = useState(false);
+  const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
 
   const { data: userResults, isLoading: isDbLoading } = useMonthlySchedule(
       userId, 
@@ -146,6 +139,83 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         .sort((a, b) => a.city.localeCompare(b.city));
   }, [teams, searchTerm]);
 
+  // [League Schedule] All games for current month (no team filter), merged with DB results
+  const leagueGames = useMemo(() => {
+      const y = currentDate.getFullYear();
+      const m = currentDate.getMonth();
+      const baseGames = localSchedule.filter(g => {
+          const d = new Date(g.date);
+          return d.getFullYear() === y && d.getMonth() === m;
+      });
+
+      const resultMap = new Map<string, any>();
+      if (userResults && Array.isArray(userResults)) {
+          userResults.forEach((r: any) => resultMap.set(r.game_id, r));
+      }
+
+      return baseGames.map(g => {
+          const dbResult = resultMap.get(g.id);
+          return {
+              ...g,
+              played: g.played || !!dbResult,
+              homeScore: g.homeScore ?? dbResult?.home_score,
+              awayScore: g.awayScore ?? dbResult?.away_score,
+              boxScore: dbResult?.box_score as { home: any[]; away: any[] } | undefined
+          };
+      }).sort((a, b) => a.date.localeCompare(b.date));
+  }, [localSchedule, userResults, currentDate]);
+
+  // [League Schedule] Group games by date
+  const gamesByDate = useMemo(() => {
+      const map = new Map<string, typeof leagueGames>();
+      leagueGames.forEach(g => {
+          const existing = map.get(g.date) || [];
+          existing.push(g);
+          map.set(g.date, existing);
+      });
+      return map;
+  }, [leagueGames]);
+
+  // [Box Score Navigation] — Same pattern as InboxView
+  const handleViewBoxScore = async (gameId: string) => {
+      if (fetchingGameId) return;
+      setFetchingGameId(gameId);
+      try {
+          const raw = await fetchFullGameResult(gameId, userId);
+          if (raw) {
+              const homeTeam = teams.find(t => t.id === raw.home_team_id);
+              const awayTeam = teams.find(t => t.id === raw.away_team_id);
+              const mappedResult = {
+                  home: homeTeam, away: awayTeam,
+                  homeScore: raw.home_score, awayScore: raw.away_score,
+                  homeBox: raw.box_score?.home || [], awayBox: raw.box_score?.away || [],
+                  homeTactics: raw.tactics?.home, awayTactics: raw.tactics?.away,
+                  pbpLogs: raw.pbp_logs || [], pbpShotEvents: raw.shot_events || [],
+                  rotationData: raw.rotation_data,
+                  otherGames: [], date: raw.date, recap: []
+              };
+              if (homeTeam && awayTeam) onViewGameResult(mappedResult);
+          }
+      } finally {
+          setFetchingGameId(null);
+      }
+  };
+
+  // [Stat Leaders] Extract top PTS/REB/AST from box score
+  const getStatLeaders = (boxScore?: { home: any[]; away: any[] }) => {
+      if (!boxScore) return null;
+      const all = [...(boxScore.home || []), ...(boxScore.away || [])];
+      if (all.length === 0) return null;
+      const pts = all.reduce((best, p) => (p.pts ?? 0) > (best.pts ?? 0) ? p : best, all[0]);
+      const reb = all.reduce((best, p) => ((p.orb ?? 0) + (p.drb ?? 0)) > ((best.orb ?? 0) + (best.drb ?? 0)) ? p : best, all[0]);
+      const ast = all.reduce((best, p) => (p.ast ?? 0) > (best.ast ?? 0) ? p : best, all[0]);
+      return {
+          pts: { name: pts.playerName || '?', value: pts.pts ?? 0 },
+          reb: { name: reb.playerName || '?', value: (reb.orb ?? 0) + (reb.drb ?? 0) },
+          ast: { name: ast.playerName || '?', value: ast.ast ?? 0 }
+      };
+  };
+
   return (
     <div className="space-y-6 w-full flex flex-col pb-24 animate-in fade-in duration-500">
       <PageHeader 
@@ -202,15 +272,22 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                     </div>
                 </Dropdown>
 
-                <button onClick={onExport} className="h-12 flex items-center gap-2 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-sm font-black uppercase transition-all border border-emerald-500 shadow-lg shadow-emerald-900/20">
-                    <Save size={16} /> CSV로 저장
+                <button
+                    onClick={() => setShowLeagueSchedule(prev => !prev)}
+                    className={`h-12 flex items-center gap-2 px-6 rounded-xl text-sm font-black uppercase transition-all border shadow-lg ${
+                        showLeagueSchedule
+                            ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-600 shadow-slate-900/20'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-indigo-900/20'
+                    }`}
+                >
+                    {showLeagueSchedule ? <><LayoutGrid size={16} /> 캘린더</> : <><List size={16} /> 리그 전체 일정</>}
                 </button>
             </div>
         }
       />
 
+      {/* Month Navigation (shared between calendar & list) */}
       <div className="bg-slate-900/95 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden flex flex-col relative z-10">
-        {/* ... Calendar Body (Unchanged) ... */}
         <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
            <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>
            <div className="flex items-center gap-3">
@@ -220,84 +297,212 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
            <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronRight size={24} /></button>
         </div>
 
-        <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-950/50 flex-shrink-0">
-           {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
-             <div key={day} className={`py-3 text-center text-[10px] font-black uppercase tracking-widest ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-slate-500'}`}>{day}</div>
-           ))}
-        </div>
+        {!showLeagueSchedule ? (
+          <>
+            {/* Calendar View */}
+            <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-950/50 flex-shrink-0">
+               {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
+                 <div key={day} className={`py-3 text-center text-[10px] font-black uppercase tracking-widest ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-slate-500'}`}>{day}</div>
+               ))}
+            </div>
 
-        <div className="grid grid-cols-7">
-           {days.map((day, idx) => {
-             if (day === null) return <div key={idx} className="border-b border-r border-slate-800/50 bg-slate-950/20 aspect-square"></div>;
-             
-             const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-             const game = getGameOnDate(day); // O(1) Lookup
-             const isToday = isTodayDate(day);
-             const isASB = dayDate >= asbStart && dayDate <= asbEnd;
+            <div className="grid grid-cols-7">
+               {days.map((day, idx) => {
+                 if (day === null) return <div key={idx} className="border-b border-r border-slate-800/50 bg-slate-950/20 aspect-square"></div>;
 
-             const isHome = game?.homeTeamId === selectedTeamId;
-             const oppId = isHome ? game?.awayTeamId : game?.homeTeamId;
-             const opp = teams.find(t => t.id === oppId);
-             
-             // Base style based on Game Status
-             let bgStyle = "bg-slate-950/40";
-             let isWon = false;
+                 const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
+                 const game = getGameOnDate(day);
+                 const isToday = isTodayDate(day);
+                 const isASB = dayDate >= asbStart && dayDate <= asbEnd;
 
-             if (game?.played) {
-                isWon = isHome ? (game.homeScore! > game.awayScore!) : (game.awayScore! > game.homeScore!);
-                bgStyle = isWon ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-red-900/50 border-red-500/30';
-             } else if (game) {
-                bgStyle = 'bg-slate-800/40 hover:bg-slate-800/60';
-             } else if (isToday) {
-                bgStyle = "bg-indigo-500/10";
-             }
+                 const isHome = game?.homeTeamId === selectedTeamId;
+                 const oppId = isHome ? game?.awayTeamId : game?.homeTeamId;
+                 const opp = teams.find(t => t.id === oppId);
 
-             if (isToday) {
-                 bgStyle += " ring-2 ring-indigo-600 ring-inset z-10";
-             }
+                 let bgStyle = "bg-slate-950/40";
+                 let isWon = false;
 
-             return (
-               <div key={idx} className={`border-b border-r border-slate-800/60 relative p-2 transition-all flex flex-col aspect-square ${bgStyle}`}>
-                 <div className="flex justify-between items-start mb-1">
-                    <span className={`text-xs font-black oswald ${isToday ? 'text-indigo-400' : 'text-slate-500'}`}>{day}</span>
-                    {isToday && <span className="px-1 py-0.5 bg-indigo-600 text-[6px] font-black text-white rounded">TODAY</span>}
-                    {isASB && !isToday && <span className="text-[6px] font-black text-yellow-500 uppercase tracking-tight">ALL-STAR</span>}
-                 </div>
-                 
-                 {game && opp ? (
-                   <div className="flex-1 flex flex-col items-center justify-center gap-2 group cursor-default w-full p-1">
-                      {!game.played ? (
-                        <>
-                            <TeamLogo 
-                                teamId={opp.id} 
-                                size="custom"
-                                className="w-14 h-14 lg:w-20 lg:h-20 drop-shadow-lg group-hover:scale-110 transition-transform duration-300" 
-                            />
-                            
-                            <div className="text-center w-full z-10">
-                                <div className="text-xs lg:text-sm font-black text-slate-200 truncate w-full px-1 uppercase tracking-tight leading-none">
-                                    <span className={`${isHome ? 'text-indigo-400' : 'text-slate-500'} mr-1`}>{isHome ? 'vs' : '@'}</span>{opp.name}
+                 if (game?.played) {
+                    isWon = isHome ? (game.homeScore! > game.awayScore!) : (game.awayScore! > game.homeScore!);
+                    bgStyle = isWon ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-red-900/50 border-red-500/30';
+                 } else if (game) {
+                    bgStyle = 'bg-slate-800/40 hover:bg-slate-800/60';
+                 } else if (isToday) {
+                    bgStyle = "bg-indigo-500/10";
+                 }
+
+                 if (isToday) {
+                     bgStyle += " ring-2 ring-indigo-600 ring-inset z-10";
+                 }
+
+                 return (
+                   <div key={idx} className={`border-b border-r border-slate-800/60 relative p-2 transition-all flex flex-col aspect-square ${bgStyle}`}>
+                     <div className="flex justify-between items-start mb-1">
+                        <span className={`text-xs font-black oswald ${isToday ? 'text-indigo-400' : 'text-slate-500'}`}>{day}</span>
+                        {isToday && <span className="px-1 py-0.5 bg-indigo-600 text-[6px] font-black text-white rounded">TODAY</span>}
+                        {isASB && !isToday && <span className="text-[6px] font-black text-yellow-500 uppercase tracking-tight">ALL-STAR</span>}
+                     </div>
+
+                     {game && opp ? (
+                       <div className="flex-1 flex flex-col items-center justify-center gap-2 group cursor-default w-full p-1">
+                          {!game.played ? (
+                            <>
+                                <TeamLogo
+                                    teamId={opp.id}
+                                    size="custom"
+                                    className="w-14 h-14 lg:w-20 lg:h-20 drop-shadow-lg group-hover:scale-110 transition-transform duration-300"
+                                />
+
+                                <div className="text-center w-full z-10">
+                                    <div className="text-xs lg:text-sm font-black text-slate-200 truncate w-full px-1 uppercase tracking-tight leading-none">
+                                        <span className={`${isHome ? 'text-indigo-400' : 'text-slate-500'} mr-1`}>{isHome ? 'vs' : '@'}</span>{opp.name}
+                                    </div>
+                                </div>
+                            </>
+                          ) : (
+                            <div className="flex flex-col items-center justify-center w-full h-full gap-1">
+                                <div className="text-xs lg:text-sm font-black text-white w-full text-center uppercase tracking-tight leading-tight break-keep">
+                                    <span className="text-[10px] text-slate-400 mr-1 align-middle">{isHome ? 'vs' : '@'}</span>{opp.name}
+                                </div>
+                                <div className={`text-xl lg:text-3xl font-black oswald leading-none ${isWon ? 'text-emerald-300' : 'text-red-300'}`}>
+                                    {isHome ? `${game.homeScore}:${game.awayScore}` : `${game.awayScore}:${game.homeScore}`}
                                 </div>
                             </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center w-full h-full gap-1">
-                            <div className="text-xs lg:text-sm font-black text-white w-full text-center uppercase tracking-tight leading-tight break-keep">
-                                <span className="text-[10px] text-slate-400 mr-1 align-middle">{isHome ? 'vs' : '@'}</span>{opp.name}
-                            </div>
-                            <div className={`text-xl lg:text-3xl font-black oswald leading-none ${isWon ? 'text-emerald-300' : 'text-red-300'}`}>
-                                {isHome ? `${game.homeScore}:${game.awayScore}` : `${game.awayScore}:${game.homeScore}`}
-                            </div>
-                        </div>
-                      )}
+                          )}
+                       </div>
+                     ) : (
+                        !isASB && <div className="flex-1"></div>
+                     )}
                    </div>
-                 ) : (
-                    !isASB && <div className="flex-1"></div>
-                 )}
-               </div>
-             );
-           })}
-        </div>
+                 );
+               })}
+            </div>
+          </>
+        ) : (
+          /* League Schedule List View */
+          <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            {leagueGames.length === 0 ? (
+              <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
+                이번 달에는 경기가 없습니다.
+              </div>
+            ) : (
+              Array.from(gamesByDate.entries()).map(([dateStr, games]) => {
+                const d = new Date(dateStr + 'T12:00:00');
+                const isSimDay = dateStr === currentSimDate;
+                const dayLabel = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+
+                return (
+                  <div key={dateStr}>
+                    {/* Date Header */}
+                    <div className={`flex items-center gap-3 mb-2 ${isSimDay ? 'text-indigo-400' : 'text-slate-500'}`}>
+                      <div className="h-px flex-1 bg-slate-800" />
+                      <span className="text-[11px] font-black uppercase tracking-wider whitespace-nowrap">
+                        {dayLabel}
+                        {isSimDay && <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-[8px] font-black text-white rounded">TODAY</span>}
+                      </span>
+                      <div className="h-px flex-1 bg-slate-800" />
+                    </div>
+
+                    {/* Games */}
+                    <div className="space-y-1.5">
+                      {games.map(game => {
+                        const homeTeam = teams.find(t => t.id === game.homeTeamId);
+                        const awayTeam = teams.find(t => t.id === game.awayTeamId);
+                        if (!homeTeam || !awayTeam) return null;
+
+                        const leaders = game.played ? getStatLeaders(game.boxScore) : null;
+                        const isMyGame = game.homeTeamId === teamId || game.awayTeamId === teamId;
+
+                        return (
+                          <div
+                            key={game.id}
+                            className={`rounded-xl px-4 py-3 transition-all ${
+                              isMyGame
+                                ? 'bg-indigo-950/30 border border-indigo-800/30'
+                                : 'bg-slate-900/60 border border-slate-800/40'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              {/* Away Team */}
+                              <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
+                                <span className={`text-xs font-black uppercase truncate ${game.played ? 'text-white' : 'text-slate-400'}`}>
+                                  {awayTeam.city} {awayTeam.name}
+                                </span>
+                                <TeamLogo teamId={awayTeam.id} size="xs" />
+                              </div>
+
+                              {/* Score / @ */}
+                              {game.played ? (
+                                <div className="flex items-center gap-2 shrink-0 px-2">
+                                  <span className={`text-lg font-black oswald ${game.awayScore! > game.homeScore! ? 'text-white' : 'text-slate-500'}`}>
+                                    {game.awayScore}
+                                  </span>
+                                  <span className="text-[10px] text-slate-600 font-bold">-</span>
+                                  <span className={`text-lg font-black oswald ${game.homeScore! > game.awayScore! ? 'text-white' : 'text-slate-500'}`}>
+                                    {game.homeScore}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-[10px] text-slate-600 font-bold shrink-0 px-3">@</span>
+                              )}
+
+                              {/* Home Team */}
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <TeamLogo teamId={homeTeam.id} size="xs" />
+                                <span className={`text-xs font-black uppercase truncate ${game.played ? 'text-white' : 'text-slate-400'}`}>
+                                  {homeTeam.city} {homeTeam.name}
+                                </span>
+                              </div>
+
+                              {/* Stat Leaders + Box Score Button */}
+                              {game.played && (
+                                <div className="flex items-center gap-3 shrink-0 ml-2">
+                                  {leaders && (
+                                    <div className="hidden lg:flex items-center gap-3 text-[10px]">
+                                      <span className="text-slate-500">
+                                        <span className="text-slate-600 font-bold mr-1">PTS</span>
+                                        <span className="text-slate-300 font-bold">{leaders.pts.name}</span>
+                                        <span className="text-indigo-400 font-black ml-1">{leaders.pts.value}</span>
+                                      </span>
+                                      <span className="text-slate-700">|</span>
+                                      <span className="text-slate-500">
+                                        <span className="text-slate-600 font-bold mr-1">REB</span>
+                                        <span className="text-slate-300 font-bold">{leaders.reb.name}</span>
+                                        <span className="text-indigo-400 font-black ml-1">{leaders.reb.value}</span>
+                                      </span>
+                                      <span className="text-slate-700">|</span>
+                                      <span className="text-slate-500">
+                                        <span className="text-slate-600 font-bold mr-1">AST</span>
+                                        <span className="text-slate-300 font-bold">{leaders.ast.name}</span>
+                                        <span className="text-indigo-400 font-black ml-1">{leaders.ast.value}</span>
+                                      </span>
+                                    </div>
+                                  )}
+                                  <button
+                                    onClick={() => handleViewBoxScore(game.id)}
+                                    disabled={fetchingGameId === game.id}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-bold uppercase transition-all border border-slate-700 disabled:opacity-50"
+                                  >
+                                    {fetchingGameId === game.id ? (
+                                      <Loader2 size={12} className="animate-spin" />
+                                    ) : (
+                                      <FileText size={12} />
+                                    )}
+                                    박스스코어
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
