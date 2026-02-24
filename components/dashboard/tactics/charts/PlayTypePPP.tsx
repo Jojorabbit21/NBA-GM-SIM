@@ -136,35 +136,13 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                     </svg>
                 </div>
 
-                {/* Left Table: PlayType + Share */}
-                <table className="border-collapse">
-                    <thead>
-                        <tr>
-                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pr-1">플레이타입</th>
-                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">비중</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map(item => (
-                            <tr key={item.key}>
-                                <td className="py-1.5 pr-1">
-                                    <div className="flex items-center gap-1.5">
-                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                                        <span className="text-xs font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
-                                    </div>
-                                </td>
-                                <td className="py-1.5 text-right">
-                                    <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-                {/* Right Table: PPP + Key Player */}
+                {/* Single table with visual gap between Share and PPP */}
                 <table className="flex-1 border-collapse">
                     <thead>
                         <tr>
+                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">플레이타입</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">비중</th>
+                            <th className="w-4" />
                             <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5" colSpan={2}>PPP</th>
                             <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">핵심선수</th>
                         </tr>
@@ -174,6 +152,16 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                             const barWidth = (item.predictedPPP / maxPPP) * 100;
                             return (
                                 <tr key={item.key}>
+                                    <td className="py-1.5 pr-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                            <span className="text-xs font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
+                                        </div>
+                                    </td>
+                                    <td className="py-1.5 text-right">
+                                        <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
+                                    </td>
+                                    <td className="w-4" />
                                     <td className="py-1.5 w-[80px]">
                                         <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
                                             <div
@@ -182,10 +170,10 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                                             />
                                         </div>
                                     </td>
-                                    <td className="py-1.5 pl-1 w-[40px]">
+                                    <td className="py-1.5 pl-1.5 w-[44px]">
                                         <span className="text-[13px] font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
                                     </td>
-                                    <td className="py-1.5 pl-0.5 text-right">
+                                    <td className="py-1.5 pl-2 text-right">
                                         <span className="text-xs font-bold text-slate-400">{item.players || '—'}</span>
                                     </td>
                                 </tr>
