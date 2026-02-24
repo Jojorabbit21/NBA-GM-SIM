@@ -4,6 +4,7 @@ import { Player } from '../../../../types';
 
 interface RadarChartProps {
     roster: Player[];
+    hideTitle?: boolean;
 }
 
 const AXES = [
@@ -28,7 +29,7 @@ const polarToXY = (angle: number, value: number, max: number = 100) => {
     };
 };
 
-export const RadarChart: React.FC<RadarChartProps> = ({ roster }) => {
+export const RadarChart: React.FC<RadarChartProps> = ({ roster, hideTitle }) => {
     const teamAvg = useMemo(() => {
         if (roster.length === 0) return AXES.map(() => 0);
         return AXES.map(axis => {
@@ -48,7 +49,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({ roster }) => {
 
     return (
         <div className="flex flex-col gap-2">
-            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
+            {!hideTitle && <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>}
             <svg viewBox="0 0 280 270" className="w-full">
                 {/* Grid Levels */}
                 {LEVELS.map(level => {
