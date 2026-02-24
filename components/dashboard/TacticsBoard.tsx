@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, memo } from 'react';
-import { Wand2, RotateCcw, Save, FolderOpen, PenLine, Trash2 } from 'lucide-react';
+import { Wand2, RotateCcw, Save, FolderOpen, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import { GameTactics, Player, Team, TacticPreset } from '../../types';
 import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
 import { DEFAULT_SLIDERS } from '../../services/game/config/tacticPresets';
@@ -14,13 +14,17 @@ interface TacticsBoardProps {
   roster: Player[];
   onUpdateTactics: (t: GameTactics) => void;
   onAutoSet: () => void;
+  onForceSave?: () => void;
 }
 
-const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet }) => {
+const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave }) => {
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
     const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
     const [userId, setUserId] = useState<string | null>(null);
+    const [showPasteInput, setShowPasteInput] = useState(false);
+    const [pasteValue, setPasteValue] = useState('');
+    const [copyFeedback, setCopyFeedback] = useState(false);
 
     // Initial Load
     useEffect(() => {
@@ -44,6 +48,8 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
         const currentName = presets.find(p => p.slot === selectedSlot)?.name || `Custom Slot ${selectedSlot}`;
         const success = await savePreset(userId, team.id, selectedSlot, currentName, tactics);
         if (success) {
+            // 프리셋 저장 + 활성 게임 상태에도 즉시 반영
+            onForceSave?.();
             alert(`전술이 슬롯 ${selectedSlot}에 저장되었습니다.`);
             loadPresets(userId);
         }
@@ -84,6 +90,25 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                 sliders: { ...DEFAULT_SLIDERS },
                 stopperId: undefined
             });
+        }
+    };
+
+    const handleCopy = async () => {
+        const json = JSON.stringify({ sliders: tactics.sliders }, null, 2);
+        await navigator.clipboard.writeText(json);
+        setCopyFeedback(true);
+        setTimeout(() => setCopyFeedback(false), 1500);
+    };
+
+    const handlePasteApply = () => {
+        try {
+            const parsed = JSON.parse(pasteValue);
+            const sliders = parsed.sliders || parsed;
+            onUpdateTactics({ ...tactics, sliders: { ...DEFAULT_SLIDERS, ...sliders } });
+            setShowPasteInput(false);
+            setPasteValue('');
+        } catch {
+            alert('올바른 JSON 형식이 아닙니다.');
         }
     };
 
@@ -145,6 +170,16 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                             <Trash2 size={14} />
                         </button>
                     </div>
+
+                    {/* Copy / Paste Buttons */}
+                    <div className="flex bg-slate-800 rounded-lg p-0.5 border border-slate-700">
+                        <button onClick={handleCopy} className={`p-1.5 rounded-md transition-colors ${copyFeedback ? 'text-emerald-400' : 'text-slate-400 hover:bg-cyan-600 hover:text-white'}`} title="전술 복사 (JSON)">
+                            <Copy size={14} />
+                        </button>
+                        <button onClick={() => { setShowPasteInput(!showPasteInput); setPasteValue(''); }} className={`p-1.5 rounded-md transition-colors ${showPasteInput ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:bg-indigo-600 hover:text-white'}`} title="전술 붙여넣기 (JSON)">
+                            <ClipboardPaste size={14} />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Right: Reset & Delegation */}
@@ -163,6 +198,27 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                     </button>
                 </div>
             </div>
+
+            {/* Paste Input Area */}
+            {showPasteInput && (
+                <div className="px-8 py-3 bg-slate-900/60 border-b border-slate-800 flex items-start gap-3 flex-shrink-0">
+                    <textarea
+                        value={pasteValue}
+                        onChange={e => setPasteValue(e.target.value)}
+                        placeholder='{"sliders": { "pace": 6, ... }}'
+                        rows={4}
+                        className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-slate-300 placeholder-slate-600 resize-none focus:outline-none focus:border-indigo-500"
+                    />
+                    <div className="flex flex-col gap-1.5">
+                        <button onClick={handlePasteApply} className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg transition-colors">
+                            적용
+                        </button>
+                        <button onClick={() => { setShowPasteInput(false); setPasteValue(''); }} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs font-bold rounded-lg transition-colors">
+                            취소
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Scrollable Content Container */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -190,5 +246,6 @@ export const TacticsBoard = memo(TacticsBoardInner, (prev, next) =>
     prev.tactics === next.tactics &&
     prev.roster === next.roster &&
     prev.onUpdateTactics === next.onUpdateTactics &&
-    prev.onAutoSet === next.onAutoSet
+    prev.onAutoSet === next.onAutoSet &&
+    prev.onForceSave === next.onForceSave
 );

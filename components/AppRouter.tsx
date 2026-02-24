@@ -138,6 +138,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         onShowSeasonReview={() => setView('SeasonReview')}
                         onShowPlayoffReview={() => setView('PlayoffReview')}
                         depthChart={gameData.depthChart} onUpdateDepthChart={gameData.setDepthChart}
+                        onForceSave={gameData.forceSave}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {

@@ -26,6 +26,7 @@ interface DashboardViewProps {
   playoffSeries?: PlayoffSeries[];
   depthChart?: DepthChart | null;
   onUpdateDepthChart?: (dc: DepthChart) => void;
+  onForceSave?: () => void;
 }
 
 type DashboardTab = 'rotation' | 'tactics' | 'opponent';
@@ -33,7 +34,7 @@ type DashboardTab = 'rotation' | 'tactics' | 'opponent';
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
-  playoffSeries = [], depthChart, onUpdateDepthChart
+  playoffSeries = [], depthChart, onUpdateDepthChart, onForceSave
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
@@ -156,6 +157,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         roster={effectiveRoster}
                         onUpdateTactics={onUpdateTactics}
                         onAutoSet={handleAutoSet}
+                        onForceSave={onForceSave}
                     />
                   </div>
               )}
