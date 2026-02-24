@@ -57,7 +57,7 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                 </div>
             </div>
 
-            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+            <div className="relative w-full max-w-[300px] mx-auto aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
                 <svg viewBox="0 0 435 403" className="w-full h-full">
                     <rect x="0" y="0" width="435" height="403" fill="#020617" />
 
@@ -82,15 +82,15 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                         {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
                     </g>
 
-                    {/* Zone Labels — FG% and M/A only (no delta) */}
+                    {/* Zone Labels — FG% and M/A with more padding */}
                     <g pointerEvents="none">
                         {zones.map((z, i) => {
                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
                             const style = getZoneStyle(z.data.m, z.data.a, z.avg);
                             const colors = getZonePillColors(style.delta, z.data.a > 0);
                             const hasData = z.data.a > 0;
-                            const width = 54;
-                            const height = hasData ? 36 : 26;
+                            const width = 60;
+                            const height = hasData ? 42 : 30;
 
                             return (
                                 <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -103,11 +103,11 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                                         strokeWidth={1}
                                         fillOpacity={0.95}
                                     />
-                                    <text textAnchor="middle" y={hasData ? -6 : 1} fill={colors.textFill} fontSize="14" fontWeight="800">
+                                    <text textAnchor="middle" y={hasData ? -7 : 1} fill={colors.textFill} fontSize="15" fontWeight="800">
                                         {pct}%
                                     </text>
                                     {hasData && (
-                                        <text textAnchor="middle" y={10} fill="#ffffff" fontSize="11" fontWeight="600">
+                                        <text textAnchor="middle" y={12} fill="#ffffff" fontSize="12" fontWeight="600">
                                             {z.data.m}/{z.data.a}
                                         </text>
                                     )}
