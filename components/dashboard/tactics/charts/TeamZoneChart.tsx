@@ -1,0 +1,118 @@
+
+import React, { useMemo } from 'react';
+import { Player } from '../../../../types';
+import { ZONE_PATHS, COURT_LINES, ZONE_AVG, ZONE_CONFIG, getZoneStyle, getZonePillColors } from '../../../../utils/courtZones';
+
+interface TeamZoneChartProps {
+    roster: Player[];
+}
+
+type ZoneKey = 'rim' | 'paint' | 'midL' | 'midC' | 'midR' | 'c3L' | 'c3R' | 'atb3L' | 'atb3C' | 'atb3R';
+
+const ZONE_STAT_MAP: Record<ZoneKey, { m: string; a: string }> = {
+    rim: { m: 'zone_rim_m', a: 'zone_rim_a' },
+    paint: { m: 'zone_paint_m', a: 'zone_paint_a' },
+    midL: { m: 'zone_mid_l_m', a: 'zone_mid_l_a' },
+    midC: { m: 'zone_mid_c_m', a: 'zone_mid_c_a' },
+    midR: { m: 'zone_mid_r_m', a: 'zone_mid_r_a' },
+    c3L: { m: 'zone_c3_l_m', a: 'zone_c3_l_a' },
+    c3R: { m: 'zone_c3_r_m', a: 'zone_c3_r_a' },
+    atb3L: { m: 'zone_atb3_l_m', a: 'zone_atb3_l_a' },
+    atb3C: { m: 'zone_atb3_c_m', a: 'zone_atb3_c_a' },
+    atb3R: { m: 'zone_atb3_r_m', a: 'zone_atb3_r_a' },
+};
+
+export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
+    const teamZones = useMemo(() => {
+        const result: Record<ZoneKey, { m: number; a: number }> = {} as any;
+        for (const key of Object.keys(ZONE_STAT_MAP) as ZoneKey[]) {
+            const { m, a } = ZONE_STAT_MAP[key];
+            result[key] = {
+                m: roster.reduce((sum, p) => sum + ((p.stats as any)[m] || 0), 0),
+                a: roster.reduce((sum, p) => sum + ((p.stats as any)[a] || 0), 0),
+            };
+        }
+        return result;
+    }, [roster]);
+
+    const zones = useMemo(() =>
+        ZONE_CONFIG.map(cfg => ({
+            ...cfg,
+            path: ZONE_PATHS[cfg.pathKey],
+            avg: ZONE_AVG[cfg.avgKey],
+            data: teamZones[cfg.key as ZoneKey],
+        }))
+    , [teamZones]);
+
+    return (
+        <div className="flex flex-col gap-2">
+            <div className="flex justify-between items-center">
+                <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">슈팅 존 히트맵</h5>
+                <div className="flex gap-2 text-[9px]">
+                    <span className="text-emerald-400 flex items-center gap-1"><div className="w-2 h-2 bg-emerald-500 rounded-sm" /> HOT</span>
+                    <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500 rounded-sm" /> AVG</span>
+                    <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm" /> COLD</span>
+                </div>
+            </div>
+
+            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+                <svg viewBox="0 0 435 403" className="w-full h-full">
+                    <rect x="0" y="0" width="435" height="403" fill="#020617" />
+
+                    {/* Zone Heatmap */}
+                    <g>
+                        {zones.map((z, i) => {
+                            const style = getZoneStyle(z.data.m, z.data.a, z.avg);
+                            return (
+                                <path
+                                    key={i}
+                                    d={z.path}
+                                    fill={style.fill}
+                                    fillOpacity={style.opacity}
+                                    stroke="none"
+                                />
+                            );
+                        })}
+                    </g>
+
+                    {/* Court Lines */}
+                    <g fill="none" stroke="#0f172a" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
+                        {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
+                    </g>
+
+                    {/* Zone Labels */}
+                    <g pointerEvents="none">
+                        {zones.map((z, i) => {
+                            const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                            const style = getZoneStyle(z.data.m, z.data.a, z.avg);
+                            const colors = getZonePillColors(style.isHot, style.isCold, z.data.a > 0);
+                            const isWide = pct.length >= 3;
+                            const width = isWide ? 56 : 44;
+                            const height = 32;
+
+                            return (
+                                <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                    <rect
+                                        x={-width / 2} y={-height / 2}
+                                        width={width} height={height}
+                                        rx={6}
+                                        fill={colors.pillFill}
+                                        stroke={colors.borderStroke}
+                                        strokeWidth={1}
+                                        fillOpacity={0.95}
+                                    />
+                                    <text textAnchor="middle" y={-3} fill={colors.textFill} fontSize="12" fontWeight="800">
+                                        {pct}%
+                                    </text>
+                                    <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9" fontWeight="600">
+                                        {z.data.m}/{z.data.a}
+                                    </text>
+                                </g>
+                            );
+                        })}
+                    </g>
+                </svg>
+            </div>
+        </div>
+    );
+};
