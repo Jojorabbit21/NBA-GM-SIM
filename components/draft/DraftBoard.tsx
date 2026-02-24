@@ -30,9 +30,24 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     userTeamId,
 }) => {
     const currentCellRef = useRef<HTMLTableCellElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        currentCellRef.current?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+        if (currentCellRef.current && scrollContainerRef.current) {
+            const cell = currentCellRef.current;
+            const container = scrollContainerRef.current;
+            const cellRect = cell.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+
+            // Horizontal scroll
+            if (cellRect.left < containerRect.left + 120 || cellRect.right > containerRect.right) {
+                container.scrollLeft += cellRect.left - containerRect.left - 160;
+            }
+            // Vertical scroll
+            if (cellRect.top < containerRect.top + 30 || cellRect.bottom > containerRect.bottom) {
+                container.scrollTop += cellRect.top - containerRect.top - 60;
+            }
+        }
     }, [currentPickIndex]);
 
     // Build a lookup: picksByTeamAndRound[teamId][round] = BoardPick
@@ -50,7 +65,11 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     const userPrimaryColor = userTeamData?.colors.primary || '#4f46e5';
 
     return (
-        <div className="flex-1 min-h-0 overflow-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+        <div
+            ref={scrollContainerRef}
+            className="h-full overflow-auto"
+            style={{ scrollbarWidth: 'thin' } as React.CSSProperties}
+        >
             <table className="border-collapse text-[10px] w-max min-w-full">
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
@@ -110,9 +129,8 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                             }`}
                                         >
                                             {pick ? (
-                                                <div>
-                                                    <div className="text-xs font-bold text-slate-200">{pick.ovr}</div>
-                                                    <div className="text-[9px] text-slate-500 truncate max-w-[90px] mx-auto">{pick.playerName}</div>
+                                                <div className="text-[10px] font-semibold text-white truncate max-w-[90px] mx-auto">
+                                                    {pick.playerName}
                                                 </div>
                                             ) : isCurrent ? (
                                                 <div className="text-[9px] text-indigo-400 animate-pulse">...</div>

@@ -47,8 +47,8 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
     return (
         <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
-                <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">슈팅 존 히트맵</h5>
-                <div className="flex items-center gap-1 text-[9px] text-slate-500">
+                <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
+                <div className="flex items-center gap-1 text-xs text-slate-400">
                     <span>LOW</span>
                     <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#10b981', opacity: 0.1 }} />
                     <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#10b981', opacity: 0.3 }} />

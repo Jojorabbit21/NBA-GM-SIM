@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { FastForward } from 'lucide-react';
+import { FastForward, ArrowLeft } from 'lucide-react';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 
@@ -13,6 +13,7 @@ interface DraftHeaderProps {
     isUserTurn: boolean;
     onFastForward?: () => void;
     showFastForward: boolean;
+    onBack: () => void;
 }
 
 export const DraftHeader: React.FC<DraftHeaderProps> = ({
@@ -24,6 +25,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     isUserTurn,
     onFastForward,
     showFastForward,
+    onBack,
 }) => {
     const teamData = TEAM_DATA[currentTeamId];
     const progressPct = totalPicks > 0 ? (currentPickIndex / totalPicks) * 100 : 0;
@@ -31,8 +33,14 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     return (
         <div className="shrink-0 bg-slate-950 border-b border-slate-800 px-3 py-1.5 relative">
             <div className="flex items-center justify-between h-8">
-                {/* Left: Round & Pick */}
+                {/* Left: Back + Round & Pick */}
                 <div className="flex items-center gap-3">
+                    <button
+                        onClick={onBack}
+                        className="p-1 rounded-md hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                    >
+                        <ArrowLeft size={16} />
+                    </button>
                     <span className="oswald font-black text-xs uppercase text-white tracking-wider">
                         ROUND {currentRound}
                     </span>

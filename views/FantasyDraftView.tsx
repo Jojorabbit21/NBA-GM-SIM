@@ -12,6 +12,7 @@ import { GripHorizontal } from 'lucide-react';
 interface FantasyDraftViewProps {
     teams: Team[];
     myTeamId: string;
+    onBack: () => void;
 }
 
 // ── Snake Draft Order Generator ──
@@ -32,7 +33,7 @@ function collectAllPlayers(teams: Team[]): Player[] {
     return all;
 }
 
-export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId }) => {
+export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, onBack }) => {
     const TOTAL_ROUNDS = 15;
     const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
     const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds]);
@@ -180,6 +181,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 isUserTurn={isUserTurn}
                 onFastForward={handleFastForward}
                 showFastForward={showFastForward}
+                onBack={onBack}
             />
 
             {/* Draft Board (resizable top section) */}
@@ -206,7 +208,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 {/* Left: Pick History */}
                 <div className="w-[25%] border-r border-slate-800">
-                    <PickHistory picks={picks} />
+                    <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} />
                 </div>
 
                 {/* Center: Player Pool */}

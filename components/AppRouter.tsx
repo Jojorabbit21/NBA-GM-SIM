@@ -209,7 +209,11 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'DraftRoom':
-            return <FantasyDraftView teams={gameData.teams} myTeamId={gameData.myTeamId!} />;
+            return (
+                <div className="fixed inset-0 z-[9999] bg-slate-950">
+                    <FantasyDraftView teams={gameData.teams} myTeamId={gameData.myTeamId!} onBack={() => setView('Dashboard')} />
+                </div>
+            );
         default:
             return null;
     }

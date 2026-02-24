@@ -48,7 +48,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({ roster }) => {
 
     return (
         <div className="flex flex-col gap-2">
-            <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">로스터 레이더</h5>
+            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
             <svg viewBox="0 0 280 270" className="w-full">
                 {/* Grid Levels */}
                 {LEVELS.map(level => {
@@ -100,18 +100,18 @@ export const RadarChart: React.FC<RadarChartProps> = ({ roster }) => {
                                 textAnchor="middle"
                                 dominantBaseline="middle"
                                 fill="#94a3b8"
-                                fontSize="9"
+                                fontSize="11"
                                 fontWeight="700"
                             >
                                 {axis.label}
                             </text>
                             <text
                                 x={x}
-                                y={y + 12}
+                                y={y + 13}
                                 textAnchor="middle"
                                 dominantBaseline="middle"
                                 fill={AXES[i].color}
-                                fontSize="11"
+                                fontSize="13"
                                 fontWeight="800"
                             >
                                 {teamAvg[i]}
