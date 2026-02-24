@@ -773,26 +773,16 @@ const LiveShotChart: React.FC<{
                     return (
                         <g key={`${shot.id}-${i}`}>
                             {shot.isMake ? (
-                                <circle cx={shot.x * S} cy={shot.y * S} r={6.5} fill={color} stroke="#333" strokeWidth="1" opacity="0.9" />
+                                <circle cx={shot.x * S} cy={shot.y * S} r={6.5} fill={color} stroke="white" strokeWidth="1" opacity="0.9" />
                             ) : (
-                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`} opacity="0.7">
-                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke="#64748b" strokeWidth="2.5" />
-                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke="#64748b" strokeWidth="2.5" />
+                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`} opacity="0.5">
+                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke={color} strokeWidth="2.5" />
+                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke={color} strokeWidth="2.5" />
                                 </g>
                             )}
                         </g>
                     );
                 })}
-                {/* 홈팀 로고 (최상위 레이어) */}
-                <image
-                    href={homeTeam.logo}
-                    x={470 - 80}
-                    y={250 - 80}
-                    width="160"
-                    height="160"
-                    opacity="0.15"
-                    preserveAspectRatio="xMidYMid meet"
-                />
             </svg>
         </div>
     );
