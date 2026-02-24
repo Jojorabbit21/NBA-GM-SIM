@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Search, Loader2, List, LayoutGrid, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Search, Loader2, List, LayoutGrid } from 'lucide-react';
 import { Team, Game } from '../types';
 import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
@@ -159,8 +159,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               ...g,
               played: g.played || !!dbResult,
               homeScore: g.homeScore ?? dbResult?.home_score,
-              awayScore: g.awayScore ?? dbResult?.away_score,
-              boxScore: dbResult?.box_score as { home: any[]; away: any[] } | undefined
+              awayScore: g.awayScore ?? dbResult?.away_score
           };
       }).sort((a, b) => a.date.localeCompare(b.date));
   }, [localSchedule, userResults, currentDate]);
@@ -199,21 +198,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       } finally {
           setFetchingGameId(null);
       }
-  };
-
-  // [Stat Leaders] Extract top PTS/REB/AST from box score
-  const getStatLeaders = (boxScore?: { home: any[]; away: any[] }) => {
-      if (!boxScore) return null;
-      const all = [...(boxScore.home || []), ...(boxScore.away || [])];
-      if (all.length === 0) return null;
-      const pts = all.reduce((best, p) => (p.pts ?? 0) > (best.pts ?? 0) ? p : best, all[0]);
-      const reb = all.reduce((best, p) => ((p.orb ?? 0) + (p.drb ?? 0)) > ((best.orb ?? 0) + (best.drb ?? 0)) ? p : best, all[0]);
-      const ast = all.reduce((best, p) => (p.ast ?? 0) > (best.ast ?? 0) ? p : best, all[0]);
-      return {
-          pts: { name: pts.playerName || '?', value: pts.pts ?? 0 },
-          reb: { name: reb.playerName || '?', value: (reb.orb ?? 0) + (reb.drb ?? 0) },
-          ast: { name: ast.playerName || '?', value: ast.ast ?? 0 }
-      };
   };
 
   return (
@@ -410,7 +394,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                         const awayTeam = teams.find(t => t.id === game.awayTeamId);
                         if (!homeTeam || !awayTeam) return null;
 
-                        const leaders = game.played ? getStatLeaders(game.boxScore) : null;
                         const isMyGame = game.homeTeamId === teamId || game.awayTeamId === teamId;
 
                         return (
@@ -422,26 +405,36 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                                 : 'bg-slate-900/60 border border-slate-800/40'
                             }`}
                           >
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center justify-center gap-3">
                               {/* Away Team */}
                               <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-                                <span className={`text-xs font-black uppercase truncate ${game.played ? 'text-white' : 'text-slate-400'}`}>
+                                <span className="text-xs font-black uppercase truncate text-slate-400">
                                   {awayTeam.city} {awayTeam.name}
                                 </span>
                                 <TeamLogo teamId={awayTeam.id} size="xs" />
                               </div>
 
-                              {/* Score / @ */}
+                              {/* Score (clickable) / @ */}
                               {game.played ? (
-                                <div className="flex items-center gap-2 shrink-0 px-2">
-                                  <span className={`text-lg font-black oswald ${game.awayScore! > game.homeScore! ? 'text-white' : 'text-slate-500'}`}>
-                                    {game.awayScore}
-                                  </span>
-                                  <span className="text-[10px] text-slate-600 font-bold">-</span>
-                                  <span className={`text-lg font-black oswald ${game.homeScore! > game.awayScore! ? 'text-white' : 'text-slate-500'}`}>
-                                    {game.homeScore}
-                                  </span>
-                                </div>
+                                <button
+                                  onClick={() => handleViewBoxScore(game.id)}
+                                  disabled={!!fetchingGameId}
+                                  className="flex items-center gap-2 shrink-0 px-3 py-1 rounded-lg hover:bg-slate-800/80 transition-all cursor-pointer disabled:opacity-50"
+                                >
+                                  {fetchingGameId === game.id ? (
+                                    <Loader2 size={16} className="animate-spin text-indigo-400" />
+                                  ) : (
+                                    <>
+                                      <span className={`text-lg font-black oswald ${game.awayScore! > game.homeScore! ? 'text-white' : 'text-slate-500'}`}>
+                                        {game.awayScore}
+                                      </span>
+                                      <span className="text-[10px] text-slate-600 font-bold">-</span>
+                                      <span className={`text-lg font-black oswald ${game.homeScore! > game.awayScore! ? 'text-white' : 'text-slate-500'}`}>
+                                        {game.homeScore}
+                                      </span>
+                                    </>
+                                  )}
+                                </button>
                               ) : (
                                 <span className="text-[10px] text-slate-600 font-bold shrink-0 px-3">@</span>
                               )}
@@ -449,49 +442,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               {/* Home Team */}
                               <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <TeamLogo teamId={homeTeam.id} size="xs" />
-                                <span className={`text-xs font-black uppercase truncate ${game.played ? 'text-white' : 'text-slate-400'}`}>
+                                <span className="text-xs font-black uppercase truncate text-slate-400">
                                   {homeTeam.city} {homeTeam.name}
                                 </span>
                               </div>
-
-                              {/* Stat Leaders + Box Score Button */}
-                              {game.played && (
-                                <div className="flex items-center gap-3 shrink-0 ml-2">
-                                  {leaders && (
-                                    <div className="hidden lg:flex items-center gap-3 text-[10px]">
-                                      <span className="text-slate-500">
-                                        <span className="text-slate-600 font-bold mr-1">PTS</span>
-                                        <span className="text-slate-300 font-bold">{leaders.pts.name}</span>
-                                        <span className="text-indigo-400 font-black ml-1">{leaders.pts.value}</span>
-                                      </span>
-                                      <span className="text-slate-700">|</span>
-                                      <span className="text-slate-500">
-                                        <span className="text-slate-600 font-bold mr-1">REB</span>
-                                        <span className="text-slate-300 font-bold">{leaders.reb.name}</span>
-                                        <span className="text-indigo-400 font-black ml-1">{leaders.reb.value}</span>
-                                      </span>
-                                      <span className="text-slate-700">|</span>
-                                      <span className="text-slate-500">
-                                        <span className="text-slate-600 font-bold mr-1">AST</span>
-                                        <span className="text-slate-300 font-bold">{leaders.ast.name}</span>
-                                        <span className="text-indigo-400 font-black ml-1">{leaders.ast.value}</span>
-                                      </span>
-                                    </div>
-                                  )}
-                                  <button
-                                    onClick={() => handleViewBoxScore(game.id)}
-                                    disabled={fetchingGameId === game.id}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-bold uppercase transition-all border border-slate-700 disabled:opacity-50"
-                                  >
-                                    {fetchingGameId === game.id ? (
-                                      <Loader2 size={12} className="animate-spin" />
-                                    ) : (
-                                      <FileText size={12} />
-                                    )}
-                                    박스스코어
-                                  </button>
-                                </div>
-                              )}
                             </div>
                           </div>
                         );
