@@ -99,12 +99,12 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
 
             {/* Left: Data Charts (7/12) */}
-            <div className="lg:col-span-7">
+            <div className="lg:col-span-7 lg:pr-6 lg:border-r lg:border-slate-800">
                 <TacticsDataPanel sliders={sliders} roster={roster} schedule={schedule} teamId={teamId} />
             </div>
 
             {/* Right: All Sliders (5/12) — offense + defense stacked */}
-            <div className="lg:col-span-5 flex flex-col gap-1">
+            <div className="lg:col-span-5 lg:pl-2 flex flex-col gap-1">
 
                 {/* ── OFFENSE ── */}
                 <h3 className="text-xl font-black text-white uppercase tracking-widest oswald">공격 전술</h3>

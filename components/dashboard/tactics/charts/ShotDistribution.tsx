@@ -134,7 +134,7 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
                                     )}
                                 </div>
                             </div>
-                            <div className="h-2 bg-slate-900 rounded-full overflow-hidden relative">
+                            <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
                                 <div
                                     className="h-full rounded-full transition-all duration-300"
                                     style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}

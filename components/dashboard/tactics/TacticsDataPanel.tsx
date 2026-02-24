@@ -23,7 +23,7 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
     return (
         <div className="flex items-center gap-3">
             <span className="text-xs font-bold text-slate-300 w-20 shrink-0">{label}</span>
-            <div className="flex-1 h-1.5 bg-slate-900 rounded-full overflow-hidden">
+            <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: '#6366f1', opacity: 0.6 }} />
             </div>
             <span className="text-[13px] font-black text-white tabular-nums w-14 text-right">{Math.round(pct)}<span className="text-[10px] font-bold text-slate-500"> /100</span></span>
@@ -112,25 +112,35 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
     }, [sliders]);
 
     return (
-        <div className="flex flex-col gap-6">
-            {/* Row 1: Radar + Zone Heatmap */}
-            <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
+            {/* Radar Chart */}
+            <div>
                 <RadarChart roster={roster} />
+            </div>
+
+            {/* Zone Heatmap (smaller) */}
+            <div>
                 <TeamZoneChart roster={roster} />
             </div>
 
-            {/* Row 2: Play Type PPP (with inline key players) */}
-            <PlayTypePPP sliders={sliders} roster={roster} />
+            {/* Play Type PPP — full width */}
+            <div className="col-span-2">
+                <PlayTypePPP sliders={sliders} roster={roster} />
+            </div>
 
-            {/* Row 3: Shot Distribution + Usage Prediction */}
-            <div className="grid grid-cols-2 gap-4">
+            {/* Shot Distribution */}
+            <div>
                 <ShotDistribution sliders={sliders} roster={roster} />
+            </div>
+
+            {/* Usage Prediction */}
+            <div>
                 <UsagePrediction roster={roster} />
             </div>
 
-            {/* Row 4: Season Ratings — ORTG / DRTG / NetRTG */}
+            {/* Season Ratings — ORTG / DRTG / NetRTG — full width */}
             {seasonRatings.games > 0 && (
-                <div className="flex items-center gap-6">
+                <div className="col-span-2 flex items-center gap-6">
                     <div className="flex items-baseline gap-2">
                         <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">ORTG</span>
                         <span className="text-2xl font-black text-white tabular-nums">{seasonRatings.ortg || '—'}</span>
@@ -150,8 +160,8 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 </div>
             )}
 
-            {/* Row 5: Combined Risk Analysis */}
-            <div className="flex flex-col gap-2.5">
+            {/* Combined Risk Analysis — full width */}
+            <div className="col-span-2 flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                     <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">리스크 분석</h5>
                     <span className="text-[11px] text-slate-500">0-100 위험 지수</span>
