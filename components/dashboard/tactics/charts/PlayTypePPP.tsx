@@ -2,42 +2,12 @@
 import React, { useMemo } from 'react';
 import { TacticalSliders, Player } from '../../../../types';
 import { calculatePlayerOvr } from '../../../../utils/constants';
-import { PLAY_TYPES, PLAY_ATTR_MAP, PNR_HANDLER_MAP, PNR_ROLLER_MAP } from './playTypeConstants';
+import { PLAY_TYPES, PLAY_ATTR_MAP } from './playTypeConstants';
 
 interface PlayTypePPPProps {
     sliders: TacticalSliders;
     roster: Player[];
 }
-
-// Extract last name
-const getShortName = (name: string): string => {
-    const parts = name.split(' ');
-    if (parts.length <= 1) return name;
-    const last = parts[parts.length - 1];
-    if (['Jr.', 'Jr', 'II', 'III', 'IV', 'Sr.', 'Sr'].includes(last)) {
-        return parts.length >= 3 ? parts[parts.length - 2] : parts[0];
-    }
-    return last;
-};
-
-// Calculate best-fit player for a given attr map
-const findBestPlayer = (
-    players: Player[],
-    attrMap: { attrs: string[]; weights: number[] },
-    excludeId?: string
-): { name: string; score: number } | null => {
-    const pool = excludeId ? players.filter(p => p.id !== excludeId) : players;
-    if (pool.length === 0) return null;
-
-    let best = { name: '', score: 0 };
-    for (const p of pool) {
-        const score = attrMap.attrs.reduce((s, attr, j) => {
-            return s + ((p as any)[attr] || 50) * attrMap.weights[j];
-        }, 0);
-        if (score > best.score) best = { name: p.name, score: Math.round(score) };
-    }
-    return best;
-};
 
 // Donut chart constants
 const DONUT_CX = 80;
@@ -71,26 +41,10 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
 
             const predictedPPP = pt.baseEff * (0.7 + teamAttrScore * 0.6);
 
-            let players: string = '';
-            if (rotationPlayers.length > 0) {
-                if (pt.key === 'pnr') {
-                    const handler = findBestPlayer(rotationPlayers, PNR_HANDLER_MAP);
-                    const roller = findBestPlayer(rotationPlayers, PNR_ROLLER_MAP, handler?.name ? rotationPlayers.find(p => p.name === handler.name)?.id : undefined);
-                    const parts = [];
-                    if (handler) parts.push(handler.name);
-                    if (roller) parts.push(roller.name);
-                    players = parts.join(' · ');
-                } else {
-                    const best = findBestPlayer(rotationPlayers, attrMap);
-                    if (best) players = best.name;
-                }
-            }
-
             return {
                 ...pt,
                 distribution: distribution[i],
                 predictedPPP: Math.round(predictedPPP * 100) / 100,
-                players,
             };
         });
     }, [sliders, roster]);
@@ -105,13 +59,12 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         });
     }, [data]);
 
-
     return (
         <div className="flex flex-col gap-3">
             <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 분석</h5>
 
             <div className="flex items-stretch gap-4">
-                {/* Donut Chart — stretches to match table height */}
+                {/* Donut Chart */}
                 <div className="shrink-0 flex items-center">
                     <svg viewBox="0 0 160 160" className="w-[200px] h-[200px]">
                         <circle
@@ -136,7 +89,7 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                 </div>
 
                 {/* Two visual groups side by side */}
-                <div className="flex-1 flex gap-6">
+                <div className="flex gap-6">
                     {/* Group 1: PlayType + Share */}
                     <table className="border-collapse">
                         <thead>
@@ -162,27 +115,21 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                         </tbody>
                     </table>
 
-                    {/* Group 2: PPP + Key Player */}
-                    <table className="flex-1 border-collapse">
+                    {/* Group 2: PPP */}
+                    <table className="border-collapse">
                         <thead>
                             <tr>
                                 <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">PPP</th>
-                                <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">핵심선수</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {data.map(item => {
-                                return (
-                                    <tr key={item.key} className="h-9">
-                                        <td className="align-middle">
-                                            <span className="text-[13px] font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
-                                        </td>
-                                        <td className="align-middle pl-2 text-right">
-                                            <span className="text-xs font-bold text-white">{item.players || '—'}</span>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {data.map(item => (
+                                <tr key={item.key} className="h-9">
+                                    <td className="align-middle">
+                                        <span className="text-xs font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
+                                    </td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
