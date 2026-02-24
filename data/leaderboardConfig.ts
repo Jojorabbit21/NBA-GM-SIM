@@ -77,6 +77,9 @@ export const ADVANCED_STAT_OPTIONS = [
     { value: 'blk%', label: 'BLK%' },
     { value: '3par', label: '3PAr' },
     { value: 'ftr', label: 'FTr' },
+    { value: 'ortg', label: 'ORTG' },
+    { value: 'drtg', label: 'DRTG' },
+    { value: 'nrtg', label: 'NRTG' },
 ];
 
 // Filter Options - Opponent
@@ -291,9 +294,12 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     ...ATTRIBUTES_COLUMNS
 ];
 
-// Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE 추가)
+// Advanced Columns for Teams (USG%/ORB%/DRB%/TRB% 는 선수 전용 지표이므로 제외, POSS/PACE/ORTG/DRTG/NRTG 추가)
 const TEAMS_ADVANCED_COLUMNS: ColumnDef[] = [
     ...ADVANCED_COLUMNS.filter(col => !['usg%', 'orb%', 'drb%', 'trb%'].includes(col.key)),
+    { key: 'ortg', label: 'ORTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
+    { key: 'drtg', label: 'DRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, isInverse: true, category: 'Advanced', format: 'number' },
+    { key: 'nrtg', label: 'NRTG', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'poss', label: 'POSS', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
     { key: 'pace', label: 'PACE', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
 ];

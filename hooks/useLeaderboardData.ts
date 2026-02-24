@@ -201,6 +201,14 @@ export const useLeaderboardData = (
                 // PACE: 48분당 평균 포제션. 상대 포제션이 있으면 양팀 평균, 없으면 팀 단독값
                 'pace': oppPoss > 0 ? (teamPoss + oppPoss) / (2 * playedCount) : teamPoss / playedCount,
 
+                // --- ORTG / DRTG / NRTG ---
+                // ORTG: 100 포제션당 득점 = (PTS / Team Poss) × 100
+                'ortg': teamPoss > 0 ? (totalPts / teamPoss) * 100 : 0,
+                // DRTG: 100 포제션당 실점 = (Opp PTS / Opp Poss) × 100
+                'drtg': oppPoss > 0 ? (totalPa / oppPoss) * 100 : 0,
+                // NRTG: Net Rating = ORTG - DRTG
+                'nrtg': (teamPoss > 0 && oppPoss > 0) ? ((totalPts / teamPoss) - (totalPa / oppPoss)) * 100 : 0,
+
                 // --- Opponent Stats ---
                 'opp_pts':  totalPa / playedCount,
                 'opp_fg%':  oppFga  > 0 ? oppFgm / oppFga  : 0,

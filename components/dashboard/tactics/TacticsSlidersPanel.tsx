@@ -1,15 +1,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { HelpCircle } from 'lucide-react';
-import { GameTactics, TacticalSliders, Player, Game } from '../../../types';
+import { GameTactics, TacticalSliders, Player } from '../../../types';
 import { TacticsDataPanel } from './TacticsDataPanel';
 
 interface TacticsSlidersPanelProps {
     tactics: GameTactics;
     onUpdateTactics: (t: GameTactics) => void;
     roster: Player[];
-    schedule: Game[];
-    teamId: string;
 }
 
 // Reusable Slider Component
@@ -87,7 +85,7 @@ const SliderControl: React.FC<{
   );
 };
 
-export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, schedule, teamId }) => {
+export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster }) => {
 
     const { sliders } = tactics;
 
@@ -100,7 +98,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
 
             {/* Left: Data Charts (7/12) */}
             <div className="lg:col-span-7 lg:pr-6 lg:border-r lg:border-slate-800">
-                <TacticsDataPanel sliders={sliders} roster={roster} schedule={schedule} teamId={teamId} />
+                <TacticsDataPanel sliders={sliders} roster={roster} />
             </div>
 
             {/* Right: All Sliders (5/12) — offense + defense stacked */}

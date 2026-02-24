@@ -7,7 +7,6 @@ import { calculatePlayerOvr } from '../utils/constants';
 import { PageHeader } from '../components/common/PageHeader';
 import { Dropdown, DropdownButton } from '../components/common/Dropdown';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { SalaryCapDashboard } from '../components/roster/SalaryCapDashboard';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs } from '../components/roster/RosterTabs';
 
@@ -19,7 +18,7 @@ interface RosterViewProps {
 
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
-  const [tab, setTab] = useState<'roster' | 'stats' | 'salary'>('roster');
+  const [tab, setTab] = useState<'roster' | 'stats'>('roster');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
 
   useEffect(() => { if (initialTeamId) setSelectedTeamId(initialTeamId); }, [initialTeamId]);
@@ -27,13 +26,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const selectedTeam = useMemo(() => 
       allTeams.find(t => t.id === selectedTeamId) || allTeams[0]
   , [allTeams, selectedTeamId]);
-
-  const teamStats = useMemo(() => {
-    if (!selectedTeam) return null;
-    const roster = selectedTeam.roster;
-    const totalSalary = roster.reduce((sum, p) => sum + p.salary, 0);
-    return { salary: totalSalary, count: roster.length };
-  }, [selectedTeam]);
 
   // Team Select Dropdown Items
   const teamItems = useMemo(() => allTeams.map(t => ({
@@ -81,12 +73,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
         }
       />
 
-      {/* 2. Salary Cap Info (Only on Salary Tab) */}
-      {tab === 'salary' && teamStats && (
-          <SalaryCapDashboard currentTotalSalary={teamStats.salary} />
-      )}
-
-      {/* 3. Controls & Grid */}
+      {/* 2. Controls & Grid */}
       <div className="flex flex-col gap-4">
           <RosterTabs activeTab={tab} onTabChange={setTab} />
           

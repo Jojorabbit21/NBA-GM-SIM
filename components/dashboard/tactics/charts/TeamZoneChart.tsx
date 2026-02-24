@@ -45,7 +45,9 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
     , [teamZones]);
 
     return (
-        <div className="relative w-full max-w-[300px] mx-auto aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+        <div className="flex flex-col gap-2">
+            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
+            <div className="relative w-full max-w-[300px] mx-auto aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
             <svg viewBox="0 0 435 403" className="w-full h-full">
                 <rect x="0" y="0" width="435" height="403" fill="#020617" />
 
@@ -104,6 +106,7 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                     })}
                 </g>
             </svg>
+            </div>
         </div>
     );
 };
