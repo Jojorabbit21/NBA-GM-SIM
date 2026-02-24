@@ -3,6 +3,7 @@ import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
 import { resolvePlayAction } from './playTypes';
 import { calculateHitRate } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
+import { getTopPlayerGravity } from './usageSystem';
 import { PlayType } from '../../../../types';
 
 /**
@@ -194,7 +195,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     if (!isSecondChance) {
         // Calculate total weight
-        const weights = {
+        const weights: Record<string, number> = {
             'Iso': sliders.play_iso,
             'PnR_Handler': sliders.play_pnr * 0.6,
             'PnR_Roll': sliders.play_pnr * 0.2,
@@ -205,7 +206,18 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             'Handoff': 2, // Base
             'Transition': 0 // Handled by pace check
         };
-        
+
+        // Star Gravity: 1옵션의 공격력이 높을수록 Hero 플레이 비중 증가
+        // 현실 NBA에서 에이스가 코트에 있으면 팀 전술 자체가 스타 중심으로 변하는 것을 반영
+        const topGravity = getTopPlayerGravity(offTeam);
+        const gravityBoost = Math.max(0, (topGravity - 60) * 0.03);
+        // gravity 80 → boost 0.6 → Iso 60% 증가
+        // gravity 70 → boost 0.3 → Iso 30% 증가
+        // gravity 60 이하 → boost 0 (벤치 유닛은 시스템 플레이 유지)
+        weights['Iso'] *= (1 + gravityBoost);
+        weights['PnR_Handler'] *= (1 + gravityBoost);
+        weights['PostUp'] *= (1 + gravityBoost * 0.5);
+
         // Add Transition chance based on Pace
         // Pace 10 -> High transition
         if (Math.random() < (sliders.pace * 0.03)) {

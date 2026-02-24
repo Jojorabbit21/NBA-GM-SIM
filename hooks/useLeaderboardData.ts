@@ -241,7 +241,10 @@ export const useLeaderboardData = (
             const tStat = teamStats.find(ts => ts.id === t.id);
             const teamMin = (tStat?.stats.g || 1) * 48;
             const teamFgm = tStat?.rawTotals.fgm || 0;
+            // teamPoss: STL%, BLK% 등 포제션 기반 스탯에 사용 (offReb 차감)
             const teamPoss = (tStat?.rawTotals.fga || 0) + 0.44 * (tStat?.rawTotals.fta || 0) + (tStat?.rawTotals.tov || 0) - (tStat?.rawTotals.offReb || 0);
+            // teamUsage: USG% 전용 분모 — Basketball-Reference 표준 (offReb 차감 없음)
+            const teamUsage = (tStat?.rawTotals.fga || 0) + 0.44 * (tStat?.rawTotals.fta || 0) + (tStat?.rawTotals.tov || 0);
             
             const oppDreb = tStat?.rawOppTotals.oppDreb || 0;
             const oppOreb = tStat?.rawOppTotals.oppOreb || 0;
@@ -267,10 +270,11 @@ export const useLeaderboardData = (
                 s['efg%'] = s.fga > 0 ? (s.fgm + 0.5 * s.p3m) / s.fga : 0;
                 s['tov%'] = (s.fga + 0.44 * s.fta + s.tov) > 0 ? s.tov / (s.fga + 0.44 * s.fta + s.tov) : 0;
                 
-                // USG%
+                // USG% — Basketball-Reference 표준 공식
+                // USG% = (FGA + 0.44×FTA + TOV) × (Tm MP / 5) / (MP × (Tm FGA + 0.44×Tm FTA + Tm TOV))
                 const playerPossCount = s.fga + 0.44 * s.fta + s.tov;
-                if (mp > 0 && teamPoss > 0) {
-                    s['usg%'] = (playerPossCount * (teamMin / 5)) / (mp * teamPoss);
+                if (mp > 0 && teamUsage > 0) {
+                    s['usg%'] = (playerPossCount * (teamMin / 5)) / (mp * teamUsage);
                 } else {
                     s['usg%'] = 0;
                 }
