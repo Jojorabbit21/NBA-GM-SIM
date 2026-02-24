@@ -81,8 +81,8 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
 
     return (
         <div className="flex flex-col gap-5">
-            {/* Section 1: Radar + Zone Heatmap — headers aligned at top */}
-            <div className="flex items-start gap-4 pb-5 border-b border-slate-800">
+            {/* Section 1: Radar + Zone Heatmap — vertically centered */}
+            <div className="flex items-center gap-4 pb-5 border-b border-slate-800">
                 <div className="flex-1">
                     <RadarChart roster={roster} />
                 </div>
