@@ -39,6 +39,13 @@ const findBestPlayer = (
     return best;
 };
 
+// Donut chart constants
+const DONUT_CX = 80;
+const DONUT_CY = 80;
+const DONUT_R = 55;
+const DONUT_STROKE = 20;
+const CIRCUMFERENCE = 2 * Math.PI * DONUT_R; // ≈ 345.58
+
 export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => {
     const data = useMemo(() => {
         const rawWeights = PLAY_TYPES.map(pt => sliders[pt.sliderKey] || 5);
@@ -90,51 +97,101 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         });
     }, [sliders, roster]);
 
-    const maxDist = Math.max(...data.map(d => d.distribution), 30);
+    // Donut segments
+    const donutSegments = useMemo(() => {
+        let accumulated = 0;
+        return data.map(item => {
+            const segmentLength = (item.distribution / 100) * CIRCUMFERENCE;
+            const offset = -accumulated;
+            accumulated += segmentLength;
+            return { segmentLength, offset, color: item.color };
+        });
+    }, [data]);
+
+    const maxPPP = Math.max(...data.map(d => d.predictedPPP), 1.2);
 
     return (
         <div className="flex flex-col gap-3">
-            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 효율</h5>
+            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 분석</h5>
 
-            {/* Column headers */}
-            <div className="flex items-center gap-2 px-1">
-                <span className="w-[72px] shrink-0" />
-                <span className="flex-1 text-[11px] font-bold text-slate-500 uppercase tracking-wider">비중</span>
-                <span className="w-11 text-[11px] font-bold text-slate-500 uppercase tracking-wider text-center">PPP</span>
-                <span className="w-[110px] text-[11px] font-bold text-slate-500 uppercase tracking-wider text-right">핵심선수</span>
-            </div>
+            <div className="flex items-start gap-5">
+                {/* Left: Donut Chart + Legend */}
+                <div className="w-[180px] shrink-0 flex flex-col items-center gap-3">
+                    {/* Donut SVG */}
+                    <svg viewBox="0 0 160 160" className="w-[140px] h-[140px]">
+                        {/* Background ring */}
+                        <circle
+                            cx={DONUT_CX} cy={DONUT_CY} r={DONUT_R}
+                            fill="none" stroke="#1e293b" strokeWidth={DONUT_STROKE}
+                        />
+                        {/* Segments */}
+                        {donutSegments.map((seg, i) => (
+                            <circle
+                                key={i}
+                                cx={DONUT_CX} cy={DONUT_CY} r={DONUT_R}
+                                fill="none"
+                                stroke={seg.color}
+                                strokeWidth={DONUT_STROKE}
+                                strokeDasharray={`${seg.segmentLength} ${CIRCUMFERENCE}`}
+                                strokeDashoffset={seg.offset}
+                                strokeLinecap="butt"
+                                transform={`rotate(-90 ${DONUT_CX} ${DONUT_CY})`}
+                                className="transition-all duration-300"
+                            />
+                        ))}
+                    </svg>
 
-            {/* Play type rows */}
-            <div className="space-y-2">
-                {data.map(item => {
-                    const barWidth = (item.distribution / maxDist) * 100;
-                    return (
-                        <div key={item.key} className="flex items-center gap-2 px-1">
-                            {/* Play type name */}
-                            <span className="w-[72px] shrink-0 text-xs font-bold text-slate-300 truncate">{item.label}</span>
-
-                            {/* Distribution bar + % */}
-                            <div className="flex-1 flex items-center gap-2">
-                                <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
-                                    <div
-                                        className="h-full rounded-full transition-all duration-300"
-                                        style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}
-                                    />
-                                </div>
-                                <span className="text-xs font-bold text-slate-400 tabular-nums w-8 text-right">{item.distribution.toFixed(0)}%</span>
+                    {/* Legend — 2 columns, last item centered */}
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 w-full">
+                        {data.map((item, i) => (
+                            <div
+                                key={item.key}
+                                className={`flex items-center gap-1.5 ${i === data.length - 1 && data.length % 2 !== 0 ? 'col-span-2 justify-center' : ''}`}
+                            >
+                                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                <span className="text-[11px] font-bold text-slate-400 truncate">{item.label}</span>
+                                <span className="text-[11px] font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
                             </div>
+                        ))}
+                    </div>
+                </div>
 
-                            {/* PPP value */}
-                            <span className="w-11 text-[13px] font-black text-white tabular-nums text-center">{item.predictedPPP.toFixed(2)}</span>
+                {/* Right: PPP Bar Graph */}
+                <div className="flex-1 flex flex-col gap-2">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">효율 (PPP)</span>
 
-                            {/* Key player */}
-                            <span className="w-[110px] text-xs font-bold text-slate-400 text-right truncate">{item.players || '—'}</span>
-                        </div>
-                    );
-                })}
+                    <div className="space-y-2.5">
+                        {data.map(item => {
+                            const barWidth = (item.predictedPPP / maxPPP) * 100;
+                            return (
+                                <div key={item.key} className="flex items-center gap-2">
+                                    {/* Play type name with color dot */}
+                                    <div className="w-[72px] shrink-0 flex items-center gap-1.5">
+                                        <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                        <span className="text-xs font-bold text-slate-300 truncate">{item.label}</span>
+                                    </div>
+
+                                    {/* PPP bar */}
+                                    <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                                        <div
+                                            className="h-full rounded-full transition-all duration-300"
+                                            style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}
+                                        />
+                                    </div>
+
+                                    {/* PPP value */}
+                                    <span className="w-10 text-[13px] font-black text-white tabular-nums text-right">{item.predictedPPP.toFixed(2)}</span>
+
+                                    {/* Key player */}
+                                    <span className="w-[100px] text-xs font-bold text-slate-400 text-right truncate">{item.players || '—'}</span>
+                                </div>
+                            );
+                        })}
+                    </div>
+
+                    <div className="text-xs text-slate-400 text-right mt-1">* 로스터 능력치 기반 예측값</div>
+                </div>
             </div>
-
-            <div className="text-xs text-slate-400 text-right">* 로스터 능력치 기반 예측값</div>
         </div>
     );
 };
