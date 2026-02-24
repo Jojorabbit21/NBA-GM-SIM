@@ -279,8 +279,31 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     };
 
+    // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초)
+    const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isInitialTacticsLoad = useRef(true);
+
+    useEffect(() => {
+        // 초기 로드 시에는 저장하지 않음
+        if (isInitialTacticsLoad.current) {
+            if (userTactics) isInitialTacticsLoad.current = false;
+            return;
+        }
+        if (!userTactics || !myTeamId || isResettingRef.current) return;
+
+        if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
+        tacticsAutoSaveTimer.current = setTimeout(() => {
+            forceSave();
+        }, 1500);
+
+        return () => {
+            if (tacticsAutoSaveTimer.current) clearTimeout(tacticsAutoSaveTimer.current);
+        };
+    }, [userTactics, depthChart]);
+
     const cleanupData = () => {
          setMyTeamId(null);
+         isInitialTacticsLoad.current = true;
          hasInitialLoadRef.current = false;
     };
 
