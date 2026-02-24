@@ -82,15 +82,12 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
     return (
         <div className="flex flex-col gap-5">
             {/* Section 1: Radar + Zone Heatmap — vertically centered */}
-            <div className="flex items-start gap-4 pb-5 border-b border-slate-800">
+            <div className="flex items-center gap-4 pb-5 border-b border-slate-800">
                 <div className="flex-1">
                     <RadarChart roster={roster} />
                 </div>
-                <div className="flex-1 flex flex-col">
-                    <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest mb-2">슈팅 존 히트맵</h5>
-                    <div className="flex-1 flex items-center justify-center">
-                        <TeamZoneChart roster={roster} hideTitle />
-                    </div>
+                <div className="flex-1">
+                    <TeamZoneChart roster={roster} fullWidth />
                 </div>
             </div>
 

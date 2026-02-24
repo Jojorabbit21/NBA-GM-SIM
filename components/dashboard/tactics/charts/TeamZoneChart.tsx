@@ -6,6 +6,7 @@ import { ZONE_PATHS, COURT_LINES, ZONE_AVG, ZONE_CONFIG, getZoneStyle, getZonePi
 interface TeamZoneChartProps {
     roster: Player[];
     hideTitle?: boolean;
+    fullWidth?: boolean;
 }
 
 type ZoneKey = 'rim' | 'paint' | 'midL' | 'midC' | 'midR' | 'c3L' | 'c3R' | 'atb3L' | 'atb3C' | 'atb3R';
@@ -23,7 +24,7 @@ const ZONE_STAT_MAP: Record<ZoneKey, { m: string; a: string }> = {
     atb3R: { m: 'zone_atb3_r_m', a: 'zone_atb3_r_a' },
 };
 
-export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, hideTitle }) => {
+export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, hideTitle, fullWidth }) => {
     const teamZones = useMemo(() => {
         const result: Record<ZoneKey, { m: number; a: number }> = {} as any;
         for (const key of Object.keys(ZONE_STAT_MAP) as ZoneKey[]) {
@@ -48,7 +49,7 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, hideTitle 
     return (
         <div className="flex flex-col gap-2">
             {!hideTitle && <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>}
-            <div className="relative w-full max-w-[300px] mx-auto aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+            <div className={`relative w-full ${fullWidth ? '' : 'max-w-[300px]'} mx-auto aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800`}>
             <svg viewBox="0 0 435 403" className="w-full h-full">
                 <rect x="0" y="0" width="435" height="403" fill="#020617" />
 
