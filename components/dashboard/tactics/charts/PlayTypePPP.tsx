@@ -136,51 +136,66 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                     </svg>
                 </div>
 
-                {/* Single table with visual gap between Share and PPP */}
-                <table className="flex-1 border-collapse">
-                    <thead>
-                        <tr>
-                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">플레이타입</th>
-                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">비중</th>
-                            <th className="w-4" />
-                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5" colSpan={2}>PPP</th>
-                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">핵심선수</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {data.map(item => {
-                            const barWidth = (item.predictedPPP / maxPPP) * 100;
-                            return (
+                {/* Two visual groups side by side */}
+                <div className="flex-1 flex gap-6">
+                    {/* Group 1: PlayType + Share */}
+                    <table className="border-collapse">
+                        <thead>
+                            <tr>
+                                <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">플레이타입</th>
+                                <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-3">비중</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.map(item => (
                                 <tr key={item.key}>
-                                    <td className="py-1.5 pr-2">
+                                    <td className="py-1.5">
                                         <div className="flex items-center gap-1.5">
                                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                                             <span className="text-xs font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
                                         </div>
                                     </td>
-                                    <td className="py-1.5 text-right">
+                                    <td className="py-1.5 pl-3 text-right">
                                         <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
                                     </td>
-                                    <td className="w-4" />
-                                    <td className="py-1.5 w-[80px]">
-                                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
-                                            <div
-                                                className="h-full rounded-full transition-all duration-300"
-                                                style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}
-                                            />
-                                        </div>
-                                    </td>
-                                    <td className="py-1.5 pl-1.5 w-[44px]">
-                                        <span className="text-[13px] font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
-                                    </td>
-                                    <td className="py-1.5 pl-2 text-right">
-                                        <span className="text-xs font-bold text-slate-400">{item.players || '—'}</span>
-                                    </td>
                                 </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    {/* Group 2: PPP + Key Player */}
+                    <table className="flex-1 border-collapse">
+                        <thead>
+                            <tr>
+                                <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5" colSpan={2}>PPP</th>
+                                <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">핵심선수</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {data.map(item => {
+                                const barWidth = (item.predictedPPP / maxPPP) * 100;
+                                return (
+                                    <tr key={item.key}>
+                                        <td className="py-1.5 w-[80px]">
+                                            <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                                <div
+                                                    className="h-full rounded-full transition-all duration-300"
+                                                    style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}
+                                                />
+                                            </div>
+                                        </td>
+                                        <td className="py-1.5 pl-1.5 w-[44px]">
+                                            <span className="text-[13px] font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
+                                        </td>
+                                        <td className="py-1.5 pl-2 text-right">
+                                            <span className="text-xs font-bold text-slate-400">{item.players || '—'}</span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
             <div className="text-xs text-slate-400 text-right">* 로스터 능력치 기반 예측값</div>
