@@ -80,9 +80,9 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
     }, [sliders]);
 
     return (
-        <div className="grid grid-cols-2 gap-4">
-            {/* Radar + Zone Heatmap — grouped, vertically centered */}
-            <div className="col-span-2 flex items-center gap-4">
+        <div className="flex flex-col gap-5">
+            {/* Section 1: Radar + Zone Heatmap — headers aligned at top */}
+            <div className="flex items-start gap-4 pb-5 border-b border-slate-800">
                 <div className="flex-1">
                     <RadarChart roster={roster} />
                 </div>
@@ -91,13 +91,13 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 </div>
             </div>
 
-            {/* Play Type PPP — full width */}
-            <div className="col-span-2">
+            {/* Section 2: Play Type Analysis */}
+            <div className="pb-5 border-b border-slate-800">
                 <PlayTypePPP sliders={sliders} roster={roster} />
             </div>
 
-            {/* Combined Risk Analysis — full width */}
-            <div className="col-span-2 flex flex-col gap-2.5">
+            {/* Section 3: Risk Analysis */}
+            <div className="flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                     <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">리스크 분석</h5>
                     <span className="text-[11px] text-slate-500">0-100 위험 지수</span>

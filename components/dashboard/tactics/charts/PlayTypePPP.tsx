@@ -140,10 +140,10 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                 <table className="flex-1 border-collapse">
                     <thead>
                         <tr>
-                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pr-1.5">플레이타입</th>
-                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pr-2 w-[44px]">비중</th>
+                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pr-1">플레이타입</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pr-1.5 w-[40px]">비중</th>
                             <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5" colSpan={2}>PPP</th>
-                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-1">핵심선수</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-0.5">핵심선수</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -152,14 +152,14 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                             return (
                                 <tr key={item.key}>
                                     {/* Play type name with color dot */}
-                                    <td className="py-1.5 pr-1.5">
+                                    <td className="py-1.5 pr-1">
                                         <div className="flex items-center gap-1.5">
                                             <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
                                             <span className="text-xs font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
                                         </div>
                                     </td>
                                     {/* Share % */}
-                                    <td className="py-1.5 pr-2 w-[44px]">
+                                    <td className="py-1.5 pr-1.5 w-[40px]">
                                         <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
                                     </td>
                                     {/* PPP bar */}
@@ -172,11 +172,11 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                                         </div>
                                     </td>
                                     {/* PPP value */}
-                                    <td className="py-1.5 pl-1.5 w-[40px]">
+                                    <td className="py-1.5 pl-1 w-[40px]">
                                         <span className="text-[13px] font-black text-white tabular-nums">{item.predictedPPP.toFixed(2)}</span>
                                     </td>
                                     {/* Key player */}
-                                    <td className="py-1.5 pl-1 text-right">
+                                    <td className="py-1.5 pl-0.5 text-right">
                                         <span className="text-xs font-bold text-slate-400">{item.players || '—'}</span>
                                     </td>
                                 </tr>
