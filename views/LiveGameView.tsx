@@ -165,11 +165,12 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
     const [highlightedStats, setHighlightedStats] = useState<Set<HighlightKey>>(new Set());
     const prevStatsRef = useRef<Record<string, Record<StatKey, number>>>({});
+    const hlTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
     const sortedOnCourt = useMemo(() => sortByPosition(onCourt), [onCourt]);
     const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
 
-    // 스탯 변화 감지 → 하이라이트
+    // 스탯 변화 감지 → 하이라이트 (각 키별 독립 타이머)
     useEffect(() => {
         const allPlayers = [...onCourt, ...bench];
         const prev = prevStatsRef.current;
@@ -195,17 +196,26 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                 return next;
             });
 
-            const timer = setTimeout(() => {
-                setHighlightedStats(s => {
-                    const next = new Set(s);
-                    for (const h of newHighlights) next.delete(h);
-                    return next;
-                });
-            }, 800);
-
-            return () => clearTimeout(timer);
+            for (const h of newHighlights) {
+                if (hlTimersRef.current[h]) clearTimeout(hlTimersRef.current[h]);
+                hlTimersRef.current[h] = setTimeout(() => {
+                    setHighlightedStats(s => {
+                        const next = new Set(s);
+                        next.delete(h);
+                        return next;
+                    });
+                    delete hlTimersRef.current[h];
+                }, 500);
+            }
         }
     }, [onCourt, bench]);
+
+    // 언마운트 시 모든 타이머 정리
+    useEffect(() => {
+        return () => {
+            Object.values(hlTimersRef.current).forEach(clearTimeout);
+        };
+    }, []);
 
     // 팀 합계 계산 (FG/3P는 합산)
     const teamTotal = useMemo(() => {
@@ -292,8 +302,8 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.blk}</span>
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.tov}</span>
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.pf}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fga > 0 ? (teamTotal.fgm / teamTotal.fga).toFixed(3) : '.000'}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3a > 0 ? (teamTotal.p3m / teamTotal.p3a).toFixed(3) : '.000'}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fga > 0 ? (teamTotal.fgm / teamTotal.fga).toFixed(3).replace(/^0/, '') : '.000'}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3a > 0 ? (teamTotal.p3m / teamTotal.p3a).toFixed(3).replace(/^0/, '') : '.000'}</span>
                         </div>
                     </>
                 )}
@@ -365,18 +375,18 @@ const TeamStatsCompare: React.FC<{
                                 {!bothZero && (
                                     <div
                                         className="h-full rounded-sm transition-all duration-300"
-                                        style={{ width: `${aPct}%`, backgroundColor: awayColor, opacity: aWins ? 0.8 : 0.35 }}
+                                        style={{ width: `${aPct}%`, backgroundColor: awayColor }}
                                     />
                                 )}
                             </div>
                             {/* Away value */}
-                            <span className={`text-[10px] font-mono text-right ${aWins ? 'text-white font-bold' : 'text-slate-500'}`}>
+                            <span className={`text-[10px] font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
                                 {fmt(a)}
                             </span>
                             {/* Label */}
                             <span className="text-[9px] font-bold text-slate-400 text-center uppercase">{label}</span>
                             {/* Home value */}
-                            <span className={`text-[10px] font-mono text-left ${hWins ? 'text-white font-bold' : 'text-slate-500'}`}>
+                            <span className={`text-[10px] font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
                                 {fmt(h)}
                             </span>
                             {/* Home bar (grows left-to-right) */}
@@ -384,7 +394,7 @@ const TeamStatsCompare: React.FC<{
                                 {!bothZero && (
                                     <div
                                         className="h-full rounded-sm transition-all duration-300"
-                                        style={{ width: `${hPct}%`, backgroundColor: homeColor, opacity: hWins ? 0.8 : 0.35 }}
+                                        style={{ width: `${hPct}%`, backgroundColor: homeColor }}
                                     />
                                 )}
                             </div>
@@ -411,7 +421,9 @@ const GameLeaders: React.FC<{
     awayBox: { pts: number; reb: number; ast: number; playerName: string; playerId: string }[];
     homeColor: string;
     awayColor: string;
-}> = ({ homeBox, awayBox, homeColor, awayColor }) => {
+    homeTeamCode: string;
+    awayTeamCode: string;
+}> = ({ homeBox, awayBox, homeColor, awayColor, homeTeamCode, awayTeamCode }) => {
     type Row = { pts: number; reb: number; ast: number; playerName: string };
     const leaders = useMemo(() => {
         const findTop = (arr: Row[], key: 'pts' | 'reb' | 'ast') => {
@@ -428,16 +440,20 @@ const GameLeaders: React.FC<{
 
     return (
         <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
-            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1 px-1">Game Leaders</p>
-            <div className="flex flex-col gap-0.5">
+            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">Game Leaders</p>
+            <div className="flex flex-col gap-1">
                 {leaders.map(({ label, away, home }) => (
-                    <div key={label} className="grid grid-cols-[24px_1fr_22px_1px_22px_1fr] items-center gap-1 px-1">
+                    <div key={label} className="flex flex-col gap-0.5 px-1">
                         <span className="text-[9px] text-slate-500 font-bold uppercase">{label}</span>
-                        <span className="text-[10px] text-white truncate text-right">{away.name}</span>
-                        <span className="text-[10px] font-bold font-mono text-right" style={{ color: awayColor }}>{away.value}</span>
-                        <div className="h-3 bg-slate-700" />
-                        <span className="text-[10px] font-bold font-mono text-left" style={{ color: homeColor }}>{home.value}</span>
-                        <span className="text-[10px] text-white truncate">{home.name}</span>
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[9px] font-bold uppercase" style={{ color: awayColor }}>{awayTeamCode}</span>
+                            <span className="text-[10px] text-white truncate">{away.name}</span>
+                            <span className="text-[10px] font-bold font-mono text-white">{away.value}</span>
+                            <span className="text-slate-600 text-[10px]">|</span>
+                            <span className="text-[9px] font-bold uppercase" style={{ color: homeColor }}>{homeTeamCode}</span>
+                            <span className="text-[10px] text-white truncate">{home.name}</span>
+                            <span className="text-[10px] font-bold font-mono text-white">{home.value}</span>
+                        </div>
                     </div>
                 ))}
             </div>
@@ -482,35 +498,35 @@ const QuarterScores: React.FC<{
 
     return (
         <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
-            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1 px-1">Score by Quarter</p>
-            <table className="w-full text-[10px] font-mono">
+            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">Score by Quarter</p>
+            <table className="w-full text-[10px] font-mono border-collapse">
                 <thead>
-                    <tr className="text-[9px] text-slate-600 uppercase">
-                        <th className="text-left px-1 font-semibold w-12"></th>
+                    <tr className="text-[9px] text-slate-600 uppercase border-b border-slate-700/60">
+                        <th className="text-left px-1.5 py-1 font-semibold w-12"></th>
                         {[1, 2, 3, 4].map(q => (
-                            <th key={q} className="text-center px-1 font-semibold w-8">Q{q}</th>
+                            <th key={q} className="text-center px-1.5 py-1 font-semibold w-8">{q}</th>
                         ))}
-                        <th className="text-center px-1 font-semibold w-8">T</th>
+                        <th className="text-center px-1.5 py-1 font-semibold w-8 border-l border-slate-700/60">T</th>
                     </tr>
                 </thead>
                 <tbody>
-                    <tr>
-                        <td className="text-left px-1 text-slate-500 font-bold">{awayTeamCode}</td>
+                    <tr className="border-b border-slate-800/40">
+                        <td className="text-left px-1.5 py-1 text-slate-500 font-bold">{awayTeamCode}</td>
                         {scores.away.map((v, i) => (
-                            <td key={i} className={`text-center px-1 ${cellClass(i)}`}>
+                            <td key={i} className={`text-center px-1.5 py-1 ${cellClass(i)}`}>
                                 {i + 1 > currentQuarter ? '—' : v}
                             </td>
                         ))}
-                        <td className="text-center px-1 text-white font-bold">{aTotal}</td>
+                        <td className="text-center px-1.5 py-1 text-white font-bold border-l border-slate-700/60">{aTotal}</td>
                     </tr>
                     <tr>
-                        <td className="text-left px-1 text-slate-500 font-bold">{homeTeamCode}</td>
+                        <td className="text-left px-1.5 py-1 text-slate-500 font-bold">{homeTeamCode}</td>
                         {scores.home.map((v, i) => (
-                            <td key={i} className={`text-center px-1 ${cellClass(i)}`}>
+                            <td key={i} className={`text-center px-1.5 py-1 ${cellClass(i)}`}>
                                 {i + 1 > currentQuarter ? '—' : v}
                             </td>
                         ))}
-                        <td className="text-center px-1 text-white font-bold">{hTotal}</td>
+                        <td className="text-center px-1.5 py-1 text-white font-bold border-l border-slate-700/60">{hTotal}</td>
                     </tr>
                 </tbody>
             </table>
@@ -1244,6 +1260,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             awayBox={awayBox}
                                             homeColor={homeData?.colors.primary ?? '#6366f1'}
                                             awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                            homeTeamCode={homeTeam.id.toUpperCase()}
+                                            awayTeamCode={awayTeam.id.toUpperCase()}
                                         />
                                     </>
                                 ) : (
@@ -1446,6 +1464,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             awayBox={awayBox}
                                             homeColor={homeData?.colors.primary ?? '#6366f1'}
                                             awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                            homeTeamCode={homeTeam.id.toUpperCase()}
+                                            awayTeamCode={awayTeam.id.toUpperCase()}
                                         />
                                     </>
                                 ) : (
