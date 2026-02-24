@@ -114,7 +114,7 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
             <div className="flex items-stretch gap-4">
                 {/* Donut Chart — stretches to match table height */}
                 <div className="shrink-0 flex items-center">
-                    <svg viewBox="0 0 160 160" className="w-[160px] h-[160px]">
+                    <svg viewBox="0 0 160 160" className="w-[200px] h-[200px]">
                         <circle
                             cx={DONUT_CX} cy={DONUT_CY} r={DONUT_R}
                             fill="none" stroke="#1e293b" strokeWidth={DONUT_STROKE}

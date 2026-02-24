@@ -28,7 +28,7 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
             <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: '#6366f1', opacity: 0.6 }} />
             </div>
-            <span className="text-[13px] font-black text-white tabular-nums w-14 text-right">{Math.round(pct)}<span className="text-[10px] font-bold text-slate-500"> /100</span></span>
+            <span className="text-xs font-black text-white tabular-nums w-14 text-right">{Math.round(pct)}<span className="text-xs font-bold text-slate-500"> /100</span></span>
             <span className="text-xs text-slate-400 w-32 text-right truncate">{desc}</span>
         </div>
     );
@@ -82,12 +82,15 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
     return (
         <div className="flex flex-col gap-5">
             {/* Section 1: Radar + Zone Heatmap — vertically centered */}
-            <div className="flex items-center gap-4 pb-5 border-b border-slate-800">
+            <div className="flex items-start gap-4 pb-5 border-b border-slate-800">
                 <div className="flex-1">
                     <RadarChart roster={roster} />
                 </div>
-                <div className="flex-1">
-                    <TeamZoneChart roster={roster} />
+                <div className="flex-1 flex flex-col">
+                    <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest mb-2">슈팅 존 히트맵</h5>
+                    <div className="flex-1 flex items-center justify-center">
+                        <TeamZoneChart roster={roster} hideTitle />
+                    </div>
                 </div>
             </div>
 
