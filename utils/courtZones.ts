@@ -40,19 +40,20 @@ export const ZONE_CONFIG = [
     { pathKey: 'C3_R' as const, avgKey: 'c3' as const, label: "우측 코너", key: 'c3R', cx: 400, cy: 350 },
 ];
 
-// Determine zone heatmap style based on efficiency vs league average
+// Determine zone heatmap style — single green color, opacity = efficiency
 export const getZoneStyle = (makes: number, attempts: number, avg: number) => {
-    if (attempts === 0) return { fill: '#ef4444', opacity: 0.35, isHot: false, isCold: true };
+    if (attempts === 0) return { fill: '#10b981', opacity: 0.04, delta: 0 };
     const pct = makes / attempts;
-    if (pct >= avg + 0.05) return { fill: '#10b981', opacity: 0.35, isHot: true, isCold: false };
-    if (pct <= avg - 0.05) return { fill: '#ef4444', opacity: 0.35, isHot: false, isCold: true };
-    return { fill: '#eab308', opacity: 0.35, isHot: false, isCold: false };
+    const delta = pct - avg;
+    // Map delta to opacity: -0.15 → 0.06, 0 → 0.22, +0.15 → 0.50
+    const opacity = Math.min(0.55, Math.max(0.06, 0.22 + delta * 2));
+    return { fill: '#10b981', opacity, delta };
 };
 
-// Get pill label colors based on zone efficiency
-export const getZonePillColors = (isHot: boolean, isCold: boolean, hasAttempts: boolean) => {
-    if (isHot) return { pillFill: '#064e3b', textFill: '#34d399', borderStroke: '#059669' };
-    if (isCold) return { pillFill: '#7f1d1d', textFill: '#f87171', borderStroke: '#dc2626' };
-    if (hasAttempts) return { pillFill: '#713f12', textFill: '#facc15', borderStroke: '#ca8a04' };
-    return { pillFill: '#1e293b', textFill: '#94a3b8', borderStroke: '#334155' };
+// Get pill label colors — green intensity matches zone opacity
+export const getZonePillColors = (delta: number, hasAttempts: boolean) => {
+    if (!hasAttempts) return { pillFill: '#1e293b', textFill: '#94a3b8', borderStroke: '#334155' };
+    if (delta >= 0.05) return { pillFill: '#064e3b', textFill: '#34d399', borderStroke: '#059669' };
+    if (delta <= -0.05) return { pillFill: '#0f172a', textFill: '#64748b', borderStroke: '#1e293b' };
+    return { pillFill: '#0c2a1f', textFill: '#6ee7b7', borderStroke: '#065f46' };
 };

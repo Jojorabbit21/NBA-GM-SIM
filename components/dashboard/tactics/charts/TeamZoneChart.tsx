@@ -48,10 +48,12 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
         <div className="flex flex-col gap-2">
             <div className="flex justify-between items-center">
                 <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">슈팅 존 히트맵</h5>
-                <div className="flex gap-2 text-[9px]">
-                    <span className="text-emerald-400 flex items-center gap-1"><div className="w-2 h-2 bg-emerald-500 rounded-sm" /> HOT</span>
-                    <span className="text-yellow-400 flex items-center gap-1"><div className="w-2 h-2 bg-yellow-500 rounded-sm" /> AVG</span>
-                    <span className="text-red-400 flex items-center gap-1"><div className="w-2 h-2 bg-red-500 rounded-sm" /> COLD</span>
+                <div className="flex items-center gap-1 text-[9px] text-slate-500">
+                    <span>LOW</span>
+                    <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#10b981', opacity: 0.1 }} />
+                    <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#10b981', opacity: 0.3 }} />
+                    <div className="w-3 h-2 rounded-sm" style={{ backgroundColor: '#10b981', opacity: 0.55 }} />
+                    <span>HIGH</span>
                 </div>
             </div>
 
@@ -85,10 +87,12 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                         {zones.map((z, i) => {
                             const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
                             const style = getZoneStyle(z.data.m, z.data.a, z.avg);
-                            const colors = getZonePillColors(style.isHot, style.isCold, z.data.a > 0);
-                            const isWide = pct.length >= 3;
-                            const width = isWide ? 56 : 44;
-                            const height = 32;
+                            const colors = getZonePillColors(style.delta, z.data.a > 0);
+                            const deltaPct = Math.round(style.delta * 100);
+                            const deltaStr = deltaPct >= 0 ? `+${deltaPct}` : `${deltaPct}`;
+                            const hasData = z.data.a > 0;
+                            const width = 52;
+                            const height = hasData ? 44 : 30;
 
                             return (
                                 <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -101,12 +105,19 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster }) => {
                                         strokeWidth={1}
                                         fillOpacity={0.95}
                                     />
-                                    <text textAnchor="middle" y={-3} fill={colors.textFill} fontSize="12" fontWeight="800">
+                                    <text textAnchor="middle" y={hasData ? -10 : -1} fill={colors.textFill} fontSize="12" fontWeight="800">
                                         {pct}%
                                     </text>
-                                    <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9" fontWeight="600">
-                                        {z.data.m}/{z.data.a}
-                                    </text>
+                                    {hasData && (
+                                        <>
+                                            <text textAnchor="middle" y={3} fill="#ffffff" fontSize="9" fontWeight="600">
+                                                {z.data.m}/{z.data.a}
+                                            </text>
+                                            <text textAnchor="middle" y={15} fill={deltaPct >= 0 ? '#34d399' : '#64748b'} fontSize="8" fontWeight="700">
+                                                {deltaStr}
+                                            </text>
+                                        </>
+                                    )}
                                 </g>
                             );
                         })}

@@ -71,13 +71,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         return Math.round(opponent.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / opponent.roster.length);
     }, [opponent?.roster]);
 
+    const isFullHeightView = sidebarProps.currentView === 'DraftRoom';
+
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">
             <Sidebar {...sidebarProps} isRegularSeasonOver={isRegularSeasonOver} />
-            <main className="flex-1 overflow-y-auto custom-scrollbar relative flex flex-col">
-                {/* Global Game Header */}
-                {team && (
-                    <DashboardHeader 
+            <main className={`flex-1 relative flex flex-col ${isFullHeightView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
+                {/* Global Game Header — hidden for full-height views */}
+                {!isFullHeightView && team && (
+                    <DashboardHeader
                         team={team}
                         nextGame={nextGame}
                         opponent={opponent}
@@ -92,13 +94,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         currentSimDate={currentSimDate}
                     />
                 )}
-                
-                <div className="flex-1 p-8 lg:p-12">
+
+                <div className={`flex-1 ${isFullHeightView ? 'min-h-0' : 'p-8 lg:p-12'}`}>
                     <Suspense fallback={<FullScreenLoader />}>
                         {children}
                     </Suspense>
                 </div>
-                <Footer onNavigate={sidebarProps.onNavigate} />
+                {!isFullHeightView && <Footer onNavigate={sidebarProps.onNavigate} />}
             </main>
         </div>
     );
