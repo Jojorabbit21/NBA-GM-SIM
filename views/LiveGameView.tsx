@@ -303,6 +303,100 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
 };
 
 // ─────────────────────────────────────────────────────────────
+// Team Stats Compare (NBA app TEAM STATS style dual-bar chart)
+// ─────────────────────────────────────────────────────────────
+
+const COMPARE_STATS = [
+    { key: 'pts', label: 'PTS', fmt: (v: number) => String(v) },
+    { key: 'fgPct', label: 'FG%', fmt: (v: number) => v.toFixed(1) },
+    { key: 'p3Pct', label: '3P%', fmt: (v: number) => v.toFixed(1) },
+    { key: 'reb', label: 'REB', fmt: (v: number) => String(v) },
+    { key: 'ast', label: 'AST', fmt: (v: number) => String(v) },
+    { key: 'stl', label: 'STL', fmt: (v: number) => String(v) },
+    { key: 'blk', label: 'BLK', fmt: (v: number) => String(v) },
+    { key: 'tov', label: 'TOV', fmt: (v: number) => String(v) },
+] as const;
+
+const TeamStatsCompare: React.FC<{
+    homeBox: { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgm: number; fga: number; p3m: number; p3a: number }[];
+    awayBox: { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgm: number; fga: number; p3m: number; p3a: number }[];
+    homeColor: string;
+    awayColor: string;
+}> = ({ homeBox, awayBox, homeColor, awayColor }) => {
+    type BoxRow = { pts: number; reb: number; ast: number; stl: number; blk: number; tov: number; fgm: number; fga: number; p3m: number; p3a: number };
+    const stats = useMemo(() => {
+        const sum = (arr: BoxRow[], key: keyof BoxRow) =>
+            arr.reduce((s, p) => s + (p[key] ?? 0), 0);
+
+        const hFgm = sum(homeBox, 'fgm'), hFga = sum(homeBox, 'fga');
+        const aFgm = sum(awayBox, 'fgm'), aFga = sum(awayBox, 'fga');
+        const hP3m = sum(homeBox, 'p3m'), hP3a = sum(homeBox, 'p3a');
+        const aP3m = sum(awayBox, 'p3m'), aP3a = sum(awayBox, 'p3a');
+
+        return {
+            pts:   { h: sum(homeBox, 'pts'), a: sum(awayBox, 'pts') },
+            fgPct: { h: hFga > 0 ? (hFgm / hFga) * 100 : 0, a: aFga > 0 ? (aFgm / aFga) * 100 : 0 },
+            p3Pct: { h: hP3a > 0 ? (hP3m / hP3a) * 100 : 0, a: aP3a > 0 ? (aP3m / aP3a) * 100 : 0 },
+            reb:   { h: sum(homeBox, 'reb'), a: sum(awayBox, 'reb') },
+            ast:   { h: sum(homeBox, 'ast'), a: sum(awayBox, 'ast') },
+            stl:   { h: sum(homeBox, 'stl'), a: sum(awayBox, 'stl') },
+            blk:   { h: sum(homeBox, 'blk'), a: sum(awayBox, 'blk') },
+            tov:   { h: sum(homeBox, 'tov'), a: sum(awayBox, 'tov') },
+        };
+    }, [homeBox, awayBox]);
+
+    return (
+        <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">Team Stats</p>
+            <div className="flex flex-col gap-1">
+                {COMPARE_STATS.map(({ key, label, fmt }) => {
+                    const { h, a } = stats[key as keyof typeof stats];
+                    const total = h + a;
+                    const hPct = total > 0 ? (h / total) * 100 : 50;
+                    const aPct = total > 0 ? (a / total) * 100 : 50;
+                    const hWins = h > a;
+                    const aWins = a > h;
+                    const bothZero = h === 0 && a === 0;
+
+                    return (
+                        <div key={key} className="grid grid-cols-[32px_1fr_36px_1fr_32px] items-center gap-1">
+                            {/* Away value */}
+                            <span className={`text-[10px] font-mono text-right ${aWins ? 'text-white font-bold' : 'text-slate-500'}`}>
+                                {fmt(a)}
+                            </span>
+                            {/* Away bar (grows right-to-left) */}
+                            <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-800/50">
+                                {!bothZero && (
+                                    <div
+                                        className="h-full rounded-sm transition-all duration-300"
+                                        style={{ width: `${aPct}%`, backgroundColor: awayColor, opacity: aWins ? 0.8 : 0.35 }}
+                                    />
+                                )}
+                            </div>
+                            {/* Label */}
+                            <span className="text-[9px] font-bold text-slate-400 text-center uppercase">{label}</span>
+                            {/* Home bar (grows left-to-right) */}
+                            <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-800/50">
+                                {!bothZero && (
+                                    <div
+                                        className="h-full rounded-sm transition-all duration-300"
+                                        style={{ width: `${hPct}%`, backgroundColor: homeColor, opacity: hWins ? 0.8 : 0.35 }}
+                                    />
+                                )}
+                            </div>
+                            {/* Home value */}
+                            <span className={`text-[10px] font-mono text-left ${hWins ? 'text-white font-bold' : 'text-slate-500'}`}>
+                                {fmt(h)}
+                            </span>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
 // Compact Win Probability Graph (sidebar)
 // ─────────────────────────────────────────────────────────────
 
@@ -387,7 +481,7 @@ const CompactWPGraph: React.FC<{
                     <img src={awayLogo} className="w-4 h-4 object-contain" alt="" />
                     <span className="text-xs font-black oswald text-white">{awayProb}%</span>
                 </div>
-                <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">Win Prob</p>
+                <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">실시간 승리확률</p>
                 <div className="flex items-center gap-1.5">
                     <span className="text-xs font-black oswald text-white">{homeProb}%</span>
                     <img src={homeLogo} className="w-4 h-4 object-contain" alt="" />
@@ -405,10 +499,10 @@ const CompactWPGraph: React.FC<{
                         </linearGradient>
                     </defs>
                     <rect width="100%" height="100%" fill="#0f172a" opacity="0.6" />
-                    <line x1="25" y1="0" x2="25" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
-                    <line x1="50" y1="0" x2="50" y2={H} stroke="#334155" strokeWidth="0.4" />
-                    <line x1="75" y1="0" x2="75" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="2 2" />
-                    <line x1="0" y1={MID} x2={W} y2={MID} stroke="#475569" strokeWidth="0.3" strokeDasharray="2 2" />
+                    <line x1="25" y1="0" x2="25" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="0.8 0.8" />
+                    <line x1="50" y1="0" x2="50" y2={H} stroke="#334155" strokeWidth="0.4" strokeDasharray="0.8 0.8" />
+                    <line x1="75" y1="0" x2="75" y2={H} stroke="#1e293b" strokeWidth="0.3" strokeDasharray="0.8 0.8" />
+                    <line x1="0" y1={MID} x2={W} y2={MID} stroke="#475569" strokeWidth="0.3" strokeDasharray="0.8 0.8" />
                     <path d={fillPath} fill="url(#lwpGrad)" stroke="none" />
                     <path d={pathData} fill="none" stroke="#e2e8f0" strokeWidth="0.7" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                 </svg>
@@ -961,21 +1055,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={!isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
-                            {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
+                            {/* 하단 패널: 사용자팀이면 팀스탯비교, 상대팀이면 WP 그래프 */}
                             <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col">
                                 {!isUserHome ? (
-                                    <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
-                                        <div className="px-3 pt-2 pb-1">
-                                            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Tactics</p>
-                                        </div>
-                                        <div className="px-2 pb-2">
-                                            <TacticsSlidersPanel
-                                                tactics={liveTactics}
-                                                onUpdateTactics={(t) => applyTactics(t.sliders)}
-                                                roster={userTeam.roster}
-                                            />
-                                        </div>
-                                    </div>
+                                    <TeamStatsCompare
+                                        homeBox={homeBox}
+                                        awayBox={awayBox}
+                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                    />
                                 ) : (
                                     <CompactWPGraph
                                         allLogs={allLogs}
@@ -1154,21 +1242,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
-                            {/* 하단 패널: 사용자팀이면 전술, 상대팀이면 WP 그래프 */}
+                            {/* 하단 패널: 사용자팀이면 팀스탯비교, 상대팀이면 WP 그래프 */}
                             <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col">
                                 {isUserHome ? (
-                                    <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
-                                        <div className="px-3 pt-2 pb-1">
-                                            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1">Tactics</p>
-                                        </div>
-                                        <div className="px-2 pb-2">
-                                            <TacticsSlidersPanel
-                                                tactics={liveTactics}
-                                                onUpdateTactics={(t) => applyTactics(t.sliders)}
-                                                roster={userTeam.roster}
-                                            />
-                                        </div>
-                                    </div>
+                                    <TeamStatsCompare
+                                        homeBox={homeBox}
+                                        awayBox={awayBox}
+                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                    />
                                 ) : (
                                     <CompactWPGraph
                                         allLogs={allLogs}
