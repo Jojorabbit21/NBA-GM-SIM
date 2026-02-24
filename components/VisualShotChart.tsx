@@ -194,18 +194,23 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                             {zones.map((z, i) => {
                                 const style = getZoneStyle(z.data.m, z.data.a, z.avg);
                                 const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                                const deltaNum = z.data.a > 0 ? style.delta * 100 : 0;
+                                const deltaStr = deltaNum >= 0 ? `+${deltaNum.toFixed(0)}` : deltaNum.toFixed(0);
 
-                                let colorClass = 'text-slate-400';
-                                if (style.isHot) colorClass = 'text-emerald-400';
-                                else if (style.isCold) colorClass = 'text-red-400';
-                                else if (z.data.a > 0) colorClass = 'text-yellow-400';
-                             
+                                // Intensity based on delta: stronger green for better efficiency
+                                let colorClass = 'text-slate-500';
+                                if (z.data.a > 0) {
+                                    if (style.delta >= 0.05) colorClass = 'text-emerald-400';
+                                    else if (style.delta <= -0.05) colorClass = 'text-slate-400';
+                                    else colorClass = 'text-emerald-300/70';
+                                }
 
                                  return (
                                      <div key={i} className="flex flex-col items-center justify-center p-1.5 text-center min-w-0">
                                          <span className="text-[10px] font-bold text-white w-full px-1 mb-0.5 leading-tight truncate" title={z.label}>{z.label}</span>
                                          <span className={`text-sm font-black ${colorClass} tabular-nums`}>{pct}%</span>
                                          <span className="text-xs font-bold text-slate-400 tabular-nums">{z.data.m}/{z.data.a}</span>
+                                         {z.data.a > 0 && <span className={`text-[9px] font-bold tabular-nums ${style.delta >= 0 ? 'text-emerald-500' : 'text-slate-500'}`}>{deltaStr}</span>}
                                      </div>
                                  )
                             })}
@@ -219,10 +224,14 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                 <div className="flex flex-col gap-2 w-full max-w-[400px]">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between items-center">
                         <span>샷 차트</span>
-                        <div className="flex gap-3 text-[10px]">
-                            <span className="text-emerald-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></div> HOT</span>
-                            <span className="text-yellow-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-yellow-500 rounded-sm"></div> AVG</span>
-                            <span className="text-red-400 flex items-center gap-1.5"><div className="w-2.5 h-2.5 bg-red-500 rounded-sm"></div> COLD</span>
+                        <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                            <span>LOW</span>
+                            <div className="flex gap-0.5">
+                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10"></div>
+                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25"></div>
+                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50"></div>
+                            </div>
+                            <span>HIGH</span>
                         </div>
                     </h5>
                     
@@ -262,45 +271,46 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                                 const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
 
                                 const style = getZoneStyle(z.data.m, z.data.a, z.avg);
-                                const { pillFill, textFill, borderStroke } = getZonePillColors(style.isHot, style.isCold, z.data.a > 0);
+                                const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.data.a > 0);
+                                const deltaNum = z.data.a > 0 ? style.delta * 100 : 0;
+                                const deltaStr = deltaNum >= 0 ? `+${deltaNum.toFixed(0)}` : deltaNum.toFixed(0);
 
-                                // Dynamic Width Calculation based on text content (Fix for 100% bug)
-                                const isWide = pct.length >= 4; // e.g. "100%"
-                                const width = isWide ? 60 : 48; // Increased from 48/38
-                                const height = 36; // Increased from 26
+                                const width = 52;
+                                const height = z.data.a > 0 ? 44 : 30;
 
                                 return (
                                     <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                        <rect 
-                                            x={-width / 2} 
-                                            y={-height / 2} 
-                                            width={width} 
-                                            height={height} 
-                                            rx={6} 
-                                            fill={pillFill} 
+                                        <rect
+                                            x={-width / 2}
+                                            y={-height / 2}
+                                            width={width}
+                                            height={height}
+                                            rx={6}
+                                            fill={pillFill}
                                             stroke={borderStroke}
                                             strokeWidth={1}
-                                            fillOpacity={0.95} // Increased opacity
+                                            fillOpacity={0.95}
                                         />
-                                        <text 
-                                            textAnchor="middle" 
-                                            y={-4} 
-                                            fill={textFill} 
-                                            fontSize="13px" // Increased Font Size (Two steps up from 10/11px)
-                                            fontWeight="800" 
+                                        <text
+                                            textAnchor="middle"
+                                            y={z.data.a > 0 ? -10 : -2}
+                                            fill={textFill}
+                                            fontSize="12px"
+                                            fontWeight="800"
                                             style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
                                         >
                                             {pct}%
                                         </text>
-                                        <text 
-                                            textAnchor="middle" 
-                                            y={12} 
-                                            fill={'#ffffff'} // Changed from slate-400 to white
-                                            fontSize="10px" // Increased from 9px to 10px
-                                            fontWeight="600" 
-                                        >
-                                            {z.data.m}/{z.data.a}
-                                        </text>
+                                        {z.data.a > 0 && (
+                                            <>
+                                                <text textAnchor="middle" y={4} fill="#ffffff" fontSize="9px" fontWeight="600">
+                                                    {z.data.m}/{z.data.a}
+                                                </text>
+                                                <text textAnchor="middle" y={16} fill={style.delta >= 0 ? '#34d399' : '#64748b'} fontSize="9px" fontWeight="700">
+                                                    {deltaStr}
+                                                </text>
+                                            </>
+                                        )}
                                     </g>
                                 );
                                 })}

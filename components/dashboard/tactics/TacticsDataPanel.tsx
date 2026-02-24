@@ -4,6 +4,11 @@ import { TacticalSliders, Player } from '../../../types';
 import { RadarChart } from './charts/RadarChart';
 import { TeamZoneChart } from './charts/TeamZoneChart';
 import { PlayTypePPP } from './charts/PlayTypePPP';
+import { KeyPlayerFit } from './charts/KeyPlayerFit';
+import { ShotDistribution } from './charts/ShotDistribution';
+import { UsagePrediction } from './charts/UsagePrediction';
+import { PLAY_TYPES, getPlayTypeDistribution } from './charts/playTypeConstants';
+import { calcGravity } from './charts/UsagePrediction';
 
 interface TacticsDataPanelProps {
     section: 'offense' | 'defense';
@@ -11,7 +16,7 @@ interface TacticsDataPanelProps {
     roster: Player[];
 }
 
-// Compact inline risk bar
+// Compact inline risk bar (shared between offense and defense)
 const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ label, value, desc }) => {
     const pct = Math.min(100, Math.max(0, value));
     const color = pct < 35 ? '#10b981' : pct < 65 ? '#eab308' : '#ef4444';
@@ -29,22 +34,45 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
 
 export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ section, sliders, roster }) => {
 
-    if (section === 'offense') {
-        return (
-            <div className="flex flex-col gap-6">
-                {/* Row 1: Radar + Zone Heatmap side by side */}
-                <div className="grid grid-cols-2 gap-4">
-                    <RadarChart roster={roster} />
-                    <TeamZoneChart roster={roster} />
-                </div>
+    // All hooks must be called unconditionally (Rules of Hooks)
 
-                {/* Row 2: Play Type PPP */}
-                <PlayTypePPP sliders={sliders} roster={roster} />
-            </div>
-        );
-    }
+    // Offense risk values
+    const offenseRisk = useMemo(() => {
+        const dist = getPlayTypeDistribution(sliders);
+        const isoIdx = PLAY_TYPES.findIndex(pt => pt.key === 'iso');
+        const driveIdx = PLAY_TYPES.findIndex(pt => pt.key === 'drive');
+        const isoShare = dist[isoIdx] || 0;
+        const driveShare = dist[driveIdx] || 0;
 
-    // Defense section — compact inline layout
+        const tovRisk = ((sliders.pace - 1) / 9) * 30
+            + ((10 - sliders.ballMovement) / 9) * 35
+            + (isoShare / 100) * 25
+            + 10;
+
+        const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
+        const rot = sorted.slice(0, Math.min(8, sorted.length));
+        const teamAvgDrawFoul = rot.length > 0
+            ? rot.reduce((s, p) => s + ((p as any).drawFoul || 70), 0) / rot.length
+            : 70;
+        const foulDraw = (driveShare / 100) * 40 + (teamAvgDrawFoul / 100) * 40 + 20;
+
+        const gravities = rot.map(p => calcGravity(p));
+        const totalGravity = gravities.reduce((s, g) => s + g, 0);
+        const topUsage = totalGravity > 0 ? (Math.max(...gravities) / totalGravity) * 100 : 12.5;
+        const aceDep = Math.min(100, (topUsage / 12.5) * 30);
+
+        return {
+            tovRisk: Math.round(tovRisk),
+            foulDraw: Math.round(foulDraw),
+            aceDep: Math.round(aceDep),
+            isoShare,
+            driveShare,
+            teamAvgDrawFoul: Math.round(teamAvgDrawFoul),
+            topUsage: Math.round(topUsage),
+        };
+    }, [sliders, roster]);
+
+    // Defense ORTG
     const seasonOrtg = useMemo(() => {
         const totalPts = roster.reduce((s, p) => s + p.stats.pts, 0);
         const totalFGA = roster.reduce((s, p) => s + p.stats.fga, 0);
@@ -57,12 +85,48 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ section, sli
         return { ortg: Math.round(ortg * 10) / 10, games: totalG };
     }, [roster]);
 
-    const riskValues = useMemo(() => {
+    // Defense risk values
+    const defRiskValues = useMemo(() => {
         const foul = ((sliders.defIntensity - 1) / 9) * 50 + ((sliders.fullCourtPress - 1) / 9) * 30 + 10;
         const tov = ((sliders.ballMovement - 1) / 9) * 35 + ((11 - sliders.defIntensity) / 9) * 25 + 15;
         return { foulRisk: Math.round(foul), tovRate: Math.round(tov) };
     }, [sliders]);
 
+    // --- Render ---
+
+    if (section === 'offense') {
+        return (
+            <div className="flex flex-col gap-6">
+                {/* Row 1: Radar + Zone Heatmap */}
+                <div className="grid grid-cols-2 gap-4">
+                    <RadarChart roster={roster} />
+                    <TeamZoneChart roster={roster} />
+                </div>
+
+                {/* Row 2: Play Type PPP + Key Player Fit */}
+                <div className="grid grid-cols-2 gap-4">
+                    <PlayTypePPP sliders={sliders} roster={roster} />
+                    <KeyPlayerFit roster={roster} />
+                </div>
+
+                {/* Row 3: Shot Distribution + Usage Prediction */}
+                <div className="grid grid-cols-2 gap-4">
+                    <ShotDistribution sliders={sliders} roster={roster} />
+                    <UsagePrediction roster={roster} />
+                </div>
+
+                {/* Row 4: Offense Risk (compact inline) */}
+                <div className="flex flex-col gap-2.5">
+                    <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">공격 리스크</h5>
+                    <RiskBar label="턴오버위험" value={offenseRisk.tovRisk} desc={`페이스 ${sliders.pace} · 볼무브 ${sliders.ballMovement}`} />
+                    <RiskBar label="파울유발력" value={offenseRisk.foulDraw} desc={`드라이브 ${offenseRisk.driveShare.toFixed(0)}% · DrawFoul ${offenseRisk.teamAvgDrawFoul}`} />
+                    <RiskBar label="에이스의존" value={offenseRisk.aceDep} desc={`1옵션 USG ${offenseRisk.topUsage}%`} />
+                </div>
+            </div>
+        );
+    }
+
+    // Defense section — compact inline layout
     return (
         <div className="flex flex-col gap-4">
             {/* ORTG */}
@@ -74,8 +138,8 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ section, sli
 
             {/* Risk Gauges */}
             <div className="flex flex-col gap-2.5">
-                <RiskBar label="파울 위험" value={riskValues.foulRisk} desc={`압박 ${sliders.defIntensity} · 풀코트 ${sliders.fullCourtPress}`} />
-                <RiskBar label="턴오버율" value={riskValues.tovRate} desc={`볼회전 ${sliders.ballMovement} · 압박 ${sliders.defIntensity}`} />
+                <RiskBar label="파울 위험" value={defRiskValues.foulRisk} desc={`압박 ${sliders.defIntensity} · 풀코트 ${sliders.fullCourtPress}`} />
+                <RiskBar label="턴오버율" value={defRiskValues.tovRate} desc={`볼회전 ${sliders.ballMovement} · 압박 ${sliders.defIntensity}`} />
             </div>
         </div>
     );

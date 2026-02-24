@@ -3,7 +3,7 @@ import React from 'react';
 import {
   LayoutDashboard, Users, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight, Clock,
-  RotateCcw, LogOut, Mail
+  RotateCcw, LogOut, Mail, Gavel
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -209,6 +209,17 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           color={navActiveColor}
           textColor={navTextColor}
         />
+        {/* Draft Room - 최하단 */}
+        <div className="mt-auto pt-4 border-t border-slate-800/50">
+          <NavItem
+            active={currentView === 'DraftRoom'}
+            icon={<Gavel size={20}/>}
+            label="드래프트룸"
+            onClick={() => onNavigate('DraftRoom')}
+            color={navActiveColor}
+            textColor={navTextColor}
+          />
+        </div>
       </nav>
 
       {/* System Menu Section */}

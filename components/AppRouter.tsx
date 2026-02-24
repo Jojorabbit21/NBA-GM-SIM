@@ -14,6 +14,7 @@ import { PlayoffsView } from '../views/PlayoffsView';
 import { HelpView } from '../views/HelpView';
 import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
+import { FantasyDraftView } from '../views/FantasyDraftView';
 import { Loader2 } from 'lucide-react';
 
 interface AppRouterProps {
@@ -195,10 +196,10 @@ const AppRouter: React.FC<AppRouterProps> = ({
             return <OvrCalculatorView teams={gameData.teams} />;
         case 'Inbox':
             return (
-                <InboxView 
-                    myTeamId={gameData.myTeamId!} 
-                    userId={session?.user?.id} 
-                    teams={gameData.teams} 
+                <InboxView
+                    myTeamId={gameData.myTeamId!}
+                    userId={session?.user?.id}
+                    teams={gameData.teams}
                     onUpdateUnreadCount={refreshUnreadCount}
                     onViewGameResult={(result) => {
                         previousViewRef.current = 'Inbox';
@@ -207,6 +208,8 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     }}
                 />
             );
+        case 'DraftRoom':
+            return <FantasyDraftView teams={gameData.teams} myTeamId={gameData.myTeamId!} />;
         default:
             return null;
     }
