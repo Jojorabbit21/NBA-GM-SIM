@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Team, ShotEvent } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
 import { Check } from 'lucide-react';
-import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../../../utils/courtCoordinates';
+import { COURT_WIDTH, COURT_HEIGHT } from '../../../utils/courtCoordinates';
 
 interface GameShotChartTabProps {
     homeTeam: Team;
@@ -145,57 +145,76 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                     
                     {/* Left: Shot Chart (8 Cols) */}
                     <div className="lg:col-span-8 flex items-center justify-center relative p-6 border-b lg:border-b-0 lg:border-r border-slate-800">
-                        <div className="relative w-full aspect-[50/47] max-h-full max-w-[700px]">
-                             <svg viewBox={`0 0 ${COURT_WIDTH/2} ${COURT_HEIGHT}`} className="w-full h-full drop-shadow-xl">
+                        <div className="relative w-full max-h-full max-w-[700px]" style={{ aspectRatio: '470/500' }}>
+                            <svg viewBox="0 0 470 500" className="w-full h-full drop-shadow-xl">
                                 {/* Court Background */}
-                                <rect x="0" y="0" width={COURT_WIDTH/2} height={COURT_HEIGHT} fill="#0f172a" />
-                                
-                                {/* Markings */}
-                                <g fill="none" stroke="#334155" strokeWidth="0.5">
-                                    {/* Key (19x16) */}
-                                    <rect x="0" y={(COURT_HEIGHT-16)/2} width="19" height="16" stroke="none" />
-                                    {/* Free Throw Circle */}
-                                    <path d={`M 19,${17} A 6 6 0 0 1 19,${33}`} />
+                                <rect width="470" height="500" fill="#020617" />
+                                {/* Paint Fill */}
+                                <rect y="170" width="190" height="160" fill="#0f172a" />
+
+                                {/* Court Lines */}
+                                <g fill="none" stroke="#334155" strokeWidth="2" strokeMiterlimit="10">
                                     {/* 3-Point Line */}
-                                    <line x1="0" y1="3" x2="14" y2="3" />
-                                    <line x1="0" y1="47" x2="14" y2="47" />
-                                    <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
-                                    {/* Hoop & Backboard */}
-                                    <line x1="4" y1="22" x2="4" y2="28" stroke="white" strokeWidth="0.5" />
-                                    <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
+                                    <path d="M0,30h140s150,55,150,220-150,220,-150,220H0" />
+                                    {/* Paint (open on baseline) */}
+                                    <polyline points="0,170 190,170 190,330 0,330" />
+                                    {/* FT Lane Lines */}
+                                    <line x1="190" y1="310" y2="310" />
+                                    <line y1="190" x2="190" y2="190" />
+                                    {/* FT Circle (solid half) */}
+                                    <path d="M190,190c33.14,0,60,26.86,60,60s-26.86,60-60,60" />
+                                    {/* FT Circle (dashed half) */}
+                                    <path d="M190,310c-1.6,0-3.18-.06-4.75-.19" />
+                                    <path d="M177.77,308.75c-27.27-5.65-47.77-29.81-47.77-58.75s22.39-55.27,51.49-59.4" strokeDasharray="9.58 7.56" />
+                                    <path d="M185.25,190.19c1.57-.12,3.15-.19,4.75-.19" />
+                                    {/* Corner 3 Lines */}
+                                    <line x1="280" y1="480" x2="280" y2="500" />
+                                    <line x1="280" x2="280" y2="20" />
                                     {/* Restricted Area */}
-                                    <path d={`M ${HOOP_X_LEFT},21 A 4 4 0 0 1 ${HOOP_X_LEFT},29`} />
+                                    <path d="M40,290h12.5c22.09,0,40-17.91,40-40s-17.91-40-40-40h-12.5" />
+                                    {/* Lane Tick Marks */}
+                                    <line x1="145" y1="310" x2="145" y2="318" />
+                                    <line x1="115" y1="310" x2="115" y2="318" />
+                                    <line x1="85" y1="310" x2="85" y2="318" />
+                                    <line x1="70" y1="310" x2="70" y2="318" />
+                                    <line x1="145" y1="182" x2="145" y2="190" />
+                                    <line x1="115" y1="182" x2="115" y2="190" />
+                                    <line x1="85" y1="182" x2="85" y2="190" />
+                                    <line x1="70" y1="182" x2="70" y2="190" />
+                                    {/* Backboard */}
+                                    <line x1="40" y1="222" x2="40" y2="278" stroke="white" />
+                                    {/* Basket */}
+                                    <circle cx="48" cy="250" r="7.5" stroke="white" />
+                                    {/* Half-Court Line */}
+                                    <line x1="470" y1="0" x2="470" y2="500" />
+                                    {/* Center Circles */}
+                                    <circle cx="470" cy="250" r="60" />
+                                    <circle cx="470" cy="250" r="20" />
                                 </g>
 
-                                {/* Shots */}
+                                {/* Shots (coords in 94x50ft, normalized to left half → scale by 10) */}
                                 {displayShots.map((shot) => {
-                                    // [Updated] Missed shots use a fixed bright slate color
-                                    const missColor = "#cbd5e1"; // Slate-300
-                                    
+                                    const missColor = "#cbd5e1";
                                     return (
                                         <g key={shot.id} className="animate-in fade-in zoom-in duration-300">
                                             {shot.isMake ? (
-                                                <circle 
-                                                    cx={shot.x} 
-                                                    cy={shot.y} 
-                                                    r={0.6} // Slight bump for visibility
-                                                    fill={teamColor} 
-                                                    stroke="white" 
-                                                    strokeWidth="0.1" 
-                                                    opacity="1"
+                                                <circle
+                                                    cx={shot.x * 10} cy={shot.y * 10}
+                                                    r={6.5} fill={teamColor}
+                                                    stroke="white" strokeWidth="1" opacity="1"
                                                 />
                                             ) : (
-                                                <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.8">
-                                                    <line x1="-0.45" y1="-0.45" x2="0.45" y2="0.45" stroke={missColor} strokeWidth="0.25" />
-                                                    <line x1="-0.45" y1="0.45" x2="0.45" y2="-0.45" stroke={missColor} strokeWidth="0.25" />
+                                                <g transform={`translate(${shot.x * 10}, ${shot.y * 10})`} opacity="0.8">
+                                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke={missColor} strokeWidth="2.5" />
+                                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke={missColor} strokeWidth="2.5" />
                                                 </g>
                                             )}
                                         </g>
                                     );
                                 })}
-                             </svg>
+                            </svg>
                         </div>
-                        
+
                         {/* Legend */}
                         <div className="absolute bottom-4 right-4 flex gap-4 text-[10px] font-bold bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800 backdrop-blur-sm">
                             <div className="flex items-center gap-1.5">
