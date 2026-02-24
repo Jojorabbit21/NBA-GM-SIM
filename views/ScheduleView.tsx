@@ -50,88 +50,35 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
     }
   }, [currentSimDate]);
 
-  // [Optimization] Instant Rendering Strategy
-  const monthlyGames = useMemo(() => {
-      const y = currentDate.getFullYear();
-      const m = currentDate.getMonth();
-
-      // 1. Filter games for current month from full local schedule
-      const baseGames = localSchedule.filter(g => {
-          const d = new Date(g.date);
-          return d.getFullYear() === y && d.getMonth() === m;
-      });
-
-      // 2. Create Map for DB Results (if available)
-      const resultMap = new Map<string, any>();
-      if (userResults && Array.isArray(userResults)) {
-          userResults.forEach((r: any) => resultMap.set(r.game_id, r));
-      }
-
-      // 3. Merge Local + DB
-      const mergedGames = baseGames.map(g => {
-          if (g.played) return g;
-
-          const dbResult = resultMap.get(g.id);
-          if (dbResult) {
-              return {
-                  ...g,
-                  played: true,
-                  homeScore: dbResult.home_score,
-                  awayScore: dbResult.away_score
-              };
-          }
-          return g;
-      });
-
-      // 4. Filter by Selected Team
-      return mergedGames.filter(g => (g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId));
-  }, [localSchedule, userResults, currentDate, selectedTeamId]);
-
-  // [Optimization] O(1) Lookup Map for Grid Rendering
-  const gameMap = useMemo(() => {
-      const map = new Map<string, Game>();
-      monthlyGames.forEach(g => map.set(g.date, g));
-      return map;
-  }, [monthlyGames]);
-
   const changeMonth = (offset: number) => {
     const next = new Date(currentDate);
     next.setMonth(currentDate.getMonth() + offset);
     setCurrentDate(next);
   };
 
-  const { start, total } = (() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const start = new Date(year, month, 1).getDay();
-    const total = new Date(year, month + 1, 0).getDate();
-    return { start, total };
-  })();
-
-  const days = useMemo(() => Array.from({ length: 42 }, (_, i) => {
-    const day = i - start + 1;
-    return (day > 0 && day <= total) ? day : null;
-  }), [start, total]);
-
-  const getGameOnDate = (day: number) => {
-    const yyyy = currentDate.getFullYear();
-    const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(day).padStart(2, '0');
-    const dateStr = `${yyyy}-${mm}-${dd}`;
-    return gameMap.get(dateStr);
-  };
-
-  const isTodayDate = (day: number) => {
-    const yyyy = currentDate.getFullYear();
-    const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
-    const dd = String(day).padStart(2, '0');
-    const dateStr = `${yyyy}-${mm}-${dd}`;
-    return dateStr === currentSimDate;
-  };
-
   const selectedTeam = teams.find(t => t.id === selectedTeamId);
-  const asbStart = new Date(CALENDAR_EVENTS.ALL_STAR_START); 
+  const asbStart = new Date(CALENDAR_EVENTS.ALL_STAR_START);
   const asbEnd = new Date(CALENDAR_EVENTS.ALL_STAR_END);
+
+  // [Full Season Calendar] Oct 2025 – Apr 2026, 2-col grid
+  const SEASON_MONTHS = useMemo(() => [
+      { year: 2025, month: 9 },  // Oct
+      { year: 2025, month: 10 }, // Nov
+      { year: 2025, month: 11 }, // Dec
+      { year: 2026, month: 0 },  // Jan
+      { year: 2026, month: 1 },  // Feb
+      { year: 2026, month: 2 },  // Mar
+      { year: 2026, month: 3 },  // Apr
+  ], []);
+
+  // Full season game map (selected team only, no DB query needed — localSchedule is already replayed)
+  const seasonGameMap = useMemo(() => {
+      const map = new Map<string, Game>();
+      localSchedule
+          .filter(g => g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId)
+          .forEach(g => map.set(g.date, g));
+      return map;
+  }, [localSchedule, selectedTeamId]);
 
   const filteredTeamsList = useMemo(() => {
     return teams
@@ -270,100 +217,117 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         }
       />
 
-      {/* Month Navigation (shared between calendar & list) */}
-      <div className="bg-slate-900/95 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden flex flex-col relative z-10">
-        <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
-           <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>
-           <div className="flex items-center gap-3">
-              <Calendar size={18} className="text-indigo-500" />
-              <h3 className="text-xl font-black ko-tight text-white oswald uppercase tracking-wide">{currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}</h3>
-           </div>
-           <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronRight size={24} /></button>
+      {!showLeagueSchedule ? (
+        /* ── Full Season Calendar: 2-col grid (Oct–Apr) ── */
+        <div className="grid grid-cols-2 gap-4">
+          {SEASON_MONTHS.map(({ year, month }) => {
+            const monthDate = new Date(year, month, 1);
+            const monthStart = monthDate.getDay();
+            const monthTotal = new Date(year, month + 1, 0).getDate();
+            const monthDays = Array.from({ length: 42 }, (_, i) => {
+                const d = i - monthStart + 1;
+                return (d > 0 && d <= monthTotal) ? d : null;
+            });
+            // Check if current sim month
+            const simDate = new Date(currentSimDate);
+            const isCurrentMonth = simDate.getFullYear() === year && simDate.getMonth() === month;
+
+            return (
+              <div key={`${year}-${month}`} className={`bg-slate-900/95 rounded-2xl border shadow-xl overflow-hidden ${isCurrentMonth ? 'border-indigo-600/50' : 'border-slate-800'}`}>
+                {/* Month Header */}
+                <div className="px-4 py-2 border-b border-slate-800 bg-slate-800/20 flex items-center justify-center gap-2">
+                  <Calendar size={14} className="text-indigo-500" />
+                  <h3 className={`text-sm font-black oswald uppercase tracking-wide ${isCurrentMonth ? 'text-indigo-400' : 'text-white'}`}>
+                    {monthDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
+                  </h3>
+                </div>
+
+                {/* Day Headers */}
+                <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-950/50">
+                  {['일', '월', '화', '수', '목', '금', '토'].map((dayName, idx) => (
+                    <div key={dayName} className={`py-1.5 text-center text-[8px] font-black uppercase tracking-widest ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-slate-600'}`}>{dayName}</div>
+                  ))}
+                </div>
+
+                {/* Day Grid */}
+                <div className="grid grid-cols-7">
+                  {monthDays.map((day, idx) => {
+                    if (day === null) return <div key={idx} className="border-b border-r border-slate-800/30 bg-slate-950/20 aspect-square" />;
+
+                    const yyyy = year;
+                    const mm = String(month + 1).padStart(2, '0');
+                    const dd = String(day).padStart(2, '0');
+                    const dateStr = `${yyyy}-${mm}-${dd}`;
+                    const dayDate = new Date(year, month, day);
+
+                    const game = seasonGameMap.get(dateStr);
+                    const isToday = dateStr === currentSimDate;
+                    const isASB = dayDate >= asbStart && dayDate <= asbEnd;
+
+                    const isHome = game?.homeTeamId === selectedTeamId;
+                    const oppId = isHome ? game?.awayTeamId : game?.homeTeamId;
+                    const opp = teams.find(t => t.id === oppId);
+
+                    let bgStyle = 'bg-slate-950/40';
+                    let isWon = false;
+
+                    if (game?.played) {
+                        isWon = isHome ? (game.homeScore! > game.awayScore!) : (game.awayScore! > game.homeScore!);
+                        bgStyle = isWon ? 'bg-emerald-900/50' : 'bg-red-900/50';
+                    } else if (game) {
+                        bgStyle = 'bg-slate-800/40';
+                    } else if (isToday) {
+                        bgStyle = 'bg-indigo-500/10';
+                    }
+
+                    if (isToday) {
+                        bgStyle += ' ring-1 ring-indigo-600 ring-inset z-10';
+                    }
+
+                    return (
+                      <div key={idx} className={`border-b border-r border-slate-800/30 relative p-0.5 flex flex-col aspect-square ${bgStyle}`}>
+                        {/* Day Number */}
+                        <span className={`text-[8px] font-black oswald leading-none ${isToday ? 'text-indigo-400' : 'text-slate-600'}`}>{day}</span>
+
+                        {game && opp ? (
+                          <div className="flex-1 flex flex-col items-center justify-center gap-0.5 min-w-0">
+                            <TeamLogo teamId={opp.id} size="custom" className="w-5 h-5 lg:w-7 lg:h-7 drop-shadow" />
+                            {game.played ? (
+                              <div className={`text-[8px] lg:text-[10px] font-black oswald leading-none ${isWon ? 'text-emerald-300' : 'text-red-300'}`}>
+                                {isHome ? `${game.homeScore}:${game.awayScore}` : `${game.awayScore}:${game.homeScore}`}
+                              </div>
+                            ) : (
+                              <div className="text-[7px] lg:text-[8px] font-bold text-slate-500 uppercase leading-none truncate w-full text-center">
+                                <span className={isHome ? 'text-indigo-400' : 'text-slate-600'}>{isHome ? 'vs' : '@'}</span>
+                              </div>
+                            )}
+                          </div>
+                        ) : isASB ? (
+                          <div className="flex-1 flex items-center justify-center">
+                            <span className="text-[6px] font-black text-yellow-500/60 uppercase">ASB</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
         </div>
+      ) : (
+        /* ── League Schedule List View ── */
+        <div className="bg-slate-900/95 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden flex flex-col relative z-10">
+          {/* Month Navigation (list view only) */}
+          <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
+             <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>
+             <div className="flex items-center gap-3">
+                <Calendar size={18} className="text-indigo-500" />
+                <h3 className="text-xl font-black ko-tight text-white oswald uppercase tracking-wide">{currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}</h3>
+             </div>
+             <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronRight size={24} /></button>
+          </div>
 
-        {!showLeagueSchedule ? (
-          <>
-            {/* Calendar View */}
-            <div className="grid grid-cols-7 border-b border-slate-800 bg-slate-950/50 flex-shrink-0">
-               {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
-                 <div key={day} className={`py-3 text-center text-[10px] font-black uppercase tracking-widest ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-blue-500' : 'text-slate-500'}`}>{day}</div>
-               ))}
-            </div>
-
-            <div className="grid grid-cols-7">
-               {days.map((day, idx) => {
-                 if (day === null) return <div key={idx} className="border-b border-r border-slate-800/50 bg-slate-950/20 aspect-square"></div>;
-
-                 const dayDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
-                 const game = getGameOnDate(day);
-                 const isToday = isTodayDate(day);
-                 const isASB = dayDate >= asbStart && dayDate <= asbEnd;
-
-                 const isHome = game?.homeTeamId === selectedTeamId;
-                 const oppId = isHome ? game?.awayTeamId : game?.homeTeamId;
-                 const opp = teams.find(t => t.id === oppId);
-
-                 let bgStyle = "bg-slate-950/40";
-                 let isWon = false;
-
-                 if (game?.played) {
-                    isWon = isHome ? (game.homeScore! > game.awayScore!) : (game.awayScore! > game.homeScore!);
-                    bgStyle = isWon ? 'bg-emerald-900/50 border-emerald-500/30' : 'bg-red-900/50 border-red-500/30';
-                 } else if (game) {
-                    bgStyle = 'bg-slate-800/40 hover:bg-slate-800/60';
-                 } else if (isToday) {
-                    bgStyle = "bg-indigo-500/10";
-                 }
-
-                 if (isToday) {
-                     bgStyle += " ring-2 ring-indigo-600 ring-inset z-10";
-                 }
-
-                 return (
-                   <div key={idx} className={`border-b border-r border-slate-800/60 relative p-2 transition-all flex flex-col aspect-square ${bgStyle}`}>
-                     <div className="flex justify-between items-start mb-1">
-                        <span className={`text-xs font-black oswald ${isToday ? 'text-indigo-400' : 'text-slate-500'}`}>{day}</span>
-                        {isToday && <span className="px-1 py-0.5 bg-indigo-600 text-[6px] font-black text-white rounded">TODAY</span>}
-                        {isASB && !isToday && <span className="text-[6px] font-black text-yellow-500 uppercase tracking-tight">ALL-STAR</span>}
-                     </div>
-
-                     {game && opp ? (
-                       <div className="flex-1 flex flex-col items-center justify-center gap-2 group cursor-default w-full p-1">
-                          {!game.played ? (
-                            <>
-                                <TeamLogo
-                                    teamId={opp.id}
-                                    size="custom"
-                                    className="w-14 h-14 lg:w-20 lg:h-20 drop-shadow-lg group-hover:scale-110 transition-transform duration-300"
-                                />
-
-                                <div className="text-center w-full z-10">
-                                    <div className="text-xs lg:text-sm font-black text-slate-200 truncate w-full px-1 uppercase tracking-tight leading-none">
-                                        <span className={`${isHome ? 'text-indigo-400' : 'text-slate-500'} mr-1`}>{isHome ? 'vs' : '@'}</span>{opp.name}
-                                    </div>
-                                </div>
-                            </>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center w-full h-full gap-1">
-                                <div className="text-xs lg:text-sm font-black text-white w-full text-center uppercase tracking-tight leading-tight break-keep">
-                                    <span className="text-[10px] text-slate-400 mr-1 align-middle">{isHome ? 'vs' : '@'}</span>{opp.name}
-                                </div>
-                                <div className={`text-xl lg:text-3xl font-black oswald leading-none ${isWon ? 'text-emerald-300' : 'text-red-300'}`}>
-                                    {isHome ? `${game.homeScore}:${game.awayScore}` : `${game.awayScore}:${game.homeScore}`}
-                                </div>
-                            </div>
-                          )}
-                       </div>
-                     ) : (
-                        !isASB && <div className="flex-1"></div>
-                     )}
-                   </div>
-                 );
-               })}
-            </div>
-          </>
-        ) : (
-          /* League Schedule List View */
           <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
             {leagueGames.length === 0 ? (
               <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
@@ -456,8 +420,8 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               })
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
