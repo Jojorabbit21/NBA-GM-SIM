@@ -239,7 +239,10 @@ export const useLeaderboardData = (
         return teams.flatMap(t => {
             // Find team stat object to get Opponent stats for context
             const tStat = teamStats.find(ts => ts.id === t.id);
-            const teamMin = (tStat?.stats.g || 1) * 48;
+            // Tm MP = 전체 선수 출전시간 합계. 실제 로스터 MP 합산 사용 (정확도).
+            // Fallback: g × 240 (5명 × 48분). BBRef 공식의 Tm MP / 5 에 사용됨.
+            const teamMin = t.roster.reduce((sum, p) => sum + (p.stats.mp || 0), 0)
+                || (tStat?.stats.g || 1) * 240;
             const teamFgm = tStat?.rawTotals.fgm || 0;
             // teamPoss: STL%, BLK% 등 포제션 기반 스탯에 사용 (offReb 차감)
             const teamPoss = (tStat?.rawTotals.fga || 0) + 0.44 * (tStat?.rawTotals.fta || 0) + (tStat?.rawTotals.tov || 0) - (tStat?.rawTotals.offReb || 0);
