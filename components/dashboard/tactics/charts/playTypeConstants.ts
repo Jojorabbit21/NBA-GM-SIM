@@ -1,7 +1,7 @@
 
 import { TacticalSliders } from '../../../../types';
 
-// Shared play type definitions used by PlayTypePPP, KeyPlayerFit, ShotDistribution, etc.
+// Shared play type definitions used by PlayTypePPP, ShotDistribution, etc.
 
 export const PLAY_TYPES = [
     { key: 'pnr', sliderKey: 'play_pnr' as const, label: '픽앤롤', baseEff: 0.95, color: '#3b82f6' },
@@ -18,6 +18,10 @@ export const PLAY_ATTR_MAP: Record<string, { attrs: string[]; weights: number[] 
     cns: { attrs: ['out', 'shotIq', 'offConsist'], weights: [0.5, 0.3, 0.2] },
     drive: { attrs: ['speed', 'agility', 'ins', 'vertical'], weights: [0.25, 0.25, 0.3, 0.2] },
 };
+
+// PnR-specific: separate handler and roller attr maps
+export const PNR_HANDLER_MAP = { attrs: ['handling', 'passIq', 'speed'], weights: [0.4, 0.35, 0.25] };
+export const PNR_ROLLER_MAP = { attrs: ['ins', 'strength', 'vertical', 'hands'], weights: [0.3, 0.3, 0.2, 0.2] };
 
 // Helper: Get play type distribution % from sliders
 export const getPlayTypeDistribution = (sliders: TacticalSliders): number[] => {

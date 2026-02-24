@@ -8,12 +8,11 @@ interface ShotDistributionProps {
     roster: Player[];
 }
 
-// Zone categories for display
 const ZONE_CATS = [
-    { key: 'rim', label: 'RIM', color: '#ef4444' },
-    { key: 'paint', label: 'PAINT', color: '#f97316' },
-    { key: 'mid', label: 'MID', color: '#eab308' },
-    { key: '3pt', label: '3PT', color: '#3b82f6' },
+    { key: 'rim', label: 'RIM' },
+    { key: 'paint', label: 'PAINT' },
+    { key: 'mid', label: 'MID' },
+    { key: '3pt', label: '3PT' },
 ] as const;
 
 // Mirrors engine's selectZone: score(zone) = (attr/100)*0.6 + (slider/10)*0.4
@@ -41,7 +40,6 @@ const calcZoneProbs = (
 
 export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, roster }) => {
     const data = useMemo(() => {
-        // Team average attributes (top 8 rotation)
         const sorted = [...roster].sort((a, b) => b.ovr - a.ovr);
         const rot = sorted.slice(0, Math.min(8, sorted.length));
         const avg = (key: string) => rot.length > 0
@@ -52,20 +50,18 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
         const teamMid = avg('midRange');
         const teamIns = avg('ins');
 
-        // Play type weights (distribution %)
         const rawWeights = PLAY_TYPES.map(pt => sliders[pt.sliderKey] || 5);
         const totalWeight = rawWeights.reduce((s, v) => s + v, 0);
         const dist = rawWeights.map(w => w / totalWeight);
 
-        // Accumulate zone distribution from each play type
         const predicted: Record<string, number> = { rim: 0, paint: 0, mid: 0, '3pt': 0 };
 
         // play_pnr → Handler 40% (3pt/mid flex), Roll 40% (rim fixed), Pop 20% (3pt fixed)
         const pnrFlex = calcZoneProbs(['3pt', 'mid'], teamOut, teamMid, teamIns, sliders);
-        predicted.rim += dist[0] * 0.40; // Roll → Rim
-        predicted['3pt'] += dist[0] * 0.20; // Pop → 3PT
-        predicted['3pt'] += dist[0] * 0.40 * (pnrFlex['3pt'] || 0); // Handler flex
-        predicted.mid += dist[0] * 0.40 * (pnrFlex.mid || 0); // Handler flex
+        predicted.rim += dist[0] * 0.40;
+        predicted['3pt'] += dist[0] * 0.20;
+        predicted['3pt'] += dist[0] * 0.40 * (pnrFlex['3pt'] || 0);
+        predicted.mid += dist[0] * 0.40 * (pnrFlex.mid || 0);
 
         // play_iso → 3pt/mid/rim all flexible
         const isoFlex = calcZoneProbs(['3pt', 'mid', 'rim'], teamOut, teamMid, teamIns, sliders);
@@ -88,14 +84,12 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
         predicted.rim += dist[4] * 0.50 * (drvFlex.rim || 0);
         predicted['3pt'] += dist[4] * 0.50 * (drvFlex['3pt'] || 0);
 
-        // Convert to percentages
         const totalPred = Object.values(predicted).reduce((s, v) => s + v, 0);
         const predPct: Record<string, number> = {};
         for (const k of Object.keys(predicted)) {
             predPct[k] = totalPred > 0 ? (predicted[k] / totalPred) * 100 : 25;
         }
 
-        // Actual distribution from season zone stats
         let actualPct: Record<string, number> | null = null;
         const totalGames = roster.length > 0 ? Math.max(...roster.map(p => p.stats.g)) : 0;
         if (totalGames > 0) {
@@ -122,7 +116,7 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
 
     return (
         <div className="flex flex-col gap-3">
-            <h5 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">예상 슈팅 분포</h5>
+            <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">예상 슈팅 분포</h5>
             <div className="space-y-2.5">
                 {ZONE_CATS.map(zone => {
                     const pred = data.predPct[zone.key] || 0;
@@ -131,18 +125,18 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
                     return (
                         <div key={zone.key} className="space-y-1">
                             <div className="flex justify-between items-center">
-                                <span className="text-[10px] font-bold text-slate-300">{zone.label}</span>
+                                <span className="text-xs font-bold text-slate-300">{zone.label}</span>
                                 <div className="flex items-center gap-2">
-                                    <span className="text-xs font-black text-white tabular-nums">{pred.toFixed(0)}%</span>
+                                    <span className="text-[13px] font-black text-white tabular-nums">{pred.toFixed(0)}%</span>
                                     {actual !== undefined && (
-                                        <span className="text-[9px] font-bold text-slate-500 tabular-nums">실 {actual.toFixed(0)}%</span>
+                                        <span className="text-xs font-bold text-slate-400 tabular-nums">실 {actual.toFixed(0)}%</span>
                                     )}
                                 </div>
                             </div>
                             <div className="h-2 bg-slate-900 rounded-full overflow-hidden relative">
                                 <div
                                     className="h-full rounded-full transition-all duration-300"
-                                    style={{ width: `${barWidth}%`, backgroundColor: zone.color, opacity: 0.7 }}
+                                    style={{ width: `${barWidth}%`, backgroundColor: '#6366f1', opacity: 0.7 }}
                                 />
                                 {actual !== undefined && (
                                     <div
@@ -155,7 +149,7 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
                     );
                 })}
             </div>
-            <div className="text-[9px] text-slate-600 text-right">* 슬라이더+로스터 기반 예측 {data.actualPct && '| 흰선=실적'}</div>
+            <div className="text-xs text-slate-400 text-right">* 슬라이더+로스터 기반 예측 {data.actualPct && '| 흰선=실적'}</div>
         </div>
     );
 };

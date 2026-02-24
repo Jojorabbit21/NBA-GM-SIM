@@ -107,9 +107,9 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                 <table className="w-full border-collapse text-xs">
                     <thead className="sticky top-0 z-10 bg-slate-950">
                         <tr className="text-[9px] font-black uppercase text-slate-500">
-                            <SortHeader label="OVR" field="ovr" className="px-2 text-left w-10" />
-                            <th className="px-2 py-1 text-left">NAME</th>
+                            <SortHeader label="OVR" field="ovr" className="px-2 text-left w-12" />
                             <th className="px-1 py-1 text-center w-8">POS</th>
+                            <th className="px-2 py-1 text-left">NAME</th>
                             <SortHeader label="AGE" field="age" className="w-8" />
                             <SortHeader label="INS" field="ins" className="w-8" />
                             <SortHeader label="OUT" field="out" className="w-8" />
@@ -132,9 +132,11 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                         }`}
                                         onClick={() => onSelectPlayer(player)}
                                     >
-                                        <td className="px-2 py-0.5 font-bold text-slate-200">{player.ovr}</td>
-                                        <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
+                                        <td className="px-2 py-0.5">
+                                            <OvrBadge value={player.ovr} size="sm" />
+                                        </td>
                                         <td className="px-1 py-0.5 text-center text-slate-400">{player.position}</td>
+                                        <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
                                         <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
                                         <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ins)}`}>{player.ins}</td>
                                         <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.out)}`}>{player.out}</td>
