@@ -682,51 +682,102 @@ const LiveShotChart: React.FC<{
         return { ...s, ...norm, isHome };
     }), [shotEvents, homeTeam.id]);
 
-    const LeftBasketLines = () => (
-        <g fill="none" stroke="#334155" strokeWidth="0.5">
-            <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
-            <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
-            <line x1="0" y1="3" x2="14" y2="3" />
-            <line x1="0" y1="47" x2="14" y2="47" />
-            <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
-            <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
-            <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
-            <path d={`M ${HOOP_X_LEFT},${HOOP_Y_CENTER - 4} A 4 4 0 0 1 ${HOOP_X_LEFT},${HOOP_Y_CENTER + 4}`} />
-        </g>
-    );
-
-    const RightBasketLines = () => (
-        <g fill="none" stroke="#334155" strokeWidth="0.5" transform={`scale(-1,1) translate(-${COURT_WIDTH},0)`}>
-            <rect x="0" y={(COURT_HEIGHT - 16) / 2} width="19" height="16" />
-            <path d={`M 19,${HOOP_Y_CENTER - 6} A 6 6 0 0 1 19,${HOOP_Y_CENTER + 6}`} />
-            <line x1="0" y1="3" x2="14" y2="3" />
-            <line x1="0" y1="47" x2="14" y2="47" />
-            <path d="M 14,3 A 23.75 23.75 0 0 1 14,47" />
-            <line x1="4" y1={HOOP_Y_CENTER - 3} x2="4" y2={HOOP_Y_CENTER + 3} stroke="white" strokeWidth="0.5" />
-            <circle cx={HOOP_X_LEFT} cy={HOOP_Y_CENTER} r={0.75} stroke="white" />
-            <path d={`M ${HOOP_X_LEFT},${HOOP_Y_CENTER - 4} A 4 4 0 0 1 ${HOOP_X_LEFT},${HOOP_Y_CENTER + 4}`} />
-        </g>
-    );
+    // SVG court at 940x500 scale (10x of 94x50 ft). Shot coords are in 94x50 → multiply by 10.
+    const S = 10;
 
     return (
-        <div className="w-full" style={{ aspectRatio: `${COURT_WIDTH}/${COURT_HEIGHT}` }}>
-            <svg viewBox={`0 0 ${COURT_WIDTH} ${COURT_HEIGHT}`} className="w-full h-full">
-                <rect x="0" y="0" width={COURT_WIDTH} height={COURT_HEIGHT} fill="#020617" />
-                <LeftBasketLines />
-                <RightBasketLines />
-                <line x1="47" y1="0" x2="47" y2={COURT_HEIGHT} stroke="#334155" strokeWidth="0.5" />
-                <circle cx="47" cy={HOOP_Y_CENTER} r="6" fill="none" stroke="#334155" strokeWidth="0.5" />
-                <circle cx="47" cy={HOOP_Y_CENTER} r="2" fill="none" stroke="#334155" strokeWidth="0.5" />
+        <div className="w-full" style={{ aspectRatio: '940/500' }}>
+            <svg viewBox="0 0 940 500" className="w-full h-full">
+                {/* Court Background */}
+                <rect width="940" height="500" fill="#020617" />
+                {/* Paint Fills */}
+                <rect y="170" width="190" height="160" fill="#0f172a" />
+                <rect x="750" y="170" width="190" height="160" fill="#0f172a" />
+
+                {/* ── Court Lines ── */}
+                <g fill="none" stroke="#334155" strokeWidth="2" strokeMiterlimit="10">
+                    {/* Left 3-Point Line */}
+                    <path d="M0,30h140s150,55,150,220-150,220,-150,220H0" />
+                    {/* Left Paint (open on baseline) */}
+                    <polyline points="0,170 190,170 190,330 0,330" />
+                    {/* Left FT Lane Lines */}
+                    <line x1="190" y1="310" y2="310" />
+                    <line y1="190" x2="190" y2="190" />
+                    {/* Left FT Circle (solid half) */}
+                    <path d="M190,190c33.14,0,60,26.86,60,60s-26.86,60-60,60" />
+                    {/* Left FT Circle (dashed half) */}
+                    <path d="M190,310c-1.6,0-3.18-.06-4.75-.19" />
+                    <path d="M177.77,308.75c-27.27-5.65-47.77-29.81-47.77-58.75s22.39-55.27,51.49-59.4" strokeDasharray="9.58 7.56" />
+                    <path d="M185.25,190.19c1.57-.12,3.15-.19,4.75-.19" />
+                    {/* Left Corner 3 Lines */}
+                    <line x1="280" y1="480" x2="280" y2="500" />
+                    <line x1="280" x2="280" y2="20" />
+                    {/* Left Restricted Area */}
+                    <path d="M40,290h12.5c22.09,0,40-17.91,40-40s-17.91-40-40-40h-12.5" />
+                    {/* Left Lane Tick Marks */}
+                    <line x1="145" y1="310" x2="145" y2="318" />
+                    <line x1="115" y1="310" x2="115" y2="318" />
+                    <line x1="85" y1="310" x2="85" y2="318" />
+                    <line x1="70" y1="310" x2="70" y2="318" />
+                    <line x1="145" y1="182" x2="145" y2="190" />
+                    <line x1="115" y1="182" x2="115" y2="190" />
+                    <line x1="85" y1="182" x2="85" y2="190" />
+                    <line x1="70" y1="182" x2="70" y2="190" />
+                    {/* Left Backboard */}
+                    <line x1="40" y1="222" x2="40" y2="278" stroke="white" />
+                    {/* Left Basket */}
+                    <circle cx="48" cy="250" r="7.5" stroke="white" />
+
+                    {/* Center Line */}
+                    <line x1="470" x2="470" y2="500" />
+                    {/* Center Circle */}
+                    <circle cx="470" cy="250" r="60" />
+                    <circle cx="470" cy="250" r="20" />
+
+                    {/* Right 3-Point Line */}
+                    <path d="M940,470h-140s-150,-55,-150,-220,150,-220,150,-220h140" />
+                    {/* Right Paint (open on baseline) */}
+                    <polyline points="940,330 750,330 750,170 940,170" />
+                    {/* Right FT Lane Lines */}
+                    <line x1="750" y1="190" x2="940" y2="190" />
+                    <line x1="940" y1="310" x2="750" y2="310" />
+                    {/* Right FT Circle (solid half) */}
+                    <path d="M750,310c-33.14,0-60-26.86-60-60s26.86-60,60-60" />
+                    {/* Right FT Circle (dashed half) */}
+                    <path d="M750,190c1.6,0,3.18.06,4.75.19" />
+                    <path d="M762.23,191.25c27.27,5.65,47.77,29.81,47.77,58.75s-22.39,55.27-51.49,59.4" strokeDasharray="9.58 7.56" />
+                    <path d="M754.75,309.81c-1.57.12-3.15.19-4.75.19" />
+                    {/* Right Corner 3 Lines */}
+                    <line x1="660" y1="20" x2="660" />
+                    <line x1="660" y1="500" x2="660" y2="480" />
+                    {/* Right Restricted Area */}
+                    <path d="M900,210h-12.5c-22.09,0-40,17.91-40,40s17.91,40,40,40h12.5" />
+                    {/* Right Lane Tick Marks */}
+                    <line x1="795" y1="190" x2="795" y2="182" />
+                    <line x1="825" y1="190" x2="825" y2="182" />
+                    <line x1="855" y1="190" x2="855" y2="182" />
+                    <line x1="870" y1="190" x2="870" y2="182" />
+                    <line x1="795" y1="318" x2="795" y2="310" />
+                    <line x1="825" y1="318" x2="825" y2="310" />
+                    <line x1="855" y1="318" x2="855" y2="310" />
+                    <line x1="870" y1="318" x2="870" y2="310" />
+                    {/* Right Backboard */}
+                    <line x1="900" y1="278" x2="900" y2="222" stroke="white" />
+                    {/* Right Basket */}
+                    <circle cx="892" cy="250" r="7.5" stroke="white" />
+                </g>
+
+                {/* Shot Dots (coords in 94x50, scaled to 940x500) */}
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
                     return (
                         <g key={`${shot.id}-${i}`}>
                             {shot.isMake ? (
-                                <circle cx={shot.x} cy={shot.y} r={0.65} fill={color} stroke="white" strokeWidth="0.1" opacity="0.9" />
+                                <circle cx={shot.x * S} cy={shot.y * S} r={6.5} fill={color} stroke="white" strokeWidth="1" opacity="0.9" />
                             ) : (
-                                <g transform={`translate(${shot.x}, ${shot.y})`} opacity="0.6">
-                                    <line x1="-0.5" y1="-0.5" x2="0.5" y2="0.5" stroke="#cbd5e1" strokeWidth="0.25" />
-                                    <line x1="-0.5" y1="0.5" x2="0.5" y2="-0.5" stroke="#cbd5e1" strokeWidth="0.25" />
+                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`} opacity="0.6">
+                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke="#cbd5e1" strokeWidth="2.5" />
+                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke="#cbd5e1" strokeWidth="2.5" />
                                 </g>
                             )}
                         </g>
@@ -735,11 +786,11 @@ const LiveShotChart: React.FC<{
                 {/* 홈팀 로고 (최상위 레이어) */}
                 <image
                     href={homeTeam.logo}
-                    x={COURT_WIDTH / 2 - 5}
-                    y={COURT_HEIGHT / 2 - 5}
-                    width="10"
-                    height="10"
-                    opacity="1"
+                    x={470 - 80}
+                    y={250 - 80}
+                    width="160"
+                    height="160"
+                    opacity="0.15"
                     preserveAspectRatio="xMidYMid meet"
                 />
             </svg>
