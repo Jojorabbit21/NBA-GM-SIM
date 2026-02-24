@@ -28,25 +28,25 @@ export const ZONE_AVG = { rim: 0.62, paint: 0.42, mid: 0.40, c3: 0.38, atb3: 0.3
 
 // Zone configuration for chart rendering (cx/cy = label position in 435x403 canvas)
 export const ZONE_CONFIG = [
-    { pathKey: 'PAINT' as const, avgKey: 'paint' as const, label: "페인트존", key: 'paint', cx: 217, cy: 290 },
-    { pathKey: 'RIM' as const, avgKey: 'rim' as const, label: "골밑", key: 'rim', cx: 217, cy: 375 },
-    { pathKey: 'MID_L' as const, avgKey: 'mid' as const, label: "좌측 미드레인지", key: 'midL', cx: 80, cy: 300 },
+    { pathKey: 'PAINT' as const, avgKey: 'paint' as const, label: "페인트존", key: 'paint', cx: 217, cy: 270 },
+    { pathKey: 'RIM' as const, avgKey: 'rim' as const, label: "골밑", key: 'rim', cx: 217, cy: 355 },
+    { pathKey: 'MID_L' as const, avgKey: 'mid' as const, label: "좌측 미드레인지", key: 'midL', cx: 80, cy: 280 },
     { pathKey: 'MID_C' as const, avgKey: 'mid' as const, label: "중앙 미드레인지", key: 'midC', cx: 217, cy: 200 },
-    { pathKey: 'MID_R' as const, avgKey: 'mid' as const, label: "우측 미드레인지", key: 'midR', cx: 355, cy: 300 },
+    { pathKey: 'MID_R' as const, avgKey: 'mid' as const, label: "우측 미드레인지", key: 'midR', cx: 355, cy: 280 },
     { pathKey: 'C3_L' as const, avgKey: 'c3' as const, label: "좌측 코너", key: 'c3L', cx: 35, cy: 350 },
-    { pathKey: 'ATB3_L' as const, avgKey: 'atb3' as const, label: "좌측 45도", key: 'atb3L', cx: 40, cy: 140 },
+    { pathKey: 'ATB3_L' as const, avgKey: 'atb3' as const, label: "좌측 45도", key: 'atb3L', cx: 40, cy: 160 },
     { pathKey: 'ATB3_C' as const, avgKey: 'atb3' as const, label: "탑 오브 더 키", key: 'atb3C', cx: 217, cy: 80 },
-    { pathKey: 'ATB3_R' as const, avgKey: 'atb3' as const, label: "우측 45도", key: 'atb3R', cx: 395, cy: 140 },
+    { pathKey: 'ATB3_R' as const, avgKey: 'atb3' as const, label: "우측 45도", key: 'atb3R', cx: 395, cy: 160 },
     { pathKey: 'C3_R' as const, avgKey: 'c3' as const, label: "우측 코너", key: 'c3R', cx: 400, cy: 350 },
 ];
 
 // Determine zone heatmap style — single green color, opacity = efficiency
 export const getZoneStyle = (makes: number, attempts: number, avg: number) => {
-    if (attempts === 0) return { fill: '#10b981', opacity: 0.04, delta: 0 };
+    if (attempts === 0) return { fill: '#10b981', opacity: 0.08, delta: 0 };
     const pct = makes / attempts;
     const delta = pct - avg;
-    // Map delta to opacity: -0.15 → 0.06, 0 → 0.22, +0.15 → 0.50
-    const opacity = Math.min(0.55, Math.max(0.06, 0.22 + delta * 2));
+    // Map delta to opacity: -0.15 → 0.15, 0 → 0.30, +0.15 → 0.57
+    const opacity = Math.min(0.57, Math.max(0.15, 0.30 + delta * 1.8));
     return { fill: '#10b981', opacity, delta };
 };
 

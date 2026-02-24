@@ -23,7 +23,7 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
     return (
         <div className="flex items-center gap-3">
             <span className="text-xs font-bold text-slate-300 w-20 shrink-0">{label}</span>
-            <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+            <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                 <div className="h-full rounded-full transition-all duration-300" style={{ width: `${pct}%`, backgroundColor: '#6366f1', opacity: 0.6 }} />
             </div>
             <span className="text-[13px] font-black text-white tabular-nums w-14 text-right">{Math.round(pct)}<span className="text-[10px] font-bold text-slate-500"> /100</span></span>
@@ -113,14 +113,14 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
 
     return (
         <div className="grid grid-cols-2 gap-4">
-            {/* Radar Chart */}
-            <div>
-                <RadarChart roster={roster} />
-            </div>
-
-            {/* Zone Heatmap (smaller) */}
-            <div>
-                <TeamZoneChart roster={roster} />
+            {/* Radar + Zone Heatmap — grouped, vertically centered */}
+            <div className="col-span-2 flex items-center gap-4">
+                <div className="flex-1">
+                    <RadarChart roster={roster} />
+                </div>
+                <div className="flex-1">
+                    <TeamZoneChart roster={roster} />
+                </div>
             </div>
 
             {/* Play Type PPP — full width */}
