@@ -359,11 +359,7 @@ const TeamStatsCompare: React.FC<{
                     const bothZero = h === 0 && a === 0;
 
                     return (
-                        <div key={key} className="grid grid-cols-[32px_1fr_36px_1fr_32px] items-center gap-1">
-                            {/* Away value */}
-                            <span className={`text-[10px] font-mono text-right ${aWins ? 'text-white font-bold' : 'text-slate-500'}`}>
-                                {fmt(a)}
-                            </span>
+                        <div key={key} className="grid grid-cols-[1fr_32px_36px_32px_1fr] items-center gap-1">
                             {/* Away bar (grows right-to-left) */}
                             <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-800/50">
                                 {!bothZero && (
@@ -373,8 +369,16 @@ const TeamStatsCompare: React.FC<{
                                     />
                                 )}
                             </div>
+                            {/* Away value */}
+                            <span className={`text-[10px] font-mono text-right ${aWins ? 'text-white font-bold' : 'text-slate-500'}`}>
+                                {fmt(a)}
+                            </span>
                             {/* Label */}
                             <span className="text-[9px] font-bold text-slate-400 text-center uppercase">{label}</span>
+                            {/* Home value */}
+                            <span className={`text-[10px] font-mono text-left ${hWins ? 'text-white font-bold' : 'text-slate-500'}`}>
+                                {fmt(h)}
+                            </span>
                             {/* Home bar (grows left-to-right) */}
                             <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-800/50">
                                 {!bothZero && (
@@ -384,10 +388,6 @@ const TeamStatsCompare: React.FC<{
                                     />
                                 )}
                             </div>
-                            {/* Home value */}
-                            <span className={`text-[10px] font-mono text-left ${hWins ? 'text-white font-bold' : 'text-slate-500'}`}>
-                                {fmt(h)}
-                            </span>
                         </div>
                     );
                 })}
@@ -409,36 +409,35 @@ const LEADER_CATS = [
 const GameLeaders: React.FC<{
     homeBox: { pts: number; reb: number; ast: number; playerName: string; playerId: string }[];
     awayBox: { pts: number; reb: number; ast: number; playerName: string; playerId: string }[];
-    homeTeamId: string;
     homeColor: string;
     awayColor: string;
-}> = ({ homeBox, awayBox, homeTeamId, homeColor, awayColor }) => {
+}> = ({ homeBox, awayBox, homeColor, awayColor }) => {
+    type Row = { pts: number; reb: number; ast: number; playerName: string };
     const leaders = useMemo(() => {
-        const all = [
-            ...homeBox.map(p => ({ ...p, teamId: homeTeamId, isHome: true })),
-            ...awayBox.map(p => ({ ...p, teamId: 'away', isHome: false })),
-        ];
-        return LEADER_CATS.map(({ key, label }) => {
-            const top = all.reduce((best, p) => (p[key] > best[key] ? p : best), all[0]);
-            if (!top) return { label, name: '—', value: 0, color: homeColor };
-            return {
-                label,
-                name: top.playerName,
-                value: top[key],
-                color: top.isHome ? homeColor : awayColor,
-            };
-        });
-    }, [homeBox, awayBox, homeTeamId, homeColor, awayColor]);
+        const findTop = (arr: Row[], key: 'pts' | 'reb' | 'ast') => {
+            if (arr.length === 0) return { name: '—', value: 0 };
+            const top = arr.reduce((best, p) => (p[key] > best[key] ? p : best), arr[0]);
+            return { name: top.playerName, value: top[key] };
+        };
+        return LEADER_CATS.map(({ key, label }) => ({
+            label,
+            away: findTop(awayBox as Row[], key),
+            home: findTop(homeBox as Row[], key),
+        }));
+    }, [homeBox, awayBox]);
 
     return (
         <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
             <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1 px-1">Game Leaders</p>
             <div className="flex flex-col gap-0.5">
-                {leaders.map(({ label, name, value, color }) => (
-                    <div key={label} className="grid grid-cols-[28px_1fr_auto] items-center gap-1 px-1">
+                {leaders.map(({ label, away, home }) => (
+                    <div key={label} className="grid grid-cols-[24px_1fr_22px_1px_22px_1fr] items-center gap-1 px-1">
                         <span className="text-[9px] text-slate-500 font-bold uppercase">{label}</span>
-                        <span className="text-[10px] text-white truncate">{name}</span>
-                        <span className="text-[10px] font-bold font-mono" style={{ color }}>{value}</span>
+                        <span className="text-[10px] text-white truncate text-right">{away.name}</span>
+                        <span className="text-[10px] font-bold font-mono text-right" style={{ color: awayColor }}>{away.value}</span>
+                        <div className="h-3 bg-slate-700" />
+                        <span className="text-[10px] font-bold font-mono text-left" style={{ color: homeColor }}>{home.value}</span>
+                        <span className="text-[10px] text-white truncate">{home.name}</span>
                     </div>
                 ))}
             </div>
@@ -608,7 +607,7 @@ const CompactWPGraph: React.FC<{
                     <img src={awayLogo} className="w-4 h-4 object-contain" alt="" />
                     <span className="text-xs font-black oswald text-white">{awayProb}%</span>
                 </div>
-                <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider">실시간 승리확률</p>
+                <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">실시간 승리확률</p>
                 <div className="flex items-center gap-1.5">
                     <span className="text-xs font-black oswald text-white">{homeProb}%</span>
                     <img src={homeLogo} className="w-4 h-4 object-contain" alt="" />
@@ -1186,6 +1185,13 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                 {!isUserHome ? (
                                     <>
+                                        <QuarterScores
+                                            allLogs={allLogs}
+                                            homeTeamId={homeTeam.id}
+                                            currentQuarter={quarter}
+                                            homeTeamCode={homeTeam.id.toUpperCase()}
+                                            awayTeamCode={awayTeam.id.toUpperCase()}
+                                        />
                                         <TeamStatsCompare
                                             homeBox={homeBox}
                                             awayBox={awayBox}
@@ -1195,16 +1201,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                         <GameLeaders
                                             homeBox={homeBox}
                                             awayBox={awayBox}
-                                            homeTeamId={homeTeam.id}
                                             homeColor={homeData?.colors.primary ?? '#6366f1'}
                                             awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                        />
-                                        <QuarterScores
-                                            allLogs={allLogs}
-                                            homeTeamId={homeTeam.id}
-                                            currentQuarter={quarter}
-                                            homeTeamCode={homeTeam.id.toUpperCase()}
-                                            awayTeamCode={awayTeam.id.toUpperCase()}
                                         />
                                     </>
                                 ) : (
@@ -1389,6 +1387,13 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                 {isUserHome ? (
                                     <>
+                                        <QuarterScores
+                                            allLogs={allLogs}
+                                            homeTeamId={homeTeam.id}
+                                            currentQuarter={quarter}
+                                            homeTeamCode={homeTeam.id.toUpperCase()}
+                                            awayTeamCode={awayTeam.id.toUpperCase()}
+                                        />
                                         <TeamStatsCompare
                                             homeBox={homeBox}
                                             awayBox={awayBox}
@@ -1398,16 +1403,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                         <GameLeaders
                                             homeBox={homeBox}
                                             awayBox={awayBox}
-                                            homeTeamId={homeTeam.id}
                                             homeColor={homeData?.colors.primary ?? '#6366f1'}
                                             awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                        />
-                                        <QuarterScores
-                                            allLogs={allLogs}
-                                            homeTeamId={homeTeam.id}
-                                            currentQuarter={quarter}
-                                            homeTeamCode={homeTeam.id.toUpperCase()}
-                                            awayTeamCode={awayTeam.id.toUpperCase()}
                                         />
                                     </>
                                 ) : (
