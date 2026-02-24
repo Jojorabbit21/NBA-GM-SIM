@@ -292,8 +292,8 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.blk}</span>
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.tov}</span>
                             <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.pf}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fgm}-{teamTotal.fga}</span>
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3m}-{teamTotal.p3a}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.fga > 0 ? (teamTotal.fgm / teamTotal.fga).toFixed(3) : '.000'}</span>
+                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.p3a > 0 ? (teamTotal.p3m / teamTotal.p3a).toFixed(3) : '.000'}</span>
                         </div>
                     </>
                 )}
@@ -346,7 +346,7 @@ const TeamStatsCompare: React.FC<{
     }, [homeBox, awayBox]);
 
     return (
-        <div className="flex-1 min-h-0 overflow-y-auto px-2 py-2" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
+        <div className="shrink-0 px-2 py-2">
             <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">Team Stats</p>
             <div className="flex flex-col gap-1">
                 {COMPARE_STATS.map(({ key, label, fmt }) => {
@@ -397,6 +397,129 @@ const TeamStatsCompare: React.FC<{
 };
 
 // ─────────────────────────────────────────────────────────────
+// Game Leaders (PTS / REB / AST top player)
+// ─────────────────────────────────────────────────────────────
+
+const LEADER_CATS = [
+    { key: 'pts' as const, label: 'PTS' },
+    { key: 'reb' as const, label: 'REB' },
+    { key: 'ast' as const, label: 'AST' },
+];
+
+const GameLeaders: React.FC<{
+    homeBox: { pts: number; reb: number; ast: number; playerName: string; playerId: string }[];
+    awayBox: { pts: number; reb: number; ast: number; playerName: string; playerId: string }[];
+    homeTeamId: string;
+    homeColor: string;
+    awayColor: string;
+}> = ({ homeBox, awayBox, homeTeamId, homeColor, awayColor }) => {
+    const leaders = useMemo(() => {
+        const all = [
+            ...homeBox.map(p => ({ ...p, teamId: homeTeamId, isHome: true })),
+            ...awayBox.map(p => ({ ...p, teamId: 'away', isHome: false })),
+        ];
+        return LEADER_CATS.map(({ key, label }) => {
+            const top = all.reduce((best, p) => (p[key] > best[key] ? p : best), all[0]);
+            if (!top) return { label, name: '—', value: 0, color: homeColor };
+            return {
+                label,
+                name: top.playerName,
+                value: top[key],
+                color: top.isHome ? homeColor : awayColor,
+            };
+        });
+    }, [homeBox, awayBox, homeTeamId, homeColor, awayColor]);
+
+    return (
+        <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
+            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1 px-1">Game Leaders</p>
+            <div className="flex flex-col gap-0.5">
+                {leaders.map(({ label, name, value, color }) => (
+                    <div key={label} className="grid grid-cols-[28px_1fr_auto] items-center gap-1 px-1">
+                        <span className="text-[9px] text-slate-500 font-bold uppercase">{label}</span>
+                        <span className="text-[10px] text-white truncate">{name}</span>
+                        <span className="text-[10px] font-bold font-mono" style={{ color }}>{value}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
+// Quarter Scores Table
+// ─────────────────────────────────────────────────────────────
+
+const QuarterScores: React.FC<{
+    allLogs: PbpLog[];
+    homeTeamId: string;
+    currentQuarter: number;
+    homeTeamCode: string;
+    awayTeamCode: string;
+}> = ({ allLogs, homeTeamId, currentQuarter, homeTeamCode, awayTeamCode }) => {
+    const scores = useMemo(() => {
+        const home = [0, 0, 0, 0];
+        const away = [0, 0, 0, 0];
+
+        for (const log of allLogs) {
+            if (log.type === 'score' || log.type === 'freethrow') {
+                const pts = log.points ?? 0;
+                const qi = Math.min(3, log.quarter - 1); // 0-indexed
+                if (log.teamId === homeTeamId) home[qi] += pts;
+                else away[qi] += pts;
+            }
+        }
+        return { home, away };
+    }, [allLogs, homeTeamId]);
+
+    const hTotal = scores.home.reduce((a, b) => a + b, 0);
+    const aTotal = scores.away.reduce((a, b) => a + b, 0);
+
+    const cellClass = (qi: number) => {
+        if (qi + 1 > currentQuarter) return 'text-slate-600';
+        if (qi + 1 === currentQuarter) return 'text-white font-bold';
+        return 'text-slate-400';
+    };
+
+    return (
+        <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
+            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1 px-1">Score by Quarter</p>
+            <table className="w-full text-[10px] font-mono">
+                <thead>
+                    <tr className="text-[9px] text-slate-600 uppercase">
+                        <th className="text-left px-1 font-semibold w-12"></th>
+                        {[1, 2, 3, 4].map(q => (
+                            <th key={q} className="text-center px-1 font-semibold w-8">Q{q}</th>
+                        ))}
+                        <th className="text-center px-1 font-semibold w-8">T</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td className="text-left px-1 text-slate-500 font-bold">{awayTeamCode}</td>
+                        {scores.away.map((v, i) => (
+                            <td key={i} className={`text-center px-1 ${cellClass(i)}`}>
+                                {i + 1 > currentQuarter ? '—' : v}
+                            </td>
+                        ))}
+                        <td className="text-center px-1 text-white font-bold">{aTotal}</td>
+                    </tr>
+                    <tr>
+                        <td className="text-left px-1 text-slate-500 font-bold">{homeTeamCode}</td>
+                        {scores.home.map((v, i) => (
+                            <td key={i} className={`text-center px-1 ${cellClass(i)}`}>
+                                {i + 1 > currentQuarter ? '—' : v}
+                            </td>
+                        ))}
+                        <td className="text-center px-1 text-white font-bold">{hTotal}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
+// ─────────────────────────────────────────────────────────────
 // Compact Win Probability Graph (sidebar)
 // ─────────────────────────────────────────────────────────────
 
@@ -441,20 +564,24 @@ const CompactWPGraph: React.FC<{
     useEffect(() => {
         const targetMinute = currentMinute + 1; // currentMinute 0 → 분 1 스냅샷
         if (targetMinute <= 0 || targetMinute > 48) return;
-        if (snapsRef.current.length > targetMinute) return; // 이미 기록됨
 
-        let hScore = 0, aScore = 0;
-        const targetSec = targetMinute * 60;
-        for (const log of allLogs) {
-            const [mm, ss] = log.timeRemaining.split(':').map(Number);
-            const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
-            if (elapsed > targetSec) break;
-            if (log.type === 'score' || log.type === 'freethrow') {
-                const pts = log.points ?? 0;
-                if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
+        // 빠른 속도에서 currentMinute가 여러 분을 건너뛸 수 있으므로
+        // 누락된 모든 중간 분의 스냅샷을 한번에 채움
+        while (snapsRef.current.length <= targetMinute) {
+            const m = snapsRef.current.length; // 추가할 분 번호
+            let hScore = 0, aScore = 0;
+            const mSec = m * 60;
+            for (const log of allLogs) {
+                const [mm, ss] = log.timeRemaining.split(':').map(Number);
+                const elapsed = ((log.quarter - 1) * 720) + (720 - (mm * 60 + ss));
+                if (elapsed > mSec) break;
+                if (log.type === 'score' || log.type === 'freethrow') {
+                    const pts = log.points ?? 0;
+                    if (log.teamId === homeTeamId) hScore += pts; else aScore += pts;
+                }
             }
+            snapsRef.current.push({ wp: calculateWinProbability(hScore, aScore, m) });
         }
-        snapsRef.current.push({ wp: calculateWinProbability(hScore, aScore, targetMinute) });
     }, [currentMinute]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const { points, fillPath, pathData, currentWP, endX, endY } = useMemo(() => {
@@ -1055,15 +1182,31 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={!isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
-                            {/* 하단 패널: 사용자팀이면 팀스탯비교, 상대팀이면 WP 그래프 */}
-                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col">
+                            {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
+                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                 {!isUserHome ? (
-                                    <TeamStatsCompare
-                                        homeBox={homeBox}
-                                        awayBox={awayBox}
-                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
-                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                    />
+                                    <>
+                                        <TeamStatsCompare
+                                            homeBox={homeBox}
+                                            awayBox={awayBox}
+                                            homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                            awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                        />
+                                        <GameLeaders
+                                            homeBox={homeBox}
+                                            awayBox={awayBox}
+                                            homeTeamId={homeTeam.id}
+                                            homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                            awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                        />
+                                        <QuarterScores
+                                            allLogs={allLogs}
+                                            homeTeamId={homeTeam.id}
+                                            currentQuarter={quarter}
+                                            homeTeamCode={homeTeam.id.toUpperCase()}
+                                            awayTeamCode={awayTeam.id.toUpperCase()}
+                                        />
+                                    </>
                                 ) : (
                                     <CompactWPGraph
                                         allLogs={allLogs}
@@ -1242,15 +1385,31 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
-                            {/* 하단 패널: 사용자팀이면 팀스탯비교, 상대팀이면 WP 그래프 */}
-                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col">
+                            {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
+                            <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                                 {isUserHome ? (
-                                    <TeamStatsCompare
-                                        homeBox={homeBox}
-                                        awayBox={awayBox}
-                                        homeColor={homeData?.colors.primary ?? '#6366f1'}
-                                        awayColor={awayData?.colors.primary ?? '#6366f1'}
-                                    />
+                                    <>
+                                        <TeamStatsCompare
+                                            homeBox={homeBox}
+                                            awayBox={awayBox}
+                                            homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                            awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                        />
+                                        <GameLeaders
+                                            homeBox={homeBox}
+                                            awayBox={awayBox}
+                                            homeTeamId={homeTeam.id}
+                                            homeColor={homeData?.colors.primary ?? '#6366f1'}
+                                            awayColor={awayData?.colors.primary ?? '#6366f1'}
+                                        />
+                                        <QuarterScores
+                                            allLogs={allLogs}
+                                            homeTeamId={homeTeam.id}
+                                            currentQuarter={quarter}
+                                            homeTeamCode={homeTeam.id.toUpperCase()}
+                                            awayTeamCode={awayTeam.id.toUpperCase()}
+                                        />
+                                    </>
                                 ) : (
                                     <CompactWPGraph
                                         allLogs={allLogs}
