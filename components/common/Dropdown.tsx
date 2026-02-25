@@ -1,5 +1,6 @@
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+// useEffect: click outside handler / useLayoutEffect: position calc before paint
 import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
@@ -50,8 +51,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
         else setInternalIsOpen(false);
     }, [onOpenChange]);
 
-    // Calculate position when opening
-    useEffect(() => {
+    // Calculate position when opening (useLayoutEffect → before paint, prevents flash at 0,0)
+    useLayoutEffect(() => {
         if (isExpanded && triggerRef.current) {
             const rect = triggerRef.current.getBoundingClientRect();
             setPos({

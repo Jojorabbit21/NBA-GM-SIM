@@ -47,7 +47,7 @@ const NavItem: React.FC<{
     <button
       onClick={onClick}
       className={`w-full flex items-center transition-all duration-500 group relative overflow-hidden ${
-        isCollapsed ? 'px-3 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
+        isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
       } ${
         active
           ? 'shadow-lg ring-1'
@@ -73,8 +73,8 @@ const NavItem: React.FC<{
             })}
           </span>
 
-          <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-0' : 'opacity-100 delay-150'
+          <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
+            isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
           }`}>
             {label}
           </span>
@@ -120,8 +120,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     <aside className={`${isCollapsed ? 'w-20' : 'w-72'} border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500`}>
 
       {/* Profile Section */}
-      <div className={`py-3 border-b border-slate-800 bg-slate-900/60 flex items-center transition-all duration-500 ${isCollapsed ? 'px-4' : 'px-5'}`}>
-        <div className={`flex items-center min-w-0 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-3'}`}>
+      <div className="px-6 py-3 border-b border-slate-800 bg-slate-900/60 flex items-center transition-all duration-500">
+        <div className={`flex items-center flex-1 min-w-0 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-3'}`}>
           <button
             onClick={isCollapsed ? onToggleCollapse : undefined}
             className={`w-8 h-8 rounded-lg bg-slate-800/50 flex items-center justify-center shrink-0 text-slate-400 transition-all duration-500 ${
@@ -131,13 +131,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           >
             <User size={16} />
           </button>
-          <span className={`text-xs font-bold text-slate-400 truncate whitespace-nowrap transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-0' : 'opacity-100 delay-150'
+          <span className={`text-xs font-bold text-slate-400 whitespace-nowrap overflow-hidden transition-all duration-500 ${
+            isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
           }`}>
             {userEmail || (isGuestMode ? '게스트 모드' : '로그인 필요')}
           </span>
         </div>
-        <div className={`shrink-0 ml-auto transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100 delay-150'}`}>
+        <div className={`shrink-0 overflow-hidden transition-all duration-500 ${isCollapsed ? 'opacity-0 pointer-events-none max-w-0' : 'opacity-100 max-w-[50px] ml-auto delay-150'}`}>
           <Dropdown
             isOpen={isMenuOpen}
             onOpenChange={setIsMenuOpen}
@@ -193,7 +193,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         style={{ backgroundColor: infoBgColor }}
       >
         <div className={`flex items-center relative z-10 transition-all duration-500 ${
-          isCollapsed ? 'p-3 justify-center gap-0' : 'p-8 gap-5'
+          isCollapsed ? 'px-5 py-3 gap-0' : 'p-8 gap-5'
         }`}>
           <TeamLogo
             teamId={team?.id || ''}
@@ -202,8 +202,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               isCollapsed ? 'w-10 h-10' : 'w-16 h-16 hover:scale-105'
             }`}
           />
-          <div className={`min-w-0 whitespace-nowrap transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-0' : 'opacity-100 delay-150'
+          <div className={`min-w-0 whitespace-nowrap overflow-hidden transition-all duration-500 ${
+            isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
           }`}>
             <h2
                 className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md"
@@ -316,15 +316,15 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <button
           onClick={onToggleCollapse}
           className={`w-full flex items-center py-2.5 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-500 ${
-            isCollapsed ? 'px-3 gap-0' : 'px-4 gap-3'
+            isCollapsed ? 'px-3.5 gap-0' : 'px-4 gap-3'
           }`}
           title={isCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
         >
           <span className="shrink-0">
             {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
           </span>
-          <span className={`text-xs font-bold uppercase tracking-widest whitespace-nowrap transition-opacity duration-300 ${
-            isCollapsed ? 'opacity-0' : 'opacity-100 delay-150'
+          <span className={`text-xs font-bold uppercase tracking-widest whitespace-nowrap overflow-hidden transition-all duration-500 ${
+            isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[100px] delay-150'
           }`}>접기</span>
         </button>
       </div>
