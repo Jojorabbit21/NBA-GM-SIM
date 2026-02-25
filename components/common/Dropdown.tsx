@@ -86,7 +86,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
             {isExpanded && createPortal(
                 <div
                     ref={panelRef}
-                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[9999] animate-in fade-in zoom-in-95 duration-150`}
+                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[9999] animate-in fade-in duration-100`}
                     style={{
                         top: pos.top,
                         ...(align === 'right' ? { right: window.innerWidth - pos.left } : { left: pos.left }),

@@ -46,8 +46,8 @@ const NavItem: React.FC<{
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center rounded-2xl transition-all duration-500 group relative overflow-hidden ${
-        isCollapsed ? 'justify-center px-0 py-3' : 'justify-between px-5 py-4'
+      className={`w-full flex items-center transition-all duration-500 group relative overflow-hidden ${
+        isCollapsed ? 'px-3 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
       } ${
         active
           ? 'shadow-lg ring-1'
@@ -81,8 +81,8 @@ const NavItem: React.FC<{
       </div>
 
       {badge !== undefined && badge > 0 && (
-          <span className={`z-10 flex items-center justify-center rounded-full bg-red-500 text-white shadow-sm font-bold transition-all duration-500 ${
-            isCollapsed ? 'absolute -top-0.5 -right-0.5 h-4 w-4 text-[8px]' : 'absolute right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[10px] ring-2 ring-white'
+          <span className={`absolute z-10 flex items-center justify-center rounded-full bg-red-500 text-white shadow-sm font-bold transition-all duration-500 ${
+            isCollapsed ? '-top-0.5 -right-0.5 h-4 w-4 text-[8px]' : 'right-4 top-1/2 -translate-y-1/2 h-5 w-5 text-[10px] ring-2 ring-white'
           }`}>
              {badge > 9 ? '9+' : badge}
           </span>
@@ -120,16 +120,16 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     <aside className={`${isCollapsed ? 'w-20' : 'w-72'} border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500`}>
 
       {/* Profile Section */}
-      <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between transition-all duration-500">
+      <div className={`py-3 border-b border-slate-800 bg-slate-900/60 flex items-center transition-all duration-500 ${isCollapsed ? 'px-4' : 'px-5'}`}>
         <div className={`flex items-center min-w-0 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-3'}`}>
           <button
             onClick={isCollapsed ? onToggleCollapse : undefined}
-            className={`rounded-lg bg-slate-800/50 flex items-center justify-center shrink-0 text-slate-400 transition-all duration-500 ${
-              isCollapsed ? 'w-10 h-10 rounded-xl hover:text-white hover:bg-slate-700 cursor-pointer' : 'w-8 h-8 cursor-default'
+            className={`w-8 h-8 rounded-lg bg-slate-800/50 flex items-center justify-center shrink-0 text-slate-400 transition-all duration-500 ${
+              isCollapsed ? 'hover:text-white hover:bg-slate-700 cursor-pointer' : 'cursor-default'
             }`}
             title={isCollapsed ? (userEmail || '프로필') : undefined}
           >
-            <User size={isCollapsed ? 18 : 16} />
+            <User size={16} />
           </button>
           <span className={`text-xs font-bold text-slate-400 truncate whitespace-nowrap transition-opacity duration-300 ${
             isCollapsed ? 'opacity-0' : 'opacity-100 delay-150'
@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             {userEmail || (isGuestMode ? '게스트 모드' : '로그인 필요')}
           </span>
         </div>
-        <div className={`shrink-0 transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100 delay-150'}`}>
+        <div className={`shrink-0 ml-auto transition-opacity duration-300 ${isCollapsed ? 'opacity-0 pointer-events-none' : 'opacity-100 delay-150'}`}>
           <Dropdown
             isOpen={isMenuOpen}
             onOpenChange={setIsMenuOpen}
@@ -222,7 +222,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       </div>
 
       {/* Main Navigation */}
-      <nav className={`flex-1 space-y-2 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-2' : 'p-6'}`}>
+      <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
         <NavItem
           active={currentView === 'Dashboard'}
           icon={<LayoutDashboard size={20}/>}
@@ -312,11 +312,11 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       </nav>
 
       {/* Collapse Toggle */}
-      <div className={`border-t border-slate-800 transition-all duration-500 ${isCollapsed ? 'p-2' : 'p-4'}`}>
+      <div className="p-4 border-t border-slate-800 transition-all duration-500">
         <button
           onClick={onToggleCollapse}
-          className={`w-full flex items-center py-3 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-500 ${
-            isCollapsed ? 'justify-center px-0' : 'gap-3 px-4'
+          className={`w-full flex items-center py-2.5 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all duration-500 ${
+            isCollapsed ? 'px-3 gap-0' : 'px-4 gap-3'
           }`}
           title={isCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
         >
