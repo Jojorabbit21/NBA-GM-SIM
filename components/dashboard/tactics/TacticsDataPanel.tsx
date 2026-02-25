@@ -99,7 +99,7 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
 
             {/* Section 2: Play Type Analysis */}
             <div className="pb-5 border-b border-slate-800">
-                <PlayTypePPP sliders={sliders} roster={roster} />
+                <PlayTypePPP sliders={sliders} />
             </div>
 
             {/* Section 3: Risk Analysis */}
