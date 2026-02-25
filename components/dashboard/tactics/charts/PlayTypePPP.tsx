@@ -14,6 +14,13 @@ const DONUT_R = 55;
 const DONUT_STROKE = 20;
 const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
 
+// Shot zone definitions
+const SHOT_ZONES = [
+    { label: '3PT', sliderKey: 'shot_3pt' as const, color: '#10b981' },
+    { label: 'MID', sliderKey: 'shot_mid' as const, color: '#f59e0b' },
+    { label: 'RIM', sliderKey: 'shot_rim' as const, color: '#ef4444' },
+];
+
 export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
     const data = useMemo(() => {
         const rawWeights = PLAY_TYPES.map(pt => sliders[pt.sliderKey] || 5);
@@ -35,6 +42,16 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
             return { segmentLength, offset, color: item.color };
         });
     }, [data]);
+
+    const zonePrefs = useMemo(() => {
+        const total = (sliders.shot_3pt || 5) + (sliders.shot_mid || 5) + (sliders.shot_rim || 5);
+        return SHOT_ZONES.map(z => ({
+            ...z,
+            pct: ((sliders[z.sliderKey] || 5) / total) * 100,
+        }));
+    }, [sliders]);
+
+    const maxZonePct = Math.max(...zonePrefs.map(z => z.pct));
 
     return (
         <div className="flex flex-col gap-3">
@@ -87,6 +104,38 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
                                 </td>
                             </tr>
                         ))}
+                    </tbody>
+                </table>
+
+                {/* Shot Zone Preference */}
+                <table className="border-collapse">
+                    <thead>
+                        <tr>
+                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5" colSpan={3}>슈팅 존</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {zonePrefs.map(zone => {
+                            const barWidth = (zone.pct / maxZonePct) * 100;
+                            return (
+                                <tr key={zone.label} className="h-9">
+                                    <td className="align-middle pr-2">
+                                        <span className="text-xs font-bold text-slate-300">{zone.label}</span>
+                                    </td>
+                                    <td className="align-middle w-[60px]">
+                                        <div className="h-2 bg-slate-800 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full rounded-full transition-all duration-300"
+                                                style={{ width: `${barWidth}%`, backgroundColor: zone.color }}
+                                            />
+                                        </div>
+                                    </td>
+                                    <td className="align-middle pl-2">
+                                        <span className="text-xs font-black text-white tabular-nums">{zone.pct.toFixed(0)}%</span>
+                                    </td>
+                                </tr>
+                            );
+                        })}
                     </tbody>
                 </table>
             </div>
