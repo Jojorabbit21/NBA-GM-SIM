@@ -297,23 +297,26 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                             <col key={c.key} style={{ width: c.width }} />
                         ))}
                     </colgroup>
-                    <TableHead noRow>
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                            {COLS.map(c => (
-                                <TableHeaderCell
-                                    key={c.key}
-                                    align={c.align}
-                                    width={c.width}
-                                    className={`border-r border-slate-800 bg-slate-950 ${c.key === 'team' ? 'pl-4' : ''}`}
-                                    sortable={c.sortable}
-                                    onSort={c.sortable ? () => handleSort(c.key) : undefined}
-                                    sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
-                                >
-                                    {c.label}
-                                </TableHeaderCell>
-                            ))}
-                        </tr>
-                    </TableHead>
+                    {/* League mode: sticky header; Conference/Division: header per group */}
+                    {mode === 'League' && (
+                        <TableHead noRow>
+                            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                                {COLS.map(c => (
+                                    <TableHeaderCell
+                                        key={c.key}
+                                        align={c.align}
+                                        width={c.width}
+                                        className={`border-r border-slate-800 bg-slate-950 ${c.key === 'team' ? 'pl-4' : ''}`}
+                                        sortable={c.sortable}
+                                        onSort={c.sortable ? () => handleSort(c.key) : undefined}
+                                        sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}
+                                    >
+                                        {c.label}
+                                    </TableHeaderCell>
+                                ))}
+                            </tr>
+                        </TableHead>
+                    )}
                     <TableBody>
                         {rankedRows.map((row) => {
                             const { team: t, rank, rec, gb, status, groupLabel } = row;
@@ -329,14 +332,23 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
 
                             return (
                                 <React.Fragment key={`${mode}-${t.id}`}>
-                                    {/* Group header row: merge # + TEAM */}
+                                    {/* Group sub-header: group title in merged #/TEAM + column labels */}
                                     {groupLabel && (
-                                        <tr>
-                                            <td colSpan={2} className="pl-4 py-2 bg-slate-950 border-b border-slate-800 border-r border-slate-800/30">
-                                                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{groupLabel}</span>
+                                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                                            <td colSpan={2} className="pl-4 bg-slate-950 border-b border-slate-800 border-r border-slate-800/30 text-indigo-400">
+                                                {groupLabel}
                                             </td>
                                             {COLS.slice(2).map(c => (
-                                                <td key={c.key} className="bg-slate-950 border-b border-slate-800 border-r border-slate-800/30" />
+                                                <td
+                                                    key={c.key}
+                                                    onClick={c.sortable ? () => handleSort(c.key) : undefined}
+                                                    className={`text-center bg-slate-950 border-b border-slate-800 border-r border-slate-800/30 ${c.sortable ? 'cursor-pointer hover:text-slate-300 select-none' : ''}`}
+                                                >
+                                                    {c.label}
+                                                    {c.sortable && sortConfig.key === c.key && (
+                                                        <span className="ml-0.5 text-indigo-400">{sortConfig.direction === 'desc' ? '▼' : '▲'}</span>
+                                                    )}
+                                                </td>
                                             ))}
                                         </tr>
                                     )}
