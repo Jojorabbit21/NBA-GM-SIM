@@ -17,7 +17,7 @@ interface RosterViewProps {
 
 export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
-  const [tab, setTab] = useState<'roster' | 'stats'>('roster');
+  const [tab, setTab] = useState<'roster' | 'stats' | 'shooting'>('roster');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
 
   useEffect(() => { if (initialTeamId) setSelectedTeamId(initialTeamId); }, [initialTeamId]);

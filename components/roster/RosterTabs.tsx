@@ -1,15 +1,18 @@
 
 import React from 'react';
 
+type RosterTab = 'roster' | 'stats' | 'shooting';
+
 interface RosterTabsProps {
-    activeTab: 'roster' | 'stats';
-    onTabChange: (tab: 'roster' | 'stats') => void;
+    activeTab: RosterTab;
+    onTabChange: (tab: RosterTab) => void;
 }
 
 export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }) => {
     const tabs = [
         { id: 'roster', label: '능력치' },
-        { id: 'stats', label: '시즌 기록' },
+        { id: 'stats', label: '기록' },
+        { id: 'shooting', label: '슈팅' },
     ];
 
     return (

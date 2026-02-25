@@ -104,7 +104,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : teams.find(t => t.roster.some(rp => rp.id === viewPlayer.id))) : null;
 
   return (
-    <div className="min-h-screen animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col">
+    <div className="h-full animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col overflow-hidden">
       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
 
       <DashboardReviewBanners
@@ -142,7 +142,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
           </div>
 
-          <div className="flex-1 min-h-[600px]">
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
               {activeTab === 'rotation' && (
                   <RotationManager
                       team={team}

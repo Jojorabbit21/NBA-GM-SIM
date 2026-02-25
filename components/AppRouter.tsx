@@ -169,12 +169,13 @@ const AppRouter: React.FC<AppRouterProps> = ({
             );
         case 'Standings':
             return (
-                <StandingsView 
-                    teams={gameData.teams} 
+                <StandingsView
+                    teams={gameData.teams}
+                    schedule={gameData.schedule}
                     onTeamClick={(id) => {
                         setSelectedTeamId(id);
                         setView('Roster');
-                    }} 
+                    }}
                 />
             );
         case 'Leaderboard':
