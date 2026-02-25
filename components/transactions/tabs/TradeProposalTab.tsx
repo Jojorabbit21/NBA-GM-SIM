@@ -6,7 +6,6 @@ import { Dropdown, DropdownButton } from '../../common/Dropdown';
 import { TeamLogo } from '../../common/TeamLogo';
 import { OvrBadge } from '../../common/OvrBadge';
 import { calculatePlayerOvr } from '../../../utils/constants';
-import { TEAM_DATA } from '../../../data/teamData';
 
 interface TradeProposalTabProps {
     teams: Team[];
@@ -217,21 +216,16 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
                     ) : proposalRequirements.length > 0 ? (
                         <div className="p-4 space-y-4">
                             {proposalRequirements.map((req, idx) => {
-                                const teamColor = TEAM_DATA[req.teamId]?.colors.primary || '#4f46e5';
-                                const safeColor = teamColor !== '#000000' ? teamColor : '#ffffff';
                                 return (
-                                    <div key={idx} className="rounded-2xl border border-slate-700/50 bg-slate-900 overflow-hidden" style={{ borderLeftWidth: '3px', borderLeftColor: safeColor }}>
+                                    <div key={idx} className="rounded-xl border border-slate-700/50 bg-slate-900 overflow-hidden">
                                         {/* Card Header */}
                                         <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-xs font-black uppercase oswald tracking-tight text-slate-300">
-                                                    요구 자산 ({req.players.length}인)
-                                                </span>
-                                            </div>
+                                            <span className="text-xs font-black uppercase oswald tracking-tight text-slate-300">
+                                                요구 자산 ({req.players.length}인)
+                                            </span>
                                             <button
                                                 onClick={() => selectedTargetTeam && onAcceptRequirement(req, selectedTargetTeam)}
-                                                className="px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all active:scale-95 hover:brightness-110"
-                                                style={{ backgroundColor: safeColor }}
+                                                className="px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest text-white bg-indigo-600 hover:bg-indigo-500 transition-all active:scale-95"
                                             >
                                                 제안 수락
                                             </button>
