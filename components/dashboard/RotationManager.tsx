@@ -25,7 +25,7 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
     onUpdateDepthChart
 }) => {
     return (
-        <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
+        <div className="flex flex-col bg-slate-950/20">
             <div className="flex-shrink-0 flex flex-col bg-slate-900/40 border-b border-slate-800">
                 <div className="p-6 border-b border-white/5">
                     <StartingLineup team={team} tactics={tactics} roster={team.roster} />
@@ -40,7 +40,7 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
                     />
                 </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
+            <div>
                 <RotationGanttChart
                     team={team}
                     tactics={tactics}

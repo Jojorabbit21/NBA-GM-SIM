@@ -323,13 +323,16 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
 
                             return (
                                 <React.Fragment key={`${mode}-${t.id}`}>
-                                    {/* Group separator */}
+                                    {/* Group header row: merge # + TEAM columns for group title */}
                                     {groupLabel && (
-                                        <tr>
-                                            <td colSpan={COLS.length} className="bg-slate-950 px-4 py-2 border-b border-slate-800">
+                                        <TableRow className="hover:bg-transparent">
+                                            <TableCell colSpan={2} className="pl-4 bg-slate-950 border-r border-slate-800/30 border-b border-slate-800">
                                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{groupLabel}</span>
-                                            </td>
-                                        </tr>
+                                            </TableCell>
+                                            {COLS.slice(2).map(c => (
+                                                <TableCell key={c.key} className="bg-slate-950 border-r border-slate-800/30 border-b border-slate-800" />
+                                            ))}
+                                        </TableRow>
                                     )}
 
                                     <TableRow onClick={() => onTeamClick(t.id)} className="group cursor-pointer">

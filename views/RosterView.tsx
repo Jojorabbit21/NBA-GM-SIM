@@ -57,7 +57,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
               <Users size={16} className="text-slate-500" />
-              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">로스터 & 기록</span>
+              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">선수단</span>
           </div>
           <div className="flex items-center gap-4">
               <RosterTabs activeTab={tab} onTabChange={setTab} />
