@@ -104,7 +104,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : teams.find(t => t.roster.some(rp => rp.id === viewPlayer.id))) : null;
 
   return (
-    <div className="min-h-screen animate-in fade-in duration-700 ko-normal pb-20 relative text-slate-200 flex flex-col items-center gap-6">
+    <div className="min-h-screen animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col">
       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
 
       <DashboardReviewBanners
@@ -116,10 +116,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       />
 
       {/* Main Content Area with Navigation */}
-      <div className="w-full max-w-[1900px] flex flex-col min-h-0 border border-white/10 rounded-3xl overflow-hidden shadow-2xl bg-slate-900/80 backdrop-blur-xl">
+      <div className="w-full flex flex-col flex-1 min-h-0">
 
           {/* Internal Tab Navigation */}
-          <div className="px-8 border-b border-white/10 bg-slate-950/80 flex items-center justify-between h-14 flex-shrink-0">
+          <div className="px-8 border-b border-slate-800 bg-slate-950 flex items-center justify-between h-14 flex-shrink-0">
                 <div className="flex items-center gap-8 h-full">
                     <button
                         onClick={() => setActiveTab('rotation')}
