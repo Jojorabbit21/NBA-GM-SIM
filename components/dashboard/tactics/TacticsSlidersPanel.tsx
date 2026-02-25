@@ -77,10 +77,10 @@ const SliderControl: React.FC<{
            style={{ background: `linear-gradient(to right, ${fillColor} ${percentage}%, #1e293b ${percentage}%)` }}
          />
       </div>
-      <div className="flex justify-between text-[11px] font-bold text-slate-400 tracking-tighter">
+      {/* <div className="flex justify-between text-[11px] font-bold text-slate-400 tracking-tighter">
          <span>{leftLabel}</span>
          <span>{rightLabel}</span>
-      </div>
+      </div> */}
     </div>
   );
 };
@@ -105,12 +105,12 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
             <div className="lg:col-span-5 lg:pl-2 flex flex-col gap-1">
 
                 {/* ── OFFENSE ── */}
-                <h3 className="text-xl font-black text-white uppercase tracking-widest oswald">공격 전술</h3>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest oswald">공격 전술</h3>
 
                 <div className="grid grid-cols-2 gap-x-6">
                     {/* Left col: 게임 운영 + 슈팅 전략 */}
                     <div className="flex flex-col gap-1">
-                        <h4 className="text-xs font-black text-orange-400 uppercase tracking-widest">게임 운영</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">게임 운영</h4>
                         <SliderControl
                             label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
                             leftLabel="느림" rightLabel="빠름" tooltip="높을수록 빠른 공수전환과 얼리 오펜스를 시도합니다." fillColor="#f97316"
@@ -126,7 +126,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
 
                         <div className="h-px bg-slate-800 my-2" />
 
-                        <h4 className="text-xs font-black text-emerald-400 uppercase tracking-widest">슈팅 전략</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">슈팅 전략</h4>
                         <SliderControl
                             label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
                             leftLabel="자제" rightLabel="난사" tooltip="팀의 3점 시도 빈도를 결정합니다. 팀 평균 3점 능력에 맞게 설정하세요." fillColor="#10b981"
@@ -143,7 +143,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
 
                     {/* Right col: 공격 루트 비중 */}
                     <div className="flex flex-col gap-1">
-                        <h4 className="text-xs font-black text-blue-400 uppercase tracking-widest">공격 루트 비중</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">공격 루트 비중</h4>
                         <SliderControl label="픽앤롤 (P&R)" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)} leftLabel="낮음" rightLabel="높음" tooltip="핸들러+스크리너 콤보가 좋을수록 효과적입니다. 현대 NBA의 핵심 공격 패턴." fillColor="#3b82f6" />
                         <SliderControl label="아이솔레이션 (Iso)" value={sliders.play_iso} onChange={v => updateSlider('play_iso', v)} leftLabel="낮음" rightLabel="높음" tooltip="진짜 ISO 스코어러가 없다면 낮게 유지하세요. 고임계값에서만 효율적." fillColor="#3b82f6" />
                         <SliderControl label="포스트업 (Post)" value={sliders.play_post} onChange={v => updateSlider('play_post', v)} leftLabel="낮음" rightLabel="높음" tooltip="도미넌트 포스트맨이 있을 때만 높게 설정하세요. 현대 NBA에서 기본 효율 낮음." fillColor="#3b82f6" />
@@ -156,12 +156,12 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                 <div className="h-px bg-slate-700 my-4" />
 
                 {/* ── DEFENSE ── */}
-                <h3 className="text-xl font-black text-white uppercase tracking-widest oswald">수비 전술</h3>
+                <h3 className="text-sm font-black text-white uppercase tracking-widest oswald">수비 전술</h3>
 
                 <div className="grid grid-cols-2 gap-x-6">
                     {/* Left col: 수비 스타일 */}
                     <div className="flex flex-col gap-1">
-                        <h4 className="text-xs font-black text-indigo-400 uppercase tracking-widest">수비 스타일</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">수비 스타일</h4>
                         <SliderControl
                             label="수비 압박 강도" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
                             leftLabel="느슨하게" rightLabel="타이트" tooltip="높을수록 상대 야투 억제와 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." fillColor="#6366f1"
@@ -178,7 +178,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
 
                     {/* Right col: 수비 시스템 */}
                     <div className="flex flex-col gap-1">
-                        <h4 className="text-xs font-black text-fuchsia-400 uppercase tracking-widest">수비 시스템</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">수비 시스템</h4>
                         <SliderControl
                             label="풀 코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
                             leftLabel="안함" rightLabel="자주" tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#d946ef"
