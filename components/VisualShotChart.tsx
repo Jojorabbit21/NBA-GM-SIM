@@ -259,7 +259,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                             </g>
 
                             {/* Layer 2: Court Lines Overlay (Slate-900) */}
-                            <g className="court-lines" fill="none" stroke="#0f172a" strokeWidth="2" strokeOpacity="1" pointerEvents="none">
+                            <g className="court-lines" fill="none" stroke="#0f172a" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
                                 {COURT_LINES.map((d, i) => (
                                     <path key={i} d={d} />
                                 ))}
@@ -272,11 +272,9 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
 
                                 const style = getZoneStyle(z.data.m, z.data.a, z.avg);
                                 const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.data.a > 0);
-                                const deltaNum = z.data.a > 0 ? style.delta * 100 : 0;
-                                const deltaStr = deltaNum >= 0 ? `+${deltaNum.toFixed(0)}` : deltaNum.toFixed(0);
 
                                 const width = 52;
-                                const height = z.data.a > 0 ? 44 : 30;
+                                const height = z.data.a > 0 ? 36 : 30;
 
                                 return (
                                     <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
@@ -293,7 +291,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                                         />
                                         <text
                                             textAnchor="middle"
-                                            y={z.data.a > 0 ? -10 : -2}
+                                            y={z.data.a > 0 ? -6 : -2}
                                             fill={textFill}
                                             fontSize="12px"
                                             fontWeight="800"
@@ -302,14 +300,9 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                                             {pct}%
                                         </text>
                                         {z.data.a > 0 && (
-                                            <>
-                                                <text textAnchor="middle" y={4} fill="#ffffff" fontSize="9px" fontWeight="600">
-                                                    {z.data.m}/{z.data.a}
-                                                </text>
-                                                <text textAnchor="middle" y={16} fill={style.delta >= 0 ? '#34d399' : '#64748b'} fontSize="9px" fontWeight="700">
-                                                    {deltaStr}
-                                                </text>
-                                            </>
+                                            <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
+                                                {z.data.m}/{z.data.a}
+                                            </text>
                                         )}
                                     </g>
                                 );
