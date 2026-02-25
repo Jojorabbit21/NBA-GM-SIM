@@ -70,7 +70,7 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, hideTitle,
                 </g>
 
                 {/* Court Lines */}
-                <g fill="none" stroke="#334155" strokeWidth="1.5" strokeOpacity="1" pointerEvents="none">
+                <g fill="none" stroke="#334155" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
                     {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
                 </g>
 
