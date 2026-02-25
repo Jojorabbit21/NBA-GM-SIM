@@ -133,7 +133,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
             {/* Table Area */}
             <div className="flex-1 min-h-0 p-0">
                 <Table 
-                    className="border-0 rounded-none shadow-none" 
+                    className="border-0 !rounded-none shadow-none" 
                     style={{ tableLayout: 'fixed', width: '100%', minWidth: '1050px' }} 
                 >
                     <colgroup>

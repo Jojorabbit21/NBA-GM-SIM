@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, BarChart2, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, Team, Player, PlayerBoxScore } from '../types';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries'; // [New]
@@ -9,7 +9,7 @@ import { OvrBadge } from '../components/common/OvrBadge';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { PageHeader } from '../components/common/PageHeader';
+
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
 
 interface InboxViewProps {
@@ -96,38 +96,40 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-4">
+    <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">
        {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
        
-      <PageHeader 
-        title="받은 메세지함" 
-        icon={<Mail size={24} />}
-        actions={
-            <div className="flex gap-3">
-                <button 
-                    onClick={handleMarkAllRead}
-                    className="flex items-center gap-2 px-4 py-2 bg-slate-900 border border-slate-800 hover:bg-slate-800 rounded-lg text-xs font-bold text-slate-300 transition-all active:scale-95"
-                >
-                    <CheckCircle2 size={14} /> 모두 읽음 처리
-                </button>
-                <button 
-                    onClick={() => { setPage(0); setSelectedMessage(null); loadMessages(); }}
-                    className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-bold transition-all active:scale-95 shadow-lg shadow-indigo-900/30"
-                >
-                    <RefreshCw size={14} /> 새로고침
-                </button>
-            </div>
-        }
-      />
-
-      {/* Main Layout: 250px Left Sidebar, Rest Body */}
-      <div className="flex-1 flex gap-0 min-h-0 overflow-hidden bg-slate-900/40 border border-slate-800 rounded-3xl shadow-2xl">
+      {/* Main Layout: Left Sidebar + Right Body */}
+      <div className="flex-1 flex gap-0 min-h-0 overflow-hidden">
           
           {/* Left: Message List */}
-          <div className="w-[280px] flex flex-col border-r border-slate-800/50 bg-slate-950/30 flex-shrink-0">
-               {/* Total Count Header */}
-               <div className="p-4 border-b border-slate-800/50 bg-slate-950/50">
-                   <span className="text-xs font-bold text-slate-500">총 {messages.length}개의 메세지</span>
+          <div className="w-[280px] flex flex-col border-r border-slate-800 bg-slate-950/30 flex-shrink-0">
+               {/* Header with title & actions */}
+               <div className="px-4 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-2">
+                   <div className="flex items-center gap-2">
+                       <Mail size={16} className="text-slate-500" />
+                       <span className="text-xs font-black text-slate-300 uppercase tracking-widest">받은 메세지</span>
+                   </div>
+                   <div className="flex items-center gap-1.5">
+                       <button
+                           onClick={handleMarkAllRead}
+                           className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+                           title="모두 읽음 처리"
+                       >
+                           <CheckCircle2 size={14} />
+                       </button>
+                       <button
+                           onClick={() => { setPage(0); setSelectedMessage(null); loadMessages(); }}
+                           className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+                           title="새로고침"
+                       >
+                           <RefreshCw size={14} />
+                       </button>
+                   </div>
+               </div>
+               {/* Message Count */}
+               <div className="px-4 py-2 border-b border-slate-800/50">
+                   <span className="text-[10px] font-bold text-slate-600">총 {messages.length}개</span>
                </div>
 
                <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -170,7 +172,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
           </div>
 
           {/* Right: Message Detail */}
-          <div className="flex-1 flex flex-col overflow-hidden bg-slate-900/60 relative">
+          <div className="flex-1 flex flex-col overflow-hidden bg-slate-900 relative">
                {selectedMessage ? (
                    <div className="flex-1 overflow-y-auto custom-scrollbar p-10">
                        {/* Message Header */}
