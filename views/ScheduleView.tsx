@@ -1,11 +1,10 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, CheckCircle2, Search, Loader2, List, LayoutGrid } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Loader2, List, LayoutGrid } from 'lucide-react';
 import { Team, Game } from '../types';
 import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { Dropdown, DropdownButton } from '../components/common/Dropdown';
 
 interface ScheduleViewProps {
   schedule: Game[];
@@ -38,9 +37,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
     }
     return new Date(2025, 9, 1);
   });
-  const [selectedTeamId, setSelectedTeamId] = useState<string>(teamId);
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [showLeagueSchedule, setShowLeagueSchedule] = useState(false);
   const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
 
@@ -77,7 +73,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
     onMonthChange?.(next);
   };
 
-  const selectedTeam = teams.find(t => t.id === selectedTeamId);
   const asbStart = new Date(CALENDAR_EVENTS.ALL_STAR_START);
   const asbEnd = new Date(CALENDAR_EVENTS.ALL_STAR_END);
 
@@ -154,16 +149,10 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   const seasonGameMap = useMemo(() => {
       const map = new Map<string, Game>();
       localSchedule
-          .filter(g => g.homeTeamId === selectedTeamId || g.awayTeamId === selectedTeamId)
+          .filter(g => g.homeTeamId === teamId || g.awayTeamId === teamId)
           .forEach(g => map.set(g.date, g));
       return map;
-  }, [localSchedule, selectedTeamId]);
-
-  const filteredTeamsList = useMemo(() => {
-    return teams
-        .filter(t => (t.city + t.name).toLowerCase().includes(searchTerm.toLowerCase()))
-        .sort((a, b) => a.city.localeCompare(b.city));
-  }, [teams, searchTerm]);
+  }, [localSchedule, teamId]);
 
   // [League Schedule] All games for current month, merged with DB results
   const leagueGames = useMemo(() => {
@@ -236,49 +225,6 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={14} />}
           </div>
           <div className="flex items-center gap-3">
-              <Dropdown
-                  isOpen={isDropdownOpen}
-                  onOpenChange={setIsDropdownOpen}
-                  width="w-80"
-                  trigger={
-                      <DropdownButton
-                          isOpen={isDropdownOpen}
-                          label={selectedTeam ? `${selectedTeam.city} ${selectedTeam.name}` : '팀 선택...'}
-                          icon={selectedTeam ? <TeamLogo teamId={selectedTeam.id} size="sm" /> : undefined}
-                      />
-                  }
-              >
-                   <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-                      <div className="relative">
-                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                          <input
-                              autoFocus
-                              type="text"
-                              placeholder="팀 검색..."
-                              className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 pl-9 pr-3 text-xs font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
-                              value={searchTerm}
-                              onChange={e => setSearchTerm(e.target.value)}
-                          />
-                      </div>
-                  </div>
-                  <div className="max-h-64 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                      {filteredTeamsList.map(t => (
-                          <button
-                              key={t.id}
-                              onClick={() => { setSelectedTeamId(t.id); setIsDropdownOpen(false); setSearchTerm(''); }}
-                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800 transition-all group ${selectedTeamId === t.id ? 'bg-indigo-900/20' : ''}`}
-                          >
-                              <TeamLogo teamId={t.id} size="xs" className="opacity-70 group-hover:opacity-100" />
-                              <span className={`text-xs font-bold uppercase truncate ${selectedTeamId === t.id ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.city} {t.name}</span>
-                              {t.id === teamId && (
-                                  <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase tracking-tighter shadow-sm">MY TEAM</span>
-                              )}
-                              {selectedTeamId === t.id && <CheckCircle2 size={14} className="ml-auto text-indigo-500 flex-shrink-0" />}
-                          </button>
-                      ))}
-                  </div>
-              </Dropdown>
-
               <button
                   onClick={() => setShowLeagueSchedule(prev => !prev)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all border ${
@@ -323,7 +269,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               const gridWidth = cellSize * 7;
 
               return (
-                <div style={{ width: gridWidth }}>
+                <div style={{ width: gridWidth }} className="pb-4">
                   {/* Day Headers */}
                   <div className="grid grid-cols-7">
                     {['일','월','화','수','목','금','토'].map((name, idx) => (
@@ -345,7 +291,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                       const isToday = dateStr === currentSimDate;
                       const isASB = !isOverflow && dayDate >= asbStart && dayDate <= asbEnd;
 
-                      const isHome = game?.homeTeamId === selectedTeamId;
+                      const isHome = game?.homeTeamId === teamId;
                       const oppId = isHome ? game?.awayTeamId : game?.homeTeamId;
                       const opp = teams.find(t => t.id === oppId);
 

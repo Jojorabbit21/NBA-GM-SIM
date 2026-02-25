@@ -4,8 +4,6 @@ import { Users } from 'lucide-react';
 import { Team, Player } from '../types';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
-import { Dropdown, DropdownButton } from '../components/common/Dropdown';
-import { TeamLogo } from '../components/common/TeamLogo';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs } from '../components/roster/RosterTabs';
 
@@ -25,19 +23,6 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const selectedTeam = useMemo(() => 
       allTeams.find(t => t.id === selectedTeamId) || allTeams[0]
   , [allTeams, selectedTeamId]);
-
-  // Team Select Dropdown Items
-  const teamItems = useMemo(() => allTeams.map(t => ({
-      id: t.id,
-      label: (
-          <div className="flex items-center gap-3">
-              <TeamLogo teamId={t.id} size="sm" />
-              <span className="uppercase">{t.city} {t.name}</span>
-          </div>
-      ),
-      onClick: () => setSelectedTeamId(t.id),
-      active: selectedTeamId === t.id
-  })), [allTeams, selectedTeamId]);
 
   if (!selectedTeam) return null;
 
@@ -59,20 +44,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               <Users size={16} className="text-slate-500" />
               <span className="text-xs font-black text-slate-300 uppercase tracking-widest">선수단</span>
           </div>
-          <div className="flex items-center gap-4">
-              <RosterTabs activeTab={tab} onTabChange={setTab} />
-              <Dropdown
-                  trigger={
-                      <DropdownButton
-                          label={`${selectedTeam.city} ${selectedTeam.name}`}
-                          icon={<TeamLogo teamId={selectedTeam.id} size="sm" />}
-                      />
-                  }
-                  items={teamItems}
-                  align="right"
-                  width="w-72"
-              />
-          </div>
+          <RosterTabs activeTab={tab} onTabChange={setTab} />
       </div>
 
       {/* Grid — fills remaining space */}
