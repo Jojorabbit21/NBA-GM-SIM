@@ -46,7 +46,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   return (
     <div className="w-full border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
         {/* Dark overlay for readability */}
-        <div className="absolute inset-0 bg-black/30 pointer-events-none" />
+        <div className="absolute inset-0 bg-black/20 pointer-events-none" />
         <div className="px-8 py-3 flex items-center justify-between gap-8 h-20 relative z-10">
             {/* Date */}
             <div className="flex items-center gap-3 shrink-0 pr-4 border-r border-white/5">
