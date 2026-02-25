@@ -1,5 +1,6 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown } from 'lucide-react';
 
 interface DropdownItem {
@@ -21,18 +22,20 @@ interface DropdownProps {
     onOpenChange?: (isOpen: boolean) => void;
 }
 
-export const Dropdown: React.FC<DropdownProps> = ({ 
-    trigger, 
-    items, 
-    children, 
-    align = 'right', 
+export const Dropdown: React.FC<DropdownProps> = ({
+    trigger,
+    items,
+    children,
+    align = 'right',
     className = '',
     width = 'w-64',
     isOpen: controlledIsOpen,
     onOpenChange
 }) => {
     const [internalIsOpen, setInternalIsOpen] = useState(false);
-    const wrapperRef = useRef<HTMLDivElement>(null);
+    const triggerRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState({ top: 0, left: 0 });
 
     const isExpanded = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
 
@@ -42,30 +45,52 @@ export const Dropdown: React.FC<DropdownProps> = ({
         else setInternalIsOpen(newState);
     };
 
-    const close = () => {
+    const close = useCallback(() => {
         if (onOpenChange) onOpenChange(false);
         else setInternalIsOpen(false);
-    };
+    }, [onOpenChange]);
 
+    // Calculate position when opening
     useEffect(() => {
+        if (isExpanded && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setPos({
+                top: rect.bottom + 8,
+                left: align === 'right' ? rect.right : rect.left,
+            });
+        }
+    }, [isExpanded, align]);
+
+    // Click outside to close
+    useEffect(() => {
+        if (!isExpanded) return;
         const handleClickOutside = (event: MouseEvent) => {
-            if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+            const target = event.target as Node;
+            if (
+                triggerRef.current && !triggerRef.current.contains(target) &&
+                panelRef.current && !panelRef.current.contains(target)
+            ) {
                 close();
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, [wrapperRef]); // Dependencies adjusted
+    }, [isExpanded, close]);
 
     return (
-        <div className={`relative ${className}`} ref={wrapperRef}>
+        <div className={`relative ${className}`} ref={triggerRef}>
             <div onClick={toggle} className="cursor-pointer">
                 {trigger}
             </div>
 
-            {isExpanded && (
-                <div 
-                    className={`absolute top-full mt-2 ${align === 'right' ? 'right-0' : 'left-0'} ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[200] animate-in fade-in zoom-in-95 duration-150`}
+            {isExpanded && createPortal(
+                <div
+                    ref={panelRef}
+                    className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[9999] animate-in fade-in zoom-in-95 duration-150`}
+                    style={{
+                        top: pos.top,
+                        ...(align === 'right' ? { right: window.innerWidth - pos.left } : { left: pos.left }),
+                    }}
                 >
                     {items ? (
                         <div className="p-1 max-h-80 overflow-y-auto custom-scrollbar">
@@ -77,8 +102,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
                                         close();
                                     }}
                                     className={`w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex items-center justify-between group ${
-                                        item.active 
-                                            ? 'bg-indigo-600/10 text-indigo-400' 
+                                        item.active
+                                            ? 'bg-indigo-600/10 text-indigo-400'
                                             : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                                     }`}
                                 >
@@ -89,7 +114,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
                     ) : (
                         children
                     )}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
