@@ -197,7 +197,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
         { key: 'l10', label: 'L10', width: 56, align: 'center' as const, sortable: true },
     ];
 
-    const dataTextClass = 'font-mono text-xs font-semibold text-white tabular-nums';
+    const dataTextBase = 'font-mono text-xs tabular-nums';
 
     // Format helpers
     const fmtRecord = (r: { w: number; l: number }) => `${r.w}-${r.l}`;
@@ -329,18 +329,21 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
 
                             return (
                                 <React.Fragment key={`${mode}-${t.id}`}>
-                                    {/* Group header row */}
+                                    {/* Group header row: merge # + TEAM */}
                                     {groupLabel && (
                                         <tr>
-                                            <td colSpan={COLS.length} className="pl-4 py-2 bg-slate-950 border-b border-slate-800">
+                                            <td colSpan={2} className="pl-4 py-2 bg-slate-950 border-b border-slate-800 border-r border-slate-800/30">
                                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{groupLabel}</span>
                                             </td>
+                                            {COLS.slice(2).map(c => (
+                                                <td key={c.key} className="bg-slate-950 border-b border-slate-800 border-r border-slate-800/30" />
+                                            ))}
                                         </tr>
                                     )}
 
                                     <TableRow onClick={() => onTeamClick(t.id)} className="group cursor-pointer">
                                         {/* Rank */}
-                                        <TableCell align="center" className={`${dataTextClass} border-r border-slate-800/30`}>
+                                        <TableCell align="center" className={`${dataTextBase} text-white border-r border-slate-800/30`}>
                                             {rank}
                                         </TableCell>
 
@@ -348,7 +351,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                                         <TableCell className="pl-4 border-r border-slate-800/30">
                                             <div className="flex items-center gap-2.5 group-hover:translate-x-0.5 transition-transform">
                                                 <TeamLogo teamId={t.id} size="sm" />
-                                                <span className={`font-semibold text-xs truncate transition-colors ${nameColor} group-hover:text-indigo-400`}>
+                                                <span className={`text-xs truncate transition-colors ${nameColor} group-hover:text-indigo-400`}>
                                                     {t.city} {t.name}
                                                 </span>
                                             </div>
@@ -357,16 +360,16 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                                         {/* Data columns */}
                                         {COLS.slice(2).map(c => {
                                             const val = getCellValue(rec, c.key, gb);
-                                            let extraClass = '';
-                                            if (c.key === 'diff') extraClass = getDiffColor(rec.diff);
-                                            else if (c.key === 'streak') extraClass = getStreakColor(rec.streak);
-                                            else if (c.key === 'l10') extraClass = getL10Color(rec.l10);
+                                            let colorClass = 'text-white';
+                                            if (c.key === 'diff') colorClass = getDiffColor(rec.diff);
+                                            else if (c.key === 'streak') colorClass = getStreakColor(rec.streak);
+                                            else if (c.key === 'l10') colorClass = getL10Color(rec.l10) || 'text-white';
 
                                             return (
                                                 <TableCell
                                                     key={c.key}
                                                     align="center"
-                                                    className={`${dataTextClass} border-r border-slate-800/30 ${extraClass}`}
+                                                    className={`${dataTextBase} ${colorClass} border-r border-slate-800/30`}
                                                 >
                                                     {val}
                                                 </TableCell>
