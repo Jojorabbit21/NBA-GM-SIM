@@ -57,7 +57,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     const contentTextClass = "text-xs font-medium text-white font-mono tabular-nums";
 
     return (
-        <Table className="!rounded-none !border-0 !shadow-none" fullHeight={false} style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+        <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
                 {visibleColumns.map(col => (
                     <col key={col.key} style={{ width: col.width }} />

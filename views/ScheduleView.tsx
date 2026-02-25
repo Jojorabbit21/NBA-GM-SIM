@@ -5,7 +5,6 @@ import { Team, Game } from '../types';
 import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { PageHeader } from '../components/common/PageHeader';
 import { Dropdown, DropdownButton } from '../components/common/Dropdown';
 
 interface ScheduleViewProps {
@@ -148,75 +147,73 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   };
 
   return (
-    <div className="space-y-6 w-full flex flex-col pb-24 animate-in fade-in duration-500">
-      <PageHeader 
-        title={
-            <div className="flex items-center gap-3">
-                <span>시즌 일정</span>
-                {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={24} />}
-            </div>
-        }
-        icon={<Calendar size={24} />}
-        actions={
-            <div className="flex items-center gap-3">
-                <Dropdown
-                    isOpen={isDropdownOpen}
-                    onOpenChange={setIsDropdownOpen}
-                    width="w-80"
-                    trigger={
-                        <DropdownButton 
-                            isOpen={isDropdownOpen}
-                            label={selectedTeam ? `${selectedTeam.city} ${selectedTeam.name}` : '팀 선택...'}
-                            icon={selectedTeam ? <TeamLogo teamId={selectedTeam.id} size="sm" /> : undefined}
-                            className="w-64 h-12"
-                        />
-                    }
-                >
-                     <div className="p-3 border-b border-slate-800 bg-slate-950/50">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-                            <input 
-                                autoFocus
-                                type="text" 
-                                placeholder="팀 검색..." 
-                                className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 pl-9 pr-3 text-xs font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
-                                value={searchTerm}
-                                onChange={e => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="max-h-64 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                        {filteredTeamsList.map(t => (
-                            <button
-                                key={t.id}
-                                onClick={() => { setSelectedTeamId(t.id); setIsDropdownOpen(false); setSearchTerm(''); }}
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800 transition-all group ${selectedTeamId === t.id ? 'bg-indigo-900/20' : ''}`}
-                            >
-                                <TeamLogo teamId={t.id} size="xs" className="opacity-70 group-hover:opacity-100" />
-                                <span className={`text-xs font-bold uppercase truncate ${selectedTeamId === t.id ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.city} {t.name}</span>
-                                {t.id === teamId && (
-                                    <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase tracking-tighter shadow-sm">MY TEAM</span>
-                                )}
-                                {selectedTeamId === t.id && <CheckCircle2 size={14} className="ml-auto text-indigo-500 flex-shrink-0" />}
-                            </button>
-                        ))}
-                    </div>
-                </Dropdown>
+    <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
+      {/* Header Bar */}
+      <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+              <Calendar size={16} className="text-slate-500" />
+              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">시즌 일정</span>
+              {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={14} />}
+          </div>
+          <div className="flex items-center gap-3">
+              <Dropdown
+                  isOpen={isDropdownOpen}
+                  onOpenChange={setIsDropdownOpen}
+                  width="w-80"
+                  trigger={
+                      <DropdownButton
+                          isOpen={isDropdownOpen}
+                          label={selectedTeam ? `${selectedTeam.city} ${selectedTeam.name}` : '팀 선택...'}
+                          icon={selectedTeam ? <TeamLogo teamId={selectedTeam.id} size="sm" /> : undefined}
+                      />
+                  }
+              >
+                   <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+                      <div className="relative">
+                          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                          <input
+                              autoFocus
+                              type="text"
+                              placeholder="팀 검색..."
+                              className="w-full bg-slate-950 border border-slate-700 rounded-lg py-2 pl-9 pr-3 text-xs font-bold text-white placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all"
+                              value={searchTerm}
+                              onChange={e => setSearchTerm(e.target.value)}
+                          />
+                      </div>
+                  </div>
+                  <div className="max-h-64 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                      {filteredTeamsList.map(t => (
+                          <button
+                              key={t.id}
+                              onClick={() => { setSelectedTeamId(t.id); setIsDropdownOpen(false); setSearchTerm(''); }}
+                              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-slate-800 transition-all group ${selectedTeamId === t.id ? 'bg-indigo-900/20' : ''}`}
+                          >
+                              <TeamLogo teamId={t.id} size="xs" className="opacity-70 group-hover:opacity-100" />
+                              <span className={`text-xs font-bold uppercase truncate ${selectedTeamId === t.id ? 'text-indigo-400' : 'text-slate-400 group-hover:text-slate-200'}`}>{t.city} {t.name}</span>
+                              {t.id === teamId && (
+                                  <span className="ml-2 px-1.5 py-0.5 bg-red-600 text-[9px] font-black text-white rounded uppercase tracking-tighter shadow-sm">MY TEAM</span>
+                              )}
+                              {selectedTeamId === t.id && <CheckCircle2 size={14} className="ml-auto text-indigo-500 flex-shrink-0" />}
+                          </button>
+                      ))}
+                  </div>
+              </Dropdown>
 
-                <button
-                    onClick={() => setShowLeagueSchedule(prev => !prev)}
-                    className={`h-12 flex items-center gap-2 px-6 rounded-xl text-sm font-black uppercase transition-all border shadow-lg ${
-                        showLeagueSchedule
-                            ? 'bg-slate-700 hover:bg-slate-600 text-white border-slate-600 shadow-slate-900/20'
-                            : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500 shadow-indigo-900/20'
-                    }`}
-                >
-                    {showLeagueSchedule ? <><LayoutGrid size={16} /> 캘린더</> : <><List size={16} /> 리그 전체 일정</>}
-                </button>
-            </div>
-        }
-      />
+              <button
+                  onClick={() => setShowLeagueSchedule(prev => !prev)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all border ${
+                      showLeagueSchedule
+                          ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
+                          : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500'
+                  }`}
+              >
+                  {showLeagueSchedule ? <><LayoutGrid size={14} /> 캘린더</> : <><List size={14} /> 리그 전체 일정</>}
+              </button>
+          </div>
+      </div>
 
+      {/* Content — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6">
       {!showLeagueSchedule ? (
         /* ── Full Season Calendar: 2-col grid (Oct–Apr) ── */
         <div className="grid grid-cols-2 gap-4">
@@ -317,18 +314,18 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         </div>
       ) : (
         /* ── League Schedule List View ── */
-        <div className="bg-slate-900/95 rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden flex flex-col relative z-10">
+        <div className="flex flex-col">
           {/* Month Navigation (list view only) */}
-          <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between flex-shrink-0 bg-slate-800/20">
-             <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={24} /></button>
+          <div className="px-6 py-3 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 rounded-xl mb-4">
+             <button onClick={() => changeMonth(-1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronLeft size={20} /></button>
              <div className="flex items-center gap-3">
-                <Calendar size={18} className="text-indigo-500" />
-                <h3 className="text-xl font-black ko-tight text-white oswald uppercase tracking-wide">{currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}</h3>
+                <Calendar size={16} className="text-indigo-500" />
+                <h3 className="text-sm font-black text-white oswald uppercase tracking-wide">{currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}</h3>
              </div>
-             <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronRight size={24} /></button>
+             <button onClick={() => changeMonth(1)} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ChevronRight size={20} /></button>
           </div>
 
-          <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+          <div className="space-y-4">
             {leagueGames.length === 0 ? (
               <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
                 이번 달에는 경기가 없습니다.
@@ -422,6 +419,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };
