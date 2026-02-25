@@ -144,17 +144,17 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                         {STAT_COLS.map((_, i) => <col key={`c-stat-${i}`} style={{ width: WIDTHS.STAT }} />)}
                     </colgroup>
 
-                    <thead className="bg-slate-950/95 backdrop-blur-sm sticky top-0 z-40 border-b border-slate-800 shadow-sm">
+                    <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                         <tr className="border-b border-slate-800 bg-slate-950 h-8">
                             <th colSpan={3} className="py-1 px-4 border-r border-slate-800/50"></th>
-                            <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-800/50 bg-slate-900/50">
-                                <span className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">KEY ATTRIBUTES</span>
+                            <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-800/50">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">KEY ATTRIBUTES</span>
                             </th>
-                            <th colSpan={9} className="py-1 px-2 text-center bg-slate-900/30">
+                            <th colSpan={9} className="py-1 px-2 text-center">
                                 <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">SEASON STATS (AVG)</span>
                             </th>
                         </tr>
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 h-10">
+                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-t border-slate-800 border-b border-slate-800 h-10">
                             <TableHeaderCell align="center" className="border-r border-slate-800/50">POS</TableHeaderCell>
                             <TableHeaderCell align="left" className="px-4 border-r border-slate-800/50">PLAYER</TableHeaderCell>
                             <TableHeaderCell align="center" className="border-r border-slate-800/50">OVR</TableHeaderCell>
