@@ -1,13 +1,15 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   LayoutDashboard, Users, Trophy, BarChart3, Swords,
-  Calendar as CalendarIcon, ArrowLeftRight, Clock,
-  RotateCcw, LogOut, Mail, Gavel
+  Calendar as CalendarIcon, ArrowLeftRight,
+  RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
+import { Dropdown } from './common/Dropdown';
 
 interface SidebarProps {
   team: Team | undefined;
@@ -16,60 +18,74 @@ interface SidebarProps {
   isGuestMode: boolean;
   unreadMessagesCount: number;
   isRegularSeasonOver: boolean;
+  userEmail?: string;
+  isCollapsed: boolean;
+  onToggleCollapse: () => void;
   onNavigate: (view: AppView) => void;
   onResetClick: () => void;
   onLogout: () => void;
 }
 
-// Moved outside component to avoid recreation on every render
 const hexToRgb = (hex: string) => {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   return result ? `${parseInt(result[1], 16)}, ${parseInt(result[2], 16)}, ${parseInt(result[3], 16)}` : '79, 70, 229';
 };
 
-const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string, onClick: () => void, color: string, textColor: string, badge?: number }> = ({ active, icon, label, onClick, color, textColor, badge }) => {
+const NavItem: React.FC<{
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+  color: string;
+  textColor: string;
+  badge?: number;
+  isCollapsed: boolean;
+}> = ({ active, icon, label, onClick, color, textColor, badge, isCollapsed }) => {
   const rgb = hexToRgb(color);
 
   return (
-    <button 
-      onClick={onClick} 
-      className={`w-full flex items-center justify-between px-5 py-4 rounded-2xl transition-all duration-300 group relative overflow-hidden ${
-        active 
-          ? 'shadow-lg ring-1' 
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center ${isCollapsed ? 'justify-center px-0 py-3' : 'justify-between px-5 py-4'} rounded-2xl transition-all duration-300 group relative overflow-hidden ${
+        active
+          ? 'shadow-lg ring-1'
           : 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200'
       }`}
       style={active ? {
         backgroundColor: color,
-        color: textColor, // Apply Dynamic Text Color
+        color: textColor,
         boxShadow: `0 10px 15px -3px rgba(${rgb}, 0.4)`,
         borderColor: `rgba(${rgb}, 0.3)`
       } : {}}
+      title={isCollapsed ? label : undefined}
     >
-      <div className="flex items-center gap-4 relative z-10">
-          {/* Hover Effect for Inactive State - Text Color Change */}
-          <span 
-            className="transition-colors"
+      <div className={`flex items-center ${isCollapsed ? 'gap-0' : 'gap-4'} relative z-10`}>
+          <span
+            className="transition-colors shrink-0"
             style={!active ? { color: 'inherit' } : {}}
           >
             {React.cloneElement(icon as React.ReactElement<any>, {
-               color: active ? textColor : undefined, // Apply Dynamic Icon Color
-               className: !active ? `transition-colors duration-300 group-hover:text-[${color}]` : ''
+               color: active ? textColor : undefined,
+               className: !active ? `transition-colors duration-300 group-hover:text-[${color}]` : '',
+               size: isCollapsed ? 20 : 20
             })}
           </span>
-          
-          {/* Label */}
-          <span className="text-sm font-bold ko-tight tracking-tight">
-            {label}
-          </span>
+
+          {!isCollapsed && (
+            <span className="text-sm font-bold ko-tight tracking-tight whitespace-nowrap">
+              {label}
+            </span>
+          )}
       </div>
 
       {badge !== undefined && badge > 0 && (
-          <span className="relative z-10 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white shadow-sm ring-2 ring-white animate-in zoom-in duration-300">
+          <span className={`relative z-10 flex items-center justify-center rounded-full bg-red-500 text-white shadow-sm ${
+            isCollapsed ? 'absolute -top-0.5 -right-0.5 h-4 w-4 text-[8px] font-bold' : 'h-5 w-5 text-[10px] font-bold ring-2 ring-white animate-in zoom-in duration-300'
+          }`}>
              {badge > 9 ? '9+' : badge}
           </span>
       )}
 
-      {/* Subtle shine effect for active items */}
       {active && (
         <div className="absolute inset-0 bg-gradient-to-tr from-white/0 via-white/10 to-white/0 opacity-50 pointer-events-none"></div>
       )}
@@ -79,109 +95,181 @@ const NavItem: React.FC<{ active: boolean, icon: React.ReactNode, label: string,
 
 export const Sidebar: React.FC<SidebarProps> = React.memo(({
   team,
-  currentSimDate,
   currentView,
   isGuestMode,
   unreadMessagesCount,
   isRegularSeasonOver,
+  userEmail,
+  isCollapsed,
+  onToggleCollapse,
   onNavigate,
   onResetClick,
   onLogout
 }) => {
-  
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const teamStatic = team ? TEAM_DATA[team.id] : null;
 
-  // Determine Colors using unified TEAM_DATA
   const infoBgColor = teamStatic ? teamStatic.colors.primary : '#4f46e5';
   const infoTextColor = teamStatic ? teamStatic.colors.text : '#FFFFFF';
-  
-  // Use same primary color for Nav active state, or fallback
   const navActiveColor = teamStatic ? teamStatic.colors.primary : '#4f46e5';
   const navTextColor = teamStatic ? teamStatic.colors.text : '#FFFFFF';
 
   return (
-    <aside className="w-72 border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500">
-      
-      {/* Team Profile Section */}
-      <div 
-        className="p-8 border-b border-slate-800 relative overflow-hidden transition-colors duration-700"
-        style={{ backgroundColor: infoBgColor }}
-      >
-        <div className="flex items-center gap-5 relative z-10">
-          <TeamLogo 
-            teamId={team?.id || ''} 
-            size="custom"
-            className="w-16 h-16 drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300" 
-          />
-          <div className="min-w-0">
-            <h2 
-                className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md"
-                style={{ color: infoTextColor }}
+    <aside className={`${isCollapsed ? 'w-20' : 'w-72'} border-r border-slate-800 bg-slate-900/95 flex flex-col shadow-2xl z-20 overflow-hidden transition-all duration-500`}>
+
+      {/* Profile Section */}
+      <div className={`${isCollapsed ? 'px-3 py-4' : 'px-6 py-4'} border-b border-slate-800 bg-slate-900/60 flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'}`}>
+        {isCollapsed ? (
+          <button
+            onClick={onToggleCollapse}
+            className="w-10 h-10 rounded-xl bg-slate-800/50 flex items-center justify-center text-slate-400 hover:text-white hover:bg-slate-700 transition-all"
+            title={userEmail || '프로필'}
+          >
+            <User size={18} />
+          </button>
+        ) : (
+          <>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-slate-800/50 flex items-center justify-center shrink-0">
+                <User size={16} className="text-slate-400" />
+              </div>
+              <span className="text-xs font-bold text-slate-400 truncate">
+                {userEmail || (isGuestMode ? '게스트 모드' : '로그인 필요')}
+              </span>
+            </div>
+            <Dropdown
+              isOpen={isMenuOpen}
+              onOpenChange={setIsMenuOpen}
+              width="w-56"
+              align="left"
+              trigger={
+                <button
+                  onClick={() => setIsMenuOpen(prev => !prev)}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-white hover:bg-slate-800 transition-all shrink-0"
+                >
+                  <MoreHorizontal size={16} />
+                </button>
+              }
             >
-              {team?.name || 'NBA GM'}
-            </h2>
-            <span 
-                className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-90"
-                style={{ color: infoTextColor }}
-            >
-              {team?.wins || 0}W - {team?.losses || 0}L
-            </span>
-          </div>
-        </div>
+              <div className="p-1.5 space-y-0.5">
+                <button
+                  onClick={() => { onNavigate('Help'); setIsMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                >
+                  <BookOpen size={15} />
+                  <span className="text-xs font-bold">초보자 가이드</span>
+                </button>
+                <button
+                  onClick={() => setIsMenuOpen(false)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                >
+                  <FileText size={15} />
+                  <span className="text-xs font-bold">이용약관</span>
+                </button>
+                <div className="my-1 border-t border-slate-800" />
+                <button
+                  onClick={() => { onResetClick(); setIsMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-400/5 transition-all text-left"
+                >
+                  <RotateCcw size={15} />
+                  <span className="text-xs font-bold">데이터 초기화</span>
+                </button>
+                <button
+                  onClick={() => { onLogout(); setIsMenuOpen(false); }}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+                >
+                  <LogOut size={15} />
+                  <span className="text-xs font-bold">{isGuestMode ? '로그인으로 이동' : '로그아웃'}</span>
+                </button>
+              </div>
+            </Dropdown>
+          </>
+        )}
       </div>
 
-      {/* Date Ticker */}
-      <div className="px-8 py-5 border-b border-slate-800 bg-slate-800/20 flex justify-between items-center">
-        <div className="flex items-center gap-3">
-          <Clock size={16} className="text-slate-400" />
-          <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
-        </div>
-        <div className="w-2 h-2 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)] bg-emerald-500"></div>
+      {/* Team Profile Section */}
+      <div
+        className={`${isCollapsed ? 'p-3 flex items-center justify-center' : 'p-8'} border-b border-slate-800 relative overflow-hidden transition-colors duration-700`}
+        style={{ backgroundColor: infoBgColor }}
+      >
+        {isCollapsed ? (
+          <TeamLogo
+            teamId={team?.id || ''}
+            size="custom"
+            className="w-10 h-10 drop-shadow-xl"
+          />
+        ) : (
+          <div className="flex items-center gap-5 relative z-10">
+            <TeamLogo
+              teamId={team?.id || ''}
+              size="custom"
+              className="w-16 h-16 drop-shadow-2xl filter brightness-110 transform transition-transform hover:scale-105 duration-300"
+            />
+            <div className="min-w-0">
+              <h2
+                  className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md"
+                  style={{ color: infoTextColor }}
+              >
+                {team?.name || 'NBA GM'}
+              </h2>
+              <span
+                  className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-90"
+                  style={{ color: infoTextColor }}
+              >
+                {team?.wins || 0}W - {team?.losses || 0}L
+              </span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Navigation */}
-      <nav className="flex-1 p-6 space-y-2 overflow-y-auto custom-scrollbar">
-        <NavItem 
-          active={currentView === 'Dashboard'} 
-          icon={<LayoutDashboard size={20}/>} 
-          label="라커룸" 
-          onClick={() => onNavigate('Dashboard')} 
+      <nav className={`flex-1 ${isCollapsed ? 'p-2' : 'p-6'} space-y-2 overflow-y-auto custom-scrollbar`}>
+        <NavItem
+          active={currentView === 'Dashboard'}
+          icon={<LayoutDashboard size={20}/>}
+          label="라커룸"
+          onClick={() => onNavigate('Dashboard')}
           color={navActiveColor}
           textColor={navTextColor}
+          isCollapsed={isCollapsed}
         />
-        {/* Inbox Added */}
-        <NavItem 
-          active={currentView === 'Inbox'} 
-          icon={<Mail size={20}/>} 
-          label="받은 메세지" 
-          onClick={() => onNavigate('Inbox')} 
+        <NavItem
+          active={currentView === 'Inbox'}
+          icon={<Mail size={20}/>}
+          label="받은 메세지"
+          onClick={() => onNavigate('Inbox')}
           color={navActiveColor}
           textColor={navTextColor}
           badge={unreadMessagesCount}
+          isCollapsed={isCollapsed}
         />
-        <NavItem 
-          active={currentView === 'Roster'} 
-          icon={<Users size={20}/>} 
+        <NavItem
+          active={currentView === 'Roster'}
+          icon={<Users size={20}/>}
           label="선수단"
-          onClick={() => onNavigate('Roster')} 
+          onClick={() => onNavigate('Roster')}
           color={navActiveColor}
           textColor={navTextColor}
+          isCollapsed={isCollapsed}
         />
-        <NavItem 
-          active={currentView === 'Standings'} 
-          icon={<Trophy size={20}/>} 
-          label="순위표" 
-          onClick={() => onNavigate('Standings')} 
+        <NavItem
+          active={currentView === 'Standings'}
+          icon={<Trophy size={20}/>}
+          label="순위표"
+          onClick={() => onNavigate('Standings')}
           color={navActiveColor}
           textColor={navTextColor}
+          isCollapsed={isCollapsed}
         />
-        <NavItem 
-          active={currentView === 'Leaderboard'} 
-          icon={<BarChart3 size={20}/>} 
-          label="리더보드" 
-          onClick={() => onNavigate('Leaderboard')} 
+        <NavItem
+          active={currentView === 'Leaderboard'}
+          icon={<BarChart3 size={20}/>}
+          label="리더보드"
+          onClick={() => onNavigate('Leaderboard')}
           color={navActiveColor}
           textColor={navTextColor}
+          isCollapsed={isCollapsed}
         />
         {isRegularSeasonOver && (
           <NavItem
@@ -191,25 +279,27 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             onClick={() => onNavigate('Playoffs')}
             color={navActiveColor}
             textColor={navTextColor}
+            isCollapsed={isCollapsed}
           />
         )}
-        <NavItem 
-          active={currentView === 'Schedule'} 
-          icon={<CalendarIcon size={20}/>} 
-          label="일정" 
-          onClick={() => onNavigate('Schedule')} 
+        <NavItem
+          active={currentView === 'Schedule'}
+          icon={<CalendarIcon size={20}/>}
+          label="일정"
+          onClick={() => onNavigate('Schedule')}
           color={navActiveColor}
           textColor={navTextColor}
+          isCollapsed={isCollapsed}
         />
-        <NavItem 
-          active={currentView === 'Transactions'} 
-          icon={<ArrowLeftRight size={20}/>} 
-          label="트레이드" 
-          onClick={() => onNavigate('Transactions')} 
+        <NavItem
+          active={currentView === 'Transactions'}
+          icon={<ArrowLeftRight size={20}/>}
+          label="트레이드"
+          onClick={() => onNavigate('Transactions')}
           color={navActiveColor}
           textColor={navTextColor}
+          isCollapsed={isCollapsed}
         />
-        {/* Draft Room - 최하단 */}
         <div className="mt-auto pt-4 border-t border-slate-800/50">
           <NavItem
             active={currentView === 'DraftRoom'}
@@ -218,27 +308,20 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             onClick={() => onNavigate('DraftRoom')}
             color={navActiveColor}
             textColor={navTextColor}
+            isCollapsed={isCollapsed}
           />
         </div>
       </nav>
 
-      {/* System Menu Section */}
-      <div className="p-6 border-t border-slate-800 bg-slate-900/40 space-y-2">
-        <button 
-          onClick={onResetClick}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-400/5 transition-all group"
+      {/* Collapse Toggle */}
+      <div className={`${isCollapsed ? 'p-2' : 'p-4'} border-t border-slate-800`}>
+        <button
+          onClick={onToggleCollapse}
+          className={`w-full flex items-center ${isCollapsed ? 'justify-center px-0' : 'gap-3 px-4'} py-3 rounded-xl text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-all`}
+          title={isCollapsed ? '사이드바 펼치기' : '사이드바 접기'}
         >
-          <RotateCcw size={18} className="group-hover:rotate-[-90deg] transition-transform duration-500" />
-          <span className="text-xs font-black uppercase tracking-widest ko-tight">데이터 초기화</span>
-        </button>
-        <button 
-          onClick={onLogout}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-500 hover:text-white hover:bg-slate-800 transition-all group"
-        >
-          <LogOut size={18} className="group-hover:translate-x-1 transition-transform" />
-          <span className="text-xs font-black uppercase tracking-widest ko-tight">
-            {isGuestMode ? '로그인으로 이동' : '로그아웃'}
-          </span>
+          {isCollapsed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+          {!isCollapsed && <span className="text-xs font-bold uppercase tracking-widest">접기</span>}
         </button>
       </div>
     </aside>

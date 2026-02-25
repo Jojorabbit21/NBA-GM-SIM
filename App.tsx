@@ -108,6 +108,7 @@ const App: React.FC = () => {
                     currentView: view,
                     isGuestMode,
                     unreadMessagesCount: unreadCount,
+                    userEmail: session?.user?.email,
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onLogout: handleLogout
