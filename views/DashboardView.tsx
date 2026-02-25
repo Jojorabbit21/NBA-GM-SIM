@@ -4,6 +4,7 @@ import { Team, Game, Player, PlayoffSeries, GameTactics, DepthChart } from '../t
 import { generateAutoTactics } from '../services/gameEngine';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
+import { computeDefensiveStats } from '../utils/defensiveStats';
 
 // Import sub-components
 import { DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
@@ -63,6 +64,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       if (latest.winnerId !== team.id) return true;
       return latest.round === 4;
   }, [playoffSeries, team?.id]);
+
+  const defensiveStats = useMemo(() => {
+      if (!team?.id) return computeDefensiveStats([], '');
+      return computeDefensiveStats(schedule, team.id);
+  }, [schedule, team?.id]);
 
   const effectiveRoster = team?.roster || [];
   const effectiveOppRoster = useMemo(() => {
@@ -158,6 +164,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         onUpdateTactics={onUpdateTactics}
                         onAutoSet={handleAutoSet}
                         onForceSave={onForceSave}
+                        defensiveStats={defensiveStats}
                     />
                   </div>
               )}

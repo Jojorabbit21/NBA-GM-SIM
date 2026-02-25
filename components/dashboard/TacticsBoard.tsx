@@ -2,6 +2,7 @@
 import React, { useState, useEffect, memo } from 'react';
 import { Wand2, RotateCcw, Save, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import { GameTactics, Player, Team, TacticPreset } from '../../types';
+import { DefensiveStats } from '../../utils/defensiveStats';
 import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
 import { DEFAULT_SLIDERS } from '../../services/game/config/tacticPresets';
 import { fetchPresets, savePreset, deletePreset } from '../../services/tacticsService';
@@ -15,9 +16,10 @@ interface TacticsBoardProps {
   onUpdateTactics: (t: GameTactics) => void;
   onAutoSet: () => void;
   onForceSave?: () => void;
+  defensiveStats?: DefensiveStats;
 }
 
-const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave }) => {
+const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats }) => {
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
     const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -204,6 +206,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                         tactics={tactics}
                         onUpdateTactics={onUpdateTactics}
                         roster={roster}
+                        defensiveStats={defensiveStats}
                     />
                 </div>
             </div>
@@ -233,5 +236,6 @@ export const TacticsBoard = memo(TacticsBoardInner, (prev, next) =>
     prev.roster === next.roster &&
     prev.onUpdateTactics === next.onUpdateTactics &&
     prev.onAutoSet === next.onAutoSet &&
-    prev.onForceSave === next.onForceSave
+    prev.onForceSave === next.onForceSave &&
+    prev.defensiveStats === next.defensiveStats
 );
