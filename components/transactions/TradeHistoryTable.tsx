@@ -75,10 +75,13 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
             <div className="flex-1 overflow-auto custom-scrollbar">
                 <table className="w-full text-left border-separate border-spacing-0">
                     <thead className="bg-slate-950 sticky top-0 z-10">
-                        {/* Filter row */}
-                        <tr>
-                            <th colSpan={4} className="px-4 py-3 border-b border-slate-800">
-                                <div className="flex justify-end">
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                            <th className="py-3 px-4 w-32 border-b border-slate-800 text-left align-middle">일자</th>
+                            <th className="py-3 px-4 w-60 border-b border-slate-800 text-left align-middle">참여 구단</th>
+                            <th className="py-3 px-4 border-b border-slate-800 text-left align-middle">IN</th>
+                            <th className="py-3 px-4 border-b border-slate-800 text-right align-middle">
+                                <div className="flex items-center justify-end gap-4">
+                                    <span>OUT</span>
                                     <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                                         <button
                                             onClick={() => onFilterChange('all')}
@@ -95,13 +98,6 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                     </div>
                                 </div>
                             </th>
-                        </tr>
-                        {/* Column headers */}
-                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                            <th className="py-2.5 px-4 w-32 border-b border-slate-800 text-left">일자</th>
-                            <th className="py-2.5 px-4 w-60 border-b border-slate-800 text-left">참여 구단</th>
-                            <th className="py-2.5 px-4 border-b border-slate-800 text-left">IN Assets (to Team 1)</th>
-                            <th className="py-2.5 px-4 border-b border-slate-800 text-left">OUT Assets (to Team 2)</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -123,18 +119,12 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                     <div className="text-[10px] text-slate-600 font-mono mt-1">ID: {txId}</div>
                                 </td>
                                 <td className="px-4 py-4 align-top border-b border-slate-800/50">
-                                    <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2">
-                                            <TeamLogo teamId={t.teamId} size="sm" />
-                                            <span className={`text-xs font-black uppercase ${t.teamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team1Name}</span>
-                                        </div>
-                                        <div className="pl-2">
-                                             <ArrowRightLeft size={12} className="text-slate-600" />
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <TeamLogo teamId={t.details?.partnerTeamId || ''} size="sm" />
-                                            <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
-                                        </div>
+                                    <div className="flex items-center gap-2">
+                                        <TeamLogo teamId={t.teamId} size="sm" />
+                                        <span className={`text-xs font-black uppercase ${t.teamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team1Name}</span>
+                                        <ArrowRightLeft size={12} className="text-slate-600 flex-shrink-0" />
+                                        <TeamLogo teamId={t.details?.partnerTeamId || ''} size="sm" />
+                                        <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
                                     </div>
                                 </td>
                                 <td className="px-4 py-4 align-top border-b border-slate-800/50">
@@ -158,7 +148,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
                                             return (
                                                 <div key={i} className="flex items-center gap-3">
-                                                    <OvrBadge value={snap.ovr || 70} size="sm" className="!w-6 !h-6 !text-xs !mx-0 grayscale opacity-70" />
+                                                    <OvrBadge value={snap.ovr || 70} size="sm" className="!w-6 !h-6 !text-xs !mx-0" />
                                                     <span className="text-sm font-bold text-red-300/80">{p.name}</span>
                                                     <span className="text-[9px] font-black text-slate-500 bg-slate-950 px-1 py-0.5 rounded border border-slate-800">{snap.pos || '?'}</span>
                                                 </div>
