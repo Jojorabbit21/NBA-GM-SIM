@@ -79,8 +79,8 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                             <th className="py-3 px-4 w-32 border-b border-slate-800 text-left align-middle">일자</th>
                             <th className="py-3 px-4 w-60 border-b border-slate-800 text-left align-middle">참여 구단</th>
                             <th className="py-3 px-4 border-b border-slate-800 text-left align-middle">IN</th>
-                            <th className="py-3 px-4 border-b border-slate-800 text-right align-middle">
-                                <div className="flex items-center justify-end gap-4">
+                            <th className="py-3 px-4 border-b border-slate-800 text-left align-middle">
+                                <div className="flex items-center justify-between">
                                     <span>OUT</span>
                                     <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800">
                                         <button
@@ -110,15 +110,12 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                             const team1Name = team1?.name || t.teamId;
                             const team2Name = team2?.name || t.details?.partnerTeamName || 'Unknown';
 
-                            const txId = (t.id && typeof t.id === 'string') ? t.id.slice(-6) : '??????';
-
                             return (
                             <tr key={t.id || Math.random()} className="hover:bg-white/5 transition-colors">
-                                <td className="px-4 py-4 align-top border-b border-slate-800/50">
+                                <td className="px-4 py-2.5 align-top border-b border-slate-800/50">
                                     <div className="text-xs font-bold text-slate-400">{t.date === 'TODAY' ? currentSimDate : t.date}</div>
-                                    <div className="text-[10px] text-slate-600 font-mono mt-1">ID: {txId}</div>
                                 </td>
-                                <td className="px-4 py-4 align-top border-b border-slate-800/50">
+                                <td className="px-4 py-2.5 align-top border-b border-slate-800/50">
                                     <div className="flex items-center gap-2">
                                         <TeamLogo teamId={t.teamId} size="sm" />
                                         <span className={`text-xs font-black uppercase ${t.teamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team1Name}</span>
@@ -127,7 +124,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                         <span className={`text-xs font-black uppercase ${t.details?.partnerTeamId === teamId ? 'text-indigo-400' : 'text-white'}`}>{team2Name}</span>
                                     </div>
                                 </td>
-                                <td className="px-4 py-4 align-top border-b border-slate-800/50">
+                                <td className="px-4 py-2.5 align-top border-b border-slate-800/50">
                                     <div className="flex flex-col gap-2">
                                         {(t.details?.acquired || []).map((p: any, i: number) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
@@ -142,7 +139,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
                                         {(t.details?.acquired || []).length === 0 && <span className="text-xs text-slate-600 italic">No assets</span>}
                                     </div>
                                 </td>
-                                <td className="px-4 py-4 align-top border-b border-slate-800/50">
+                                <td className="px-4 py-2.5 align-top border-b border-slate-800/50">
                                     <div className="flex flex-col gap-2">
                                         {(t.details?.traded || []).map((p: any, i: number) => {
                                             const snap = getSnapshot(p.id, p.ovr, p.position);
