@@ -218,9 +218,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     });
 
     return (
-        <div className="space-y-8 pb-10">
+        <div className="h-full flex flex-col overflow-hidden">
             {/* Table 1: Main Stats / Attributes / Salary */}
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={false}>
+            <div className={`${tab === 'stats' ? 'flex-[3]' : 'flex-1'} min-h-0`}>
+            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
                 <colgroup>
                     <col style={{ width: WIDTHS.NAME }} />
                     <col style={{ width: WIDTHS.POS }} />
@@ -412,16 +413,17 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     </tr>
                 </TableFoot>
             </Table>
-            
+            </div>
+
             {/* Table 2: 10-Zone Shooting Stats */}
             {tab === 'stats' && (
-                <div className="mt-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-                    <div className="flex items-center gap-3 mb-4 pl-1">
-                        <Target size={20} className="text-orange-400" />
-                        <h3 className="text-base font-black text-white uppercase tracking-tight">상세 구역별 야투 (10 Zones)</h3>
+                <div className="flex-1 min-h-0 flex flex-col border-t-2 border-slate-700 animate-in fade-in duration-300">
+                    <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-slate-950">
+                        <Target size={14} className="text-orange-400" />
+                        <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">상세 구역별 야투 (10 Zones)</h3>
                     </div>
-                    
-                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={false}>
+
+                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
                         <colgroup>
                             <col style={{ width: WIDTHS.NAME }} />
                             <col style={{ width: WIDTHS.POS }} />
