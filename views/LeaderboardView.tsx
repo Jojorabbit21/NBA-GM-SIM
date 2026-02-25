@@ -4,7 +4,6 @@ import { Team, Player, Game } from '../types';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { calculatePlayerOvr } from '../utils/constants';
-import { PageHeader } from '../components/common/PageHeader';
 import { useLeaderboardData } from '../hooks/useLeaderboardData';
 import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar';
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
@@ -119,25 +118,19 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   };
 
   return (
-    <div className="flex flex-col animate-in fade-in duration-500 ko-normal gap-6 pb-20">
+    <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">
       {viewPlayer && (
-        <PlayerDetailModal 
-            player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} 
-            teamName={(viewPlayer as any).teamName} 
-            teamId={(viewPlayer as any).teamId} 
-            onClose={() => setViewPlayer(null)} 
-            allTeams={teams} 
+        <PlayerDetailModal
+            player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}}
+            teamName={(viewPlayer as any).teamName}
+            teamId={(viewPlayer as any).teamId}
+            onClose={() => setViewPlayer(null)}
+            allTeams={teams}
         />
       )}
-      
-      <PageHeader 
-        title="리그 리더보드" 
-        icon={<BarChart2 size={24} />}
-      />
 
-      {/* Main Content Wrapper (Card Style) */}
-      <div className="bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex flex-col">
-          
+      {/* Toolbar (sticky top) */}
+      <div className="flex-shrink-0">
           <LeaderboardToolbar
               mode={mode}
               setMode={handleModeChange}
@@ -162,25 +155,26 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
           />
+      </div>
 
-          {/* Table Area (Auto Height) */}
-          <div className="w-full">
-              <LeaderboardTable 
-                  data={currentData}
-                  mode={mode}
-                  statCategory={statCategory}
-                  sortConfig={sortConfig}
-                  onSort={handleSort}
-                  onRowClick={handleRowClick}
-                  statRanges={statRanges}
-                  showHeatmap={showHeatmap}
-                  currentPage={currentPage}
-                  itemsPerPage={itemsPerPage}
-              />
-          </div>
+      {/* Table Area (fills remaining space) */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+          <LeaderboardTable
+              data={currentData}
+              mode={mode}
+              statCategory={statCategory}
+              sortConfig={sortConfig}
+              onSort={handleSort}
+              onRowClick={handleRowClick}
+              statRanges={statRanges}
+              showHeatmap={showHeatmap}
+              currentPage={currentPage}
+              itemsPerPage={itemsPerPage}
+          />
+      </div>
 
-          {/* Pagination Footer */}
-          <div className="relative flex items-center px-6 py-4 bg-slate-900 border-t border-slate-800 shadow-[0_-4px_10px_rgba(0,0,0,0.2)] flex-shrink-0 z-50">
+      {/* Pagination Footer */}
+      <div className="relative flex items-center px-6 py-3 bg-slate-950 border-t border-slate-800 flex-shrink-0 z-50">
               {/* Left: Showing info */}
               <div className="text-xs font-bold text-slate-500 w-48">
                   Showing {sortedData.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}–{Math.min(currentPage * itemsPerPage, sortedData.length)} of {sortedData.length}
@@ -235,7 +229,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                   </select>
               </div>
           </div>
-      </div>
     </div>
   );
 };
