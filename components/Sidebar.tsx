@@ -40,7 +40,7 @@ const NavItem: React.FC<{
 }> = ({ active, icon, label, onClick, activeColor, badge, isCollapsed }) => (
   <button
     onClick={onClick}
-    className={`w-full flex items-center transition-all duration-500 group relative overflow-hidden ${
+    className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
       isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
     } ${
       active
