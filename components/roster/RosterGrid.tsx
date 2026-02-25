@@ -218,10 +218,10 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
     });
 
     return (
-        <div className="h-full flex flex-col overflow-hidden">
+        <div className={`h-full ${tab === 'stats' ? 'overflow-y-auto custom-scrollbar' : 'flex flex-col overflow-hidden'}`}>
             {/* Table 1: Main Stats / Attributes / Salary */}
-            <div className={`${tab === 'stats' ? 'flex-[3]' : 'flex-1'} min-h-0`}>
-            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
+            <div className={tab === 'stats' ? '' : 'flex-1 min-h-0'}>
+            <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={tab === 'roster'} className="!rounded-none !border-x-0 !border-t-0">
                 <colgroup>
                     <col style={{ width: WIDTHS.NAME }} />
                     <col style={{ width: WIDTHS.POS }} />
@@ -417,13 +417,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
 
             {/* Table 2: 10-Zone Shooting Stats */}
             {tab === 'stats' && (
-                <div className="flex-1 min-h-0 flex flex-col border-t-2 border-slate-700 animate-in fade-in duration-300">
-                    <div className="flex-shrink-0 flex items-center gap-3 px-4 py-2 bg-slate-950">
+                <div className="border-t-2 border-slate-700 animate-in fade-in duration-300">
+                    <div className="flex items-center gap-3 px-4 py-2 bg-slate-950">
                         <Target size={14} className="text-orange-400" />
                         <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">상세 구역별 야투 (10 Zones)</h3>
                     </div>
 
-                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight className="!rounded-none !border-x-0 !border-t-0">
+                    <Table style={{ tableLayout: 'fixed', minWidth: '100%' }} fullHeight={false} className="!rounded-none !border-x-0 !border-t-0">
                         <colgroup>
                             <col style={{ width: WIDTHS.NAME }} />
                             <col style={{ width: WIDTHS.POS }} />
