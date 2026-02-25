@@ -50,13 +50,8 @@ export const getZoneStyle = (makes: number, attempts: number, avg: number) => {
     return { fill: '#10b981', opacity, delta };
 };
 
-// Get pill label colors — continuous opacity based on delta
+// Get pill label colors — fixed solid colors
 export const getZonePillColors = (delta: number, hasAttempts: boolean) => {
     if (!hasAttempts) return { pillFill: '#1e293b', textFill: '#94a3b8', borderStroke: '#334155' };
-    const strength = Math.min(1, Math.max(0, (delta + 0.15) / 0.30));
-    return {
-        pillFill: `rgba(6, 78, 59, ${0.3 + strength * 0.5})`,
-        textFill: '#ffffff',
-        borderStroke: `rgba(16, 185, 129, ${0.2 + strength * 0.5})`,
-    };
+    return { pillFill: '#0f172a', textFill: '#ffffff', borderStroke: '#334155' };
 };
