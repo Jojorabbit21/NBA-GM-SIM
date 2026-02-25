@@ -4,7 +4,6 @@ import { Users } from 'lucide-react';
 import { Team, Player } from '../types';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
-import { PageHeader } from '../components/common/PageHeader';
 import { Dropdown, DropdownButton } from '../components/common/Dropdown';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { RosterGrid } from '../components/roster/RosterGrid';
@@ -43,44 +42,45 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   if (!selectedTeam) return null;
 
   return (
-    <div className="flex flex-col gap-8 animate-in fade-in duration-500 pb-20">
+    <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
       {viewPlayer && (
-        <PlayerDetailModal 
-            player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} 
-            teamName={selectedTeam.name} 
-            teamId={selectedTeam.id} 
-            onClose={() => setViewPlayer(null)} 
-            allTeams={allTeams} 
+        <PlayerDetailModal
+            player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}}
+            teamName={selectedTeam.name}
+            teamId={selectedTeam.id}
+            onClose={() => setViewPlayer(null)}
+            allTeams={allTeams}
         />
       )}
 
-      {/* 1. Header */}
-      <PageHeader 
-        title="로스터 & 기록" 
-        icon={<Users size={24} />}
-        actions={
-            <Dropdown 
-                trigger={
-                    <DropdownButton 
-                        label={`${selectedTeam.city} ${selectedTeam.name}`} 
-                        icon={<TeamLogo teamId={selectedTeam.id} size="sm" />} 
-                    />
-                }
-                items={teamItems}
-                align="right"
-                width="w-72"
-            />
-        }
-      />
+      {/* Header Bar */}
+      <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+              <Users size={16} className="text-slate-500" />
+              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">로스터 & 기록</span>
+          </div>
+          <div className="flex items-center gap-4">
+              <RosterTabs activeTab={tab} onTabChange={setTab} />
+              <Dropdown
+                  trigger={
+                      <DropdownButton
+                          label={`${selectedTeam.city} ${selectedTeam.name}`}
+                          icon={<TeamLogo teamId={selectedTeam.id} size="sm" />}
+                      />
+                  }
+                  items={teamItems}
+                  align="right"
+                  width="w-72"
+              />
+          </div>
+      </div>
 
-      {/* 2. Controls & Grid */}
-      <div className="flex flex-col gap-4">
-          <RosterTabs activeTab={tab} onTabChange={setTab} />
-          
-          <RosterGrid 
-              team={selectedTeam} 
-              tab={tab} 
-              onPlayerClick={setViewPlayer} 
+      {/* Grid — fills remaining space */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+          <RosterGrid
+              team={selectedTeam}
+              tab={tab}
+              onPlayerClick={setViewPlayer}
           />
       </div>
     </div>
