@@ -197,7 +197,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
         { key: 'l10', label: 'L10', width: 56, align: 'center' as const, sortable: true },
     ];
 
-    const dataTextClass = 'font-mono text-xs font-semibold text-slate-400 tabular-nums';
+    const dataTextClass = 'font-mono text-xs font-semibold text-white tabular-nums';
 
     // Format helpers
     const fmtRecord = (r: { w: number; l: number }) => `${r.w}-${r.l}`;
@@ -237,6 +237,12 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
         if (s.startsWith('W')) return 'text-emerald-400';
         if (s.startsWith('L')) return 'text-red-400';
         return 'text-slate-500';
+    };
+
+    const getL10Color = (l10: { w: number; l: number }) => {
+        if (l10.w > l10.l) return 'text-emerald-400';
+        if (l10.l > l10.w) return 'text-red-400';
+        return '';
     };
 
     // Precompute cutoff line positions (team IDs after which to draw lines)
@@ -323,16 +329,13 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
 
                             return (
                                 <React.Fragment key={`${mode}-${t.id}`}>
-                                    {/* Group header row: merge # + TEAM columns for group title */}
+                                    {/* Group header row */}
                                     {groupLabel && (
-                                        <TableRow className="hover:bg-transparent">
-                                            <TableCell colSpan={2} className="pl-4 bg-slate-950 border-r border-slate-800/30 border-b border-slate-800">
+                                        <tr>
+                                            <td colSpan={COLS.length} className="pl-4 py-2 bg-slate-950 border-b border-slate-800">
                                                 <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">{groupLabel}</span>
-                                            </TableCell>
-                                            {COLS.slice(2).map(c => (
-                                                <TableCell key={c.key} className="bg-slate-950 border-r border-slate-800/30 border-b border-slate-800" />
-                                            ))}
-                                        </TableRow>
+                                            </td>
+                                        </tr>
                                     )}
 
                                     <TableRow onClick={() => onTeamClick(t.id)} className="group cursor-pointer">
@@ -357,6 +360,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                                             let extraClass = '';
                                             if (c.key === 'diff') extraClass = getDiffColor(rec.diff);
                                             else if (c.key === 'streak') extraClass = getStreakColor(rec.streak);
+                                            else if (c.key === 'l10') extraClass = getL10Color(rec.l10);
 
                                             return (
                                                 <TableCell

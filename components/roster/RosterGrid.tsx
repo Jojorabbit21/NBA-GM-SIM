@@ -212,8 +212,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
         maxWidth: width,
         position: 'sticky' as 'sticky',
         zIndex: 30,
-        borderRight: isLast ? undefined : 'none', // Force removal of right border
-        boxShadow: isLast ? '4px 0 4px -2px rgba(0,0,0,0.5)' : 'none' // Only shadow on last element
+        borderRight: isLast ? undefined : 'none',
     });
 
     return (
@@ -272,7 +271,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
                         >AGE</TableHeaderCell>
                         <TableHeaderCell 
-                            style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50, clipPath: 'inset(0 -15px 0 0)' }} 
+                            style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50}} 
                             className="bg-slate-950 border-r border-slate-800" 
                             sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
                         >OVR</TableHeaderCell>
@@ -321,7 +320,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                             <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
                             <TableCell 
-                                style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }}
+                                style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
                                 className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
                             >
                                 <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
@@ -371,7 +370,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
                         <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-xs">{averages.attr.age}</TableCell>
                         <TableCell 
-                            style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }}
+                            style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
                             className="border-r border-slate-800 bg-slate-950 text-center"
                         >
                             <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
@@ -461,7 +460,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
                                 >AGE</TableHeaderCell>
                                 <TableHeaderCell
-                                    style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50, clipPath: 'inset(0 -15px 0 0)' }}
+                                    style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50}}
                                     className="bg-slate-950 border-r border-slate-800"
                                     sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
                                 >OVR</TableHeaderCell>
@@ -492,7 +491,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
                                     <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
                                     <TableCell
-                                        style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }}
+                                        style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
                                         className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
                                     >
                                         <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
@@ -518,7 +517,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                 <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
                                 <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-xs">{averages.attr.age}</TableCell>
                                 <TableCell
-                                    style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }}
+                                    style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true)}}
                                     className="border-r border-slate-800 bg-slate-950 text-center"
                                 >
                                     <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>

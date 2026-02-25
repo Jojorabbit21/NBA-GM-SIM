@@ -105,7 +105,7 @@ export const DropdownButton: React.FC<{
 }> = ({ label, icon, isOpen, className = '', onClick }) => (
     <div 
         onClick={onClick}
-        className={`flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-xl px-4 py-3 transition-all shadow-lg group ${className}`}
+        className={`flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 hover:border-slate-600 rounded-lg px-4 py-2 transition-all shadow-lg group ${className}`}
     >
         <div className="flex items-center gap-3 min-w-0">
             {icon && <span className="flex-shrink-0">{icon}</span>}
