@@ -303,11 +303,11 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 </thead>
                 <TableBody>
                     {sortedRoster.map(p => (
-                        <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
+                        <TableRow key={p.id} className="group">
                             {/* Use inline styles to force border removal and width locking */}
                             <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
                                 <div className="flex flex-col">
-                                    <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                    <span className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
                                     {p.health !== 'Healthy' && (
                                         <span 
                                             className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
@@ -423,13 +423,16 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         <colgroup>
                             <col style={{ width: WIDTHS.NAME }} />
                             <col style={{ width: WIDTHS.POS }} />
+                            <col style={{ width: WIDTHS.AGE }} />
+                            <col style={{ width: WIDTHS.OVR }} />
                             {ZONE_CONFIG.map(z => <React.Fragment key={z.id}><col style={{ width: 70 }} /><col style={{ width: 55 }} /></React.Fragment>)}
                         </colgroup>
                         <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+                            {/* Header Row 1: Groups */}
                             <tr className="h-10">
-                                <th colSpan={2} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
+                                <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
                                     <div className="h-full flex items-center justify-center">
-                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Player</span>
+                                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Basic Information</span>
                                     </div>
                                 </th>
                                 {ZONE_CONFIG.map(z => (
@@ -440,18 +443,28 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                                     </th>
                                 ))}
                             </tr>
-                            <tr className="h-10 text-slate-500 text-[9px] font-black uppercase tracking-widest">
-                                {/* Use inline styles to force border removal and width locking */}
-                                <TableHeaderCell 
-                                    style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} 
-                                    align="left" className="pl-4 bg-slate-950" 
+                            {/* Header Row 2: Labels */}
+                            <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                                <TableHeaderCell
+                                    style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }}
+                                    align="left" className="pl-4 bg-slate-950"
                                     sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
-                                >NAME</TableHeaderCell>
-                                <TableHeaderCell 
-                                    style={{ ...getStickyStyle(WIDTHS.NAME, WIDTHS.POS, true), zIndex: 50, clipPath: 'inset(0 -15px 0 0)' }} 
-                                    className="border-r border-slate-800 bg-slate-950" 
+                                >PLAYER NAME</TableHeaderCell>
+                                <TableHeaderCell
+                                    style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }}
+                                    className="bg-slate-950"
                                     sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
                                 >POS</TableHeaderCell>
+                                <TableHeaderCell
+                                    style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }}
+                                    className="bg-slate-950"
+                                    sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
+                                >AGE</TableHeaderCell>
+                                <TableHeaderCell
+                                    style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50, clipPath: 'inset(0 -15px 0 0)' }}
+                                    className="bg-slate-950 border-r border-slate-800"
+                                    sortable onSort={() => handleSort('ovr')} sortDirection={sortConfig.key === 'ovr' ? sortConfig.direction : null}
+                                >OVR</TableHeaderCell>
                                 {ZONE_CONFIG.map(z => (
                                     <React.Fragment key={z.id}>
                                         <TableHeaderCell align="right" className="text-slate-500 border-r border-slate-800 bg-slate-950">M/A</TableHeaderCell>
@@ -462,18 +475,29 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </thead>
                         <TableBody>
                             {sortedRoster.map(p => (
-                                <TableRow key={p.id} onClick={() => onPlayerClick(p)} className="group">
-                                    {/* Use inline styles to force border removal and width locking */}
+                                <TableRow key={p.id} className="group">
                                     <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 bg-slate-900 group-hover:bg-slate-800 transition-colors">
-                                        <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300">{p.name}</span>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-400 cursor-pointer transition-colors" onClick={() => onPlayerClick(p)}>{p.name}</span>
+                                            {p.health !== 'Healthy' && (
+                                                <span
+                                                    className={`text-[9px] font-black uppercase cursor-help ${p.health === 'Injured' ? 'text-red-500' : 'text-amber-500'}`}
+                                                    title={`${p.injuryType || '부상'} | 예상 복귀: ${p.returnDate || '미정'}`}
+                                                >
+                                                    {p.health}
+                                                </span>
+                                            )}
+                                        </div>
                                     </TableCell>
-                                    <TableCell 
-                                        style={{ ...getStickyStyle(WIDTHS.NAME, WIDTHS.POS, true), clipPath: 'inset(0 -15px 0 0)' }} 
-                                        className="border-r border-slate-800 text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
+                                    <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.position}</TableCell>
+                                    <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="text-slate-500 font-semibold text-xs bg-slate-900 group-hover:bg-slate-800 transition-colors text-center">{p.age}</TableCell>
+                                    <TableCell
+                                        style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }}
+                                        className="border-r border-slate-800 bg-slate-900 group-hover:bg-slate-800 transition-colors text-center"
                                     >
-                                        {p.position}
+                                        <div className="flex justify-center"><OvrBadge value={calculatePlayerOvr(p)} size="sm" className="!w-7 !h-7 !text-xs !shadow-none" /></div>
                                     </TableCell>
-                                    
+
                                     {ZONE_CONFIG.map(z => {
                                         const m = p.stats[z.keyM] || 0;
                                         const a = p.stats[z.keyA] || 0;
@@ -490,12 +514,15 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         </TableBody>
                         <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                             <tr className="h-10">
-                                {/* Use inline styles to force border removal and width locking */}
                                 <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-[10px] uppercase tracking-widest">TEAM TOTAL</TableCell>
-                                <TableCell 
-                                    style={{ ...getStickyStyle(WIDTHS.NAME, WIDTHS.POS, true), clipPath: 'inset(0 -15px 0 0)' }} 
-                                    className="border-r border-slate-800 bg-slate-950"
-                                ></TableCell>
+                                <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
+                                <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-xs">{averages.attr.age}</TableCell>
+                                <TableCell
+                                    style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), clipPath: 'inset(0 -15px 0 0)' }}
+                                    className="border-r border-slate-800 bg-slate-950 text-center"
+                                >
+                                    <div className="flex justify-center"><OvrBadge value={averages.attr.ovr} size="sm" className="!w-7 !h-7 !text-xs !shadow-none opacity-80" /></div>
+                                </TableCell>
                                 {ZONE_CONFIG.map(z => {
                                     const avg = averages.zone[z.id];
                                     const pct = avg.a > 0 ? (avg.pct * 100).toFixed(1) + '%' : '-';
