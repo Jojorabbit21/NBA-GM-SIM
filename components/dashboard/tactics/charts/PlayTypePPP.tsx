@@ -83,37 +83,6 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         }));
     }, [sliders, roster]);
 
-    // Stacked bar chart constants
-    const BAR_W = 40;
-    const BAR_GAP = 20;
-    const BAR_H = 160;
-    const BAR_TOP = 16;
-    const BAR_X1 = 30;
-    const BAR_X2 = BAR_X1 + BAR_W + BAR_GAP;
-
-    const sliderSegments = useMemo(() => {
-        // Stack order top→bottom: 3PT, MID, RIM (코트 거리 직관)
-        const ordered = [zoneComparison[0], zoneComparison[1], zoneComparison[2]];
-        let y = BAR_TOP;
-        return ordered.map(z => {
-            const h = (z.slider / 100) * BAR_H;
-            const seg = { ...z, pct: z.slider, y, h };
-            y += h;
-            return seg;
-        });
-    }, [zoneComparison]);
-
-    const rosterSegments = useMemo(() => {
-        const ordered = [zoneComparison[0], zoneComparison[1], zoneComparison[2]];
-        let y = BAR_TOP;
-        return ordered.map(z => {
-            const h = (z.roster / 100) * BAR_H;
-            const seg = { ...z, pct: z.roster, y, h };
-            y += h;
-            return seg;
-        });
-    }, [zoneComparison]);
-
     return (
         <div className="flex flex-col gap-3">
             <div className="flex items-center">
@@ -173,78 +142,37 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                     </tbody>
                 </table>
 
-                {/* Stacked Bar Chart — Shot Zone Comparison */}
-                <div className="shrink-0 flex items-center ml-auto">
-                    <svg viewBox="0 0 160 200" className="w-[200px] h-[200px]">
-                        <defs>
-                            <clipPath id="bar-clip-1">
-                                <rect x={BAR_X1} y={BAR_TOP} width={BAR_W} height={BAR_H} rx={6} />
-                            </clipPath>
-                            <clipPath id="bar-clip-2">
-                                <rect x={BAR_X2} y={BAR_TOP} width={BAR_W} height={BAR_H} rx={6} />
-                            </clipPath>
-                        </defs>
+                {/* Divider */}
+                <div className="w-px bg-slate-800 shrink-0" />
 
-                        {/* Column labels */}
-                        <text x={BAR_X1 + BAR_W / 2} y={10} textAnchor="middle" fill="#64748b" fontSize="11" fontWeight="700">전술</text>
-                        <text x={BAR_X2 + BAR_W / 2} y={10} textAnchor="middle" fill="#64748b" fontSize="11" fontWeight="700">로스터</text>
-
-                        {/* Slider bar (clipped) */}
-                        <g clipPath="url(#bar-clip-1)">
-                            {sliderSegments.map((seg, i) => (
-                                <rect
-                                    key={`s-${i}`}
-                                    x={BAR_X1} y={seg.y} width={BAR_W} height={seg.h}
-                                    fill={seg.color}
-                                    className="transition-all duration-300"
-                                />
-                            ))}
-                        </g>
-                        {/* Slider bar labels */}
-                        {sliderSegments.map((seg, i) => (
-                            seg.h > 22 ? (
-                                <text
-                                    key={`sl-${i}`}
-                                    x={BAR_X1 + BAR_W / 2} y={seg.y + seg.h / 2 + 4}
-                                    textAnchor="middle" fill="#fff" fontSize="11" fontWeight="800"
-                                >
-                                    {seg.pct}%
-                                </text>
-                            ) : null
-                        ))}
-
-                        {/* Roster bar (clipped) */}
-                        <g clipPath="url(#bar-clip-2)">
-                            {rosterSegments.map((seg, i) => (
-                                <rect
-                                    key={`r-${i}`}
-                                    x={BAR_X2} y={seg.y} width={BAR_W} height={seg.h}
-                                    fill={seg.color}
-                                    className="transition-all duration-300"
-                                />
-                            ))}
-                        </g>
-                        {/* Roster bar labels */}
-                        {rosterSegments.map((seg, i) => (
-                            seg.h > 22 ? (
-                                <text
-                                    key={`rl-${i}`}
-                                    x={BAR_X2 + BAR_W / 2} y={seg.y + seg.h / 2 + 4}
-                                    textAnchor="middle" fill="#fff" fontSize="11" fontWeight="800"
-                                >
-                                    {seg.pct}%
-                                </text>
-                            ) : null
-                        ))}
-
-                        {/* Legend */}
-                        {ZONES.map((z, i) => (
-                            <g key={z.label} transform={`translate(${10 + i * 50}, 190)`}>
-                                <circle cx={5} cy={0} r={4} fill={z.color} />
-                                <text x={13} y={4} fill="#94a3b8" fontSize="10" fontWeight="700">{z.label}</text>
-                            </g>
-                        ))}
-                    </svg>
+                {/* Grouped Horizontal Bar Chart — Shot Zone Comparison */}
+                <div className="flex-1 flex flex-col justify-center gap-4">
+                    {zoneComparison.map(zone => (
+                        <div key={zone.label} className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-1.5">
+                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
+                                <span className="text-xs font-bold text-slate-300">{zone.label}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-slate-500 w-10 shrink-0">전술</span>
+                                <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${zone.slider}%`, backgroundColor: zone.color }} />
+                                </div>
+                                <span className="text-xs font-black text-white tabular-nums w-8 text-right">{zone.slider}%</span>
+                                <span className="w-8" />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-bold text-slate-500 w-10 shrink-0">로스터</span>
+                                <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
+                                    <div className="h-full rounded-full opacity-60 transition-all duration-300" style={{ width: `${zone.roster}%`, backgroundColor: zone.color }} />
+                                </div>
+                                <span className="text-xs font-black text-slate-400 tabular-nums w-8 text-right">{zone.roster}%</span>
+                                <span className={`text-xs font-bold tabular-nums w-8 text-right ${zone.diff > 0 ? 'text-emerald-400' : zone.diff < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                    {zone.diff > 0 ? '+' : ''}{zone.diff}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </div>
         </div>
