@@ -1,9 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
-import { Users, Loader2, Clock, Activity, ArrowLeftRight, ListFilter, Send, History } from 'lucide-react';
+import { Loader2, ArrowLeftRight } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
-import { TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
+import { calculatePlayerOvr } from '../utils/constants';
 
 // Components & Hooks
 import { TradeConfirmModal } from '../components/transactions/TradeConfirmModal';
@@ -51,13 +51,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       dailyTradeAttempts, isTradeLimitReached, isTradeDeadlinePassed, MAX_DAILY_TRADES
   } = tradeSystem;
 
-  const TradeLimitChip = () => (
-      <div className={`px-3 py-1.5 rounded-xl border flex items-center gap-2 mr-2 transition-colors ${isTradeLimitReached ? 'bg-red-950/30 border-red-500/50 text-red-400' : 'bg-slate-950/50 border-slate-700 text-slate-400'}`} title="일일 트레이드 업무 제한">
-          <Activity size={14} className={isTradeLimitReached ? "animate-pulse" : ""} />
-          <span className="text-[10px] font-black uppercase tracking-wider font-mono">
-              Daily Ops: {dailyTradeAttempts}/{MAX_DAILY_TRADES}
-          </span>
-      </div>
+  const TradeLimitText = () => (
+      <span className={`text-xs font-bold ${isTradeLimitReached ? 'text-red-400' : 'text-slate-500'}`}>
+          일일 제안 한도: {dailyTradeAttempts}/{MAX_DAILY_TRADES}
+      </span>
   );
 
   const handleViewPlayer = (partialPlayer: Player) => {
@@ -111,32 +108,22 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
          </div>
        )}
        
-       <PageHeader 
-         title={
-             <div className="flex items-center gap-4">
-                 <span>트레이드 센터</span>
-                 <div className="hidden md:flex px-4 py-1.5 rounded-full bg-slate-900 border border-slate-800 items-center gap-2 shadow-inner text-base tracking-normal">
-                    <Clock size={12} className="text-red-500" />
-                    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest font-mono">
-                        Deadline: {TRADE_DEADLINE}
-                    </span>
-                 </div>
-             </div>
-         }
+       <PageHeader
+         title="트레이드 센터"
          icon={<ArrowLeftRight size={24} />}
          actions={
              <div className="flex items-center gap-4">
-               <TradeLimitChip />
+               <TradeLimitText />
                <div className="flex gap-2 bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-sm">
-                   <button onClick={() => setActiveTab('Block')} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><ListFilter size={14} /> 트레이드 블록</button>
-                   <button onClick={() => setActiveTab('Proposal')} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><Send size={14} /> 직접 제안</button>
-                   <button onClick={() => setActiveTab('History')} className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}><History size={14} /> 이력</button>
+                   <button onClick={() => setActiveTab('Block')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>트레이드 블록</button>
+                   <button onClick={() => setActiveTab('Proposal')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>직접 제안</button>
+                   <button onClick={() => setActiveTab('History')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>이력</button>
                </div>
             </div>
          }
        />
 
-      <div className="flex-1 bg-slate-900/95 rounded-[2.5rem] border border-slate-800 flex flex-col overflow-hidden shadow-2xl min-h-0">
+      <div className="flex-1 flex flex-col overflow-hidden min-h-0">
          
          <div className="flex-1 overflow-hidden relative">
             {activeTab === 'Block' && (

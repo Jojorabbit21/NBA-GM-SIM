@@ -1,10 +1,12 @@
 
 import React from 'react';
-import { Search, Trash2, Loader2 } from 'lucide-react';
+import { Loader2, Check } from 'lucide-react';
 import { Player, Team, TradeOffer } from '../../../types';
-import { TradeRosterList } from '../TradeRosterList';
-import { OfferCard } from '../OfferCard';
 import { PositionFilter } from '../PositionFilter';
+import { OvrBadge } from '../../common/OvrBadge';
+import { TeamLogo } from '../../common/TeamLogo';
+import { calculatePlayerOvr } from '../../../utils/constants';
+import { TEAM_DATA } from '../../../data/teamData';
 
 interface TradeBlockTabProps {
     team: Team;
@@ -15,20 +17,20 @@ interface TradeBlockTabProps {
     blockSearchPerformed: boolean;
     targetPositions: string[];
     isTradeDeadlinePassed: boolean;
-    
+
     // Actions
     toggleBlockPlayer: (id: string) => void;
     handleViewPlayer: (p: Player) => void;
     toggleTargetPosition: (pos: string) => void;
     handleSearchBlockOffers: () => void;
     onAcceptOffer: (offer: TradeOffer) => void;
-    
+
     sortedUserRoster: Player[];
 }
 
 export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
     team,
-    teams, // OfferCard에서 팀 정보를 조회하기 위해 필요할 수 있음
+    teams,
     blockSelectedIds,
     blockOffers,
     blockIsProcessing,
@@ -43,74 +45,166 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
     sortedUserRoster
 }) => {
     return (
-        <div className="flex flex-col h-full">
-            {/* Toolbar Area */}
-            <div className="px-8 py-4 bg-slate-900/50 border-b border-slate-800 flex justify-between items-center flex-shrink-0">
-                <div className="flex items-center gap-4">
-                    <span className="text-xs font-black uppercase text-slate-400 tracking-widest">
-                        필요 포지션 설정:
+        <div className="flex flex-1 min-h-0 h-full">
+            {/* Left: My Roster */}
+            <div className="w-[380px] lg:w-[420px] border-r border-slate-800 flex flex-col flex-shrink-0">
+                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">내 트레이드 블록</span>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${blockSelectedIds.size > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
+                        {blockSelectedIds.size} / 5 선택
                     </span>
-                    <PositionFilter selected={targetPositions} onToggle={toggleTargetPosition} />
                 </div>
-                
-                <button 
-                    onClick={handleSearchBlockOffers}
-                    disabled={blockSelectedIds.size === 0 || blockIsProcessing}
-                    className="px-8 py-3 bg-white hover:bg-slate-200 text-slate-900 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center gap-3 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {blockIsProcessing ? <Loader2 className="animate-spin" size={16} /> : <Search size={16} />}
-                    <span>오퍼 검색 (AI Engine)</span>
-                </button>
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                    <table className="w-full text-left border-separate border-spacing-0">
+                        <thead className="bg-slate-950 sticky top-0 z-10">
+                            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                                <th className="py-2.5 px-3 w-8 border-b border-slate-800"></th>
+                                <th className="py-2.5 px-1 w-10 border-b border-slate-800 text-center">OVR</th>
+                                <th className="py-2.5 px-3 border-b border-slate-800">선수</th>
+                                <th className="py-2.5 px-2 w-10 border-b border-slate-800 text-center">POS</th>
+                                <th className="py-2.5 px-2 w-10 border-b border-slate-800 text-center">AGE</th>
+                                <th className="py-2.5 px-3 w-16 border-b border-slate-800 text-right">연봉</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedUserRoster.map(p => {
+                                const isSelected = blockSelectedIds.has(p.id);
+                                const ovr = calculatePlayerOvr(p);
+                                const disabled = isTradeDeadlinePassed;
+                                return (
+                                    <tr
+                                        key={p.id}
+                                        onClick={() => !disabled && toggleBlockPlayer(p.id)}
+                                        className={`transition-colors ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'} ${isSelected ? 'bg-indigo-600/10' : 'hover:bg-white/5'}`}
+                                    >
+                                        <td className="py-2 px-3 border-b border-slate-800/50">
+                                            <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-emerald-500 border-emerald-400' : 'border-slate-700 bg-slate-900'}`}>
+                                                {isSelected && <Check size={12} className="text-white" strokeWidth={3} />}
+                                            </div>
+                                        </td>
+                                        <td className="py-2 px-1 border-b border-slate-800/50 text-center">
+                                            <OvrBadge value={ovr} size="sm" />
+                                        </td>
+                                        <td className="py-2 px-3 border-b border-slate-800/50">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span
+                                                    className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
+                                                    onClick={(e) => { e.stopPropagation(); handleViewPlayer(p); }}
+                                                >
+                                                    {p.name}
+                                                </span>
+                                                {p.health !== 'Healthy' && (
+                                                    <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                                        {p.health === 'Injured' ? 'OUT' : 'DTD'}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="py-2 px-2 border-b border-slate-800/50 text-center text-[10px] font-bold text-slate-400 uppercase">{p.position}</td>
+                                        <td className="py-2 px-2 border-b border-slate-800/50 text-center text-xs font-mono text-slate-400">{p.age}</td>
+                                        <td className="py-2 px-3 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300">${p.salary}M</td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                    </table>
+                </div>
             </div>
 
-            <div className="flex flex-1 min-h-0">
-                {/* Left: My Roster */}
-                <div className="w-[380px] lg:w-[420px] border-r border-slate-800 bg-slate-950/30 flex flex-col flex-shrink-0">
-                    <div className="p-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
-                        <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">내 로스터 (Assets)</span>
-                        <span className="text-[10px] font-bold text-slate-500">{blockSelectedIds.size} / 5 selected</span>
+            {/* Right: Offers */}
+            <div className="flex-1 flex flex-col min-w-0">
+                {/* Right Panel Header */}
+                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 flex-shrink-0">
+                    <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
+                        오퍼 결과 {blockSearchPerformed && blockOffers.length > 0 && `(${blockOffers.length}건)`}
+                    </span>
+                    <div className="flex items-center gap-3">
+                        <PositionFilter selected={targetPositions} onToggle={toggleTargetPosition} />
+                        <button
+                            onClick={handleSearchBlockOffers}
+                            disabled={blockSelectedIds.size === 0 || blockIsProcessing}
+                            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black uppercase text-[10px] tracking-widest transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
+                        >
+                            {blockIsProcessing && <Loader2 className="animate-spin" size={14} />}
+                            오퍼 탐색
+                        </button>
                     </div>
-                    <TradeRosterList 
-                        roster={sortedUserRoster} 
-                        selectedIds={blockSelectedIds} 
-                        onToggle={toggleBlockPlayer} 
-                        onViewPlayer={handleViewPlayer} 
-                        isTradeDeadlinePassed={isTradeDeadlinePassed}
-                        mode="Block"
-                    />
                 </div>
 
-                {/* Right: Results */}
-                <div className="flex-1 bg-slate-900/50 p-8 overflow-y-auto custom-scrollbar">
+                {/* Right Panel Body */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar">
                     {!blockSearchPerformed ? (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
-                            <div className="p-8 bg-slate-800/20 rounded-full border border-slate-800/50">
-                                <Search size={48} className="opacity-20" />
-                            </div>
-                            <div className="text-center">
-                                <p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">Ready to Search</p>
-                                <p className="text-xs font-bold text-slate-600 mt-2">
-                                    좌측에서 트레이드 카드로 활용할 선수를 선택하고<br/>
-                                    상단 오퍼 검색 버튼을 눌러주세요.
-                                </p>
-                            </div>
+                        <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
+                            <p className="font-black text-sm text-slate-500 uppercase oswald tracking-widest">오퍼 대기</p>
+                            <p className="text-xs font-bold text-slate-600 text-center">
+                                좌측에서 트레이드 블록에 올릴 선수를 선택하고<br/>
+                                오퍼 탐색 버튼을 눌러주세요.
+                            </p>
                         </div>
                     ) : blockOffers.length > 0 ? (
-                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-20">
-                            {blockOffers.map((offer, idx) => (
-                                <OfferCard 
-                                    key={idx} 
-                                    offer={offer} 
-                                    onPlayerClick={handleViewPlayer}
-                                    onAccept={() => onAcceptOffer(offer)}
-                                />
-                            ))}
+                        <div className="divide-y divide-slate-800">
+                            {blockOffers.map((offer, idx) => {
+                                const teamColor = TEAM_DATA[offer.teamId]?.colors.primary || '#4f46e5';
+                                return (
+                                    <div key={idx}>
+                                        {/* Team Group Header */}
+                                        <div className="px-6 py-3 bg-slate-950/50 flex items-center justify-between sticky top-0 z-10">
+                                            <div className="flex items-center gap-3">
+                                                <TeamLogo teamId={offer.teamId} size="sm" />
+                                                <span className="text-sm font-black uppercase oswald tracking-tight" style={{ color: teamColor !== '#000000' ? teamColor : '#ffffff' }}>
+                                                    {offer.teamName}
+                                                </span>
+                                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${offer.diffValue >= 0 ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-500 bg-slate-800'}`}>
+                                                    {offer.diffValue >= 0 ? '가치 이득' : '가치 균형'}
+                                                </span>
+                                            </div>
+                                            <button
+                                                onClick={() => onAcceptOffer(offer)}
+                                                className="px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all active:scale-95 hover:brightness-110"
+                                                style={{ backgroundColor: teamColor }}
+                                            >
+                                                수락하기
+                                            </button>
+                                        </div>
+                                        {/* Players Table */}
+                                        <table className="w-full text-left border-separate border-spacing-0">
+                                            <tbody>
+                                                {offer.players.map(p => {
+                                                    const ovr = calculatePlayerOvr(p);
+                                                    return (
+                                                        <tr key={p.id} className="hover:bg-white/5 transition-colors">
+                                                            <td className="py-2 pl-6 pr-1 w-10 border-b border-slate-800/50 text-center">
+                                                                <OvrBadge value={ovr} size="sm" />
+                                                            </td>
+                                                            <td className="py-2 px-3 border-b border-slate-800/50">
+                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                    <span
+                                                                        className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
+                                                                        onClick={() => handleViewPlayer(p)}
+                                                                    >
+                                                                        {p.name}
+                                                                    </span>
+                                                                    {p.health !== 'Healthy' && (
+                                                                        <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                                                            {p.health === 'Injured' ? 'OUT' : 'DTD'}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="py-2 px-2 w-10 border-b border-slate-800/50 text-center text-[10px] font-bold text-slate-400 uppercase">{p.position}</td>
+                                                            <td className="py-2 px-2 w-10 border-b border-slate-800/50 text-center text-xs font-mono text-slate-400">{p.age}</td>
+                                                            <td className="py-2 px-3 w-16 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300">${p.salary.toFixed(1)}M</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                );
+                            })}
                         </div>
                     ) : (
-                        <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
-                            <div className="p-6 bg-slate-800/20 rounded-full">
-                                <Trash2 size={32} className="opacity-30" />
-                            </div>
+                        <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
                             <p className="font-bold text-sm">조건에 맞는 제안이 없습니다.</p>
                             <p className="text-xs text-slate-500">다른 선수나 포지션을 선택해보세요.</p>
                         </div>
