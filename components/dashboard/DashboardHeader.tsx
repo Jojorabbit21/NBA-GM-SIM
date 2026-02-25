@@ -50,7 +50,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         <div className="px-8 py-3 flex items-center justify-between gap-8 h-20 relative z-10">
             {/* Date */}
             <div className="flex items-center gap-2 shrink-0">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">현재 날짜</span>
+                <span className="text-sm font-black uppercase tracking-widest oswald" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#94a3b8' }}>현재 날짜</span>
                 <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
             </div>
 
@@ -81,7 +81,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         </div>
                     ) : (
                         <div className="flex flex-col items-center">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">다음 경기</span>
+                            <span className="text-sm font-black uppercase tracking-widest leading-none mb-1 oswald" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#94a3b8' }}>다음 경기</span>
                             <span className="text-sm font-black text-white oswald tracking-widest">{nextGame?.date || 'SCHEDULED'}</span>
                         </div>
                     )}
