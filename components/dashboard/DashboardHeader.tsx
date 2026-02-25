@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CalendarClock, FastForward, Clock } from 'lucide-react';
+import { CalendarClock, FastForward } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
@@ -49,10 +49,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
         <div className="absolute inset-0 bg-black/20 pointer-events-none" />
         <div className="px-8 py-3 flex items-center justify-between gap-8 h-20 relative z-10">
             {/* Date */}
-            <div className="flex items-center gap-3 shrink-0 pr-4 border-r border-white/5">
-                <Clock size={14} className="text-slate-500" />
+            <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">현재 날짜</span>
                 <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
-                <div className="w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)] bg-emerald-500"></div>
             </div>
 
             {/* Matchup */}
@@ -64,7 +63,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             <TeamLogo teamId={awayTeam.id} size="lg" />
                             <div className="hidden sm:flex flex-col">
                                 <span className="text-sm font-black text-white oswald uppercase leading-tight truncate max-w-[100px]">{awayTeam.name}</span>
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">{awayTeam.wins}W-{awayTeam.losses}L</span>
+                                <span className="text-[10px] font-bold uppercase" style={{ color: TEAM_DATA[awayTeam.id]?.colors?.text || '#94a3b8' }}>{awayTeam.wins}W-{awayTeam.losses}L</span>
                             </div>
                             <OvrBadge value={awayOvr} size="md" className="!w-7 !h-7 !text-xs" />
                         </>
@@ -82,7 +81,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         </div>
                     ) : (
                         <div className="flex flex-col items-center">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">Upcoming Game</span>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest leading-none mb-1">다음 경기</span>
                             <span className="text-sm font-black text-white oswald tracking-widest">{nextGame?.date || 'SCHEDULED'}</span>
                         </div>
                     )}
@@ -95,7 +94,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             <OvrBadge value={homeOvr} size="md" className="!w-7 !h-7 !text-xs" />
                             <div className="hidden sm:flex flex-col items-end">
                                 <span className="text-sm font-black text-white oswald uppercase leading-tight truncate max-w-[100px]">{homeTeam.name}</span>
-                                <span className="text-[10px] font-bold text-slate-500 uppercase">{homeTeam.wins}W-{homeTeam.losses}L</span>
+                                <span className="text-[10px] font-bold uppercase" style={{ color: TEAM_DATA[homeTeam.id]?.colors?.text || '#94a3b8' }}>{homeTeam.wins}W-{homeTeam.losses}L</span>
                             </div>
                             <TeamLogo teamId={homeTeam.id} size="lg" />
                         </>
