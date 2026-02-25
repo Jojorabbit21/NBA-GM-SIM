@@ -5,6 +5,8 @@ import { Team, Game, PlayoffSeries } from '../../types';
 import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
+import { TEAM_DATA } from '../../data/teamData';
+import { getTeamTheme } from '../../utils/teamTheme';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -30,6 +32,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const homeOvr = isHome ? myOvr : opponentOvrValue;
   const awayOvr = isHome ? opponentOvrValue : myOvr;
 
+  const teamColors = TEAM_DATA[team.id]?.colors || null;
+  const theme = getTeamTheme(team.id, teamColors);
+
   const playoffRoundName = currentSeries ? (
       currentSeries.round === 0 ? "Play-In Tournament" : 
       currentSeries.round === 4 ? "NBA Finals" : 
@@ -39,8 +44,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   ) : null;
 
   return (
-    <div className="w-full bg-slate-900/90 border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col">
-        <div className="px-8 py-3 flex items-center justify-between gap-8 h-20">
+    <div className="w-full border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+        {/* Dark overlay for readability */}
+        <div className="absolute inset-0 bg-black/30 pointer-events-none" />
+        <div className="px-8 py-3 flex items-center justify-between gap-8 h-20 relative z-10">
             {/* Date */}
             <div className="flex items-center gap-3 shrink-0 pr-4 border-r border-white/5">
                 <Clock size={14} className="text-slate-500" />
