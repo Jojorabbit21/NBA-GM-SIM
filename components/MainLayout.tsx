@@ -1,5 +1,5 @@
 
-import React, { Suspense, useMemo } from 'react';
+import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Footer } from './Footer';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
@@ -15,6 +15,7 @@ interface MainLayoutProps {
         currentView: AppView;
         isGuestMode: boolean;
         unreadMessagesCount: number;
+        userEmail?: string;
         onNavigate: (view: AppView) => void;
         onResetClick: () => void;
         onLogout: () => void;
@@ -33,6 +34,7 @@ interface MainLayoutProps {
 const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { team, currentSimDate } = sidebarProps;
     const { schedule, teams, onSim, onLiveSim, isSimulating, playoffSeries, userTactics } = gameHeaderProps;
+    const [isCollapsed, setIsCollapsed] = useState(false);
 
     // Common logic moved from DashboardView to Layout level
     const nextGame = useMemo(() => {
@@ -76,8 +78,13 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">
-            <Sidebar {...sidebarProps} isRegularSeasonOver={isRegularSeasonOver} />
-            <main className={`flex-1 relative flex flex-col ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
+            <Sidebar
+                {...sidebarProps}
+                isRegularSeasonOver={isRegularSeasonOver}
+                isCollapsed={isCollapsed}
+                onToggleCollapse={() => setIsCollapsed(prev => !prev)}
+            />
+            <main className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
                 {/* Global Game Header — hidden for full-height views only (DraftRoom) */}
                 {!isFullHeightView && team && (
                     <DashboardHeader

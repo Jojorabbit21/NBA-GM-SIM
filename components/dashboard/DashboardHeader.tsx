@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CalendarClock, FastForward } from 'lucide-react';
+import { CalendarClock, FastForward, Clock } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
@@ -23,7 +23,7 @@ interface DashboardHeaderProps {
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, onAutoSimClick,
-  currentSeries
+  currentSeries, currentSimDate
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -41,7 +41,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   return (
     <div className="w-full bg-slate-900/90 border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col">
         <div className="px-8 py-3 flex items-center justify-between gap-8 h-20">
-            {/* Left: Matchup & Scores */}
+            {/* Date */}
+            <div className="flex items-center gap-3 shrink-0 pr-4 border-r border-white/5">
+                <Clock size={14} className="text-slate-500" />
+                <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
+                <div className="w-1.5 h-1.5 rounded-full animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.5)] bg-emerald-500"></div>
+            </div>
+
+            {/* Matchup */}
             <div className="flex items-center gap-8 min-w-0">
                 {/* Away Team */}
                 <div className="flex items-center gap-3">
