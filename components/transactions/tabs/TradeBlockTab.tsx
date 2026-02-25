@@ -54,7 +54,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                         {blockSelectedIds.size} / 5 선택
                     </span>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/40">
                     <table className="w-full text-left border-separate border-spacing-0">
                         <thead className="bg-slate-950 sticky top-0 z-10">
                             <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
@@ -132,7 +132,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                 </div>
 
                 {/* Right Panel Body */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/40">
                     {!blockSearchPerformed ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
                             <p className="font-black text-sm text-slate-500 uppercase oswald tracking-widest">오퍼 대기</p>
@@ -142,63 +142,57 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                             </p>
                         </div>
                     ) : blockOffers.length > 0 ? (
-                        <div className="divide-y divide-slate-800">
+                        <div className="p-4 space-y-4">
                             {blockOffers.map((offer, idx) => {
                                 const teamColor = TEAM_DATA[offer.teamId]?.colors.primary || '#4f46e5';
+                                const safeColor = teamColor !== '#000000' ? teamColor : '#ffffff';
                                 return (
-                                    <div key={idx}>
-                                        {/* Team Group Header */}
-                                        <div className="px-6 py-3 bg-slate-950/50 flex items-center justify-between sticky top-0 z-10">
+                                    <div key={idx} className="rounded-2xl border border-slate-700/50 bg-slate-900 overflow-hidden" style={{ borderLeftWidth: '3px', borderLeftColor: safeColor }}>
+                                        {/* Card Header */}
+                                        <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <TeamLogo teamId={offer.teamId} size="sm" />
-                                                <span className="text-sm font-black uppercase oswald tracking-tight" style={{ color: teamColor !== '#000000' ? teamColor : '#ffffff' }}>
+                                                <span className="text-sm font-black uppercase oswald tracking-tight" style={{ color: safeColor }}>
                                                     {offer.teamName}
-                                                </span>
-                                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${offer.diffValue >= 0 ? 'text-emerald-400 bg-emerald-400/10' : 'text-slate-500 bg-slate-800'}`}>
-                                                    {offer.diffValue >= 0 ? '가치 이득' : '가치 균형'}
                                                 </span>
                                             </div>
                                             <button
                                                 onClick={() => onAcceptOffer(offer)}
                                                 className="px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest text-white transition-all active:scale-95 hover:brightness-110"
-                                                style={{ backgroundColor: teamColor }}
+                                                style={{ backgroundColor: safeColor }}
                                             >
                                                 수락하기
                                             </button>
                                         </div>
-                                        {/* Players Table */}
-                                        <table className="w-full text-left border-separate border-spacing-0">
-                                            <tbody>
-                                                {offer.players.map(p => {
-                                                    const ovr = calculatePlayerOvr(p);
-                                                    return (
-                                                        <tr key={p.id} className="hover:bg-white/5 transition-colors">
-                                                            <td className="py-2 pl-6 pr-1 w-10 border-b border-slate-800/50 text-center">
-                                                                <OvrBadge value={ovr} size="sm" />
-                                                            </td>
-                                                            <td className="py-2 px-3 border-b border-slate-800/50">
-                                                                <div className="flex items-center gap-2 min-w-0">
-                                                                    <span
-                                                                        className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
-                                                                        onClick={() => handleViewPlayer(p)}
-                                                                    >
-                                                                        {p.name}
+                                        {/* Card Body — Players */}
+                                        <div className="divide-y divide-slate-800/50">
+                                            {offer.players.map(p => {
+                                                const ovr = calculatePlayerOvr(p);
+                                                return (
+                                                    <div key={p.id} className="flex items-center gap-3 px-5 py-2.5 hover:bg-white/5 transition-colors">
+                                                        <OvrBadge value={ovr} size="sm" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex items-center gap-2">
+                                                                <span
+                                                                    className="font-bold text-sm text-slate-200 truncate hover:text-indigo-400 hover:underline cursor-pointer"
+                                                                    onClick={() => handleViewPlayer(p)}
+                                                                >
+                                                                    {p.name}
+                                                                </span>
+                                                                {p.health !== 'Healthy' && (
+                                                                    <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
+                                                                        {p.health === 'Injured' ? 'OUT' : 'DTD'}
                                                                     </span>
-                                                                    {p.health !== 'Healthy' && (
-                                                                        <span className={`px-1 py-0.5 rounded text-[8px] font-black uppercase flex-shrink-0 ${p.health === 'Injured' ? 'bg-red-500/20 text-red-500' : 'bg-amber-500/20 text-amber-500'}`}>
-                                                                            {p.health === 'Injured' ? 'OUT' : 'DTD'}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                            <td className="py-2 px-2 w-10 border-b border-slate-800/50 text-center text-[10px] font-bold text-slate-400 uppercase">{p.position}</td>
-                                                            <td className="py-2 px-2 w-10 border-b border-slate-800/50 text-center text-xs font-mono text-slate-400">{p.age}</td>
-                                                            <td className="py-2 px-3 w-16 border-b border-slate-800/50 text-right text-xs font-mono font-bold text-slate-300">${p.salary.toFixed(1)}M</td>
-                                                        </tr>
-                                                    );
-                                                })}
-                                            </tbody>
-                                        </table>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <span className="text-[10px] font-bold text-slate-500 uppercase w-8 text-center">{p.position}</span>
+                                                        <span className="text-xs font-mono text-slate-500 w-6 text-center">{p.age}</span>
+                                                        <span className="text-xs font-mono font-bold text-slate-300 w-16 text-right">${p.salary.toFixed(1)}M</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     </div>
                                 );
                             })}

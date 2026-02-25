@@ -50,7 +50,7 @@ export const TradeHistoryTab: React.FC<TradeHistoryTabProps> = ({
             </div>
 
             {/* Table Area */}
-            <div className="flex-1 bg-slate-950/30 overflow-hidden">
+            <div className="flex-1 bg-slate-900/40 overflow-hidden">
                 <TradeHistoryTable 
                     transactions={filteredTransactions} 
                     historyFilter={historyFilter} 
