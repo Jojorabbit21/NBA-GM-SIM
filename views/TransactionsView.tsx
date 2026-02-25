@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import { Loader2, ArrowLeftRight } from 'lucide-react';
+import { ArrowLeftRight, Loader2 } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
 import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
@@ -8,7 +8,7 @@ import { calculatePlayerOvr } from '../utils/constants';
 // Components & Hooks
 import { TradeConfirmModal } from '../components/transactions/TradeConfirmModal';
 import { useTradeSystem } from '../hooks/useTradeSystem';
-import { PageHeader } from '../components/common/PageHeader';
+
 import { TradeBlockTab } from '../components/transactions/tabs/TradeBlockTab';
 import { TradeProposalTab } from '../components/transactions/tabs/TradeProposalTab';
 import { TradeHistoryTab } from '../components/transactions/tabs/TradeHistoryTab';
@@ -85,7 +85,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   if (!team) return null;
 
   return (
-    <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal gap-6">
+    <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal">
        {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
        
        {pendingTrade && (
@@ -108,20 +108,20 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
          </div>
        )}
        
-       <PageHeader
-         title="트레이드 센터"
-         icon={<ArrowLeftRight size={24} />}
-         actions={
-             <div className="flex items-center gap-4">
+       <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+           <div className="flex items-center gap-3">
+               <ArrowLeftRight size={16} className="text-slate-500" />
+               <span className="text-xs font-black text-slate-300 uppercase tracking-widest">트레이드 센터</span>
+           </div>
+           <div className="flex items-center gap-4">
                <TradeLimitText />
                <div className="flex gap-2 bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-sm">
                    <button onClick={() => setActiveTab('Block')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>트레이드 블록</button>
                    <button onClick={() => setActiveTab('Proposal')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>직접 제안</button>
                    <button onClick={() => setActiveTab('History')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>이력</button>
                </div>
-            </div>
-         }
-       />
+           </div>
+       </div>
 
       <div className="flex-1 flex flex-col overflow-hidden min-h-0">
          
