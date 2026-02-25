@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <NavItem 
           active={currentView === 'Roster'} 
           icon={<Users size={20}/>} 
-          label="로스터 & 기록" 
+          label="선수단"
           onClick={() => onNavigate('Roster')} 
           color={navActiveColor}
           textColor={navTextColor}
