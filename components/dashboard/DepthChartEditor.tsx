@@ -248,7 +248,7 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                     </button>
                 </div>
             </div>
-            <Table className="border-0 rounded-none shadow-none">
+            <Table className="border-0 !rounded-none shadow-none">
                 <TableHead>
                     <TableHeaderCell align="center" className="w-16 border-r border-slate-800/50 py-2">POS</TableHeaderCell>
                     <TableHeaderCell align="center" className="w-1/3 border-r border-slate-800/50 py-2 text-indigo-400">주전 (Starter)</TableHeaderCell>
@@ -262,10 +262,10 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                                 <span className="text-xs font-semibold text-slate-500">{String(pos)}</span>
                             </TableCell>
                             {[0, 1, 2].map(depthIndex => (
-                                <TableCell key={`${String(pos)}-${depthIndex}`} className={`p-0 border-r border-slate-800/50 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
+                                <TableCell key={`${String(pos)}-${depthIndex}`} className={`!p-0 border-r border-slate-800/50 ${depthIndex === 0 ? 'bg-indigo-900/5' : ''}`}>
                                     <div className="relative group w-full h-full">
                                         <select 
-                                            className={`w-full h-full appearance-none bg-transparent border-none rounded-none pl-4 pr-10 py-2 text-xs font-semibold text-white focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all ${!depthChart[pos][depthIndex] ? 'text-slate-500' : ''}`}
+                                            className={`w-full h-full appearance-none bg-transparent border-none rounded-none pl-4 pr-10 py-3 text-xs font-semibold text-white focus:outline-none focus:ring-0 cursor-pointer hover:bg-white/5 transition-all ${!depthChart[pos][depthIndex] ? 'text-slate-500' : ''}`}
                                             value={depthChart[pos][depthIndex] || ""}
                                             onChange={(e) => handleChange(pos, depthIndex, e.target.value)}
                                         >
