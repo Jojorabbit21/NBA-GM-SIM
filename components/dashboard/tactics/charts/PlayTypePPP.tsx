@@ -87,7 +87,7 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
         <div className="flex flex-col gap-3">
             <div className="flex items-center">
                 <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">플레이타입 분석</h5>
-                <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 선호도</h5>
+                <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 선호도</h5>
             </div>
 
             <div className="flex items-stretch gap-4">
@@ -167,7 +167,7 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                                     <div className="h-full rounded-full opacity-60 transition-all duration-300" style={{ width: `${zone.roster}%`, backgroundColor: zone.color }} />
                                 </div>
                                 <span className="text-xs font-black text-slate-400 tabular-nums w-8 text-right">{zone.roster}%</span>
-                                <span className={`text-xs font-bold tabular-nums w-8 text-right ${zone.diff > 0 ? 'text-emerald-400' : zone.diff < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                <span className={`text-xs font-bold tabular-nums w-8 text-left ${zone.diff > 0 ? 'text-emerald-400' : zone.diff < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                     {zone.diff > 0 ? '+' : ''}{zone.diff}
                                 </span>
                             </div>
