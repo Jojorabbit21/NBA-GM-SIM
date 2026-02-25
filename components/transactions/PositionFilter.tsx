@@ -25,12 +25,12 @@ export const PositionFilter: React.FC<PositionFilterProps> = ({ selected, onTogg
 
     return (
         <div className="relative" ref={wrapperRef}>
-            <button 
+            <button
                 onClick={() => setIsOpen(!isOpen)}
-                className={`px-6 py-4 rounded-2xl font-black uppercase text-xs tracking-widest transition-all active:scale-95 flex items-center gap-3 min-w-[160px] justify-center ${selected.length > 0 ? 'bg-slate-800 text-indigo-400 border border-indigo-500/30' : 'bg-slate-800 hover:bg-slate-700 text-slate-400'}`}
+                className={`px-4 py-2.5 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all active:scale-95 flex items-center gap-2 ${selected.length > 0 ? 'bg-slate-800 text-indigo-400 border border-indigo-500/30' : 'bg-slate-800 hover:bg-slate-700 text-slate-400'}`}
             >
-                <Filter size={18} />
-                <span>{selected.length === 0 ? 'Target: ANY' : `Target: ${selected.join(', ')}`}</span>
+                <Filter size={14} />
+                <span>{selected.length === 0 ? 'ALL' : selected.join(', ')}</span>
             </button>
             
             {isOpen && (
