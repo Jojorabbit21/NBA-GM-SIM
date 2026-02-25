@@ -107,8 +107,6 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
             <div className="lg:col-span-5 lg:pl-2 flex flex-col gap-1">
 
                 {/* ── OFFENSE ── */}
-                <h3 className="text-sm font-black text-white uppercase tracking-widest oswald">공격 전술</h3>
-
                 <div className="grid grid-cols-2 gap-x-6">
                     {/* Left col: 게임 운영 + 슈팅 전략 */}
                     <div className="flex flex-col gap-1">
@@ -158,8 +156,6 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                 <div className="h-px bg-slate-700 my-4" />
 
                 {/* ── DEFENSE ── */}
-                <h3 className="text-sm font-black text-white uppercase tracking-widest oswald">수비 전술</h3>
-
                 <div className="grid grid-cols-2 gap-x-6">
                     {/* Left col: 수비 스타일 */}
                     <div className="flex flex-col gap-1">
