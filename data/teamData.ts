@@ -32,7 +32,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'cha': {
         id: 'cha', city: '샬럿', name: '호네츠', conference: 'East', division: 'Southeast',
         owner: '릭 슈널 & 게이브 플로킨',
-        colors: { primary: '#1D1160', secondary: '#00788C', text: '#FFFFFF' }
+        colors: { primary: '#00788C', secondary: '#1D1160', text: '#FFFFFF' }
     },
     'chi': {
         id: 'chi', city: '시카고', name: '불스', conference: 'East', division: 'Central',
@@ -52,7 +52,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'den': {
         id: 'den', city: '덴버', name: '너게츠', conference: 'West', division: 'Northwest',
         owner: '스탠 크론키',
-        colors: { primary: '#0E2240', secondary: '#FEC524', text: '#FFC72C' }
+        colors: { primary: '#0E2240', secondary: '#8B2131', text: '#FEC524' }
     },
     'det': {
         id: 'det', city: '디트로이트', name: '피스톤스', conference: 'East', division: 'Central',
@@ -157,7 +157,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'uta': {
         id: 'uta', city: '유타', name: '재즈', conference: 'West', division: 'Northwest',
         owner: '라이언 스미스',
-        colors: { primary: '#002B5C', secondary: '#00471B', text: '#FFFFFF' }
+        colors: { primary: '#4E008E', secondary: '#79A3DC', text: '#FFFFFF' }
     },
     'was': {
         id: 'was', city: '워싱턴', name: '위저즈', conference: 'East', division: 'Southeast',
