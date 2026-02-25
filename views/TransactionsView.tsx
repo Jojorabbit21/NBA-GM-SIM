@@ -88,7 +88,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
   if (!team) return null;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6">
+    <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal gap-6">
        {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
        
        {pendingTrade && (
