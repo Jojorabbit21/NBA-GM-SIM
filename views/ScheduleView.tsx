@@ -224,16 +224,22 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               <span className="text-xs font-black text-slate-300 uppercase tracking-widest">시즌 일정</span>
               {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={14} />}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-sm">
               <button
-                  onClick={() => setShowLeagueSchedule(prev => !prev)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-black uppercase transition-all border ${
-                      showLeagueSchedule
-                          ? 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
-                          : 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-500'
+                  onClick={() => setShowLeagueSchedule(false)}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      !showLeagueSchedule ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'
                   }`}
               >
-                  {showLeagueSchedule ? <><LayoutGrid size={14} /> 캘린더</> : <><List size={14} /> 리그 전체 일정</>}
+                  <LayoutGrid size={12} /> 캘린더
+              </button>
+              <button
+                  onClick={() => setShowLeagueSchedule(true)}
+                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                      showLeagueSchedule ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'
+                  }`}
+              >
+                  <List size={12} /> 리그 전체 일정
               </button>
           </div>
       </div>

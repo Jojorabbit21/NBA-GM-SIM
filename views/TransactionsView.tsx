@@ -115,10 +115,10 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
            </div>
            <div className="flex items-center gap-4">
                <TradeLimitText />
-               <div className="flex gap-2 bg-slate-900 p-1 rounded-2xl border border-slate-800 shadow-sm">
-                   <button onClick={() => setActiveTab('Block')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>트레이드 블록</button>
-                   <button onClick={() => setActiveTab('Proposal')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>직접 제안</button>
-                   <button onClick={() => setActiveTab('History')} className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>이력</button>
+               <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-sm">
+                   <button onClick={() => setActiveTab('Block')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'Block' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>트레이드 블록</button>
+                   <button onClick={() => setActiveTab('Proposal')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'Proposal' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>직접 제안</button>
+                   <button onClick={() => setActiveTab('History')} className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'History' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}>이력</button>
                </div>
            </div>
        </div>

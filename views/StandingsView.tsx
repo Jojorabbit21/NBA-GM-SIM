@@ -273,10 +273,10 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                         <button
                             key={m}
                             onClick={() => setMode(m)}
-                            className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${
+                            className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
                                 mode === m
-                                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-500/50'
-                                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'
+                                    ? 'bg-indigo-600 text-white shadow-md'
+                                    : 'text-slate-500 hover:text-slate-300'
                             }`}
                         >
                             {MODE_LABELS[m]}
