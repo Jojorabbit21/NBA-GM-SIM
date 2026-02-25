@@ -5,7 +5,6 @@ import { calculatePlayerOvr } from '../../../utils/constants';
 import { RadarChart } from './charts/RadarChart';
 import { TeamZoneChart } from './charts/TeamZoneChart';
 import { PlayTypePPP } from './charts/PlayTypePPP';
-import { ShotZoneComparison } from './charts/ShotZoneComparison';
 import { PLAY_TYPES, getPlayTypeDistribution } from './charts/playTypeConstants';
 
 interface TacticsDataPanelProps {
@@ -98,17 +97,12 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 </div>
             </div>
 
-            {/* Section 2: Play Type Analysis */}
+            {/* Section 2: Play Type Analysis + Shot Zone Comparison */}
             <div className="pb-5 border-b border-slate-800">
-                <PlayTypePPP sliders={sliders} />
+                <PlayTypePPP sliders={sliders} roster={roster} />
             </div>
 
-            {/* Section 3: Shot Zone Comparison */}
-            <div className="pb-5 border-b border-slate-800">
-                <ShotZoneComparison sliders={sliders} roster={roster} />
-            </div>
-
-            {/* Section 4: Risk Analysis */}
+            {/* Section 3: Risk Analysis */}
             <div className="flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                     <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">리스크 분석</h5>

@@ -1,11 +1,19 @@
 
 import React, { useMemo } from 'react';
-import { TacticalSliders } from '../../../../types';
+import { TacticalSliders, Player } from '../../../../types';
+import { calculatePlayerOvr } from '../../../../utils/constants';
 import { PLAY_TYPES } from './playTypeConstants';
 
 interface PlayTypePPPProps {
     sliders: TacticalSliders;
+    roster: Player[];
 }
+
+const ZONES = [
+    { label: '3PT', color: '#10b981' },
+    { label: 'MID', color: '#f59e0b' },
+    { label: 'RIM', color: '#ef4444' },
+];
 
 // Donut chart constants
 const DONUT_CX = 80;
@@ -14,7 +22,7 @@ const DONUT_R = 55;
 const DONUT_STROKE = 20;
 const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
 
-export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
+export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => {
     const data = useMemo(() => {
         const rawWeights = PLAY_TYPES.map(pt => sliders[pt.sliderKey] || 5);
         const totalWeight = rawWeights.reduce((s, v) => s + v, 0);
@@ -35,6 +43,45 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
             return { segmentLength, offset, color: item.color };
         });
     }, [data]);
+
+    const zoneComparison = useMemo(() => {
+        const s3 = sliders.shot_3pt || 5;
+        const sm = sliders.shot_mid || 5;
+        const sr = sliders.shot_rim || 5;
+        const sTotal = s3 + sm + sr;
+        const sliderPcts = [(s3 / sTotal) * 100, (sm / sTotal) * 100, (sr / sTotal) * 100];
+
+        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
+        const rot = sorted.slice(0, Math.min(8, sorted.length));
+        let rosterPcts = [33.3, 33.3, 33.3];
+
+        if (rot.length > 0) {
+            let total3 = 0, totalMid = 0, totalRim = 0, count = 0;
+            for (const p of rot) {
+                if (p.tendencies?.zones) {
+                    const z = p.tendencies.zones;
+                    total3 += (z.cnr || 0) + (z.p45 || 0) + (z.atb || 0);
+                    totalMid += z.mid || 0;
+                    totalRim += (z.ra || 0) + (z.itp || 0);
+                    count++;
+                }
+            }
+            if (count > 0) {
+                const avg3 = total3 / count, avgMid = totalMid / count, avgRim = totalRim / count;
+                const total = avg3 + avgMid + avgRim;
+                if (total > 0) {
+                    rosterPcts = [(avg3 / total) * 100, (avgMid / total) * 100, (avgRim / total) * 100];
+                }
+            }
+        }
+
+        return ZONES.map((zone, i) => ({
+            ...zone,
+            slider: Math.round(sliderPcts[i]),
+            roster: Math.round(rosterPcts[i]),
+            diff: Math.round(sliderPcts[i] - rosterPcts[i]),
+        }));
+    }, [sliders, roster]);
 
     return (
         <div className="flex flex-col gap-3">
@@ -82,8 +129,61 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders }) => {
                                         <span className="text-xs font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
                                     </div>
                                 </td>
-                                <td className="align-middle pl-3 text-right">
-                                    <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
+                                <td className="align-middle pl-3">
+                                    <div className="flex items-center justify-end h-full">
+                                        <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+
+                {/* Divider */}
+                <div className="w-px bg-slate-800 shrink-0" />
+
+                {/* Shot Zone Comparison — compact */}
+                <table className="border-collapse">
+                    <thead>
+                        <tr>
+                            <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">존</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-2">전술</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-2">로스터</th>
+                            <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-2">차이</th>
+                            <th className="pb-1.5" />
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {zoneComparison.map(zone => (
+                            <tr key={zone.label} className="h-9">
+                                <td className="align-middle">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: zone.color }} />
+                                        <span className="text-xs font-bold text-slate-300">{zone.label}</span>
+                                    </div>
+                                </td>
+                                <td className="align-middle text-right pl-2">
+                                    <span className="text-xs font-black text-white tabular-nums">{zone.slider}%</span>
+                                </td>
+                                <td className="align-middle text-right pl-2">
+                                    <span className="text-xs font-black text-slate-400 tabular-nums">{zone.roster}%</span>
+                                </td>
+                                <td className="align-middle text-right pl-2">
+                                    <span className={`text-xs font-bold tabular-nums ${zone.diff > 0 ? 'text-emerald-400' : zone.diff < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                        {zone.diff > 0 ? '+' : ''}{zone.diff}
+                                    </span>
+                                </td>
+                                <td className="align-middle pl-2 w-[80px]">
+                                    <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden relative">
+                                        <div
+                                            className="absolute top-0 left-0 h-full rounded-full opacity-30 transition-all duration-300"
+                                            style={{ width: `${zone.roster}%`, backgroundColor: zone.color }}
+                                        />
+                                        <div
+                                            className="absolute top-0 left-0 h-full rounded-full transition-all duration-300"
+                                            style={{ width: `${zone.slider}%`, backgroundColor: zone.color }}
+                                        />
+                                    </div>
                                 </td>
                             </tr>
                         ))}
