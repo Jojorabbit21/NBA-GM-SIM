@@ -2,6 +2,7 @@
 import React, { useMemo } from 'react';
 import { TacticalSliders, Player } from '../../../types';
 import { calculatePlayerOvr } from '../../../utils/constants';
+import { DefensiveStats } from '../../../utils/defensiveStats';
 import { RadarChart } from './charts/RadarChart';
 import { TeamZoneChart } from './charts/TeamZoneChart';
 import { PlayTypePPP } from './charts/PlayTypePPP';
@@ -10,6 +11,7 @@ import { PLAY_TYPES, getPlayTypeDistribution } from './charts/playTypeConstants'
 interface TacticsDataPanelProps {
     sliders: TacticalSliders;
     roster: Player[];
+    defensiveStats?: DefensiveStats;
 }
 
 // Mirror engine's calculateScoringGravity (usageSystem.ts)
@@ -34,7 +36,15 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
     );
 };
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster }) => {
+// Defensive stat row
+const DefStatRow: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color = 'text-white' }) => (
+    <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-slate-400">{label}</span>
+        <span className={`text-xs font-black tabular-nums ${color}`}>{value}</span>
+    </div>
+);
+
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats }) => {
 
     // Offense risk values
     const offenseRisk = useMemo(() => {
@@ -102,7 +112,37 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 <PlayTypePPP sliders={sliders} roster={roster} />
             </div>
 
-            {/* Section 3: Risk Analysis */}
+            {/* Section 3: Defensive Performance */}
+            <div className="pb-5 border-b border-slate-800">
+                <div className="flex items-center justify-between mb-3">
+                    <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">수비 성과</h5>
+                    {defensiveStats && defensiveStats.gamesPlayed > 0 && (
+                        <span className="text-[11px] text-slate-500">{defensiveStats.gamesPlayed}경기 평균</span>
+                    )}
+                </div>
+                {!defensiveStats || defensiveStats.gamesPlayed === 0 ? (
+                    <p className="text-xs text-slate-500">경기 데이터 없음</p>
+                ) : (
+                    <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">긍정적 지표</span>
+                            <DefStatRow label="스틸" value={`${defensiveStats.teamStlPerGame.toFixed(1)} /G`} color="text-emerald-300" />
+                            <DefStatRow label="블록" value={`${defensiveStats.teamBlkPerGame.toFixed(1)} /G`} color="text-emerald-300" />
+                            <DefStatRow label="수비 리바운드" value={`${defensiveStats.teamDrbPerGame.toFixed(1)} /G`} color="text-emerald-300" />
+                            <DefStatRow label="유발 턴오버" value={`${defensiveStats.oppTovPerGame.toFixed(1)} /G`} color="text-emerald-300" />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">부정적 지표</span>
+                            <DefStatRow label="실점" value={`${defensiveStats.oppPtsPerGame.toFixed(1)} /G`} color="text-red-300" />
+                            <DefStatRow label="상대 FG%" value={`${defensiveStats.oppFgPct.toFixed(1)}%`} color="text-red-300" />
+                            <DefStatRow label="상대 3P%" value={`${defensiveStats.oppThreePct.toFixed(1)}%`} color="text-red-300" />
+                            <DefStatRow label="파울" value={`${defensiveStats.teamPfPerGame.toFixed(1)} /G`} color="text-red-300" />
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Section 4: Risk Analysis */}
             <div className="flex flex-col gap-2.5">
                 <div className="flex items-center justify-between">
                     <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">리스크 분석</h5>
