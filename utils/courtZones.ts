@@ -40,20 +40,51 @@ export const ZONE_CONFIG = [
     { pathKey: 'C3_R' as const, avgKey: 'c3' as const, label: "우측 코너", key: 'c3R', cx: 400, cy: 350 },
 ];
 
-// Determine zone heatmap style — single green color, opacity = efficiency
+// Continuous heatmap color interpolation: cold indigo → warm amber
+const HEAT_STOPS = [
+    { t: 0,    r: 30,  g: 27,  b: 75  },  // indigo-950 (very cold)
+    { t: 0.3,  r: 67,  g: 56,  b: 202 },  // indigo-700
+    { t: 0.5,  r: 129, g: 140, b: 248 },  // indigo-400 (neutral)
+    { t: 0.7,  r: 217, g: 119, b: 6   },  // amber-600
+    { t: 1,    r: 251, g: 191, b: 36  },  // amber-400 (very hot)
+];
+
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+function heatColor(t: number): string {
+    const c = Math.min(1, Math.max(0, t));
+    for (let i = 0; i < HEAT_STOPS.length - 1; i++) {
+        const s0 = HEAT_STOPS[i], s1 = HEAT_STOPS[i + 1];
+        if (c <= s1.t) {
+            const local = (c - s0.t) / (s1.t - s0.t);
+            return `rgb(${Math.round(lerp(s0.r, s1.r, local))},${Math.round(lerp(s0.g, s1.g, local))},${Math.round(lerp(s0.b, s1.b, local))})`;
+        }
+    }
+    const last = HEAT_STOPS[HEAT_STOPS.length - 1];
+    return `rgb(${last.r},${last.g},${last.b})`;
+}
+
+// delta → normalized t [0, 1] : -0.15 maps to 0, +0.15 maps to 1
+const deltaToT = (delta: number) => Math.min(1, Math.max(0, (delta + 0.15) / 0.30));
+
+// Determine zone heatmap style — continuous gradient from cold to hot
 export const getZoneStyle = (makes: number, attempts: number, avg: number) => {
-    if (attempts === 0) return { fill: '#10b981', opacity: 0.08, delta: 0 };
+    if (attempts === 0) return { fill: '#1e293b', opacity: 0.15, delta: 0 };
     const pct = makes / attempts;
     const delta = pct - avg;
-    // Map delta to opacity: -0.15 → 0.15, 0 → 0.30, +0.15 → 0.57
-    const opacity = Math.min(0.57, Math.max(0.15, 0.30 + delta * 1.8));
-    return { fill: '#10b981', opacity, delta };
+    const t = deltaToT(delta);
+    return { fill: heatColor(t), opacity: 0.30 + t * 0.40, delta };
 };
 
-// Get pill label colors — green intensity matches zone opacity
+// Get pill label colors — continuous interpolation matching zone heat
 export const getZonePillColors = (delta: number, hasAttempts: boolean) => {
     if (!hasAttempts) return { pillFill: '#1e293b', textFill: '#94a3b8', borderStroke: '#334155' };
-    if (delta >= 0.05) return { pillFill: '#064e3b', textFill: '#34d399', borderStroke: '#059669' };
-    if (delta <= -0.05) return { pillFill: '#0f172a', textFill: '#64748b', borderStroke: '#1e293b' };
-    return { pillFill: '#0c2a1f', textFill: '#6ee7b7', borderStroke: '#065f46' };
+    const t = deltaToT(delta);
+    const base = heatColor(t);
+    // Pill bg: darkened version via low-alpha overlay
+    const pillFill = t > 0.5
+        ? `rgba(120, 53, 15, ${0.4 + (t - 0.5) * 0.6})`   // warm tint
+        : `rgba(30, 27, 75, ${0.5 + (0.5 - t) * 0.5})`;    // cool tint
+    const borderStroke = base;
+    return { pillFill, textFill: '#ffffff', borderStroke };
 };
