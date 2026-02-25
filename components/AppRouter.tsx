@@ -34,6 +34,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
+    const scheduleMonthRef = useRef<Date | null>(null);
 
     // Reset selected team when leaving Roster view (unless navigating from Standings)
     useEffect(() => {
@@ -160,6 +161,8 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     teams={gameData.teams}
                     currentSimDate={gameData.currentSimDate}
                     userId={session?.user?.id}
+                    initialMonth={scheduleMonthRef.current}
+                    onMonthChange={(d: Date) => { scheduleMonthRef.current = d; }}
                     onViewGameResult={(result) => {
                         previousViewRef.current = 'Schedule';
                         sim.loadSavedGameResult(result);

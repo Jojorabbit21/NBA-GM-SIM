@@ -335,14 +335,14 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                                     {/* Group sub-header: group title in merged #/TEAM + column labels */}
                                     {groupLabel && (
                                         <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                                            <td colSpan={2} className="pl-4 bg-slate-950 border-b border-slate-800 border-r border-slate-800/30 text-indigo-400">
+                                            <td colSpan={2} className="pl-4 bg-slate-950 border-b border-slate-800 border-r border-slate-800 text-indigo-400">
                                                 {groupLabel}
                                             </td>
                                             {COLS.slice(2).map(c => (
                                                 <td
                                                     key={c.key}
                                                     onClick={c.sortable ? () => handleSort(c.key) : undefined}
-                                                    className={`text-center bg-slate-950 border-b border-slate-800 border-r border-slate-800/30 ${c.sortable ? 'cursor-pointer hover:text-slate-300 select-none' : ''}`}
+                                                    className={`text-center bg-slate-950 border-b border-slate-800 border-r border-slate-800 ${c.sortable ? 'cursor-pointer hover:text-slate-300 select-none' : ''}`}
                                                 >
                                                     {c.label}
                                                     {c.sortable && sortConfig.key === c.key && (
