@@ -36,12 +36,22 @@ export const Dropdown: React.FC<DropdownProps> = ({
     const [internalIsOpen, setInternalIsOpen] = useState(false);
     const triggerRef = useRef<HTMLDivElement>(null);
     const panelRef = useRef<HTMLDivElement>(null);
-    const [pos, setPos] = useState({ top: 0, left: 0 });
+    const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
     const isExpanded = controlledIsOpen !== undefined ? controlledIsOpen : internalIsOpen;
 
+    const calcPos = useCallback(() => {
+        if (triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            return { top: rect.bottom + 8, left: align === 'right' ? rect.right : rect.left };
+        }
+        return null;
+    }, [align]);
+
     const toggle = () => {
         const newState = !isExpanded;
+        // Pre-calculate position before opening → batched with state update → no (0,0) flash
+        if (newState) setPos(calcPos());
         if (onOpenChange) onOpenChange(newState);
         else setInternalIsOpen(newState);
     };
@@ -51,16 +61,10 @@ export const Dropdown: React.FC<DropdownProps> = ({
         else setInternalIsOpen(false);
     }, [onOpenChange]);
 
-    // Calculate position when opening (useLayoutEffect → before paint, prevents flash at 0,0)
+    // Fallback: recalculate if opened externally (not via toggle)
     useLayoutEffect(() => {
-        if (isExpanded && triggerRef.current) {
-            const rect = triggerRef.current.getBoundingClientRect();
-            setPos({
-                top: rect.bottom + 8,
-                left: align === 'right' ? rect.right : rect.left,
-            });
-        }
-    }, [isExpanded, align]);
+        if (isExpanded && !pos) setPos(calcPos());
+    }, [isExpanded, pos, calcPos]);
 
     // Click outside to close
     useEffect(() => {
@@ -84,7 +88,7 @@ export const Dropdown: React.FC<DropdownProps> = ({
                 {trigger}
             </div>
 
-            {isExpanded && createPortal(
+            {isExpanded && pos && createPortal(
                 <div
                     ref={panelRef}
                     className={`fixed ${width} bg-slate-900 border border-slate-800 rounded-xl shadow-2xl overflow-hidden z-[9999] animate-in fade-in duration-100`}
