@@ -37,10 +37,10 @@ const RiskBar: React.FC<{ label: string; value: number; desc: string }> = ({ lab
 };
 
 // Defensive stat row
-const DefStatRow: React.FC<{ label: string; value: string; color?: string }> = ({ label, value, color = 'text-white' }) => (
+const DefStatRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
     <div className="flex items-center justify-between">
         <span className="text-xs font-bold text-slate-400">{label}</span>
-        <span className={`text-xs font-black tabular-nums ${color}`}>{value}</span>
+        <span className="text-xs font-bold tabular-nums text-white">{value}</span>
     </div>
 );
 
@@ -126,17 +126,17 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">긍정적 지표</span>
-                            <DefStatRow label="스틸" value={`${defensiveStats.teamStlPerGame.toFixed(1)} /G`} color="text-emerald-300" />
-                            <DefStatRow label="블록" value={`${defensiveStats.teamBlkPerGame.toFixed(1)} /G`} color="text-emerald-300" />
-                            <DefStatRow label="수비 리바운드" value={`${defensiveStats.teamDrbPerGame.toFixed(1)} /G`} color="text-emerald-300" />
-                            <DefStatRow label="유발 턴오버" value={`${defensiveStats.oppTovPerGame.toFixed(1)} /G`} color="text-emerald-300" />
+                            <DefStatRow label="스틸" value={`${defensiveStats.teamStlPerGame.toFixed(1)} /G`} />
+                            <DefStatRow label="블록" value={`${defensiveStats.teamBlkPerGame.toFixed(1)} /G`} />
+                            <DefStatRow label="수비 리바운드" value={`${defensiveStats.teamDrbPerGame.toFixed(1)} /G`} />
+                            <DefStatRow label="유발 턴오버" value={`${defensiveStats.oppTovPerGame.toFixed(1)} /G`} />
                         </div>
                         <div className="flex flex-col gap-1.5">
                             <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">부정적 지표</span>
-                            <DefStatRow label="실점" value={`${defensiveStats.oppPtsPerGame.toFixed(1)} /G`} color="text-red-300" />
-                            <DefStatRow label="상대 FG%" value={`${defensiveStats.oppFgPct.toFixed(1)}%`} color="text-red-300" />
-                            <DefStatRow label="상대 3P%" value={`${defensiveStats.oppThreePct.toFixed(1)}%`} color="text-red-300" />
-                            <DefStatRow label="파울" value={`${defensiveStats.teamPfPerGame.toFixed(1)} /G`} color="text-red-300" />
+                            <DefStatRow label="실점" value={`${defensiveStats.oppPtsPerGame.toFixed(1)} /G`} />
+                            <DefStatRow label="상대 FG%" value={`${defensiveStats.oppFgPct.toFixed(1)}%`} />
+                            <DefStatRow label="상대 3P%" value={`${defensiveStats.oppThreePct.toFixed(1)}%`} />
+                            <DefStatRow label="파울" value={`${defensiveStats.teamPfPerGame.toFixed(1)} /G`} />
                         </div>
                     </div>
                 )}
