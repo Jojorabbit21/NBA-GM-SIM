@@ -4,7 +4,6 @@ import { Team } from '../types';
 import { Loader2, Trophy } from 'lucide-react';
 import { StandingTable } from '../components/simulation/StandingTable';
 import { DIVISION_KOREAN } from '../data/mappings';
-import { PageHeader } from '../components/common/PageHeader';
 
 interface StandingsViewProps {
   teams: Team[];
@@ -76,84 +75,88 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, onTeamClick
   );
 
   return (
-    <div className="flex flex-col gap-8">
-      <PageHeader 
-        title="리그 순위표" 
-        icon={<Trophy size={24} />}
-        actions={
-            <div className="flex p-1 bg-slate-900 rounded-2xl border border-slate-800">
-                {(['Conference', 'Division'] as const).map(m => (
-                    <button key={m} onClick={() => setMode(m)} className={`px-10 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${mode === m ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40' : 'text-slate-500 hover:text-slate-300'}`}>
-                        {m === 'Conference' ? '컨퍼런스 & 전체' : '디비전 상세'}
-                    </button>
-                ))}
-            </div>
-        }
-      />
-
-      {mode === 'Conference' && (
-        <div className="grid grid-cols-1 2xl:grid-cols-3 gap-8 items-start animate-in slide-in-from-bottom-4 duration-500">
-          <StandingTable 
-            teamList={teams} 
-            title="정규시즌 통합 순위" 
-            highlightColor="emerald" 
-            onTeamClick={onTeamClick} 
-            teamStatusMap={teamStatusMap}
-          />
-
-          <StandingTable 
-            teamList={teams.filter(t => t.conference === 'East')} 
-            title="동부 컨퍼런스" 
-            isConference={true}
-            highlightColor="blue"
-            onTeamClick={onTeamClick}
-            teamStatusMap={teamStatusMap}
-          />
-
-          <StandingTable 
-            teamList={teams.filter(t => t.conference === 'West')} 
-            title="서부 컨퍼런스" 
-            isConference={true}
-            highlightColor="red"
-            onTeamClick={onTeamClick}
-            teamStatusMap={teamStatusMap}
-          />
-        </div>
-      )}
-
-      {mode === 'Division' && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start animate-in slide-in-from-bottom-4 duration-500">
-            {divisions.map(div => (
-              <StandingTable 
-                key={div} 
-                teamList={teams.filter(t => t.division === div)} 
-                title={DIVISION_KOREAN[div] || div} 
-                onTeamClick={onTeamClick}
-                mode="Division"
-                teamStatusMap={teamStatusMap}
-              />
-            ))}
+    <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
+      {/* Header Bar */}
+      <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+              <Trophy size={16} className="text-slate-500" />
+              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">리그 순위표</span>
           </div>
+          <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-800">
+              {(['Conference', 'Division'] as const).map(m => (
+                  <button key={m} onClick={() => setMode(m)} className={`px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${mode === m ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/40 ring-1 ring-indigo-500/50' : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800'}`}>
+                      {m === 'Conference' ? '컨퍼런스 & 전체' : '디비전'}
+                  </button>
+              ))}
+          </div>
+      </div>
 
-          <div className="flex justify-center mt-8 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-100">
-            <div className="bg-slate-900/80 border border-slate-800 rounded-full px-8 py-3 flex flex-wrap items-center gap-6 lg:gap-8 shadow-xl backdrop-blur-sm">
-                <div className="flex items-center gap-2">
-                    <span className="text-sm filter drop-shadow-md">🔒</span>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">플레이오프 확정</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-sm filter drop-shadow-md">🎟️</span>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">플레이인 진출</span>
-                </div>
-                <div className="flex items-center gap-2">
-                    <span className="text-sm filter drop-shadow-md">❌</span>
-                    <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">시즌 탈락</span>
-                </div>
+      {/* Content — scrollable */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6">
+        {mode === 'Conference' && (
+          <div className="grid grid-cols-1 2xl:grid-cols-3 gap-6 items-start animate-in slide-in-from-bottom-4 duration-500">
+            <StandingTable
+              teamList={teams}
+              title="정규시즌 통합 순위"
+              highlightColor="emerald"
+              onTeamClick={onTeamClick}
+              teamStatusMap={teamStatusMap}
+            />
+
+            <StandingTable
+              teamList={teams.filter(t => t.conference === 'East')}
+              title="동부 컨퍼런스"
+              isConference={true}
+              highlightColor="blue"
+              onTeamClick={onTeamClick}
+              teamStatusMap={teamStatusMap}
+            />
+
+            <StandingTable
+              teamList={teams.filter(t => t.conference === 'West')}
+              title="서부 컨퍼런스"
+              isConference={true}
+              highlightColor="red"
+              onTeamClick={onTeamClick}
+              teamStatusMap={teamStatusMap}
+            />
+          </div>
+        )}
+
+        {mode === 'Division' && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 items-start animate-in slide-in-from-bottom-4 duration-500">
+              {divisions.map(div => (
+                <StandingTable
+                  key={div}
+                  teamList={teams.filter(t => t.division === div)}
+                  title={DIVISION_KOREAN[div] || div}
+                  onTeamClick={onTeamClick}
+                  mode="Division"
+                  teamStatusMap={teamStatusMap}
+                />
+              ))}
+            </div>
+
+            <div className="flex justify-center py-4 animate-in fade-in duration-500">
+              <div className="bg-slate-900/80 border border-slate-800 rounded-full px-8 py-3 flex flex-wrap items-center gap-6 lg:gap-8">
+                  <div className="flex items-center gap-2">
+                      <span className="text-sm">🔒</span>
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">플레이오프 확정</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <span className="text-sm">🎟️</span>
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">플레이인 진출</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                      <span className="text-sm">❌</span>
+                      <span className="text-[10px] font-bold text-slate-300 uppercase tracking-wider">시즌 탈락</span>
+                  </div>
+              </div>
             </div>
           </div>
-        </>
-      )}
-    </div>  
+        )}
+      </div>
+    </div>
   );
 };
