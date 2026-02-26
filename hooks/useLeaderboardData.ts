@@ -49,6 +49,8 @@ export const useLeaderboardData = (
                 acc.blk    += s.blk;
                 acc.tov    += s.tov;
                 acc.pf     += (s.pf || 0);
+                acc.techFouls += (s.techFouls || 0);
+                acc.flagrantFouls += (s.flagrantFouls || 0);
                 acc.fgm    += s.fgm;
                 acc.fga    += s.fga;
                 acc.p3m    += s.p3m;
@@ -65,7 +67,7 @@ export const useLeaderboardData = (
                 });
                 return acc;
             }, {
-                reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0,
+                reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0,
                 fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
                 rimM: 0, rimA: 0, midM: 0, midA: 0
             });
@@ -194,6 +196,10 @@ export const useLeaderboardData = (
                 'blk%': opp2pa  > 0 ? totals.blk / opp2pa  : 0,
                 '3par': totals.fga > 0 ? totals.p3a / totals.fga : 0,
                 'ftr':  totals.fga > 0 ? totals.fta / totals.fga : 0,
+
+                // --- Technical / Flagrant Fouls (per game) ---
+                'tf': (totals.techFouls || 0) / playedCount,
+                'ff': (totals.flagrantFouls || 0) / playedCount,
 
                 // --- POSS / PACE ---
                 // POSS: 팀 포제션 수 per game (FGA + 0.44×FTA + TOV - ORB)
@@ -331,6 +337,10 @@ export const useLeaderboardData = (
                 s['3par'] = s.fga > 0 ? s.p3a / s.fga : 0;
                 s['ftr'] = s.fga > 0 ? s.fta / s.fga : 0;
 
+                // Technical / Flagrant Fouls (per game)
+                s['tf'] = (s.techFouls || 0) / g;
+                s['ff'] = (s.flagrantFouls || 0) / g;
+
                 return { 
                     ...p, 
                     stats: s,
@@ -403,6 +413,8 @@ export const useLeaderboardData = (
                 update('blk%', s['blk%']);
                 update('3par', s['3par']);
                 update('ftr', s['ftr']);
+                update('tf', s['tf']);
+                update('ff', s['ff']);
             });
         } else {
             teamStats.forEach(t => {

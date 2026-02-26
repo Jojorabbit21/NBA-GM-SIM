@@ -26,6 +26,8 @@ export interface PlayerBoxScore {
     g: number;
     gs: number;
     pf: number;
+    techFouls: number;
+    flagrantFouls: number;
     plusMinus: number;
     condition: number;
     isStopper?: boolean;

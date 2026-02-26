@@ -31,6 +31,8 @@ export const applyBoxToRoster = (team: Team, box: PlayerBoxScore[]) => {
             player.stats.ftm         += (statLine.ftm      || 0);
             player.stats.fta         += (statLine.fta      || 0);
             player.stats.pf          += (statLine.pf       || 0);
+            player.stats.techFouls   += (statLine.techFouls || 0);
+            player.stats.flagrantFouls += (statLine.flagrantFouls || 0);
             player.stats.plusMinus   += (statLine.plusMinus|| 0);
 
             Object.keys(statLine).forEach(key => {

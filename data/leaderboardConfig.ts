@@ -80,6 +80,8 @@ export const ADVANCED_STAT_OPTIONS = [
     { value: 'ortg', label: 'ORTG' },
     { value: 'drtg', label: 'DRTG' },
     { value: 'nrtg', label: 'NRTG' },
+    { value: 'tf', label: 'TF' },
+    { value: 'ff', label: 'FF' },
 ];
 
 // Filter Options - Opponent
@@ -199,6 +201,8 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
     { key: 'blk%', label: 'BLK%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: '3par', label: '3PAr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
     { key: 'ftr', label: 'FTr', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'percent' },
+    { key: 'tf', label: 'TF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
+    { key: 'ff', label: 'FF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Advanced', format: 'number' },
 ];
 
 // Attributes Columns (Players Only)
