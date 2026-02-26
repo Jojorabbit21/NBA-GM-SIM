@@ -14,6 +14,7 @@ import FullScreenLoader from './components/FullScreenLoader';
 import MainLayout from './components/MainLayout';
 import AppRouter from './components/AppRouter';
 import { ResetDataModal } from './components/ResetDataModal';
+import { PatchManagerModal } from './components/PatchManagerModal';
 import { OnboardingView } from './views/OnboardingView';
 
 const App: React.FC = () => {
@@ -24,7 +25,9 @@ const App: React.FC = () => {
     const [unreadCount, setUnreadCount] = useState(0);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
+    const [isPatchModalOpen, setIsPatchModalOpen] = useState(false);
     const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
+    const handlePatchClick = useCallback(() => setIsPatchModalOpen(true), []);
 
     const advanceDate = useCallback((newDate: string, overrides: any) => {
         gameData.setCurrentSimDate(newDate);
@@ -111,6 +114,7 @@ const App: React.FC = () => {
                     userEmail: session?.user?.email,
                     onNavigate: setView,
                     onResetClick: handleResetClick,
+                    onPatchClick: handlePatchClick,
                     onLogout: handleLogout
                 }}
                 gameHeaderProps={{
@@ -135,6 +139,10 @@ const App: React.FC = () => {
                     isLoading={isResetting}
                     onClose={() => setIsResetModalOpen(false)}
                     onConfirm={handleResetConfirm}
+                />
+                <PatchManagerModal
+                    isOpen={isPatchModalOpen}
+                    onClose={() => setIsPatchModalOpen(false)}
                 />
             </MainLayout>
         </>

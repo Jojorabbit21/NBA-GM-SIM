@@ -20,6 +20,7 @@ interface MainLayoutProps {
         userEmail?: string;
         onNavigate: (view: AppView) => void;
         onResetClick: () => void;
+        onPatchClick: () => void;
         onLogout: () => void;
     };
     gameHeaderProps: {
