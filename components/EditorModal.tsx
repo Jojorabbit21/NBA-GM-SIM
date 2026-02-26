@@ -109,19 +109,25 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
         window.location.reload();
     };
 
-    const handleReset = () => {
-        clearEditorData();
-        window.location.reload();
-    };
-
     const existingData = loadEditorData();
     const hasSavedData = existingData !== null && Object.keys(existingData).length > 0;
+
+    const handleReset = () => {
+        if (hasSavedData) {
+            // localStorage에 저장된 데이터가 있으면 삭제 후 리로드
+            clearEditorData();
+            window.location.reload();
+        } else {
+            // 저장된 데이터 없이 드래프트만 변경된 경우 → 드래프트 초기화
+            setDraft(buildInitialDraft());
+        }
+    };
 
     const footer = (
         <div className="flex items-center justify-between">
             <button
                 onClick={handleReset}
-                disabled={!hasSavedData}
+                disabled={!hasSavedData && !hasChanges}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold text-red-400 hover:bg-red-400/10 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
                 <RotateCcw size={14} />
@@ -139,27 +145,22 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
     );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} size="xl" footer={footer}>
-            {/* Compact header */}
-            <div className="px-6 py-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
-                <span className="text-base font-bold text-white">에디터</span>
-            </div>
-
+        <Modal isOpen={isOpen} onClose={onClose} size="xl" title="에디터" footer={footer}>
             <div className="p-6 space-y-5">
                 {/* JSON 붙여넣기 영역 */}
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">JSON 일괄 적용</label>
-                    <div className="flex bg-slate-950 border border-slate-700 rounded-xl overflow-hidden focus-within:border-indigo-500 transition-colors">
+                    <div className="relative">
                         <textarea
                             value={jsonText}
                             onChange={(e) => setJsonText(e.target.value)}
                             placeholder='{ "atl": { "name": "Hawks", "logoUrl": "https://..." }, "bos": { "name": "Celtics" } }'
-                            className="flex-1 h-24 bg-transparent px-4 py-3 text-sm text-slate-200 placeholder-slate-600 font-mono resize-none focus:outline-none"
+                            className="w-full h-24 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 pr-20 text-sm text-slate-200 placeholder-slate-600 font-mono resize-none focus:outline-none focus:border-indigo-500 transition-colors"
                         />
                         <button
                             onClick={handleJsonApply}
                             disabled={!jsonText.trim()}
-                            className="flex items-center gap-1.5 px-4 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors shrink-0"
+                            className="absolute right-2.5 bottom-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
                         >
                             <Upload size={12} />
                             적용
@@ -186,30 +187,24 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
                     <div className="max-h-[400px] overflow-y-auto custom-scrollbar space-y-1 pr-1">
                         {TEAM_IDS.map(id => {
                             const d = draft[id];
-                            const nameChanged = d.name.trim() !== ORIGINAL_NAMES[id];
-                            const hasLogo = d.logoUrl.trim() !== '';
-                            const isModified = nameChanged || hasLogo;
-
                             return (
                                 <div
                                     key={id}
-                                    className={`grid grid-cols-[40px_3fr_7fr] gap-3 items-center px-2 py-2 rounded-xl transition-colors ${
-                                        isModified ? 'bg-indigo-500/10 border border-indigo-500/20' : 'hover:bg-slate-800/50'
-                                    }`}
+                                    className="grid grid-cols-[40px_3fr_7fr] gap-3 items-center px-2 py-2 rounded-xl hover:bg-slate-800/50 transition-colors"
                                 >
                                     <TeamLogo teamId={id} size="sm" />
                                     <input
                                         type="text"
                                         value={d.name}
                                         onChange={(e) => handleFieldChange(id, 'name', e.target.value)}
-                                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+                                        className="h-9 bg-slate-950 border border-slate-700 rounded-lg px-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
                                     />
                                     <input
                                         type="text"
                                         value={d.logoUrl}
                                         onChange={(e) => handleFieldChange(id, 'logoUrl', e.target.value)}
                                         placeholder="https://..."
-                                        className="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors font-mono text-xs"
+                                        className="h-9 bg-slate-950 border border-slate-700 rounded-lg px-3 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors font-mono"
                                     />
                                 </div>
                             );
