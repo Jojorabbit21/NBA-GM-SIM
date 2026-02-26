@@ -8,6 +8,8 @@ import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem';
 import { checkAndApplyRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit } from './rotationLogic';
 import { formatTime, calculatePossessionTime } from './timeEngine';
 import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
+import { calculateRecovery } from '../fatigueSystem';
+import { SIM_CONFIG } from '../../config/constants';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -76,8 +78,23 @@ export function resetMomentum(state: GameState, currentTotalSec: number): void {
     };
 }
 
+/** 양 팀 전 선수 체력 회복 (Stamina + Durability 반영) */
+function recoverAllPlayers(state: GameState, baseAmount: number): void {
+    for (const team of [state.home, state.away]) {
+        for (const p of [...team.onCourt, ...team.bench]) {
+            if (p.currentCondition < 100) {
+                const recovery = calculateRecovery(p, baseAmount);
+                p.currentCondition = Math.min(100, p.currentCondition + recovery);
+                if (p.isShutdown && p.currentCondition > 70) {
+                    p.isShutdown = false;
+                }
+            }
+        }
+    }
+}
+
 /**
- * 타임아웃 효과 적용 (모멘텀 리셋 + 핫/콜드 반감 + 타임아웃 차감 + 로그)
+ * 타임아웃 효과 적용 (모멘텀 리셋 + 핫/콜드 반감 + 타임아웃 차감 + 체력 회복 + 로그)
  * useLiveGame(유저 타임아웃)과 엔진 내부(AI 타임아웃) 모두에서 호출.
  */
 export function applyTimeout(state: GameState, teamId: string, isUserCall: boolean = false): void {
@@ -93,6 +110,9 @@ export function applyTimeout(state: GameState, teamId: string, isUserCall: boole
     // 핫/콜드 스트릭 반감 (양팀)
     dampenHotCold(state.home);
     dampenHotCold(state.away);
+
+    // 체력 회복 (타임아웃 휴식)
+    recoverAllPlayers(state, SIM_CONFIG.FATIGUE.TIMEOUT_RECOVERY);
 
     // 로그
     const text = isUserCall
@@ -248,12 +268,16 @@ export function stepPossession(state: GameState): StepResult {
         resetMomentum(state, transitionTotalSec);
 
         // Hot/Cold Streak: 하프타임 완전 리셋, 쿼터 전환 반감
+        // 체력 회복: 하프타임은 더 많이, 쿼터 휴식은 적당히
+        const C = SIM_CONFIG.FATIGUE;
         if (state.quarter === 3) {
             resetHotCold(state.home);
             resetHotCold(state.away);
+            recoverAllPlayers(state, C.HALFTIME_RECOVERY);
         } else {
             dampenHotCold(state.home);
             dampenHotCold(state.away);
+            recoverAllPlayers(state, C.QUARTER_BREAK_RECOVERY);
         }
 
         state.logs.push({

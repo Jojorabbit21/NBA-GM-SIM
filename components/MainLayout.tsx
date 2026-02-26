@@ -133,7 +133,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         {children}
                     </Suspense>
                 </div>
-                {!isFullHeightView && !isNoPaddingView && <Footer onNavigate={sidebarProps.onNavigate} />}
+                {!isFullHeightView && !isNoPaddingView && sidebarProps.currentView !== 'Help' && <Footer onNavigate={sidebarProps.onNavigate} />}
             </main>
         </div>
     );
