@@ -1,10 +1,5 @@
 
 // Shared team color theme logic (used by Sidebar + DashboardHeader)
-// Override groups: teams not listed use default (bg=primary, text=text, accent=secondary)
-const ACCENT_TEXT = new Set(['atl','bos','cha','chi','cle','dal','den','gsw','hou','lal','mia','nop','orl','phi','por','sac','uta','was']);
-const BG_SEC_ACCENT_TEXT = new Set(['det','tor']);
-const TEXT_SEC = new Set(['mem','nyk','okc']);
-const INVERTED = new Set(['lac','min','sas']); // bg↔secondary, text↔primary
 
 export interface TeamTheme {
     bg: string;
@@ -84,16 +79,52 @@ export function getButtonTheme(
     };
 }
 
+// 팀별 테마 색상 오버라이드 — 기본값: { bg: primary, text: text, accent: secondary }
+const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>> = {
+    // accent → text
+    'atl': { accent: 'text' },
+    'bos': { accent: 'text' },
+    'cha': { accent: 'text' },
+    'chi': { accent: 'text' },
+    'cle': { accent: 'text' },
+    'dal': { accent: 'text' },
+    'den': { accent: 'text' },
+    'gsw': { accent: 'text' },
+    'hou': { accent: 'text' },
+    'lal': { accent: 'text' },
+    'mia': { accent: 'text' },
+    'nop': { accent: 'text' },
+    'orl': { accent: 'text' },
+    'phi': { accent: 'text' },
+    'por': { accent: 'text' },
+    'sac': { accent: 'text' },
+    'uta': { accent: 'text' },
+    'was': { accent: 'text' },
+    // bg → secondary, accent → text
+    'det': { bg: 'secondary', accent: 'text' },
+    'tor': { bg: 'secondary', accent: 'text' },
+    // text → secondary
+    'mem': { text: 'secondary' },
+    'nyk': { text: 'secondary' },
+    'okc': { text: 'secondary' },
+    // inverted
+    'lac': { bg: 'secondary', text: 'primary', accent: 'primary' },
+    'min': { bg: 'secondary', text: 'primary', accent: 'primary' },
+    'sas': { bg: 'secondary', text: 'primary', accent: 'primary' },
+};
+
 export function getTeamTheme(
     teamId: string | null,
     colors: { primary: string; secondary: string; text: string } | null
 ): TeamTheme {
     const c = colors || DEFAULT_COLORS;
-    const base = { bg: c.primary, text: c.text, accent: c.secondary };
-    if (!teamId) return base;
-    if (ACCENT_TEXT.has(teamId)) return { ...base, accent: c.text };
-    if (BG_SEC_ACCENT_TEXT.has(teamId)) return { ...base, bg: c.secondary, accent: c.text };
-    if (TEXT_SEC.has(teamId)) return { ...base, text: c.secondary };
-    if (INVERTED.has(teamId)) return { bg: c.secondary, text: c.primary, accent: c.primary };
-    return base;
+    const defaults: TeamTheme = { bg: c.primary, text: c.text, accent: c.secondary };
+    const o = teamId ? THEME_OVERRIDES[teamId] : undefined;
+    if (!o) return defaults;
+    const r = (ref: ColorRef) => ref.startsWith('#') ? ref : c[ref as keyof typeof c];
+    return {
+        bg: o.bg ? r(o.bg) : defaults.bg,
+        text: o.text ? r(o.text) : defaults.text,
+        accent: o.accent ? r(o.accent) : defaults.accent,
+    };
 }

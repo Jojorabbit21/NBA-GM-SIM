@@ -53,12 +53,25 @@ export function calculatePossessionTime(
     // Random Variance (+/- 1.5s)
     timeTaken += (Math.random() * 3) - 1.5;
 
+    // 5. Clutch Time Management (리드 팀 시간 끌기)
+    // Q4 잔여 5분 이하, 10점차 이내에서 이기는 팀: 최소 18초 사용
+    if (state.quarter >= 4 && gameClock <= 300) {
+        const scoreDiff = state.home.score - state.away.score;
+        const offIsHome = state.possession === 'home';
+        const isLeading = (offIsHome && scoreDiff > 0) || (!offIsHome && scoreDiff < 0);
+        const absDiff = Math.abs(scoreDiff);
+
+        if (isLeading && absDiff <= 10) {
+            timeTaken = Math.max(timeTaken, 18);
+        }
+    }
+
     // Final Safety Checks
     if (timeTaken < 3) timeTaken = 3;
     if (timeTaken > gameClock) {
-        timeTaken = gameClock; 
+        timeTaken = gameClock;
     }
-    
+
     return Math.round(timeTaken);
 }
 

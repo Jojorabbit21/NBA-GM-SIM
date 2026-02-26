@@ -1,10 +1,11 @@
 
-import { GameState, PossessionResult, LivePlayer, TeamState } from './pbpTypes';
+import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes';
 import { resolvePlayAction } from './playTypes';
 import { calculateHitRate } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity } from './usageSystem';
 import { PlayType } from '../../../../types';
+import { SIM_CONFIG } from '../../config/constants';
 
 /**
  * Identify Defender using Sliders
@@ -174,7 +175,7 @@ function getMomentumBonus(state: GameState, offTeamId: string): number {
     return 0.035;                 // 16pt+  런: +3.5% (상한)
 }
 
-export function simulatePossession(state: GameState, options?: { minHitRate?: number }): PossessionResult {
+export function simulatePossession(state: GameState, options?: { minHitRate?: number; clutchContext?: ClutchContext }): PossessionResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
     const sliders = offTeam.tactics.sliders;
@@ -218,6 +219,28 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         weights['PnR_Handler'] *= (1 + gravityBoost);
         weights['PostUp'] *= (1 + gravityBoost * 0.5);
 
+        // Clutch Play Selection: 경기 상황에 따른 전술 보정
+        const cc = options?.clutchContext;
+        if (cc?.isClutch) {
+            const isOffTrailing = (state.possession === 'home' && cc.trailingTeamSide === 'home') ||
+                                  (state.possession === 'away' && cc.trailingTeamSide === 'away');
+            const isOffLeading = cc.trailingTeamSide !== null && !isOffTrailing;
+
+            if (isOffTrailing && cc.scoreDiff >= 3) {
+                // 뒤지는 팀: 3점 비중 대폭 증가, 포스트업 감소
+                weights['CatchShoot'] *= (1 + cc.desperation * 0.8);
+                weights['PnR_Pop'] *= (1 + cc.desperation * 0.5);
+                weights['PostUp'] *= (1 - cc.desperation * 0.4);
+                weights['Cut'] *= (1 - cc.desperation * 0.3);
+            } else if (isOffLeading) {
+                // 이기는 팀: Iso/PostUp 비중 증가 (시간 소비 목적)
+                weights['Iso'] *= (1 + cc.desperation * 0.5);
+                weights['PostUp'] *= (1 + cc.desperation * 0.4);
+                weights['CatchShoot'] *= (1 - cc.desperation * 0.3);
+                weights['Transition'] = 0; // 속공 자제
+            }
+        }
+
         // Add Transition chance based on Pace
         // Pace 10 -> High transition
         if (Math.random() < (sliders.pace * 0.03)) {
@@ -250,7 +273,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 3. Defensive Foul Check (Intensity Slider)
     // [Fix] Linear growth capped at 18%: intensity=5→15.5%, intensity>=7→18% cap
     const defIntensity = defTeam.tactics.sliders.defIntensity;
-    const baseFoulChance = Math.min(0.18, 0.08 + (defIntensity * 0.015));
+    let baseFoulChance = Math.min(0.18, 0.08 + (defIntensity * 0.015));
+
+    // Foul Trouble: 파울 트러블 수비자는 조심스럽게 수비 → 파울 확률 감소 + 수비력 약화
+    const ft = SIM_CONFIG.FOUL_TROUBLE;
+    const defFouls = defender.pf;
+    const foulProbMod = defFouls >= 5 ? ft.PROB_MOD[5] : defFouls >= 4 ? ft.PROB_MOD[4] : defFouls >= 3 ? ft.PROB_MOD[3] : 1.0;
+    baseFoulChance *= foulProbMod;
+    // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
+    const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 
     if (Math.random() < baseFoulChance) {
         // Shooting foul vs Team foul 구분
@@ -294,10 +325,12 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id),
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
-        options?.minHitRate
+        options?.minHitRate,
+        state.possession === 'home',
+        options?.clutchContext
     );
 
     const isScore = Math.random() < shotContext.rate;

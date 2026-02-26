@@ -41,7 +41,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             postPlay: p.postPlay,
             def: p.def, intDef: p.intDef, perDef: p.perDef, blk: p.blk, stl: p.steal,
             helpDefIq: p.helpDefIq, defConsist: p.defConsist, passPerc: p.passPerc, drFoul: p.drawFoul, foulTendency: 50,
-            reb: p.reb
+            reb: p.reb,
+            intangibles: p.intangibles ?? 70
         };
 
         const currentCondition = p.condition !== undefined ? p.condition : 100;
@@ -72,6 +73,14 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
             zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,
             zone_atb3_l_m: 0, zone_atb3_l_a: 0, zone_atb3_c_m: 0, zone_atb3_c_a: 0, zone_atb3_r_m: 0, zone_atb3_r_a: 0,
+            // [New] Hot/Cold Streak
+            hotColdRating: 0,
+            recentShots: [],
+            // [New] Temporary Bench Tracking
+            benchReason: null,
+            benchedAtMinute: undefined,
+            benchedAtQuarter: undefined,
+            scheduledReturnMinute: undefined,
             // [New] Ace Stopper Tracking
             matchupEffectSum: 0,
             matchupEffectCount: 0

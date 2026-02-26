@@ -16,8 +16,10 @@ export function calculateIncrementalFatigue(
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
 
-    // Mitigation based on player attributes
-    drain *= (1 - (player.attr.stamina * C.STAMINA_SAVE_FACTOR / 100));
+    // Mitigation based on player stamina attribute
+    // stamina 50 = 기준(변화 없음), 90 = 12% 감소, 30 = 6% 증가
+    const staminaMitigation = (player.attr.stamina - 50) / 100;
+    drain *= (1 - staminaMitigation * 0.30);
 
     if (isB2B) drain *= 1.5;
     if (isStopper) drain *= 1.3;

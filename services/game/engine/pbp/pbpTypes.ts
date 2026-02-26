@@ -19,7 +19,16 @@ export interface LivePlayer extends PlayerBoxScore {
     
     // [New] Fatigue Flags for Substitution System
     isShutdown?: boolean;
-    // needsDeepRecovery removed
+
+    // [New] Temporary Bench Tracking (파울 트러블 / 탈진 임시 벤치)
+    benchReason?: 'foul_trouble' | 'shutdown' | null;
+    benchedAtMinute?: number;        // 벤치된 시점의 게임 분(0-47)
+    benchedAtQuarter?: number;       // 벤치된 시점의 쿼터(1-4)
+    scheduledReturnMinute?: number;  // 자동 복귀 예정 분 (undefined = 조건 복귀)
+
+    // [New] Hot/Cold Streak (슈팅 분산)
+    hotColdRating: number;    // -1.0(아이스) ~ +1.0(온 파이어), 초기값 0
+    recentShots: boolean[];   // 최근 5개 슛 결과 순환 버퍼
 
     // Dynamic Role Ratings (0-100+) - Recalculated on substitutions
     archetypes: ArchetypeRatings;
@@ -49,6 +58,9 @@ export interface LivePlayer extends PlayerBoxScore {
 
         // Rebound
         reb: number;
+
+        // Intangibles (클러치, 강심장, 해결사 능력)
+        intangibles: number;
     }
     
     // [New] Runtime Zone Tracking (Flat structure for easy increment)
@@ -120,6 +132,26 @@ export interface MomentumState {
     } | null;
 }
 
+// [New] Clutch Context for late-game situations
+export interface ClutchContext {
+    isClutch: boolean;        // Q4 && gameClock <= 300 && scoreDiff <= 10
+    isSuperClutch: boolean;   // Q4 && gameClock <= 120 && scoreDiff <= 5
+    trailingTeamSide: 'home' | 'away' | null;
+    scoreDiff: number;        // 절대값 점수차
+    desperation: number;      // 0.0~1.0 (시간↓ × 점수차↑ = 절박도)
+}
+
+// [New] Rotation Override for temporary bench (foul trouble / shutdown)
+export interface RotationOverride {
+    outPlayerId: string;          // 임시 벤치된 선수
+    fillerPlayerId: string;       // 대체 투입된 선수
+    reason: 'foul_trouble' | 'shutdown';
+    fromMinute: number;           // 오버라이드 시작 분
+    toMinute: number;             // 원래 선수 복귀 예정 분 (48 = 조건 복귀)
+    originalSlots: boolean[];     // outPlayer의 원본 맵 스냅샷(48 boolean)
+    active: boolean;              // 해결되면 false
+}
+
 export interface GameState {
     home: TeamState;
     away: TeamState;
@@ -148,6 +180,14 @@ export interface GameState {
 
     // [New] Momentum/Run System (Live Game Mode)
     momentum: MomentumState;
+
+    // Live mode: 유저 팀 ID (유저 팀은 자동 타임아웃 스킵)
+    // null/undefined = 배치 모드 (양팀 모두 AI 타임아웃)
+    userTeamId?: string | null;
+
+    // [New] Rotation Override System (임시 벤치 + 자동 복귀)
+    originalRotationMap: Record<string, boolean[]>; // 경기 시작 시 deep copy, 엔진 수정 불가
+    activeOverrides: RotationOverride[];            // 임시 교체 추적 스택
 }
 
 export interface PossessionResult {

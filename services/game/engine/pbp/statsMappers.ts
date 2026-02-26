@@ -10,6 +10,56 @@ import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 
 /**
+ * Hot/Cold Streak 업데이트
+ * 슛 결과 후 호출하여 선수의 핫/콜드 레이팅 갱신
+ */
+function updateHotCold(player: LivePlayer, isMake: boolean): void {
+    player.recentShots.push(isMake);
+    if (player.recentShots.length > 5) player.recentShots.shift();
+
+    const total = player.recentShots.length;
+    if (total < 2) { player.hotColdRating = 0; return; }
+
+    const makes = player.recentShots.filter(Boolean).length;
+    const recentPct = makes / total;
+
+    // 3연속 성공/실패 시 스트릭 보너스
+    let streakBonus = 0;
+    if (total >= 3) {
+        const last3 = player.recentShots.slice(-3);
+        if (last3.every(Boolean)) streakBonus = 0.15;
+        else if (last3.every(s => !s)) streakBonus = -0.15;
+    }
+
+    player.hotColdRating = Math.max(-1, Math.min(1,
+        (recentPct - 0.5) * 1.5 + streakBonus
+    ));
+}
+
+/**
+ * 쿼터 전환 / 타임아웃 시 핫/콜드 반감
+ */
+export function dampenHotCold(team: { onCourt: LivePlayer[], bench: LivePlayer[] }): void {
+    [...team.onCourt, ...team.bench].forEach(p => {
+        p.hotColdRating *= 0.5;
+        // 앞 2개 제거 (최근 기록만 남김)
+        if (p.recentShots.length > 2) {
+            p.recentShots = p.recentShots.slice(-3);
+        }
+    });
+}
+
+/**
+ * 하프타임 시 핫/콜드 완전 리셋
+ */
+export function resetHotCold(team: { onCourt: LivePlayer[], bench: LivePlayer[] }): void {
+    [...team.onCourt, ...team.bench].forEach(p => {
+        p.hotColdRating = 0;
+        p.recentShots = [];
+    });
+}
+
+/**
  * Helper to add a log entry to the GameState
  */
 function addLog(state: GameState, teamId: string, text: string, type: PbpLog['type'], points?: number) {
@@ -81,7 +131,8 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             actor.p3a += 1;
         }
         if (zone) updateZoneStats(actor, zone, true);
-        
+        updateHotCold(actor, true);
+
         // Update Assist (Play-type-based probability — not all secondary actors earn credit)
         if (assister) {
             const assistOdds: Record<string, number> = {
@@ -143,6 +194,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         actor.fga += 1;
         if (zone === '3PT') actor.p3a += 1;
         if (zone) updateZoneStats(actor, zone, false);
+        updateHotCold(actor, false);
 
         // Generate Commentary
         let logText = generateCommentary('miss', actor, defender, assister, playType, zone, {

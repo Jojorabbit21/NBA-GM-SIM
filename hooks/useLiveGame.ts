@@ -6,7 +6,7 @@ import {
     createGameState,
     stepPossession,
     extractSimResult,
-    resetMomentum,
+    applyTimeout,
     applyManualSubstitution,
 } from '../services/game/engine/pbp/liveEngine';
 
@@ -138,37 +138,16 @@ export function useLiveGame(
                 return;
             }
 
-            syncDisplay();
-
-            // ── AI 타임아웃: 유저가 8pt+ 런 중이면 AI가 타임아웃 선언 ──
-            const m2 = state.momentum;
-            if (
-                m2.activeRun &&
-                m2.activeRun.teamId === userTeamId &&
-                pauseReasonRef.current === null
-            ) {
-                const userEpochPts = userTeamId === state.home.id ? m2.homeEpochPts : m2.awayEpochPts;
-                const aiEpochPts   = userTeamId === state.home.id ? m2.awayEpochPts : m2.homeEpochPts;
-                if (userEpochPts - aiEpochPts >= 8) {
-                    const aiTeam = state.home.id === userTeamId ? state.away : state.home;
-                    if (aiTeam.timeouts > 0) {
-                        clearInterval(intervalRef.current!);
-                        intervalRef.current = null;
-                        aiTeam.timeouts -= 1;
-                        const ts = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-                        resetMomentum(state, ts);
-                        state.logs.push({
-                            quarter: state.quarter,
-                            timeRemaining: _formatTime(state.gameClock),
-                            teamId: aiTeam.id,
-                            text: `타임아웃 (잔여: ${aiTeam.timeouts}회)`,
-                            type: 'info',
-                        });
-                        pauseReasonRef.current = 'timeout';
-                        syncDisplay();
-                    }
-                }
+            // AI 타임아웃 (엔진에서 효과 적용 완료, UI는 일시정지만)
+            if (step.isTimeout) {
+                clearInterval(intervalRef.current!);
+                intervalRef.current = null;
+                pauseReasonRef.current = 'timeout';
+                syncDisplay();
+                return;
             }
+
+            syncDisplay();
         }, BASE_INTERVAL_MS / speedRef.current);
     }, [syncDisplay]);
 
@@ -194,19 +173,8 @@ export function useLiveGame(
         clearInterval(intervalRef.current!);
         intervalRef.current = null;
 
-        userTeam.timeouts -= 1;
-
-        // 모멘텀 초기화 (타임아웃의 핵심 전략 가치)
-        const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
-        resetMomentum(state, currentTotalSec);
-
-        state.logs.push({
-            quarter: state.quarter,
-            timeRemaining: _formatTime(state.gameClock),
-            teamId: userTeam.id,
-            text: `⏸ 타임아웃 선언 (잔여: ${userTeam.timeouts}회)`,
-            type: 'info',
-        });
+        // 엔진이 모든 효과 처리 (타임아웃 차감, 모멘텀 리셋, 핫/콜드 반감, 로그)
+        applyTimeout(state, userTeam.id, true);
 
         pauseReasonRef.current = 'timeout';
         syncDisplay();
@@ -327,8 +295,3 @@ function _buildDisplay(
     };
 }
 
-function _formatTime(seconds: number): string {
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${m}:${String(s).padStart(2, '0')}`;
-}

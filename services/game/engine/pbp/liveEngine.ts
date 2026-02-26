@@ -1,13 +1,13 @@
 
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, RosterUpdate } from '../../../../types';
-import { GameState, TeamState, LivePlayer, MomentumState } from './pbpTypes';
+import { GameState, TeamState, LivePlayer, ClutchContext } from './pbpTypes';
 import { initTeamState } from './initializer';
 import { updateOnCourtStates } from './stateUpdater';
 import { simulatePossession } from './possessionHandler';
-import { checkSubstitutions } from './substitutionSystem';
-import { checkAndApplyRotation, forceSubstitution, transferSchedule } from './rotationLogic';
+import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem';
+import { checkAndApplyRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit } from './rotationLogic';
 import { formatTime, calculatePossessionTime } from './timeEngine';
-import { applyPossessionResult } from './statsMappers';
+import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -17,6 +17,8 @@ export interface StepResult {
     result: ReturnType<typeof simulatePossession> | null; // null for quarter transitions / game end
     isQuarterEnd: boolean;  // gameClock가 0에 도달한 직후 (훅이 쿼터 휴식 위해 pause)
     isGameEnd: boolean;     // quarter > 4
+    isTimeout: boolean;     // AI 타임아웃 발동 (UI는 일시정지)
+    timeoutTeamId?: string; // 타임아웃 선언 팀 ID
     newLogs: PbpLog[];      // 이번 step에서 생성된 로그들
 }
 
@@ -74,6 +76,63 @@ export function resetMomentum(state: GameState, currentTotalSec: number): void {
     };
 }
 
+/**
+ * 타임아웃 효과 적용 (모멘텀 리셋 + 핫/콜드 반감 + 타임아웃 차감 + 로그)
+ * useLiveGame(유저 타임아웃)과 엔진 내부(AI 타임아웃) 모두에서 호출.
+ */
+export function applyTimeout(state: GameState, teamId: string, isUserCall: boolean = false): void {
+    const team = state.home.id === teamId ? state.home : state.away;
+    if (team.timeouts <= 0) return;
+
+    team.timeouts -= 1;
+
+    // 모멘텀 초기화
+    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    resetMomentum(state, currentTotalSec);
+
+    // 핫/콜드 스트릭 반감 (양팀)
+    dampenHotCold(state.home);
+    dampenHotCold(state.away);
+
+    // 로그
+    const text = isUserCall
+        ? `⏸ 타임아웃 선언 (잔여: ${team.timeouts}회)`
+        : `타임아웃 (잔여: ${team.timeouts}회)`;
+    state.logs.push({
+        quarter: state.quarter,
+        timeRemaining: formatTime(state.gameClock),
+        teamId: team.id,
+        text,
+        type: 'info',
+    });
+}
+
+/**
+ * AI 타임아웃 판단: 상대 8pt+ 런 시 타임아웃 선언.
+ * userTeamId가 설정된 경우, 유저 팀은 자동 타임아웃 스킵 (유저가 직접 결정).
+ */
+function checkAITimeout(state: GameState): string | null {
+    const m = state.momentum;
+    if (!m.activeRun) return null;
+
+    const runTeamId = m.activeRun.teamId;
+    const victimTeam = runTeamId === state.home.id ? state.away : state.home;
+
+    // 라이브 모드: 유저 팀은 자동 타임아웃 스킵
+    if (state.userTeamId && victimTeam.id === state.userTeamId) return null;
+
+    if (victimTeam.timeouts <= 0) return null;
+
+    const runEpochPts = runTeamId === state.home.id ? m.homeEpochPts : m.awayEpochPts;
+    const victimEpochPts = victimTeam.id === state.home.id ? m.homeEpochPts : m.awayEpochPts;
+
+    if (runEpochPts - victimEpochPts >= 8) {
+        return victimTeam.id;
+    }
+
+    return null;
+}
+
 // ─────────────────────────────────────────────────────────────
 // ① GameState 초기화
 // ─────────────────────────────────────────────────────────────
@@ -111,7 +170,19 @@ export function createGameState(
             epochStartTotalSec: 0,
             activeRun: null,
         },
+        userTeamId,
+        originalRotationMap: {},
+        activeOverrides: [],
     };
+
+    // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
+    [state.home, state.away].forEach(team => {
+        if (team.tactics.rotationMap) {
+            Object.entries(team.tactics.rotationMap).forEach(([pid, schedule]) => {
+                state.originalRotationMap[pid] = [...schedule];
+            });
+        }
+    });
 
     // 선발 선수 rotation history 초기화
     [state.home, state.away].forEach(team => {
@@ -133,6 +204,22 @@ export function createGameState(
     });
 
     return state;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 교체 실행 라우터 (임시/영구 분기)
+// ─────────────────────────────────────────────────────────────
+
+function executeSubstitution(
+    state: GameState, team: TeamState, req: SubRequestV2, currentMinute: number
+): void {
+    if (req.exitType === 'temporary' && (req.benchReason === 'foul_trouble' || req.benchReason === 'shutdown')) {
+        benchWithOverride(state, team, req.outPlayer, req.benchReason, currentMinute, req.returnMinute ?? null);
+    } else {
+        // 영구 퇴장 전 filler 체인 체크
+        handleFillerExit(state, team, req.outPlayer, currentMinute);
+        forceSubstitution(state, team, req.outPlayer, req.reason);
+    }
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -160,6 +247,15 @@ export function stepPossession(state: GameState): StepResult {
         const transitionTotalSec = (state.quarter - 1) * 720;
         resetMomentum(state, transitionTotalSec);
 
+        // Hot/Cold Streak: 하프타임 완전 리셋, 쿼터 전환 반감
+        if (state.quarter === 3) {
+            resetHotCold(state.home);
+            resetHotCold(state.away);
+        } else {
+            dampenHotCold(state.home);
+            dampenHotCold(state.away);
+        }
+
         state.logs.push({
             quarter: state.quarter,
             timeRemaining: '12:00',
@@ -174,7 +270,26 @@ export function stepPossession(state: GameState): StepResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const logsBefore = state.logs.length;
 
-    const result = simulatePossession(state);
+    // 클러치 컨텍스트 계산
+    const scoreDiff = Math.abs(state.home.score - state.away.score);
+    const isQ4Plus = state.quarter >= 4;
+    const isClutch = isQ4Plus && state.gameClock <= 300 && scoreDiff <= 10;
+    const isSuperClutch = isQ4Plus && state.gameClock <= 120 && scoreDiff <= 5;
+
+    let clutchContext: ClutchContext | undefined;
+    if (isClutch) {
+        const trailingTeamSide = state.home.score < state.away.score ? 'home'
+            : state.home.score > state.away.score ? 'away'
+            : null;
+        // 절박도: 시간이 적을수록, 점수차가 클수록 높음 (0~1)
+        const timeUrgency = 1 - (state.gameClock / 300); // 300초→0, 0초→1
+        const scorePressure = Math.min(1, scoreDiff / 10); // 0점차→0, 10점차→1
+        const desperation = Math.min(1, timeUrgency * 0.6 + scorePressure * 0.4);
+
+        clutchContext = { isClutch, isSuperClutch, trailingTeamSide, scoreDiff, desperation };
+    }
+
+    const result = simulatePossession(state, { clutchContext });
     const timeTaken = calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
 
     // 득점 추적 (momentum 업데이트용 — FT 포함)
@@ -193,14 +308,23 @@ export function stepPossession(state: GameState): StepResult {
     updateOnCourtStates(state, timeTaken);
 
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
+    // ★ 1. 임시 벤치 선수 복귀 체크 (맵 복원 → 이후 rotation 체크에 반영)
+    checkTemporaryReturns(state, state.home, currentMinute);
+    checkTemporaryReturns(state, state.away, currentMinute);
+
+    // 2. 정기 로테이션 (맵 기반 교체)
     checkAndApplyRotation(state, state.home, currentTotalSec);
     checkAndApplyRotation(state, state.away, currentTotalSec);
 
-    const hSubs = checkSubstitutions(state, state.home);
-    const aSubs = checkSubstitutions(state, state.away);
-    hSubs.forEach(req => forceSubstitution(state, state.home, req.outPlayer, req.reason));
-    aSubs.forEach(req => forceSubstitution(state, state.away, req.outPlayer, req.reason));
+    // 3. 긴급 교체 체크 (V2: 파울트러블 매트릭스 포함)
+    const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
+    const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
+
+    // 4. 교체 실행 (임시/영구 분기)
+    hSubs.forEach(req => executeSubstitution(state, state.home, req, currentMinute));
+    aSubs.forEach(req => executeSubstitution(state, state.away, req, currentMinute));
 
     // 포세션 전환
     let isOffReb = false;
@@ -231,13 +355,25 @@ export function stepPossession(state: GameState): StepResult {
                 result: gameEndResult.result,
                 isQuarterEnd: false,
                 isGameEnd: true,
+                isTimeout: false,
                 newLogs: [...newLogs, ...gameEndResult.newLogs],
             };
         }
-        return { result, isQuarterEnd: true, isGameEnd: false, newLogs };
+        return { result, isQuarterEnd: true, isGameEnd: false, isTimeout: false, newLogs };
     }
 
-    return { result, isQuarterEnd: false, isGameEnd: false, newLogs };
+    // AI 타임아웃 체크 (포세션 완료 후, 쿼터 중간에만)
+    const aiTimeoutTeamId = checkAITimeout(state);
+    if (aiTimeoutTeamId) {
+        applyTimeout(state, aiTimeoutTeamId);
+        // 타임아웃 로그 포함하여 전체 newLogs 재수집
+        const allNewLogs = state.logs.slice(logsBefore);
+        const sh = state.home.score, sa = state.away.score;
+        allNewLogs.forEach(log => { if (!log.homeScore) { log.homeScore = sh; log.awayScore = sa; } });
+        return { result, isQuarterEnd: false, isGameEnd: false, isTimeout: true, timeoutTeamId: aiTimeoutTeamId, newLogs: allNewLogs };
+    }
+
+    return { result, isQuarterEnd: false, isGameEnd: false, isTimeout: false, newLogs };
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -281,7 +417,7 @@ function _handleGameEnd(state: GameState): StepResult {
     const newLogs = state.logs.slice(logsBefore);
     { const sh = state.home.score, sa = state.away.score;
       newLogs.forEach(log => { log.homeScore = sh; log.awayScore = sa; }); }
-    return { result: null, isQuarterEnd: false, isGameEnd: true, newLogs };
+    return { result: null, isQuarterEnd: false, isGameEnd: true, isTimeout: false, newLogs };
 }
 
 // ─────────────────────────────────────────────────────────────
