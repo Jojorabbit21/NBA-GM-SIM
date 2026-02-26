@@ -414,46 +414,44 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
         // Only calc block if we have a defender context
         if (defender && preferredZone) {
-            // A. Determine Base Probability by Zone
-            // [Fix] Halved base rates: old Rim 10% → 5%, Paint 5% → 3%, Mid 3.5% → 1.5%, 3PT 1% → 0.5%
-            let blockProb = 0;
-            if (preferredZone === 'Rim') blockProb = 0.05;        // 5%
-            else if (preferredZone === 'Paint') blockProb = 0.03; // 3%
-            else if (preferredZone === 'Mid') blockProb = 0.015;  // 1.5%
-            else if (preferredZone === '3PT') blockProb = 0.005;  // 0.5%
+            const blkCfg = SIM_CONFIG.BLOCK;
 
-            // B. Defender Attribute Modifiers
+            // A. Determine Base Probability by Zone (원래 값 복원)
+            let blockProb = 0;
+            if (preferredZone === 'Rim') blockProb = blkCfg.BASE_RIM;
+            else if (preferredZone === 'Paint') blockProb = blkCfg.BASE_PAINT;
+            else if (preferredZone === 'Mid') blockProb = blkCfg.BASE_MID;
+            else if (preferredZone === '3PT') blockProb = blkCfg.BASE_3PT;
+
+            // B. Defender Attribute Modifiers (3× 이전 계수)
             const defBlk = defender.attr.blk;
             const defVert = defender.attr.vertical;
             const defHeight = defender.attr.height;
             const defIQ = defender.attr.helpDefIq;
 
-            // Height bonus: +0.5% per 10cm over 200cm
-            const heightBonus = Math.max(0, (defHeight - 200) * 0.0005);
-            // Stat bonus: Reduced by half
-            const statBonus = ((defBlk - 70) * 0.0005) + ((defVert - 70) * 0.00025);
+            const heightBonus = Math.max(0, (defHeight - 200) * blkCfg.HEIGHT_FACTOR);
+            const statBonus = ((defBlk - 70) * blkCfg.BLK_STAT_FACTOR) + ((defVert - 70) * blkCfg.VERT_STAT_FACTOR);
 
             blockProb += (heightBonus + statBonus);
 
             // C. ELITE THRESHOLD BONUSES (Blocker Archetypes)
-            // [Fix] Reduced archetype bonuses: max combined rate ~12-15% for elite blockers
             let archetypeBonus = 0;
 
-            // Type 1: "The Wall" (Elite Rating) — was 12%, now 4.5%
+            // Type 1: "The Wall" (Elite Rating)
             if (defBlk >= 97) {
-                archetypeBonus = 0.045;
+                archetypeBonus = blkCfg.ARCHETYPE_WALL;
             }
-            // Type 2: "The Alien" (Length Freak) — was 10%, now 3%
+            // Type 2: "The Alien" (Length Freak)
             else if (defHeight >= 216 && defBlk >= 80) {
-                archetypeBonus = 0.03;
+                archetypeBonus = blkCfg.ARCHETYPE_ALIEN;
             }
-            // Type 3: "Skywalker" (Athletic Beast) — was 8%, now 2.5%
+            // Type 3: "Skywalker" (Athletic Beast)
             else if (defVert >= 95 && defBlk >= 75) {
-                archetypeBonus = 0.025;
+                archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
             }
-            // Type 4: "Defensive Anchor" (High IQ Positioning) — was 6%, now 1.5%
+            // Type 4: "Defensive Anchor" (High IQ Positioning)
             else if (defIQ >= 92 && defBlk >= 80) {
-                archetypeBonus = 0.015;
+                archetypeBonus = blkCfg.ARCHETYPE_ANCHOR;
             }
 
             blockProb += archetypeBonus;
@@ -467,24 +465,23 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             if (Math.random() < Math.max(0, blockProb)) {
                 isBlock = true;
             }
-            // F. Help Defense Block (Only inside)
-            // [Fix] Reduced help block cap: was up to 9%, now max 5%
-            else if ((preferredZone === 'Rim' || preferredZone === 'Paint') && !isBlock) {
-                 // Find best blocker on team who isn't the primary defender
+            // F. Help Defense Block (Inside + Mid-range)
+            else if ((preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid') && !isBlock) {
                  const potentialHelpers = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
                  potentialHelpers.sort((a, b) => b.attr.blk - a.attr.blk);
                  const helper = potentialHelpers[0];
 
                  if (helper) {
-                     // Helper base chance is lower because they have to rotate
-                     let helpChance = 0.01;
-                     // Helper attributes
-                     if (helper.attr.blk >= 90) helpChance += 0.02;
-                     if (helper.archetypes.rimProtector > 80) helpChance += 0.02;
+                     let helpChance = blkCfg.HELP_BASE;
+                     if (helper.attr.blk >= blkCfg.HELP_BLK_THRESHOLD) helpChance += blkCfg.HELP_BLK_BONUS;
+                     if (helper.archetypes.rimProtector > blkCfg.HELP_RIM_THRESHOLD) helpChance += blkCfg.HELP_RIM_BONUS;
+
+                     // Mid-range: 체이스다운 블락은 림보다 희귀
+                     if (preferredZone === 'Mid') helpChance *= blkCfg.HELP_MID_FACTOR;
 
                      if (Math.random() < helpChance) {
                          isBlock = true;
-                         finalDefender = helper; // Switch credit to helper
+                         finalDefender = helper;
                      }
                  }
             }
