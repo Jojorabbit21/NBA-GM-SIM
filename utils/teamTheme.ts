@@ -29,20 +29,34 @@ function isLightColor(hex: string): boolean {
     return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
 }
 
-// 팀별 버튼 색상 오버라이드 — 'primary'|'secondary'|'text' 키로 teamData 색상 참조
-type ColorKey = 'primary' | 'secondary' | 'text';
-const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorKey>>> = {
+// 팀별 버튼 색상 오버라이드 — 키('primary'|'secondary'|'text') 또는 '#hex' 직접 지정
+type ColorRef = 'primary' | 'secondary' | 'text' | `#${string}`;
+const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>> = {
     // secondary가 black/near-black → text(흰) 배경 + primary 글로우
-    'chi': { bg: 'text', text: 'primary', glow: 'primary' },
-    'hou': { bg: 'text', text: 'primary', glow: 'primary' },
+    'atl': { bg: 'text', text: 'primary', glow: 'text' },
+    'bos': { bg: 'text', text: 'primary', glow: 'text' },
+    'cha': { bg: 'text', text: 'primary', glow: 'text' },
+    'chi': { bg: 'text', text: 'primary', glow: 'text' },
+    'cle': { bg: 'secondary', text: '#000000', glow: 'secondary' },
+    'hou': { bg: 'text', text: 'primary', glow: 'text' },
     'por': { bg: 'text', text: 'primary', glow: 'primary' },
     // BG_SEC_ACCENT_TEXT: header bg=secondary → primary 버튼
     'det': { bg: 'primary', text: 'text', glow: 'primary' },
-    'tor': { bg: 'primary', text: 'text', glow: 'primary' },
+    'ind': { bg: 'secondary', text: 'text', glow: 'secondary' },
+    'mia': { bg: '#41B6E6', text: '#DB3EB1', glow: '#41B6E6' },
+    'mil': { bg: '#0057B7', text: 'text', glow: '#0057B7'},
+    'nyk': { bg: 'secondary', text: 'text', glow: 'secondary'},
+    'orl': { bg: '#FFFFFF', text: 'primary', glow: '#FFFFFF'},
+    'phi': { glow: 'secondary'},
+    'tor': { bg: '#753BBD', text: 'text', glow: '#753BBD' },
+    'dal': { bg: 'text', text: 'primary', glow: 'primary'},
+    'den': { bg: 'text', text: '#FFFFFF', glow: 'text'},
+    'gsw': { bg: '#FFFFFF', text: 'primary', glow: 'primary'},
     // INVERTED: header bg=secondary → primary 대비
-    'lac': { bg: 'primary', text: 'text', glow: 'primary' },
-    'min': { bg: 'text', text: 'primary', glow: 'secondary' },
+    'lac': { bg: 'primary', text: '#FFFFFF', glow: 'primary' },
+    'min': { bg: '#78BE21', text: 'text', glow: '#78BE21' },
     'sas': { bg: 'primary', text: 'text', glow: 'secondary' },
+    'sac': { bg: 'text', text: 'primary', glow: 'primary' },
     // secondary 너무 어두워 글로우 안 보임
     'mem': { bg: 'text', text: 'secondary', glow: 'primary' },
     // secondary가 white → 글로우를 text로
@@ -62,10 +76,11 @@ export function getButtonTheme(
     };
     const o = teamId ? BTN_OVERRIDES[teamId] : undefined;
     if (!o) return defaults;
+    const r = (ref: ColorRef) => ref.startsWith('#') ? ref : c[ref as keyof typeof c];
     return {
-        bg: o.bg ? c[o.bg] : defaults.bg,
-        text: o.text ? c[o.text] : defaults.text,
-        glow: o.glow ? c[o.glow] : defaults.glow,
+        bg: o.bg ? r(o.bg) : defaults.bg,
+        text: o.text ? r(o.text) : defaults.text,
+        glow: o.glow ? r(o.glow) : defaults.glow,
     };
 }
 

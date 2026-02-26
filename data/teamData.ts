@@ -77,7 +77,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'lac': {
         id: 'lac', city: 'LA', name: '클리퍼스', conference: 'West', division: 'Pacific',
         owner: '스티브 발머',
-        colors: { primary: '#C8102E', secondary: '#1D428A', text: '#FFFFFF' }
+        colors: { primary: '#C8102E', secondary: '#0C2340', text: '#FFFFFF' }
     },
     'lal': {
         id: 'lal', city: 'LA', name: '레이커스', conference: 'West', division: 'Pacific',
@@ -152,7 +152,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'tor': {
         id: 'tor', city: '토론토', name: '랩터스', conference: 'East', division: 'Atlantic',
         owner: '래리 타넨바움',
-        colors: { primary: '#CE1141', secondary: '#000000', text: '#FFFFFF' }
+        colors: { primary: '#BA0C2F', secondary: '#000000', text: '#FFFFFF' }
     },
     'uta': {
         id: 'uta', city: '유타', name: '재즈', conference: 'West', division: 'Northwest',
