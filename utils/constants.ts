@@ -3,7 +3,7 @@ import { Game, Player, Team } from '../types';
 import { calculateOvr } from './ovrUtils';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
-import { patchedLogoUrls } from './patchManager';
+import { editorLogoUrls } from './editorManager';
 
 export const SEASON_START_DATE = '2025-10-20';
 export const TRADE_DEADLINE = '2026-02-06';
@@ -101,8 +101,8 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
 
 export const getTeamLogoUrl = (teamId: string): string => {
     const id = resolveTeamId(teamId);
-    const patched = patchedLogoUrls.get(id);
-    if (patched) return patched;
+    const editorUrl = editorLogoUrls.get(id);
+    if (editorUrl) return editorUrl;
     return `/logos/${id}.svg`;
 };
 
