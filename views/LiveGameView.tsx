@@ -109,7 +109,13 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
                 ${isDropTarget ? 'bg-indigo-800/40 ring-1 ring-inset ring-indigo-500/60' : ''}`}
             style={{ gridTemplateColumns: PLAYER_GRID }}
         >
-            <span className="text-xs font-semibold text-slate-200 truncate">{player.hotColdRating >= 0.5 ? '🔥 ' : player.hotColdRating <= -0.5 ? '❄️ ' : ''}{player.playerName}</span>
+            <span className="text-xs font-semibold text-slate-200 truncate">{(() => {
+                const s = player.recentShots;
+                const len = s?.length ?? 0;
+                if (len >= 3 && s.slice(-3).every(Boolean)) return '🔥 ';
+                if (len >= 4 && s.slice(-4).every(v => !v)) return '❄️ ';
+                return '';
+            })()}{player.playerName}</span>
             <span className="text-xs text-slate-500 text-center font-mono">{player.position}</span>
             <span className={`text-xs font-mono font-bold text-right ${staminaColor}`}>{stamina}%</span>
             <span className="text-xs font-mono text-slate-400 text-right">{mp}</span>
