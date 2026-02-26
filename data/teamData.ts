@@ -37,17 +37,17 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'chi': {
         id: 'chi', city: '시카고', name: '불스', conference: 'East', division: 'Central',
         owner: '마이클 라인스도프',
-        colors: { primary: '#CE1141', secondary: '#000000', text: '#FFFFFF' }
+        colors: { primary: '#BA0C2F', secondary: '#000000', text: '#FFFFFF' }
     },
     'cle': {
         id: 'cle', city: '클리블랜드', name: '캐벌리어스', conference: 'East', division: 'Central',
         owner: '댄 길버트',
-        colors: { primary: '#860038', secondary: '#FDBB30', text: '#FFFFFF' }
+        colors: { primary: '#6F263D', secondary: '#B9975B', text: '#FFFFFF' }
     },
     'dal': {
         id: 'dal', city: '댈러스', name: '매버릭스', conference: 'West', division: 'Southwest',
         owner: '미리암 아델슨',
-        colors: { primary: '#00538C', secondary: '#B8C4CA', text: '#FFFFFF' }
+        colors: { primary: '#0050B5', secondary: '#9EA2A2', text: '#FFFFFF' }
     },
     'den': {
         id: 'den', city: '덴버', name: '너게츠', conference: 'West', division: 'Northwest',
@@ -72,7 +72,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'ind': {
         id: 'ind', city: '인디애나', name: '페이서스', conference: 'East', division: 'Central',
         owner: '허브 사이먼',
-        colors: { primary: '#002D62', secondary: '#FDBB30', text: '#FFFFFF' }
+        colors: { primary: '#0C2340', secondary: '#FFCD00', text: '#FFFFFF' }
     },
     'lac': {
         id: 'lac', city: 'LA', name: '클리퍼스', conference: 'West', division: 'Pacific',
@@ -107,7 +107,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'nop': {
         id: 'nop', city: '뉴올리언스', name: '펠리컨스', conference: 'West', division: 'Southwest',
         owner: '게일 벤슨',
-        colors: { primary: '#0C2340', secondary: '#C8102E', text: '#FFFFFF' }
+        colors: { primary: '#0C2340', secondary: '#B9975B', text: '#FFFFFF' }
     },
     'nyk': {
         id: 'nyk', city: '뉴욕', name: '닉스', conference: 'East', division: 'Atlantic',
@@ -117,17 +117,17 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'okc': {
         id: 'okc', city: '오클라호마시티', name: '썬더', conference: 'West', division: 'Northwest',
         owner: '클레이 베넷',
-        colors: { primary: '#007AC1', secondary: '#EF3B24', text: '#FFFFFF' }
+        colors: { primary: '#0072CE', secondary: '#F9423A', text: '#FFFFFF' }
     },
     'orl': {
         id: 'orl', city: '올랜도', name: '매직', conference: 'East', division: 'Southeast',
         owner: '댄 디보스',
-        colors: { primary: '#0077C0', secondary: '#C4CED4', text: '#FFFFFF' }
+        colors: { primary: '#0050B5', secondary: '#9EA2A2', text: '#FFFFFF' }
     },
     'phi': {
         id: 'phi', city: '필라델피아', name: '세븐티식서스', conference: 'East', division: 'Atlantic',
         owner: '조쉬 해리스',
-        colors: { primary: '#006BB6', secondary: '#ED174C', text: '#FFFFFF' }
+        colors: { primary: '#1D4289', secondary: '#C8102E', text: '#FFFFFF' }
     },
     'phx': {
         id: 'phx', city: '피닉스', name: '선즈', conference: 'West', division: 'Pacific',
@@ -137,7 +137,7 @@ export const TEAM_DATA: Record<string, TeamStaticData> = {
     'por': {
         id: 'por', city: '포틀랜드', name: '트레일 블레이저스', conference: 'West', division: 'Northwest',
         owner: '조디 앨런',
-        colors: { primary: '#E03A3E', secondary: '#000000', text: '#FFFFFF' }
+        colors: { primary: '#C8102E', secondary: '#010101', text: '#FFFFFF' }
     },
     'sac': {
         id: 'sac', city: '새크라멘토', name: '킹스', conference: 'West', division: 'Pacific',
