@@ -6,6 +6,8 @@ import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
 import FullScreenLoader from './FullScreenLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
 import { calculatePlayerOvr } from '../utils/constants';
+import { computeStandingsStats } from '../utils/standingsStats';
+import { TEAM_DATA } from '../data/teamData';
 
 interface MainLayoutProps {
     children: React.ReactNode;
@@ -73,6 +75,25 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         return Math.round(opponent.roster.reduce((s, p) => s + calculatePlayerOvr(p), 0) / opponent.roster.length);
     }, [opponent?.roster]);
 
+    const { conferenceRank, streak, conferenceName } = useMemo(() => {
+        if (!team) return { conferenceRank: 0, streak: '-', conferenceName: '' };
+        const stats = computeStandingsStats(teams, schedule);
+        const myConf = TEAM_DATA[team.id]?.conference;
+        const confTeams = teams
+            .filter(t => TEAM_DATA[t.id]?.conference === myConf)
+            .sort((a, b) => {
+                const pctA = stats[a.id]?.pct ?? 0;
+                const pctB = stats[b.id]?.pct ?? 0;
+                if (pctB !== pctA) return pctB - pctA;
+                return (stats[b.id]?.wins ?? 0) - (stats[a.id]?.wins ?? 0);
+            });
+        return {
+            conferenceRank: confTeams.findIndex(t => t.id === team.id) + 1,
+            streak: stats[team.id]?.streak || '-',
+            conferenceName: myConf === 'East' ? '동부' : '서부',
+        };
+    }, [team, teams, schedule]);
+
     const isFullHeightView = sidebarProps.currentView === 'DraftRoom';
     const isNoPaddingView = sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions';
 
@@ -100,6 +121,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         onAutoSimClick={() => userTactics && onSim(userTactics, true)}
                         currentSeries={currentSeries}
                         currentSimDate={currentSimDate}
+                        conferenceRank={conferenceRank}
+                        streak={streak}
+                        conferenceName={conferenceName}
                     />
                 )}
 
