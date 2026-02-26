@@ -88,13 +88,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             {/* Date + Team Status */}
             <div className="flex-1 flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#FFFFFF' }}>현재 날짜 :</span>
-                    <span className="text-sm font-semibold text-white">{currentSimDate}</span>
+                    <span className="text-sm font-semibold" style={{ color: theme.text }}>현재 날짜 :</span>
+                    <span className="text-sm font-semibold" style={{ color: theme.text }}>{currentSimDate}</span>
                 </div>
                 <div className="h-px bg-white/10" />
                 <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#FFFFFF' }}>{conferenceName} {conferenceRank}위</span>
-                    <span className="text-white/20 font-bold">|</span>
+                    <span className="text-sm font-semibold" style={{ color: theme.text }}>{conferenceName} {conferenceRank}위</span>
+                    <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
                     <span className={`text-sm font-semibold ${streak?.startsWith('W') ? 'text-emerald-400' : streak?.startsWith('L') ? 'text-red-400' : 'text-slate-500'}`}>
                         {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
                     </span>
@@ -109,8 +109,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         <>
                             <TeamLogo teamId={awayTeam.id} size="lg" />
                             <div className="hidden sm:flex flex-col">
-                                <span className="text-sm font-bold text-white leading-tight truncate max-w-[100px]">{awayTeam.name}</span>
-                                <span className="text-xs font-bold" style={{ color: TEAM_DATA[awayTeam.id]?.colors?.text || '#FFFFFF' }}>{awayTeam.wins}W-{awayTeam.losses}L</span>
+                                <span className="text-sm font-bold leading-tight truncate max-w-[100px]" style={{ color: theme.text }}>{awayTeam.name}</span>
+                                <span className="text-xs font-bold" style={{ color: theme.text, opacity: 0.7 }}>{awayTeam.wins}W-{awayTeam.losses}L</span>
                             </div>
                             <OvrBadge value={awayOvr} size="md" className="!w-7 !h-7 !text-xs" />
                         </>
@@ -123,13 +123,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 <div className="flex flex-col items-center justify-center px-4 border-x border-white/5 min-w-[160px]">
                     {currentSeries ? (
                         <div className="flex flex-col items-center">
-                            <span className="text-xs font-semibold text-white">{playoffRoundName}</span>
-                            <span className="text-sm font-semibold text-white">Series: {currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}</span>
+                            <span className="text-xs font-semibold" style={{ color: theme.text }}>{playoffRoundName}</span>
+                            <span className="text-sm font-semibold" style={{ color: theme.text }}>Series: {currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}</span>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center">
-                            <span className="text-sm font-semibold" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#FFFFFF' }}>다음 경기</span>
-                            <span className="text-sm font-semibold text-white">{nextGame?.date || 'SCHEDULED'}</span>
+                            <span className="text-sm font-semibold" style={{ color: theme.text }}>다음 경기</span>
+                            <span className="text-sm font-semibold" style={{ color: theme.text }}>{nextGame?.date || 'SCHEDULED'}</span>
                         </div>
                     )}
                 </div>
@@ -140,8 +140,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         <>
                             <OvrBadge value={homeOvr} size="md" className="!w-7 !h-7 !text-xs" />
                             <div className="hidden sm:flex flex-col items-end">
-                                <span className="text-sm font-bold text-white leading-tight truncate max-w-[100px]">{homeTeam.name}</span>
-                                <span className="text-xs font-bold" style={{ color: TEAM_DATA[homeTeam.id]?.colors?.text || '#FFFFFF' }}>{homeTeam.wins}W-{homeTeam.losses}L</span>
+                                <span className="text-sm font-bold leading-tight truncate max-w-[100px]" style={{ color: theme.text }}>{homeTeam.name}</span>
+                                <span className="text-xs font-bold" style={{ color: theme.text, opacity: 0.7 }}>{homeTeam.wins}W-{homeTeam.losses}L</span>
                             </div>
                             <TeamLogo teamId={homeTeam.id} size="lg" />
                         </>
