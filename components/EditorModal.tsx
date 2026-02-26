@@ -139,25 +139,30 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
     );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title="에디터" size="xl" footer={footer}>
-            <div className="p-6 space-y-6">
+        <Modal isOpen={isOpen} onClose={onClose} size="xl" footer={footer}>
+            {/* Compact header */}
+            <div className="px-6 py-3 border-b border-slate-800 bg-slate-950/50 flex justify-between items-center shrink-0">
+                <span className="text-base font-bold text-white">에디터</span>
+            </div>
+
+            <div className="p-6 space-y-5">
                 {/* JSON 붙여넣기 영역 */}
                 <div className="space-y-2">
-                    <label className="text-sm font-bold text-slate-400">JSON 일괄 적용</label>
-                    <div className="relative">
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">JSON 일괄 적용</label>
+                    <div className="flex bg-slate-950 border border-slate-700 rounded-xl overflow-hidden focus-within:border-indigo-500 transition-colors">
                         <textarea
                             value={jsonText}
                             onChange={(e) => setJsonText(e.target.value)}
                             placeholder='{ "atl": { "name": "Hawks", "logoUrl": "https://..." }, "bos": { "name": "Celtics" } }'
-                            className="w-full h-28 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 pr-24 text-sm text-slate-200 placeholder-slate-600 font-mono resize-none focus:outline-none focus:border-indigo-500 transition-colors"
+                            className="flex-1 h-24 bg-transparent px-4 py-3 text-sm text-slate-200 placeholder-slate-600 font-mono resize-none focus:outline-none"
                         />
                         <button
                             onClick={handleJsonApply}
                             disabled={!jsonText.trim()}
-                            className="absolute right-2 bottom-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
+                            className="flex items-center gap-1.5 px-4 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors shrink-0"
                         >
                             <Upload size={12} />
-                            JSON 적용
+                            적용
                         </button>
                     </div>
                     {jsonError && (
@@ -171,7 +176,7 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
                 {/* 팀 리스트 에디터 */}
                 <div className="space-y-2">
                     {/* 테이블 헤더 */}
-                    <div className="grid grid-cols-[40px_1fr_1fr] gap-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="grid grid-cols-[40px_3fr_7fr] gap-3 px-2 text-xs font-bold text-slate-500 uppercase tracking-wider">
                         <span></span>
                         <span>팀명</span>
                         <span>로고 URL</span>
@@ -188,7 +193,7 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
                             return (
                                 <div
                                     key={id}
-                                    className={`grid grid-cols-[40px_1fr_1fr] gap-3 items-center px-2 py-2 rounded-xl transition-colors ${
+                                    className={`grid grid-cols-[40px_3fr_7fr] gap-3 items-center px-2 py-2 rounded-xl transition-colors ${
                                         isModified ? 'bg-indigo-500/10 border border-indigo-500/20' : 'hover:bg-slate-800/50'
                                     }`}
                                 >
