@@ -105,8 +105,43 @@ function calculateTurnoverChance(
     else if (playType === 'Iso') contextRisk = 0.01;
     else if (playType === 'PostUp') contextRisk = 0.02; // Crowded paint
 
+    // --- STEAL ARCHETYPE BONUSES (턴오버 유발력) ---
+    const stlCfg = SIM_CONFIG.STEAL;
+    const da = defender.attr;
+    let archetypeRisk = 0;
+
+    // A. The Clamp: 질식 수비 → 모든 플레이에서 턴오버 유발
+    if (da.perDef >= stlCfg.CLAMP_PERIMDEF_THRESHOLD && da.stl >= stlCfg.CLAMP_STL_THRESHOLD) {
+        archetypeRisk += stlCfg.CLAMP_TOV_BONUS;
+    }
+
+    // B. The Pickpocket: 접촉 플레이(PostUp/Iso/Cut) 전용
+    if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.hands >= stlCfg.PICKPOCKET_HANDS_THRESHOLD) {
+        if (playType === 'PostUp' || playType === 'Iso' || playType === 'Cut') {
+            archetypeRisk += stlCfg.PICKPOCKET_TOV_BONUS;
+        }
+    }
+
+    // C. The Hawk: 상대 팀이 패스를 많이 돌릴 때 (ballMovement ≥ threshold)
+    if (da.helpDefIq >= stlCfg.HAWK_HELPDEF_THRESHOLD &&
+        da.passPerc >= stlCfg.HAWK_PASSPERC_THRESHOLD &&
+        da.stl >= stlCfg.HAWK_STL_THRESHOLD) {
+        if (offTeam.tactics.sliders.ballMovement >= stlCfg.HAWK_BM_THRESHOLD) {
+            archetypeRisk += stlCfg.HAWK_TOV_BONUS;
+        }
+    }
+
+    // E. The Press: Transition 전용 풀코트 프레스
+    if (da.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
+        da.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
+        da.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
+        if (playType === 'Transition') {
+            archetypeRisk += stlCfg.PRESS_TOV_BONUS;
+        }
+    }
+
     // Calculate Total Turnover Probability
-    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + contextRisk;
+    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + contextRisk + archetypeRisk;
 
     // Cap Probability (Min 2%, Max 25%)
     totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
@@ -135,6 +170,14 @@ function calculateTurnoverChance(
 
     // Archetype 2: "Interceptor" (Passing Lanes) — was +0.15, now +0.10 (max combined ~0.70)
     if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.10;
+
+    // E. The Press: Transition에서 스틸 비율 추가 증가
+    if (playType === 'Transition' &&
+        d.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
+        d.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
+        d.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
+        stealRatio += stlCfg.PRESS_STEAL_RATIO_BONUS;
+    }
 
     // Archetype 3: "The Shadow" (Help Defender)
     // Check if a helper steals it instead of primary defender
