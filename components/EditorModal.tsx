@@ -150,17 +150,17 @@ export const EditorModal: React.FC<EditorModalProps> = ({ isOpen, onClose }) => 
                 {/* JSON 붙여넣기 영역 */}
                 <div className="space-y-2">
                     <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">JSON 일괄 적용</label>
-                    <div className="relative">
-                        <textarea
-                            value={jsonText}
-                            onChange={(e) => setJsonText(e.target.value)}
-                            placeholder='{ "atl": { "name": "Hawks", "logoUrl": "https://..." }, "bos": { "name": "Celtics" } }'
-                            className="w-full h-24 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 pr-20 text-sm text-slate-200 placeholder-slate-600 font-mono resize-none focus:outline-none focus:border-indigo-500 transition-colors"
-                        />
+                    <textarea
+                        value={jsonText}
+                        onChange={(e) => setJsonText(e.target.value)}
+                        placeholder='{ "atl": { "name": "Hawks", "logoUrl": "https://..." }, "bos": { "name": "Celtics" } }'
+                        className="w-full h-24 bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-slate-200 placeholder-slate-600 font-mono resize-none focus:outline-none focus:border-indigo-500 transition-colors"
+                    />
+                    <div className="flex justify-end mt-2">
                         <button
                             onClick={handleJsonApply}
                             disabled={!jsonText.trim()}
-                            className="absolute right-2.5 bottom-2.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed text-white transition-colors"
                         >
                             <Upload size={12} />
                             적용
