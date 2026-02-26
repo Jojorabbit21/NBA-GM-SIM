@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Palette
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -24,6 +24,7 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onNavigate: (view: AppView) => void;
   onResetClick: () => void;
+  onPatchClick: () => void;
   onLogout: () => void;
 }
 
@@ -86,6 +87,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onToggleCollapse,
   onNavigate,
   onResetClick,
+  onPatchClick,
   onLogout
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -147,6 +149,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               >
                 <FileText size={15} />
                 <span className="text-xs font-bold">이용약관</span>
+              </button>
+              <button
+                onClick={() => { onPatchClick(); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+              >
+                <Palette size={15} />
+                <span className="text-xs font-bold">커스텀 패치</span>
               </button>
               <div className="my-1 border-t border-slate-800" />
               <button

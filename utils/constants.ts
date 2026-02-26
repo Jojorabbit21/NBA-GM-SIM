@@ -3,6 +3,7 @@ import { Game, Player, Team } from '../types';
 import { calculateOvr } from './ovrUtils';
 import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
+import { patchedLogoUrls } from './patchManager';
 
 export const SEASON_START_DATE = '2025-10-20';
 export const TRADE_DEADLINE = '2026-02-06';
@@ -22,19 +23,35 @@ export const CALENDAR_EVENTS = {
 };
 
 // Adapter for existing code using TEAM_OWNERS
-export const TEAM_OWNERS: Record<string, string> = Object.values(TEAM_DATA).reduce((acc, team) => {
+export let TEAM_OWNERS: Record<string, string> = Object.values(TEAM_DATA).reduce((acc, team) => {
     acc[team.id] = team.owner;
     return acc;
 }, {} as Record<string, string>);
 
 // Adapter for existing code using FALLBACK_TEAMS
-export const FALLBACK_TEAMS = Object.values(TEAM_DATA).map((t: TeamStaticData) => ({
+export let FALLBACK_TEAMS = Object.values(TEAM_DATA).map((t: TeamStaticData) => ({
     id: t.id,
     city: t.city,
     name: t.name,
     conference: t.conference,
     division: t.division
 }));
+
+/** TEAM_DATA 뮤테이션 후 파생 상수를 재계산 */
+export function rebuildDerivedConstants(): void {
+    TEAM_OWNERS = Object.values(TEAM_DATA).reduce((acc, team) => {
+        acc[team.id] = team.owner;
+        return acc;
+    }, {} as Record<string, string>);
+
+    FALLBACK_TEAMS = Object.values(TEAM_DATA).map((t: TeamStaticData) => ({
+        id: t.id,
+        city: t.city,
+        name: t.name,
+        conference: t.conference,
+        division: t.division,
+    }));
+}
 
 export const INITIAL_STATS = () => ({
     g: 0, gs: 0, mp: 0, pts: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0,
@@ -84,6 +101,8 @@ export const resolveTeamId = (nameOrId: string | null | undefined): string => {
 
 export const getTeamLogoUrl = (teamId: string): string => {
     const id = resolveTeamId(teamId);
+    const patched = patchedLogoUrls.get(id);
+    if (patched) return patched;
     return `/logos/${id}.svg`;
 };
 
