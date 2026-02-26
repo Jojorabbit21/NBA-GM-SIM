@@ -339,21 +339,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
         <div className="flex flex-col h-full overflow-hidden">
             {/* ── Toolbar ── */}
             <div className="px-6 py-3 bg-slate-800 border-t border-slate-700 border-b border-slate-700 flex items-center justify-between flex-shrink-0 gap-4">
-                <div className="flex items-center gap-4">
-                    <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
-                    {/* Color legend */}
-                    <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-2.5 rounded bg-emerald-500/40 border border-emerald-500/60 flex-shrink-0" />
-                            <span className="text-[9px] font-bold text-slate-500">정상 (5명)</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                            <div className="w-4 h-2.5 rounded bg-red-500/30 border border-red-500/50 flex-shrink-0" />
-                            <span className="text-[9px] font-bold text-slate-500">인원 오류</span>
-                        </div>
-                        <span className="text-[9px] text-slate-600">드래그로 구간 선택</span>
-                    </div>
-                </div>
+                <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
 
                 <div className="flex gap-2">
                     <div className="relative flex shadow-md" ref={dropdownRef}>

@@ -70,6 +70,33 @@ export const SIM_CONFIG = {
         POS_WEIGHT_DEFAULT: 1.0,      // 기본 가중치
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
     },
+    // Block System (미스 중 블락 판정)
+    BLOCK: {
+        // 존별 베이스 블락 확률 (원래 값 복원)
+        BASE_RIM: 0.10,           // 10% (was 5%)
+        BASE_PAINT: 0.05,         // 5%  (was 3%)
+        BASE_MID: 0.035,          // 3.5% (was 1.5%)
+        BASE_3PT: 0.01,           // 1%  (was 0.5%)
+
+        // 수비자 능력치 보정 계수 (3× 이전값)
+        BLK_STAT_FACTOR: 0.0015,  // (defBlk - 70) × factor
+        VERT_STAT_FACTOR: 0.00075,// (defVert - 70) × factor
+        HEIGHT_FACTOR: 0.001,     // (defHeight - 200) × factor
+
+        // 엘리트 블로커 아키타입 보너스
+        ARCHETYPE_WALL: 0.08,     // blk ≥ 97
+        ARCHETYPE_ALIEN: 0.06,    // height ≥ 216 && blk ≥ 80
+        ARCHETYPE_SKYWALKER: 0.05,// vert ≥ 95 && blk ≥ 75
+        ARCHETYPE_ANCHOR: 0.03,   // helpDefIq ≥ 92 && blk ≥ 80
+
+        // 헬프 블락 (림 프로텍터 회전 블락)
+        HELP_BASE: 0.02,          // 기본 확률
+        HELP_BLK_THRESHOLD: 85,   // 블락 능력치 기준
+        HELP_BLK_BONUS: 0.03,     // 기준 이상 시 추가
+        HELP_RIM_THRESHOLD: 75,   // 림프로텍터 아키타입 기준
+        HELP_RIM_BONUS: 0.03,     // 기준 이상 시 추가
+        HELP_MID_FACTOR: 0.5,     // 미드레인지 헬프 블락 효과 배수
+    },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
         PROB_MOD: {
