@@ -37,7 +37,7 @@ const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>
     'por': { bg: 'text', text: 'primary', glow: 'primary' },
     // BG_SEC_ACCENT_TEXT: header bg=secondary → primary 버튼
     'det': { bg: 'primary', text: 'text', glow: 'primary' },
-    'ind': { bg: 'secondary', text: 'text', glow: 'secondary' },
+    'ind': { bg: 'secondary', text: '#000000', glow: 'secondary' },
     'mia': { bg: '#41B6E6', text: '#DB3EB1', glow: '#41B6E6' },
     'mil': { bg: '#0057B7', text: 'text', glow: '#0057B7'},
     'nyk': { bg: 'secondary', text: 'text', glow: 'secondary'},
@@ -45,7 +45,7 @@ const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>
     'phi': { glow: 'secondary'},
     'tor': { bg: '#753BBD', text: 'text', glow: '#753BBD' },
     'dal': { bg: 'text', text: 'primary', glow: 'primary'},
-    'den': { bg: 'text', text: '#FFFFFF', glow: 'text'},
+    'den': { bg: 'text', text: 'primary', glow: 'text'},
     'gsw': { bg: '#FFFFFF', text: 'primary', glow: 'primary'},
     // INVERTED: header bg=secondary → primary 대비
     'lac': { bg: 'primary', text: '#FFFFFF', glow: 'primary' },
@@ -104,12 +104,12 @@ const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>
     'det': { bg: 'secondary', accent: 'text' },
     'tor': { bg: 'secondary', accent: 'text' },
     // text → secondary
-    'mem': { text: 'secondary' },
-    'nyk': { text: 'secondary' },
-    'okc': { text: 'secondary' },
+    'mem': { text: 'text' },
+    'nyk': { text: 'text'},
+    'okc': { text: 'text' },
     // inverted
-    'lac': { bg: 'secondary', text: 'primary', accent: 'primary' },
-    'min': { bg: 'secondary', text: 'primary', accent: 'primary' },
+    'lac': { bg: 'secondary', text: 'text', accent: 'text' },
+    'min': { bg: 'primary', text: 'text', accent: '#78BE21' },
     'sas': { bg: 'secondary', text: 'primary', accent: 'primary' },
 };
 
