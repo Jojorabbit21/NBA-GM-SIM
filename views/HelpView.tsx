@@ -5,8 +5,7 @@ import remarkGfm from 'remark-gfm';
 import { ArrowLeft, HelpCircle } from 'lucide-react';
 import { Button } from '../components/common/Button';
 import { PageHeader } from '../components/common/PageHeader';
-// @ts-ignore — Vite raw import
-import guideContent from '../docs/user-guide.md?raw';
+import { USER_GUIDE_MD } from '../docs/userGuideContent';
 
 interface HelpViewProps {
     onBack: () => void;
@@ -106,7 +105,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ onBack }) => {
 
             <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-                    {guideContent}
+                    {USER_GUIDE_MD}
                 </ReactMarkdown>
             </div>
 

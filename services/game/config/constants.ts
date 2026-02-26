@@ -7,8 +7,13 @@ export const SIM_CONFIG = {
         SCORING_MODIFIER: 0.94, 
     },
     FATIGUE: {
-        DRAIN_BASE: 2.5, 
-        BENCH_RECOVERY_RATE: 5.0, 
+        DRAIN_BASE: 2.5,
+        BENCH_RECOVERY_RATE: 5.0,
+        TIMEOUT_RECOVERY: 3,        // 타임아웃 시 전 선수 기본 회복량
+        QUARTER_BREAK_RECOVERY: 4,  // 쿼터 휴식(1Q→2Q, 3Q→4Q) 시 전 선수 기본 회복량
+        HALFTIME_RECOVERY: 12,      // 하프타임(2Q→3Q) 시 전 선수 기본 회복량
+        RECOVERY_STAMINA_FACTOR: 0.30,    // 회복 시 Stamina 영향 계수
+        RECOVERY_DURABILITY_FACTOR: 0.20, // 회복 시 Durability 영향 계수
         STAMINA_SAVE_FACTOR: 0.015,
         DURABILITY_FACTOR: 0.005,
         FATIGUE_PENALTY_LOW: 0.02,

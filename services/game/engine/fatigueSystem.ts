@@ -56,3 +56,21 @@ export function calculateIncrementalFatigue(
 
     return { drain, injuryOccurred };
 }
+
+/**
+ * 선수별 체력 회복량 계산 (Stamina + Durability 반영)
+ * 벤치 회복, 타임아웃, 쿼터 휴식, 하프타임 등 모든 회복에 공통 적용.
+ *
+ * stamina 50 / durability 50 = 기준(변화 없음)
+ * stamina 90 / durability 90 = +12% / +8% = 총 +20% 회복량
+ * stamina 30 / durability 30 = -6% / -4% = 총 -10% 회복량
+ */
+export function calculateRecovery(player: LivePlayer, baseAmount: number): number {
+    const C = SIM_CONFIG.FATIGUE;
+    const staminaBonus  = ((player.attr.stamina    ?? 50) - 50) / 100;
+    const durabilityBonus = ((player.attr.durability ?? 50) - 50) / 100;
+    const multiplier = 1
+        + staminaBonus   * C.RECOVERY_STAMINA_FACTOR
+        + durabilityBonus * C.RECOVERY_DURABILITY_FACTOR;
+    return baseAmount * multiplier;
+}

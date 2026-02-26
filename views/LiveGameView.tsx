@@ -54,7 +54,7 @@ function sortByPosition(players: LivePlayer[]): LivePlayer[] {
 
 // 공통 grid 템플릿: 이름|P|STM|MP|PTS|REB|AST|STL|BLK|TOV|PF|FG|3P
 // FG/3P는 두 자리수 합산(10-18 등)이므로 다른 컬럼보다 넓게
-const PLAYER_GRID = 'minmax(0,80px) repeat(10, 0.75fr) repeat(2, 1.75fr)';
+const PLAYER_GRID = 'minmax(0,80px) repeat(10, 0.75fr) repeat(2, 1.15fr)';
 
 // stat key → column index (0-based from first stat column)
 type StatKey = 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'fgm' | 'fga' | 'p3m' | 'p3a';
@@ -301,7 +301,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                             <span className="text-xs font-black text-slate-400 truncate">TEAM</span>
                             <span className="text-xs text-center" />
                             <span className="text-xs text-right" />
-                            <span className="text-xs font-mono text-slate-400 text-right">{teamTotal.mp}</span>
+                            <span className="text-xs text-right" />
                             <span className="text-xs font-mono text-white text-right">{teamTotal.pts}</span>
                             <span className="text-xs font-mono text-slate-300 text-right">{teamTotal.reb}</span>
                             <span className="text-xs font-mono text-slate-300 text-right">{teamTotal.ast}</span>
