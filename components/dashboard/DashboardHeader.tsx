@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { CalendarClock, FastForward, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
@@ -160,7 +160,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         {...btn3d('auto')}
                         className="flex items-center justify-center gap-2 px-5 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[130px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
                     >
-                        <FastForward size={16} />
                         자동 진행
                     </button>
                 )}
@@ -174,7 +173,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     {isSimulating ? (
                         <><Loader2 size={16} className="animate-spin" /> 처리 중</>
                     ) : (
-                        <><CalendarClock size={16} /> {isGameToday ? '경기 시작' : '내일로 이동'}</>
+                        isGameToday ? '경기 시작' : '내일로 이동'
                     )}
                 </button>
             </div>
