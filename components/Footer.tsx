@@ -62,12 +62,11 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                 {/* 1. Brand & Disclaimer Section */}
                 <div className="space-y-4">
                     <h3 className="text-2xl font-black text-white italic tracking-tighter">
-                    NBA <span className="text-indigo-500">GM SIM</span>
+                    BPL <span className="text-indigo-500">GM SIM</span>
                     </h3>
                     <p className="text-slate-400 text-xs leading-relaxed font-medium">
-                    본 서비스는 팬 메이드 시뮬레이션 게임이며, NBA(National Basketball Association) 
-                    또는 산하 구단과 직접적인 연관이 없습니다. 모든 팀 로고와 선수 이름의 저작권은 
-                    해당 소유자에게 있습니다.
+                    본 서비스는 팬 메이드 농구 시뮬레이션 게임입니다.
+                    실제 프로 농구 리그 또는 산하 구단과 직접적인 연관이 없습니다.
                     </p>
                     <div className="flex gap-4 pt-2">
                     <a href="#" className="p-2 bg-slate-900 rounded-full text-slate-400 hover:text-white hover:bg-slate-800 transition-all">
@@ -126,7 +125,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             {/* Bottom Bar */}
             <div className="border-t border-slate-900 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
             <p className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
-                © {currentYear} NBA GM Simulator. All rights reserved.
+                © {currentYear} BPL GM Simulator. All rights reserved.
             </p>
             <p className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">
                 Version 1.0.7 (Beta)

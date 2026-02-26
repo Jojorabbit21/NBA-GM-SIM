@@ -491,22 +491,23 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         }
         // --- BLOCK CALCULATION LOGIC END ---
 
-        const { player: rebounder } = resolveRebound(state.home, state.away, actor.playerId);
-        
+        const { player: rebounder, type: reboundType } = resolveRebound(state.home, state.away, actor.playerId);
+
         return {
-            type: 'miss', 
-            offTeam, defTeam, 
-            actor, 
+            type: 'miss',
+            offTeam, defTeam,
+            actor,
             defender: finalDefender, // Updated to blocker if help block occurred
-            rebounder, 
-            points: 0, 
-            zone: preferredZone, 
-            playType: selectedPlayType, 
+            rebounder,
+            reboundType,
+            points: 0,
+            zone: preferredZone,
+            playType: selectedPlayType,
             isBlock, // Calculated Result
-            isAndOne: false, 
-            matchupEffect: shotContext.matchupEffect, 
-            isAceTarget: shotContext.isAceTarget, 
-            isSwitch, 
+            isAndOne: false,
+            matchupEffect: shotContext.matchupEffect,
+            isAceTarget: shotContext.isAceTarget,
+            isSwitch,
             isMismatch: shotContext.isMismatch
         };
     }

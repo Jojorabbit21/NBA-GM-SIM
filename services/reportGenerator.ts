@@ -194,10 +194,10 @@ export const generatePlayoffReport = (team: Team, allTeams: Team[], playoffSerie
         const isWinner = lastSeries.winnerId === team.id;
         const isFinished = lastSeries.finished;
         
-        if (lastSeries.round === 4) { // NBA Finals
+        if (lastSeries.round === 4) { // BPL Finals
             if (isWinner && isFinished) {
-                status = { 
-                    title: "NBA CHAMPIONS", 
+                status = {
+                    title: "BPL CHAMPIONS", 
                     desc: "세계 최고의 자리에 올랐습니다! 역사에 남을 우승입니다.", 
                     color: "text-yellow-400", 
                     bg: "bg-gradient-to-r from-yellow-900/40 to-slate-900",
@@ -206,7 +206,7 @@ export const generatePlayoffReport = (team: Team, allTeams: Team[], playoffSerie
                 };
             } else if (isFinished) {
                 status = { 
-                    title: "NBA Finalist", 
+                    title: "BPL Finalist", 
                     desc: "아쉬운 준우승이지만, 위대한 여정이었습니다.", 
                     color: "text-slate-200", 
                     bg: "bg-gradient-to-r from-slate-800 to-slate-900",
@@ -312,7 +312,7 @@ export const generatePlayoffReport = (team: Team, allTeams: Team[], playoffSerie
     const seriesLogs = [...mySeries].sort((a, b) => a.round - b.round).map(s => {
         const opponentId = s.higherSeedId === team.id ? s.lowerSeedId : s.higherSeedId;
         const opponent = allTeams.find(t => t.id === opponentId);
-        const roundName = s.round === 0 ? "Play-In" : s.round === 4 ? "NBA Finals" : s.round === 3 ? "Conf. Finals" : s.round === 2 ? "Semis" : "Round 1";
+        const roundName = s.round === 0 ? "Play-In" : s.round === 4 ? "BPL Finals" : s.round === 3 ? "Conf. Finals" : s.round === 2 ? "Semis" : "Round 1";
         
         const games = schedule
             .filter(g => g.seriesId === s.id && g.played)

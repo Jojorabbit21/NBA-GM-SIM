@@ -42,6 +42,8 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             def: p.def, intDef: p.intDef, perDef: p.perDef, blk: p.blk, stl: p.steal,
             helpDefIq: p.helpDefIq, defConsist: p.defConsist, passPerc: p.passPerc, drFoul: p.drawFoul, foulTendency: 50,
             reb: p.reb,
+            offReb: p.offReb ?? p.reb,
+            defReb: p.defReb ?? p.reb,
             intangibles: p.intangibles ?? 70
         };
 

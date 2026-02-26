@@ -74,7 +74,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
   const playoffRoundName = currentSeries ? (
       currentSeries.round === 0 ? "플레이-인 토너먼트" : 
-      currentSeries.round === 4 ? "NBA 파이널" : 
+      currentSeries.round === 4 ? "BPL 파이널" :
       currentSeries.round === 3 ? `${currentSeries.conference} 컨퍼런스 파이널` :
       currentSeries.round === 2 ? `${currentSeries.conference} 컨퍼런스 2라운드` :
       `${currentSeries.conference} 컨퍼런스 1라운드`

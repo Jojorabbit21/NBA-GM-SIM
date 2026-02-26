@@ -39,7 +39,7 @@ export const TeamLogo: React.FC<TeamLogoProps> = ({
             className={`${sizeClass[size]} object-contain drop-shadow-md transition-all ${faded ? 'opacity-50 grayscale' : ''} ${className}`}
             style={style}
             onError={(e) => {
-                e.currentTarget.src = 'https://placehold.co/100x100?text=NBA'; // Fallback
+                e.currentTarget.src = 'https://placehold.co/100x100?text=BPL'; // Fallback
             }}
         />
     );

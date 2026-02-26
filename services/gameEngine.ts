@@ -6,7 +6,7 @@ import { generateAutoTactics } from './game/tactics/tacticGenerator';
 import { runFullGameSimulation } from './game/engine/pbp/main';
 
 // ==========================================================================================
-//  🏀 NBA GM SIMULATOR - GAME ENGINE (CORE)
+//  🏀 BPL GM SIMULATOR - GAME ENGINE (CORE)
 //  Focus: Game Physics Loop & Stats Generation
 // ==========================================================================================
 
