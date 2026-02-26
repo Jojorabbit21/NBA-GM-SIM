@@ -97,6 +97,32 @@ export const SIM_CONFIG = {
         HELP_RIM_BONUS: 0.03,     // 기준 이상 시 추가
         HELP_MID_FACTOR: 0.5,     // 미드레인지 헬프 블락 효과 배수
     },
+    // Steal Archetypes (턴오버 유발 히든 아키타입)
+    STEAL: {
+        // A. The Clamp (질식 수비) — Kawhi, Scottie Pippen
+        CLAMP_PERIMDEF_THRESHOLD: 92,
+        CLAMP_STL_THRESHOLD: 80,
+        CLAMP_TOV_BONUS: 0.03,        // +3% 턴오버 확률
+
+        // B. The Pickpocket (볼 스트립) — CP3, Marcus Smart
+        PICKPOCKET_STL_THRESHOLD: 85,
+        PICKPOCKET_HANDS_THRESHOLD: 85,
+        PICKPOCKET_TOV_BONUS: 0.04,   // +4% (접촉 플레이 전용)
+
+        // C. The Hawk (패싱레인 사냥꾼) — Draymond, Jimmy Butler
+        HAWK_HELPDEF_THRESHOLD: 85,
+        HAWK_PASSPERC_THRESHOLD: 80,
+        HAWK_STL_THRESHOLD: 75,
+        HAWK_BM_THRESHOLD: 7,         // 상대 ballMovement ≥ 7 시 발동
+        HAWK_TOV_BONUS: 0.03,         // +3% 턴오버 확률
+
+        // E. The Press (풀코트 프레스) — Pat Beverley, Tony Allen
+        PRESS_SPEED_THRESHOLD: 85,
+        PRESS_STAMINA_THRESHOLD: 85,
+        PRESS_HUSTLE_THRESHOLD: 85,
+        PRESS_TOV_BONUS: 0.05,        // +5% (Transition 전용)
+        PRESS_STEAL_RATIO_BONUS: 0.15, // +15% 스틸 비율
+    },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
         PROB_MOD: {
