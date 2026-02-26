@@ -4,6 +4,8 @@ import { supabase } from './supabaseClient';
 import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
 import { mapPlayersToTeams, mapDatabaseScheduleToRuntimeGame } from './dataMapper';
+import { populateTeamData } from '../data/teamData';
+import { rebuildDerivedConstants } from '../utils/constants';
 
 // --- Fetch Base Data (Static Initial State) ---
 export const useBaseData = () => {
@@ -11,27 +13,40 @@ export const useBaseData = () => {
         queryKey: ['baseData'],
         queryFn: async () => {
             console.log("🔄 Fetching Base Data from Supabase...");
-            
-            let playersData = [];
-            const { data: metaPlayers, error: metaError } = await supabase.from('meta_players').select('*');
-            
-            if (!metaError && metaPlayers && metaPlayers.length > 0) {
-                playersData = metaPlayers;
+
+            // 3개 meta 테이블 병렬 fetch
+            const [teamsRes, playersRes, scheduleRes] = await Promise.all([
+                supabase.from('meta_teams').select('*'),
+                supabase.from('meta_players').select('*'),
+                supabase.from('meta_schedule').select('*'),
+            ]);
+
+            // 1. meta_teams → TEAM_DATA 갱신 (mapPlayersToTeams보다 먼저!)
+            if (!teamsRes.error && teamsRes.data && teamsRes.data.length > 0) {
+                populateTeamData(teamsRes.data);
+                rebuildDerivedConstants();
             } else {
-                console.warn("⚠️ 'meta_players' empty/error, trying fallback...", metaError);
+                console.warn("⚠️ 'meta_teams' empty/error, using fallback hardcoded data", teamsRes.error);
+            }
+
+            // 2. meta_players
+            let playersData: any[] = [];
+            if (!playersRes.error && playersRes.data && playersRes.data.length > 0) {
+                playersData = playersRes.data;
+            } else {
+                console.warn("⚠️ 'meta_players' empty/error, trying fallback...", playersRes.error);
                 const { data: backupPlayers } = await supabase.from('players').select('*');
                 if (backupPlayers) playersData = backupPlayers;
             }
 
-            let scheduleData = [];
-            const { data: metaSchedule, error: schError } = await supabase.from('meta_schedule').select('*');
-            
-            if (!schError && metaSchedule && metaSchedule.length > 0) {
-                 scheduleData = metaSchedule;
+            // 3. meta_schedule
+            let scheduleData: any[] = [];
+            if (!scheduleRes.error && scheduleRes.data && scheduleRes.data.length > 0) {
+                scheduleData = scheduleRes.data;
             } else {
-                 console.warn("⚠️ 'meta_schedule' empty/error, trying fallback...", schError);
-                 const { data: backupSchedule } = await supabase.from('schedule').select('*');
-                 if (backupSchedule) scheduleData = backupSchedule;
+                console.warn("⚠️ 'meta_schedule' empty/error, trying fallback...", scheduleRes.error);
+                const { data: backupSchedule } = await supabase.from('schedule').select('*');
+                if (backupSchedule) scheduleData = backupSchedule;
             }
 
             const teams: Team[] = mapPlayersToTeams(playersData);
@@ -39,7 +54,7 @@ export const useBaseData = () => {
             if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
             }
-            
+
             return { teams, schedule };
         },
         staleTime: Infinity,
