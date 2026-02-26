@@ -6,7 +6,7 @@ import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
-import { getTeamTheme } from '../../utils/teamTheme';
+import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -40,33 +40,32 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const teamColors = TEAM_DATA[team.id]?.colors || null;
   const theme = getTeamTheme(team.id, teamColors);
 
-  // 3D Glossy Button (inner shadow approach)
-  const btnBg = teamColors?.primary || '#4f46e5';
-  const btnText = teamColors?.text || '#ffffff';
+  // Frosted glass + neon glow button
+  const btnTheme = getButtonTheme(team.id, teamColors);
 
+  const glowColor = btnTheme.glow;
   const SHADOW_NORMAL = [
-      'inset 0px 2px 6px 0px rgba(255,255,255,0.22)',
-      'inset 0px 16px 16px -14px rgba(255,255,255,0.5)',
-      'inset 0px -8px 4px -4px rgba(0,0,0,0.5)',
-      'inset 0px -18px 16px -6px rgba(0,0,0,0.25)',
-      '0 4px 12px rgba(0,0,0,0.25)',
+      `inset 0 1px 1px rgba(255,255,255,0.2)`,
+      `inset 0 -1px 1px rgba(0,0,0,0.15)`,
+      `0 0 16px ${glowColor}40`,
+      `0 4px 12px rgba(0,0,0,0.3)`,
   ].join(', ');
 
   const SHADOW_PRESSED = [
-      'inset 0px 2px 8px 0px rgba(0,0,0,0.35)',
-      'inset 0px 6px 6px -4px rgba(0,0,0,0.25)',
-      'inset 0px -2px 4px 0px rgba(255,255,255,0.1)',
-      '0 1px 3px rgba(0,0,0,0.15)',
+      `inset 0 1px 3px rgba(0,0,0,0.3)`,
+      `inset 0 -1px 1px rgba(255,255,255,0.05)`,
+      `0 0 8px ${glowColor}25`,
+      `0 1px 3px rgba(0,0,0,0.2)`,
   ].join(', ');
 
   const btn3d = (id: string) => ({
       style: {
-          backgroundColor: btnBg,
-          color: btnText,
+          backgroundColor: btnTheme.bg,
+          color: btnTheme.text,
           boxShadow: pressedBtn === id ? SHADOW_PRESSED : SHADOW_NORMAL,
-          transform: pressedBtn === id ? 'translateY(2px) scale(0.98)' : 'translateY(0) scale(1)',
+          transform: pressedBtn === id ? 'translateY(1px) scale(0.98)' : 'translateY(0) scale(1)',
           transition: 'all 0.1s ease',
-          border: '1px solid rgba(255,255,255,0.12)',
+          border: '1px solid rgba(255,255,255,0.15)',
       } as React.CSSProperties,
       onMouseDown: () => !isSimulating && setPressedBtn(id),
       onMouseUp: () => setPressedBtn(null),
@@ -159,7 +158,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         onClick={onAutoSimClick}
                         disabled={isSimulating}
                         {...btn3d('auto')}
-                        className="flex items-center justify-center gap-2 px-5 h-10 rounded-2xl font-black text-sm uppercase tracking-wider min-w-[130px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                        className="flex items-center justify-center gap-2 px-5 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[130px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
                     >
                         <FastForward size={16} />
                         자동 진행
@@ -170,7 +169,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     onClick={onSimClick}
                     disabled={isSimulating}
                     {...btn3d('sim')}
-                    className="flex items-center justify-center gap-2 px-6 h-10 rounded-2xl font-black text-sm uppercase tracking-wider min-w-[180px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                    className="flex items-center justify-center gap-2 px-6 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[180px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
                 >
                     {isSimulating ? (
                         <><Loader2 size={16} className="animate-spin" /> 처리 중</>
