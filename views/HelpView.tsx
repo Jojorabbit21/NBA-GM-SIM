@@ -2,9 +2,7 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ArrowLeft, HelpCircle } from 'lucide-react';
 import { Button } from '../components/common/Button';
-import { PageHeader } from '../components/common/PageHeader';
 import { USER_GUIDE_MD } from '../docs/userGuideContent';
 
 interface HelpViewProps {
@@ -91,19 +89,8 @@ const components = {
 
 export const HelpView: React.FC<HelpViewProps> = ({ onBack }) => {
     return (
-        <div className="flex flex-col min-h-full animate-in fade-in duration-500 ko-normal gap-8 pb-20 w-full">
-            <PageHeader
-                title="운영 매뉴얼"
-                description="BPL General Manager Guide"
-                icon={<HelpCircle size={24} />}
-                actions={
-                    <button onClick={onBack} className="p-3 hover:bg-slate-800 rounded-full transition-colors group border border-slate-800">
-                        <ArrowLeft size={20} className="text-slate-400 group-hover:text-white" />
-                    </button>
-                }
-            />
-
-            <div className="w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 md:p-12">
+        <div className="flex flex-col min-h-full animate-in fade-in duration-500 ko-normal pb-20 w-full">
+            <div className="w-full">
                 <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
                     {USER_GUIDE_MD}
                 </ReactMarkdown>
