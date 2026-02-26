@@ -4,6 +4,7 @@ import { Search } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr } from '../../utils/constants';
+import { ButtonTheme } from '../../utils/teamTheme';
 
 interface PlayerPoolProps {
     players: Player[];
@@ -11,6 +12,9 @@ interface PlayerPoolProps {
     selectedPlayerId: string | null;
     isUserTurn: boolean;
     onDraft: (player: Player) => void;
+    positionColors: Record<string, string>;
+    buttonTheme: ButtonTheme;
+    teamColor: string;
 }
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -30,6 +34,9 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
     selectedPlayerId,
     isUserTurn,
     onDraft,
+    positionColors,
+    buttonTheme,
+    teamColor,
 }) => {
     const [search, setSearch] = useState('');
     const [posFilter, setPosFilter] = useState<string>('All');
@@ -46,8 +53,8 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
             result = result.filter(p => p.name.toLowerCase().includes(q));
         }
         result = [...result].sort((a, b) => {
-            const av = (a as any)[sortKey] ?? 0;
-            const bv = (b as any)[sortKey] ?? 0;
+            const av = sortKey === 'ovr' ? calculatePlayerOvr(a) : (a as any)[sortKey] ?? 0;
+            const bv = sortKey === 'ovr' ? calculatePlayerOvr(b) : (b as any)[sortKey] ?? 0;
             return sortAsc ? av - bv : bv - av;
         });
         return result;
@@ -86,19 +93,27 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                     />
                 </div>
                 <div className="flex gap-0.5">
-                    {POSITIONS.map(pos => (
-                        <button
-                            key={pos}
-                            onClick={() => setPosFilter(pos)}
-                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold transition-colors ${
-                                posFilter === pos
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'bg-transparent text-slate-500 hover:text-slate-300'
-                            }`}
-                        >
-                            {pos}
-                        </button>
-                    ))}
+                    {POSITIONS.map(pos => {
+                        const isActive = posFilter === pos;
+                        const posColor = pos !== 'All' ? positionColors[pos] : undefined;
+                        return (
+                            <button
+                                key={pos}
+                                onClick={() => setPosFilter(pos)}
+                                className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold transition-colors ${
+                                    isActive
+                                        ? 'text-white'
+                                        : 'bg-transparent text-slate-500 hover:text-slate-300'
+                                }`}
+                                style={isActive ? {
+                                    backgroundColor: posColor || '#6366f1',
+                                    color: '#fff',
+                                } : {}}
+                            >
+                                {pos}
+                            </button>
+                        );
+                    })}
                 </div>
                 <span className="ml-auto text-[10px] text-slate-600">{filtered.length}명</span>
             </div>
@@ -123,20 +138,24 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                     <tbody>
                         {filtered.map(player => {
                             const isSelected = player.id === selectedPlayerId;
+                            const posColor = positionColors[player.position] || '#64748b';
                             return (
                                 <React.Fragment key={player.id}>
                                     <tr
                                         className={`h-7 border-b border-slate-800/20 cursor-pointer transition-colors ${
                                             isSelected
-                                                ? 'bg-indigo-500/10'
+                                                ? ''
                                                 : 'hover:bg-white/[0.03]'
                                         }`}
+                                        style={isSelected ? { backgroundColor: `${teamColor}0a` } : {}}
                                         onClick={() => onSelectPlayer(player)}
                                     >
                                         <td className="px-2 py-0.5">
                                             <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
                                         </td>
-                                        <td className="px-1 py-0.5 text-center text-slate-400">{player.position}</td>
+                                        <td className="px-1 py-0.5 text-center text-[10px] font-bold" style={{ color: posColor }}>
+                                            {player.position}
+                                        </td>
                                         <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
                                         <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
                                         <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ins)}`}>{player.ins}</td>
@@ -148,14 +167,15 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                     </tr>
                                     {/* Inline Detail Panel */}
                                     {isSelected && selectedPlayer && (
-                                        <tr className="bg-slate-900/60 border-b border-indigo-500/30">
+                                        <tr className="border-b" style={{ borderBottomColor: `${posColor}30`, backgroundColor: `${teamColor}06` }}>
                                             <td colSpan={10} className="px-3 py-2">
-                                                <div className="flex items-center gap-3">
+                                                <div className="flex items-center gap-3" style={{ borderLeft: `3px solid ${posColor}`, paddingLeft: '10px' }}>
                                                     <OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="md" />
                                                     <div>
                                                         <div className="text-xs font-bold text-slate-200">{selectedPlayer.name}</div>
                                                         <div className="text-[10px] text-slate-400">
-                                                            {selectedPlayer.position} · {selectedPlayer.age}세 · {selectedPlayer.height}cm · {selectedPlayer.weight}kg
+                                                            <span style={{ color: posColor }} className="font-bold">{selectedPlayer.position}</span>
+                                                            {' · '}{selectedPlayer.age}세 · {selectedPlayer.height}cm · {selectedPlayer.weight}kg
                                                         </div>
                                                     </div>
                                                     <div className="flex-1" />
@@ -177,11 +197,14 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); onDraft(selectedPlayer); }}
                                                         disabled={!isUserTurn}
-                                                        className={`px-3 py-1 rounded-md text-[10px] font-bold uppercase ml-2 transition-colors ${
-                                                            isUserTurn
-                                                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                                                : 'bg-slate-700 text-slate-500 opacity-40 cursor-not-allowed'
+                                                        className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase ml-2 transition-all ${
+                                                            !isUserTurn ? 'bg-slate-700 text-slate-500 opacity-40 cursor-not-allowed' : 'hover:brightness-110 active:scale-95'
                                                         }`}
+                                                        style={isUserTurn ? {
+                                                            backgroundColor: buttonTheme.bg,
+                                                            color: buttonTheme.text,
+                                                            boxShadow: `0 0 12px ${buttonTheme.glow}50`,
+                                                        } : {}}
                                                     >
                                                         DRAFT
                                                     </button>

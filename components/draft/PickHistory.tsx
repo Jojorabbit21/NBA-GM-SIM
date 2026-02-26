@@ -2,14 +2,18 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { TeamLogo } from '../common/TeamLogo';
+import { OvrBadge } from '../common/OvrBadge';
+import { TEAM_DATA } from '../../data/teamData';
 import { BoardPick } from './DraftBoard';
 
 interface PickHistoryProps {
     picks: BoardPick[];
     totalRounds: number;
+    positionColors: Record<string, string>;
+    userTeamId: string;
 }
 
-export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds }) => {
+export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, positionColors, userTeamId }) => {
     const [roundFilter, setRoundFilter] = useState<number | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const topRef = useRef<HTMLDivElement>(null);
@@ -75,18 +79,37 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds }) 
                         ? picks.filter(p => p.round === roundFilter).length - idx
                         : picks.length - idx;
                     const isLatest = idx === 0 && roundFilter === null;
+                    const isUserPick = pick.teamId === userTeamId;
+                    const posColor = positionColors[pick.position] || '#64748b';
+                    const pickTeamColor = TEAM_DATA[pick.teamId]?.colors.primary || '#6366f1';
+
                     return (
                         <div
                             key={`${pick.teamId}-${pick.round}`}
-                            className={`px-2 py-1 border-b border-slate-800/30 flex items-center gap-2 ${
+                            className={`px-2 py-1.5 border-b border-slate-800/20 flex items-center gap-2 transition-colors ${
                                 isLatest ? 'bg-indigo-500/5' : ''
                             }`}
+                            style={isLatest ? { borderLeft: `2px solid ${pickTeamColor}` } : {}}
                         >
-                            <span className="text-xs text-slate-300 font-bold font-mono w-7 shrink-0 text-right">#{overallPick}</span>
-                            <TeamLogo teamId={pick.teamId} size="xs" className="w-3.5 h-3.5 shrink-0" />
-                            <span className="text-[10px] font-bold text-indigo-400 shrink-0">{pick.ovr}</span>
-                            <span className="text-[9px] text-slate-500 shrink-0">{pick.position}</span>
-                            <span className="text-xs font-bold text-slate-200 truncate flex-1">{pick.playerName}</span>
+                            {/* Pick number */}
+                            <span className="text-[11px] text-slate-400 font-bold font-mono w-7 shrink-0 text-right">
+                                #{overallPick}
+                            </span>
+                            {/* Team logo */}
+                            <TeamLogo teamId={pick.teamId} size="xs" className="w-4 h-4 shrink-0" />
+                            {/* Position badge */}
+                            <span
+                                className="text-[8px] font-black uppercase rounded px-1 py-px shrink-0"
+                                style={{ backgroundColor: `${posColor}20`, color: posColor }}
+                            >
+                                {pick.position}
+                            </span>
+                            {/* OVR */}
+                            <OvrBadge value={pick.ovr} size="sm" />
+                            {/* Player name */}
+                            <span className={`text-xs font-semibold truncate flex-1 ${isUserPick ? 'text-white' : 'text-slate-200'}`}>
+                                {pick.playerName}
+                            </span>
                         </div>
                     );
                 })}
