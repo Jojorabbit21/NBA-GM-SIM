@@ -151,43 +151,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
         return { display: val, color };
     };
 
-    // ── Stat section renderer ──
-    const renderStatSection = (title: string, cols: { key: string; label: string }[], colWidth: number) => (
-        <div className="border-b border-slate-800 last:border-b-0">
-            <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/50">
-                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{title}</span>
-            </div>
-            <div className="overflow-x-auto custom-scrollbar">
-                <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
-                    <colgroup>
-                        {cols.map(c => <col key={c.key} style={{ width: colWidth }} />)}
-                    </colgroup>
-                    <thead>
-                        <tr className="h-7">
-                            {cols.map(c => (
-                                <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800/50 bg-slate-950/50 whitespace-nowrap">
-                                    {c.label}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr className="h-9">
-                            {cols.map(c => {
-                                const { display, color } = getStatVal(c.key);
-                                return (
-                                    <td key={c.key} className="py-1.5 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
-                                        <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-
     // ── Shot chart zone data ──
     const chartZones = useMemo(() =>
         CHART_ZONES.map(z => {
@@ -283,49 +246,105 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                 <div className="flex gap-6 items-start">
 
                     {/* Left: Combined Stats Card */}
-                    <div className="flex-1 min-w-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-                        {renderStatSection('Traditional', TRAD_COLS, 55)}
-                        {renderStatSection('Shooting', SHOOTING_COLS, 60)}
-                        {renderStatSection('Advanced', ADVANCED_COLS, 65)}
+                    <div className="flex-1 min-w-0 flex flex-col gap-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
 
-                        {/* Zone Efficiency Section */}
-                        <div>
-                            <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/50">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Zone Efficiency</span>
-                            </div>
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
-                                    <colgroup>
-                                        {ZONE_TABLE.map(z => <col key={z.key} style={{ width: 70 }} />)}
-                                    </colgroup>
-                                    <thead>
-                                        <tr className="h-7">
-                                            {ZONE_TABLE.map(z => (
-                                                <th key={z.key} className="py-1 px-1 text-center text-[9px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800/50 bg-slate-950/50 whitespace-nowrap">
-                                                    {z.label}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr className="h-12">
-                                            {ZONE_TABLE.map(z => {
-                                                const m = (s as any)[z.keyM] || 0;
-                                                const a = (s as any)[z.keyA] || 0;
-                                                const pct = a > 0 ? ((m / a) * 100).toFixed(0) + '%' : '-';
-                                                const pctColor = a > 0 ? (m / a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600';
-                                                return (
-                                                    <td key={z.key} className="py-1 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
-                                                        <div className={`font-mono font-semibold text-xs tabular-nums ${pctColor}`}>{pct}</div>
-                                                        <div className="font-mono text-[10px] text-slate-500 tabular-nums">{m}/{a}</div>
-                                                    </td>
-                                                );
-                                            })}
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
+                        {/* Traditional + Shooting + Advanced — 한 줄 테이블 */}
+                        <div className="overflow-x-auto custom-scrollbar border-b border-slate-800">
+                            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
+                                <colgroup>
+                                    {TRAD_COLS.map(c => <col key={c.key} style={{ width: 55 }} />)}
+                                    {SHOOTING_COLS.map(c => <col key={c.key} style={{ width: 58 }} />)}
+                                    {ADVANCED_COLS.map(c => <col key={c.key} style={{ width: 62 }} />)}
+                                </colgroup>
+                                <thead className="bg-slate-950">
+                                    {/* Group Header Row */}
+                                    <tr className="h-7">
+                                        <th colSpan={TRAD_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Traditional</span>
+                                        </th>
+                                        <th colSpan={SHOOTING_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Shooting</span>
+                                        </th>
+                                        <th colSpan={ADVANCED_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
+                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Advanced</span>
+                                        </th>
+                                    </tr>
+                                    {/* Column Label Row */}
+                                    <tr className="h-7">
+                                        {[...TRAD_COLS, ...SHOOTING_COLS, ...ADVANCED_COLS].map(c => (
+                                            <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">
+                                                {c.label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="h-9">
+                                        {[...TRAD_COLS, ...SHOOTING_COLS, ...ADVANCED_COLS].map(c => {
+                                            const { display, color } = getStatVal(c.key);
+                                            return (
+                                                <td key={c.key} className="py-1.5 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
+                                                    <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
+
+                        {/* Zone Efficiency — M / A / % per zone */}
+                        <div className="overflow-x-auto custom-scrollbar">
+                            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
+                                <colgroup>
+                                    {ZONE_TABLE.flatMap(z => [
+                                        <col key={`${z.key}-m`} style={{ width: 45 }} />,
+                                        <col key={`${z.key}-a`} style={{ width: 45 }} />,
+                                        <col key={`${z.key}-p`} style={{ width: 50 }} />,
+                                    ])}
+                                </colgroup>
+                                <thead className="bg-slate-950">
+                                    {/* Zone Group Header */}
+                                    <tr className="h-7">
+                                        {ZONE_TABLE.map(z => (
+                                            <th key={z.key} colSpan={3} className="bg-slate-950 border-b border-r border-slate-800 px-1 align-middle last:border-r-0">
+                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{z.label}</span>
+                                            </th>
+                                        ))}
+                                    </tr>
+                                    {/* M / A / % Sub-headers */}
+                                    <tr className="h-7">
+                                        {ZONE_TABLE.flatMap(z => [
+                                            <th key={`${z.key}-m`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-500 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap">M</th>,
+                                            <th key={`${z.key}-a`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-500 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap">A</th>,
+                                            <th key={`${z.key}-p`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-300 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">%</th>,
+                                        ])}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr className="h-9">
+                                        {ZONE_TABLE.flatMap(z => {
+                                            const m = (s as any)[z.keyM] || 0;
+                                            const a = (s as any)[z.keyA] || 0;
+                                            const pct = a > 0 ? ((m / a) * 100).toFixed(0) + '%' : '-';
+                                            const pctColor = a > 0 ? (m / a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600';
+                                            return [
+                                                <td key={`${z.key}-m`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30">
+                                                    <span className="font-mono font-medium text-xs text-slate-300 tabular-nums">{m}</span>
+                                                </td>,
+                                                <td key={`${z.key}-a`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30">
+                                                    <span className="font-mono font-medium text-xs text-slate-500 tabular-nums">{a}</span>
+                                                </td>,
+                                                <td key={`${z.key}-p`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30 last:border-r-0">
+                                                    <span className={`font-mono font-semibold text-xs tabular-nums ${pctColor}`}>{pct}</span>
+                                                </td>,
+                                            ];
+                                        })}
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
                     </div>
 
                     {/* Right: Shot Chart */}
