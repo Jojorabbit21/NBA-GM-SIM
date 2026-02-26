@@ -1,6 +1,6 @@
 
-import React from 'react';
-import { CalendarClock, FastForward } from 'lucide-react';
+import React, { useState } from 'react';
+import { CalendarClock, FastForward, Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
@@ -21,19 +21,51 @@ interface DashboardHeaderProps {
   onAutoSimClick?: () => void; // New prop
   currentSeries?: PlayoffSeries;
   currentSimDate?: string;
+  conferenceRank?: number;
+  streak?: string;
+  conferenceName?: string;
 }
 
-export const DashboardHeader: React.FC<DashboardHeaderProps> = ({ 
+export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, onAutoSimClick,
-  currentSeries, currentSimDate
+  currentSeries, currentSimDate, conferenceRank, streak, conferenceName
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
   const homeOvr = isHome ? myOvr : opponentOvrValue;
   const awayOvr = isHome ? opponentOvrValue : myOvr;
 
+  const [pressedBtn, setPressedBtn] = useState<string | null>(null);
+
   const teamColors = TEAM_DATA[team.id]?.colors || null;
   const theme = getTeamTheme(team.id, teamColors);
+
+  // 3D Button helpers
+  const darken = (hex: string, amount: number) => {
+      const n = parseInt(hex.replace('#', ''), 16);
+      const r = Math.max(0, (n >> 16) - amount);
+      const g = Math.max(0, ((n >> 8) & 0xff) - amount);
+      const b = Math.max(0, (n & 0xff) - amount);
+      return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')}`;
+  };
+  const btnBg = teamColors?.primary || '#4f46e5';
+  const btnShadow = darken(btnBg, 50);
+  const btnText = teamColors?.text || '#ffffff';
+
+  const btn3d = (id: string) => ({
+      style: {
+          backgroundColor: btnBg,
+          color: btnText,
+          boxShadow: pressedBtn === id
+              ? `0 1px 0 0 ${btnShadow}, 0 2px 4px rgba(0,0,0,0.2)`
+              : `0 4px 0 0 ${btnShadow}, 0 6px 12px rgba(0,0,0,0.2)`,
+          transform: pressedBtn === id ? 'translateY(3px)' : 'translateY(0)',
+          transition: 'all 0.08s ease',
+      } as React.CSSProperties,
+      onMouseDown: () => !isSimulating && setPressedBtn(id),
+      onMouseUp: () => setPressedBtn(null),
+      onMouseLeave: () => setPressedBtn(null),
+  });
 
   const playoffRoundName = currentSeries ? (
       currentSeries.round === 0 ? "Play-In Tournament" : 
@@ -46,16 +78,26 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   return (
     <div className="w-full border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
         {/* Dark overlay for readability */}
-        <div className="absolute inset-0 bg-black/20 pointer-events-none" />
-        <div className="px-8 py-3 flex items-center justify-between gap-8 h-20 relative z-10">
-            {/* Date */}
-            <div className="flex items-center gap-2 shrink-0">
-                <span className="text-sm font-black uppercase tracking-widest oswald" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#94a3b8' }}>현재 날짜</span>
-                <span className="text-sm font-bold text-white oswald tracking-wider">{currentSimDate}</span>
+        <div className="absolute inset-0 bg-black/10 pointer-events-none" />
+        <div className="px-8 py-3 flex items-center gap-8 h-20 relative z-10">
+            {/* Date + Team Status */}
+            <div className="flex-1 flex flex-col gap-1.5">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-black uppercase tracking-widest oswald" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#94a3b8' }}>현재 날짜 :</span>
+                    <span className="text-sm font-semibold text-white tracking-wider">{currentSimDate}</span>
+                </div>
+                <div className="h-px bg-white/10" />
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-black uppercase tracking-widest oswald" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#94a3b8' }}>{conferenceName} {conferenceRank}위</span>
+                    <span className="text-white/20 font-bold">|</span>
+                    <span className={`text-sm font-black oswald tracking-wider ${streak?.startsWith('W') ? 'text-emerald-400' : streak?.startsWith('L') ? 'text-red-400' : 'text-slate-500'}`}>
+                        {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
+                    </span>
+                </div>
             </div>
 
             {/* Matchup */}
-            <div className="flex items-center gap-8 min-w-0">
+            <div className="flex items-center gap-8 shrink-0">
                 {/* Away Team */}
                 <div className="flex items-center gap-3">
                     {awayTeam ? (
@@ -82,7 +124,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     ) : (
                         <div className="flex flex-col items-center">
                             <span className="text-sm font-black uppercase tracking-widest leading-none mb-1 oswald" style={{ color: TEAM_DATA[team.id]?.colors?.text || '#94a3b8' }}>다음 경기</span>
-                            <span className="text-sm font-black text-white oswald tracking-widest">{nextGame?.date || 'SCHEDULED'}</span>
+                            <span className="text-sm font-semibold text-white tracking-widest">{nextGame?.date || 'SCHEDULED'}</span>
                         </div>
                     )}
                 </div>
@@ -105,32 +147,31 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
 
             {/* Right: Simulation Action */}
-            <div className="flex items-center gap-3">
+            <div className="flex-1 flex items-center justify-end gap-3">
                 {isGameToday && onAutoSimClick && (
-                    <Button 
-                        onClick={onAutoSimClick} 
-                        disabled={isSimulating} 
-                        variant="secondary"
-                        size="md"
-                        icon={<FastForward size={16} />}
-                        className="min-w-[130px] h-10 !rounded-xl"
+                    <button
+                        onClick={onAutoSimClick}
+                        disabled={isSimulating}
+                        {...btn3d('auto')}
+                        className="flex items-center justify-center gap-2 px-5 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[130px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
                     >
+                        <FastForward size={16} />
                         자동 진행
-                    </Button>
+                    </button>
                 )}
 
-                <Button 
-                    onClick={onSimClick} 
-                    disabled={isSimulating} 
-                    variant={isGameToday ? 'brand' : 'secondary'}
-                    size="md"
-                    isLoading={isSimulating}
-                    loadingText="처리 중"
-                    icon={!isSimulating && <CalendarClock size={16} />}
-                    className="min-w-[180px] h-10 !rounded-xl"
+                <button
+                    onClick={onSimClick}
+                    disabled={isSimulating}
+                    {...btn3d('sim')}
+                    className="flex items-center justify-center gap-2 px-6 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[180px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
                 >
-                    {isGameToday ? '경기 시작' : '내일로 이동'}
-                </Button>
+                    {isSimulating ? (
+                        <><Loader2 size={16} className="animate-spin" /> 처리 중</>
+                    ) : (
+                        <><CalendarClock size={16} /> {isGameToday ? '경기 시작' : '내일로 이동'}</>
+                    )}
+                </button>
             </div>
         </div>
     </div>
