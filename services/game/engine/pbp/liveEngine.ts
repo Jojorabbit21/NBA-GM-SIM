@@ -333,8 +333,14 @@ export function stepPossession(state: GameState): StepResult {
             isOffReb = true;
         }
     }
-    if (isOffReb) {
-        state.shotClock = 14;
+
+    // 공격권 유지 케이스: 오펜시브 리바운드, 테크니컬 파울, 플래그런트 파울
+    const retainPossession = isOffReb
+        || result.type === 'technicalFoul'
+        || result.type === 'flagrantFoul';
+
+    if (retainPossession) {
+        state.shotClock = isOffReb ? 14 : 24;
     } else {
         state.possession = state.possession === 'home' ? 'away' : 'home';
         state.shotClock = 24;

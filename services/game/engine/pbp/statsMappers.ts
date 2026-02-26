@@ -5,7 +5,7 @@ import { formatTime } from './timeEngine';
 import { resolveRebound } from './reboundLogic';
 
 // Modularized Imports
-import { generateCommentary, getReboundCommentary } from '../commentary/textGenerator';
+import { generateCommentary, getReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary } from '../commentary/textGenerator';
 import { updateZoneStats, updatePlusMinus } from './handlers/statUtils';
 import { recordShotEvent } from './handlers/visUtils';
 
@@ -275,24 +275,24 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
 
     } else if (type === 'freethrow') {
         // Shooting Foul (Always 2 shots for sim simplicity, or 3 if 3PT)
-        
+
         if (defender) commitFoul(defender);
-        
-        const numShots = 2; 
+
+        const numShots = 2;
         let ftMade = 0;
         actor.fta += numShots;
         const ftPct = actor.attr.ft / 100;
-        
+
         // Shot 1
         if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
 
         // Shot 2
         let lastShotMade = false;
-        if (Math.random() < ftPct) { 
-            actor.ftm++; actor.pts++; offTeam.score++; ftMade++; 
+        if (Math.random() < ftPct) {
+            actor.ftm++; actor.pts++; offTeam.score++; ftMade++;
             lastShotMade = true;
         }
-        
+
         updatePlusMinus(offTeam, defTeam, ftMade);
         addLog(state, offTeam.id, `${actor.playerName}, 슈팅 파울 자유투 ${ftMade}/${numShots} 성공`, 'freethrow', ftMade);
 
@@ -300,5 +300,95 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         if (!lastShotMade) {
             handleFreeThrowRebound(actor);
         }
+
+    } else if (type === 'offensiveFoul') {
+        // 오펜시브 파울: 공격자에게 PF + TOV, 수비팀 공 넘김
+        actor.pf += 1;
+        actor.tov += 1;
+
+        const isCharge = playType === 'Iso' || playType === 'PostUp' || playType === 'Transition';
+        const foulDesc = isCharge ? '차지' : '일리걸 스크린';
+        const ejectionText = actor.pf >= 6 ? ' — 6반칙 퇴장!' : '';
+
+        addLog(state, offTeam.id, `${actor.playerName}, 오펜시브 파울 (${foulDesc})${ejectionText}`, 'foul');
+
+        if (actor.pf === 6) {
+            addLog(state, offTeam.id, `🚨 ${actor.playerName} 6반칙 퇴장 (Foul Out)`, 'info');
+        }
+
+    } else if (type === 'technicalFoul') {
+        // 테크니컬 파울: PF 미합산, 별도 techFouls 카운트, FT 1개(베스트 슈터), 공격권 유지
+        if (defender) {
+            defender.techFouls = (defender.techFouls || 0) + 1;
+        }
+
+        // 베스트 FT 슈터가 자유투 1개
+        const ftShooter = [...offTeam.onCourt].sort((a, b) => b.attr.ft - a.attr.ft)[0];
+        const ftPct = ftShooter.attr.ft / 100;
+        ftShooter.fta += 1;
+        let ftMade = 0;
+        if (Math.random() < ftPct) {
+            ftShooter.ftm += 1; ftShooter.pts += 1; offTeam.score += 1; ftMade = 1;
+            updatePlusMinus(offTeam, defTeam, 1);
+        }
+
+        // 2 테크니컬 = 자동 퇴장
+        const isEjected = defender && (defender.techFouls || 0) >= 2;
+        if (isEjected && defender) {
+            defender.pf = 6;
+        }
+
+        // 해설 텍스트
+        const commentaryBase = defender
+            ? getTechnicalFoulCommentary(defender)
+            : `🟨 테크니컬 파울이 선언됩니다!`;
+        const ejectionSuffix = isEjected ? ' — 2 테크니컬 퇴장!' : '';
+        const ftSuffix = ` ${ftShooter.playerName} 자유투 ${ftMade}/1`;
+        addLog(state, defTeam.id, `${commentaryBase}${ejectionSuffix}${ftSuffix}`, 'foul', ftMade || undefined);
+
+        if (isEjected && defender) {
+            addLog(state, defTeam.id, `🚨 ${defender.playerName} 2 테크니컬 퇴장!`, 'info');
+        }
+
+    } else if (type === 'flagrantFoul') {
+        // 플래그런트 파울: PF 합산, FT 2개(파울 당한 선수), 공격권 유지
+        if (defender) commitFoul(defender);
+
+        const isFlagrant2 = result.isFlagrant2;
+
+        // 자유투 2개 (파울 당한 공격자 = actor)
+        const ftPct = actor.attr.ft / 100;
+        actor.fta += 2;
+        let ftMade = 0;
+        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+        if (Math.random() < ftPct) { actor.ftm++; actor.pts++; offTeam.score++; ftMade++; }
+        updatePlusMinus(offTeam, defTeam, ftMade);
+
+        // flagrantFouls 카운트
+        if (defender) {
+            defender.flagrantFouls = (defender.flagrantFouls || 0) + 1;
+        }
+
+        // 해설 텍스트
+        const commentary = defender
+            ? (isFlagrant2 ? getFlagrant2Commentary(defender, actor) : getFlagrant1Commentary(defender, actor))
+            : `🟥 Flagrant ${isFlagrant2 ? '2' : '1'}!`;
+        const ftSuffix = ` ${actor.playerName} 자유투 ${ftMade}/2`;
+        addLog(state, defTeam.id, `${commentary}${ftSuffix}`, 'foul', ftMade || undefined);
+
+        // F2 = 즉시 퇴장
+        if (isFlagrant2 && defender) {
+            defender.pf = 6;
+            addLog(state, defTeam.id, `🚨 ${defender.playerName} Flagrant 2 퇴장!`, 'info');
+        }
+
+    } else if (type === 'shotClockViolation') {
+        // 샷클락 바이올레이션: TOV + 수비팀 공 넘김
+        actor.tov += 1;
+
+        const teamName = offTeam.id === state.home.id
+            ? state.home.name
+            : state.away.name;
+        addLog(state, offTeam.id, `⏱ 24초 샷클락 바이올레이션 — ${teamName} 턴오버`, 'turnover');
     }
 }

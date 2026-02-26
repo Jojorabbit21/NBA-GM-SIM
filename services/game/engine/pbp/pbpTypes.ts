@@ -191,7 +191,8 @@ export interface GameState {
 }
 
 export interface PossessionResult {
-    type: 'score' | 'miss' | 'turnover' | 'foul' | 'freethrow' | 'rebound'; // 'block' is part of miss
+    type: 'score' | 'miss' | 'turnover' | 'foul' | 'freethrow' | 'rebound'
+        | 'offensiveFoul' | 'technicalFoul' | 'flagrantFoul' | 'shotClockViolation';
     
     // Actors
     offTeam: TeamState;
@@ -220,4 +221,7 @@ export interface PossessionResult {
     isSwitch?: boolean;
     isMismatch?: boolean;
     isBotchedSwitch?: boolean; // 수비 실수 (오픈 찬스)
+
+    // [New] Flagrant Foul
+    isFlagrant2?: boolean;
 }

@@ -106,8 +106,10 @@ function sumTeamBoxScore(box: PlayerBoxScore[]) {
         acc.blk    += (s.blk    || 0);
         acc.tov    += (s.tov    || 0);
         acc.pf     += (s.pf     || 0);
+        acc.techFouls += (s.techFouls || 0);
+        acc.flagrantFouls += (s.flagrantFouls || 0);
         return acc;
-    }, { fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0 });
+    }, { fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0 });
 }
 
 function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[]) {
@@ -136,6 +138,8 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             player.stats.ftm += (statLine.ftm || 0);
             player.stats.fta += (statLine.fta || 0);
             player.stats.pf += (statLine.pf || 0);
+            player.stats.techFouls += (statLine.techFouls || 0);
+            player.stats.flagrantFouls += (statLine.flagrantFouls || 0);
             player.stats.plusMinus += (statLine.plusMinus || 0);
 
             // [Fix] Aggregate Zone Stats (Flat Legacy Keys)

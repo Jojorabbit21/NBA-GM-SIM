@@ -283,7 +283,20 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 
+    const offFoulConfig = SIM_CONFIG.FOUL_EVENTS;
+
     if (Math.random() < baseFoulChance) {
+        // ★ Flagrant Foul Conversion (수비 파울 중 일부가 플래그런트로 전환)
+        if (Math.random() < offFoulConfig.FLAGRANT_CONVERT_RATE) {
+            const isFlagrant2 = Math.random() < offFoulConfig.FLAGRANT_2_CHANCE;
+            return {
+                type: 'flagrantFoul' as const,
+                offTeam, defTeam, actor, defender, points: 0 as const,
+                isAndOne: false, playType: selectedPlayType, isSwitch,
+                isFlagrant2,
+            };
+        }
+
         // Shooting foul vs Team foul 구분
         // [Fix] 파울 빈도는 18% 캡, 하지만 슈팅 파울 비율은 intensity로 차등 스케일링
         // → intensity 7과 10은 파울 횟수는 같지만 10이 더 비싼 파울(슈팅파울)을 많이 유발
@@ -299,6 +312,53 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         return {
             type: isShootingFoul ? 'freethrow' : 'foul',
             offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
+        };
+    }
+
+    // 3.5 Offensive Foul Check (차지 / 일리걸 스크린)
+    let offensiveFoulChance = offFoulConfig.OFFENSIVE_FOUL_BASE;
+    if (selectedPlayType === 'PostUp' || selectedPlayType === 'Iso') {
+        offensiveFoulChance = offFoulConfig.POST_OFFENSIVE_FOUL_RATE;
+    } else if (selectedPlayType === 'PnR_Handler' || selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') {
+        offensiveFoulChance += offFoulConfig.SCREEN_FOUL_RATE;
+    }
+    if (defender) {
+        offensiveFoulChance += (defender.attr.helpDefIq - 70) * offFoulConfig.CHARGE_BONUS_PER_DEF_IQ;
+    }
+    offensiveFoulChance = Math.max(0.005, Math.min(0.04, offensiveFoulChance));
+
+    if (Math.random() < offensiveFoulChance) {
+        return {
+            type: 'offensiveFoul' as const,
+            offTeam, defTeam, actor, defender,
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch
+        };
+    }
+
+    // 3.6 Technical Foul Check (독립 이벤트, 낮은 확률)
+    if (Math.random() < offFoulConfig.TECHNICAL_FOUL_CHANCE) {
+        return {
+            type: 'technicalFoul' as const,
+            offTeam, defTeam, actor, defender,
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch
+        };
+    }
+
+    // 3.7 Shot Clock Violation Check (수비 전술 + 공격 볼무브 트레이드-오프)
+    const offSliders = offTeam.tactics.sliders;
+    const defSliders = defTeam.tactics.sliders;
+    const shotClockChance = offFoulConfig.SHOT_CLOCK_BASE
+        + defSliders.defIntensity * offFoulConfig.SHOT_CLOCK_DEF_INTENSITY_FACTOR
+        + defSliders.zoneUsage * offFoulConfig.SHOT_CLOCK_ZONE_USAGE_FACTOR
+        + defSliders.helpDef * offFoulConfig.SHOT_CLOCK_HELP_DEF_FACTOR
+        + Math.max(0, 5 - offSliders.pace) * offFoulConfig.SHOT_CLOCK_LOW_PACE_FACTOR
+        + offSliders.ballMovement * offFoulConfig.SHOT_CLOCK_HIGH_BM_FACTOR;
+
+    if (Math.random() < shotClockChance) {
+        return {
+            type: 'shotClockViolation' as const,
+            offTeam, defTeam, actor,
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch
         };
     }
 

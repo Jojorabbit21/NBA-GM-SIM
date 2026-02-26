@@ -186,3 +186,64 @@ export function generateCommentary(
     // Default Fallback
     return `${actor.playerName}, 플레이를 펼칩니다.`;
 }
+
+/**
+ * Technical Foul Commentary (15 variations)
+ */
+export function getTechnicalFoulCommentary(defender: LivePlayer): string {
+    return pick([
+        `🟨 ${defender.playerName}, 판정에 거세게 항의하다 테크니컬 파울!`,
+        `🟨 ${defender.playerName}, 심판에게 과격한 제스처... 테크니컬 파울이 선언됩니다.`,
+        `🟨 ${defender.playerName}, 노콜 판정에 불만을 표출하다 테크니컬!`,
+        `🟨 ${defender.playerName}, 지속적인 어필 끝에 결국 테크니컬 파울을 받습니다.`,
+        `🟨 ${defender.playerName}, 심판과 언쟁 끝에 테크니컬 파울. 감정 조절이 필요합니다.`,
+        `🟨 ${defender.playerName}, 공을 바닥에 내리치다 테크니컬 파울!`,
+        `🟨 ${defender.playerName}, 좌절감을 이기지 못하고 공을 걷어차 테크니컬!`,
+        `🟨 ${defender.playerName}, 골대를 향해 공을 내던지며 테크니컬 파울.`,
+        `🟨 ${defender.playerName}, 상대 선수를 향한 도발 행위로 테크니컬!`,
+        `🟨 ${defender.playerName}, 득점 후 과도한 세레모니... 테크니컬 파울이 부과됩니다.`,
+        `🟨 ${defender.playerName}, 상대 벤치를 향해 어그로를 끌다 테크니컬!`,
+        `🟨 ${defender.playerName}, 고의적인 경기 지연으로 테크니컬 파울.`,
+        `🟨 ${defender.playerName}, 상대 자유투 시 방해 행위로 테크니컬!`,
+        `🟨 ${defender.playerName}, 심판과의 과도한 접근으로 테크니컬 파울!`,
+        `🟨 ${defender.playerName}, 데드볼 상황에서 상대와 몸싸움... 테크니컬!`,
+    ]);
+}
+
+/**
+ * Flagrant 1 Commentary (12 variations)
+ */
+export function getFlagrant1Commentary(defender: LivePlayer, actor: LivePlayer): string {
+    return pick([
+        `🟥 ${defender.playerName}, 돌파하는 ${actor.playerName}에게 과도한 신체 접촉! Flagrant 1.`,
+        `🟥 ${defender.playerName}, 레이업을 막으려다 ${actor.playerName}의 상체를 거칠게 밀칩니다. Flagrant 1.`,
+        `🟥 ${defender.playerName}, ${actor.playerName}의 슛 시도를 필요 이상으로 강하게 막아섭니다. Flagrant 1 선언.`,
+        `🟥 ${defender.playerName}, 속공 중인 ${actor.playerName}의 유니폼을 잡아끕니다! Flagrant 1.`,
+        `🟥 ${defender.playerName}, 패스트브레이크를 끊으려 ${actor.playerName}을 감싸 안습니다. Flagrant 1.`,
+        `🟥 ${defender.playerName}, 블록을 시도하다 ${actor.playerName}의 얼굴을 가격합니다! Flagrant 1.`,
+        `🟥 ${defender.playerName}, 샷 블록 과정에서 ${actor.playerName}에게 과도한 팔로스루. Flagrant 1.`,
+        `🟥 ${defender.playerName}, 포스트 수비 중 ${actor.playerName}에게 불필요한 푸싱. Flagrant 1.`,
+        `🟥 ${defender.playerName}, 리바운드 경합에서 ${actor.playerName}을 팔꿈치로 밀어냅니다. Flagrant 1.`,
+        `🟥 ${defender.playerName}, 스크린 상황에서 ${actor.playerName}을 과격하게 밀칩니다. Flagrant 1 선언.`,
+        `🟥 ${defender.playerName}, 과도한 신체 접촉! 심판진 리뷰 결과 Flagrant 1.`,
+        `🟥 ${defender.playerName}, ${actor.playerName}에 대한 불필요한 접촉으로 Flagrant 1이 선언됩니다.`,
+    ]);
+}
+
+/**
+ * Flagrant 2 Commentary (10 variations)
+ */
+export function getFlagrant2Commentary(defender: LivePlayer, actor: LivePlayer): string {
+    return pick([
+        `🟥 ${defender.playerName}, 공중에서 ${actor.playerName}을 밀칩니다! Flagrant 2, 즉시 퇴장!`,
+        `🟥 ${defender.playerName}, 레이업 중인 ${actor.playerName}을 위험하게 밀어냅니다! Flagrant 2 퇴장!`,
+        `🟥 ${defender.playerName}, ${actor.playerName}에게 의도적인 엘보! Flagrant 2, 퇴장 처분!`,
+        `🟥 ${defender.playerName}, 스윙한 팔꿈치가 ${actor.playerName}의 얼굴을 강타! Flagrant 2!`,
+        `🟥 ${defender.playerName}, ${actor.playerName}을 거칠게 바닥에 끌어내립니다! Flagrant 2 퇴장!`,
+        `🟥 ${defender.playerName}, 말릴 수 없는 거친 파울! 심판진 리뷰 후 Flagrant 2 선언. 퇴장!`,
+        `🟥 ${defender.playerName}, 보복성 파울! ${actor.playerName}에게 과격한 접촉. Flagrant 2 퇴장!`,
+        `🟥 ${defender.playerName}, 데드볼 상황에서 ${actor.playerName}에게 과격한 행동! Flagrant 2!`,
+        `🟥 ${defender.playerName}, 경기 흐름과 무관한 위험한 접촉! Flagrant 2, 즉각 퇴장 조치됩니다.`,
+        `🟥 ${defender.playerName}, 도저히 용납할 수 없는 플레이! 심판진 만장일치 Flagrant 2 퇴장!`,
+    ]);
+}

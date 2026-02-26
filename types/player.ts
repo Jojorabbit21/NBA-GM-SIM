@@ -12,6 +12,8 @@ export interface PlayerStats {
     blk: number;
     tov: number;
     pf: number;
+    techFouls: number;
+    flagrantFouls: number;
     fgm: number;
     fga: number;
     p3m: number;

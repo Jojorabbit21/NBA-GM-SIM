@@ -37,6 +37,27 @@ export const SIM_CONFIG = {
         MID_DEF_IMPACT: 0.0025,    
         THREE_DEF_IMPACT: 0.0020, 
     },
+    // Foul Events (오펜시브 파울 / 테크니컬 / 플래그런트 / 샷클락 바이올레이션)
+    FOUL_EVENTS: {
+        // 오펜시브 파울
+        OFFENSIVE_FOUL_BASE: 0.015,
+        CHARGE_BONUS_PER_DEF_IQ: 0.0003,
+        POST_OFFENSIVE_FOUL_RATE: 0.025,
+        SCREEN_FOUL_RATE: 0.008,
+
+        // 테크니컬 파울
+        TECHNICAL_FOUL_CHANCE: 0.003,
+        FLAGRANT_CONVERT_RATE: 0.05,
+        FLAGRANT_2_CHANCE: 0.10,
+
+        // 샷클락 바이올레이션 (수비 전술 + 공격 볼무브 트레이드-오프)
+        SHOT_CLOCK_BASE: 0.003,
+        SHOT_CLOCK_DEF_INTENSITY_FACTOR: 0.001,
+        SHOT_CLOCK_ZONE_USAGE_FACTOR: 0.0008,
+        SHOT_CLOCK_HELP_DEF_FACTOR: 0.0006,
+        SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
+        SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
+    },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
         PROB_MOD: {
