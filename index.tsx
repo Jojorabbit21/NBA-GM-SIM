@@ -5,13 +5,13 @@ import { QueryClient } from '@tanstack/query-core';
 import { injectSpeedInsights } from '@vercel/speed-insights';
 import './index.css'; // Tailwind CSS Import
 import App from './App';
-import { applyPatchToTeamData } from './utils/patchManager';
+import { applyEditorToTeamData } from './utils/editorManager';
 
 // Vercel Speed Insights 초기화
 injectSpeedInsights();
 
-// 유저 패치 적용 (React 렌더링 전에 TEAM_DATA 뮤테이트)
-applyPatchToTeamData();
+// 유저 에디터 적용 (React 렌더링 전에 TEAM_DATA 뮤테이트)
+applyEditorToTeamData();
 
 const queryClient = new QueryClient({
   defaultOptions: {
