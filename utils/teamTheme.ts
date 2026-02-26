@@ -106,7 +106,7 @@ const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>
     // text → secondary
     'mem': { text: 'text' },
     'nyk': { text: 'text'},
-    'okc': { text: 'text' },
+    'okc': { text: 'text', accent: 'text' },
     // inverted
     'lac': { bg: 'secondary', text: 'text', accent: 'text' },
     'min': { bg: 'primary', text: 'text', accent: '#78BE21' },

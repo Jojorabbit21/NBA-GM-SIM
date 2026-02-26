@@ -17,9 +17,20 @@ interface DraftBoardProps {
     totalRounds: number;
     picks: BoardPick[];
     currentPickIndex: number;
-    draftOrder: string[]; // snake order, length = teamIds.length * totalRounds
+    draftOrder: string[];
     userTeamId: string;
+    positionColors: Record<string, string>;
 }
+
+// OVR tier color (inline text, not badge)
+const getOvrColor = (ovr: number): string => {
+    if (ovr >= 90) return '#f0abfc'; // fuchsia-300
+    if (ovr >= 85) return '#93c5fd'; // blue-300
+    if (ovr >= 80) return '#6ee7b7'; // emerald-300
+    if (ovr >= 75) return '#fcd34d'; // amber-300
+    if (ovr >= 70) return '#94a3b8'; // slate-400
+    return '#78716c'; // stone-500
+};
 
 export const DraftBoard: React.FC<DraftBoardProps> = ({
     teamIds,
@@ -28,6 +39,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
     currentPickIndex,
     draftOrder,
     userTeamId,
+    positionColors,
 }) => {
     const currentCellRef = useRef<HTMLTableCellElement>(null);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -39,30 +51,27 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             const cellRect = cell.getBoundingClientRect();
             const containerRect = container.getBoundingClientRect();
 
-            // Horizontal scroll
             if (cellRect.left < containerRect.left + 120 || cellRect.right > containerRect.right) {
                 container.scrollLeft += cellRect.left - containerRect.left - 160;
             }
-            // Vertical scroll
             if (cellRect.top < containerRect.top + 30 || cellRect.bottom > containerRect.bottom) {
                 container.scrollTop += cellRect.top - containerRect.top - 60;
             }
         }
     }, [currentPickIndex]);
 
-    // Build a lookup: picksByTeamAndRound[teamId][round] = BoardPick
+    // Build lookup: picksByTeamAndRound[teamId][round] = BoardPick
     const picksByTeamAndRound: Record<string, Record<number, BoardPick>> = {};
     picks.forEach(p => {
         if (!picksByTeamAndRound[p.teamId]) picksByTeamAndRound[p.teamId] = {};
         picksByTeamAndRound[p.teamId][p.round] = p;
     });
 
-    // Find current pick's team and round
     const currentTeamId = draftOrder[currentPickIndex] || '';
     const currentRound = Math.floor(currentPickIndex / teamIds.length) + 1;
-
     const userTeamData = TEAM_DATA[userTeamId];
     const userPrimaryColor = userTeamData?.colors.primary || '#4f46e5';
+    const currentTeamColor = TEAM_DATA[currentTeamId]?.colors.primary || '#6366f1';
 
     return (
         <div
@@ -73,19 +82,24 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             <table className="border-collapse text-[10px] w-max min-w-full">
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
-                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[110px] px-2 py-1 text-left font-bold text-slate-500 text-[9px] uppercase border-b border-r border-slate-800">
+                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[100px] px-2 py-1.5 text-left font-bold text-slate-500 text-[9px] uppercase border-b border-r border-slate-800">
                             Team
                         </th>
-                        {Array.from({ length: totalRounds }, (_, i) => (
-                            <th
-                                key={i}
-                                className={`min-w-[100px] px-1 py-1 text-center font-bold text-[9px] uppercase border-b border-slate-800 ${
-                                    i + 1 === currentRound ? 'text-indigo-400 bg-indigo-500/5' : 'text-slate-500'
-                                }`}
-                            >
-                                R{i + 1}
-                            </th>
-                        ))}
+                        {Array.from({ length: totalRounds }, (_, i) => {
+                            const round = i + 1;
+                            const isPast = round < currentRound;
+                            const isCurrent = round === currentRound;
+                            return (
+                                <th
+                                    key={i}
+                                    className={`min-w-[100px] px-1 py-1.5 text-center font-bold text-[9px] uppercase border-b border-slate-800 ${
+                                        isCurrent ? 'text-indigo-400 bg-indigo-500/5' : isPast ? 'text-slate-600' : 'text-slate-500'
+                                    }`}
+                                >
+                                    R{round}
+                                </th>
+                            );
+                        })}
                     </tr>
                 </thead>
                 <tbody>
@@ -95,18 +109,19 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         return (
                             <tr
                                 key={teamId}
-                                className={`h-8 border-b hover:bg-white/[0.02] ${
-                                    isUserTeam ? 'border-l-2' : 'border-slate-800/30'
-                                }`}
-                                style={isUserTeam ? {
-                                    borderLeftColor: userPrimaryColor,
-                                    backgroundColor: `${userPrimaryColor}08`,
-                                } : {}}
+                                className="h-8 border-b hover:bg-white/[0.02]"
+                                style={{
+                                    borderBottomColor: 'rgba(30,41,59,0.3)',
+                                    ...(isUserTeam ? {
+                                        borderLeft: `2px solid ${userPrimaryColor}`,
+                                        backgroundColor: `${userPrimaryColor}08`,
+                                    } : {}),
+                                }}
                             >
-                                <td className="sticky left-0 bg-slate-950 px-2 py-1 border-r border-slate-800/50">
+                                <td className="sticky left-0 bg-slate-950 px-2 py-1 border-r border-slate-800/50 z-10">
                                     <div className="flex items-center gap-1.5">
                                         <TeamLogo teamId={teamId} size="xs" className="w-4 h-4" />
-                                        <span className={`text-xs font-semibold truncate ${isUserTeam ? 'text-white' : 'text-slate-300'}`}>
+                                        <span className={`text-[11px] font-semibold truncate ${isUserTeam ? 'text-white font-bold' : 'text-slate-300'}`}>
                                             {td ? td.name : teamId.toUpperCase()}
                                         </span>
                                     </div>
@@ -120,20 +135,37 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                         <td
                                             key={round}
                                             ref={isCurrent ? currentCellRef : undefined}
-                                            className={`px-1 py-0.5 text-center border-slate-800/20 ${
+                                            className={`px-1 py-0.5 text-center ${
                                                 isCurrent
-                                                    ? 'bg-indigo-500/10 ring-1 ring-indigo-500'
+                                                    ? ''
                                                     : pick
-                                                        ? 'bg-slate-900/50'
+                                                        ? 'bg-slate-900/40'
                                                         : 'bg-transparent'
                                             }`}
+                                            style={isCurrent ? {
+                                                boxShadow: `inset 0 0 0 1.5px ${currentTeamColor}`,
+                                                backgroundColor: `${currentTeamColor}10`,
+                                            } : {}}
                                         >
                                             {pick ? (
-                                                <div className="text-[10px] font-semibold text-white truncate max-w-[90px] mx-auto">
-                                                    {pick.playerName}
+                                                <div
+                                                    className="flex items-center gap-1 max-w-[95px] mx-auto"
+                                                    style={{ borderLeft: `2px solid ${positionColors[pick.position] || '#64748b'}`, paddingLeft: '4px' }}
+                                                >
+                                                    <span
+                                                        className="text-[9px] font-bold shrink-0"
+                                                        style={{ color: getOvrColor(pick.ovr) }}
+                                                    >
+                                                        {pick.ovr}
+                                                    </span>
+                                                    <span className="text-[10px] font-semibold text-slate-200 truncate">
+                                                        {pick.playerName}
+                                                    </span>
                                                 </div>
                                             ) : isCurrent ? (
-                                                <div className="text-[9px] text-indigo-400 animate-pulse">...</div>
+                                                <div className="text-[9px] animate-pulse" style={{ color: currentTeamColor }}>
+                                                    ···
+                                                </div>
                                             ) : null}
                                         </td>
                                     );

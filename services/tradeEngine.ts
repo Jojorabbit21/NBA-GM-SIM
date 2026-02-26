@@ -2,6 +2,7 @@
 import { Team, Player, TradeOffer, Transaction } from '../types';
 import { generateOffers } from './tradeEngine/offerGenerator';
 import { generateCounters } from './tradeEngine/counterGenerator';
+import { runCPUTradeRound } from './tradeEngine/cpuTradeSimulator';
 
 export async function generateTradeOffers(
     tradingPlayers: Player[],
@@ -21,10 +22,10 @@ export async function generateCounterOffers(
     return generateCounters(targetPlayers, targetTeam, myTeam, allTeams);
 }
 
-// CPU 트레이드 시뮬레이션 (향후 구현 예정 — 현재 스텁)
 export async function simulateCPUTrades(
     allTeams: Team[],
-    myTeamId: string | null
-): Promise<{ updatedTeams: Team[], transaction?: Transaction } | null> {
-    return null;
+    myTeamId: string | null,
+    currentDate: string
+): Promise<{ updatedTeams: Team[]; transactions: Transaction[] } | null> {
+    return runCPUTradeRound(allTeams, myTeamId, currentDate);
 }

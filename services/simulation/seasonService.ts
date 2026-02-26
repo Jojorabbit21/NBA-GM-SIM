@@ -52,17 +52,18 @@ export const handleSeasonEvents = async (
 
     // 2. CPU Trades
     // Only during Regular Season (Empty Playoffs)
-    if (updatedSeries.length === 0 && Math.random() < 0.3) {
-        const tradeResult = await simulateCPUTrades(teams, myTeamId);
-        if (tradeResult && tradeResult.transaction) {
-            // [Fix] Ensure date matches current simulation date (Moved from Hook)
-            const cpuTx = { ...tradeResult.transaction, date: currentSimDate };
-            newTransactions.push(cpuTx);
-            
-            const news = await generateCPUTradeNews(cpuTx);
-            if (news) {
-                newsItems.push(...news);
-                tradeToast = `[TRADE] ${news[0]}`;
+    if (updatedSeries.length === 0) {
+        const tradeResults = await simulateCPUTrades(teams, myTeamId, currentSimDate);
+        if (tradeResults && tradeResults.transactions.length > 0) {
+            for (const tx of tradeResults.transactions) {
+                const cpuTx = { ...tx, date: currentSimDate };
+                newTransactions.push(cpuTx);
+
+                const news = await generateCPUTradeNews(cpuTx);
+                if (news) {
+                    newsItems.push(...news);
+                    if (!tradeToast) tradeToast = `[TRADE] ${news[0]}`;
+                }
             }
         }
     }

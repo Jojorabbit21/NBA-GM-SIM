@@ -3,12 +3,18 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Team, Player } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
+import { getTeamTheme, getButtonTheme } from '../utils/teamTheme';
 import { DraftHeader } from '../components/draft/DraftHeader';
 import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
 import { PlayerPool } from '../components/draft/PlayerPool';
 import { MyRoster } from '../components/draft/MyRoster';
 import { GripHorizontal } from 'lucide-react';
+
+// ── Position Color System ──
+export const POSITION_COLORS: Record<string, string> = {
+    PG: '#22d3ee', SG: '#34d399', SF: '#fbbf24', PF: '#fb7185', C: '#a78bfa',
+};
 
 interface FantasyDraftViewProps {
     teams: Team[];
@@ -38,6 +44,11 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     const TOTAL_ROUNDS = 15;
     const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
     const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds]);
+
+    // ── Team Theme ──
+    const myTeamColors = TEAM_DATA[myTeamId]?.colors || null;
+    const teamTheme = useMemo(() => getTeamTheme(myTeamId, myTeamColors), [myTeamId, myTeamColors]);
+    const buttonTheme = useMemo(() => getButtonTheme(myTeamId, myTeamColors), [myTeamId, myTeamColors]);
     const allPlayers = useMemo(() => collectAllPlayers(teams), [teams]);
 
     // ── Mock Draft State ──
@@ -183,6 +194,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 onFastForward={handleFastForward}
                 showFastForward={showFastForward}
                 onBack={onBack}
+                teamTheme={teamTheme}
             />
 
             {/* Draft Board (resizable top section) */}
@@ -194,6 +206,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                     currentPickIndex={currentPickIndex}
                     draftOrder={draftOrder}
                     userTeamId={myTeamId}
+                    positionColors={POSITION_COLORS}
                 />
             </div>
 
@@ -209,7 +222,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             <div className="flex flex-1 min-h-0 overflow-hidden">
                 {/* Left: Pick History */}
                 <div className="w-[25%] border-r border-slate-800">
-                    <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} />
+                    <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} positionColors={POSITION_COLORS} userTeamId={myTeamId} />
                 </div>
 
                 {/* Center: Player Pool */}
@@ -220,12 +233,15 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                         selectedPlayerId={selectedPlayerId}
                         isUserTurn={isUserTurn}
                         onDraft={handleDraft}
+                        positionColors={POSITION_COLORS}
+                        buttonTheme={buttonTheme}
+                        teamColor={teamTheme.bg}
                     />
                 </div>
 
                 {/* Right: My Roster */}
                 <div className="w-[25%]">
-                    <MyRoster players={myPicks} latestPlayerId={latestMyPickId} />
+                    <MyRoster players={myPicks} latestPlayerId={latestMyPickId} positionColors={POSITION_COLORS} teamColor={teamTheme.bg} />
                 </div>
             </div>
         </div>
