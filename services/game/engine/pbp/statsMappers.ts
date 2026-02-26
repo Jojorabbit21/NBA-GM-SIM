@@ -213,10 +213,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Handle Rebound (Field Goal)
         if (rebounder) {
             rebounder.reb += 1;
-            const rebType = rebounder.playerId === actor.playerId || state.home.onCourt.includes(rebounder) === state.home.onCourt.includes(actor) ? 'off' : 'def';
+            const rebType = result.reboundType || 'def';
             if (rebType === 'off') rebounder.offReb += 1;
             else rebounder.defReb += 1;
-            
+
             // Rebound Log
             const rebText = getReboundCommentary(rebounder, rebType);
             addLog(state, rebounder.playerId, rebText, 'info');

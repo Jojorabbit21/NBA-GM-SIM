@@ -164,7 +164,7 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[]):
 
     // --- Phase 3: Recursive Tree Advancement (R1 -> Semis -> Conf -> Finals) ---
     // Helper to find or create next round series
-    const ensureNextSeries = (id: string, round: number, conf: 'East'|'West'|'NBA', highId: string, lowId: string) => {
+    const ensureNextSeries = (id: string, round: number, conf: 'East'|'West'|'BPL', highId: string, lowId: string) => {
         let s = updated.find(x => x.id === id);
         if (!s) {
             s = {
@@ -213,12 +213,12 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[]):
         if (s2?.winnerId && cf.lowerSeedId === 'TBD') { cf.lowerSeedId = s2.winnerId; changed = true; }
     });
 
-    // 3c. Advance Conf Finals to NBA Finals
+    // 3c. Advance Conf Finals to BPL Finals
     const eastCF = updated.find(s => s.round === 3 && s.conference === 'East');
     const westCF = updated.find(s => s.round === 3 && s.conference === 'West');
-    
+
     if (eastCF || westCF) {
-        const finals = ensureNextSeries(`NBA_FINALS`, 4, 'NBA', eastCF?.winnerId || 'TBD', westCF?.winnerId || 'TBD');
+        const finals = ensureNextSeries(`BPL_FINALS`, 4, 'BPL', eastCF?.winnerId || 'TBD', westCF?.winnerId || 'TBD');
         if (eastCF?.winnerId && finals.higherSeedId === 'TBD') { finals.higherSeedId = eastCF.winnerId; changed = true; }
         if (westCF?.winnerId && finals.lowerSeedId === 'TBD') { finals.lowerSeedId = westCF.winnerId; changed = true; }
     }

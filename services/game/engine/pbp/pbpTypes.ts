@@ -58,6 +58,8 @@ export interface LivePlayer extends PlayerBoxScore {
 
         // Rebound
         reb: number;
+        offReb: number;  // 공격 리바운드 전용 능력치
+        defReb: number;  // 수비 리바운드 전용 능력치
 
         // Intangibles (클러치, 강심장, 해결사 능력)
         intangibles: number;
@@ -201,6 +203,7 @@ export interface PossessionResult {
     defender?: LivePlayer; // The primary defender (or stealer/blocker)
     assister?: LivePlayer; // If scored
     rebounder?: LivePlayer; // If missed
+    reboundType?: 'off' | 'def'; // resolveRebound에서 결정된 리바운드 타입
 
     // Details
     playType?: PlayType;

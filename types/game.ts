@@ -18,7 +18,7 @@ export interface Game {
 export interface PlayoffSeries {
     id: string;
     round: number;
-    conference: 'East' | 'West' | 'NBA';
+    conference: 'East' | 'West' | 'BPL';
     higherSeedId: string;
     lowerSeedId: string;
     higherSeedWins: number;

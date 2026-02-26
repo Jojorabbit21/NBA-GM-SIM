@@ -46,11 +46,11 @@ const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>
     'tor': { bg: '#753BBD', text: 'text', glow: '#753BBD' },
     'dal': { bg: 'text', text: 'primary', glow: 'primary'},
     'den': { bg: 'text', text: 'primary', glow: 'text'},
-    'gsw': { bg: '#FFFFFF', text: 'primary', glow: 'primary'},
+    'gs': { bg: '#FFFFFF', text: 'primary', glow: 'primary'},
     // INVERTED: header bg=secondary → primary 대비
-    'lac': { bg: 'primary', text: '#FFFFFF', glow: 'primary' },
+    'la2': { bg: 'primary', text: '#FFFFFF', glow: 'primary' },
     'min': { bg: '#78BE21', text: 'text', glow: '#78BE21' },
-    'sas': { bg: 'primary', text: 'text', glow: 'secondary' },
+    'sa': { bg: 'primary', text: 'text', glow: 'secondary' },
     'sac': { bg: 'text', text: 'primary', glow: 'primary' },
     // secondary 너무 어두워 글로우 안 보임
     'mem': { bg: 'text', text: 'secondary', glow: 'primary' },
@@ -89,11 +89,11 @@ const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>
     'cle': { accent: 'text' },
     'dal': { accent: 'text' },
     'den': { accent: 'text' },
-    'gsw': { accent: 'text' },
+    'gs': { accent: 'text' },
     'hou': { accent: 'text' },
-    'lal': { accent: 'text' },
+    'la1': { accent: 'text' },
     'mia': { accent: 'text' },
-    'nop': { accent: 'text' },
+    'no': { accent: 'text' },
     'orl': { accent: 'text' },
     'phi': { accent: 'text' },
     'por': { accent: 'text' },
@@ -108,9 +108,9 @@ const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>
     'nyk': { text: 'text'},
     'okc': { text: 'text', accent: 'text' },
     // inverted
-    'lac': { bg: 'secondary', text: 'text', accent: 'text' },
+    'la2': { bg: 'secondary', text: 'text', accent: 'text' },
     'min': { bg: 'primary', text: 'text', accent: '#78BE21' },
-    'sas': { bg: 'secondary', text: 'primary', accent: 'primary' },
+    'sa': { bg: 'secondary', text: 'primary', accent: 'primary' },
 };
 
 export function getTeamTheme(

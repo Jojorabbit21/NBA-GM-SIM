@@ -77,11 +77,17 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
       {/* Enhanced Header */}
       <header className="flex-shrink-0 h-32 border-b border-slate-800/50 bg-slate-900/50 backdrop-blur-md flex items-center justify-center relative z-20">
         <div className="flex items-center gap-8">
-          <img src="https://upload.wikimedia.org/wikipedia/en/0/03/National_Basketball_Association_logo.svg" className="h-16 opacity-90 drop-shadow-2xl" alt="NBA" />
+          <div className="h-16 w-16 flex items-center justify-center bg-indigo-600 rounded-full shadow-2xl">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" className="h-10 w-10">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="white" strokeWidth="5"/>
+              <path d="M 20 50 Q 50 20 80 50 Q 50 80 20 50" fill="none" stroke="white" strokeWidth="4"/>
+              <line x1="50" y1="10" x2="50" y2="90" stroke="white" strokeWidth="3"/>
+            </svg>
+          </div>
           <div className="h-12 w-[2px] bg-slate-700/50"></div>
           <div>
             <h1 className="text-5xl font-black bebas text-white tracking-widest leading-none drop-shadow-lg">
-              NBA GM SIM <span className="text-indigo-500">2026</span>
+              BPL GM SIM <span className="text-indigo-500">2026</span>
             </h1>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] leading-none mt-2 text-shadow-sm">
               Select Your Franchise

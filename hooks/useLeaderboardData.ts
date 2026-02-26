@@ -376,6 +376,7 @@ export const useLeaderboardData = (
                 update('stl', s.stl / g);
                 update('blk', s.blk / g);
                 update('tov', s.tov / g);
+                update('pf', (s.pf || 0) / g);
                 update('fg%', s.fga > 0 ? s.fgm / s.fga : 0);
                 update('3p%', s.p3a > 0 ? s.p3m / s.p3a : 0);
                 update('ft%', s.fta > 0 ? s.ftm / s.fta : 0);
@@ -568,7 +569,7 @@ export const useLeaderboardData = (
                     if (s[sortConfig.key] !== undefined) {
                         const val = s[sortConfig.key];
                         // If it's a count stat, average it. If ratio, use as is.
-                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pm', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
+                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
                             return val / g;
                         }
                         return val;

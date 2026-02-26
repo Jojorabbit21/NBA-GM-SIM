@@ -250,8 +250,9 @@ hitRate -= (defIntensity - 5) * 0.005      // 강도: ±2.5%
 if Rim/Paint:
   hitRate -= (helpDef - 5) * 0.008         // 헬프: ±4.0%
 
-// Pace 페널티
-if pace > 7: hitRate -= 0.03               // 빠른 공격 = 서두른 슛
+// Pace 페널티 (단계별)
+// pace 5 이하: 0%, 6: -1%, 7: -2%, 8: -3%, 9: -4%, 10: -5%
+if pace > 5: hitRate -= (pace - 5) * 0.01  // 빠른 공격 = 서두른 슛
 
 // Ace Stopper 매칭업
 if (stopperId === defender.id && actor.id === acePlayerId):
@@ -557,7 +558,7 @@ GAME_ENV: {
 
 | 슬라이더 | 범위 | 영향 |
 |---------|------|------|
-| `pace` | 1-10 | 포세션 시간 (pace=1: 20초, pace=10: 11초), Transition 확률 (×3%), hitRate 페널티 (>7: -3%) |
+| `pace` | 1-10 | 포세션 시간 (pace=1: 20초, pace=10: 11초), Transition 확률 (×3%), hitRate 페널티 (>5: -(pace-5)×1% 단계별) |
 | `ballMovement` | 1-10 | TOV 확률 (+0.4% per step above 5) |
 | `play_pnr` | 1-10 | PnR 포세션 비중 (×0.6/0.2/0.2 분배) |
 | `play_iso` | 1-10 | Iso 포세션 비중 |

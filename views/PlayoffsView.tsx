@@ -104,7 +104,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       return { higherSeedId: seeds[rankH-1]?.id, lowerSeedId: seeds[rankL-1]?.id, conference: conf };
   };
 
-  const getRoundMatch = (conf: 'East' | 'West' | 'NBA', round: number, index: number) => {
+  const getRoundMatch = (conf: 'East' | 'West' | 'BPL', round: number, index: number) => {
       const candidates = series.filter(s => s.conference === conf && s.round === round);
       return candidates[index] || null;
   };
@@ -121,7 +121,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
   const cf_east = getRoundMatch('East', 3, 0);
   const cf_west = getRoundMatch('West', 3, 0);
   
-  const finals = getRoundMatch('NBA', 4, 0);
+  const finals = getRoundMatch('BPL', 4, 0);
 
   const getFinalsGradient = () => {
       const defaultGradient = 'linear-gradient(to bottom right, #1d428a, #c8102e)';
@@ -165,7 +165,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
               <div className={HEADER_STYLE}>Semis</div>
               <div className={HEADER_STYLE}>Conf. Finals</div>
               <div className="py-3 px-2 md:px-4 text-[10px] md:text-[12px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] text-yellow-500 text-center bg-yellow-950/20 border-b border-yellow-500/30 flex items-center justify-center gap-1 md:gap-2 truncate">
-                  NBA FINALS
+                  BPL FINALS
               </div>
 
               <div className="flex flex-col border-r border-slate-800">
@@ -244,19 +244,18 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
               <div className="flex flex-col relative overflow-hidden border-l border-slate-800 min-w-0 bg-black">
                   <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: getFinalsGradient() }}></div>
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <img 
-                        src="/trophy_dark.png" 
-                        alt="NBA Finals Trophy" 
-                        className="w-40 md:w-56 opacity-20 drop-shadow-2xl grayscale" 
+                      <img
+                        src="/trophy_dark.png"
+                        alt="BPL Finals Trophy"
+                        className="w-40 md:w-56 opacity-20 drop-shadow-2xl grayscale"
                         onError={(e) => {
-                            // Fallback if local image missing
-                            e.currentTarget.src = "https://content.sportslogos.net/logos/6/6662/full/_nba_finals_logo_alternate_2022_sportslogosnet-6354.png";
+                            e.currentTarget.style.display = 'none';
                         }}
                       />
                   </div>
                   <div className="flex-1 flex flex-col items-center justify-center p-1 md:p-2 relative z-10 w-full">
                       <div className="w-full flex flex-col items-center gap-8">
-                          <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="NBA FINALS" />
+                          <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="BPL FINALS" />
                       </div>
                   </div>
               </div>

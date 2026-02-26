@@ -144,9 +144,9 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                     {/* Right col: 공격 루트 비중 */}
                     <div className="flex flex-col gap-1">
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">공격 루트 비중</h4>
-                        <SliderControl label="픽앤롤 (P&R)" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)} leftLabel="낮음" rightLabel="높음" tooltip="핸들러+스크리너 콤보가 좋을수록 효과적입니다. 현대 NBA의 핵심 공격 패턴." fillColor="#3b82f6" />
+                        <SliderControl label="픽앤롤 (P&R)" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)} leftLabel="낮음" rightLabel="높음" tooltip="핸들러+스크리너 콤보가 좋을수록 효과적입니다. 현대 농구의 핵심 공격 패턴." fillColor="#3b82f6" />
                         <SliderControl label="아이솔레이션 (Iso)" value={sliders.play_iso} onChange={v => updateSlider('play_iso', v)} leftLabel="낮음" rightLabel="높음" tooltip="진짜 ISO 스코어러가 없다면 낮게 유지하세요. 고임계값에서만 효율적." fillColor="#3b82f6" />
-                        <SliderControl label="포스트업 (Post)" value={sliders.play_post} onChange={v => updateSlider('play_post', v)} leftLabel="낮음" rightLabel="높음" tooltip="도미넌트 포스트맨이 있을 때만 높게 설정하세요. 현대 NBA에서 기본 효율 낮음." fillColor="#3b82f6" />
+                        <SliderControl label="포스트업 (Post)" value={sliders.play_post} onChange={v => updateSlider('play_post', v)} leftLabel="낮음" rightLabel="높음" tooltip="도미넌트 포스트맨이 있을 때만 높게 설정하세요. 현대 농구에서 기본 효율 낮음." fillColor="#3b82f6" />
                         <SliderControl label="캐치 앤 슛 (Spot Up)" value={sliders.play_cns} onChange={v => updateSlider('play_cns', v)} leftLabel="낮음" rightLabel="높음" tooltip="팀 전체의 스패이싱 능력에 따라 설정하세요." fillColor="#3b82f6" />
                         <SliderControl label="컷인 & 돌파 (Cut)" value={sliders.play_drive} onChange={v => updateSlider('play_drive', v)} leftLabel="낮음" rightLabel="높음" tooltip="드라이브/컷 능력이 좋은 선수가 있을수록 효과적입니다." fillColor="#3b82f6" />
                     </div>

@@ -58,6 +58,18 @@ export const SIM_CONFIG = {
         SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
         SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
     },
+    // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
+    REBOUND: {
+        BASE_ORB_RATE: 0.23,          // NBA 평균 ORB% (2023-24: 22.8%)
+        MIN_ORB_RATE: 0.12,           // 하한 (극단적 수비 우위)
+        MAX_ORB_RATE: 0.38,           // 상한 (극단적 공격 리바 크래쉬)
+        SLIDER_IMPACT: 0.012,         // 슬라이더 1포인트당 ORB% ±1.2%
+        QUALITY_FACTOR: 0.08,         // 팀 리바 능력 차이 반영 계수
+        POS_WEIGHT_C: 1.3,            // 센터 리바운드 가중치
+        POS_WEIGHT_PF: 1.2,           // 파워포워드 가중치
+        POS_WEIGHT_DEFAULT: 1.0,      // 기본 가중치
+        SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
+    },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
         PROB_MOD: {

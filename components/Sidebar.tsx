@@ -184,7 +184,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
           }`}>
             <h2 className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md">
-              {team?.name || 'NBA GM'}
+              {team?.name || 'BPL GM'}
             </h2>
             <span className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-80">
               {team?.wins || 0}W - {team?.losses || 0}L

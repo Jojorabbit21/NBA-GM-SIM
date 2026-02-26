@@ -23,8 +23,8 @@ const SECTION_DATA = [
         content: (
             <div className="space-y-6 text-slate-300 text-base leading-relaxed">
                 <p>
-                    <strong className="text-white text-lg">NBA GM Simulator 2025-26</strong>에 오신 것을 환영합니다. 
-                    당신은 NBA 팀의 전권을 위임받은 단장(General Manager)으로 취임했습니다.
+                    <strong className="text-white text-lg">BPL GM Simulator 2025-26</strong>에 오신 것을 환영합니다.
+                    당신은 프로 농구팀의 전권을 위임받은 단장(General Manager)으로 취임했습니다.
                 </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <Card variant="flat" padding="md">
@@ -108,7 +108,7 @@ const SECTION_DATA = [
                     <h4 className="text-white font-black mb-3 flex items-center gap-2">
                         <DollarSign size={20} className="text-amber-400" /> 샐러리 캡
                     </h4>
-                    <p>NBA의 샐러리 구조를 따릅니다. 사치세 라인을 넘기면 구단주의 압박을 받을 수 있습니다.</p>
+                    <p>프로 농구의 샐러리 구조를 따릅니다. 사치세 라인을 넘기면 구단주의 압박을 받을 수 있습니다.</p>
                 </Card>
             </div>
         )
@@ -126,7 +126,7 @@ export const HelpView: React.FC<HelpViewProps> = ({ onBack }) => {
         <div className="flex flex-col min-h-full animate-in fade-in duration-500 ko-normal gap-8 pb-20 w-full">
             <PageHeader 
                 title="운영 매뉴얼" 
-                description="NBA General Manager Guide"
+                description="BPL General Manager Guide"
                 icon={<HelpCircle size={24} />}
                 actions={
                     <button onClick={onBack} className="p-3 hover:bg-slate-800 rounded-full transition-colors group border border-slate-800">
