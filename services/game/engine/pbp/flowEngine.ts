@@ -1,6 +1,6 @@
 
 import { SIM_CONFIG } from '../../config/constants';
-import { LivePlayer, TeamState } from './pbpTypes';
+import { LivePlayer, TeamState, ClutchContext } from './pbpTypes';
 import { calculateAceStopperImpact } from '../aceStopperSystem';
 import { Player, PlayType, TacticalSliders } from '../../../../types';
 
@@ -37,7 +37,9 @@ export function calculateHitRate(
     acePlayerId?: string,
     isBotchedSwitch: boolean = false,
     isSwitch: boolean = false,
-    minHitRate?: number // [New] Buzzer beater: enforce hit rate lower bound
+    minHitRate?: number, // [New] Buzzer beater: enforce hit rate lower bound
+    isHome: boolean = false,
+    clutchContext?: ClutchContext
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -145,6 +147,37 @@ export function calculateHitRate(
     // pace=5: 0%, pace=6: -1%, pace=7: -2%, pace=8: -3%, pace=9: -4%, pace=10: -5%
     if (offSliders.pace > 5) {
         hitRate -= (offSliders.pace - 5) * 0.01;
+    }
+
+    // 6. Home Court Advantage
+    if (isHome) {
+        hitRate += SIM_CONFIG.GAME_ENV.HOME_ADVANTAGE;
+    }
+
+    // 7. Clutch Modifier (Q4 접전 상황)
+    // intangibles(50%) + offConsist(30%) + shotIq(20%) → 70 기준 ±보정
+    if (clutchContext?.isClutch) {
+        const clutchRating = (
+            actor.attr.intangibles * 0.50 +
+            actor.attr.offConsist * 0.30 +
+            actor.attr.shotIq * 0.20
+        ) / 100;
+        // 70 기준, 상위: +3% 이상, 하위: -3% 이상
+        const clutchModifier = (clutchRating - 0.70) * 0.10;
+
+        hitRate += clutchContext.isSuperClutch ? clutchModifier * 1.5 : clutchModifier;
+        hitRate -= 0.015; // 전체 프레셔 페널티 -1.5%
+    }
+
+    // 8. Hot/Cold Streak (±4% 캡)
+    if (actor.hotColdRating !== 0) {
+        let temperatureBonus = actor.hotColdRating * 0.04;
+        // 콜드 스트릭 완화: offConsist가 높으면 멘탈 회복
+        if (temperatureBonus < 0) {
+            const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;
+            temperatureBonus *= (1 - consistencyRecover);
+        }
+        hitRate += temperatureBonus;
     }
 
     let finalRate = Math.max(0.05, Math.min(0.95, hitRate));

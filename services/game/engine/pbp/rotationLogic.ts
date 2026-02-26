@@ -1,7 +1,8 @@
 
-import { GameState, TeamState, LivePlayer } from './pbpTypes';
+import { GameState, TeamState, LivePlayer, RotationOverride } from './pbpTypes';
 import { DepthChart } from '../../../../types';
 import { formatTime } from './timeEngine';
+import { evaluateFoulTroubleAction } from './substitutionSystem';
 
 export interface SubRequest {
     outPlayer: LivePlayer;
@@ -290,21 +291,21 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
     if (inPlayer) {
         const outIdx = team.onCourt.indexOf(outPlayer);
         const inIdx = team.bench.indexOf(inPlayer);
-        
+
         if (outIdx > -1 && inIdx > -1) {
             team.onCourt.splice(outIdx, 1);
             team.bench.push(outPlayer);
-            
+
             team.bench.splice(inIdx, 1);
             team.onCourt.push(inPlayer);
-            
+
             // 기록
             const histOut = state.rotationHistory[outPlayer.playerId];
             if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
-            
+
             if (!state.rotationHistory[inPlayer.playerId]) state.rotationHistory[inPlayer.playerId] = [];
             state.rotationHistory[inPlayer.playerId].push({ in: currentTotalSec, out: currentTotalSec });
-            
+
             state.logs.push({
                 quarter: state.quarter,
                 timeRemaining: formatTime(state.gameClock),
@@ -313,5 +314,307 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
                 type: 'info'
             });
         }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 5. 임시 벤치 (파울 트러블 / 탈진) — 맵 보존 + 자동 복귀
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 임시 벤치: 원본 맵을 보존하면서 대체자에게 일시적으로 슬롯을 넘김.
+ * forceSubstitution과 달리 승계 로직(applyRotationSuccession)을 호출하지 않음.
+ * returnMinute 이후의 원본 맵 슬롯은 그대로 유지 → 자동 복귀.
+ */
+export function benchWithOverride(
+    state: GameState, team: TeamState, outPlayer: LivePlayer,
+    reason: 'foul_trouble' | 'shutdown',
+    currentMinute: number, returnMinute: number | null
+): void {
+    const map = team.tactics.rotationMap;
+    if (!map) return;
+
+    // 1. outPlayer 잔여 스케줄 스냅샷 (복원용)
+    const originalSlots = Array(48).fill(false) as boolean[];
+    if (map[outPlayer.playerId]) {
+        for (let i = currentMinute; i < 48; i++) {
+            originalSlots[i] = map[outPlayer.playerId][i];
+        }
+    }
+
+    // 2. 대체자 탐색
+    const excludeIds = new Set<string>([outPlayer.playerId, ...team.onCourt.map(p => p.playerId)]);
+    let filler = findResCandidate(team, outPlayer.position, excludeIds, false);
+    if (!filler) filler = findResCandidate(team, outPlayer.position, excludeIds, true);
+    if (!filler) return; // 뎁스 소진 → 벤치 불가, 계속 기용
+
+    // 3. 맵 전이: outPlayer → filler (returnMinute까지만)
+    const effectiveReturn = returnMinute ?? 48;
+    if (!map[filler.playerId]) map[filler.playerId] = Array(48).fill(false);
+    if (!map[outPlayer.playerId]) map[outPlayer.playerId] = Array(48).fill(false);
+
+    for (let i = currentMinute; i < effectiveReturn; i++) {
+        if (map[outPlayer.playerId][i]) {
+            map[filler.playerId][i] = true;
+            map[outPlayer.playerId][i] = false;
+        }
+    }
+
+    // 4. returnMinute 이후: 원본 맵에서 복원 (★ 핵심 차이점)
+    if (returnMinute !== null && returnMinute < 48) {
+        const orig = state.originalRotationMap[outPlayer.playerId];
+        if (orig) {
+            for (let i = returnMinute; i < 48; i++) {
+                map[outPlayer.playerId][i] = orig[i];
+            }
+        }
+    }
+
+    // 5. 오버라이드 스택에 기록
+    state.activeOverrides.push({
+        outPlayerId: outPlayer.playerId,
+        fillerPlayerId: filler.playerId,
+        reason,
+        fromMinute: currentMinute,
+        toMinute: effectiveReturn,
+        originalSlots,
+        active: true,
+    });
+
+    // 6. 선수 메타데이터 설정
+    outPlayer.benchReason = reason;
+    outPlayer.benchedAtMinute = currentMinute;
+    outPlayer.benchedAtQuarter = state.quarter;
+    outPlayer.scheduledReturnMinute = returnMinute ?? undefined;
+
+    // 7. 물리적 스왑 + 히스토리 + 로그
+    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const outIdx = team.onCourt.indexOf(outPlayer);
+    const inIdx = team.bench.indexOf(filler);
+
+    if (outIdx > -1 && inIdx > -1) {
+        team.onCourt.splice(outIdx, 1);
+        team.bench.push(outPlayer);
+        team.bench.splice(inIdx, 1);
+        team.onCourt.push(filler);
+
+        const histOut = state.rotationHistory[outPlayer.playerId];
+        if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
+        if (!state.rotationHistory[filler.playerId]) state.rotationHistory[filler.playerId] = [];
+        state.rotationHistory[filler.playerId].push({ in: currentTotalSec, out: currentTotalSec });
+        filler.lastSubInTime = state.gameClock;
+        filler.conditionAtSubIn = filler.currentCondition;
+
+        const reasonText = reason === 'foul_trouble'
+            ? `파울 트러블 (${outPlayer.pf}반칙)` : '탈진(Shutdown)';
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: formatTime(state.gameClock),
+            teamId: team.id,
+            text: `교체: IN [${filler.playerName}] OUT [${outPlayer.playerName}] (${reasonText})`,
+            type: 'info'
+        });
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 6. 임시 벤치 선수 자동 복귀 체크 (매 포세션)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * checkAndApplyRotation 이전에 호출.
+ * 임시 벤치 선수의 복귀 조건 충족 시 맵 복원 → checkAndApplyRotation이 물리적 투입 처리.
+ */
+export function checkTemporaryReturns(
+    state: GameState, team: TeamState, currentMinute: number
+): void {
+    if (!state.activeOverrides || !team.tactics.rotationMap) return;
+
+    for (const override of state.activeOverrides) {
+        if (!override.active) continue;
+
+        const player = team.bench.find(p => p.playerId === override.outPlayerId);
+        if (!player) {
+            // 선수가 벤치에 없음 (이미 다른 경로로 처리됨)
+            override.active = false;
+            continue;
+        }
+
+        // 영구 퇴장 사유 발생 시 즉시 비활성화
+        if (player.health === 'Injured' || player.pf >= 6) {
+            override.active = false;
+            player.benchReason = null;
+            continue;
+        }
+
+        let shouldReturn = false;
+
+        if (override.reason === 'foul_trouble') {
+            // 예정 분에 도달하면 복귀 판정
+            if (player.scheduledReturnMinute !== undefined && currentMinute >= player.scheduledReturnMinute) {
+                // 복귀 전 재평가: 상황이 변했을 수 있음
+                const recheck = evaluateFoulTroubleAction(state, team, player, currentMinute);
+                if (recheck.shouldBench && recheck.returnMinute !== null) {
+                    // 아직 위험 → 연장
+                    override.toMinute = recheck.returnMinute;
+                    player.scheduledReturnMinute = recheck.returnMinute;
+                    continue;
+                }
+                shouldReturn = !recheck.shouldBench;
+            }
+        } else if (override.reason === 'shutdown') {
+            // 체력 회복 + 셧다운 해제되면 복귀
+            if (!player.isShutdown && player.currentCondition > 70) {
+                const orig = state.originalRotationMap[player.playerId];
+                if (orig && orig[currentMinute]) {
+                    // 원본 맵에서 지금 출전 예정 → 즉시 복귀
+                    shouldReturn = true;
+                } else if (orig && orig.slice(currentMinute).some(Boolean)) {
+                    // 지금은 아니지만 이후 슬롯 있음 → 맵만 복원, 투입은 rotation 체크가 처리
+                    restorePlayerMap(state, team, player, currentMinute);
+                    restoreFillerMap(state, team, override, currentMinute);
+                    override.active = false;
+                    player.benchReason = null;
+                    player.benchedAtMinute = undefined;
+                    player.benchedAtQuarter = undefined;
+                    player.scheduledReturnMinute = undefined;
+                    state.logs.push({
+                        quarter: state.quarter,
+                        timeRemaining: formatTime(state.gameClock),
+                        teamId: team.id,
+                        text: `${player.playerName} 복귀 준비 (체력 회복)`,
+                        type: 'info'
+                    });
+                    continue;
+                }
+            }
+        }
+
+        if (!shouldReturn) continue;
+
+        // ★ 맵 복원
+        restorePlayerMap(state, team, player, currentMinute);
+        restoreFillerMap(state, team, override, currentMinute);
+
+        override.active = false;
+        player.benchReason = null;
+        player.benchedAtMinute = undefined;
+        player.benchedAtQuarter = undefined;
+        player.scheduledReturnMinute = undefined;
+
+        const reasonText = override.reason === 'foul_trouble' ? '파울 트러블 해소' : '체력 회복';
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: formatTime(state.gameClock),
+            teamId: team.id,
+            text: `${player.playerName} 복귀 준비 (${reasonText})`,
+            type: 'info'
+        });
+        // 실제 물리적 투입은 checkAndApplyRotation이 맵 기반으로 처리
+    }
+}
+
+/**
+ * 원본 맵 복원 (임시 벤치 해제 시)
+ */
+function restorePlayerMap(
+    state: GameState, team: TeamState, player: LivePlayer, currentMinute: number
+): void {
+    const map = team.tactics.rotationMap;
+    const orig = state.originalRotationMap[player.playerId];
+    if (!map || !orig) return;
+    if (!map[player.playerId]) map[player.playerId] = Array(48).fill(false);
+    for (let i = currentMinute; i < 48; i++) {
+        map[player.playerId][i] = orig[i];
+    }
+}
+
+/**
+ * Filler의 상속 슬롯 제거 — filler 원본 맵으로 복원
+ */
+function restoreFillerMap(
+    state: GameState, team: TeamState, override: RotationOverride, currentMinute: number
+): void {
+    const map = team.tactics.rotationMap;
+    if (!map) return;
+    const filler = [...team.onCourt, ...team.bench].find(p => p.playerId === override.fillerPlayerId);
+    if (filler && map[filler.playerId]) {
+        const fillerOrig = state.originalRotationMap[filler.playerId];
+        for (let i = currentMinute; i < 48; i++) {
+            map[filler.playerId][i] = fillerOrig ? fillerOrig[i] : false;
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────
+// 7. Filler가 추가 퇴장하는 경우 (체인 전이)
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * 영구 퇴장(부상/6파울)으로 forceSubstitution 호출 전에 실행.
+ * 퇴장하는 선수가 다른 선수의 filler였으면 체인을 관리.
+ */
+export function handleFillerExit(
+    state: GameState, team: TeamState, exitedFiller: LivePlayer, currentMinute: number
+): void {
+    if (!state.activeOverrides) return;
+
+    const override = state.activeOverrides.find(
+        o => o.active && o.fillerPlayerId === exitedFiller.playerId
+    );
+    if (!override) return;
+
+    const originalPlayer = [...team.onCourt, ...team.bench].find(
+        p => p.playerId === override.outPlayerId
+    );
+
+    // 원래 선수가 복귀 가능한지 체크
+    if (originalPlayer && originalPlayer.health === 'Healthy' && originalPlayer.pf < 6) {
+        if (override.reason === 'shutdown' && !originalPlayer.isShutdown && originalPlayer.currentCondition > 70) {
+            restorePlayerMap(state, team, originalPlayer, currentMinute);
+            override.active = false;
+            originalPlayer.benchReason = null;
+            originalPlayer.benchedAtMinute = undefined;
+            originalPlayer.benchedAtQuarter = undefined;
+            originalPlayer.scheduledReturnMinute = undefined;
+            return;
+        }
+        if (override.reason === 'foul_trouble') {
+            const action = evaluateFoulTroubleAction(state, team, originalPlayer, currentMinute);
+            if (!action.shouldBench) {
+                restorePlayerMap(state, team, originalPlayer, currentMinute);
+                override.active = false;
+                originalPlayer.benchReason = null;
+                originalPlayer.benchedAtMinute = undefined;
+                originalPlayer.benchedAtQuarter = undefined;
+                originalPlayer.scheduledReturnMinute = undefined;
+                return;
+            }
+        }
+    }
+
+    // 원래 선수 복귀 불가 → 새 대체자 탐색
+    const excludeIds = new Set<string>([
+        exitedFiller.playerId,
+        override.outPlayerId,
+        ...team.onCourt.map(p => p.playerId)
+    ]);
+    let newFiller = findResCandidate(team, exitedFiller.position, excludeIds, false);
+    if (!newFiller) newFiller = findResCandidate(team, exitedFiller.position, excludeIds, true);
+
+    if (newFiller) {
+        const map = team.tactics.rotationMap;
+        if (map) {
+            if (!map[newFiller.playerId]) map[newFiller.playerId] = Array(48).fill(false);
+            for (let i = currentMinute; i < override.toMinute; i++) {
+                if (map[exitedFiller.playerId]?.[i]) {
+                    map[newFiller.playerId][i] = true;
+                }
+            }
+        }
+        override.fillerPlayerId = newFiller.playerId;
+    } else {
+        // 뎁스 완전 소진 — fallback이 처리
+        override.active = false;
     }
 }
