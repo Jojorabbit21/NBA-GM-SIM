@@ -202,6 +202,12 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
         onUpdateTactics({ ...tactics, rotationMap: newMap });
     };
 
+    const handleResetPlayer = (playerId: string) => {
+        const currentMap = tactics.rotationMap || {};
+        const newMap = { ...currentMap, [playerId]: Array(48).fill(false) };
+        onUpdateTactics({ ...tactics, rotationMap: newMap });
+    };
+
     const validation = useMemo(() => {
         const minuteCounts = Array(48).fill(0);
         const over42: string[] = [];
@@ -305,13 +311,13 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[160px] min-w-[160px] text-left px-3 !rounded-none`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center !rounded-none`}>OVR</th>
                             <th rowSpan={2} className={`sticky left-[250px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[55px] min-w-[55px] text-center !rounded-none`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${stickyHeaderBg} ${stickyBorder} ${stickyBottom} w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${stickyHeaderBg} border-r-2 border-r-indigo-500/50 ${stickyBottom} w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)] !rounded-none`}>MIN</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>1Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>2Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${quarterDivider} border-b border-slate-800 !rounded-none`}>3Q</th>
                             <th colSpan={12} className={`text-center ${stickyHeaderBg} text-slate-400 ${stickyBottom} !rounded-none`}>4Q</th>
                         </tr>
-                        <tr className={`text-[10px] font-black text-slate-600 uppercase tracking-tighter h-6 ${gridBottom}`}>
+                        <tr className={`text-xs font-black text-slate-600 uppercase tracking-tighter h-6 ${gridBottom}`}>
                              {Array.from({length: 48}).map((_, i) => (
                                 <th key={i} className={`w-8 min-w-[2rem] text-center ${stickyHeaderBg} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'} !rounded-none`}>{i + 1}</th>
                             ))}
@@ -350,8 +356,19 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                                                 )}
                                             </div>
                                         </td>
-                                        <td className={`sticky left-[305px] z-30 ${stickyBodyBg} text-center ${stickyBottom} shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
-                                            <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)}`}>{totalMins}</span>
+                                        <td className={`sticky left-[305px] z-30 ${stickyBodyBg} text-center align-middle border-r-2 border-r-indigo-500/50 ${stickyBottom} shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
+                                            <div className="relative flex items-center justify-center h-full">
+                                                <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)} group-hover:opacity-0 transition-opacity`}>{totalMins}</span>
+                                                {totalMins > 0 && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleResetPlayer(p.id); }}
+                                                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        title="이 선수 로테이션 초기화"
+                                                    >
+                                                        <RotateCcw size={12} className="text-slate-400 hover:text-red-400 transition-colors" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                         {playerMap.map((active: boolean, i: number) => (
                                             <td key={i} onClick={() => handleToggleMinute(p.id, i)} className={`p-0 cursor-pointer relative transition-all ${gridBottom} ${(i+1)%12 === 0 && (i+1) !== 48 ? quarterDivider : 'border-r border-slate-800/30'} hover:bg-white/10`}>
