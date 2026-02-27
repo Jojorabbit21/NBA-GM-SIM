@@ -182,7 +182,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                             checked={isSelected}
                                             onChange={() => onSelectPlayer(player)}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-3.5 h-3.5 cursor-pointer align-middle"
+                                            className="w-3.5 h-3.5 cursor-pointer align-middle accent-slate-500 checked:accent-blue-500"
                                         />
                                     </td>
                                     <td className="px-2 py-0.5">
