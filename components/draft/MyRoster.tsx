@@ -66,7 +66,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                     return (
                         <div
                             key={`starter-${pos}`}
-                            className="px-2.5 py-2 border-b border-slate-700/50 flex items-center gap-1.5"
+                            className="h-8 min-h-8 max-h-8 px-2.5 border-b border-slate-700/50 flex items-center gap-1.5"
                         >
                             <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
                                 {pos}
@@ -90,7 +90,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                 {reserves.slice(0, RESERVES).map((player, i) => (
                     <div
                         key={`res-${i}`}
-                        className="px-2.5 py-2 border-b border-slate-700/50 flex items-center gap-1.5"
+                        className="h-8 min-h-8 max-h-8 px-2.5 border-b border-slate-700/50 flex items-center gap-1.5"
                     >
                         {player ? (
                             <>
