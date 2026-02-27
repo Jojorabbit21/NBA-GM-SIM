@@ -301,12 +301,12 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                     <div className="text-center space-y-6">
                         <CheckCircle size={64} className="text-emerald-500 mx-auto" />
                         <div className="space-y-2">
-                            <h2 className="text-3xl font-black text-white bebas tracking-widest">DRAFT COMPLETE</h2>
+                            <h2 className="text-3xl font-black text-white pretendard tracking-widest">드래프트 완료</h2>
                             <p className="text-sm text-slate-400 ko-normal">모든 팀의 드래프트가 완료되었습니다</p>
                         </div>
                         <button
                             onClick={() => onComplete(picks)}
-                            className="px-8 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest text-xs transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
+                            className="px-8 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest text-sm transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
                         >
                             시즌 시작
                         </button>
