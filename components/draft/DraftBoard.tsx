@@ -69,11 +69,14 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             style={{ scrollbarWidth: 'thin' } as React.CSSProperties}
         >
             {/* Transposed: columns = teams, rows = rounds */}
-            <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px' }}>
+            <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px', margin: '-2px' }}>
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
                         {/* Round column header (sticky left) */}
-                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-left font-bold text-slate-500 text-[10px]">
+                        <th
+                            className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-left font-bold text-slate-500 text-[10px]"
+                            style={{ boxShadow: '1px 0 0 0 rgb(2,6,23), 0 1px 0 0 rgb(2,6,23)' }}
+                        >
                             라운드
                         </th>
                         {/* Team column headers */}
@@ -82,12 +85,13 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                             return (
                                 <th
                                     key={teamId}
-                                    className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-[11px] font-bold uppercase rounded-md ${
+                                    className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-[11px] font-bold uppercase ${
                                         isUser ? 'text-white' : 'text-slate-400'
                                     }`}
-                                    style={isUser ? {
-                                        backgroundColor: 'rgba(245,158,11,0.12)',
-                                    } : {}}
+                                    style={{
+                                        ...(isUser ? { backgroundColor: 'rgba(245,158,11,0.12)' } : {}),
+                                        boxShadow: '1px 0 0 0 rgb(2,6,23), -1px 0 0 0 rgb(2,6,23)',
+                                    }}
                                 >
                                     {teamId.toUpperCase()}
                                 </th>
@@ -108,7 +112,10 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                 className="h-[76px]"
                             >
                                 {/* Round label (sticky left) */}
-                                <td className="sticky left-0 bg-slate-950 px-2 py-1 z-10">
+                                <td
+                                    className="sticky left-0 bg-slate-950 px-2 py-1 z-10"
+                                    style={{ boxShadow: '0 1px 0 0 rgb(2,6,23), 0 -1px 0 0 rgb(2,6,23)' }}
+                                >
                                     <div className="flex items-center gap-1">
                                         <span className={`text-[11px] font-bold whitespace-nowrap ${
                                             isCurrentRound ? 'text-indigo-400' : isPast ? 'text-slate-600' : 'text-slate-500'
