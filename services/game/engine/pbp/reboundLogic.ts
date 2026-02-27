@@ -23,7 +23,7 @@ export function calculateOrbChance(
             const posBonus = p.position === 'C' ? cfg.POS_WEIGHT_C
                 : p.position === 'PF' ? cfg.POS_WEIGHT_PF
                 : cfg.POS_WEIGHT_DEFAULT;
-            return sum + (p.attr[rebAttr] * 0.6 + p.attr.vertical * 0.2 + (p.attr.height - 180) * 0.5) * posBonus;
+            return sum + (p.attr[rebAttr] * 0.6 + p.attr.vertical * 0.2 + (p.attr.height - 180) * 0.5 + p.attr.hands * 0.1) * posBonus;
         }, 0);
 
     const offPower = calcPower(offTeam, 'offReb');
@@ -61,7 +61,8 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
         const score = (
             p.attr[rebAttr] * 0.6 +
             p.attr.vertical * 0.2 +
-            (p.attr.height - 180) * 0.5
+            (p.attr.height - 180) * 0.5 +
+            p.attr.hands * 0.1
         ) * posBonus * shooterPenalty * Math.random();
 
         return { p, score };

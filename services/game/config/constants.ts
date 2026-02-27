@@ -67,6 +67,11 @@ export const SIM_CONFIG = {
         DRAW_FOUL_BASELINE: 70,              // 중립 기준점
         DRAW_FOUL_SHOOTING_FACTOR: 0.0015,   // 슈팅파울 비율: (drFoul - 70) × factor
         DRAW_FOUL_AND1_FACTOR: 0.0005,       // And-1 확률: (drFoul - 70) × factor
+
+        // Manipulator 아키타입 (파울 유도 장인) — Harden, Embiid, Trae Young
+        MANIPULATOR_DRFOUL_THRESHOLD: 95,    // drFoul ≥ 95
+        MANIPULATOR_SHOTIQ_THRESHOLD: 88,    // shotIq ≥ 88
+        MANIPULATOR_FOUL_BONUS: 0.03,        // baseFoulChance +3% (18% 캡 무시)
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
     REBOUND: {
@@ -118,7 +123,7 @@ export const SIM_CONFIG = {
 
         // B. The Pickpocket (볼 스트립) — CP3, Marcus Smart
         PICKPOCKET_STL_THRESHOLD: 85,
-        PICKPOCKET_HANDS_THRESHOLD: 85,
+        PICKPOCKET_AGILITY_THRESHOLD: 92,
         PICKPOCKET_TOV_BONUS: 0.04,   // +4% (접촉 플레이 전용)
 
         // C. The Hawk (패싱레인 사냥꾼) — Draymond, Jimmy Butler
@@ -181,6 +186,16 @@ export const SIM_CONFIG = {
         FLOATER_AGILITY_THRESHOLD: 85,
         FLOATER_MAX_HEIGHT: 195,
         FLOATER_BLOCK_MULTIPLIER: 0.50,     // 블락 확률 × 0.5
+
+        // B-5. Afterburner (애프터버너) — Ja Morant, De'Aaron Fox, Russell Westbrook
+        AFTERBURNER_SPEED_THRESHOLD: 95,
+        AFTERBURNER_AGILITY_THRESHOLD: 93,
+        AFTERBURNER_TRANSITION_BONUS: 0.02,  // Transition hitRate +2%
+
+        // B-6. Ascendant (어센던트) — Ja Morant, Zach LaVine, Derrick Rose
+        ASCENDANT_VERTICAL_THRESHOLD: 95,
+        ASCENDANT_CLOSESHOT_THRESHOLD: 93,
+        ASCENDANT_BLOCK_MULTIPLIER: 0.60,    // Rim 블락 확률 × 0.6 (PG/SG 전용)
     },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
