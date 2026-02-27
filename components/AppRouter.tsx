@@ -197,7 +197,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
         case 'Help':
             return <HelpView onBack={() => setView('Dashboard')} />;
         case 'OvrCalculator':
-            return <OvrCalculatorView teams={gameData.teams} />;
+            return <OvrCalculatorView teams={gameData.teams} freeAgents={gameData.freeAgents} />;
         case 'Inbox':
             return (
                 <InboxView
