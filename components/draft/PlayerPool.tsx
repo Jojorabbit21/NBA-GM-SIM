@@ -8,13 +8,12 @@ import { ButtonTheme } from '../../utils/teamTheme';
 
 interface PlayerPoolProps {
     players: Player[];
-    onSelectPlayer: (player: Player) => void;
     selectedPlayerId: string | null;
+    onSelectPlayer: (player: Player) => void;
     isUserTurn: boolean;
     onDraft: (player: Player) => void;
     positionColors: Record<string, string>;
     buttonTheme: ButtonTheme;
-    teamColor: string;
 }
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -30,13 +29,12 @@ const getStatColor = (val: number): string => {
 
 export const PlayerPool: React.FC<PlayerPoolProps> = ({
     players,
-    onSelectPlayer,
     selectedPlayerId,
+    onSelectPlayer,
     isUserTurn,
     onDraft,
     positionColors,
     buttonTheme,
-    teamColor,
 }) => {
     const [search, setSearch] = useState('');
     const [posFilter, setPosFilter] = useState<string>('All');
@@ -67,9 +65,13 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
         else { setSortKey(key); setSortAsc(false); }
     };
 
+    const handleDraftClick = () => {
+        if (selectedPlayer && isUserTurn) onDraft(selectedPlayer);
+    };
+
     const SortHeader: React.FC<{ label: string; field: SortKey; className?: string }> = ({ label, field, className }) => (
         <th
-            className={`px-1 py-1 text-center cursor-pointer hover:text-indigo-400 transition-colors select-none ${
+            className={`px-1 py-1.5 text-center cursor-pointer hover:text-indigo-400 transition-colors select-none ${
                 sortKey === field ? 'text-indigo-400' : ''
             } ${className || ''}`}
             onClick={() => handleHeaderClick(field)}
@@ -79,9 +81,10 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
     );
 
     return (
-        <div className="flex flex-col h-full bg-slate-950">
+        <div className="flex flex-col h-full">
             {/* Toolbar */}
-            <div className="shrink-0 px-2 py-1.5 border-b border-slate-800 flex items-center gap-2">
+            <div className="shrink-0 px-3 h-10 flex items-center gap-2 border-b border-slate-800/50">
+                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 shrink-0">선수 풀</span>
                 <div className="relative">
                     <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
@@ -89,7 +92,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                         placeholder="선수 검색..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="bg-slate-900 border border-slate-800 rounded-md pl-7 pr-2 py-1 text-xs text-slate-200 w-36 focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
+                        className="bg-slate-900 border border-slate-800 rounded-md pl-7 pr-2 py-1 text-xs text-slate-200 w-32 focus:outline-none focus:border-indigo-500 placeholder:text-slate-600"
                     />
                 </div>
                 <div className="flex gap-0.5">
@@ -115,18 +118,40 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                         );
                     })}
                 </div>
-                <span className="ml-auto text-[10px] text-slate-600">{filtered.length}명</span>
+                <span className="text-[10px] text-slate-600 ml-1">{filtered.length}명</span>
+                {/* Draft button */}
+                <div className="ml-auto">
+                    <button
+                        onClick={handleDraftClick}
+                        disabled={!isUserTurn || !selectedPlayer}
+                        className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                            !isUserTurn || !selectedPlayer
+                                ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                                : 'hover:brightness-110 active:scale-95'
+                        }`}
+                        style={isUserTurn && selectedPlayer ? {
+                            backgroundColor: buttonTheme.bg,
+                            color: buttonTheme.text,
+                            boxShadow: `0 0 12px ${buttonTheme.glow}50`,
+                        } : {}}
+                    >
+                        드래프트
+                    </button>
+                </div>
             </div>
 
             {/* Table */}
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 <table className="w-full border-collapse text-xs">
-                    <thead className="sticky top-0 z-10 bg-slate-950">
+                    <thead className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-sm">
                         <tr className="text-[9px] font-black uppercase text-slate-500">
+                            <th className="w-6 px-1 py-1.5"></th>
                             <SortHeader label="OVR" field="ovr" className="px-2 text-left w-12" />
-                            <th className="px-1 py-1 text-center w-8">POS</th>
-                            <th className="px-2 py-1 text-left">NAME</th>
+                            <th className="px-1 py-1.5 text-center w-8">POS</th>
+                            <th className="px-2 py-1.5 text-left">NAME</th>
                             <SortHeader label="AGE" field="age" className="w-8" />
+                            <th className="px-1 py-1.5 text-center w-10 text-slate-500">HT</th>
+                            <th className="px-1 py-1.5 text-center w-10 text-slate-500">WT</th>
                             <SortHeader label="INS" field="ins" className="w-8" />
                             <SortHeader label="OUT" field="out" className="w-8" />
                             <SortHeader label="ATH" field="ath" className="w-8" />
@@ -140,79 +165,46 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                             const isSelected = player.id === selectedPlayerId;
                             const posColor = positionColors[player.position] || '#64748b';
                             return (
-                                <React.Fragment key={player.id}>
-                                    <tr
-                                        className={`h-7 border-b border-slate-800/20 cursor-pointer transition-colors ${
-                                            isSelected
-                                                ? ''
-                                                : 'hover:bg-white/[0.03]'
-                                        }`}
-                                        style={isSelected ? { backgroundColor: `${teamColor}0a` } : {}}
-                                        onClick={() => onSelectPlayer(player)}
-                                    >
-                                        <td className="px-2 py-0.5">
-                                            <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
-                                        </td>
-                                        <td className="px-1 py-0.5 text-center text-[10px] font-bold" style={{ color: posColor }}>
-                                            {player.position}
-                                        </td>
-                                        <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
-                                        <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ins)}`}>{player.ins}</td>
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.out)}`}>{player.out}</td>
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ath)}`}>{player.ath}</td>
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.plm)}`}>{player.plm}</td>
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.def)}`}>{player.def}</td>
-                                        <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.reb)}`}>{player.reb}</td>
-                                    </tr>
-                                    {/* Inline Detail Panel */}
-                                    {isSelected && selectedPlayer && (
-                                        <tr className="border-b" style={{ borderBottomColor: `${posColor}30`, backgroundColor: `${teamColor}06` }}>
-                                            <td colSpan={10} className="px-3 py-2">
-                                                <div className="flex items-center gap-3" style={{ borderLeft: `3px solid ${posColor}`, paddingLeft: '10px' }}>
-                                                    <OvrBadge value={calculatePlayerOvr(selectedPlayer)} size="md" />
-                                                    <div>
-                                                        <div className="text-xs font-bold text-slate-200">{selectedPlayer.name}</div>
-                                                        <div className="text-[10px] text-slate-400">
-                                                            <span style={{ color: posColor }} className="font-bold">{selectedPlayer.position}</span>
-                                                            {' · '}{selectedPlayer.age}세 · {selectedPlayer.height}cm · {selectedPlayer.weight}kg
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex-1" />
-                                                    {/* 6-stat inline */}
-                                                    <div className="flex gap-1.5">
-                                                        {([
-                                                            ['INS', selectedPlayer.ins],
-                                                            ['OUT', selectedPlayer.out],
-                                                            ['ATH', selectedPlayer.ath],
-                                                            ['PLM', selectedPlayer.plm],
-                                                            ['DEF', selectedPlayer.def],
-                                                            ['REB', selectedPlayer.reb],
-                                                        ] as [string, number][]).map(([label, val]) => (
-                                                            <span key={label} className="text-[9px] text-slate-500">
-                                                                {label}<b className={`${getStatColor(val)} ml-0.5`}>{val}</b>
-                                                            </span>
-                                                        ))}
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); onDraft(selectedPlayer); }}
-                                                        disabled={!isUserTurn}
-                                                        className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase ml-2 transition-all ${
-                                                            !isUserTurn ? 'bg-slate-700 text-slate-500 opacity-40 cursor-not-allowed' : 'hover:brightness-110 active:scale-95'
-                                                        }`}
-                                                        style={isUserTurn ? {
-                                                            backgroundColor: buttonTheme.bg,
-                                                            color: buttonTheme.text,
-                                                            boxShadow: `0 0 12px ${buttonTheme.glow}50`,
-                                                        } : {}}
-                                                    >
-                                                        DRAFT
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </React.Fragment>
+                                <tr
+                                    key={player.id}
+                                    className={`h-8 border-b border-slate-800/20 cursor-pointer transition-colors ${
+                                        isSelected
+                                            ? 'bg-amber-500/[0.06]'
+                                            : 'hover:bg-white/[0.03]'
+                                    }`}
+                                    onClick={() => onSelectPlayer(player)}
+                                >
+                                    {/* Radio */}
+                                    <td className="px-1 py-0.5 text-center">
+                                        <span
+                                            className={`inline-block w-3.5 h-3.5 rounded-full border-2 transition-colors ${
+                                                isSelected
+                                                    ? 'border-amber-400 bg-amber-400'
+                                                    : 'border-slate-600 bg-transparent'
+                                            }`}
+                                        >
+                                            {isSelected && (
+                                                <span className="block w-1.5 h-1.5 rounded-full bg-slate-900 mx-auto mt-[3px]" />
+                                            )}
+                                        </span>
+                                    </td>
+                                    <td className="px-2 py-0.5">
+                                        <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
+                                    </td>
+                                    <td className="px-1 py-0.5 text-center text-[10px] font-bold" style={{ color: posColor }}>
+                                        {player.position}
+                                    </td>
+                                    <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
+                                    <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
+                                    <td className="px-1 py-0.5 text-center text-slate-500 text-[10px]">{player.height}</td>
+                                    <td className="px-1 py-0.5 text-center text-slate-500 text-[10px]">{player.weight}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ins)}`}>{player.ins}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.out)}`}>{player.out}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ath)}`}>{player.ath}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.plm)}`}>{player.plm}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.def)}`}>{player.def}</td>
+                                    <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.reb)}`}>{player.reb}</td>
+                                </tr>
                             );
                         })}
                     </tbody>

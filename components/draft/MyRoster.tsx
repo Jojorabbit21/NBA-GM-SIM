@@ -51,25 +51,24 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, latestPlayerId, pos
     const progressPct = Math.min((players.length / 15) * 100, 100);
 
     return (
-        <div className="flex flex-col h-full bg-slate-950">
+        <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="px-2 py-1.5 border-b border-slate-800 shrink-0">
-                <div className="flex items-center justify-between">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">MY ROSTER</span>
+            <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between">
+                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">내 로스터</span>
+                <div className="flex items-center gap-2">
                     <span className="text-[10px] text-slate-400 font-mono">{players.length}/15</span>
-                </div>
-                {/* Progress bar */}
-                <div className="mt-1 h-[2px] bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${progressPct}%`, backgroundColor: teamColor }}
-                    />
+                    <div className="w-16 h-[3px] bg-slate-800 rounded-full overflow-hidden">
+                        <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${progressPct}%`, backgroundColor: teamColor }}
+                        />
+                    </div>
                 </div>
             </div>
             {/* Scroll Area */}
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 {/* Starters */}
-                <div className="text-[9px] font-bold uppercase text-slate-600 bg-slate-900/50 px-2 py-0.5 border-b border-slate-800/30">
+                <div className="text-[9px] font-bold uppercase text-slate-600 bg-slate-800/20 px-3 py-0.5 border-b border-slate-800/30">
                     STARTERS
                 </div>
                 {POSITION_ORDER.map((pos, i) => {
@@ -119,7 +118,7 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players, latestPlayerId, pos
                 })}
 
                 {/* Reserves */}
-                <div className="text-[9px] font-bold uppercase text-slate-600 bg-slate-900/50 px-2 py-0.5 border-b border-slate-800/30">
+                <div className="text-[9px] font-bold uppercase text-slate-600 bg-slate-800/20 px-3 py-0.5 border-b border-slate-800/30">
                     RESERVES
                 </div>
                 {reserves.slice(0, RESERVES).map((player, i) => {
