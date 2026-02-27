@@ -151,6 +151,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 <span className="text-xs font-bold">이용약관</span>
               </button>
               <button
+                onClick={() => { onNavigate('DraftHistory'); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+              >
+                <Gavel size={15} />
+                <span className="text-xs font-bold">드래프트 기록</span>
+              </button>
+              <button
                 onClick={() => { onEditorClick(); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
               >

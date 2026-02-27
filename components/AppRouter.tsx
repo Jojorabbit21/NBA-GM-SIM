@@ -15,6 +15,7 @@ import { HelpView } from '../views/HelpView';
 import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
 import { FantasyDraftView } from '../views/FantasyDraftView';
+import { DraftHistoryView } from '../views/DraftHistoryView';
 import { Loader2 } from 'lucide-react';
 
 interface AppRouterProps {
@@ -228,6 +229,13 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         }}
                     />
                 </div>
+            );
+        case 'DraftHistory':
+            return (
+                <DraftHistoryView
+                    myTeamId={gameData.myTeamId!}
+                    draftPicks={gameData.draftPicks}
+                />
             );
         default:
             return null;
