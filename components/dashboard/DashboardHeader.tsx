@@ -91,11 +91,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     <span className="text-sm font-semibold" style={{ color: theme.text }}>현재 날짜 :</span>
                     <span className="text-sm font-semibold" style={{ color: theme.text }}>{currentSimDate}</span>
                 </div>
-                <div className="h-px bg-white/10" />
                 <div className="flex items-center gap-2">
                     <span className="text-sm font-semibold" style={{ color: theme.text }}>{conferenceName} {conferenceRank}위</span>
                     <span className="font-bold" style={{ color: theme.text, opacity: 0.2 }}>|</span>
-                    <span className={`text-sm font-semibold ${streak?.startsWith('W') ? 'text-emerald-400' : streak?.startsWith('L') ? 'text-red-400' : 'text-slate-500'}`}>
+                    <span className="text-sm font-semibold" style={{ color: theme.text }}>
                         {streak?.startsWith('W') ? '🔥' : streak?.startsWith('L') ? '❄️' : ''} {streak}
                     </span>
                 </div>

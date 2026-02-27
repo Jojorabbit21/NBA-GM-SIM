@@ -91,11 +91,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10">
         <div className="text-center mb-10">
-          <h1
-            style={{ fontFamily: "'SF Display Mono', 'SF Mono', ui-monospace, monospace" }}
-            className="text-4xl font-black text-white leading-tight tracking-tighter uppercase"
-          >
-            Courtside GM
+          <h1 className="text-2xl font-black text-white leading-tight tracking-tighter uppercase pretendard">
+            Basketball GM<br />Simulator 2025-26
           </h1>
         </div>
 
