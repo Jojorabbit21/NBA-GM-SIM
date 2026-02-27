@@ -1,6 +1,5 @@
 
 import React, { useRef, useEffect } from 'react';
-import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 
 export interface BoardPick {
@@ -22,16 +21,6 @@ interface DraftBoardProps {
     positionColors: Record<string, string>;
 }
 
-// OVR tier color (inline text, not badge)
-const getOvrColor = (ovr: number): string => {
-    if (ovr >= 90) return '#f0abfc'; // fuchsia-300
-    if (ovr >= 85) return '#93c5fd'; // blue-300
-    if (ovr >= 80) return '#6ee7b7'; // emerald-300
-    if (ovr >= 75) return '#fcd34d'; // amber-300
-    if (ovr >= 70) return '#94a3b8'; // slate-400
-    return '#78716c'; // stone-500
-};
-
 export const DraftBoard: React.FC<DraftBoardProps> = ({
     teamIds,
     totalRounds,
@@ -51,10 +40,12 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             const cellRect = cell.getBoundingClientRect();
             const containerRect = container.getBoundingClientRect();
 
-            if (cellRect.left < containerRect.left + 120 || cellRect.right > containerRect.right) {
-                container.scrollLeft += cellRect.left - containerRect.left - 160;
+            // Horizontal scroll: keep current cell visible
+            if (cellRect.left < containerRect.left + 80 || cellRect.right > containerRect.right) {
+                container.scrollLeft += cellRect.left - containerRect.left - 100;
             }
-            if (cellRect.top < containerRect.top + 30 || cellRect.bottom > containerRect.bottom) {
+            // Vertical scroll: keep current cell visible
+            if (cellRect.top < containerRect.top + 40 || cellRect.bottom > containerRect.bottom) {
                 container.scrollTop += cellRect.top - containerRect.top - 60;
             }
         }
@@ -79,94 +70,115 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             className="h-full overflow-auto"
             style={{ scrollbarWidth: 'thin' } as React.CSSProperties}
         >
-            <table className="border-collapse text-[10px] w-max min-w-full">
+            {/* Transposed: columns = teams, rows = rounds */}
+            <table className="border-collapse w-max min-w-full">
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
-                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[100px] px-2 py-1.5 text-left font-bold text-slate-500 text-[9px] uppercase border-b border-r border-slate-800">
-                            Team
+                        {/* Round column header (sticky left) */}
+                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[72px] px-2 py-2 text-left font-bold text-slate-500 text-[10px] uppercase border-b border-r border-slate-800">
+                            Rd
                         </th>
-                        {Array.from({ length: totalRounds }, (_, i) => {
-                            const round = i + 1;
-                            const isPast = round < currentRound;
-                            const isCurrent = round === currentRound;
+                        {/* Team column headers */}
+                        {teamIds.map(teamId => {
+                            const isUser = teamId === userTeamId;
+                            const td = TEAM_DATA[teamId];
                             return (
                                 <th
-                                    key={i}
-                                    className={`min-w-[100px] px-1 py-1.5 text-center font-bold text-[9px] uppercase border-b border-slate-800 ${
-                                        isCurrent ? 'text-indigo-400 bg-indigo-500/5' : isPast ? 'text-slate-600' : 'text-slate-500'
+                                    key={teamId}
+                                    className={`min-w-[110px] px-1 py-2 text-center text-[10px] font-bold uppercase border-b border-slate-800 ${
+                                        isUser ? 'text-white' : 'text-slate-400'
                                     }`}
+                                    style={isUser ? {
+                                        borderBottom: `2px solid ${userPrimaryColor}`,
+                                        backgroundColor: `${userPrimaryColor}0a`,
+                                    } : {}}
                                 >
-                                    R{round}
+                                    {td ? td.name : teamId.toUpperCase()}
                                 </th>
                             );
                         })}
                     </tr>
                 </thead>
                 <tbody>
-                    {teamIds.map(teamId => {
-                        const isUserTeam = teamId === userTeamId;
-                        const td = TEAM_DATA[teamId];
+                    {Array.from({ length: totalRounds }, (_, roundIdx) => {
+                        const round = roundIdx + 1;
+                        const isEvenRound = roundIdx % 2 === 0;
+                        const isPast = round < currentRound;
+                        const isCurrentRound = round === currentRound;
+
                         return (
                             <tr
-                                key={teamId}
-                                className="h-8 border-b hover:bg-white/[0.02]"
-                                style={{
-                                    borderBottomColor: 'rgba(30,41,59,0.3)',
-                                    ...(isUserTeam ? {
-                                        borderLeft: `2px solid ${userPrimaryColor}`,
-                                        backgroundColor: `${userPrimaryColor}08`,
-                                    } : {}),
-                                }}
+                                key={round}
+                                className="border-b"
+                                style={{ borderBottomColor: 'rgba(30,41,59,0.3)' }}
                             >
+                                {/* Round label (sticky left) */}
                                 <td className="sticky left-0 bg-slate-950 px-2 py-1 border-r border-slate-800/50 z-10">
-                                    <div className="flex items-center gap-1.5">
-                                        <TeamLogo teamId={teamId} size="xs" className="w-4 h-4" />
-                                        <span className={`text-[11px] font-semibold truncate ${isUserTeam ? 'text-white font-bold' : 'text-slate-300'}`}>
-                                            {td ? td.name : teamId.toUpperCase()}
+                                    <div className="flex items-center gap-1">
+                                        <span className={`text-[11px] font-bold ${
+                                            isCurrentRound ? 'text-indigo-400' : isPast ? 'text-slate-600' : 'text-slate-500'
+                                        }`}>
+                                            R{round}
+                                        </span>
+                                        <span className={`text-[10px] ${
+                                            isCurrentRound ? 'text-indigo-400/70' : 'text-slate-600'
+                                        }`}>
+                                            {isEvenRound ? '→' : '←'}
                                         </span>
                                     </div>
                                 </td>
-                                {Array.from({ length: totalRounds }, (_, roundIdx) => {
-                                    const round = roundIdx + 1;
+
+                                {/* Team cells for this round */}
+                                {teamIds.map(teamId => {
                                     const pick = picksByTeamAndRound[teamId]?.[round];
                                     const isCurrent = currentTeamId === teamId && currentRound === round && !pick;
+                                    const isUserCol = teamId === userTeamId;
+                                    const posColor = pick ? (positionColors[pick.position] || '#64748b') : undefined;
 
                                     return (
                                         <td
-                                            key={round}
+                                            key={teamId}
                                             ref={isCurrent ? currentCellRef : undefined}
-                                            className={`px-1 py-0.5 text-center ${
-                                                isCurrent
-                                                    ? ''
-                                                    : pick
-                                                        ? 'bg-slate-900/40'
-                                                        : 'bg-transparent'
-                                            }`}
-                                            style={isCurrent ? {
-                                                boxShadow: `inset 0 0 0 1.5px ${currentTeamColor}`,
-                                                backgroundColor: `${currentTeamColor}10`,
+                                            className="px-0.5 py-0.5 text-center"
+                                            style={isUserCol && !pick && !isCurrent ? {
+                                                backgroundColor: `${userPrimaryColor}06`,
                                             } : {}}
                                         >
                                             {pick ? (
+                                                /* Picked cell: full position-color background */
                                                 <div
-                                                    className="flex items-center gap-1 max-w-[95px] mx-auto"
-                                                    style={{ borderLeft: `2px solid ${positionColors[pick.position] || '#64748b'}`, paddingLeft: '4px' }}
+                                                    className="rounded-md px-2 py-1.5 flex items-center justify-center"
+                                                    style={{
+                                                        backgroundColor: `${posColor}20`,
+                                                        borderLeft: `3px solid ${posColor}`,
+                                                    }}
                                                 >
                                                     <span
-                                                        className="text-[9px] font-bold shrink-0"
-                                                        style={{ color: getOvrColor(pick.ovr) }}
+                                                        className="text-[11px] font-semibold truncate max-w-[100px]"
+                                                        style={{ color: posColor }}
                                                     >
-                                                        {pick.ovr}
-                                                    </span>
-                                                    <span className="text-[10px] font-semibold text-slate-200 truncate">
                                                         {pick.playerName}
                                                     </span>
                                                 </div>
                                             ) : isCurrent ? (
-                                                <div className="text-[9px] animate-pulse" style={{ color: currentTeamColor }}>
-                                                    ···
+                                                /* Current pick cell: glow effect */
+                                                <div
+                                                    className="rounded-md px-2 py-1.5 flex items-center justify-center"
+                                                    style={{
+                                                        boxShadow: `inset 0 0 0 1.5px ${currentTeamColor}`,
+                                                        backgroundColor: `${currentTeamColor}15`,
+                                                    }}
+                                                >
+                                                    <span className="text-[11px] animate-pulse" style={{ color: currentTeamColor }}>
+                                                        ···
+                                                    </span>
                                                 </div>
-                                            ) : null}
+                                            ) : (
+                                                /* Empty cell */
+                                                <div className="rounded-md px-2 py-1.5 hover:bg-white/[0.02]">
+                                                    <span className="text-[10px] text-slate-700">—</span>
+                                                </div>
+                                            )}
                                         </td>
                                     );
                                 })}
