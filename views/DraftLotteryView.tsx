@@ -7,18 +7,7 @@ import { Dices, ChevronRight } from 'lucide-react';
 interface DraftLotteryViewProps {
     myTeamId: string;
     savedOrder: string[] | null;
-    onSaveOrder: (order: string[]) => Promise<void>;
     onComplete: (order: string[]) => void;
-}
-
-/** Fisher-Yates shuffle (in-place) */
-function shuffleArray<T>(arr: T[]): T[] {
-    const a = [...arr];
-    for (let i = a.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
 }
 
 const REVEAL_INTERVAL = 500; // ms between each reveal
@@ -26,54 +15,24 @@ const REVEAL_INTERVAL = 500; // ms between each reveal
 export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
     myTeamId,
     savedOrder,
-    onSaveOrder,
     onComplete,
 }) => {
-    const [order, setOrder] = useState<string[] | null>(savedOrder);
     const [revealedCount, setRevealedCount] = useState(0);
-    const [isSaving, setIsSaving] = useState(false);
     const [isAllRevealed, setIsAllRevealed] = useState(false);
-    const revealTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-    const hasStartedRef = useRef(false);
-    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const lastRevealedRef = useRef<HTMLDivElement>(null);
 
-    // Phase 1: Generate + Save (only if no saved order)
+    // Sequential reveal animation (savedOrder는 마운트 전에 DB 저장 완료 보장)
     useEffect(() => {
-        if (hasStartedRef.current) return;
-        hasStartedRef.current = true;
+        if (!savedOrder) return;
+        if (revealedCount >= savedOrder.length) return;
 
-        if (savedOrder) {
-            // Already saved — use it and start reveal
-            setOrder(savedOrder);
-            return;
-        }
-
-        // Generate new random order
-        const teamIds = Object.keys(TEAM_DATA);
-        const shuffled = shuffleArray(teamIds);
-        setOrder(shuffled);
-        setIsSaving(true);
-
-        onSaveOrder(shuffled).then(() => {
-            setIsSaving(false);
-        });
-    }, [savedOrder, onSaveOrder]);
-
-    // Phase 2: Sequential reveal animation
-    useEffect(() => {
-        if (!order || isSaving) return;
-        if (revealedCount >= order.length) return;
-
-        // Small initial delay before first reveal
         const delay = revealedCount === 0 ? 800 : REVEAL_INTERVAL;
-
         const timer = setTimeout(() => {
             setRevealedCount(prev => prev + 1);
         }, delay);
 
         return () => clearTimeout(timer);
-    }, [order, isSaving, revealedCount]);
+    }, [savedOrder, revealedCount]);
 
     // Auto-scroll to last revealed item
     useEffect(() => {
@@ -84,17 +43,18 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
 
     // Check completion
     useEffect(() => {
-        if (order && revealedCount >= order.length && !isAllRevealed) {
+        if (savedOrder && revealedCount >= savedOrder.length && !isAllRevealed) {
             setIsAllRevealed(true);
         }
-    }, [order, revealedCount, isAllRevealed]);
+    }, [savedOrder, revealedCount, isAllRevealed]);
 
     const handleStart = useCallback(() => {
-        if (order) onComplete(order);
-    }, [order, onComplete]);
+        if (savedOrder) onComplete(savedOrder);
+    }, [savedOrder, onComplete]);
 
-    // Find user's pick number
-    const userPickNumber = order ? order.indexOf(myTeamId) + 1 : 0;
+    const userPickNumber = savedOrder ? savedOrder.indexOf(myTeamId) + 1 : 0;
+
+    if (!savedOrder) return null;
 
     return (
         <div className="fixed inset-0 z-[9999] bg-slate-950 flex flex-col items-center justify-center">
@@ -114,19 +74,14 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                     <Dices size={28} className="text-indigo-400" />
                 </div>
                 <p className="text-slate-500 text-sm font-bold ko-tight">
-                    {isSaving ? '추첨 결과를 저장하는 중...' :
-                     !isAllRevealed ? '드래프트 순서가 공개됩니다' :
-                     '추첨이 완료되었습니다'}
+                    {!isAllRevealed ? '드래프트 순서가 공개됩니다' : '추첨이 완료되었습니다'}
                 </p>
             </div>
 
             {/* Lottery List */}
-            <div
-                ref={scrollContainerRef}
-                className="relative z-10 w-full max-w-md max-h-[60vh] overflow-y-auto custom-scrollbar px-4"
-            >
+            <div className="relative z-10 w-full max-w-md max-h-[60vh] overflow-y-auto custom-scrollbar px-4">
                 <div className="space-y-2">
-                    {order?.map((teamId, idx) => {
+                    {savedOrder.map((teamId, idx) => {
                         const pickNum = idx + 1;
                         const isRevealed = idx < revealedCount;
                         const isJustRevealed = idx === revealedCount - 1;
@@ -199,7 +154,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             </div>
 
             {/* Summary + Start Button */}
-            {isAllRevealed && order && (
+            {isAllRevealed && (
                 <div className="relative z-10 mt-8 text-center space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <p className="text-slate-400 text-sm font-bold ko-tight">
                         당신의 팀은 <span className="text-indigo-400 font-black">{userPickNumber}번째</span>로 선수를 지명합니다
@@ -211,13 +166,6 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                         드래프트 시작
                         <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
                     </button>
-                </div>
-            )}
-
-            {/* Loading indicator */}
-            {isSaving && (
-                <div className="relative z-10 mt-8">
-                    <div className="w-8 h-8 border-2 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin" />
                 </div>
             )}
         </div>
