@@ -96,8 +96,11 @@ function calculateTurnoverChance(
     
     // Actor Attributes: Bad handle/IQ increases risk
     // Handle 90 -> -0.02, Handle 50 -> +0.02
-    const handlingFactor = (70 - actor.attr.handling) * 0.001; 
+    const handlingFactor = (70 - actor.attr.handling) * 0.001;
     const iqFactor = (70 - actor.attr.passIq) * 0.001;
+    // Hands: 볼 확보/컨트롤 → 턴오버 저항 (기본 0.0005/pt, PostUp/PnR에서 0.0015/pt)
+    const isContactPlay = playType === 'PostUp' || playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
+    const handsFactor = (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
 
     // Play Type Context
     let contextRisk = 0;
@@ -117,7 +120,7 @@ function calculateTurnoverChance(
         }
 
         // B. The Pickpocket: 접촉 플레이(PostUp/Iso/Cut) 전용
-        if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.hands >= stlCfg.PICKPOCKET_HANDS_THRESHOLD) {
+        if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.agility >= stlCfg.PICKPOCKET_AGILITY_THRESHOLD) {
             if (playType === 'PostUp' || playType === 'Iso' || playType === 'Cut') {
                 archetypeRisk += stlCfg.PICKPOCKET_TOV_BONUS;
             }
@@ -143,7 +146,7 @@ function calculateTurnoverChance(
     }
 
     // Calculate Total Turnover Probability
-    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + contextRisk + archetypeRisk;
+    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + contextRisk + archetypeRisk;
 
     // Cap Probability (Min 2%, Max 25%)
     totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
@@ -318,7 +321,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 3. Defensive Foul Check (Intensity Slider)
     // [Fix] Linear growth capped at 18%: intensity=5→15.5%, intensity>=7→18% cap
     const defIntensity = defTeam.tactics.sliders.defIntensity;
+    const offFoulConfig = SIM_CONFIG.FOUL_EVENTS;
     let baseFoulChance = Math.min(0.18, 0.08 + (defIntensity * 0.015));
+
+    // Manipulator 아키타입: 엘리트 파울 드로어는 baseFoulChance 자체를 상승 (18% 캡 무시)
+    if (actor.attr.drFoul >= offFoulConfig.MANIPULATOR_DRFOUL_THRESHOLD &&
+        actor.attr.shotIq >= offFoulConfig.MANIPULATOR_SHOTIQ_THRESHOLD) {
+        baseFoulChance += offFoulConfig.MANIPULATOR_FOUL_BONUS;
+    }
 
     // Foul Trouble: 파울 트러블 수비자는 조심스럽게 수비 → 파울 확률 감소 + 수비력 약화
     const ft = SIM_CONFIG.FOUL_TROUBLE;
@@ -327,8 +337,6 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     baseFoulChance *= foulProbMod;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
-
-    const offFoulConfig = SIM_CONFIG.FOUL_EVENTS;
 
     if (Math.random() < baseFoulChance) {
         // ★ Flagrant Foul Conversion (수비 파울 중 일부가 플래그런트로 전환)
@@ -529,6 +537,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                     actor.attr.agility >= zCfg.FLOATER_AGILITY_THRESHOLD &&
                     actor.attr.height <= zCfg.FLOATER_MAX_HEIGHT) {
                     blockProb *= zCfg.FLOATER_BLOCK_MULTIPLIER;
+                }
+
+                // B-6. Ascendant: 가드의 수직 도약으로 Rim 블락 회피
+                if (preferredZone === 'Rim' &&
+                    (actor.position === 'PG' || actor.position === 'SG') &&
+                    actor.attr.vertical >= zCfg.ASCENDANT_VERTICAL_THRESHOLD &&
+                    actor.attr.closeShot >= zCfg.ASCENDANT_CLOSESHOT_THRESHOLD) {
+                    blockProb *= zCfg.ASCENDANT_BLOCK_MULTIPLIER;
                 }
             }
 

@@ -78,7 +78,6 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
     // 카테고리별 배경색
     const groupColorMap: Record<string, string> = {
-        'OVERALL': 'bg-indigo-900/40 text-indigo-300',
         'INSIDE': 'bg-rose-900/40 text-rose-300',
         'OUTSIDE': 'bg-sky-900/40 text-sky-300',
         'PLAYMAKING': 'bg-amber-900/40 text-amber-300',

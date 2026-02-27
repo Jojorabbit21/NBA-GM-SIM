@@ -11,6 +11,7 @@ import {
     ZONE_CONFIG as CHART_ZONES,
     getZoneStyle, getZonePillColors
 } from '../utils/courtZones';
+import { ATTR_GROUPS } from '../data/attributeConfig';
 
 interface PlayerDetailModalProps {
     player: Player;
@@ -19,16 +20,6 @@ interface PlayerDetailModalProps {
     allTeams?: Team[];
     onClose: () => void;
 }
-
-// ── Attribute Config (matches RosterGrid) ──
-const ATTR_GROUPS = [
-    { id: 'INS', label: 'INSIDE', keys: ['ins', 'closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
-    { id: 'OUT', label: 'OUTSIDE', keys: ['out', 'midRange', 'threeCorner', 'ft', 'shotIq', 'offConsist'] },
-    { id: 'PLM', label: 'PLAYMAKING', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
-    { id: 'DEF', label: 'DEFENSE', keys: ['def', 'intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
-    { id: 'REB', label: 'REBOUND', keys: ['reb', 'offReb', 'defReb'] },
-    { id: 'ATH', label: 'ATHLETIC', keys: ['ath', 'speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] }
-];
 const ATTR_W = 50;
 
 // ── Stats Sections Config ──

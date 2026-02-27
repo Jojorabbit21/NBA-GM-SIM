@@ -4,6 +4,7 @@ import { Player, Team } from '../../types';
 import { calculatePlayerOvr } from '../../utils/constants';
 import { OvrBadge } from '../common/OvrBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../common/Table';
+import { ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP } from '../../data/attributeConfig';
 
 interface RosterGridProps {
     team: Team;
@@ -24,59 +25,7 @@ const WIDTHS = {
     ZONE_STAT: 70
 };
 
-// Full name mapping for tooltips
-const ATTR_NAME_MAP: Record<string, string> = {
-    ins: '인사이드 득점 평균 (Inside Scoring Avg)',
-    closeShot: '근접 슛 (Close Shot)',
-    layup: '레이업 (Layup)',
-    dunk: '덩크 (Dunk)',
-    postPlay: '포스트 플레이 (Post Play)',
-    drawFoul: '파울 유도 (Draw Foul)',
-    hands: '핸즈 (Hands)',
-    out: '외곽 득점 평균 (Outside Scoring Avg)',
-    midRange: '중거리 슛 (Mid-Range)',
-    threeCorner: '코너 3점 (Corner 3pt)',
-    three45: '45도 3점 (45° 3pt)',
-    threeTop: '탑 3점 (Top 3pt)',
-    ft: '자유투 (Free Throw)',
-    shotIq: '슛 지능 (Shot IQ)',
-    offConsist: '공격 기복 (Offensive Consistency)',
-    plm: '플레이메이킹 평균 (Playmaking Avg)',
-    passAcc: '패스 정확도 (Pass Accuracy)',
-    handling: '볼 핸들링 (Ball Handling)',
-    spdBall: '볼 핸들링 속도 (Speed with Ball)',
-    passVision: '시야 (Pass Vision)',
-    passIq: '패스 지능 (Pass IQ)',
-    def: '수비 평균 (Defense Avg)',
-    intDef: '내곽 수비 (Interior Defense)',
-    perDef: '외곽 수비 (Perimeter Defense)',
-    steal: '스틸 (Steal)',
-    blk: '블록 (Block)',
-    helpDefIq: '헬프 수비 지능 (Help Def IQ)',
-    passPerc: '패스 차단 (Pass Perception)',
-    defConsist: '수비 기복 (Defensive Consistency)',
-    reb: '리바운드 평균 (Rebound Avg)',
-    offReb: '공격 리바운드 (Offensive Rebound)',
-    defReb: '수비 리바운드 (Defensive Rebound)',
-    ath: '운동 능력 평균 (Athleticism Avg)',
-    speed: '속도 (Speed)',
-    agility: '민첩성 (Agility)',
-    strength: '힘 (Strength)',
-    vertical: '점프력 (Vertical)',
-    stamina: '지구력 (Stamina)',
-    hustle: '허슬 (Hustle)',
-    durability: '내구도 (Durability)'
-};
-
-// Attribute Groups Configuration
-const ATTR_GROUPS = [
-    { id: 'INS', label: 'INSIDE', keys: ['ins', 'closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
-    { id: 'OUT', label: 'OUTSIDE', keys: ['out', 'midRange', 'threeCorner', 'three45', 'threeTop', 'ft', 'shotIq', 'offConsist'] },
-    { id: 'PLM', label: 'PLAYMAKING', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
-    { id: 'DEF', label: 'DEFENSE', keys: ['def', 'intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
-    { id: 'REB', label: 'REBOUND', keys: ['reb', 'offReb', 'defReb'] },
-    { id: 'ATH', label: 'ATHLETIC', keys: ['ath', 'speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] }
-];
+// ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP → data/attributeConfig.ts에서 import
 
 const STATS_COLS = [
     { key: 'g', label: 'G' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' },
@@ -279,23 +228,19 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                         >OVR</TableHeaderCell>
                         
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
-                            g.keys.map((k, idx) => {
-                                const isGroupStart = idx === 0;
-                                const label = isGroupStart ? 'AVG' : (k === 'threeAvg' || k === 'threeCorner' ? '3PT' : k.slice(0, 3).toUpperCase());
-                                return (
-                                    <TableHeaderCell 
-                                        key={k} 
-                                        width={WIDTHS.ATTR} 
-                                        className="border-r border-slate-800" 
-                                        sortable 
-                                        onSort={() => handleSort(k)} 
+                            g.keys.map(k => (
+                                    <TableHeaderCell
+                                        key={k}
+                                        width={WIDTHS.ATTR}
+                                        className="border-r border-slate-800"
+                                        sortable
+                                        onSort={() => handleSort(k)}
                                         sortDirection={sortConfig.key === k ? sortConfig.direction : null}
                                         title={ATTR_NAME_MAP[k] || k}
                                     >
-                                        {label}
+                                        {ATTR_LABEL[k] || k}
                                     </TableHeaderCell>
-                                );
-                            })
+                            ))
                         ))}
                         {tab === 'stats' && STATS_COLS.map(c => (
                             <TableHeaderCell key={c.key} width={WIDTHS.STAT} className="border-r border-slate-800" sortable onSort={() => handleSort(c.key)} sortDirection={sortConfig.key === c.key ? sortConfig.direction : null}>{c.label}</TableHeaderCell>

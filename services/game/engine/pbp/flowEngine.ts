@@ -123,6 +123,13 @@ export function calculateHitRate(
              actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
             hitRate += zCfg.TYRANT_HITRATE_BONUS;
         }
+
+        // B-5. Afterburner: 폭발적 스피드로 트랜지션 마무리력 상승
+        if (playType === 'Transition' &&
+            actor.attr.speed >= zCfg.AFTERBURNER_SPEED_THRESHOLD &&
+            actor.attr.agility >= zCfg.AFTERBURNER_AGILITY_THRESHOLD) {
+            hitRate += zCfg.AFTERBURNER_TRANSITION_BONUS;
+        }
     }
 
     // 3. Mismatch Logic (스위치 발생 시에만 적용)
