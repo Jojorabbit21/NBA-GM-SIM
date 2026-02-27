@@ -95,7 +95,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         };
     }, [team, teams, schedule]);
 
-    const isFullHeightView = sidebarProps.currentView === 'DraftRoom' || sidebarProps.currentView === 'DraftHistory';
+    const isFullHeightView = sidebarProps.currentView === 'DraftRoom' || sidebarProps.currentView === 'DraftHistory' || sidebarProps.currentView === 'DraftLottery';
     const isNoPaddingView = sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions';
 
     return (
