@@ -41,13 +41,13 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 shrink-0">내 로스터</span>
+            <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-500 shrink-0">내 로스터</span>
                 <div className="flex items-center gap-1.5">
                     {POSITION_ORDER.map(pos => (
                         <span key={pos} className="flex items-center gap-0.5">
                             <span className="text-xs font-bold text-slate-400">{pos}</span>
-                            <span className="text-xs font-mono text-slate-500">{posCounts[pos]}</span>
+                            <span className="text-xs font-mono text-slate-400">{posCounts[pos]}</span>
                         </span>
                     ))}
                     <span className="text-slate-600 text-xs">·</span>
@@ -58,8 +58,8 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
             {/* Scroll Area */}
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 {/* Starters */}
-                <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">STARTERS</span>
+                <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">STARTERS</span>
                 </div>
                 {POSITION_ORDER.map((pos, i) => {
                     const player = starters[i];
@@ -84,8 +84,8 @@ export const MyRoster: React.FC<MyRosterProps> = ({ players }) => {
                 })}
 
                 {/* Reserves */}
-                <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">RESERVES</span>
+                <div className="shrink-0 px-3 h-10 flex items-center border-b border-slate-800/50 bg-slate-800/15">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-500">RESERVES</span>
                 </div>
                 {reserves.slice(0, RESERVES).map((player, i) => (
                     <div

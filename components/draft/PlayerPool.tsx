@@ -79,8 +79,8 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
     return (
         <div className="flex flex-col h-full">
             {/* Toolbar */}
-            <div className="shrink-0 px-3 h-10 flex items-center gap-2 border-b border-slate-800/50">
-                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500 shrink-0">선수 풀</span>
+            <div className="shrink-0 px-3 h-10 flex items-center gap-2 border-b border-slate-800/50 bg-slate-800/30">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-500 shrink-0">선수 풀</span>
                 <div className="relative">
                     <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />
                     <input
@@ -99,7 +99,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                             <button
                                 key={pos}
                                 onClick={() => setPosFilter(pos)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold transition-colors ${
+                                className={`text-xs px-1.5 py-0.5 rounded-md font-bold transition-colors ${
                                     isActive
                                         ? 'text-white'
                                         : 'bg-transparent text-slate-500 hover:text-slate-300'
@@ -114,13 +114,13 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                         );
                     })}
                 </div>
-                <span className="text-xs text-slate-600 ml-1">{filtered.length}명</span>
+                <span className="text-xs text-slate-500 ml-1">{filtered.length}명</span>
                 {/* Draft button */}
                 <div className="ml-auto">
                     <button
                         onClick={handleDraftClick}
                         disabled={!isUserTurn || !selectedPlayer}
-                        className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
+                        className={`px-4 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${
                             !isUserTurn || !selectedPlayer
                                 ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                                 : 'hover:brightness-110 active:scale-95'
@@ -139,8 +139,8 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
             {/* Table */}
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 <table className="w-full border-collapse text-xs">
-                    <thead className="sticky top-0 z-10 bg-slate-900/90 backdrop-blur-sm">
-                        <tr className="text-[9px] font-black uppercase text-slate-500">
+                    <thead className="sticky top-0 z-10 bg-slate-800/15 backdrop-blur-sm">
+                        <tr className="text-xs font-black uppercase text-slate-500">
                             <th className="w-6 px-1 py-1.5"></th>
                             <SortHeader label="OVR" field="ovr" className="px-2 text-left w-12" />
                             <th className="px-1 py-1.5 text-center w-8">POS</th>
@@ -177,8 +177,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                             checked={isSelected}
                                             onChange={() => onSelectPlayer(player)}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-3.5 h-3.5 cursor-pointer align-middle"
-                                            style={{ colorScheme: 'dark' }}
+                                            className="w-3.5 h-3.5 cursor-pointer align-middle appearance-none rounded-full border-2 border-slate-600 bg-slate-950 checked:border-blue-500 checked:bg-blue-500 checked:shadow-[inset_0_0_0_2.5px_rgb(2,6,23)] transition-colors"
                                         />
                                     </td>
                                     <td className="px-2 py-0.5">
