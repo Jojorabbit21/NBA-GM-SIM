@@ -322,6 +322,13 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
         onUpdateRef.current({ ...t, rotationMap: newMap });
     }, [team.roster]);
 
+    const handleResetPlayer = useCallback((playerId: string) => {
+        const t = tacticsRef.current;
+        const currentMap = t.rotationMap || {};
+        const newMap = { ...currentMap, [playerId]: Array(48).fill(false) };
+        onUpdateRef.current({ ...t, rotationMap: newMap });
+    }, []);
+
     const getMinColor = (mins: number) => {
         if (mins === 0) return 'text-slate-600';
         if (mins > 42) return 'text-red-500';
@@ -392,7 +399,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${SH} ${SB} border-b border-slate-800 w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${SH} ${SB} border-b border-slate-800 w-[40px] min-w-[40px] text-center`}>OVR</th>
                             <th rowSpan={2} className={`sticky left-[250px] z-50 ${SH} ${SB} border-b border-slate-800 w-[55px] min-w-[55px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${SH} border-b border-slate-800 w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${SH} border-r-2 border-r-indigo-500/50 border-b border-slate-800 w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>MIN</th>
                             {/* Quarter label cell */}
                             <th className={`${SH} border-b border-slate-800/50 p-0`}>
                                 <div className="flex h-7 text-[10px] font-black">
@@ -414,7 +421,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                     {[6, 12, 18, 24, 30, 36, 42, 48].map(m => (
                                         <span
                                             key={m}
-                                            className="absolute bottom-0.5 text-[8px] font-mono text-slate-600 -translate-x-1/2 select-none"
+                                            className="absolute bottom-0.5 text-xs font-mono text-slate-600 -translate-x-1/2 select-none"
                                             style={{ left: `${m / 48 * 100}%` }}
                                         >
                                             {m}
@@ -481,8 +488,19 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                         </td>
 
                                         {/* MIN */}
-                                        <td className={`sticky left-[305px] z-30 ${SK} text-center border-b border-slate-800/50 shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
-                                            <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)}`}>{totalMins}</span>
+                                        <td className={`sticky left-[305px] z-30 ${SK} text-center align-middle border-r-2 border-r-indigo-500/50 border-b border-slate-800/50 shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
+                                            <div className="relative flex items-center justify-center h-full">
+                                                <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)} group-hover:opacity-0 transition-opacity`}>{totalMins}</span>
+                                                {totalMins > 0 && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleResetPlayer(p.id); }}
+                                                        className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        title="이 선수 로테이션 초기화"
+                                                    >
+                                                        <RotateCcw size={12} className="text-slate-400 hover:text-red-400 transition-colors" />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
 
                                         {/* GANTT BAR */}
