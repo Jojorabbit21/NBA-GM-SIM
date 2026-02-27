@@ -3,7 +3,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Team, Player } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
-import { getTeamTheme, getButtonTheme } from '../utils/teamTheme';
+import { getButtonTheme } from '../utils/teamTheme';
 import { DraftHeader, PICK_TIME_LIMIT } from '../components/draft/DraftHeader';
 import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
@@ -49,7 +49,6 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
 
     // ── Team Theme ──
     const myTeamColors = TEAM_DATA[myTeamId]?.colors || null;
-    const teamTheme = useMemo(() => getTeamTheme(myTeamId, myTeamColors), [myTeamId, myTeamColors]);
     const buttonTheme = useMemo(() => getButtonTheme(myTeamId, myTeamColors), [myTeamId, myTeamColors]);
     const allPlayers = useMemo(() => collectAllPlayers(teams), [teams]);
 
@@ -76,11 +75,6 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         const myPickedIds = picks.filter(p => p.teamId === myTeamId).map(p => p.playerId);
         return allPlayers.filter(p => myPickedIds.includes(p.id));
     }, [picks, myTeamId, allPlayers]);
-
-    const latestMyPickId = useMemo(() => {
-        const myP = picks.filter(p => p.teamId === myTeamId);
-        return myP.length > 0 ? myP[myP.length - 1].playerId : undefined;
-    }, [picks, myTeamId]);
 
     // How many picks until user's next turn
     const picksUntilUser = useMemo(() => {
@@ -283,7 +277,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
 
                 {/* Right: My Roster */}
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                    <MyRoster players={myPicks} latestPlayerId={latestMyPickId} positionColors={POSITION_COLORS} teamColor={teamTheme.bg} />
+                    <MyRoster players={myPicks} positionColors={POSITION_COLORS} />
                 </div>
             </div>
         </div>
