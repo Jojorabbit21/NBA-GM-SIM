@@ -220,6 +220,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         teams={gameData.teams}
                         myTeamId={gameData.myTeamId!}
                         draftPoolType={draftPoolType || 'alltime'}
+                        freeAgents={gameData.freeAgents}
                         onBack={() => setView('Dashboard')}
                         onComplete={(picks) => {
                             gameData.handleDraftComplete(picks);
