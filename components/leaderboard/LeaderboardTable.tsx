@@ -76,9 +76,6 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         return groups;
     })() : null;
 
-    // 카테고리 그룹 헤더 스타일 (기존 헤더 배경색과 통일)
-    const groupStyle = 'bg-slate-950 text-slate-400';
-
     return (
         <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
@@ -99,11 +96,11 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                     const stickyStyle = col?.stickyLeft !== undefined ? {
                                         position: 'sticky' as const, left: col.stickyLeft, zIndex: 50,
                                     } : undefined;
-                                    return <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-r border-slate-800/30" style={stickyStyle} />;
+                                    return <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-b border-r border-slate-800" style={stickyStyle} />;
                                 }
                                 return (
                                     <th key={i} colSpan={g.colSpan}
-                                        className={`text-[9px] font-black uppercase tracking-widest text-center border-r border-slate-800/50 ${groupStyle}`}
+                                        className="bg-slate-950 border-b border-r border-slate-800 text-[9px] font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
                                     >
                                         {g.label}
                                     </th>
