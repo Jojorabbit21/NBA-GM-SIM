@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FlaskConical
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -214,6 +214,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         )}
         <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
+        <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} />
         <div className="mt-auto pt-4 border-t border-white/10">
           <NavItem active={currentView === 'DraftRoom'} icon={<Gavel size={20}/>} label="드래프트룸" onClick={() => onNavigate('DraftRoom')} {...navProps} />
         </div>

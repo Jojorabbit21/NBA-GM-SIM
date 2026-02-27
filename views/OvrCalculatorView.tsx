@@ -1,11 +1,9 @@
 
 import React, { useState, useMemo } from 'react';
-import { Settings2, User, ChevronRight, RefreshCw, FlaskConical, Info, ArrowUp, ArrowDown, Target, Zap, Shield, Activity, Share2, Brain } from 'lucide-react';
+import { RefreshCw, FlaskConical } from 'lucide-react';
 import { Team, Player } from '../types';
-import { OvrBadge } from '../components/common/OvrBadge';
 import { POSITION_WEIGHTS, PositionType } from '../utils/overallWeights';
 import { PageHeader } from '../components/common/PageHeader';
-import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { calculatePlayerOvr } from '../utils/constants';
 
 interface OvrCalculatorViewProps {
@@ -23,12 +21,12 @@ const WEIGHT_LABELS: Record<string, string> = {
 };
 
 const WEIGHT_GROUPS = [
-    { label: '슈팅 & 득점 효율', icon: <Target size={14} />, keys: ['closeShot', 'midRange', 'threeAvg', 'ft', 'shotIq', 'offConsist'], color: 'text-orange-400' },
-    { label: '인사이드 툴', icon: <Zap size={14} />, keys: ['layup', 'dunk', 'postPlay', 'drawFoul', 'hands'], color: 'text-yellow-400' },
-    { label: '수비력', icon: <Shield size={14} />, keys: ['intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'], color: 'text-indigo-400' },
-    { label: '신체 능력', icon: <Activity size={14} />, keys: ['speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'], color: 'text-emerald-400' },
-    { label: '플레이메이킹', icon: <Share2 size={14} />, keys: ['passAcc', 'handling', 'spdBall', 'passVision', 'passIq'], color: 'text-blue-400' },
-    { label: '리바운드 & 기타', icon: <Brain size={14} />, keys: ['offReb', 'defReb', 'intangibles', 'potential', 'height'], color: 'text-fuchsia-400' },
+    { label: 'SHOOTING', keys: ['closeShot', 'midRange', 'threeAvg', 'ft', 'shotIq', 'offConsist'] },
+    { label: 'INSIDE', keys: ['layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
+    { label: 'DEFENSE', keys: ['intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
+    { label: 'ATHLETIC', keys: ['speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] },
+    { label: 'PLAYMAKING', keys: ['passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
+    { label: 'REB & ETC', keys: ['offReb', 'defReb', 'intangibles', 'potential', 'height'] },
 ];
 
 export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) => {
@@ -40,14 +38,12 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
     return teams.flatMap(t => t.roster.filter(p => p.position.includes(selectedPos)));
   }, [teams, selectedPos]);
 
-  // 로컬 계산 함수를 constants.tsx의 핵심 로직과 완전히 일치하도록 수정
   const calculateNewOvr = (p: Player, currentWeights: Record<string, number>) => {
-    // 0값을 허용하는 threeAvg 계산
     const tC = p.threeCorner ?? 0;
     const t45 = p.three45 ?? 0;
     const tTop = p.threeTop ?? 0;
     const pThreeAvg = (tC + t45 + tTop) / 3;
-    
+
     const attrs: Record<string, number> = {
         closeShot: p.closeShot, midRange: p.midRange, threeAvg: pThreeAvg, ft: p.ft, shotIq: p.shotIq, offConsist: p.offConsist,
         layup: p.layup, dunk: p.dunk, postPlay: p.postPlay, drawFoul: p.drawFoul, hands: p.hands,
@@ -75,21 +71,13 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
   const tableData = useMemo(() => {
     const data = players.map(p => {
         const newOvr = calculateNewOvr(p, weights);
-        return {
-            id: p.id,
-            name: p.name,
-            oldOvr: calculatePlayerOvr(p),
-            newOvr,
-            delta: newOvr - calculatePlayerOvr(p)
-        };
+        const oldOvr = calculatePlayerOvr(p);
+        return { id: p.id, name: p.name, team: p.teamId, oldOvr, newOvr, delta: newOvr - oldOvr };
     });
 
     return data.sort((a, b) => {
         const factor = sortConfig.dir === 'desc' ? 1 : -1;
-        if (sortConfig.key === 'delta') return (a.delta - b.delta) * factor;
-        if (sortConfig.key === 'newOvr') return (a.newOvr - b.newOvr) * factor;
-        if (sortConfig.key === 'oldOvr') return (a.oldOvr - b.oldOvr) * factor;
-        return 0;
+        return ((a[sortConfig.key] as number) - (b[sortConfig.key] as number)) * factor;
     });
   }, [players, weights, sortConfig]);
 
@@ -98,9 +86,7 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
     setWeights(prev => ({ ...prev, [key]: num }));
   };
 
-  const resetWeights = () => {
-    setWeights(POSITION_WEIGHTS[selectedPos]);
-  };
+  const resetWeights = () => setWeights(POSITION_WEIGHTS[selectedPos]);
 
   const handlePosChange = (pos: PositionType) => {
     setSelectedPos(pos);
@@ -114,121 +100,118 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
       }));
   };
 
+  const sortArrow = (key: 'newOvr' | 'oldOvr' | 'delta') =>
+      sortConfig.key === key ? (sortConfig.dir === 'desc' ? ' ▼' : ' ▲') : '';
+
+  const ovrColor = (v: number) =>
+      v >= 85 ? 'text-amber-400' : v >= 75 ? 'text-emerald-400' : v >= 65 ? 'text-sky-400' : 'text-slate-400';
+
+  const deltaColor = (d: number) =>
+      d > 0 ? 'text-emerald-400' : d < 0 ? 'text-red-400' : 'text-slate-600';
+
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-6 overflow-hidden">
-      <PageHeader 
-        title="OVR 실험실" 
+    <div className="flex flex-col h-[calc(100vh-120px)] animate-in fade-in duration-500 ko-normal gap-3 overflow-hidden">
+      <PageHeader
+        title="OVR 실험실"
         icon={<FlaskConical size={24} />}
         actions={
-            <div className="flex gap-4">
-                <div className="flex bg-slate-900 rounded-2xl p-1.5 border border-slate-800 shadow-lg">
+            <div className="flex items-center gap-3">
+                <div className="flex bg-slate-900 rounded-lg p-0.5 border border-slate-800">
                     {(['PG', 'SG', 'SF', 'PF', 'C'] as PositionType[]).map(pos => (
-                        <button 
-                            key={pos} 
+                        <button
+                            key={pos}
                             onClick={() => handlePosChange(pos)}
-                            className={`px-6 py-2.5 rounded-xl text-sm font-black transition-all ${selectedPos === pos ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                            className={`px-4 py-1.5 rounded-md text-xs font-black transition-all ${selectedPos === pos ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
                         >
                             {pos}
                         </button>
                     ))}
                 </div>
-                <button onClick={resetWeights} className="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-2 border border-slate-700 transition-all active:scale-95">
-                    <RefreshCw size={14} /> 기본값 복원
+                <button onClick={resetWeights} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 rounded-lg font-black text-[10px] uppercase tracking-wider flex items-center gap-1.5 border border-slate-700 transition-all">
+                    <RefreshCw size={11} /> 기본값 복원
                 </button>
             </div>
         }
       />
 
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0">
-        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
-        <div className="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-slate-800 bg-slate-800/20 flex items-center justify-between">
-                <div className="flex items-center gap-2 text-indigo-400">
-                    <Settings2 size={18} />
-                    <span className="text-xs font-black uppercase tracking-widest">Weight Settings for {selectedPos}</span>
-                </div>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-slate-950/20 space-y-8">
-                {WEIGHT_GROUPS.map((group) => (
-                    <div key={group.label} className="space-y-4">
-                        <div className="flex items-center gap-2 border-l-2 border-indigo-500/50 pl-3">
-                            <span className={group.color}>{group.icon}</span>
-                            <h4 className={`text-xs font-black uppercase tracking-wider ${group.color}`}>{group.label}</h4>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-5 px-1">
-                            {group.keys.map(key => (
-                                weights[key] !== undefined && (
-                                    <div key={key} className="space-y-1.5">
-                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-tighter block truncate" title={key}>
-                                            {WEIGHT_LABELS[key] || key}
-                                        </label>
-                                        <input 
-                                            type="number" 
-                                            value={weights[key]} 
-                                            onChange={e => handleWeightChange(key, e.target.value)}
-                                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-sm font-black text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
-                                        />
-                                    </div>
-                                )
-                            ))}
-                        </div>
-                    </div>
-                ))}
-
-                <div className="mt-4 p-6 bg-indigo-500/5 border border-indigo-500/20 rounded-3xl flex items-start gap-4">
-                    <span className="text-indigo-400 mt-0.5 flex-shrink-0"><Info size={20} /></span>
-                    <p className="text-[11px] font-medium text-slate-400 leading-relaxed">
-                        가중치는 상대적인 값입니다. 모든 가중치의 합을 100으로 맞출 필요는 없습니다. 
-                        특정 포지션에서 중요하게 생각하는 스탯의 숫자를 높여보세요. 
-                        결과는 <span className="text-white font-bold">New OVR = Σ(스탯 * 가중치) / Σ가중치</span>로 산출됩니다.
-                    </p>
-                </div>
-            </div>
+      <div className="flex-1 grid grid-cols-12 gap-3 min-h-0">
+        {/* Weight Grid */}
+        <div className="col-span-4 xl:col-span-3 overflow-y-auto custom-scrollbar border border-slate-800 rounded-lg bg-slate-950">
+          <table className="w-full text-[11px]">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-950 border-b border-slate-800">
+                <th className="text-left px-2 py-1.5 text-slate-500 font-black uppercase tracking-wider text-[9px]">Attribute</th>
+                <th className="text-center px-2 py-1.5 text-slate-500 font-black uppercase tracking-wider text-[9px] w-16">Weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              {WEIGHT_GROUPS.map(group => (
+                <React.Fragment key={group.label}>
+                  <tr className="bg-slate-900/80">
+                    <td colSpan={2} className="px-2 py-1 text-[9px] font-black uppercase tracking-widest text-indigo-400 border-t border-slate-800">
+                      {group.label}
+                    </td>
+                  </tr>
+                  {group.keys.map(key => (
+                    weights[key] !== undefined && (
+                      <tr key={key} className="border-b border-slate-800/50 hover:bg-slate-900/50">
+                        <td className="px-2 py-0.5 text-slate-400 font-medium truncate" title={key}>
+                          {WEIGHT_LABELS[key] || key}
+                        </td>
+                        <td className="px-1 py-0.5 text-center">
+                          <input
+                            type="number"
+                            value={weights[key]}
+                            onChange={e => handleWeightChange(key, e.target.value)}
+                            className="w-full bg-transparent border border-slate-800 rounded px-1 py-0.5 text-[11px] font-bold text-white text-center focus:outline-none focus:border-indigo-500 transition-colors [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </td>
+                      </tr>
+                    )
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
         </div>
 
-        {/* [Optimization] bg-slate-900/60 -> bg-slate-900/90 */}
-        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-[2.5rem] flex flex-col overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-slate-800 bg-slate-950/40 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                    <User size={18} className="text-slate-400" />
-                    <span className="text-xs font-black uppercase text-slate-400 tracking-widest">{selectedPos} Players ({players.length})</span>
-                </div>
-            </div>
-            <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950/10">
-                <Table>
-                    <TableHead>
-                        <TableHeaderCell align="left" className="px-8 py-4">Player Name</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-4 py-4 cursor-pointer hover:text-white" onClick={() => toggleSort('oldOvr')}>Base OVR</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-4 py-4 cursor-pointer hover:text-white bg-indigo-600/10" onClick={() => toggleSort('newOvr')}>New OVR</TableHeaderCell>
-                        <TableHeaderCell align="center" className="px-8 py-4 cursor-pointer hover:text-white" onClick={() => toggleSort('delta')}>Change</TableHeaderCell>
-                    </TableHead>
-                    <TableBody>
-                        {tableData.map(p => (
-                            <TableRow key={p.id} className="hover:bg-white/5 transition-colors group">
-                                <TableCell className="px-8 py-4">
-                                    <span className="text-base font-black text-slate-200 group-hover:text-indigo-400 transition-colors">{p.name}</span>
-                                </TableCell>
-                                <TableCell className="px-4 py-4" align="center">
-                                    <div className="flex justify-center items-center gap-2">
-                                        <OvrBadge value={p.oldOvr} size="md" className="!w-9 !h-9 !text-lg !mx-0 opacity-60" />
-                                    </div>
-                                </TableCell>
-                                <TableCell className="px-4 py-4 bg-indigo-600/5" align="center">
-                                    <div className="flex justify-center items-center gap-2">
-                                        <OvrBadge value={p.newOvr} size="md" className="!w-10 !h-10 !text-xl !mx-0" />
-                                    </div>
-                                </TableCell>
-                                <TableCell className="px-8 py-4" align="center">
-                                    <div className={`flex items-center justify-center gap-1.5 font-black text-sm ${p.newOvr > p.oldOvr ? 'text-emerald-400' : p.newOvr < p.oldOvr ? 'text-red-400' : 'text-slate-500'}`}>
-                                        {p.newOvr > p.oldOvr ? <ArrowUp size={14} /> : p.newOvr < p.oldOvr ? <ArrowDown size={14} /> : null}
-                                        {Math.abs(p.newOvr - p.oldOvr)}
-                                    </div>
-                                </TableCell>
-                            </TableRow>
-                        ))}
-                    </TableBody>
-                </Table>
-            </div>
+        {/* Player Results Grid */}
+        <div className="col-span-8 xl:col-span-9 overflow-y-auto custom-scrollbar border border-slate-800 rounded-lg bg-slate-950">
+          <table className="w-full text-[11px]">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-slate-950 border-b border-slate-800">
+                <th className="text-center px-2 py-1.5 text-slate-500 font-black uppercase tracking-wider text-[9px] w-8">#</th>
+                <th className="text-left px-2 py-1.5 text-slate-500 font-black uppercase tracking-wider text-[9px]">Player</th>
+                <th className="text-center px-2 py-1.5 text-slate-500 font-black uppercase tracking-wider text-[9px] w-16 cursor-pointer hover:text-slate-300 select-none" onClick={() => toggleSort('oldOvr')}>
+                  Base{sortArrow('oldOvr')}
+                </th>
+                <th className="text-center px-2 py-1.5 text-indigo-400 font-black uppercase tracking-wider text-[9px] w-16 cursor-pointer hover:text-indigo-300 select-none bg-indigo-500/5" onClick={() => toggleSort('newOvr')}>
+                  New{sortArrow('newOvr')}
+                </th>
+                <th className="text-center px-2 py-1.5 text-slate-500 font-black uppercase tracking-wider text-[9px] w-14 cursor-pointer hover:text-slate-300 select-none" onClick={() => toggleSort('delta')}>
+                  +/-{sortArrow('delta')}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((p, i) => (
+                <tr key={p.id} className="border-b border-slate-800/50 hover:bg-slate-900/50 transition-colors">
+                  <td className="text-center px-2 py-1 text-slate-600 font-medium">{i + 1}</td>
+                  <td className="px-2 py-1 text-slate-300 font-bold truncate max-w-0">{p.name}</td>
+                  <td className={`text-center px-2 py-1 font-bold ${ovrColor(p.oldOvr)} opacity-60`}>{p.oldOvr}</td>
+                  <td className={`text-center px-2 py-1 font-black ${ovrColor(p.newOvr)} bg-indigo-500/5`}>{p.newOvr}</td>
+                  <td className={`text-center px-2 py-1 font-bold ${deltaColor(p.delta)}`}>
+                    {p.delta > 0 ? `+${p.delta}` : p.delta === 0 ? '-' : p.delta}
+                  </td>
+                </tr>
+              ))}
+              {tableData.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="text-center py-8 text-slate-600 text-xs">해당 포지션의 선수가 없습니다</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
