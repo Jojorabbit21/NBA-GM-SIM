@@ -69,11 +69,11 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
             style={{ scrollbarWidth: 'thin' } as React.CSSProperties}
         >
             {/* Transposed: columns = teams, rows = rounds */}
-            <table className="border-collapse w-max min-w-full">
+            <table className="w-max min-w-full" style={{ borderCollapse: 'separate', borderSpacing: '2px' }}>
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
                         {/* Round column header (sticky left) */}
-                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-left font-bold text-slate-500 text-[10px] border-b border-r border-slate-800">
+                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-left font-bold text-slate-500 text-[10px]">
                             라운드
                         </th>
                         {/* Team column headers */}
@@ -82,7 +82,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                             return (
                                 <th
                                     key={teamId}
-                                    className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-[11px] font-bold uppercase border-b border-slate-800 ${
+                                    className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-[11px] font-bold uppercase rounded-md ${
                                         isUser ? 'text-white' : 'text-slate-400'
                                     }`}
                                     style={isUser ? {
@@ -105,11 +105,10 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         return (
                             <tr
                                 key={round}
-                                className="border-b h-[76px]"
-                                style={{ borderBottomColor: 'rgba(30,41,59,0.3)' }}
+                                className="h-[76px]"
                             >
                                 {/* Round label (sticky left) */}
-                                <td className="sticky left-0 bg-slate-950 px-2 py-1 border-r border-slate-800/50 z-10">
+                                <td className="sticky left-0 bg-slate-950 px-2 py-1 z-10">
                                     <div className="flex items-center gap-1">
                                         <span className={`text-[11px] font-bold whitespace-nowrap ${
                                             isCurrentRound ? 'text-indigo-400' : isPast ? 'text-slate-600' : 'text-slate-500'
@@ -135,7 +134,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                         <td
                                             key={teamId}
                                             ref={isCurrent ? currentCellRef : undefined}
-                                            className="p-0 text-center"
+                                            className="p-0 text-center rounded-lg"
                                             style={{
                                                 ...(pick
                                                     ? { backgroundColor: isUserCol ? `color-mix(in srgb, ${posColor}20, rgba(245,158,11,0.10))` : `${posColor}20` }
