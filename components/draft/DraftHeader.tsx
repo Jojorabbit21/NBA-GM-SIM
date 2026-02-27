@@ -12,7 +12,6 @@ interface DraftHeaderProps {
     currentTeamId: string;
     isUserTurn: boolean;
     picksUntilUser: number;
-    userTeamId: string;
     timeRemaining: number;
     onSkipToMyTurn?: () => void;
     showSkip: boolean;
@@ -25,7 +24,6 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
     currentTeamId,
     isUserTurn,
     picksUntilUser,
-    userTeamId,
     timeRemaining,
     onSkipToMyTurn,
     showSkip,
@@ -33,9 +31,6 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 }) => {
     const currentTeamData = TEAM_DATA[currentTeamId];
     const currentTeamColor = currentTeamData?.colors.primary || '#6366f1';
-    const userTeamData = TEAM_DATA[userTeamId];
-    const userTeamName = userTeamData?.name || userTeamId;
-
     const timerStr = `00:${String(Math.max(0, timeRemaining)).padStart(2, '0')}`;
     const timerPct = (Math.max(0, timeRemaining) / PICK_TIME_LIMIT) * 100;
 
@@ -53,45 +48,52 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
             {/* Main content — 3-column grid */}
             <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-5 py-2.5">
-                {/* Left: Back + Current team on the clock */}
-                <div className="flex flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={onBack}
-                            className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-                        >
-                            <ArrowLeft size={16} />
-                        </button>
-                        <span className="text-sm font-bold text-white/80">
-                            드래프트 룸
-                        </span>
+                {/* Left: Back + Draft Room label */}
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={onBack}
+                        className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                    >
+                        <ArrowLeft size={16} />
+                    </button>
+                    <span className="text-sm font-bold text-white/80">
+                        드래프트 룸
+                    </span>
+                </div>
+
+                {/* Center: Timer + Round/Pick */}
+                <div className="text-center min-w-[120px]">
+                    <div className="font-mono font-black text-xl tracking-wider text-white leading-none">
+                        {timerStr}
                     </div>
-                    <div className="flex items-center gap-2 ml-7">
+                    <div className="text-[11px] text-white/60 font-bold mt-0.5">
+                        {currentRound}라운드 #{currentPickInRound}픽
+                    </div>
+                </div>
+
+                {/* Right: Current team + user turn info */}
+                <div className="flex items-center justify-end gap-3">
+                    {/* Current team on the clock */}
+                    <div className="flex items-center gap-2">
                         <span className="text-[11px] text-white/50 font-medium">현재 차례</span>
                         <TeamLogo teamId={currentTeamId} size="xs" className="w-5 h-5" />
                         <span className="text-sm font-bold text-white">
                             {currentTeamData?.name || currentTeamId.toUpperCase()}
                         </span>
                     </div>
-                </div>
 
-                {/* Center: Timer + Round/Pick */}
-                <div className="text-center min-w-[140px]">
-                    <div className="font-mono font-black text-3xl tracking-wider text-white leading-none">
-                        {timerStr}
-                    </div>
-                    <div className="text-[11px] text-white/60 font-bold mt-1">
-                        {currentRound}라운드 #{currentPickInRound}픽
-                    </div>
-                </div>
+                    {/* Separator */}
+                    <div className="w-px h-5 bg-white/20" />
 
-                {/* Right: Picks until user + Skip button */}
-                <div className="flex items-center justify-end gap-3">
-                    {!isUserTurn && picksUntilUser > 0 ? (
+                    {/* User turn info or skip */}
+                    {isUserTurn ? (
+                        <span className="text-sm font-bold text-emerald-300 animate-pulse">
+                            내 차례입니다!
+                        </span>
+                    ) : picksUntilUser > 0 ? (
                         <>
                             <span className="text-xs text-white/70">
-                                <span className="font-bold text-white">{picksUntilUser}</span>픽 후{' '}
-                                <span className="font-bold text-white">{userTeamName}</span> 차례입니다
+                                <span className="font-bold text-white">{picksUntilUser}</span>픽 후 내 차례입니다
                             </span>
                             {showSkip && (
                                 <button
@@ -103,10 +105,6 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                                 </button>
                             )}
                         </>
-                    ) : isUserTurn ? (
-                        <span className="text-sm font-bold text-emerald-300 animate-pulse">
-                            내 차례입니다!
-                        </span>
                     ) : null}
                 </div>
             </div>
