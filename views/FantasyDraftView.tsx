@@ -3,7 +3,6 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Team, Player } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
-import { getButtonTheme } from '../utils/teamTheme';
 import { DraftHeader, PICK_TIME_LIMIT } from '../components/draft/DraftHeader';
 import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
@@ -47,9 +46,6 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
     const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds]);
 
-    // ── Team Theme ──
-    const myTeamColors = TEAM_DATA[myTeamId]?.colors || null;
-    const buttonTheme = useMemo(() => getButtonTheme(myTeamId, myTeamColors), [myTeamId, myTeamColors]);
     const allPlayers = useMemo(() => collectAllPlayers(teams), [teams]);
 
     // ── Draft State ──
@@ -259,7 +255,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 p-1.5">
                 {/* Left: Pick History */}
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                    <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} positionColors={POSITION_COLORS} userTeamId={myTeamId} />
+                    <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} userTeamId={myTeamId} />
                 </div>
 
                 {/* Center: Player Pool */}
@@ -271,13 +267,12 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                         isUserTurn={isUserTurn}
                         onDraft={handleDraft}
                         positionColors={POSITION_COLORS}
-                        buttonTheme={buttonTheme}
                     />
                 </div>
 
                 {/* Right: My Roster */}
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
-                    <MyRoster players={myPicks} positionColors={POSITION_COLORS} />
+                    <MyRoster players={myPicks} />
                 </div>
             </div>
         </div>

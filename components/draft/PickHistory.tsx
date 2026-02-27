@@ -6,11 +6,10 @@ import { BoardPick } from './DraftBoard';
 interface PickHistoryProps {
     picks: BoardPick[];
     totalRounds: number;
-    positionColors: Record<string, string>;
     userTeamId: string;
 }
 
-export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, positionColors, userTeamId }) => {
+export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, userTeamId }) => {
     const [roundFilter, setRoundFilter] = useState<number | null>(null);
     const [dropdownOpen, setDropdownOpen] = useState(false);
     const topRef = useRef<HTMLDivElement>(null);
@@ -69,7 +68,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, po
             <div className="flex-1 min-h-0 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                 <div ref={topRef} />
                 {filtered.length === 0 && (
-                    <div className="px-2 py-4 text-[10px] text-slate-600 italic text-center">아직 픽이 없습니다</div>
+                    <div className="px-2 py-4 text-xs text-slate-600 italic text-center">아직 픽이 없습니다</div>
                 )}
                 {filtered.map((pick, idx) => {
                     const overallPick = roundFilter !== null
@@ -77,7 +76,6 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, po
                         : picks.length - idx;
                     const isLatest = idx === 0 && roundFilter === null;
                     const isUserPick = pick.teamId === userTeamId;
-                    const posColor = positionColors[pick.position] || '#64748b';
 
                     return (
                         <div
@@ -87,22 +85,19 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, po
                             }`}
                         >
                             {/* Pick number */}
-                            <span className="text-[11px] text-slate-500 font-bold font-mono w-8 shrink-0">
+                            <span className="text-xs text-slate-500 font-bold font-mono w-8 shrink-0">
                                 #{overallPick}
                             </span>
                             {/* Position */}
-                            <span
-                                className="text-[10px] font-bold w-8 shrink-0"
-                                style={{ color: posColor }}
-                            >
+                            <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
                                 {pick.position}
                             </span>
                             {/* Team abbreviation */}
-                            <span className="text-[10px] font-semibold text-slate-400 w-8 shrink-0 uppercase">
+                            <span className="text-xs font-semibold text-slate-400 w-8 shrink-0 uppercase">
                                 {pick.teamId.toUpperCase()}
                             </span>
                             {/* Player name */}
-                            <span className={`text-[11px] font-semibold truncate flex-1 ${isUserPick ? 'text-white' : 'text-slate-200'}`}>
+                            <span className={`text-xs font-semibold truncate flex-1 ${isUserPick ? 'text-white' : 'text-slate-200'}`}>
                                 {pick.playerName}
                             </span>
                         </div>

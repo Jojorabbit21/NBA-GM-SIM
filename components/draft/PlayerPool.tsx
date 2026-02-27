@@ -4,8 +4,6 @@ import { Search } from 'lucide-react';
 import { Player } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { calculatePlayerOvr } from '../../utils/constants';
-import { ButtonTheme } from '../../utils/teamTheme';
-
 interface PlayerPoolProps {
     players: Player[];
     selectedPlayerId: string | null;
@@ -13,7 +11,6 @@ interface PlayerPoolProps {
     isUserTurn: boolean;
     onDraft: (player: Player) => void;
     positionColors: Record<string, string>;
-    buttonTheme: ButtonTheme;
 }
 
 const POSITIONS = ['All', 'PG', 'SG', 'SF', 'PF', 'C'] as const;
@@ -34,7 +31,6 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
     isUserTurn,
     onDraft,
     positionColors,
-    buttonTheme,
 }) => {
     const [search, setSearch] = useState('');
     const [posFilter, setPosFilter] = useState<string>('All');
@@ -118,7 +114,7 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                         );
                     })}
                 </div>
-                <span className="text-[10px] text-slate-600 ml-1">{filtered.length}명</span>
+                <span className="text-xs text-slate-600 ml-1">{filtered.length}명</span>
                 {/* Draft button */}
                 <div className="ml-auto">
                     <button
@@ -130,9 +126,9 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                 : 'hover:brightness-110 active:scale-95'
                         }`}
                         style={isUserTurn && selectedPlayer ? {
-                            backgroundColor: buttonTheme.bg,
-                            color: buttonTheme.text,
-                            boxShadow: `0 0 12px ${buttonTheme.glow}50`,
+                            backgroundColor: '#10b981',
+                            color: '#fff',
+                            boxShadow: '0 0 12px rgba(16,185,129,0.5)',
                         } : {}}
                     >
                         드래프트
@@ -163,7 +159,6 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                     <tbody>
                         {filtered.map(player => {
                             const isSelected = player.id === selectedPlayerId;
-                            const posColor = positionColors[player.position] || '#64748b';
                             return (
                                 <tr
                                     key={player.id}
@@ -182,19 +177,20 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                             checked={isSelected}
                                             onChange={() => onSelectPlayer(player)}
                                             onClick={(e) => e.stopPropagation()}
-                                            className="w-3.5 h-3.5 cursor-pointer align-middle accent-slate-500 checked:accent-blue-500"
+                                            className="w-3.5 h-3.5 cursor-pointer align-middle"
+                                            style={{ colorScheme: 'dark' }}
                                         />
                                     </td>
                                     <td className="px-2 py-0.5">
                                         <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
                                     </td>
-                                    <td className="px-1 py-0.5 text-center text-[10px] font-bold" style={{ color: posColor }}>
+                                    <td className="px-1 py-0.5 text-center font-bold text-slate-400">
                                         {player.position}
                                     </td>
                                     <td className="px-2 py-0.5 font-semibold text-slate-200 truncate max-w-[140px]">{player.name}</td>
                                     <td className="px-1 py-0.5 text-center text-slate-400 font-mono">{player.age}</td>
-                                    <td className="px-1 py-0.5 text-center text-slate-500 text-[10px]">{player.height}</td>
-                                    <td className="px-1 py-0.5 text-center text-slate-500 text-[10px]">{player.weight}</td>
+                                    <td className="px-1 py-0.5 text-center text-slate-500">{player.height}</td>
+                                    <td className="px-1 py-0.5 text-center text-slate-500">{player.weight}</td>
                                     <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ins)}`}>{player.ins}</td>
                                     <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.out)}`}>{player.out}</td>
                                     <td className={`px-1 py-0.5 text-center font-mono ${getStatColor(player.ath)}`}>{player.ath}</td>
