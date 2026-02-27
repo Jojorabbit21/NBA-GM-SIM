@@ -101,6 +101,15 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         return myP.length > 0 ? myP[myP.length - 1].playerId : undefined;
     }, [picks, myTeamId]);
 
+    // How many picks until user's next turn
+    const picksUntilUser = useMemo(() => {
+        if (isUserTurn) return 0;
+        for (let i = currentPickIndex + 1; i < draftOrder.length; i++) {
+            if (draftOrder[i] === myTeamId) return i - currentPickIndex;
+        }
+        return -1; // no more picks remaining
+    }, [currentPickIndex, draftOrder, myTeamId, isUserTurn]);
+
     // ── Draft action (demo: just adds to picks) ──
     const handleDraft = useCallback((player: Player) => {
         if (!isUserTurn) return;
@@ -191,6 +200,8 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 currentPickInRound={currentPickInRound}
                 currentTeamId={currentTeamId}
                 isUserTurn={isUserTurn}
+                picksUntilUser={picksUntilUser}
+                userTeamId={myTeamId}
                 onFastForward={handleFastForward}
                 showFastForward={showFastForward}
                 onBack={onBack}

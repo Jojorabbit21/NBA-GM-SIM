@@ -76,15 +76,8 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         return groups;
     })() : null;
 
-    // 카테고리별 배경색
-    const groupColorMap: Record<string, string> = {
-        'INSIDE': 'bg-rose-900/40 text-rose-300',
-        'OUTSIDE': 'bg-sky-900/40 text-sky-300',
-        'PLAYMAKING': 'bg-amber-900/40 text-amber-300',
-        'DEFENSE': 'bg-emerald-900/40 text-emerald-300',
-        'REBOUND': 'bg-orange-900/40 text-orange-300',
-        'ATHLETIC': 'bg-purple-900/40 text-purple-300',
-    };
+    // 카테고리 그룹 헤더 스타일 (기존 헤더 배경색과 통일)
+    const groupStyle = 'bg-slate-950 text-slate-400';
 
     return (
         <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
@@ -110,7 +103,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                 }
                                 return (
                                     <th key={i} colSpan={g.colSpan}
-                                        className={`text-[9px] font-black uppercase tracking-widest text-center border-r border-slate-800/50 ${groupColorMap[g.label] || 'bg-slate-900/40 text-slate-400'}`}
+                                        className={`text-[9px] font-black uppercase tracking-widest text-center border-r border-slate-800/50 ${groupStyle}`}
                                     >
                                         {g.label}
                                     </th>

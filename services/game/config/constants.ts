@@ -84,6 +84,16 @@ export const SIM_CONFIG = {
         POS_WEIGHT_PF: 1.2,           // 파워포워드 가중치
         POS_WEIGHT_DEFAULT: 1.0,      // 기본 가중치
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
+
+        // F-1. Harvester (하베스터) — Andre Drummond, DeAndre Jordan
+        HARVESTER_REB_THRESHOLD: 95,         // offReb ≥ 95 OR defReb ≥ 95
+        HARVESTER_SCORE_MULTIPLIER: 1.3,     // 리바운드 선택 점수 ×1.3
+
+        // F-2. Raider (레이더) — Dennis Rodman, Charles Barkley
+        RAIDER_MAX_HEIGHT: 200,              // height ≤ 200
+        RAIDER_OFFREB_THRESHOLD: 90,         // offReb ≥ 90
+        RAIDER_VERTICAL_THRESHOLD: 90,       // vertical ≥ 90
+        RAIDER_SCORE_MULTIPLIER: 1.4,        // 공격 리바운드 선택 점수 ×1.4
     },
     // Block System (미스 중 블락 판정)
     BLOCK: {
