@@ -27,9 +27,9 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, po
     const filterLabel = roundFilter !== null ? `R${roundFilter}` : '전체';
 
     return (
-        <div className="flex flex-col h-full bg-slate-950">
+        <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="px-2 py-1.5 border-b border-slate-800 shrink-0 flex items-center justify-between">
+            <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between">
                 <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">PICK HISTORY</span>
                 {/* Round Filter Dropdown */}
                 <div className="relative">

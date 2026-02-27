@@ -260,28 +260,27 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             </div>
 
             {/* Bottom 3-column panel */}
-            <div className="flex flex-1 min-h-0 overflow-hidden">
+            <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 px-1.5 pb-1.5">
                 {/* Left: Pick History */}
-                <div className="w-[25%] border-r border-slate-800">
+                <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
                     <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} positionColors={POSITION_COLORS} userTeamId={myTeamId} />
                 </div>
 
                 {/* Center: Player Pool */}
-                <div className="flex-1 border-r border-slate-800">
+                <div className="flex-1 bg-slate-900/60 rounded-xl overflow-hidden">
                     <PlayerPool
                         players={availablePlayers}
-                        onSelectPlayer={(p) => setSelectedPlayerId(p.id)}
                         selectedPlayerId={selectedPlayerId}
+                        onSelectPlayer={(p) => setSelectedPlayerId(p.id === selectedPlayerId ? null : p.id)}
                         isUserTurn={isUserTurn}
                         onDraft={handleDraft}
                         positionColors={POSITION_COLORS}
                         buttonTheme={buttonTheme}
-                        teamColor={teamTheme.bg}
                     />
                 </div>
 
                 {/* Right: My Roster */}
-                <div className="w-[25%]">
+                <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
                     <MyRoster players={myPicks} latestPlayerId={latestMyPickId} positionColors={POSITION_COLORS} teamColor={teamTheme.bg} />
                 </div>
             </div>
