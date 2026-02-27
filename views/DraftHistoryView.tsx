@@ -6,7 +6,7 @@ import { TEAM_DATA } from '../data/teamData';
 
 interface DraftHistoryViewProps {
     myTeamId: string;
-    draftPicks: { teams: Record<string, string[]>; picks: BoardPick[] } | null;
+    draftPicks: { order?: string[]; teams: Record<string, string[]>; picks: BoardPick[] } | null;
 }
 
 function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
@@ -19,7 +19,7 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 }
 
 export const DraftHistoryView: React.FC<DraftHistoryViewProps> = ({ myTeamId, draftPicks }) => {
-    const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
+    const teamIds = useMemo(() => draftPicks?.order || Object.keys(TEAM_DATA), [draftPicks?.order]);
 
     const totalRounds = useMemo(() => {
         if (!draftPicks?.picks.length) return 0;
