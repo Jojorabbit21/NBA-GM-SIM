@@ -21,6 +21,7 @@ interface FantasyDraftViewProps {
     teams: Team[];
     myTeamId: string;
     draftPoolType: DraftPoolType;
+    freeAgents?: Player[];
     onBack: () => void;
     onComplete?: (picks: BoardPick[]) => void;
 }
@@ -35,18 +36,22 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
     return order;
 }
 
-// ── Collect all players from all teams as the "draft pool" ──
-function collectAllPlayers(teams: Team[], poolType: DraftPoolType): Player[] {
+// ── Collect all players from all teams (+ free agents for alltime) as the "draft pool" ──
+function collectAllPlayers(teams: Team[], poolType: DraftPoolType, freeAgents: Player[] = []): Player[] {
     const all: Player[] = [];
     teams.forEach(t => t.roster.forEach(p => all.push(p)));
-    const filtered = poolType === 'current' ? all.filter(p => p.salary > 0) : all;
-    filtered.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
-    return filtered;
+    if (poolType === 'alltime') {
+        freeAgents.forEach(p => all.push(p));
+    } else {
+        all.splice(0, all.length, ...all.filter(p => p.salary > 0));
+    }
+    all.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
+    return all;
 }
 
-export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, draftPoolType, onBack, onComplete }) => {
+export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, draftPoolType, freeAgents = [], onBack, onComplete }) => {
     const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
-    const allPlayers = useMemo(() => collectAllPlayers(teams, draftPoolType), [teams, draftPoolType]);
+    const allPlayers = useMemo(() => collectAllPlayers(teams, draftPoolType, freeAgents), [teams, draftPoolType, freeAgents]);
     const TOTAL_ROUNDS = Math.min(15, Math.floor(allPlayers.length / teamIds.length));
     const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds, TOTAL_ROUNDS]);
 
@@ -83,6 +88,16 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         }
         return -1;
     }, [currentPickIndex, draftOrder, myTeamId, isUserTurn]);
+
+    // ── Warn before leaving during draft ──
+    useEffect(() => {
+        if (isDraftComplete) return;
+        const handler = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [isDraftComplete]);
 
     // ── Timer: countdown, resets on each new pick ──
     useEffect(() => {
@@ -228,7 +243,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                 timeRemaining={timeRemaining}
                 onSkipToMyTurn={handleSkipToMyTurn}
                 showSkip={showSkip}
-                onBack={onBack}
+                onBack={onComplete ? undefined : onBack}
             />
 
             {/* Draft Board (resizable top section) */}

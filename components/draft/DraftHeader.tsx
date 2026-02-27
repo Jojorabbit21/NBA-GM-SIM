@@ -15,7 +15,7 @@ interface DraftHeaderProps {
     timeRemaining: number;
     onSkipToMyTurn?: () => void;
     showSkip: boolean;
-    onBack: () => void;
+    onBack?: () => void;
 }
 
 export const DraftHeader: React.FC<DraftHeaderProps> = ({
@@ -50,12 +50,14 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
             <div className="relative z-10 grid grid-cols-[1fr_auto_1fr] items-center px-5 py-2.5">
                 {/* Left: Back + Draft Room label */}
                 <div className="flex items-center gap-2">
-                    <button
-                        onClick={onBack}
-                        className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
-                    >
-                        <ArrowLeft size={16} />
-                    </button>
+                    {onBack && (
+                        <button
+                            onClick={onBack}
+                            className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                        >
+                            <ArrowLeft size={16} />
+                        </button>
+                    )}
                     <span className="text-sm font-bold text-white/80">
                         드래프트 룸
                     </span>

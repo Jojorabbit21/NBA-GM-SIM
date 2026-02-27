@@ -79,18 +79,18 @@ const App: React.FC = () => {
 
     const handleSelectTeamAndOnboard = useCallback(async (teamId: string) => {
         if (rosterMode === 'custom') {
-            // 커스텀 모드: 팀 저장 후 DraftRoom 직행 (온보딩 스킵)
+            // 커스텀 모드: DB 저장 없이 로컬 상태만 설정 → 드래프트 완료 시 저장
+            // 새로고침/이탈 시 myTeamId가 DB에 없으므로 ModeSelect로 자연 복귀
+            gameData.setMyTeamId(teamId);
             setView('DraftRoom' as any);
-            const success = await gameData.handleSelectTeam(teamId);
-            if (!success) setView('Dashboard');
-            return success;
+            return true;
         }
         // 기본 모드: 온보딩 진행
         setView('Onboarding' as any);
         const success = await gameData.handleSelectTeam(teamId);
         if (!success) setView('Dashboard');
         return success;
-    }, [gameData.handleSelectTeam, rosterMode]);
+    }, [gameData.handleSelectTeam, gameData.setMyTeamId, rosterMode]);
 
     // 전역 상태에 따른 가드 렌더링
     // 1. authLoading: 인증 확인 중 → 정적 메세지
