@@ -75,13 +75,12 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                 <thead className="sticky top-0 z-20 bg-slate-950">
                     <tr>
                         {/* Round column header (sticky left) */}
-                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[72px] px-2 py-2 text-left font-bold text-slate-500 text-[10px] uppercase border-b border-r border-slate-800">
-                            Rd
+                        <th className="sticky left-0 z-30 bg-slate-950 min-w-[90px] px-2 py-2 text-left font-bold text-slate-500 text-[10px] border-b border-r border-slate-800">
+                            라운드
                         </th>
                         {/* Team column headers */}
                         {teamIds.map(teamId => {
                             const isUser = teamId === userTeamId;
-                            const td = TEAM_DATA[teamId];
                             return (
                                 <th
                                     key={teamId}
@@ -93,7 +92,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                         backgroundColor: `${userPrimaryColor}0a`,
                                     } : {}}
                                 >
-                                    {td ? td.name : teamId.toUpperCase()}
+                                    {teamId.toUpperCase()}
                                 </th>
                             );
                         })}
@@ -109,16 +108,16 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         return (
                             <tr
                                 key={round}
-                                className="border-b"
+                                className="border-b h-[52px]"
                                 style={{ borderBottomColor: 'rgba(30,41,59,0.3)' }}
                             >
                                 {/* Round label (sticky left) */}
                                 <td className="sticky left-0 bg-slate-950 px-2 py-1 border-r border-slate-800/50 z-10">
                                     <div className="flex items-center gap-1">
-                                        <span className={`text-[11px] font-bold ${
+                                        <span className={`text-[11px] font-bold whitespace-nowrap ${
                                             isCurrentRound ? 'text-indigo-400' : isPast ? 'text-slate-600' : 'text-slate-500'
                                         }`}>
-                                            R{round}
+                                            {round}라운드
                                         </span>
                                         <span className={`text-[10px] ${
                                             isCurrentRound ? 'text-indigo-400/70' : 'text-slate-600'
@@ -147,14 +146,11 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                             {pick ? (
                                                 /* Picked cell: full position-color background */
                                                 <div
-                                                    className="rounded-md px-2 py-1.5 flex items-center justify-center"
-                                                    style={{
-                                                        backgroundColor: `${posColor}20`,
-                                                        borderLeft: `3px solid ${posColor}`,
-                                                    }}
+                                                    className="rounded-md px-2 py-1 h-full flex items-center justify-center"
+                                                    style={{ backgroundColor: `${posColor}20` }}
                                                 >
                                                     <span
-                                                        className="text-[11px] font-semibold truncate max-w-[100px]"
+                                                        className="text-[11px] font-semibold text-center leading-tight break-words line-clamp-2"
                                                         style={{ color: posColor }}
                                                     >
                                                         {pick.playerName}
@@ -163,7 +159,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                             ) : isCurrent ? (
                                                 /* Current pick cell: glow effect */
                                                 <div
-                                                    className="rounded-md px-2 py-1.5 flex items-center justify-center"
+                                                    className="rounded-md px-2 py-1 h-full flex items-center justify-center"
                                                     style={{
                                                         boxShadow: `inset 0 0 0 1.5px ${currentTeamColor}`,
                                                         backgroundColor: `${currentTeamColor}15`,
@@ -175,7 +171,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                                 </div>
                                             ) : (
                                                 /* Empty cell */
-                                                <div className="rounded-md px-2 py-1.5 hover:bg-white/[0.02]">
+                                                <div className="rounded-md px-2 py-1 h-full flex items-center justify-center hover:bg-white/[0.02]">
                                                     <span className="text-[10px] text-slate-700">—</span>
                                                 </div>
                                             )}
