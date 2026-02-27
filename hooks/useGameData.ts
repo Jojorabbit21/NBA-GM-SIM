@@ -328,6 +328,8 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         forceSave,
         cleanupData,
         
+        freeAgents: baseData?.freeAgents || [],
+
         hasInitialLoadRef,
         isResetting: isResettingRef.current
     };
