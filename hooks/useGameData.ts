@@ -33,6 +33,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [isSaving, setIsSaving] = useState(false);
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
+    const draftPicksRef = useRef<{ teams: Record<string, string[]>; picks: any[] } | null>(null);
     
     // Refs to avoid stale closures in callbacks
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams });
@@ -77,8 +78,26 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     const playoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
                     const allGameResults = [...history.games, ...playoffResults];
 
+                    // 드래프트 결과가 저장되어 있으면 로스터를 드래프트 결과로 재구성
+                    let teamsForReplay = baseData.teams;
+                    const savedDraftPicks = checkpoint.draft_picks as { teams: Record<string, string[]>; picks: any[] } | null;
+                    if (savedDraftPicks?.teams) {
+                        draftPicksRef.current = savedDraftPicks;
+                        // 전체 선수 풀 구성 (팀 로스터 + freeAgents)
+                        const playerMap = new Map<string, Player>();
+                        baseData.teams.forEach((t: Team) => t.roster.forEach((p: Player) => playerMap.set(p.id, p)));
+                        (baseData.freeAgents || []).forEach((p: Player) => playerMap.set(p.id, p));
+
+                        teamsForReplay = baseData.teams.map((team: Team) => {
+                            const pickedIds = savedDraftPicks.teams[team.id];
+                            if (!pickedIds) return team;
+                            const newRoster = pickedIds.map(id => playerMap.get(id)).filter(Boolean) as Player[];
+                            return { ...team, roster: newRoster };
+                        });
+                    }
+
                     const replayedState = replayGameState(
-                        baseData.teams,
+                        teamsForReplay,
                         baseData.schedule,
                         history.transactions,
                         allGameResults,
@@ -99,7 +118,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                                 if (typeof savedState === 'number') {
                                     return { ...p, condition: savedState };
                                 }
-                                
+
                                 // Handle New Object Format
                                 return {
                                     ...p,
@@ -186,7 +205,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                         // Save if condition changed OR if player is injured
                         const isInjured = p.health !== 'Healthy';
                         const isFatigued = p.condition !== undefined && p.condition < 100;
-                        
+
                         if (isInjured || isFatigued) {
                             rosterState[p.id] = {
                                 condition: p.condition || 100,
@@ -199,8 +218,13 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 });
             }
 
+            // 드래프트 결과: 새로 전달되면 ref에 저장
+            if (overrides?.draftPicks) {
+                draftPicksRef.current = overrides.draftPicks;
+            }
+
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart);
+                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current);
             }
         } catch (e: any) {
             console.error("Save Failed:", e);
@@ -267,6 +291,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setMyTeamId(null);
             setCurrentSimDate(INITIAL_DATE);
             setTransactions([]);
+            draftPicksRef.current = null;
             setPlayoffSeries([]);
             setUserTactics(null);
             setDepthChart(null); // [New]
@@ -288,9 +313,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             teamPicks[p.teamId].push(p.playerId);
         });
 
-        // 2. 전체 선수 풀 (id → Player 매핑)
+        // 2. 전체 선수 풀 (id → Player 매핑) — freeAgents(레전드) 포함
         const playerMap = new Map<string, Player>();
         teams.forEach(t => t.roster.forEach(p => playerMap.set(p.id, p)));
+        const fa = baseData?.freeAgents || [];
+        fa.forEach((p: Player) => playerMap.set(p.id, p));
 
         // 3. 각 팀의 로스터를 드래프트 결과로 교체
         const newTeams = teams.map(team => {
@@ -305,17 +332,27 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
         // 4. 유저 팀 전술 재생성 (새 로스터 기반)
         const myTeam = newTeams.find(t => t.id === myTeamId);
+        let newTactics: GameTactics | null = null;
         if (myTeam) {
-            const newTactics = generateAutoTactics(myTeam);
+            newTactics = generateAutoTactics(myTeam);
             setUserTactics(newTactics);
         }
 
-        // 5. 저장
+        // 5. draft_picks 구성 (DB draft_picks 컬럼용)
+        const draftTeamsMap: Record<string, string[]> = {};
+        newTeams.forEach(t => {
+            draftTeamsMap[t.id] = t.roster.map(p => p.id);
+        });
+
+        // 6. 저장 — draft_picks 컬럼에 팀 매핑 + 전체 픽 히스토리
         await forceSave({
             myTeamId: myTeamId,
             currentSimDate: INITIAL_DATE,
+            userTactics: newTactics,
+            teams: newTeams,
+            draftPicks: { teams: draftTeamsMap, picks },
         });
-    }, [teams, myTeamId, forceSave]);
+    }, [teams, myTeamId, baseData, forceSave]);
 
     // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초)
     const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -368,6 +405,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         cleanupData,
         
         freeAgents: baseData?.freeAgents || [],
+        draftPicks: draftPicksRef.current,
 
         hasInitialLoadRef,
         isResetting: isResettingRef.current
