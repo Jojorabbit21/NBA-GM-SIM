@@ -16,6 +16,7 @@ import { OvrCalculatorView } from '../views/OvrCalculatorView';
 import { InboxView } from '../views/InboxView';
 import { FantasyDraftView } from '../views/FantasyDraftView';
 import { DraftHistoryView } from '../views/DraftHistoryView';
+import { DraftLotteryView } from '../views/DraftLotteryView';
 import { Loader2 } from 'lucide-react';
 
 interface AppRouterProps {
@@ -35,6 +36,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
 }) => {
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
+    const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
     const scheduleMonthRef = useRef<Date | null>(null);
 
@@ -214,14 +216,29 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     }}
                 />
             );
+        case 'DraftLottery':
+            return (
+                <DraftLotteryView
+                    myTeamId={gameData.myTeamId!}
+                    savedOrder={gameData.draftPicks?.order || null}
+                    onSaveOrder={async (order) => {
+                        await gameData.saveDraftOrder(order, draftPoolType || 'alltime');
+                    }}
+                    onComplete={(order) => {
+                        setDraftOrder(order);
+                        setView('DraftRoom');
+                    }}
+                />
+            );
         case 'DraftRoom':
             return (
                 <div className="fixed inset-0 z-[9999] bg-slate-950">
                     <FantasyDraftView
                         teams={gameData.teams}
                         myTeamId={gameData.myTeamId!}
-                        draftPoolType={draftPoolType || 'alltime'}
+                        draftPoolType={draftPoolType || gameData.draftPicks?.poolType || 'alltime'}
                         freeAgents={gameData.freeAgents}
+                        draftTeamOrder={draftOrder || gameData.draftPicks?.order}
                         onBack={() => setView('Dashboard')}
                         onComplete={(picks) => {
                             gameData.handleDraftComplete(picks);

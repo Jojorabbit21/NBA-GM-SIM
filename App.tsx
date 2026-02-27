@@ -63,6 +63,17 @@ const App: React.FC = () => {
         }
     }, [authLoading, session, isGuestMode, gameData.myTeamId, view]);
 
+    // 리로드 시 미완료 드래프트 감지 (추첨 완료 + 드래프트 미완료)
+    useEffect(() => {
+        if (gameData.myTeamId && gameData.draftPicks?.order && !gameData.draftPicks?.teams) {
+            setView('DraftLottery');
+            setRosterMode('custom');
+            if (gameData.draftPicks.poolType) {
+                setDraftPoolType(gameData.draftPicks.poolType);
+            }
+        }
+    }, [gameData.myTeamId, gameData.draftPicks]);
+
     useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
     useEffect(() => { if (sim.activeGame) setView('GameSim' as any); }, [sim.activeGame]);
     useEffect(() => { if (sim.lastGameResult) setView('GameResult' as any); }, [sim.lastGameResult]);
@@ -82,7 +93,7 @@ const App: React.FC = () => {
             // 커스텀 모드: DB 저장 없이 로컬 상태만 설정 → 드래프트 완료 시 저장
             // 새로고침/이탈 시 myTeamId가 DB에 없으므로 ModeSelect로 자연 복귀
             gameData.setMyTeamId(teamId);
-            setView('DraftRoom' as any);
+            setView('DraftLottery');
             return true;
         }
         // 기본 모드: 온보딩 진행
@@ -101,7 +112,7 @@ const App: React.FC = () => {
     if (gameData.isSaveLoading) return <FullScreenLoader />;
     if (!gameData.myTeamId) {
         // 팀 선택 처리 중(await 대기)이면 로더
-        if ((view as string) === 'Onboarding' || (view as string) === 'DraftRoom') return <FullScreenLoader message="잠시만 기다려주세요..." />;
+        if ((view as string) === 'Onboarding' || (view as string) === 'DraftRoom' || (view as string) === 'DraftLottery') return <FullScreenLoader message="잠시만 기다려주세요..." />;
         // 1단계: 모드 선택
         if (!rosterMode) return <ModeSelectView onSelectMode={setRosterMode} />;
         // 2단계: 커스텀 모드 → 드래프트풀 선택

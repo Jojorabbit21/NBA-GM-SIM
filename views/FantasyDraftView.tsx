@@ -22,6 +22,7 @@ interface FantasyDraftViewProps {
     myTeamId: string;
     draftPoolType: DraftPoolType;
     freeAgents?: Player[];
+    draftTeamOrder?: string[];
     onBack: () => void;
     onComplete?: (picks: BoardPick[]) => void;
 }
@@ -49,8 +50,8 @@ function collectAllPlayers(teams: Team[], poolType: DraftPoolType, freeAgents: P
     return all;
 }
 
-export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, draftPoolType, freeAgents = [], onBack, onComplete }) => {
-    const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
+export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, draftPoolType, freeAgents = [], draftTeamOrder, onBack, onComplete }) => {
+    const teamIds = useMemo(() => draftTeamOrder || Object.keys(TEAM_DATA), [draftTeamOrder]);
     const allPlayers = useMemo(() => collectAllPlayers(teams, draftPoolType, freeAgents), [teams, draftPoolType, freeAgents]);
     const TOTAL_ROUNDS = Math.min(15, Math.floor(allPlayers.length / teamIds.length));
     const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds, TOTAL_ROUNDS]);

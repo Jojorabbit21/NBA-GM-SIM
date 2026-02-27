@@ -10,6 +10,7 @@ import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
 import { BoardPick } from '../components/draft/DraftBoard';
+import { DraftPoolType } from '../types';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -33,7 +34,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [isSaving, setIsSaving] = useState(false);
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
-    const draftPicksRef = useRef<{ teams: Record<string, string[]>; picks: any[] } | null>(null);
+    const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     
     // Refs to avoid stale closures in callbacks
     const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams });
@@ -80,20 +81,22 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
 
                     // 드래프트 결과가 저장되어 있으면 로스터를 드래프트 결과로 재구성
                     let teamsForReplay = baseData.teams;
-                    const savedDraftPicks = checkpoint.draft_picks as { teams: Record<string, string[]>; picks: any[] } | null;
-                    if (savedDraftPicks?.teams) {
+                    const savedDraftPicks = checkpoint.draft_picks as { order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null;
+                    if (savedDraftPicks) {
                         draftPicksRef.current = savedDraftPicks;
-                        // 전체 선수 풀 구성 (팀 로스터 + freeAgents)
-                        const playerMap = new Map<string, Player>();
-                        baseData.teams.forEach((t: Team) => t.roster.forEach((p: Player) => playerMap.set(p.id, p)));
-                        (baseData.freeAgents || []).forEach((p: Player) => playerMap.set(p.id, p));
+                        // teams가 있을 때만 로스터 재구성 (order만 있으면 추첨만 완료된 상태)
+                        if (savedDraftPicks.teams) {
+                            const playerMap = new Map<string, Player>();
+                            baseData.teams.forEach((t: Team) => t.roster.forEach((p: Player) => playerMap.set(p.id, p)));
+                            (baseData.freeAgents || []).forEach((p: Player) => playerMap.set(p.id, p));
 
-                        teamsForReplay = baseData.teams.map((team: Team) => {
-                            const pickedIds = savedDraftPicks.teams[team.id];
-                            if (!pickedIds) return team;
-                            const newRoster = pickedIds.map(id => playerMap.get(id)).filter(Boolean) as Player[];
-                            return { ...team, roster: newRoster };
-                        });
+                            teamsForReplay = baseData.teams.map((team: Team) => {
+                                const pickedIds = savedDraftPicks.teams![team.id];
+                                if (!pickedIds) return team;
+                                const newRoster = pickedIds.map(id => playerMap.get(id)).filter(Boolean) as Player[];
+                                return { ...team, roster: newRoster };
+                            });
+                        }
                     }
 
                     const replayedState = replayGameState(
@@ -305,6 +308,17 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     };
 
+    const saveDraftOrder = useCallback(async (order: string[], poolType: DraftPoolType) => {
+        const draftData = { order, poolType };
+        draftPicksRef.current = draftData;
+
+        await forceSave({
+            myTeamId: gameStateRef.current.myTeamId,
+            currentSimDate: INITIAL_DATE,
+            draftPicks: draftData,
+        });
+    }, [forceSave]);
+
     const handleDraftComplete = useCallback(async (picks: BoardPick[]) => {
         // 1. 팀별로 픽 분류
         const teamPicks: Record<string, string[]> = {};
@@ -344,13 +358,18 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             draftTeamsMap[t.id] = t.roster.map(p => p.id);
         });
 
-        // 6. 저장 — draft_picks 컬럼에 팀 매핑 + 전체 픽 히스토리
+        // 6. 저장 — draft_picks 컬럼에 팀 매핑 + 전체 픽 히스토리 (추첨 순서 보존)
         await forceSave({
             myTeamId: myTeamId,
             currentSimDate: INITIAL_DATE,
             userTactics: newTactics,
             teams: newTeams,
-            draftPicks: { teams: draftTeamsMap, picks },
+            draftPicks: {
+                order: draftPicksRef.current?.order,
+                poolType: draftPicksRef.current?.poolType,
+                teams: draftTeamsMap,
+                picks,
+            },
         });
     }, [teams, myTeamId, baseData, forceSave]);
 
@@ -401,6 +420,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         handleSelectTeam,
         handleResetData,
         handleDraftComplete,
+        saveDraftOrder,
         forceSave,
         cleanupData,
         
