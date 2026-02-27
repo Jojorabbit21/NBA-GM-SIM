@@ -58,12 +58,27 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
             : cfg.POS_WEIGHT_DEFAULT;
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
-        const score = (
+        let score = (
             p.attr[rebAttr] * 0.6 +
             p.attr.vertical * 0.2 +
             (p.attr.height - 180) * 0.5 +
             p.attr.hands * 0.1
-        ) * posBonus * shooterPenalty * Math.random();
+        ) * posBonus * shooterPenalty;
+
+        // F-1. Harvester: 압도적 리바운드 능력치 보유자
+        if (p.attr.offReb >= cfg.HARVESTER_REB_THRESHOLD || p.attr.defReb >= cfg.HARVESTER_REB_THRESHOLD) {
+            score *= cfg.HARVESTER_SCORE_MULTIPLIER;
+        }
+
+        // F-2. Raider: 키 작지만 공격 리바운드 + 점프력 우수 (공격 리바운드 전용)
+        if (isOffensive &&
+            p.attr.height <= cfg.RAIDER_MAX_HEIGHT &&
+            p.attr.offReb >= cfg.RAIDER_OFFREB_THRESHOLD &&
+            p.attr.vertical >= cfg.RAIDER_VERTICAL_THRESHOLD) {
+            score *= cfg.RAIDER_SCORE_MULTIPLIER;
+        }
+
+        score *= Math.random();
 
         return { p, score };
     });
