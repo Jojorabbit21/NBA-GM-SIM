@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AppView, Team, GameTactics } from '../types';
+import { AppView, Team, GameTactics, DraftPoolType } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
@@ -26,10 +26,11 @@ interface AppRouterProps {
     unreadCount: number;
     refreshUnreadCount: () => void;
     setToastMessage: (msg: string | null) => void;
+    draftPoolType?: DraftPoolType | null;
 }
 
-const AppRouter: React.FC<AppRouterProps> = ({ 
-    view, setView, gameData, sim, session, unreadCount, refreshUnreadCount, setToastMessage 
+const AppRouter: React.FC<AppRouterProps> = ({
+    view, setView, gameData, sim, session, unreadCount, refreshUnreadCount, setToastMessage, draftPoolType
 }) => {
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
@@ -215,7 +216,16 @@ const AppRouter: React.FC<AppRouterProps> = ({
         case 'DraftRoom':
             return (
                 <div className="fixed inset-0 z-[9999] bg-slate-950">
-                    <FantasyDraftView teams={gameData.teams} myTeamId={gameData.myTeamId!} onBack={() => setView('Dashboard')} />
+                    <FantasyDraftView
+                        teams={gameData.teams}
+                        myTeamId={gameData.myTeamId!}
+                        draftPoolType={draftPoolType || 'alltime'}
+                        onBack={() => setView('Dashboard')}
+                        onComplete={(picks) => {
+                            gameData.handleDraftComplete(picks);
+                            setView('Dashboard');
+                        }}
+                    />
                 </div>
             );
         default:

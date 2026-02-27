@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
-import { Team, Player } from '../types';
+import { Team, Player, DraftPoolType } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { DraftHeader, PICK_TIME_LIMIT } from '../components/draft/DraftHeader';
@@ -8,7 +8,7 @@ import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
 import { PlayerPool } from '../components/draft/PlayerPool';
 import { MyRoster } from '../components/draft/MyRoster';
-import { GripHorizontal } from 'lucide-react';
+import { GripHorizontal, CheckCircle } from 'lucide-react';
 
 // ── Position Color System ──
 export const POSITION_COLORS: Record<string, string> = {
@@ -20,7 +20,9 @@ const CPU_PICK_DELAY = 800; // ms between CPU picks
 interface FantasyDraftViewProps {
     teams: Team[];
     myTeamId: string;
+    draftPoolType: DraftPoolType;
     onBack: () => void;
+    onComplete?: (picks: BoardPick[]) => void;
 }
 
 // ── Snake Draft Order Generator ──
@@ -34,19 +36,19 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 }
 
 // ── Collect all players from all teams as the "draft pool" ──
-function collectAllPlayers(teams: Team[]): Player[] {
+function collectAllPlayers(teams: Team[], poolType: DraftPoolType): Player[] {
     const all: Player[] = [];
     teams.forEach(t => t.roster.forEach(p => all.push(p)));
-    all.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
-    return all;
+    const filtered = poolType === 'current' ? all.filter(p => p.salary > 0) : all;
+    filtered.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
+    return filtered;
 }
 
-export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, onBack }) => {
-    const TOTAL_ROUNDS = 15;
+export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTeamId, draftPoolType, onBack, onComplete }) => {
     const teamIds = useMemo(() => Object.keys(TEAM_DATA), []);
-    const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds]);
-
-    const allPlayers = useMemo(() => collectAllPlayers(teams), [teams]);
+    const allPlayers = useMemo(() => collectAllPlayers(teams, draftPoolType), [teams, draftPoolType]);
+    const TOTAL_ROUNDS = Math.min(15, Math.floor(allPlayers.length / teamIds.length));
+    const draftOrder = useMemo(() => generateSnakeDraftOrder(teamIds, TOTAL_ROUNDS), [teamIds, TOTAL_ROUNDS]);
 
     // ── Draft State ──
     const [picks, setPicks] = useState<BoardPick[]>([]);
@@ -61,10 +63,11 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     const availablePlayers = useMemo(() => allPlayers.filter(p => !pickedIds.has(p.id)), [allPlayers, pickedIds]);
 
     // Current pick info
+    const isDraftComplete = currentPickIndex >= draftOrder.length;
     const currentTeamId = draftOrder[currentPickIndex] || teamIds[0];
     const currentRound = Math.floor(currentPickIndex / teamIds.length) + 1;
     const currentPickInRound = (currentPickIndex % teamIds.length) + 1;
-    const isUserTurn = currentTeamId === myTeamId;
+    const isUserTurn = !isDraftComplete && currentTeamId === myTeamId;
 
     // My drafted players
     const myPicks = useMemo(() => {
@@ -214,7 +217,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     }, []);
 
     return (
-        <div ref={containerRef} className="pretendard flex flex-col h-full bg-slate-950">
+        <div ref={containerRef} className="pretendard flex flex-col h-full bg-slate-950 relative">
             {/* Header */}
             <DraftHeader
                 currentRound={currentRound}
@@ -275,6 +278,25 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                     <MyRoster players={myPicks} />
                 </div>
             </div>
+
+            {/* Draft Complete Overlay */}
+            {isDraftComplete && onComplete && (
+                <div className="absolute inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center">
+                    <div className="text-center space-y-6">
+                        <CheckCircle size={64} className="text-emerald-500 mx-auto" />
+                        <div className="space-y-2">
+                            <h2 className="text-3xl font-black text-white bebas tracking-widest">DRAFT COMPLETE</h2>
+                            <p className="text-sm text-slate-400 ko-normal">모든 팀의 드래프트가 완료되었습니다</p>
+                        </div>
+                        <button
+                            onClick={() => onComplete(picks)}
+                            className="px-8 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black uppercase tracking-widest text-xs transition-all active:scale-95 shadow-lg shadow-emerald-900/30"
+                        >
+                            시즌 시작
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
