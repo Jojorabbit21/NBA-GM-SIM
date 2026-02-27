@@ -35,7 +35,9 @@ const ATTR_NAME_MAP: Record<string, string> = {
     hands: '핸즈 (Hands)',
     out: '외곽 득점 평균 (Outside Scoring Avg)',
     midRange: '중거리 슛 (Mid-Range)',
-    threeCorner: '3점 슛 (3pt)',
+    threeCorner: '코너 3점 (Corner 3pt)',
+    three45: '45도 3점 (45° 3pt)',
+    threeTop: '탑 3점 (Top 3pt)',
     ft: '자유투 (Free Throw)',
     shotIq: '슛 지능 (Shot IQ)',
     offConsist: '공격 기복 (Offensive Consistency)',
@@ -69,7 +71,7 @@ const ATTR_NAME_MAP: Record<string, string> = {
 // Attribute Groups Configuration
 const ATTR_GROUPS = [
     { id: 'INS', label: 'INSIDE', keys: ['ins', 'closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
-    { id: 'OUT', label: 'OUTSIDE', keys: ['out', 'midRange', 'threeCorner', 'ft', 'shotIq', 'offConsist'] },
+    { id: 'OUT', label: 'OUTSIDE', keys: ['out', 'midRange', 'threeCorner', 'three45', 'threeTop', 'ft', 'shotIq', 'offConsist'] },
     { id: 'PLM', label: 'PLAYMAKING', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
     { id: 'DEF', label: 'DEFENSE', keys: ['def', 'intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
     { id: 'REB', label: 'REBOUND', keys: ['reb', 'offReb', 'defReb'] },

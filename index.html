@@ -4,10 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BPL GM 시뮬레이터 2025-26</title>
+    <title>Basketball GM Simulator 2025-26</title>
     <!-- Tailwind CDN Removed: Production build uses PostCSS via index.css -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Bebas+Neue&family=Oswald:wght@700&family=DM+Sans:wght@700&display=swap" rel="stylesheet">
-    <link href="https://fonts.cdnfonts.com/css/seven-segment" rel="stylesheet">
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
     <style>
         /* 폰트 설정은 유지하되, 나머지 스타일은 index.css로 이동되었습니다. */
@@ -38,10 +37,6 @@
 </script>
 </head>
 <body>
-    <!-- Font Preload Hack: 화면에 보이지 않는 텍스트를 미리 렌더링하여 폰트 파일을 강제로 다운로드합니다. -->
-    <!-- 이를 통해 시뮬레이션 시작 시 폰트가 깜빡이는 현상(FOUT)을 방지합니다. -->
-    <div style="font-family: 'Seven Segment'; position: absolute; opacity: 0; pointer-events: none; z-index: -1000;">88:88</div>
-
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>
 </body>

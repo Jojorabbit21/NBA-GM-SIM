@@ -51,9 +51,16 @@ export function calculateHitRate(
 
     hitRate += bonusHitRate; // playTypes/zoneQualityMod 보정치 적용
 
+    // [Fix] 존별 정확한 공격 능력치 매핑
+    const zoneOffRating = preferredZone === '3PT' ? actor.attr.threeVal
+        : preferredZone === 'Mid' ? actor.attr.mid
+        : preferredZone === 'Rim'
+            ? (actor.attr.layup * 0.40 + actor.attr.dunk * 0.35 + actor.attr.closeShot * 0.25)
+            : (actor.attr.postPlay * 0.45 + actor.attr.closeShot * 0.30 + actor.attr.hands * 0.25);
+
     // 0. Botched Switch = Wide Open Shot (선수 능력치 반영, 고정값 제거)
     if (isBotchedSwitch) {
-        const attackerShooting = preferredZone === '3PT' ? actor.attr.out : actor.attr.ins;
+        const attackerShooting = zoneOffRating;
         const openShotBonus    = 0.20;
         const attackerMod      = (attackerShooting - 70) * 0.001;
         return {
@@ -72,7 +79,7 @@ export function calculateHitRate(
     // 수비자: condition 0 → +3.5%, condition 70 → 0, condition 100 → -1.5%
     hitRate -= (fatigueDef - 0.70) * 0.05;
 
-    const offRating = preferredZone === '3PT' ? actor.attr.out : actor.attr.ins;
+    const offRating = zoneOffRating;
     const defRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
     
     // Apply Sliders
@@ -89,6 +96,33 @@ export function calculateHitRate(
 
     if (preferredZone === 'Rim' || preferredZone === 'Paint') {
         hitRate -= helpMod;
+    }
+
+    // --- ZONE SHOOTING ARCHETYPES ---
+    const zCfg = SIM_CONFIG.ZONE_SHOOTING;
+    if (zCfg.ENABLED) {
+        // B-1. Mr. Fundamental: 엘리트 미드레인지 슈터
+        if (preferredZone === 'Mid' && actor.attr.mid >= zCfg.FUNDAMENTAL_MID_THRESHOLD) {
+            // 클러치(Q4 ≤5분, 접전) + Mid → +3%
+            if (clutchContext?.isClutch) hitRate += zCfg.FUNDAMENTAL_CLUTCH_BONUS;
+            // ISO + Mid → +3% (중첩 가능)
+            if (playType === 'ISO') hitRate += zCfg.FUNDAMENTAL_ISO_BONUS;
+        }
+
+        // B-2. Rangemaster: 엘리트 3PT 슈터, 클러치에서 추가 보너스
+        if (preferredZone === '3PT' && clutchContext?.isClutch &&
+            actor.attr.threeVal >= zCfg.RANGEMASTER_THREEVAL_THRESHOLD &&
+            actor.attr.shotIq >= zCfg.RANGEMASTER_SHOTIQ_THRESHOLD) {
+            hitRate += zCfg.RANGEMASTER_CLUTCH_BONUS;
+        }
+
+        // B-3. Tyrant: 피지컬 피니셔, Rim/Paint hitRate 보너스
+        if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
+            actor.attr.ins >= zCfg.TYRANT_INS_THRESHOLD &&
+            (actor.attr.strength >= zCfg.TYRANT_STRENGTH_THRESHOLD ||
+             actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
+            hitRate += zCfg.TYRANT_HITRATE_BONUS;
+        }
     }
 
     // 3. Mismatch Logic (스위치 발생 시에만 적용)
@@ -157,16 +191,38 @@ export function calculateHitRate(
     // 7. Clutch Modifier (Q4 접전 상황)
     // intangibles(50%) + offConsist(30%) + shotIq(20%) → 70 기준 ±보정
     if (clutchContext?.isClutch) {
-        const clutchRating = (
-            actor.attr.intangibles * 0.50 +
-            actor.attr.offConsist * 0.30 +
-            actor.attr.shotIq * 0.20
-        ) / 100;
-        // 70 기준, 상위: +3% 이상, 하위: -3% 이상
-        const clutchModifier = (clutchRating - 0.70) * 0.10;
+        const cCfg = SIM_CONFIG.CLUTCH_ARCHETYPE;
+        const a = actor.attr;
+
+        const clutchRating = (a.intangibles * 0.50 + a.offConsist * 0.30 + a.shotIq * 0.20) / 100;
+        let clutchModifier = (clutchRating - 0.70) * 0.10;
+
+        if (cCfg.ENABLED) {
+            // A-1. The Closer: 클러치 보정치 2배
+            if (a.intangibles >= cCfg.CLOSER_INTANGIBLES_THRESHOLD &&
+                a.shotIq >= cCfg.CLOSER_SHOTIQ_THRESHOLD) {
+                clutchModifier *= cCfg.CLOSER_MODIFIER_MULTIPLIER;
+            }
+        }
 
         hitRate += clutchContext.isSuperClutch ? clutchModifier * 1.5 : clutchModifier;
-        hitRate -= 0.015; // 전체 프레셔 페널티 -1.5%
+
+        // A-2. Ice in Veins: 프레셔 페널티 면제
+        const isIce = cCfg.ENABLED &&
+                      a.intangibles >= cCfg.ICE_INTANGIBLES_THRESHOLD &&
+                      a.offConsist >= cCfg.ICE_OFFCONSIST_THRESHOLD;
+        if (!isIce) {
+            hitRate -= 0.015; // 프레셔 페널티 (Ice in Veins만 면제)
+        }
+
+        // A-3. Big Stage Player: 클러치 + 인사이드 = 추가 보너스
+        if (cCfg.ENABLED &&
+            (preferredZone === 'Rim' || preferredZone === 'Paint') &&
+            a.intangibles >= cCfg.BIGSTAGE_INTANGIBLES_THRESHOLD &&
+            a.strength >= cCfg.BIGSTAGE_STRENGTH_THRESHOLD &&
+            a.ins >= cCfg.BIGSTAGE_INS_THRESHOLD) {
+            hitRate += cCfg.BIGSTAGE_INSIDE_BONUS;
+        }
     }
 
     // 8. Hot/Cold Streak (±4% 캡)
