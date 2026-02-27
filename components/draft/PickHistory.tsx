@@ -29,7 +29,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
         <div className="flex flex-col h-full">
             {/* Header */}
             <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
-                <span className="text-xs font-black uppercase tracking-wider text-slate-500">PICK HISTORY</span>
+                <span className="text-xs font-black uppercase tracking-wider text-slate-500">드래프트 기록</span>
                 {/* Round Filter Dropdown */}
                 <div className="relative">
                     <button
@@ -93,7 +93,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                                 {pick.position}
                             </span>
                             {/* Team abbreviation */}
-                            <span className="text-xs font-semibold text-slate-400 w-8 shrink-0 uppercase">
+                            <span className="text-xs font-semibold text-slate-400 w-10 shrink-0 uppercase">
                                 {pick.teamId.toUpperCase()}
                             </span>
                             {/* Player name */}

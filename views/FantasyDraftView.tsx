@@ -230,7 +230,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
 
             {/* Draft Board (resizable top section) */}
             <div style={{ flex: `0 0 ${boardRatio}%` }} className="min-h-0 overflow-hidden px-1.5 pt-1.5">
-                <div className="h-full bg-slate-900/60 rounded-xl overflow-hidden">
+                <div className="h-full bg-slate-900/60 overflow-hidden">
                 <DraftBoard
                     teamIds={teamIds}
                     totalRounds={TOTAL_ROUNDS}
