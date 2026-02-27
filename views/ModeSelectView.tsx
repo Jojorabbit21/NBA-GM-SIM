@@ -8,7 +8,7 @@ interface ModeSelectViewProps {
 
 export const ModeSelectView: React.FC<ModeSelectViewProps> = ({ onSelectMode }) => {
     return (
-        <div className="h-screen w-full bg-slate-950 flex flex-col items-center justify-center gap-12 pretendard selection:bg-indigo-500/30">
+        <div className="h-screen w-full bg-slate-900 flex flex-col items-center justify-center gap-12 pretendard selection:bg-indigo-500/30">
             {/* Header */}
             <div className="text-center space-y-3">
                 <h1 className="text-4xl font-black bebas text-white tracking-widest">
