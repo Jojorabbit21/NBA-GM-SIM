@@ -399,7 +399,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                             <th rowSpan={2} className={`sticky left-[50px] z-50 ${SH} ${SB} border-b border-slate-800 w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${SH} ${SB} border-b border-slate-800 w-[40px] min-w-[40px] text-center`}>OVR</th>
                             <th rowSpan={2} className={`sticky left-[250px] z-50 ${SH} ${SB} border-b border-slate-800 w-[55px] min-w-[55px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${SH} border-r-2 border-r-indigo-500/50 border-b border-slate-800 w-[40px] min-w-[40px] text-center shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${SH} ${SB} border-r-2 border-r-indigo-500/50 border-b border-slate-800 w-[40px] min-w-[40px] text-center`}>MIN</th>
                             {/* Quarter label cell */}
                             <th className={`${SH} border-b border-slate-800/50 p-0`}>
                                 <div className="flex h-7 text-[10px] font-black">
@@ -488,7 +488,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                         </td>
 
                                         {/* MIN */}
-                                        <td className={`sticky left-[305px] z-30 ${SK} text-center align-middle border-r-2 border-r-indigo-500/50 border-b border-slate-800/50 shadow-[4px_0_12px_rgba(0,0,0,0.5)]`}>
+                                        <td className={`sticky left-[305px] z-30 ${SK} text-center align-middle ${SB} border-r-2 border-r-indigo-500/50 border-b border-slate-800/50`}>
                                             <div className="relative flex items-center justify-center h-full">
                                                 <span className={`text-xs font-mono font-semibold ${getMinColor(totalMins)} group-hover:opacity-0 transition-opacity`}>{totalMins}</span>
                                                 {totalMins > 0 && (
