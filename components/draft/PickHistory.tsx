@@ -28,13 +28,13 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
     return (
         <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between">
-                <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">PICK HISTORY</span>
+            <div className="px-3 h-10 border-b border-slate-800/50 shrink-0 flex items-center justify-between bg-slate-800/30">
+                <span className="text-xs font-black uppercase tracking-wider text-slate-500">PICK HISTORY</span>
                 {/* Round Filter Dropdown */}
                 <div className="relative">
                     <button
                         onClick={() => setDropdownOpen(!dropdownOpen)}
-                        className="flex items-center gap-0.5 text-[10px] font-bold text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 rounded-md px-1.5 py-0.5 transition-colors"
+                        className="flex items-center gap-0.5 text-xs font-bold text-slate-400 hover:text-slate-200 bg-slate-900 border border-slate-800 rounded-md px-1.5 py-0.5 transition-colors"
                     >
                         {filterLabel}
                         <ChevronDown size={10} />
@@ -43,7 +43,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                         <div className="absolute right-0 top-full mt-0.5 bg-slate-900 border border-slate-800 rounded-md shadow-xl z-50 max-h-48 overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
                             <button
                                 onClick={() => { setRoundFilter(null); setDropdownOpen(false); }}
-                                className={`block w-full text-left px-3 py-1 text-[10px] font-bold hover:bg-slate-800 transition-colors ${
+                                className={`block w-full text-left px-3 py-1 text-xs font-bold hover:bg-slate-800 transition-colors ${
                                     roundFilter === null ? 'text-indigo-400' : 'text-slate-400'
                                 }`}
                             >
@@ -53,7 +53,7 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                                 <button
                                     key={i}
                                     onClick={() => { setRoundFilter(i + 1); setDropdownOpen(false); }}
-                                    className={`block w-full text-left px-3 py-1 text-[10px] font-bold hover:bg-slate-800 transition-colors ${
+                                    className={`block w-full text-left px-3 py-1 text-xs font-bold hover:bg-slate-800 transition-colors ${
                                         roundFilter === i + 1 ? 'text-indigo-400' : 'text-slate-400'
                                     }`}
                                 >
@@ -85,11 +85,11 @@ export const PickHistory: React.FC<PickHistoryProps> = ({ picks, totalRounds, us
                             }`}
                         >
                             {/* Pick number */}
-                            <span className="text-xs text-slate-500 font-bold font-mono w-8 shrink-0">
+                            <span className="text-xs text-slate-500 font-bold font-mono w-10 shrink-0">
                                 #{overallPick}
                             </span>
                             {/* Position */}
-                            <span className="text-xs font-bold w-8 shrink-0 text-slate-400">
+                            <span className="text-xs font-bold w-10 shrink-0 text-slate-400">
                                 {pick.position}
                             </span>
                             {/* Team abbreviation */}
