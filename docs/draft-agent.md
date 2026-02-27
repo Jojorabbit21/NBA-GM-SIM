@@ -27,7 +27,7 @@
 |------|------|-------------|
 | `views/FantasyDraftView.tsx` | 컨테이너 뷰 (전체화면 오버레이) | `FantasyDraftView`, `POSITION_COLORS` |
 | `components/draft/DraftHeader.tsx` | 방송 스타일 헤더 배너 | `DraftHeader` |
-| `components/draft/DraftBoard.tsx` | 30팀×15라운드 그리드 보드 | `DraftBoard`, `BoardPick` |
+| `components/draft/DraftBoard.tsx` | 15라운드×30팀 Transposed 그리드 보드 | `DraftBoard`, `BoardPick` |
 | `components/draft/PlayerPool.tsx` | 선수 풀 (검색/정렬/드래프트) | `PlayerPool` |
 | `components/draft/PickHistory.tsx` | 지명 히스토리 사이드바 | `PickHistory` |
 | `components/draft/MyRoster.tsx` | 내 로스터 슬롯 표시 | `MyRoster` |
@@ -307,7 +307,7 @@ function applyFantasyDraft(teams: Team[], picks: DraftPick[]) {
 - [x] 포지션 컬러 시스템 전체 적용
 - [x] 팀 테마 연결 (헤더, 버튼, 보드)
 - [x] DraftHeader: 팀 컬러 배경 + 30초 타이머 + 프로그레스 바 + 건너뛰기
-- [x] DraftBoard: 포지션 컬러 보더 + OVR 등급 컬러 + 유저 팀 행 강조
+- [x] DraftBoard: Transposed 레이아웃 + 풀 컬러 셀 + 유저 컬럼 강조
 - [x] PlayerPool: 포지션 필터 컬러 + 팀 테마 DRAFT 버튼
 - [x] PickHistory: 포지션 배지 + OvrBadge + 팀 로고
 - [x] MyRoster: 포지션 도트/라벨 + 프로그레스 바
@@ -316,8 +316,12 @@ function applyFantasyDraft(teams: Team[], picks: DraftPick[]) {
 - [x] 한글 UI 적용 (헤더 레이블)
 
 **미완료 (레퍼런스 UI 분석 기반 개선점)**:
-- [ ] DraftBoard 셀: border-l-2 → 포지션 컬러 풀 배경으로 변경
-- [ ] 빈 셀에 `{round}.{pick}` 번호 + Snake 방향 화살표 표시
+- [x] DraftBoard 테이블 Transpose: 컬럼=팀, 로우=라운드 (Sleeper 스타일)
+- [x] DraftBoard 셀: border-l-2 → 포지션 컬러 풀 배경 + 좌측 3px 포지션 보더
+- [x] Snake 방향 화살표 (→/←) 라운드 행 레이블에 표시
+- [x] OVR 수치 제거, 선수 이름만 표시 (포지션 컬러로 구분)
+- [x] 셀 크기 + 폰트 사이즈 확대
+- [x] 팀 컬럼 헤더에서 로고 제거 (팀명만)
 - [ ] PlayerPool 필터에 포지션 제한 카운트 (`PG 1/3`)
 - [ ] MyRoster에 포지션별 제한 요약 섹션
 
