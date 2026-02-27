@@ -221,9 +221,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 <DraftLotteryView
                     myTeamId={gameData.myTeamId!}
                     savedOrder={gameData.draftPicks?.order || null}
-                    onSaveOrder={async (order) => {
-                        await gameData.saveDraftOrder(order, draftPoolType || 'alltime');
-                    }}
                     onComplete={(order) => {
                         setDraftOrder(order);
                         setView('DraftRoom');

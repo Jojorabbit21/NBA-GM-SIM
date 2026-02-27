@@ -308,12 +308,12 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     };
 
-    const saveDraftOrder = useCallback(async (order: string[], poolType: DraftPoolType) => {
+    const saveDraftOrder = useCallback(async (order: string[], poolType: DraftPoolType, teamId?: string) => {
         const draftData = { order, poolType };
         draftPicksRef.current = draftData;
 
         await forceSave({
-            myTeamId: gameStateRef.current.myTeamId,
+            myTeamId: teamId || gameStateRef.current.myTeamId,
             currentSimDate: INITIAL_DATE,
             draftPicks: draftData,
         });

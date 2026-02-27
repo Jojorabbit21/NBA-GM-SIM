@@ -7,7 +7,17 @@ import { TeamSelectView } from './views/TeamSelectView';
 import { AuthView } from './views/AuthView';
 import { Toast } from './components/SharedComponents';
 import { AppView, RosterMode, DraftPoolType } from './types';
+import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
+
+function shuffleArray<T>(arr: T[]): T[] {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+}
 
 // 신규 생성된 모듈 모듈 임포트
 import FullScreenLoader from './components/FullScreenLoader';
@@ -90,10 +100,13 @@ const App: React.FC = () => {
 
     const handleSelectTeamAndOnboard = useCallback(async (teamId: string) => {
         if (rosterMode === 'custom') {
-            // 커스텀 모드: DB 저장 없이 로컬 상태만 설정 → 드래프트 완료 시 저장
-            // 새로고침/이탈 시 myTeamId가 DB에 없으므로 ModeSelect로 자연 복귀
-            gameData.setMyTeamId(teamId);
+            // 커스텀 모드: 순서 생성 + DB 저장을 완료한 후 DraftLottery 진입
+            // setView를 먼저 해서 FullScreenLoader 표시 (myTeamId가 아직 null이므로)
             setView('DraftLottery');
+            const order = shuffleArray(Object.keys(TEAM_DATA));
+            await gameData.saveDraftOrder(order, draftPoolType || 'alltime', teamId);
+            // DB 저장 완료 후 로컬 상태 설정 → DraftLotteryView 마운트 (savedOrder 보장)
+            gameData.setMyTeamId(teamId);
             return true;
         }
         // 기본 모드: 온보딩 진행
