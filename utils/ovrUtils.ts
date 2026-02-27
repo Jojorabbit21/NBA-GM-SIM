@@ -64,6 +64,7 @@ export const calculateOvr = (attributes: any, position: string): number => {
         totalWeight += weight;
     }
 
-    // Return rounded OVR, minimum 40
-    return totalWeight > 0 ? Math.max(40, Math.round(totalScore / totalWeight)) : 70;
+    // Scale compression: 0.6x + 40 (maps raw ~50→70, ~85→91, ~95→97)
+    const rawAvg = totalWeight > 0 ? totalScore / totalWeight : 50;
+    return Math.min(99, Math.max(40, Math.round(rawAvg * 0.6 + 40)));
 };

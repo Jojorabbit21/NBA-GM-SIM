@@ -8,6 +8,7 @@ import { calculatePlayerOvr } from '../utils/constants';
 
 interface OvrCalculatorViewProps {
   teams: Team[];
+  freeAgents?: Player[];
 }
 
 const WEIGHT_LABELS: Record<string, string> = {
@@ -29,14 +30,16 @@ const WEIGHT_GROUPS = [
     { label: 'REB & ETC', keys: ['offReb', 'defReb', 'intangibles', 'potential', 'height'] },
 ];
 
-export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) => {
+export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams, freeAgents = [] }) => {
   const [selectedPos, setSelectedPos] = useState<PositionType>('PG');
   const [weights, setWeights] = useState<Record<string, number>>(POSITION_WEIGHTS['PG']);
   const [sortConfig, setSortConfig] = useState<{ key: 'newOvr' | 'oldOvr' | 'delta', dir: 'asc' | 'desc' }>({ key: 'newOvr', dir: 'desc' });
 
   const players = useMemo(() => {
-    return teams.flatMap(t => t.roster.filter(p => p.position.includes(selectedPos)));
-  }, [teams, selectedPos]);
+    const rostered = teams.flatMap(t => t.roster.filter(p => p.position.includes(selectedPos)));
+    const fa = freeAgents.filter(p => p.position.includes(selectedPos));
+    return [...rostered, ...fa];
+  }, [teams, freeAgents, selectedPos]);
 
   const calculateNewOvr = (p: Player, currentWeights: Record<string, number>) => {
     const tC = p.threeCorner ?? 0;
@@ -65,7 +68,7 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams }) =
     });
 
     const rawAvg = totalWeight > 0 ? totalVal / totalWeight : 50;
-    return Math.min(99, Math.max(40, Math.round(rawAvg)));
+    return Math.min(99, Math.max(40, Math.round(rawAvg * 0.6 + 40)));
   };
 
   const tableData = useMemo(() => {

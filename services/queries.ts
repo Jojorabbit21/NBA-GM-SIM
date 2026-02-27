@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from './supabaseClient';
 import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
-import { mapPlayersToTeams, mapDatabaseScheduleToRuntimeGame } from './dataMapper';
+import { mapPlayersToTeams, mapFreeAgents, mapDatabaseScheduleToRuntimeGame } from './dataMapper';
 import { populateTeamData } from '../data/teamData';
 import { rebuildDerivedConstants } from '../utils/constants';
 
@@ -50,12 +50,13 @@ export const useBaseData = () => {
             }
 
             const teams: Team[] = mapPlayersToTeams(playersData);
+            const freeAgents: Player[] = mapFreeAgents(playersData);
             let schedule: Game[] = [];
             if (scheduleData && scheduleData.length > 0) {
                 schedule = mapDatabaseScheduleToRuntimeGame(scheduleData);
             }
 
-            return { teams, schedule };
+            return { teams, schedule, freeAgents };
         },
         staleTime: Infinity,
         retry: 2

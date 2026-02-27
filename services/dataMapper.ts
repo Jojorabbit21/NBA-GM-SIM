@@ -25,7 +25,7 @@ const generateStableId = (name: string, teamId: string): string => {
 export const mapPlayersToTeams = (playersData: any[]): Team[] => {
     return FALLBACK_TEAMS.map((t) => {
         const teamId = t.id;
-        
+
         const roster = playersData
             .filter((p: any) => {
                 const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']);
@@ -50,6 +50,24 @@ export const mapPlayersToTeams = (playersData: any[]): Team[] => {
             roster: roster
         };
     });
+};
+
+/** 어느 팀에도 배정되지 않은 FA 선수 목록 추출 */
+export const mapFreeAgents = (playersData: any[]): Player[] => {
+    const assignedRawIds = new Set<string>();
+    for (const p of playersData) {
+        const rawTeamId = getCol(p, ['base_team_id', 'team_id', 'Team', 'Tm', 'team']);
+        if (rawTeamId && resolveTeamId(rawTeamId) !== 'fa') {
+            const id = getCol(p, ['id', 'ID', 'player_id']);
+            if (id) assignedRawIds.add(String(id));
+        }
+    }
+    return playersData
+        .filter((p: any) => {
+            const id = getCol(p, ['id', 'ID', 'player_id']);
+            return !assignedRawIds.has(String(id));
+        })
+        .map((p: any) => mapRawPlayerToRuntimePlayer(p));
 };
 
 /**
