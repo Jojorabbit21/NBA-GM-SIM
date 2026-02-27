@@ -239,7 +239,8 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             />
 
             {/* Draft Board (resizable top section) */}
-            <div style={{ flex: `0 0 ${boardRatio}%` }} className="min-h-0 overflow-hidden">
+            <div style={{ flex: `0 0 ${boardRatio}%` }} className="min-h-0 overflow-hidden px-1.5 pt-1.5">
+                <div className="h-full bg-slate-900/60 rounded-xl overflow-hidden">
                 <DraftBoard
                     teamIds={teamIds}
                     totalRounds={TOTAL_ROUNDS}
@@ -249,6 +250,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
                     userTeamId={myTeamId}
                     positionColors={POSITION_COLORS}
                 />
+                </div>
             </div>
 
             {/* Drag Divider */}
@@ -260,7 +262,7 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
             </div>
 
             {/* Bottom 3-column panel */}
-            <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 px-1.5 pb-1.5">
+            <div className="flex flex-1 min-h-0 overflow-hidden gap-1.5 bg-slate-950 p-1.5">
                 {/* Left: Pick History */}
                 <div className="w-[22%] bg-slate-900/60 rounded-xl overflow-hidden">
                     <PickHistory picks={picks} totalRounds={TOTAL_ROUNDS} positionColors={POSITION_COLORS} userTeamId={myTeamId} />
