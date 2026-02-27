@@ -36,6 +36,6 @@ vite.config.ts.timestamp-*
 # SQL Datas
 sql/
 
-patches/
+public/patches/
 
 scripts/
