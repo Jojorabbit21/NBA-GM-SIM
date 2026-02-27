@@ -9,6 +9,7 @@ import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/per
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
+import { BoardPick } from '../components/draft/DraftBoard';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -279,6 +280,43 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         }
     };
 
+    const handleDraftComplete = useCallback(async (picks: BoardPick[]) => {
+        // 1. 팀별로 픽 분류
+        const teamPicks: Record<string, string[]> = {};
+        picks.forEach(p => {
+            if (!teamPicks[p.teamId]) teamPicks[p.teamId] = [];
+            teamPicks[p.teamId].push(p.playerId);
+        });
+
+        // 2. 전체 선수 풀 (id → Player 매핑)
+        const playerMap = new Map<string, Player>();
+        teams.forEach(t => t.roster.forEach(p => playerMap.set(p.id, p)));
+
+        // 3. 각 팀의 로스터를 드래프트 결과로 교체
+        const newTeams = teams.map(team => {
+            const pickedIds = teamPicks[team.id] || [];
+            const newRoster = pickedIds
+                .map(id => playerMap.get(id))
+                .filter(Boolean) as Player[];
+            return { ...team, roster: newRoster };
+        });
+
+        setTeams(newTeams);
+
+        // 4. 유저 팀 전술 재생성 (새 로스터 기반)
+        const myTeam = newTeams.find(t => t.id === myTeamId);
+        if (myTeam) {
+            const newTactics = generateAutoTactics(myTeam);
+            setUserTactics(newTactics);
+        }
+
+        // 5. 저장
+        await forceSave({
+            myTeamId: myTeamId,
+            currentSimDate: INITIAL_DATE,
+        });
+    }, [teams, myTeamId, forceSave]);
+
     // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초)
     const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isInitialTacticsLoad = useRef(true);
@@ -325,6 +363,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         
         handleSelectTeam,
         handleResetData,
+        handleDraftComplete,
         forceSave,
         cleanupData,
         
