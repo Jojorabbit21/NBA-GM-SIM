@@ -56,6 +56,37 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
 
     const contentTextClass = "text-xs font-medium text-white font-mono tabular-nums";
 
+    // Attributes 탭일 때 카테고리 그룹 행 생성
+    const attrGroupRow = statCategory === 'Attributes' ? (() => {
+        const groups: { label: string; colSpan: number; }[] = [];
+        let currentGroup = '';
+        for (const col of visibleColumns) {
+            const group = col.attrGroup || '';
+            if (group && group !== currentGroup) {
+                groups.push({ label: group, colSpan: 1 });
+                currentGroup = group;
+            } else if (group && group === currentGroup) {
+                groups[groups.length - 1].colSpan++;
+            } else {
+                // Common 컬럼 (sticky: #, PLAYER, POS, OVR)
+                groups.push({ label: '', colSpan: 1 });
+                currentGroup = '';
+            }
+        }
+        return groups;
+    })() : null;
+
+    // 카테고리별 배경색
+    const groupColorMap: Record<string, string> = {
+        'OVERALL': 'bg-indigo-900/40 text-indigo-300',
+        'INSIDE': 'bg-rose-900/40 text-rose-300',
+        'OUTSIDE': 'bg-sky-900/40 text-sky-300',
+        'PLAYMAKING': 'bg-amber-900/40 text-amber-300',
+        'DEFENSE': 'bg-emerald-900/40 text-emerald-300',
+        'REBOUND': 'bg-orange-900/40 text-orange-300',
+        'ATHLETIC': 'bg-purple-900/40 text-purple-300',
+    };
+
     return (
         <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
@@ -64,26 +95,72 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                 ))}
             </colgroup>
 
-            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
-                {visibleColumns.map((col, idx) => {
-                    const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
-                    const style = getStickyStyle(col, isLastSticky);
-                    
-                    return (
-                        <TableHeaderCell 
-                            key={col.key}
-                            style={style}
-                            stickyLeft={col.stickyLeft !== undefined}
-                            align={col.key === 'name' ? 'left' : 'center'}
-                            className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
-                            sortable={col.sortable}
-                            onSort={() => col.sortable && onSort(col.key)}
-                            sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
-                        >
-                            {col.label}
-                        </TableHeaderCell>
-                    );
-                })}
+            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!attrGroupRow}>
+                {attrGroupRow ? (
+                    <>
+                        {/* 1열: 카테고리 그룹 */}
+                        <tr className="h-6">
+                            {attrGroupRow.map((g, i) => {
+                                if (!g.label) {
+                                    // Common 스티키 셀
+                                    const col = visibleColumns[attrGroupRow.slice(0, i).reduce((s, x) => s + x.colSpan, 0)];
+                                    const stickyStyle = col?.stickyLeft !== undefined ? {
+                                        position: 'sticky' as const, left: col.stickyLeft, zIndex: 50,
+                                    } : undefined;
+                                    return <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-r border-slate-800/30" style={stickyStyle} />;
+                                }
+                                return (
+                                    <th key={i} colSpan={g.colSpan}
+                                        className={`text-[9px] font-black uppercase tracking-widest text-center border-r border-slate-800/50 ${groupColorMap[g.label] || 'bg-slate-900/40 text-slate-400'}`}
+                                    >
+                                        {g.label}
+                                    </th>
+                                );
+                            })}
+                        </tr>
+                        {/* 2열: 개별 능력치 컬럼명 */}
+                        <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-8">
+                            {visibleColumns.map((col, idx) => {
+                                const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                                const style = getStickyStyle(col, isLastSticky);
+                                return (
+                                    <TableHeaderCell
+                                        key={col.key}
+                                        style={style}
+                                        stickyLeft={col.stickyLeft !== undefined}
+                                        align={col.key === 'name' ? 'left' : 'center'}
+                                        className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                        sortable={col.sortable}
+                                        onSort={() => col.sortable && onSort(col.key)}
+                                        sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                    >
+                                        {col.label}
+                                    </TableHeaderCell>
+                                );
+                            })}
+                        </tr>
+                    </>
+                ) : (
+                    visibleColumns.map((col, idx) => {
+                        const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                        const style = getStickyStyle(col, isLastSticky);
+
+                        return (
+                            <TableHeaderCell
+                                key={col.key}
+                                style={style}
+                                stickyLeft={col.stickyLeft !== undefined}
+                                align={col.key === 'name' ? 'left' : 'center'}
+                                className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                sortable={col.sortable}
+                                onSort={() => col.sortable && onSort(col.key)}
+                                sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                            >
+                                {col.label}
+                            </TableHeaderCell>
+                        );
+                    })
+                )}
             </TableHead>
 
             <TableBody>

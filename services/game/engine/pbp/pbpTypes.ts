@@ -36,8 +36,10 @@ export interface LivePlayer extends PlayerBoxScore {
     // Attributes needed for simulation (Expanded for precise archetype calc)
     attr: {
         // General
-        ins: number; out: number; mid: number; 
+        ins: number; out: number; mid: number;
         ft: number; threeVal: number; // Derived 3pt average
+        // Inside sub-attributes (Rim/Paint 세분화)
+        layup: number; dunk: number; closeShot: number;
         
         // Physical
         speed: number; agility: number; strength: number; vertical: number;

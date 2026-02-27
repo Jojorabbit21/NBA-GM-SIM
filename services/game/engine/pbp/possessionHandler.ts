@@ -110,33 +110,35 @@ function calculateTurnoverChance(
     const da = defender.attr;
     let archetypeRisk = 0;
 
-    // A. The Clamp: 질식 수비 → 모든 플레이에서 턴오버 유발
-    if (da.perDef >= stlCfg.CLAMP_PERIMDEF_THRESHOLD && da.stl >= stlCfg.CLAMP_STL_THRESHOLD) {
-        archetypeRisk += stlCfg.CLAMP_TOV_BONUS;
-    }
-
-    // B. The Pickpocket: 접촉 플레이(PostUp/Iso/Cut) 전용
-    if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.hands >= stlCfg.PICKPOCKET_HANDS_THRESHOLD) {
-        if (playType === 'PostUp' || playType === 'Iso' || playType === 'Cut') {
-            archetypeRisk += stlCfg.PICKPOCKET_TOV_BONUS;
+    if (stlCfg.ENABLED) {
+        // A. The Clamp: 질식 수비 → 모든 플레이에서 턴오버 유발
+        if (da.perDef >= stlCfg.CLAMP_PERIMDEF_THRESHOLD && da.stl >= stlCfg.CLAMP_STL_THRESHOLD) {
+            archetypeRisk += stlCfg.CLAMP_TOV_BONUS;
         }
-    }
 
-    // C. The Hawk: 상대 팀이 패스를 많이 돌릴 때 (ballMovement ≥ threshold)
-    if (da.helpDefIq >= stlCfg.HAWK_HELPDEF_THRESHOLD &&
-        da.passPerc >= stlCfg.HAWK_PASSPERC_THRESHOLD &&
-        da.stl >= stlCfg.HAWK_STL_THRESHOLD) {
-        if (offTeam.tactics.sliders.ballMovement >= stlCfg.HAWK_BM_THRESHOLD) {
-            archetypeRisk += stlCfg.HAWK_TOV_BONUS;
+        // B. The Pickpocket: 접촉 플레이(PostUp/Iso/Cut) 전용
+        if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.hands >= stlCfg.PICKPOCKET_HANDS_THRESHOLD) {
+            if (playType === 'PostUp' || playType === 'Iso' || playType === 'Cut') {
+                archetypeRisk += stlCfg.PICKPOCKET_TOV_BONUS;
+            }
         }
-    }
 
-    // E. The Press: Transition 전용 풀코트 프레스
-    if (da.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
-        da.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
-        da.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
-        if (playType === 'Transition') {
-            archetypeRisk += stlCfg.PRESS_TOV_BONUS;
+        // C. The Hawk: 상대 팀이 패스를 많이 돌릴 때 (ballMovement ≥ threshold)
+        if (da.helpDefIq >= stlCfg.HAWK_HELPDEF_THRESHOLD &&
+            da.passPerc >= stlCfg.HAWK_PASSPERC_THRESHOLD &&
+            da.stl >= stlCfg.HAWK_STL_THRESHOLD) {
+            if (offTeam.tactics.sliders.ballMovement >= stlCfg.HAWK_BM_THRESHOLD) {
+                archetypeRisk += stlCfg.HAWK_TOV_BONUS;
+            }
+        }
+
+        // E. The Press: Transition 전용 풀코트 프레스
+        if (da.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
+            da.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
+            da.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
+            if (playType === 'Transition') {
+                archetypeRisk += stlCfg.PRESS_TOV_BONUS;
+            }
         }
     }
 
@@ -172,7 +174,7 @@ function calculateTurnoverChance(
     if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.10;
 
     // E. The Press: Transition에서 스틸 비율 추가 증가
-    if (playType === 'Transition' &&
+    if (stlCfg.ENABLED && playType === 'Transition' &&
         d.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
         d.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
         d.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
@@ -345,11 +347,13 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         // → intensity 7과 10은 파울 횟수는 같지만 10이 더 비싼 파울(슈팅파울)을 많이 유발
         const isInsidePlay = preferredZone === 'Rim' || preferredZone === 'Paint';
         const intensityBonus = Math.max(0, defIntensity - 5);
+        // drawFoul 보정: 70 기준 ±0.15%/pt (drFoul 50→-3%, 70→0%, 90→+3%, 99→+4.35%)
+        const drawFoulMod = (actor.attr.drFoul - offFoulConfig.DRAW_FOUL_BASELINE) * offFoulConfig.DRAW_FOUL_SHOOTING_FACTOR;
         const shootingFoulChance = isInsidePlay
-            ? Math.min(0.60, 0.45 + intensityBonus * 0.015) // 5→45%, 7→48%, 10→52.5%
+            ? Math.min(0.65, 0.45 + intensityBonus * 0.015 + drawFoulMod)
             : preferredZone === 'Mid'
-            ? Math.min(0.35, 0.25 + intensityBonus * 0.012) // 5→25%, 7→27%, 10→31%
-            : Math.min(0.20, 0.10 + intensityBonus * 0.008); // 5→10%, 7→12%, 10→14%
+            ? Math.min(0.40, 0.25 + intensityBonus * 0.012 + drawFoulMod)
+            : Math.min(0.25, 0.10 + intensityBonus * 0.008 + drawFoulMod);
         const isShootingFoul = Math.random() < shootingFoulChance;
 
         return {
@@ -444,7 +448,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     if (isScore && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
         const andOneBase = 0.03;
         const intensityMod = Math.max(0, (defIntensity - 5) * 0.004);
-        if (Math.random() < (andOneBase + intensityMod)) {
+        // drawFoul 보정: 70 기준 ±0.05%/pt (drFoul 50→-1%, 90→+1%)
+        const drawFoulAndOneMod = (actor.attr.drFoul - offFoulConfig.DRAW_FOUL_BASELINE) * offFoulConfig.DRAW_FOUL_AND1_FACTOR;
+        if (Math.random() < Math.max(0, andOneBase + intensityMod + drawFoulAndOneMod)) {
             isAndOne = true;
         }
     }
@@ -480,21 +486,23 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             // C. ELITE THRESHOLD BONUSES (Blocker Archetypes)
             let archetypeBonus = 0;
 
-            // Type 1: "The Wall" (Elite Rating)
-            if (defBlk >= 97) {
-                archetypeBonus = blkCfg.ARCHETYPE_WALL;
-            }
-            // Type 2: "The Alien" (Length Freak)
-            else if (defHeight >= 216 && defBlk >= 80) {
-                archetypeBonus = blkCfg.ARCHETYPE_ALIEN;
-            }
-            // Type 3: "Skywalker" (Athletic Beast)
-            else if (defVert >= 95 && defBlk >= 75) {
-                archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
-            }
-            // Type 4: "Defensive Anchor" (High IQ Positioning)
-            else if (defIQ >= 92 && defBlk >= 80) {
-                archetypeBonus = blkCfg.ARCHETYPE_ANCHOR;
+            if (blkCfg.ENABLED) {
+                // Type 1: "The Wall" (Elite Rating)
+                if (defBlk >= 97) {
+                    archetypeBonus = blkCfg.ARCHETYPE_WALL;
+                }
+                // Type 2: "The Alien" (Length Freak)
+                else if (defHeight >= 216 && defBlk >= 80) {
+                    archetypeBonus = blkCfg.ARCHETYPE_ALIEN;
+                }
+                // Type 3: "Skywalker" (Athletic Beast)
+                else if (defVert >= 95 && defBlk >= 75) {
+                    archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
+                }
+                // Type 4: "Defensive Anchor" (High IQ Positioning)
+                else if (defIQ >= 92 && defBlk >= 80) {
+                    archetypeBonus = blkCfg.ARCHETYPE_ANCHOR;
+                }
             }
 
             blockProb += archetypeBonus;
@@ -503,6 +511,26 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             // High ShotIQ and High Release point (Height) reduces block chance
             const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
             blockProb -= Math.max(0, offResist);
+
+            // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
+            const zCfg = SIM_CONFIG.ZONE_SHOOTING;
+            if (zCfg.ENABLED) {
+                // B-3. Tyrant: Rim/Paint에서 블락 확률 감소
+                if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
+                    actor.attr.ins >= zCfg.TYRANT_INS_THRESHOLD &&
+                    (actor.attr.strength >= zCfg.TYRANT_STRENGTH_THRESHOLD ||
+                     actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
+                    blockProb -= zCfg.TYRANT_BLOCK_REDUCTION;
+                }
+
+                // B-4. Levitator: Paint에서 블락 확률 50% 감소
+                if (preferredZone === 'Paint' &&
+                    actor.attr.closeShot >= zCfg.FLOATER_CLOSESHOT_THRESHOLD &&
+                    actor.attr.agility >= zCfg.FLOATER_AGILITY_THRESHOLD &&
+                    actor.attr.height <= zCfg.FLOATER_MAX_HEIGHT) {
+                    blockProb *= zCfg.FLOATER_BLOCK_MULTIPLIER;
+                }
+            }
 
             // E. Roll Primary Block
             if (Math.random() < Math.max(0, blockProb)) {

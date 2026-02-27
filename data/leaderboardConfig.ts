@@ -26,6 +26,7 @@ export interface ColumnDef {
     stickyShadow?: boolean; // Show shadow on this sticky column
     category?: StatCategory | 'Common'; // Which tab this column belongs to
     playerProp?: string; // For Attributes columns: the actual Player object property name (when key differs)
+    attrGroup?: string; // Attributes 탭 전용: 카테고리 그룹 (OVERALL, INSIDE, OUTSIDE 등)
 }
 
 // Column Widths
@@ -111,26 +112,36 @@ export const ATTRIBUTES_STAT_OPTIONS = [
     { value: 'dunk', label: 'Dunk' },
     { value: 'closeShot', label: 'Close Shot' },
     { value: 'postPlay', label: 'Post Play' },
+    { value: 'hands', label: 'Hands' },
+    { value: 'drawFoul', label: 'Draw Foul' },
     { value: 'midRange', label: 'Mid Range' },
     { value: 'threeTop', label: '3PT Top' },
     { value: 'three45', label: '3PT 45°' },
     { value: 'threeCorner', label: '3PT Corner' },
     { value: 'ft', label: 'Free Throw' },
     { value: 'shotIq', label: 'Shot IQ' },
+    { value: 'offConsist', label: 'Off Consistency' },
     { value: 'passAcc', label: 'Pass Acc' },
     { value: 'handling', label: 'Handling' },
     { value: 'spdBall', label: 'Spd w/ Ball' },
     { value: 'passIq', label: 'Pass IQ' },
+    { value: 'passVision', label: 'Pass Vision' },
     { value: 'intDef', label: 'Interior Def' },
     { value: 'perDef', label: 'Perimeter Def' },
     { value: 'steal', label: 'Steal' },
     { value: 'attr_blk', label: 'Block' },
     { value: 'helpDefIq', label: 'Help Def' },
+    { value: 'passPerc', label: 'Pass Perception' },
+    { value: 'defConsist', label: 'Def Consistency' },
+    { value: 'offReb', label: 'Off Rebound' },
+    { value: 'defReb', label: 'Def Rebound' },
     { value: 'speed', label: 'Speed' },
     { value: 'agility', label: 'Agility' },
     { value: 'strength', label: 'Strength' },
     { value: 'vertical', label: 'Vertical' },
     { value: 'stamina', label: 'Stamina' },
+    { value: 'hustle', label: 'Hustle' },
+    { value: 'durability', label: 'Durability' },
 ];
 
 // Attribute key → Player property mapping (only needed when they differ)
@@ -142,11 +153,12 @@ export const ATTR_PLAYER_PROPS: Record<string, string> = {
 // All attribute column keys (used by hooks for detection)
 export const ATTRIBUTE_KEYS = new Set([
     'ins', 'out', 'ath', 'plm', 'def', 'attr_reb',
-    'layup', 'dunk', 'closeShot', 'postPlay',
-    'midRange', 'threeTop', 'three45', 'threeCorner', 'ft', 'shotIq',
-    'passAcc', 'handling', 'spdBall', 'passIq',
-    'intDef', 'perDef', 'steal', 'attr_blk', 'helpDefIq',
-    'speed', 'agility', 'strength', 'vertical', 'stamina',
+    'layup', 'dunk', 'closeShot', 'postPlay', 'hands', 'drawFoul',
+    'midRange', 'threeTop', 'three45', 'threeCorner', 'ft', 'shotIq', 'offConsist',
+    'passAcc', 'handling', 'spdBall', 'passIq', 'passVision',
+    'intDef', 'perDef', 'steal', 'attr_blk', 'helpDefIq', 'passPerc', 'defConsist',
+    'offReb', 'defReb',
+    'speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability',
 ]);
 
 // Zone Definitions
@@ -209,42 +221,53 @@ const ADVANCED_COLUMNS: ColumnDef[] = [
 // Attributes Columns (Players Only)
 const ATTR_W = 44; // Narrower for dense attribute ratings
 const ATTRIBUTES_COLUMNS: ColumnDef[] = [
-    // Category Ratings
-    { key: 'ins',      label: 'INS',     width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'out',      label: 'OUT',     width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'ath',      label: 'ATH',     width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'plm',      label: 'PLM',     width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'def',      label: 'DEF',     width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'attr_reb', label: 'REB',     width: ATTR_W, sortable: true, category: 'Attributes', playerProp: 'reb' },
-    // Finishing
-    { key: 'layup',     label: 'LAY',    width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'dunk',      label: 'DNK',    width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'closeShot', label: 'CLOSE',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'postPlay',  label: 'POST',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    // Overall
+    { key: 'ins',      label: 'INS',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OVERALL' },
+    { key: 'out',      label: 'OUT',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OVERALL' },
+    { key: 'ath',      label: 'ATH',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OVERALL' },
+    { key: 'plm',      label: 'PLM',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OVERALL' },
+    { key: 'def',      label: 'DEF',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OVERALL' },
+    { key: 'attr_reb', label: 'REB',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OVERALL', playerProp: 'reb' },
+    // Inside / Finishing
+    { key: 'layup',     label: 'LAY',    width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'INSIDE' },
+    { key: 'dunk',      label: 'DNK',    width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'INSIDE' },
+    { key: 'closeShot', label: 'CLOSE',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'INSIDE' },
+    { key: 'postPlay',  label: 'POST',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'INSIDE' },
+    { key: 'hands',     label: 'HAND',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'INSIDE' },
+    { key: 'drawFoul',  label: 'DRAW',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'INSIDE' },
     // Outside Shooting
-    { key: 'midRange',    label: 'MID',    width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'threeTop',    label: '3PT-T',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'three45',     label: '3PT-45', width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'threeCorner', label: '3PT-C',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'ft',          label: 'FT',     width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'shotIq',      label: 'SHT IQ', width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'midRange',    label: 'MID',    width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
+    { key: 'threeTop',    label: '3PT-T',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
+    { key: 'three45',     label: '3PT-45', width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
+    { key: 'threeCorner', label: '3PT-C',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
+    { key: 'ft',          label: 'FT',     width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
+    { key: 'shotIq',      label: 'SHT IQ', width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
+    { key: 'offConsist',  label: 'O-CON',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'OUTSIDE' },
     // Playmaking
-    { key: 'passAcc',  label: 'PASS',   width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'handling', label: 'HANDL',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'spdBall',  label: 'SPDBL',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'passIq',   label: 'PSS IQ', width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'passAcc',    label: 'PASS',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'PLAYMAKING' },
+    { key: 'handling',   label: 'HANDL',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'PLAYMAKING' },
+    { key: 'spdBall',    label: 'SPDBL',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'PLAYMAKING' },
+    { key: 'passIq',     label: 'PSS IQ', width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'PLAYMAKING' },
+    { key: 'passVision', label: 'VISN',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'PLAYMAKING' },
     // Defense
-    { key: 'intDef',    label: 'INT-D',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'perDef',    label: 'PER-D',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'steal',     label: 'STL-R',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'attr_blk',  label: 'BLK-R',  width: ATTR_W, sortable: true, category: 'Attributes', playerProp: 'blk' },
-    { key: 'helpDefIq', label: 'H-DEF',  width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'intDef',     label: 'INT-D',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE' },
+    { key: 'perDef',     label: 'PER-D',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE' },
+    { key: 'steal',      label: 'STL-R',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE' },
+    { key: 'attr_blk',   label: 'BLK-R',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE', playerProp: 'blk' },
+    { key: 'helpDefIq',  label: 'H-DEF',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE' },
+    { key: 'passPerc',   label: 'P-PRC',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE' },
+    { key: 'defConsist', label: 'D-CON',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'DEFENSE' },
+    // Rebounding
+    { key: 'offReb',  label: 'OREB',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'REBOUND' },
+    { key: 'defReb',  label: 'DREB',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'REBOUND' },
     // Athleticism
-    { key: 'speed',    label: 'SPD',   width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'agility',  label: 'AGI',   width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'strength', label: 'STR',   width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'vertical', label: 'VERT',  width: ATTR_W, sortable: true, category: 'Attributes' },
-    { key: 'stamina',  label: 'STA',   width: ATTR_W, sortable: true, category: 'Attributes' },
+    { key: 'speed',      label: 'SPD',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
+    { key: 'agility',    label: 'AGI',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
+    { key: 'strength',   label: 'STR',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
+    { key: 'vertical',   label: 'VERT',  width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
+    { key: 'stamina',    label: 'STA',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
+    { key: 'hustle',     label: 'HST',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
+    { key: 'durability', label: 'DUR',   width: ATTR_W, sortable: true, category: 'Attributes', attrGroup: 'ATHLETIC' },
 ];
 
 // Opponent Columns (Teams Only)

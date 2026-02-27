@@ -62,6 +62,11 @@ export const SIM_CONFIG = {
         SHOT_CLOCK_HELP_DEF_FACTOR: 0.0006,
         SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
         SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
+
+        // drawFoul 공격자 파울 유도 보정
+        DRAW_FOUL_BASELINE: 70,              // 중립 기준점
+        DRAW_FOUL_SHOOTING_FACTOR: 0.0015,   // 슈팅파울 비율: (drFoul - 70) × factor
+        DRAW_FOUL_AND1_FACTOR: 0.0005,       // And-1 확률: (drFoul - 70) × factor
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
     REBOUND: {
@@ -77,6 +82,7 @@ export const SIM_CONFIG = {
     },
     // Block System (미스 중 블락 판정)
     BLOCK: {
+        ENABLED: true,              // 블락 아키타입 마스터 스위치
         // 존별 베이스 블락 확률 (원래 값 복원)
         BASE_RIM: 0.10,           // 10% (was 5%)
         BASE_PAINT: 0.05,         // 5%  (was 3%)
@@ -104,6 +110,7 @@ export const SIM_CONFIG = {
     },
     // Steal Archetypes (턴오버 유발 히든 아키타입)
     STEAL: {
+        ENABLED: true,              // 스틸 아키타입 마스터 스위치
         // A. The Clamp (질식 수비) — Kawhi, Scottie Pippen
         CLAMP_PERIMDEF_THRESHOLD: 92,
         CLAMP_STL_THRESHOLD: 80,
@@ -127,6 +134,53 @@ export const SIM_CONFIG = {
         PRESS_HUSTLE_THRESHOLD: 85,
         PRESS_TOV_BONUS: 0.05,        // +5% (Transition 전용)
         PRESS_STEAL_RATIO_BONUS: 0.15, // +15% 스틸 비율
+    },
+    // Clutch Hidden Archetypes (flowEngine.ts clutch section)
+    CLUTCH_ARCHETYPE: {
+        ENABLED: true,              // 클러치 아키타입 마스터 스위치
+
+        // A-1. The Closer (마무리 장인) — Kobe, MJ, Kawhi
+        CLOSER_INTANGIBLES_THRESHOLD: 90,
+        CLOSER_SHOTIQ_THRESHOLD: 85,
+        CLOSER_MODIFIER_MULTIPLIER: 2.0,    // clutchModifier × 2
+
+        // A-2. Ice in Veins (냉혈한) — Dame, Kyrie, Dirk
+        ICE_INTANGIBLES_THRESHOLD: 85,
+        ICE_OFFCONSIST_THRESHOLD: 88,
+        // 효과: 프레셔 페널티(-1.5%) 면제
+
+        // A-3. Big Stage Player (대무대 사나이) — LeBron, Giannis
+        BIGSTAGE_INTANGIBLES_THRESHOLD: 85,
+        BIGSTAGE_STRENGTH_THRESHOLD: 85,
+        BIGSTAGE_INS_THRESHOLD: 85,
+        BIGSTAGE_INSIDE_BONUS: 0.03,        // Rim/Paint +3%
+    },
+    // Zone Shooting Hidden Archetypes (flowEngine.ts + possessionHandler.ts)
+    ZONE_SHOOTING: {
+        ENABLED: true,              // 구역별 야투 아키타입 마스터 스위치
+
+        // B-1. Mr. Fundamental (미드레인지의 정석) — KD, DeRozan
+        FUNDAMENTAL_MID_THRESHOLD: 97,
+        FUNDAMENTAL_CLUTCH_BONUS: 0.03,     // 클러치 + Mid +3%
+        FUNDAMENTAL_ISO_BONUS: 0.03,        // ISO + Mid +3%
+
+        // B-2. Rangemaster (사거리의 지배자) — Steph Curry, Dame
+        RANGEMASTER_THREEVAL_THRESHOLD: 90,
+        RANGEMASTER_SHOTIQ_THRESHOLD: 85,
+        RANGEMASTER_CLUTCH_BONUS: 0.015,    // 클러치 + 3PT +1.5%
+
+        // B-3. Tyrant (페인트 존의 폭군) — Giannis, Shaq, Zion
+        TYRANT_INS_THRESHOLD: 90,
+        TYRANT_STRENGTH_THRESHOLD: 88,
+        TYRANT_VERTICAL_THRESHOLD: 88,
+        TYRANT_HITRATE_BONUS: 0.03,         // Rim/Paint +3%
+        TYRANT_BLOCK_REDUCTION: 0.03,       // 블락 확률 -3%
+
+        // B-4. Levitator (레비테이터) — Tony Parker, Trae Young
+        FLOATER_CLOSESHOT_THRESHOLD: 96,
+        FLOATER_AGILITY_THRESHOLD: 85,
+        FLOATER_MAX_HEIGHT: 195,
+        FLOATER_BLOCK_MULTIPLIER: 0.50,     // 블락 확률 × 0.5
     },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
