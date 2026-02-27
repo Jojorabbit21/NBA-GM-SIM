@@ -63,10 +63,10 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
                 {/* Center: Timer + Round/Pick */}
                 <div className="text-center min-w-[120px]">
-                    <div className="font-mono font-black text-xl tracking-wider text-white leading-none">
+                    <div className="pretendard font-black text-xl tracking-wider text-white leading-none">
                         {timerStr}
                     </div>
-                    <div className="text-[11px] text-white/60 font-bold mt-0.5">
+                    <div className="text-xs text-white/60 font-bold mt-0.5">
                         {currentRound}라운드 #{currentPickInRound}픽
                     </div>
                 </div>
@@ -75,9 +75,9 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
                 <div className="flex items-center justify-end gap-3">
                     {/* Current team on the clock */}
                     <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-white/50 font-medium">현재 차례</span>
+                        <span className="text-xs text-white/50 font-medium">현재 차례</span>
                         <TeamLogo teamId={currentTeamId} size="xs" className="w-5 h-5" />
-                        <span className="text-sm font-bold text-white">
+                        <span className="text-xs font-bold text-white">
                             {currentTeamData?.name || currentTeamId.toUpperCase()}
                         </span>
                     </div>
@@ -87,7 +87,7 @@ export const DraftHeader: React.FC<DraftHeaderProps> = ({
 
                     {/* User turn info or skip */}
                     {isUserTurn ? (
-                        <span className="text-sm font-bold text-emerald-300 animate-pulse">
+                        <span className="text-xs font-bold text-emerald-300 animate-pulse">
                             내 차례입니다!
                         </span>
                     ) : picksUntilUser > 0 ? (
