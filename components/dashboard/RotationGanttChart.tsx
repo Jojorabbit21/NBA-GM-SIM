@@ -418,10 +418,10 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                         <tr>
                             <th className={`${SH} border-b border-slate-800 p-0`}>
                                 <div className="relative h-5">
-                                    {[6, 12, 18, 24, 30, 36, 42, 48].map(m => (
+                                    {Array.from({ length: 24 }, (_, i) => (i + 1) * 2).map(m => (
                                         <span
                                             key={m}
-                                            className={`absolute bottom-0.5 text-xs font-mono text-slate-600 select-none ${m === 48 ? 'right-0' : '-translate-x-1/2'}`}
+                                            className={`absolute bottom-0.5 text-xs font-mono select-none ${m === 48 ? 'right-0' : '-translate-x-1/2'} ${m % 12 === 0 ? 'text-slate-400 font-semibold' : 'text-slate-600'}`}
                                             style={m < 48 ? { left: `${m / 48 * 100}%` } : undefined}
                                         >
                                             {m}
