@@ -391,7 +391,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
 
             {/* ── Gantt table ── */}
             <div className="flex-1 min-h-0 overflow-auto">
-                <table className="border-collapse w-full" style={{ minWidth: '960px' }}>
+                <table className="border-separate border-spacing-0 w-full" style={{ minWidth: '960px' }}>
                     <thead className={`${SH} sticky top-0 z-50`}>
                         {/* Row 1: column headers + quarter labels */}
                         <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
@@ -417,12 +417,12 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                         {/* Row 2: minute markers */}
                         <tr>
                             <th className={`${SH} border-b border-slate-800 p-0`}>
-                                <div className="relative h-5 overflow-hidden">
+                                <div className="relative h-5">
                                     {[6, 12, 18, 24, 30, 36, 42, 48].map(m => (
                                         <span
                                             key={m}
-                                            className="absolute bottom-0.5 text-xs font-mono text-slate-600 -translate-x-1/2 select-none"
-                                            style={{ left: `${m / 48 * 100}%` }}
+                                            className={`absolute bottom-0.5 text-xs font-mono text-slate-600 select-none ${m === 48 ? 'right-0' : '-translate-x-1/2'}`}
+                                            style={m < 48 ? { left: `${m / 48 * 100}%` } : undefined}
                                         >
                                             {m}
                                         </span>
