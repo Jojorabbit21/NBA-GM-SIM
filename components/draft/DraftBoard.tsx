@@ -84,12 +84,14 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                             return (
                                 <th
                                     key={teamId}
-                                    className={`min-w-[110px] px-1 py-2 text-center text-[10px] font-bold uppercase border-b border-slate-800 ${
+                                    className={`w-[120px] min-w-[120px] max-w-[120px] px-1 py-2.5 text-center text-[11px] font-bold uppercase border-b border-slate-800 ${
                                         isUser ? 'text-white' : 'text-slate-400'
                                     }`}
                                     style={isUser ? {
+                                        borderLeft: `2px solid ${userPrimaryColor}`,
+                                        borderRight: `2px solid ${userPrimaryColor}`,
                                         borderBottom: `2px solid ${userPrimaryColor}`,
-                                        backgroundColor: `${userPrimaryColor}0a`,
+                                        backgroundColor: `${userPrimaryColor}0c`,
                                     } : {}}
                                 >
                                     {teamId.toUpperCase()}
@@ -108,7 +110,7 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                         return (
                             <tr
                                 key={round}
-                                className="border-b h-[52px]"
+                                className="border-b h-[76px]"
                                 style={{ borderBottomColor: 'rgba(30,41,59,0.3)' }}
                             >
                                 {/* Round label (sticky left) */}
@@ -134,23 +136,38 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                     const isUserCol = teamId === userTeamId;
                                     const posColor = pick ? (positionColors[pick.position] || '#64748b') : undefined;
 
+                                    // User column border style
+                                    const userColBorder = isUserCol ? {
+                                        borderLeft: `2px solid ${userPrimaryColor}`,
+                                        borderRight: `2px solid ${userPrimaryColor}`,
+                                    } : {};
+
                                     return (
                                         <td
                                             key={teamId}
                                             ref={isCurrent ? currentCellRef : undefined}
-                                            className="px-0.5 py-0.5 text-center"
-                                            style={isUserCol && !pick && !isCurrent ? {
-                                                backgroundColor: `${userPrimaryColor}06`,
-                                            } : {}}
+                                            className="p-0.5 text-center"
+                                            style={{
+                                                ...userColBorder,
+                                                ...(isUserCol && !pick && !isCurrent ? {
+                                                    backgroundColor: `${userPrimaryColor}08`,
+                                                } : {}),
+                                            }}
                                         >
                                             {pick ? (
                                                 /* Picked cell: full position-color background */
                                                 <div
-                                                    className="rounded-md px-2 py-1 h-full flex items-center justify-center"
+                                                    className="rounded-lg h-full flex flex-col items-center justify-center gap-0.5 px-1.5 py-1"
                                                     style={{ backgroundColor: `${posColor}20` }}
                                                 >
                                                     <span
-                                                        className="text-[11px] font-semibold text-center leading-tight break-words line-clamp-2"
+                                                        className="text-[9px] font-bold uppercase opacity-60"
+                                                        style={{ color: posColor }}
+                                                    >
+                                                        {pick.position}
+                                                    </span>
+                                                    <span
+                                                        className="text-[12px] font-bold text-center leading-tight break-words line-clamp-2"
                                                         style={{ color: posColor }}
                                                     >
                                                         {pick.playerName}
@@ -159,19 +176,19 @@ export const DraftBoard: React.FC<DraftBoardProps> = ({
                                             ) : isCurrent ? (
                                                 /* Current pick cell: glow effect */
                                                 <div
-                                                    className="rounded-md px-2 py-1 h-full flex items-center justify-center"
+                                                    className="rounded-lg h-full flex items-center justify-center"
                                                     style={{
-                                                        boxShadow: `inset 0 0 0 1.5px ${currentTeamColor}`,
+                                                        boxShadow: `inset 0 0 0 2px ${currentTeamColor}`,
                                                         backgroundColor: `${currentTeamColor}15`,
                                                     }}
                                                 >
-                                                    <span className="text-[11px] animate-pulse" style={{ color: currentTeamColor }}>
+                                                    <span className="text-sm animate-pulse font-bold" style={{ color: currentTeamColor }}>
                                                         ···
                                                     </span>
                                                 </div>
                                             ) : (
                                                 /* Empty cell */
-                                                <div className="rounded-md px-2 py-1 h-full flex items-center justify-center hover:bg-white/[0.02]">
+                                                <div className="rounded-lg h-full flex items-center justify-center hover:bg-white/[0.02]">
                                                     <span className="text-[10px] text-slate-700">—</span>
                                                 </div>
                                             )}
