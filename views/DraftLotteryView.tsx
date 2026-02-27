@@ -139,11 +139,13 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
             {/* Title */}
             <div className="relative z-10 text-center mb-6">
                 <h1 className="text-3xl font-black text-white uppercase oswald tracking-wider mb-2">
-                    드래프트 로터리
+                    드래프트 로터리 결과
                 </h1>
-                <p className="text-slate-500 text-sm font-bold ko-tight">
-                    {!isAllRevealed ? '드래프트 순서가 공개됩니다' : '로터리가 완료되었습니다'}
-                </p>
+                {!isAllRevealed && (
+                    <p className="text-slate-500 text-sm font-bold ko-tight">
+                        드래프트 순서가 공개됩니다
+                    </p>
+                )}
             </div>
 
             {/* 2-Column Grid */}
@@ -160,12 +162,9 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 </div>
             </div>
 
-            {/* Summary + Start Button */}
+            {/* Start Button */}
             {isAllRevealed && (
-                <div className="relative z-10 mt-6 text-center space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <p className="text-slate-400 text-sm font-bold ko-tight">
-                        당신의 팀은 <span className="text-indigo-400 font-black">{userPickNumber}번째</span>로 선수를 지명합니다
-                    </p>
+                <div className="relative z-10 mt-6 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <button
                         onClick={handleStart}
                         className="group flex items-center gap-3 mx-auto px-8 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-base uppercase tracking-wider transition-all duration-300 hover:scale-105 hover:shadow-lg hover:shadow-indigo-500/25"
