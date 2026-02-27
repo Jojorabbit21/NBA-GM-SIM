@@ -1,10 +1,10 @@
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { Team, Player } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { getTeamTheme, getButtonTheme } from '../utils/teamTheme';
-import { DraftHeader } from '../components/draft/DraftHeader';
+import { DraftHeader, PICK_TIME_LIMIT } from '../components/draft/DraftHeader';
 import { DraftBoard, BoardPick } from '../components/draft/DraftBoard';
 import { PickHistory } from '../components/draft/PickHistory';
 import { PlayerPool } from '../components/draft/PlayerPool';
@@ -15,6 +15,8 @@ import { GripHorizontal } from 'lucide-react';
 export const POSITION_COLORS: Record<string, string> = {
     PG: '#22d3ee', SG: '#34d399', SF: '#fbbf24', PF: '#fb7185', C: '#a78bfa',
 };
+
+const CPU_PICK_DELAY = 800; // ms between CPU picks
 
 interface FantasyDraftViewProps {
     teams: Team[];
@@ -51,34 +53,13 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     const buttonTheme = useMemo(() => getButtonTheme(myTeamId, myTeamColors), [myTeamId, myTeamColors]);
     const allPlayers = useMemo(() => collectAllPlayers(teams), [teams]);
 
-    // ── Mock Draft State ──
-    // Simulate a few CPU picks already made for demo purposes
-    const [picks, setPicks] = useState<BoardPick[]>(() => {
-        const initial: BoardPick[] = [];
-        const used = new Set<string>();
-        const pool = [...allPlayers];
-
-        // Simulate first few picks (demo data)
-        const demoPicks = Math.min(12, pool.length);
-        for (let i = 0; i < demoPicks; i++) {
-            const teamId = draftOrder[i];
-            const player = pool.find(p => !used.has(p.id));
-            if (!player) break;
-            used.add(player.id);
-            initial.push({
-                round: Math.floor(i / teamIds.length) + 1,
-                teamId,
-                playerId: player.id,
-                playerName: player.name,
-                ovr: calculatePlayerOvr(player),
-                position: player.position,
-            });
-        }
-        return initial;
-    });
-
-    const [currentPickIndex, setCurrentPickIndex] = useState(picks.length);
+    // ── Draft State ──
+    const [picks, setPicks] = useState<BoardPick[]>([]);
+    const [currentPickIndex, setCurrentPickIndex] = useState(0);
     const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+
+    // ── Timer State ──
+    const [timeRemaining, setTimeRemaining] = useState(PICK_TIME_LIMIT);
 
     // Available players (not yet picked)
     const pickedIds = useMemo(() => new Set(picks.map(p => p.playerId)), [picks]);
@@ -107,10 +88,63 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         for (let i = currentPickIndex + 1; i < draftOrder.length; i++) {
             if (draftOrder[i] === myTeamId) return i - currentPickIndex;
         }
-        return -1; // no more picks remaining
+        return -1;
     }, [currentPickIndex, draftOrder, myTeamId, isUserTurn]);
 
-    // ── Draft action (demo: just adds to picks) ──
+    // ── Timer: countdown, resets on each new pick ──
+    useEffect(() => {
+        setTimeRemaining(PICK_TIME_LIMIT);
+
+        const interval = setInterval(() => {
+            setTimeRemaining(prev => {
+                if (prev <= 1) {
+                    clearInterval(interval);
+                    return 0;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [currentPickIndex]);
+
+    // ── CPU auto-pick: one pick at a time after short delay ──
+    useEffect(() => {
+        if (isUserTurn || currentPickIndex >= draftOrder.length) return;
+
+        const timer = setTimeout(() => {
+            setPicks(prevPicks => {
+                const used = new Set(prevPicks.map(p => p.playerId));
+                const pool = allPlayers.filter(p => !used.has(p.id));
+                if (pool.length === 0) return prevPicks;
+
+                const teamId = draftOrder[currentPickIndex];
+                const player = pool[0]; // BPA (Best Player Available)
+                return [...prevPicks, {
+                    round: Math.floor(currentPickIndex / teamIds.length) + 1,
+                    teamId,
+                    playerId: player.id,
+                    playerName: player.name,
+                    ovr: calculatePlayerOvr(player),
+                    position: player.position,
+                }];
+            });
+            setCurrentPickIndex(prev => prev + 1);
+        }, CPU_PICK_DELAY);
+
+        return () => clearTimeout(timer);
+    }, [currentPickIndex, isUserTurn, draftOrder, allPlayers, teamIds.length]);
+
+    // ── User auto-pick on timeout ──
+    useEffect(() => {
+        if (timeRemaining !== 0 || !isUserTurn) return;
+        if (availablePlayers.length > 0) {
+            handleDraft(availablePlayers[0]);
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [timeRemaining, isUserTurn]);
+
+    // ── Draft action (user pick) ──
     const handleDraft = useCallback((player: Player) => {
         if (!isUserTurn) return;
         const newPick: BoardPick = {
@@ -126,18 +160,17 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         setSelectedPlayerId(null);
     }, [isUserTurn, currentRound, myTeamId]);
 
-    // ── Fast Forward: simulate next N CPU picks ──
-    const handleFastForward = useCallback(() => {
+    // ── Skip to my turn: all CPU picks at once ──
+    const handleSkipToMyTurn = useCallback(() => {
         const newPicks: BoardPick[] = [];
         const used = new Set(picks.map(p => p.playerId));
         let idx = currentPickIndex;
         const pool = allPlayers.filter(p => !used.has(p.id));
         let poolIdx = 0;
 
-        // Pick until it's user's turn or 30 picks done
         while (idx < draftOrder.length && poolIdx < pool.length) {
             const tid = draftOrder[idx];
-            if (tid === myTeamId) break; // Stop before user's turn
+            if (tid === myTeamId) break;
             const player = pool[poolIdx++];
             used.add(player.id);
             newPicks.push({
@@ -157,13 +190,13 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
         }
     }, [picks, currentPickIndex, draftOrder, myTeamId, allPlayers, teamIds.length]);
 
-    const showFastForward = !isUserTurn && currentPickIndex < draftOrder.length;
+    const showSkip = !isUserTurn && currentPickIndex < draftOrder.length;
 
     // ── Resizable divider ──
     const containerRef = useRef<HTMLDivElement>(null);
     const [boardRatio, setBoardRatio] = useState(45);
     const isDragging = useRef(false);
-    const headerHeight = 40; // DraftHeader approx height
+    const headerHeight = 72;
 
     const handleMouseDown = useCallback(() => {
         isDragging.current = true;
@@ -191,21 +224,19 @@ export const FantasyDraftView: React.FC<FantasyDraftViewProps> = ({ teams, myTea
     }, []);
 
     return (
-        <div ref={containerRef} className="flex flex-col h-full bg-slate-950">
+        <div ref={containerRef} className="pretendard flex flex-col h-full bg-slate-950">
             {/* Header */}
             <DraftHeader
-                currentPickIndex={currentPickIndex}
-                totalPicks={draftOrder.length}
                 currentRound={currentRound}
                 currentPickInRound={currentPickInRound}
                 currentTeamId={currentTeamId}
                 isUserTurn={isUserTurn}
                 picksUntilUser={picksUntilUser}
                 userTeamId={myTeamId}
-                onFastForward={handleFastForward}
-                showFastForward={showFastForward}
+                timeRemaining={timeRemaining}
+                onSkipToMyTurn={handleSkipToMyTurn}
+                showSkip={showSkip}
                 onBack={onBack}
-                teamTheme={teamTheme}
             />
 
             {/* Draft Board (resizable top section) */}

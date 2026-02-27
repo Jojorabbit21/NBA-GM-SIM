@@ -102,8 +102,10 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 ### 현재 구현 상태
 - `FantasyDraftView.tsx`에 인라인으로 구현됨
 - CPU 픽: **Best OVR Available** (순서대로 1등부터 선택, AI 로직 없음)
-- handleFastForward(): 유저 턴까지 CPU 연속 지명
+- CPU 개별 픽: `CPU_PICK_DELAY`(800ms) 간격으로 순차 진행 (useEffect 체인)
+- handleSkipToMyTurn(): 유저 턴까지 CPU 일괄 지명 (건너뛰기)
 - handleDraft(): 유저 수동 지명
+- 타이머: 30초 카운트다운, 유저 타임아웃 시 BPA 자동 지명
 
 ---
 
@@ -239,6 +241,43 @@ function applyFantasyDraft(teams: Team[], picks: DraftPick[]) {
 └─────────────────────────────────────────────┘
 ```
 
+### 드래프트 UI 전역 규칙
+
+1. **한글 버전** — 모든 레이블/버튼 한글 사용
+2. **Pretendard 폰트** — FantasyDraftView 컨테이너에 `.pretendard` 클래스 적용
+3. **다크 테마** — `bg-slate-950` 기반
+4. **모달 최소화** — 필요 시 사용자 지시에 따름
+
+### 타이머 시스템
+
+- **턴당 제한 시간**: 30초 (유저, AI 모두 동일)
+- **상수**: `PICK_TIME_LIMIT = 30` (DraftHeader.tsx에서 export)
+- **CPU 픽 딜레이**: `CPU_PICK_DELAY = 800ms` (개별 CPU 픽 간격)
+- **타이머 리셋**: `currentPickIndex` 변경 시 자동 리셋
+- **유저 타임아웃**: 시간 만료 시 BPA 자동 지명
+- **CPU 턴 흐름**: 개별 픽이 800ms 간격으로 순차 진행 (건너뛰기 시 일괄)
+
+### DraftHeader 레이아웃
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ (배경: 현재 픽 팀 primary color + dark overlay)                     │
+│                                                                   │
+│ [←] 드래프트 룸          00:30          3픽 후 Lakers 차례입니다   │
+│    현재 차례 🏀 팀명    1라운드 #1픽         [내 차례까지 건너뛰기] │
+│                                                                   │
+│ ═══════════════════════════════════ (타이머 프로그레스 바, 파란색)  │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+- **배경**: 현재 픽 팀의 `colors.primary` + `bg-black/40` 오버레이 + 팀 로고 워터마크
+- **하단 보더**: 남은 시간 프로그레스 바 (`bg-blue-500`, 3px)
+- **상단 보더라인 없음**
+- **좌측**: `[←] 드래프트 룸` + `현재 차례 [로고] [팀명]`
+- **중앙**: `00:30` (대형 모노 타이머) + `N라운드 #M픽`
+- **우측 (CPU 턴)**: `N픽 후 [팀명] 차례입니다` + `[내 차례까지 건너뛰기]`
+- **우측 (유저 턴)**: `내 차례입니다!` (emerald, animate-pulse)
+
 ### 디자인 시스템 (드래프트 공용)
 
 **포지션 컬러**:
@@ -267,11 +306,14 @@ function applyFantasyDraft(teams: Team[], picks: DraftPick[]) {
 **완료된 항목**:
 - [x] 포지션 컬러 시스템 전체 적용
 - [x] 팀 테마 연결 (헤더, 버튼, 보드)
-- [x] DraftHeader: On the Clock 방송 스타일 + "You pick in N" + Snake 방향 화살표
+- [x] DraftHeader: 팀 컬러 배경 + 30초 타이머 + 프로그레스 바 + 건너뛰기
 - [x] DraftBoard: 포지션 컬러 보더 + OVR 등급 컬러 + 유저 팀 행 강조
 - [x] PlayerPool: 포지션 필터 컬러 + 팀 테마 DRAFT 버튼
 - [x] PickHistory: 포지션 배지 + OvrBadge + 팀 로고
 - [x] MyRoster: 포지션 도트/라벨 + 프로그레스 바
+- [x] 30초 턴 타이머 시스템 (CPU 개별 픽 + 유저 타임아웃 자동 지명)
+- [x] Pretendard 폰트 적용 (FantasyDraftView 컨테이너)
+- [x] 한글 UI 적용 (헤더 레이블)
 
 **미완료 (레퍼런스 UI 분석 기반 개선점)**:
 - [ ] DraftBoard 셀: border-l-2 → 포지션 컬러 풀 배경으로 변경

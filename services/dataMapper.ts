@@ -184,7 +184,9 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
 
     // 3. Determine OVR from recalculated categories (ensures player.ovr === calculatePlayerOvr(player))
-    const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth };
+    // [Fix] potential을 ovrInput에 포함하여 POSITION_WEIGHTS의 potential 가중치가 실제 값을 사용하도록 수정
+    const potentialForOvr = (potentialRaw && !isNaN(potentialRaw)) ? potentialRaw : 75;
+    const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth, potential: potentialForOvr };
     const ovr = calculateOvr(ovrInput, position);
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
