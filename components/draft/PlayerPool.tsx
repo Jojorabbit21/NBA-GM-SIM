@@ -175,18 +175,15 @@ export const PlayerPool: React.FC<PlayerPoolProps> = ({
                                     onClick={() => onSelectPlayer(player)}
                                 >
                                     {/* Radio */}
-                                    <td className="px-1 py-0.5 text-center">
-                                        <span
-                                            className={`inline-block w-3.5 h-3.5 rounded-full border-2 transition-colors ${
-                                                isSelected
-                                                    ? 'border-amber-400 bg-amber-400'
-                                                    : 'border-slate-600 bg-transparent'
-                                            }`}
-                                        >
-                                            {isSelected && (
-                                                <span className="block w-1.5 h-1.5 rounded-full bg-slate-900 mx-auto mt-[3px]" />
-                                            )}
-                                        </span>
+                                    <td className="px-1 py-0.5 text-center align-middle">
+                                        <input
+                                            type="radio"
+                                            name="draft-player"
+                                            checked={isSelected}
+                                            onChange={() => onSelectPlayer(player)}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="w-3.5 h-3.5 cursor-pointer align-middle"
+                                        />
                                     </td>
                                     <td className="px-2 py-0.5">
                                         <OvrBadge value={calculatePlayerOvr(player)} size="sm" />
