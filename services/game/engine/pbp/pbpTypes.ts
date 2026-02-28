@@ -192,6 +192,12 @@ export interface GameState {
     // [New] Rotation Override System (임시 벤치 + 자동 복귀)
     originalRotationMap: Record<string, boolean[]>; // 경기 시작 시 deep copy, 엔진 수정 불가
     activeOverrides: RotationOverride[];            // 임시 교체 추적 스택
+
+    // [New] Possession Time Tracking (평균 샷클락 소모 시간)
+    possessionTimeAccum: {
+        home: { total: number; count: number };
+        away: { total: number; count: number };
+    };
 }
 
 export interface PossessionResult {

@@ -787,6 +787,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         activeRun, speed,
         shotEvents, homeBox, awayBox,
         homeFouls, awayFouls, userTactics: liveTactics,
+        avgPossessionTime,
     } = displayState;
 
     const [activeTab, setActiveTab] = useState<ActiveTab>('court');
@@ -1362,6 +1363,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         shotEvents={shotEvents}
                         onApplyTactics={applyTactics}
                         playerNames={playerNames}
+                        avgPossessionTime={{
+                            user: isUserHome ? avgPossessionTime.home : avgPossessionTime.away,
+                            opponent: isUserHome ? avgPossessionTime.away : avgPossessionTime.home,
+                        }}
                     />
                 )}
             </div>
