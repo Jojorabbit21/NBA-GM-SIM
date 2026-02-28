@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { GameTactics, TacticalSliders, ShotEvent } from '../../../types';
+import { GameTactics, TacticalSliders, ShotEvent, PlayerBoxScore } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
 import { COURT_WIDTH } from '../../../utils/courtCoordinates';
 import { SliderControl } from '../../common/SliderControl';
@@ -18,8 +18,12 @@ interface LiveTacticsTabProps {
     onApplyTactics: (sliders: GameTactics['sliders']) => void;
     /** 선수 이름 조회용: playerId → playerName */
     playerNames: Record<string, string>;
-    /** 팀별 평균 포세션 소모 시간 (초) — user/opponent 기준 */
-    avgPossessionTime: { user: number; opponent: number };
+    /** 팀별 평균 포세션 소모 시간 (초) — home/away 기준 */
+    avgPossessionTime: { home: number; away: number };
+    /** 박스스코어 데이터 (팀 스탯 비교용) */
+    homeBox: PlayerBoxScore[];
+    awayBox: PlayerBoxScore[];
+    isUserHome: boolean;
 }
 
 /** 엔진 PlayType → 표시 그룹 매핑 */
@@ -73,34 +77,40 @@ function calculatePlayTypePPP(shots: ShotEvent[]): PlayTypeStats[] {
     return result.sort((a, b) => b.attempts - a.attempts);
 }
 
-function calculateZoneStats(shots: ShotEvent[]) {
-    const calc = (filterFn: (s: ShotEvent) => boolean) => {
-        const subset = shots.filter(filterFn);
-        const total = subset.length;
-        const made = subset.filter(s => s.isMake).length;
-        return { m: made, a: total, pct: total > 0 ? Math.round((made / total) * 100) : 0 };
-    };
-    return {
-        fg:  calc(() => true),
-        ra:  calc(s => s.zone === 'Rim'),
-        itp: calc(s => s.zone === 'Paint'),
-        mid: calc(s => s.zone === 'Mid'),
-        p3:  calc(s => s.zone === '3PT'),
-    };
-}
-
 // ─────────────────────────────────────────────────────────────
 // Sub-components
 // ─────────────────────────────────────────────────────────────
 
-/** 존별 슈팅 스플릿 */
-const StatBox: React.FC<{ label: string; stat: { m: number; a: number; pct: number } }> = ({ label, stat }) => (
-    <div className="flex flex-col items-center min-w-[48px]">
-        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">{label}</span>
-        <span className="text-sm font-semibold text-white font-mono leading-none">{stat.pct}%</span>
-        <span className="text-[10px] text-slate-400 font-medium">{stat.m}/{stat.a}</span>
-    </div>
-);
+/** 팀 스탯 비교 (TeamStatsCompare와 동일 디자인) */
+const COMPARE_STATS: { key: string; label: string; fmt: (v: number) => string }[] = [
+    { key: 'pts',   label: 'PTS',  fmt: v => String(v) },
+    { key: 'fgPct', label: 'FG%',  fmt: v => v.toFixed(1) },
+    { key: 'p3Pct', label: '3P%',  fmt: v => v.toFixed(1) },
+    { key: 'ftPct', label: 'FT%',  fmt: v => v.toFixed(1) },
+    { key: 'oreb',  label: 'OREB', fmt: v => String(v) },
+    { key: 'dreb',  label: 'DREB', fmt: v => String(v) },
+    { key: 'reb',   label: 'REB',  fmt: v => String(v) },
+    { key: 'ast',   label: 'AST',  fmt: v => String(v) },
+    { key: 'stl',   label: 'STL',  fmt: v => String(v) },
+    { key: 'blk',   label: 'BLK',  fmt: v => String(v) },
+    { key: 'tov',   label: 'TOV',  fmt: v => String(v) },
+    { key: 'pf',    label: 'PF',   fmt: v => String(v) },
+    { key: 'pace',  label: 'PACE', fmt: v => v > 0 ? v.toFixed(1) + 's' : '-' },
+];
+
+function computeTeamStats(box: PlayerBoxScore[]) {
+    const sum = (key: keyof PlayerBoxScore) => box.reduce((s, p) => s + ((p[key] as number) ?? 0), 0);
+    const fgm = sum('fgm'), fga = sum('fga');
+    const p3m = sum('p3m'), p3a = sum('p3a');
+    const ftm = sum('ftm'), fta = sum('fta');
+    return {
+        pts: sum('pts'), fgPct: fga > 0 ? (fgm / fga) * 100 : 0,
+        p3Pct: p3a > 0 ? (p3m / p3a) * 100 : 0, ftPct: fta > 0 ? (ftm / fta) * 100 : 0,
+        oreb: sum('offReb'), dreb: sum('defReb'), reb: sum('reb'),
+        ast: sum('ast'), stl: sum('stl'), blk: sum('blk'), tov: sum('tov'), pf: sum('pf'),
+        pace: 0, // 외부에서 주입
+    };
+}
 
 /** 플레이타입 PPP 테이블 */
 const PlayTypePPPTable: React.FC<{ title: string; data: PlayTypeStats[] }> = ({ title, data }) => (
@@ -150,10 +160,22 @@ const XIcon: React.FC<{ size?: number; className?: string; strokeWidth?: number 
 // ─────────────────────────────────────────────────────────────
 
 export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
-    userTactics, userTeamId, opponentTeamId, shotEvents, onApplyTactics, playerNames, avgPossessionTime
+    userTactics, userTeamId, opponentTeamId, shotEvents, onApplyTactics, playerNames,
+    avgPossessionTime, homeBox, awayBox, isUserHome
 }) => {
     const { sliders } = userTactics;
     const teamColor = TEAM_DATA[userTeamId]?.colors.primary || '#6366f1';
+    const homeColor = TEAM_DATA[isUserHome ? userTeamId : opponentTeamId]?.colors.primary || '#6366f1';
+    const awayColor = TEAM_DATA[isUserHome ? opponentTeamId : userTeamId]?.colors.primary || '#6366f1';
+
+    // ── 팀 스탯 비교 데이터 ──
+    const compareStats = useMemo(() => {
+        const h = computeTeamStats(homeBox);
+        const a = computeTeamStats(awayBox);
+        h.pace = avgPossessionTime.home;
+        a.pace = avgPossessionTime.away;
+        return { h, a };
+    }, [homeBox, awayBox, avgPossessionTime]);
 
     // ── 선수 필터 상태 ──
     const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
@@ -230,9 +252,6 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
         }),
     [userShots]);
 
-    // ── 존별 스플릿 ──
-    const zoneStats = useMemo(() => calculateZoneStats(userShots), [userShots]);
-
     // ── 플레이타입 PPP ──
     const allUserShots = useMemo(() =>
         shotEvents.filter(s => s.teamId === userTeamId),
@@ -257,7 +276,7 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
     // ─────────────────────────────────────────────────────────
 
     return (
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+        <div className="flex-1 overflow-hidden p-4 flex flex-col gap-4">
 
             {/* ══════════════════════════════════════════════════════ */}
             {/* TOP: 슬라이더 5그룹 수평 배치                          */}
@@ -267,17 +286,6 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                 {/* 1. 게임 운영 */}
                 <div className="flex flex-col gap-1">
                     <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">게임 운영</h4>
-                    <div className="flex items-center gap-2 py-1 px-1.5 bg-slate-800/50 rounded-lg mb-1">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase shrink-0">포세션</span>
-                        <span className="text-[10px] font-black text-white tabular-nums">
-                            {avgPossessionTime.user > 0 ? `${avgPossessionTime.user.toFixed(1)}s` : '-'}
-                        </span>
-                        <div className="w-px h-3 bg-slate-700" />
-                        <span className="text-[9px] font-bold text-slate-500 shrink-0">상대</span>
-                        <span className="text-[10px] font-black text-slate-400 tabular-nums">
-                            {avgPossessionTime.opponent > 0 ? `${avgPossessionTime.opponent.toFixed(1)}s` : '-'}
-                        </span>
-                    </div>
                     <SliderControl label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
                         tooltip="높을수록 빠른 공수전환과 얼리 오펜스를 시도합니다." fillColor="#f97316" />
                     <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
@@ -342,25 +350,43 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
             <div className="grid grid-cols-12 gap-4 flex-1 min-h-0">
 
                 {/* ── 1. 팀 스탯 비교 (3/12) ── */}
-                <div className="col-span-3 bg-slate-900/40 border border-slate-800 rounded-2xl p-3 flex flex-col gap-3 overflow-y-auto">
-                    <h5 className="text-[11px] font-black text-slate-500 uppercase tracking-widest">존별 슈팅 스플릿</h5>
-                    <div className="flex flex-col gap-2">
-                        {[
-                            { label: 'FG', stat: zoneStats.fg },
-                            { label: 'RIM', stat: zoneStats.ra },
-                            { label: 'PAINT', stat: zoneStats.itp },
-                            { label: 'MID', stat: zoneStats.mid },
-                            { label: '3PT', stat: zoneStats.p3 },
-                        ].map(z => (
-                            <div key={z.label} className="flex items-center gap-2">
-                                <span className="text-[10px] font-bold text-slate-500 w-10 shrink-0 uppercase">{z.label}</span>
-                                <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                    <div className="h-full rounded-full transition-all duration-300" style={{ width: `${z.stat.pct}%`, backgroundColor: teamColor }} />
+                <div className="col-span-3 bg-slate-900/40 border border-slate-800 rounded-2xl px-2 py-2 flex flex-col overflow-y-auto">
+                    <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">팀 스탯</p>
+                    <div className="flex flex-col gap-1">
+                        {COMPARE_STATS.map(({ key, label, fmt }) => {
+                            const h = compareStats.h[key as keyof typeof compareStats.h] as number;
+                            const a = compareStats.a[key as keyof typeof compareStats.a] as number;
+                            const total = h + a;
+                            const hPct = total > 0 ? (h / total) * 100 : 50;
+                            const aPct = total > 0 ? (a / total) * 100 : 50;
+                            const hWins = h > a;
+                            const aWins = a > h;
+                            const bothZero = h === 0 && a === 0;
+
+                            return (
+                                <div key={key} className="grid grid-cols-[1fr_32px_36px_32px_1fr] items-center gap-1">
+                                    <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-800/50">
+                                        {!bothZero && (
+                                            <div className="h-full rounded-sm transition-all duration-300"
+                                                style={{ width: `${aPct}%`, backgroundColor: awayColor }} />
+                                        )}
+                                    </div>
+                                    <span className={`text-[10px] font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
+                                        {fmt(a)}
+                                    </span>
+                                    <span className="text-[9px] font-bold text-slate-400 text-center uppercase">{label}</span>
+                                    <span className={`text-[10px] font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
+                                        {fmt(h)}
+                                    </span>
+                                    <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-800/50">
+                                        {!bothZero && (
+                                            <div className="h-full rounded-sm transition-all duration-300"
+                                                style={{ width: `${hPct}%`, backgroundColor: homeColor }} />
+                                        )}
+                                    </div>
                                 </div>
-                                <span className="text-[11px] font-black text-white tabular-nums w-8 text-right">{z.stat.pct}%</span>
-                                <span className="text-[9px] text-slate-500 tabular-nums w-8 text-right">{z.stat.m}/{z.stat.a}</span>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
 
@@ -368,8 +394,8 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                 <div className="col-span-6 bg-slate-900/40 border border-slate-800 rounded-2xl overflow-hidden flex flex-col">
                     <div className="grid grid-cols-12 gap-0 flex-1 min-h-0">
                         {/* Shot Chart */}
-                        <div className="col-span-9 flex items-center justify-center p-3">
-                            <div className="relative w-full" style={{ aspectRatio: '470/500' }}>
+                        <div className="col-span-9 flex items-center justify-center p-2 overflow-hidden">
+                            <div className="relative h-full" style={{ aspectRatio: '470/500' }}>
                                 <svg viewBox="0 0 470 500" className="w-full h-full">
                                     <rect width="470" height="500" fill="#020617" />
                                     <rect y="170" width="190" height="160" fill="#0f172a" />
