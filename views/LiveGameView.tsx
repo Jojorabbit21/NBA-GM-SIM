@@ -875,7 +875,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const TABS: { key: ActiveTab; label: string }[] = [
         { key: 'court',    label: '중계' },
         { key: 'rotation', label: '로테이션' },
-        { key: 'tactics',  label: '전술 슬라이더' },
+        { key: 'tactics',  label: '전술 설정' },
     ];
 
     return (
