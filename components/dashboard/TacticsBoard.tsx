@@ -120,7 +120,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
     const getSlotName = (slot: number) => presets.find(p => p.slot === slot)?.name;
 
     return (
-        <div className="flex flex-col h-full bg-slate-950/20 relative">
+        <div className="flex flex-col h-full bg-slate-900 relative">
             {/* Header Controls */}
             <div className="px-8 py-4 bg-slate-900/80 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20 backdrop-blur-sm">
 
@@ -165,13 +165,13 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                 <div className="flex items-center gap-3">
                     <button
                         onClick={onAutoSet}
-                        className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl flex items-center gap-2 font-black uppercase text-xs tracking-widest transition-all active:scale-95 shadow-lg shadow-indigo-500/20"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-2 font-bold uppercase text-xs tracking-wider transition-all active:scale-95"
                     >
                         <Wand2 size={14} /> 코치에게 위임
                     </button>
                     <button
                         onClick={handleReset}
-                        className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl flex items-center gap-2 font-black uppercase text-xs tracking-widest transition-all active:scale-95 border border-white/5"
+                        className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg flex items-center gap-2 font-bold uppercase text-xs tracking-wider transition-all active:scale-95 shadow-sm"
                     >
                         <RotateCcw size={14} /> 초기화
                     </button>

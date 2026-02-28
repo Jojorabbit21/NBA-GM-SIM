@@ -47,15 +47,15 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
         <div className="flex flex-1 min-h-0 h-full">
             {/* Left: My Roster */}
             <div className="w-[380px] lg:w-[420px] border-r border-slate-800 flex flex-col flex-shrink-0">
-                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50">
+                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800">
                     <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">내 트레이드 블록</span>
                     <span className={`text-[10px] font-black uppercase tracking-widest ${blockSelectedIds.size > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
                         {blockSelectedIds.size} / 5 선택
                     </span>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/40">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                     <table className="w-full text-left border-separate border-spacing-0">
-                        <thead className="bg-slate-950 sticky top-0 z-10">
+                        <thead className="bg-slate-800 sticky top-0 z-10">
                             <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
                                 <th className="py-2.5 px-3 w-8 border-b border-slate-800"></th>
                                 <th className="py-2.5 px-1 w-10 border-b border-slate-800 text-center">OVR</th>
@@ -113,7 +113,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
             {/* Right: Offers */}
             <div className="flex-1 flex flex-col min-w-0">
                 {/* Right Panel Header */}
-                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 flex-shrink-0">
+                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800 flex-shrink-0">
                     <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
                         오퍼 결과 {blockSearchPerformed && blockOffers.length > 0 && `(${blockOffers.length}건)`}
                     </span>
@@ -131,7 +131,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                 </div>
 
                 {/* Right Panel Body */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/40">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                     {!blockSearchPerformed ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
                             <p className="font-black text-sm text-slate-500 uppercase oswald tracking-widest">오퍼 대기</p>
