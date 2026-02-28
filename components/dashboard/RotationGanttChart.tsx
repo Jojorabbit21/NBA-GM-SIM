@@ -44,10 +44,14 @@ interface GanttBarProps {
     dragging: DragState | null;
     onMouseDown: (playerId: string, minute: number) => void;
     onMouseMove: (playerId: string, minute: number) => void;
+    // Live mode
+    currentMinute?: number;
+    lockedBefore?: number;
+    readOnly?: boolean;
 }
 
 const GanttBar: React.FC<GanttBarProps> = React.memo(
-    ({ playerId, stints, dragging, onMouseDown, onMouseMove }) => {
+    ({ playerId, stints, dragging, onMouseDown, onMouseMove, currentMinute, lockedBefore, readOnly }) => {
         const barRef = useRef<HTMLDivElement>(null);
 
         const getMinute = useCallback((clientX: number): number => {
@@ -61,12 +65,16 @@ const GanttBar: React.FC<GanttBarProps> = React.memo(
         return (
             <div
                 ref={barRef}
-                className="relative w-full h-full cursor-crosshair select-none"
+                className={`relative w-full h-full select-none ${readOnly ? 'cursor-default' : 'cursor-crosshair'}`}
                 onMouseDown={(e) => {
+                    if (readOnly) return;
                     e.preventDefault();
-                    onMouseDown(playerId, getMinute(e.clientX));
+                    const minute = getMinute(e.clientX);
+                    if (lockedBefore !== undefined && minute < lockedBefore) return;
+                    onMouseDown(playerId, minute);
                 }}
                 onMouseMove={(e) => {
+                    if (readOnly) return;
                     if (isDraggingThis) onMouseMove(playerId, getMinute(e.clientX));
                 }}
             >
@@ -109,6 +117,22 @@ const GanttBar: React.FC<GanttBarProps> = React.memo(
                     />
                 ))}
 
+                {/* Locked past-minutes overlay (live mode) */}
+                {lockedBefore !== undefined && lockedBefore > 0 && (
+                    <div
+                        className="absolute inset-y-0 left-0 bg-slate-950/50 pointer-events-none z-[5]"
+                        style={{ width: `${lockedBefore / 48 * 100}%` }}
+                    />
+                )}
+
+                {/* Current minute indicator (live mode) */}
+                {currentMinute !== undefined && currentMinute >= 0 && currentMinute < 48 && (
+                    <div
+                        className="absolute top-0 bottom-0 w-0.5 bg-amber-400 z-10 pointer-events-none"
+                        style={{ left: `${(currentMinute + 0.5) / 48 * 100}%` }}
+                    />
+                )}
+
                 {/* Drag selection preview */}
                 {isDraggingThis && dragging && (
                     <div
@@ -124,14 +148,16 @@ const GanttBar: React.FC<GanttBarProps> = React.memo(
     },
     // Custom comparator: only re-render when stints change or this bar's drag state changes
     (prev, next) => {
-        if (prev.stints !== next.stints) return false; // stints changed → re-render
+        if (prev.stints !== next.stints) return false;
+        if (prev.currentMinute !== next.currentMinute) return false;
+        if (prev.lockedBefore !== next.lockedBefore) return false;
+        if (prev.readOnly !== next.readOnly) return false;
 
         const prevDrag = prev.dragging?.playerId === prev.playerId ? prev.dragging : null;
         const nextDrag = next.dragging?.playerId === next.playerId ? next.dragging : null;
 
-        if (prevDrag === null && nextDrag === null) return true; // neither dragging → skip
-        if (prevDrag === null || nextDrag === null) return false; // drag started/ended → re-render
-        // Both dragging: re-render only if position changed
+        if (prevDrag === null && nextDrag === null) return true;
+        if (prevDrag === null || nextDrag === null) return false;
         return prevDrag.startMin === nextDrag.startMin && prevDrag.currentMin === nextDrag.currentMin;
     }
 );
@@ -155,10 +181,16 @@ interface RotationGanttChartProps {
     healthySorted: Player[];
     onUpdateTactics: (t: GameTactics) => void;
     onViewPlayer: (p: Player) => void;
+    // Live mode
+    liveMode?: boolean;
+    currentMinute?: number;
+    lockedBefore?: number;
+    readOnly?: boolean;
 }
 
 const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
     team, tactics, depthChart, healthySorted, onUpdateTactics, onViewPlayer,
+    liveMode = false, currentMinute: liveCurrentMinute, lockedBefore, readOnly = false,
 }) => {
     const [dragging, setDragging] = useState<DragState | null>(null);
     const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
@@ -172,6 +204,10 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
 
     // RAF handle for throttling drag mousemove updates to display refresh rate
     const rafRef = useRef<number | null>(null);
+
+    // Ref for lockedBefore (used in mouseup handler)
+    const lockedBeforeRef = useRef(lockedBefore);
+    lockedBeforeRef.current = lockedBefore;
 
     // Cleanup RAF on unmount
     useEffect(() => {
@@ -193,8 +229,16 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
         if (!dragging) return;
         const handleMouseUp = () => {
             const t = tacticsRef.current;
-            const start = Math.min(dragging.startMin, dragging.currentMin);
-            const end   = Math.max(dragging.startMin, dragging.currentMin);
+            let start = Math.min(dragging.startMin, dragging.currentMin);
+            let end   = Math.max(dragging.startMin, dragging.currentMin);
+
+            // In live mode, clamp to only affect future minutes
+            const lb = lockedBeforeRef.current;
+            if (lb !== undefined) {
+                start = Math.max(start, lb);
+                if (start > end) { setDragging(null); return; }
+            }
+
             const cur   = t.rotationMap || {};
             const newMap = { ...cur };
             const arr = [...(cur[dragging.playerId] || Array(48).fill(false))];
@@ -262,9 +306,11 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
 
     // Stable mouse handlers (use refs to access latest tactics)
     const handleBarMouseDown = useCallback((playerId: string, minute: number) => {
+        if (readOnly) return;
+        if (lockedBefore !== undefined && minute < lockedBefore) return;
         const currentMap = (tacticsRef.current.rotationMap || {})[playerId] || Array(48).fill(false);
         setDragging({ playerId, startMin: minute, currentMin: minute, targetValue: !currentMap[minute] });
-    }, []);
+    }, [readOnly, lockedBefore]);
 
     const handleBarMouseMove = useCallback((playerId: string, minute: number) => {
         if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -322,11 +368,36 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
         onUpdateRef.current({ ...t, rotationMap: newMap });
     }, [team.roster]);
 
+    const handleResetFutureRotation = useCallback(() => {
+        const lb = lockedBeforeRef.current ?? 0;
+        if (!window.confirm(`${lb}분 이후의 로테이션을 초기화하시겠습니까?`)) return;
+        const t = tacticsRef.current;
+        const cur = t.rotationMap || {};
+        const newMap: Record<string, boolean[]> = {};
+        team.roster.forEach(p => {
+            const existing = cur[p.id] || Array(48).fill(false);
+            const arr = [...existing];
+            for (let i = lb; i < 48; i++) arr[i] = false;
+            newMap[p.id] = arr;
+        });
+        onUpdateRef.current({ ...t, rotationMap: newMap });
+    }, [team.roster]);
+
     const handleResetPlayer = useCallback((playerId: string) => {
         const t = tacticsRef.current;
         const currentMap = t.rotationMap || {};
-        const newMap = { ...currentMap, [playerId]: Array(48).fill(false) };
-        onUpdateRef.current({ ...t, rotationMap: newMap });
+        const existing = currentMap[playerId] || Array(48).fill(false);
+        const lb = lockedBeforeRef.current;
+        if (lb !== undefined) {
+            // Live mode: only clear future minutes
+            const arr = [...existing];
+            for (let i = lb; i < 48; i++) arr[i] = false;
+            const newMap = { ...currentMap, [playerId]: arr };
+            onUpdateRef.current({ ...t, rotationMap: newMap });
+        } else {
+            const newMap = { ...currentMap, [playerId]: Array(48).fill(false) };
+            onUpdateRef.current({ ...t, rotationMap: newMap });
+        }
     }, []);
 
     const getMinColor = (mins: number) => {
@@ -346,48 +417,78 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
         <div className="flex flex-col h-full overflow-hidden">
             {/* ── Toolbar ── */}
             <div className="px-6 py-3 bg-slate-800 border-t border-slate-700 border-b border-slate-700 flex items-center justify-between flex-shrink-0 gap-4">
-                <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
+                <span className="text-base font-black text-white uppercase tracking-widest oswald">
+                    {liveMode ? '라이브 로테이션' : '로테이션 차트'}
+                </span>
 
-                <div className="flex gap-2">
-                    <div className="relative flex shadow-md" ref={dropdownRef}>
-                        <button
-                            onClick={() => handleAllocation('Overwork')}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
-                        >
-                            코치에게 위임
-                        </button>
-                        <button
-                            onClick={() => setIsAiDropdownOpen(v => !v)}
-                            className={`px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-r-lg transition-all ${isAiDropdownOpen ? 'bg-indigo-700' : ''}`}
-                        >
-                            <ChevronDown size={14} className={`transition-transform duration-200 ${isAiDropdownOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isAiDropdownOpen && (
-                            <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                                <div className="p-1">
-                                    {ALLOCATION_OPTIONS.map(({ mode, label, sub }) => (
-                                        <button
-                                            key={mode}
-                                            onClick={() => handleAllocation(mode)}
-                                            className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5"
-                                        >
-                                            <span>{label}</span>
-                                            <span className="text-[9px] text-slate-500 font-normal">{sub}</span>
-                                        </button>
-                                    ))}
+                {!liveMode && (
+                    <div className="flex gap-2">
+                        <div className="relative flex shadow-md" ref={dropdownRef}>
+                            <button
+                                onClick={() => handleAllocation('Overwork')}
+                                className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
+                            >
+                                코치에게 위임
+                            </button>
+                            <button
+                                onClick={() => setIsAiDropdownOpen(v => !v)}
+                                className={`px-2 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-r-lg transition-all ${isAiDropdownOpen ? 'bg-indigo-700' : ''}`}
+                            >
+                                <ChevronDown size={14} className={`transition-transform duration-200 ${isAiDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            {isAiDropdownOpen && (
+                                <div className="absolute top-full right-0 mt-2 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                                    <div className="p-1">
+                                        {ALLOCATION_OPTIONS.map(({ mode, label, sub }) => (
+                                            <button
+                                                key={mode}
+                                                onClick={() => handleAllocation(mode)}
+                                                className="w-full text-left px-3 py-2.5 rounded-lg text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-all flex flex-col gap-0.5"
+                                            >
+                                                <span>{label}</span>
+                                                <span className="text-[9px] text-slate-500 font-normal">{sub}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
+                        </div>
+                        <button
+                            onClick={handleResetRotation}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
+                        >
+                            <RotateCcw size={14} />
+                            <span>초기화</span>
+                        </button>
                     </div>
+                )}
+
+                {liveMode && !readOnly && (
                     <button
-                        onClick={handleResetRotation}
+                        onClick={handleResetFutureRotation}
                         className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white rounded-lg transition-all text-xs font-bold uppercase tracking-wider shadow-sm active:scale-95"
                     >
                         <RotateCcw size={14} />
-                        <span>초기화</span>
+                        <span>남은 분 초기화</span>
                     </button>
-                </div>
+                )}
             </div>
+
+            {/* Live mode status banner */}
+            {liveMode && (
+                <div className={`px-6 py-2 border-b flex-shrink-0 ${
+                    readOnly
+                        ? 'bg-slate-800/50 border-slate-700/40'
+                        : 'bg-emerald-900/30 border-emerald-700/40'
+                }`}>
+                    <span className={`text-xs font-semibold ${readOnly ? 'text-slate-500' : 'text-emerald-400'}`}>
+                        {readOnly
+                            ? '경기 진행 중 — 쿼터 종료/하프타임/타임아웃 시 편집 가능'
+                            : '편집 가능 — 미래 분만 수정 가능합니다'
+                        }
+                    </span>
+                </div>
+            )}
 
             {/* ── Gantt table ── */}
             <div className="flex-1 min-h-0 overflow-auto">
@@ -511,6 +612,9 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                                 dragging={dragging}
                                                 onMouseDown={handleBarMouseDown}
                                                 onMouseMove={handleBarMouseMove}
+                                                currentMinute={liveCurrentMinute}
+                                                lockedBefore={lockedBefore}
+                                                readOnly={readOnly}
                                             />
                                         </td>
                                     </tr>
@@ -548,5 +652,9 @@ export const RotationGanttChart = React.memo(
         prev.depthChart === next.depthChart &&
         prev.healthySorted === next.healthySorted &&
         prev.onUpdateTactics === next.onUpdateTactics &&
-        prev.onViewPlayer === next.onViewPlayer
+        prev.onViewPlayer === next.onViewPlayer &&
+        prev.liveMode === next.liveMode &&
+        prev.currentMinute === next.currentMinute &&
+        prev.lockedBefore === next.lockedBefore &&
+        prev.readOnly === next.readOnly
 );
