@@ -82,13 +82,14 @@ export function useLiveGame(
     isHomeB2B: boolean = false,
     isAwayB2B: boolean = false,
     homeDepthChart?: DepthChart | null,
-    awayDepthChart?: DepthChart | null
+    awayDepthChart?: DepthChart | null,
+    tendencySeed?: string
 ): UseLiveGameReturn {
 
     // ── GameState는 ref로 보유 (리렌더 방지) ──
     const gameStateRef = useRef<GameState>(
         createGameState(homeTeam, awayTeam, userTeamId, userTactics,
-            isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart)
+            isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed)
     );
 
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

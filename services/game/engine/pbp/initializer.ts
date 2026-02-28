@@ -4,8 +4,9 @@ import { TeamState, LivePlayer } from './pbpTypes';
 import { calculatePlayerArchetypes } from './archetypeSystem';
 import { INITIAL_STATS, calculatePlayerOvr } from '../../../../utils/constants';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
+import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
 
-export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null): TeamState {
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
     let safeTactics: GameTactics;
     if (!tactics || (!tactics.depthChart && !depthChart)) {
@@ -72,6 +73,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             conditionAtSubIn: currentCondition,
             attr,
             archetypes: calculatePlayerArchetypes(attr, currentCondition),
+            tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
             zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
             zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
             zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,

@@ -10,7 +10,8 @@ export const saveCheckpoint = async (
     tactics?: GameTactics | null,
     rosterState?: Record<string, SavedPlayerState | number>, // Supports legacy number or new Object
     depthChart?: DepthChart | null, // [New] Depth Chart Data
-    draftPicks?: { teams: Record<string, string[]>; picks: any[] } | null
+    draftPicks?: { teams: Record<string, string[]>; picks: any[] } | null,
+    tendencySeed?: string | null // [New] Save-seeded hidden tendencies
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -37,6 +38,11 @@ export const saveCheckpoint = async (
     // 값이 있으면 저장
     if (draftPicks !== undefined) {
         payload.draft_picks = draftPicks;
+    }
+
+    // tendency_seed: 명시적으로 값이 있을 때만 저장 (null로 기존 시드를 덮어쓰지 않도록)
+    if (tendencySeed) {
+        payload.tendency_seed = tendencySeed;
     }
 
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)

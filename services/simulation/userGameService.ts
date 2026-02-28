@@ -14,7 +14,8 @@ export const runUserSimulation = (
     myTeamId: string,
     userTactics: GameTactics,
     currentSimDate: string,
-    depthChart?: DepthChart | null
+    depthChart?: DepthChart | null,
+    tendencySeed?: string
 ): SimulationResult => {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -42,7 +43,8 @@ export const runUserSimulation = (
         isHomeB2B,
         isAwayB2B,
         homeDepth,
-        awayDepth
+        awayDepth,
+        tendencySeed
     );
 };
 

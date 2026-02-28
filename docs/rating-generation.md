@@ -237,3 +237,10 @@ scripts/
 1. **동시 배포 필수**: `update_ratings.sql` (DB)과 `dataMapper.ts` potential 수정 (코드)을 함께 배포해야 OVR 일관성 유지
 2. **기존 세이브 영향**: potential 반영으로 모든 선수의 OVR이 변경됨. 기존 유저의 인게임 OVR이 달라질 수 있음
 3. **아키타입 임계값**: 레이팅 정확도 우선으로 생성했으므로 일부 아키타입(The Closer 23명, Ice in Veins 28명)이 목표(1-5명)보다 많음. 필요 시 아키타입 임계값을 조정할 것
+
+---
+
+## 후속 작업: 정밀 튜닝
+
+1차 AI 벌크 생성 이후, 실제 NBA 스탯 기반으로 632명 전원의 능력치를 정밀 교정하는 2차 작업을 수행함.
+자세한 내용은 **[rating-tuning.md](rating-tuning.md)** 참조.

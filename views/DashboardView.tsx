@@ -28,6 +28,7 @@ interface DashboardViewProps {
   depthChart?: DepthChart | null;
   onUpdateDepthChart?: (dc: DepthChart) => void;
   onForceSave?: () => void;
+  tendencySeed?: string;
 }
 
 type DashboardTab = 'rotation' | 'tactics' | 'opponent';
@@ -35,7 +36,7 @@ type DashboardTab = 'rotation' | 'tactics' | 'opponent';
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
-  playoffSeries = [], depthChart, onUpdateDepthChart, onForceSave
+  playoffSeries = [], depthChart, onUpdateDepthChart, onForceSave, tendencySeed
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
@@ -105,7 +106,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="h-full animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col overflow-hidden">
-      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
+      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} tendencySeed={tendencySeed} />}
 
       <DashboardReviewBanners
         onShowSeasonReview={onShowSeasonReview}

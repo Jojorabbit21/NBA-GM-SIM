@@ -12,9 +12,10 @@ import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
 interface LeaderboardViewProps {
   teams: Team[];
   schedule?: Game[];
+  tendencySeed?: string;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [] }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
   const [statCategory, setStatCategory] = useState<StatCategory>('Traditional');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
@@ -126,6 +127,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
             teamId={(viewPlayer as any).teamId}
             onClose={() => setViewPlayer(null)}
             allTeams={teams}
+            tendencySeed={tendencySeed}
         />
       )}
 

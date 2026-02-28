@@ -17,10 +17,11 @@ interface InboxViewProps {
   userId: string;
   teams: Team[];
   onUpdateUnreadCount: () => void;
+  tendencySeed?: string;
   onViewGameResult: (result: any) => void; // [New] Prop to trigger view switch
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, onViewGameResult }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewGameResult }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,7 +98,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">
-       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
+       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} tendencySeed={tendencySeed} />}
        
       {/* Main Layout: Left Sidebar + Right Body */}
       <div className="flex-1 flex gap-0 min-h-0 overflow-hidden">

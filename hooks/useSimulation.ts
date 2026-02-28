@@ -24,7 +24,8 @@ export const useSimulation = (
     session: any,
     isGuestMode: boolean,
     refreshUnreadCount: () => void,
-    depthChart?: DepthChart | null
+    depthChart?: DepthChart | null,
+    tendencySeed?: string
 ) => {
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
@@ -68,7 +69,7 @@ export const useSimulation = (
             // 4. Handle User Game
             if (userGame) {
                 // Run Simulation (Pure Logic)
-                const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart);
+                const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed);
                 
                 setTempSimulationResult(result);
 
@@ -184,7 +185,7 @@ export const useSimulation = (
             setIsSimulating(false);
             setToastMessage("시뮬레이션 중 오류가 발생했습니다.");
         }
-    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries]);
+    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed]);
 
     const clearLastGameResult = () => setLastGameResult(null);
     const loadSavedGameResult = (result: any) => setLastGameResult(result);

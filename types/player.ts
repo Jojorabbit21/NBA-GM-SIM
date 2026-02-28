@@ -49,6 +49,28 @@ export interface HiddenTendencies {
     lateralBias: number;
 }
 
+// [New] Save-seeded hidden tendencies (세이브별 랜덤 배정, 매 플레이스루 고유)
+export interface SaveTendencies {
+    // 멘탈 (6)
+    clutchGene: number;              // -1.0~+1.0 클러치 히트레이트 ±3%
+    consistency: number;             // 0.0~1.0   콜드스트릭 회복률 0.7x~1.3x
+    confidenceSensitivity: number;   // 0.3~1.7   핫/콜드 진폭 배율
+    composure: number;               // -1.0~+1.0 턴오버 확률 ±1%
+    motorIntensity: number;          // 0.5~1.5   리바운드 확률 ±15%
+    focusDrift: number;              // 0.0~1.0   피로 시 히트레이트 추가 감소
+
+    // 플레이스타일 (5)
+    shotDiscipline: number;          // -1.0~+1.0 히트레이트 ±1.5%
+    defensiveMotor: number;          // -1.0~+1.0 수비 레이팅 ±3pt
+    ballDominance: number;           // 0.5~1.5   액터 선택 가중치 배율
+    foulProneness: number;           // -1.0~+1.0 파울 확률 ±2%
+    playStyle: number;               // -1.0(패스)~+1.0(슛) 플레이 성향
+
+    // 성격 (2)
+    temperament: number;             // -1.0(냉정)~+1.0(다혈질) 테크니컬 확률
+    ego: number;                     // -1.0(겸손)~+1.0(자존심) 옵션 순위별 퍼포먼스
+}
+
 // [New] Interface for saving player state (Condition + Health)
 export interface SavedPlayerState {
     condition: number;

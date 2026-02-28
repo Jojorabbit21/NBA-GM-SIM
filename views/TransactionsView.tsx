@@ -23,13 +23,14 @@ interface TransactionsViewProps {
   transactions?: Transaction[];
   onAddTransaction?: (t: Transaction) => void;
   onForceSave?: (overrides?: any) => Promise<void>;
-  userId?: string; 
-  refreshUnreadCount?: () => void; 
+  userId?: string;
+  refreshUnreadCount?: () => void;
+  tendencySeed?: string;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ 
-    team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions, 
-    onAddTransaction, onForceSave, userId, refreshUnreadCount 
+    team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions,
+    onAddTransaction, onForceSave, userId, refreshUnreadCount, tendencySeed
 }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
@@ -86,7 +87,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal">
-       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} />}
+       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} tendencySeed={tendencySeed} />}
        
        {pendingTrade && (
          <div className="relative z-[200]">

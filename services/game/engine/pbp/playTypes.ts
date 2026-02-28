@@ -118,11 +118,25 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const rank = optionRanks.get(p.playerId) || 3;
             const usageMultiplier = getContextualMultiplier(rank, playType);
 
-            // C. Final Weight = Skill^2.5 * OptionMultiplier
+            // C. Final Weight = Skill^2.5 * OptionMultiplier * Tendencies
             // Power of 2.5 emphasizes skill gap, OptionMultiplier enforces hierarchy
-            const weight = Math.pow(Math.max(1, rawScore), 2.5) * usageMultiplier;
+            let weight = Math.pow(Math.max(1, rawScore), 2.5) * usageMultiplier;
 
-            return { p, weight };
+            // [SaveTendency] ballDominance: scales actor selection weight (0.5x~1.5x)
+            weight *= (p.tendencies?.ballDominance ?? 1.0);
+
+            // [SaveTendency] playStyle: pass-first(-1) vs shoot-first(+1)
+            // Iso, PostUp → shoot-first boost: +30% at playStyle=+1.0
+            // PnR_Handler, Handoff → pass-first boost: +20% at playStyle=-1.0
+            // CatchShoot, Cut → neutral (receiver role)
+            const ps = p.tendencies?.playStyle ?? 0;
+            if (playType === 'Iso' || playType === 'PostUp') {
+                weight *= (1 + ps * 0.3);
+            } else if (playType === 'PnR_Handler' || playType === 'Handoff') {
+                weight *= (1 - ps * 0.2);
+            }
+
+            return { p, weight: Math.max(0.01, weight) };
         });
 
         // 2. Total Weight
