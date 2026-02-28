@@ -334,21 +334,24 @@ export function stepPossession(state: GameState): StepResult {
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
 
-    // ★ 1. 임시 벤치 선수 복귀 체크 (맵 복원 → 이후 rotation 체크에 반영)
+    // ★ 1. 임시 벤치 선수 복귀 체크 (맵 복원 → 이후 체크에 반영)
     checkTemporaryReturns(state, state.home, currentMinute);
     checkTemporaryReturns(state, state.away, currentMinute);
 
-    // 2. 정기 로테이션 (맵 기반 교체)
-    checkAndApplyRotation(state, state.home, currentTotalSec);
-    checkAndApplyRotation(state, state.away, currentTotalSec);
-
-    // 3. 긴급 교체 체크 (V2: 파울트러블 매트릭스 포함)
+    // 2. 긴급 교체 체크 (V2: 퇴장/부상/파울트러블/탈진)
+    //    ★ 반드시 rotation 전에 실행 — 퇴장 시 승계 로직(applyRotationSuccession)으로
+    //      맵을 갱신해야 rotation 체크가 올바른 라인업을 구성함.
+    //      (이전: rotation이 먼저 실행되어 pf≥6 선수를 fallback으로 처리 → 승계 미실행 버그)
     const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
     const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
 
-    // 4. 교체 실행 (임시/영구 분기)
+    // 3. 교체 실행 (임시/영구 분기)
     hSubs.forEach(req => executeSubstitution(state, state.home, req, currentMinute));
     aSubs.forEach(req => executeSubstitution(state, state.away, req, currentMinute));
+
+    // 4. 정기 로테이션 (맵 기반 교체) — 승계 후 갱신된 맵 기반으로 정확한 라인업 구성
+    checkAndApplyRotation(state, state.home, currentTotalSec);
+    checkAndApplyRotation(state, state.away, currentTotalSec);
 
     // 포세션 전환
     let isOffReb = false;
