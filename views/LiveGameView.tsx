@@ -5,9 +5,11 @@ import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
 import { LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
 import { TEAM_DATA } from '../data/teamData';
 import { TacticsSlidersPanel } from '../components/dashboard/tactics/TacticsSlidersPanel';
+import { RotationGanttChart } from '../components/dashboard/RotationGanttChart';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
 import { UserPlus, UserMinus, Clock } from 'lucide-react';
 import { calculateWinProbability } from '../utils/simulationMath';
+import { calculatePlayerOvr } from '../utils/constants';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -761,95 +763,6 @@ const LiveShotChart: React.FC<{
 };
 
 // ─────────────────────────────────────────────────────────────
-// Rotation Tab (읽기 전용)
-// ─────────────────────────────────────────────────────────────
-
-const LiveRotationTab: React.FC<{
-    userTactics: GameTactics;
-    userTeam: Team;
-    currentMinute: number;
-    pauseReason: PauseReason | null;
-}> = ({ userTactics, userTeam, currentMinute, pauseReason }) => {
-    const rotMap = userTactics.rotationMap || {};
-    const roster = userTeam.roster;
-    const scheduledPlayers = roster.filter(p => rotMap[p.id]?.some(Boolean));
-    const canEdit = pauseReason === 'quarterEnd' || pauseReason === 'halftime';
-    const quarterBoundaries = [0, 12, 24, 36, 48];
-    const quarterLabels = ['Q1', 'Q2', 'Q3', 'Q4'];
-
-    return (
-        <div className="flex-1 overflow-auto p-4">
-            {canEdit ? (
-                <div className="mb-3 px-3 py-2 bg-emerald-900/30 border border-emerald-700/40 rounded-xl text-xs text-emerald-400 font-semibold">
-                    ✓ 쿼터 사이 — 로테이션 편집이 활성화됩니다 (다음 버전에서 구현 예정)
-                </div>
-            ) : (
-                <div className="mb-3 px-3 py-2 bg-slate-800/50 border border-slate-700/40 rounded-xl text-xs text-slate-500 font-semibold">
-                    경기 중 읽기 전용 — 쿼터 종료/하프타임 시 편집 가능
-                </div>
-            )}
-            <div className="overflow-x-auto">
-                <table className="text-[10px] border-collapse w-full">
-                    <thead>
-                        <tr>
-                            <th className="sticky left-0 bg-slate-950 text-slate-500 text-left px-2 py-1 font-semibold min-w-[100px]">선수</th>
-                            {Array.from({ length: 48 }, (_, i) => {
-                                const isQBoundary = quarterBoundaries.slice(1, -1).includes(i);
-                                const isCurrentMin = i === currentMinute;
-                                const qLabel = i % 12 === 0 ? quarterLabels[Math.floor(i / 12)] : null;
-                                return (
-                                    <th
-                                        key={i}
-                                        className={`w-4 h-6 text-center font-bold transition-colors ${
-                                            isCurrentMin
-                                                ? 'text-indigo-400 border-l border-r border-indigo-500'
-                                                : isQBoundary
-                                                ? 'border-l border-slate-600 text-slate-600'
-                                                : 'text-slate-700'
-                                        }`}
-                                    >
-                                        {qLabel || (i % 6 === 0 ? i : '')}
-                                    </th>
-                                );
-                            })}
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {scheduledPlayers.map(p => {
-                            const schedule = rotMap[p.id] || Array(48).fill(false);
-                            return (
-                                <tr key={p.id} className="border-t border-slate-800/50">
-                                    <td className="sticky left-0 bg-slate-950 px-2 py-0.5 text-slate-300 font-semibold truncate max-w-[100px]">
-                                        {p.name}
-                                    </td>
-                                    {schedule.map((active: boolean, min: number) => {
-                                        const isCurrentMin = min === currentMinute;
-                                        return (
-                                            <td
-                                                key={min}
-                                                className={`w-4 h-5 border border-slate-800/30 ${
-                                                    isCurrentMin
-                                                        ? active
-                                                            ? 'bg-indigo-500 border-indigo-400'
-                                                            : 'bg-slate-800 border-indigo-500'
-                                                        : active
-                                                        ? 'bg-indigo-600/60'
-                                                        : 'bg-slate-900'
-                                                }`}
-                                            />
-                                        );
-                                    })}
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────
 // Tactics Tab
 // ─────────────────────────────────────────────────────────────
 
@@ -882,7 +795,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, onGameEnd,
 }) => {
     const {
-        displayState, callTimeout, applyTactics,
+        displayState, callTimeout, applyTactics, applyRotationMap,
         makeSubstitution, resume, pause, getResult,
         setSpeed,
     } = useLiveGame(
@@ -915,6 +828,20 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
     const currentMinute = Math.min(47, Math.floor(((quarter - 1) * 720 + (720 - gameClock)) / 60));
     const maxSelectableQ = (isGameEnd ? 4 : quarter) as 0 | 1 | 2 | 3 | 4;
+
+    // Rotation chart derived data
+    const userDepthChart = isUserHome ? homeDepthChart : awayDepthChart;
+    const userHealthySorted = useMemo(() =>
+        userTeam.roster
+            .filter(p => p.health !== 'Injured')
+            .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)),
+        [userTeam.roster]
+    );
+    const canEditRotation = pauseReason === 'quarterEnd' || pauseReason === 'halftime' || pauseReason === 'timeout';
+    const handleRotationUpdate = useCallback((t: GameTactics) => {
+        applyRotationMap(t.rotationMap);
+    }, [applyRotationMap]);
+    const handleViewPlayerNoop = useCallback(() => {}, []);
 
     // 30초 카운트다운
     useEffect(() => {
@@ -1424,15 +1351,22 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     </>
                 )}
 
-                {/* ── 박스스코어 탭 ── */}
                 {/* ── 로테이션 탭 ── */}
                 {activeTab === 'rotation' && (
-                    <LiveRotationTab
-                        userTactics={liveTactics}
-                        userTeam={userTeam}
-                        currentMinute={currentMinute}
-                        pauseReason={pauseReason}
-                    />
+                    <div className="flex-1 overflow-hidden">
+                        <RotationGanttChart
+                            team={userTeam}
+                            tactics={liveTactics}
+                            depthChart={userDepthChart || null}
+                            healthySorted={userHealthySorted}
+                            onUpdateTactics={handleRotationUpdate}
+                            onViewPlayer={handleViewPlayerNoop}
+                            liveMode
+                            currentMinute={currentMinute}
+                            lockedBefore={currentMinute}
+                            readOnly={!canEditRotation}
+                        />
+                    </div>
                 )}
 
                 {/* ── 전술 탭 ── */}

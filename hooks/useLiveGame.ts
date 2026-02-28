@@ -56,6 +56,7 @@ export interface UseLiveGameReturn {
     // 유저 액션
     callTimeout: () => void;
     applyTactics: (newSliders: GameTactics['sliders']) => void;
+    applyRotationMap: (newMap: Record<string, boolean[]>) => void;
     makeSubstitution: (outId: string, inId: string) => void;
     resume: () => void;
     pause: () => void;           // 개발/디버그용 일시정지
@@ -188,6 +189,24 @@ export function useLiveGame(
         syncDisplay();
     }, [userTeamId, syncDisplay]);
 
+    const applyRotationMap = useCallback((newMap: Record<string, boolean[]>) => {
+        const state = gameStateRef.current;
+        const userTeam = state.home.id === userTeamId ? state.home : state.away;
+        userTeam.tactics.rotationMap = { ...newMap };
+
+        // originalRotationMap도 미래 분만 갱신 (파울 트러블 복구 시 유저 의도 반영)
+        const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+        const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+        Object.entries(newMap).forEach(([pid, schedule]) => {
+            if (!state.originalRotationMap[pid])
+                state.originalRotationMap[pid] = Array(48).fill(false);
+            for (let i = currentMinute; i < 48; i++)
+                state.originalRotationMap[pid][i] = schedule[i];
+        });
+
+        syncDisplay();
+    }, [userTeamId, syncDisplay]);
+
     const makeSubstitution = useCallback((outId: string, inId: string) => {
         applyManualSubstitution(gameStateRef.current, userTeamId, outId, inId);
         syncDisplay();
@@ -235,6 +254,7 @@ export function useLiveGame(
         displayState,
         callTimeout,
         applyTactics,
+        applyRotationMap,
         makeSubstitution,
         resume,
         pause,
