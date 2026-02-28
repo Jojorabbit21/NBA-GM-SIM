@@ -49,6 +49,7 @@ export interface LiveDisplayState {
     homeFouls: number;          // 현재 쿼터 팀 파울
     awayFouls: number;
     userTactics: GameTactics;   // 유저 팀 현재 전술 (전술 탭 초기값)
+    avgPossessionTime: { home: number; away: number }; // 평균 포세션 소모 시간 (초)
 }
 
 export interface UseLiveGameReturn {
@@ -316,6 +317,14 @@ function _buildDisplay(
         userTactics: {
             ...userTeam.tactics,
             rotationMap: { ...userTeam.tactics.rotationMap },
+        },
+        avgPossessionTime: {
+            home: state.possessionTimeAccum.home.count > 0
+                ? state.possessionTimeAccum.home.total / state.possessionTimeAccum.home.count
+                : 0,
+            away: state.possessionTimeAccum.away.count > 0
+                ? state.possessionTimeAccum.away.total / state.possessionTimeAccum.away.count
+                : 0,
         },
     };
 }

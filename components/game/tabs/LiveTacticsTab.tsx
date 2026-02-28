@@ -18,6 +18,8 @@ interface LiveTacticsTabProps {
     onApplyTactics: (sliders: GameTactics['sliders']) => void;
     /** 선수 이름 조회용: playerId → playerName */
     playerNames: Record<string, string>;
+    /** 팀별 평균 포세션 소모 시간 (초) — user/opponent 기준 */
+    avgPossessionTime: { user: number; opponent: number };
 }
 
 /** 엔진 PlayType → 표시 그룹 매핑 */
@@ -108,6 +110,14 @@ const PlayTypePPPTable: React.FC<{ title: string; data: PlayTypeStats[] }> = ({ 
             <span className="text-[11px] text-slate-600">-</span>
         ) : (
             <div className="flex flex-col gap-0.5">
+                {/* 컬럼 헤더 */}
+                <div className="flex items-center gap-2 pb-0.5">
+                    <div className="w-1.5 shrink-0" />
+                    <span className="text-[9px] font-bold text-slate-600 w-20 truncate uppercase">플레이타입</span>
+                    <div className="flex-1" />
+                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right uppercase">비율</span>
+                    <span className="text-[9px] font-bold text-slate-600 tabular-nums w-8 text-right uppercase">PPP</span>
+                </div>
                 {data.map(item => (
                     <div key={item.key} className="flex items-center gap-2 py-0.5">
                         <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
@@ -140,7 +150,7 @@ const XIcon: React.FC<{ size?: number; className?: string; strokeWidth?: number 
 // ─────────────────────────────────────────────────────────────
 
 export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
-    userTactics, userTeamId, opponentTeamId, shotEvents, onApplyTactics, playerNames
+    userTactics, userTeamId, opponentTeamId, shotEvents, onApplyTactics, playerNames, avgPossessionTime
 }) => {
     const { sliders } = userTactics;
     const teamColor = TEAM_DATA[userTeamId]?.colors.primary || '#6366f1';
@@ -304,16 +314,16 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                                 </div>
                             </div>
 
-                            {/* Player Filter */}
-                            <div className="col-span-4 flex flex-col h-full border-l border-slate-800 bg-slate-900/20">
-                                <div className="px-3 py-2 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
+                            {/* Player Filter — 샷차트 높이에 맞춤 */}
+                            <div className="col-span-4 flex flex-col border-l border-slate-800 bg-slate-900/20" style={{ minHeight: 0 }}>
+                                <div className="px-3 py-2 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center shrink-0">
                                     <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">필터</span>
                                     <button onClick={toggleAll}
                                         className="text-[9px] font-bold text-indigo-400 hover:text-white uppercase tracking-wider transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-1.5 py-0.5 rounded">
                                         {selectedPlayerIds.size === shootingPlayers.length ? '해제' : '전체'}
                                     </button>
                                 </div>
-                                <div className="flex-1 overflow-y-auto custom-scrollbar p-1 space-y-0.5" style={{ maxHeight: '280px' }}>
+                                <div className="flex-1 overflow-y-auto custom-scrollbar p-1 space-y-0.5">
                                     {shootingPlayers.map(player => {
                                         const isSelected = selectedPlayerIds.has(player.id);
                                         return (
@@ -368,6 +378,23 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                         {/* Left: 게임 운영 + 슈팅 전략 */}
                         <div className="flex flex-col gap-1">
                             <h4 className="text-sm font-black text-white uppercase tracking-widest">게임 운영</h4>
+                            {/* 평균 포세션 소모 시간 */}
+                            <div className="flex items-center gap-3 py-1 px-2 bg-slate-800/50 rounded-lg mb-1">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">평균 포세션</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-500">우리</span>
+                                    <span className="text-xs font-black text-white tabular-nums">
+                                        {avgPossessionTime.user > 0 ? `${avgPossessionTime.user.toFixed(1)}s` : '-'}
+                                    </span>
+                                </div>
+                                <div className="w-px h-3 bg-slate-700" />
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-bold text-slate-500">상대</span>
+                                    <span className="text-xs font-black text-slate-400 tabular-nums">
+                                        {avgPossessionTime.opponent > 0 ? `${avgPossessionTime.opponent.toFixed(1)}s` : '-'}
+                                    </span>
+                                </div>
+                            </div>
                             <SliderControl label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
                                 tooltip="높을수록 빠른 공수전환과 얼리 오펜스를 시도합니다." fillColor="#f97316" />
                             <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}

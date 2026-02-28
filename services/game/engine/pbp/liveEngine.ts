@@ -193,6 +193,10 @@ export function createGameState(
         userTeamId,
         originalRotationMap: {},
         activeOverrides: [],
+        possessionTimeAccum: {
+            home: { total: 0, count: 0 },
+            away: { total: 0, count: 0 },
+        },
     };
 
     // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
@@ -315,6 +319,11 @@ export function stepPossession(state: GameState): StepResult {
 
     const result = simulatePossession(state, { clutchContext });
     const timeTaken = calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
+
+    // 포세션 시간 누적 (평균 샷클락 소모 추적)
+    const sideAccum = state.possession === 'home' ? state.possessionTimeAccum.home : state.possessionTimeAccum.away;
+    sideAccum.total += timeTaken;
+    sideAccum.count += 1;
 
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };
