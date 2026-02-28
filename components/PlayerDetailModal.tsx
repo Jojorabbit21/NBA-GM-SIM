@@ -12,15 +12,27 @@ import {
     getZoneStyle, getZonePillColors
 } from '../utils/courtZones';
 import { ATTR_GROUPS } from '../data/attributeConfig';
+import { generateHiddenTendencies, generateSaveTendencies } from '../utils/hiddenTendencies';
 
 interface PlayerDetailModalProps {
     player: Player;
     teamName?: string;
     teamId?: string;
     allTeams?: Team[];
+    tendencySeed?: string;
     onClose: () => void;
 }
 const ATTR_W = 50;
+
+// ── Trait Badge Color Map (Tailwind dynamic class workaround) ──
+const TRAIT_COLORS: Record<string, string> = {
+    emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    red: 'bg-red-500/10 text-red-400 border-red-500/20',
+    amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+    sky: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+    indigo: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+    slate: 'bg-slate-700/50 text-slate-400 border-slate-600/30',
+};
 
 // ── Stats Sections Config ──
 const TRAD_COLS = [
@@ -67,9 +79,50 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, onClose }) => {
+export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, tendencySeed, onClose }) => {
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
     const calculatedOvr = calculatePlayerOvr(player);
+
+    // ── Personality & Playstyle Traits ──
+    const traits = useMemo(() => {
+        const list: { label: string; color: string }[] = [];
+
+        // 1. 선호 지역 (zones from meta_players)
+        if (player.tendencies?.zones) {
+            const z = player.tendencies.zones;
+            const paint = z.ra + z.itp;
+            const mid = z.mid;
+            const three = z.cnr + z.p45 + z.atb;
+            const max = Math.max(paint, mid, three);
+            if (max === three) list.push({ label: '3점 라인 바깥 선호', color: 'indigo' });
+            else if (max === mid) list.push({ label: '미드레인지 선호', color: 'indigo' });
+            else list.push({ label: '페인트존 선호', color: 'indigo' });
+        }
+
+        // 2. 좌우 편향 (lateralBias from hash-based hidden tendencies)
+        const hidden = generateHiddenTendencies(player);
+        if (hidden.lateralBias <= -0.3) list.push({ label: '왼쪽 선호', color: 'slate' });
+        else if (hidden.lateralBias >= 0.3) list.push({ label: '오른쪽 선호', color: 'slate' });
+        else list.push({ label: '균형', color: 'slate' });
+
+        // 3~6. 세이브 텐던시 (seed-dependent, threshold ±0.4)
+        if (tendencySeed) {
+            const st = generateSaveTendencies(tendencySeed, player.id);
+            if (st.clutchGene >= 0.4) list.push({ label: '강심장', color: 'emerald' });
+            else if (st.clutchGene <= -0.4) list.push({ label: '새가슴', color: 'red' });
+
+            if (st.composure >= 0.4) list.push({ label: '침착함', color: 'emerald' });
+            else if (st.composure <= -0.4) list.push({ label: '부담감을 느낌', color: 'amber' });
+
+            if (st.temperament >= 0.4) list.push({ label: '다혈질', color: 'amber' });
+            else if (st.temperament <= -0.4) list.push({ label: '냉정함', color: 'sky' });
+
+            if (st.ego >= 0.4) list.push({ label: '자존심이 강함', color: 'amber' });
+            else if (st.ego <= -0.4) list.push({ label: '모두와 잘 어울림', color: 'emerald' });
+        }
+
+        return list;
+    }, [player, tendencySeed]);
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -233,7 +286,21 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     </div>
                 </div>
 
-                {/* 2. Stats + Shot Chart — Side by Side */}
+                {/* 2. Personality & Playstyle Traits */}
+                {traits.length > 0 && (
+                    <div className="mb-6">
+                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">성격 & 플레이스타일</h3>
+                        <div className="flex flex-wrap gap-2">
+                            {traits.map((t, i) => (
+                                <span key={i} className={`px-3 py-1 rounded-full text-xs font-bold border ${TRAIT_COLORS[t.color] || TRAIT_COLORS.slate}`}>
+                                    {t.label}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* 3. Stats + Shot Chart — Side by Side */}
                 <div className="flex gap-6 items-start">
 
                     {/* Left: Combined Stats Card */}

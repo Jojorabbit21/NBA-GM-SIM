@@ -1,20 +1,21 @@
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
 import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
+import { clearPlayerInjury } from '../utils/injuries';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
 
 export const INITIAL_DATE = '2025-10-20';
 
-export const useGameData = (session: any, isGuestMode: boolean) => {
+export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: RosterMode | null) => {
     const queryClient = useQueryClient();
 
     // --- State ---
@@ -27,6 +28,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const [currentSimDate, setCurrentSimDate] = useState<string>(INITIAL_DATE);
     const [userTactics, setUserTactics] = useState<GameTactics | null>(null);
     const [depthChart, setDepthChart] = useState<DepthChart | null>(null); // [New] Depth Chart
+    const [tendencySeed, setTendencySeed] = useState<string | null>(null); // [New] Save-seeded hidden tendencies
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -37,13 +39,32 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
     const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams });
-    useEffect(() => { 
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams }; 
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams]);
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, tendencySeed });
+    useEffect(() => {
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, tendencySeed };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, tendencySeed]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
+
+    // --- Custom Mode: Injury-free freeAgents ---
+    const effectiveFreeAgents = useMemo(() => {
+        const fa = baseData?.freeAgents || [];
+        if (rosterMode !== 'custom') return fa;
+        return fa.map(clearPlayerInjury);
+    }, [baseData?.freeAgents, rosterMode]);
+
+    // --- Custom Mode: Clear hardcoded injuries from teams ---
+    useEffect(() => {
+        if (rosterMode !== 'custom') return;
+        setTeams(prev => {
+            if (prev.length === 0) return prev;
+            return prev.map(t => ({
+                ...t,
+                roster: t.roster.map(clearPlayerInjury),
+            }));
+        });
+    }, [rosterMode]);
 
     // ------------------------------------------------------------------
     //  INIT LOGIC
@@ -152,6 +173,16 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                     if (checkpoint.depth_chart) {
                         setDepthChart(checkpoint.depth_chart);
                     }
+
+                    // [New] Load or Generate Tendency Seed
+                    if (checkpoint.tendency_seed) {
+                        setTendencySeed(checkpoint.tendency_seed);
+                    } else {
+                        // Legacy save: auto-generate seed and persist immediately
+                        const newSeed = crypto.randomUUID();
+                        setTendencySeed(newSeed);
+                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
+                    }
                     
                     if (playoffState && playoffState.bracket_data) {
                         setPlayoffSeries(playoffState.bracket_data.series);
@@ -226,8 +257,11 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 draftPicksRef.current = overrides.draftPicks;
             }
 
+            // tendencySeed: override에서 전달되면 우선 사용, 아니면 ref에서 가져옴
+            const seed = overrides?.tendencySeed || gameStateRef.current.tendencySeed;
+
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current);
+                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed);
             }
         } catch (e: any) {
             console.error("Save Failed:", e);
@@ -251,13 +285,18 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setNews([{ type: 'text', content: welcome }]);
         }
 
+        // [New] Generate unique tendency seed for this save
+        const newSeed = crypto.randomUUID();
+        setTendencySeed(newSeed);
+
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
 
-        await forceSave({ 
-            myTeamId: teamId, 
+        await forceSave({
+            myTeamId: teamId,
             currentSimDate: INITIAL_DATE,
-            userTactics: newTactics
+            userTactics: newTactics,
+            tendencySeed: newSeed
         });
 
         hasInitialLoadRef.current = true;
@@ -298,6 +337,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
             setPlayoffSeries([]);
             setUserTactics(null);
             setDepthChart(null); // [New]
+            setTendencySeed(null); // [New]
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -330,8 +370,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         // 2. 전체 선수 풀 (id → Player 매핑) — freeAgents(레전드) 포함
         const playerMap = new Map<string, Player>();
         teams.forEach(t => t.roster.forEach(p => playerMap.set(p.id, p)));
-        const fa = baseData?.freeAgents || [];
-        fa.forEach((p: Player) => playerMap.set(p.id, p));
+        effectiveFreeAgents.forEach((p: Player) => playerMap.set(p.id, p));
 
         // 3. 각 팀의 로스터를 드래프트 결과로 교체
         const newTeams = teams.map(team => {
@@ -371,7 +410,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
                 picks,
             },
         });
-    }, [teams, myTeamId, baseData, forceSave]);
+    }, [teams, myTeamId, effectiveFreeAgents, forceSave]);
 
     // 전술/뎁스차트 변경 시 디바운스 자동 저장 (1.5초)
     const tacticsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -411,6 +450,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         currentSimDate, setCurrentSimDate,
         userTactics, setUserTactics,
         depthChart, setDepthChart, // [New]
+        tendencySeed, // [New] Save-seeded hidden tendencies
         news, setNews,
         
         isBaseDataLoading,
@@ -424,7 +464,7 @@ export const useGameData = (session: any, isGuestMode: boolean) => {
         forceSave,
         cleanupData,
         
-        freeAgents: baseData?.freeAgents || [],
+        freeAgents: effectiveFreeAgents,
         draftPicks: draftPicksRef.current,
 
         hasInitialLoadRef,

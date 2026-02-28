@@ -33,3 +33,11 @@ export const KNOWN_INJURIES: Record<string, { type: string, returnDate: string }
     'Ty Jerome': { type: '종아리 염좌', returnDate: '2026-02-01' },
     'Dejounte Murray': { type: '아킬레스건 파열', returnDate: '2026-01-15' }
 };
+
+/** 선수의 부상 상태를 건강으로 초기화 (커스텀 로스터 모드용) */
+export const clearPlayerInjury = <T extends { health?: string; injuryType?: string; returnDate?: string }>(player: T): T => ({
+    ...player,
+    health: 'Healthy' as const,
+    injuryType: undefined,
+    returnDate: undefined,
+});

@@ -165,14 +165,15 @@ export function createGameState(
     isHomeB2B: boolean = false,
     isAwayB2B: boolean = false,
     homeDepthChart?: DepthChart | null,
-    awayDepthChart?: DepthChart | null
+    awayDepthChart?: DepthChart | null,
+    tendencySeed?: string
 ): GameState {
     const hTactics = (userTeamId === homeTeam.id && userTactics) ? userTactics : undefined;
     const aTactics = (userTeamId === awayTeam.id && userTactics) ? userTactics : undefined;
 
     const state: GameState = {
-        home: initTeamState(homeTeam, hTactics, homeDepthChart),
-        away: initTeamState(awayTeam, aTactics, awayDepthChart),
+        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed),
+        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed),
         quarter: 1,
         gameClock: 720,
         shotClock: 24,

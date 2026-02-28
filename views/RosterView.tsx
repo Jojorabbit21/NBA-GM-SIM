@@ -11,9 +11,10 @@ interface RosterViewProps {
   allTeams: Team[];
   myTeamId: string;
   initialTeamId?: string | null;
+  tendencySeed?: string;
 }
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, tendencySeed }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
   const [tab, setTab] = useState<'roster' | 'stats' | 'shooting'>('roster');
   const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
@@ -35,6 +36,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
             teamId={selectedTeam.id}
             onClose={() => setViewPlayer(null)}
             allTeams={allTeams}
+            tendencySeed={tendencySeed}
         />
       )}
 

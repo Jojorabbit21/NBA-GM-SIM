@@ -76,11 +76,17 @@ export function calculateHitRate(
     // 피로도 → FG% 보정
     // 공격자: condition 0 → -7%, condition 70 → 0, condition 100 → +3%
     hitRate += (fatigueOff - 0.70) * 0.10;
+    // [SaveTendency] focusDrift: extra FG% loss when heavily fatigued (condition < 60%)
+    if (fatigueOff < 0.60) {
+        hitRate -= (actor.tendencies?.focusDrift ?? 0) * (0.60 - fatigueOff) * 0.05;
+    }
     // 수비자: condition 0 → +3.5%, condition 70 → 0, condition 100 → -1.5%
     hitRate -= (fatigueDef - 0.70) * 0.05;
 
     const offRating = zoneOffRating;
-    const defRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
+    const baseDefRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
+    // [SaveTendency] defensiveMotor: ±3pt to effective def rating
+    const defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 3;
     
     // Apply Sliders
     // Def Intensity: Reduces Shot PCT
@@ -203,6 +209,8 @@ export function calculateHitRate(
 
         const clutchRating = (a.intangibles * 0.50 + a.offConsist * 0.30 + a.shotIq * 0.20) / 100;
         let clutchModifier = (clutchRating - 0.70) * 0.10;
+        // [SaveTendency] clutchGene: ±3% hit rate in clutch
+        clutchModifier += (actor.tendencies?.clutchGene ?? 0) * 0.03;
 
         if (cCfg.ENABLED) {
             // A-1. The Closer: 클러치 보정치 2배
@@ -234,7 +242,8 @@ export function calculateHitRate(
 
     // 8. Hot/Cold Streak (±4% 캡)
     if (actor.hotColdRating !== 0) {
-        let temperatureBonus = actor.hotColdRating * 0.04;
+        // [SaveTendency] confidenceSensitivity: scales hot/cold amplitude (0.3x~1.7x)
+        let temperatureBonus = actor.hotColdRating * 0.04 * (actor.tendencies?.confidenceSensitivity ?? 1.0);
         // 콜드 스트릭 완화: offConsist가 높으면 멘탈 회복
         if (temperatureBonus < 0) {
             const consistencyRecover = (actor.attr.offConsist / 100) * 0.5;

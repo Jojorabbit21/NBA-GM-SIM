@@ -78,7 +78,8 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
             score *= cfg.RAIDER_SCORE_MULTIPLIER;
         }
 
-        score *= Math.random();
+        // [SaveTendency] motorIntensity: hustle factor for rebounding (0.5x~1.5x → 0.7+motor*0.6 range)
+        score *= Math.random() * (0.7 + (p.tendencies?.motorIntensity ?? 1.0) * 0.6);
 
         return { p, score };
     });

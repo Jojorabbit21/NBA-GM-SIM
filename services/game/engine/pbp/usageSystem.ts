@@ -20,7 +20,9 @@ function calculateScoringGravity(p: LivePlayer): number {
     const baseOffense = (p.attr.ins * 0.4) + (p.attr.out * 0.3) + (p.attr.mid * 0.2) + (p.attr.ft * 0.1);
     
     // 2. 멘탈리티 (공격 적극성/기복/IQ) - 스타성을 결정하는 요소
-    const mentality = (p.attr.offConsist * 0.4) + (p.attr.shotIq * 0.4) + (p.attr.pas * 0.2); // [Fix] intangibles -> pas/handling for creation
+    // [SaveTendency] consistency: scales offConsist contribution (0.8x~1.2x)
+    const consistMod = 1.0 + ((p.tendencies?.consistency ?? 0.6) - 0.5) * 0.2;
+    const mentality = (p.attr.offConsist * 0.4 * consistMod) + (p.attr.shotIq * 0.4) + (p.attr.pas * 0.2);
     
     // 3. 체력 보정 (지치면 옵션 순위에서 밀려남)
     const fatigueFactor = Math.max(0.5, p.currentCondition / 100);

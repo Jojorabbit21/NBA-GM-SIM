@@ -64,6 +64,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     userTactics={userTactics}
                     homeDepthChart={homeDepthChart}
                     awayDepthChart={awayDepthChart}
+                    tendencySeed={gameData.tendencySeed || undefined}
                     onGameEnd={async (result) => {
                         await sim.finalizeLiveGame(result);
                         setView('GameResult');
@@ -136,7 +137,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
         case 'Dashboard':
             if (myTeam && gameData.userTactics) {
                 return (
-                    <DashboardView 
+                    <DashboardView
                         team={myTeam} teams={gameData.teams} schedule={gameData.schedule}
                         onSim={sim.handleExecuteSim} tactics={gameData.userTactics}
                         onUpdateTactics={gameData.setUserTactics} currentSimDate={gameData.currentSimDate}
@@ -145,6 +146,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         onShowPlayoffReview={() => setView('PlayoffReview')}
                         depthChart={gameData.depthChart} onUpdateDepthChart={gameData.setDepthChart}
                         onForceSave={gameData.forceSave}
+                        tendencySeed={gameData.tendencySeed || undefined}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {
@@ -156,7 +158,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
             }
             return null;
         case 'Roster':
-            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} />;
+            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} />;
         case 'Schedule':
             return (
                 <ScheduleView
@@ -186,14 +188,15 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'Leaderboard':
-            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} />;
+            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} />;
         case 'Transactions':
             return (
-                <TransactionsView 
+                <TransactionsView
                     team={myTeam!} teams={gameData.teams} setTeams={gameData.setTeams}
                     addNews={() => {}} onShowToast={setToastMessage} currentSimDate={gameData.currentSimDate}
                     transactions={gameData.transactions} onAddTransaction={(tx) => gameData.setTransactions((prev: any) => [tx, ...prev])}
                     onForceSave={gameData.forceSave} userId={session?.user?.id} refreshUnreadCount={refreshUnreadCount}
+                    tendencySeed={gameData.tendencySeed || undefined}
                 />
             );
         case 'Playoffs':
@@ -209,6 +212,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     userId={session?.user?.id}
                     teams={gameData.teams}
                     onUpdateUnreadCount={refreshUnreadCount}
+                    tendencySeed={gameData.tendencySeed || undefined}
                     onViewGameResult={(result) => {
                         previousViewRef.current = 'Inbox';
                         sim.loadSavedGameResult(result);

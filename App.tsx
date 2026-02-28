@@ -31,14 +31,14 @@ import { DraftPoolSelectView } from './views/DraftPoolSelectView';
 
 const App: React.FC = () => {
     const { session, isGuestMode, setIsGuestMode, authLoading, handleLogout } = useAuth();
-    const gameData = useGameData(session, isGuestMode);
+    const [rosterMode, setRosterMode] = useState<RosterMode | null>(null);
+    const gameData = useGameData(session, isGuestMode, rosterMode);
     const [view, setView] = useState<AppView>('Dashboard');
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [unreadCount, setUnreadCount] = useState(0);
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
-    const [rosterMode, setRosterMode] = useState<RosterMode | null>(null);
     const [draftPoolType, setDraftPoolType] = useState<DraftPoolType | null>(null);
     const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
     const handleEditorClick = useCallback(() => setIsEditorModalOpen(true), []);
@@ -61,7 +61,8 @@ const App: React.FC = () => {
         gameData.myTeamId, gameData.currentSimDate, advanceDate,
         gameData.playoffSeries, gameData.setPlayoffSeries, gameData.setTransactions,
         gameData.setNews, setToastMessage, gameData.forceSave,
-        session, isGuestMode, refreshUnreadCount, gameData.depthChart
+        session, isGuestMode, refreshUnreadCount, gameData.depthChart,
+        gameData.tendencySeed || undefined
     );
 
     // 인증 및 라우팅 상태 감시

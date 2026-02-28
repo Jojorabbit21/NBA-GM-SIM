@@ -1,5 +1,5 @@
 
-import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate } from '../../../../types';
+import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies } from '../../../../types';
 import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -32,6 +32,9 @@ export interface LivePlayer extends PlayerBoxScore {
 
     // Dynamic Role Ratings (0-100+) - Recalculated on substitutions
     archetypes: ArchetypeRatings;
+
+    // [New] Save-seeded hidden tendencies (세이브별 고유 성향)
+    tendencies: SaveTendencies;
 
     // Attributes needed for simulation (Expanded for precise archetype calc)
     attr: {

@@ -16,16 +16,17 @@ export { generateAutoTactics };
  * NEW ENTRY POINT: Uses the Play-by-Play Engine
  */
 export function simulateGame(
-    homeTeam: Team, 
-    awayTeam: Team, 
-    userTeamId: string | null, 
+    homeTeam: Team,
+    awayTeam: Team,
+    userTeamId: string | null,
     userTactics?: GameTactics,
     isHomeB2B: boolean = false,
     isAwayB2B: boolean = false,
-    homeDepthChart?: DepthChart | null, // [New]
-    awayDepthChart?: DepthChart | null  // [New]
+    homeDepthChart?: DepthChart | null,
+    awayDepthChart?: DepthChart | null,
+    tendencySeed?: string
 ): SimulationResult {
-    
+
     // Call the new PbP engine
     const result = runFullGameSimulation(
         homeTeam,
@@ -34,8 +35,9 @@ export function simulateGame(
         userTactics,
         isHomeB2B,
         isAwayB2B,
-        homeDepthChart, // [New]
-        awayDepthChart  // [New]
+        homeDepthChart,
+        awayDepthChart,
+        tendencySeed
     );
     
     return result;

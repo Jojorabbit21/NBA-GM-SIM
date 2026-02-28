@@ -3,7 +3,7 @@ import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } fro
 import { resolvePlayAction } from './playTypes';
 import { calculateHitRate } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
-import { getTopPlayerGravity } from './usageSystem';
+import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
 import { PlayType } from '../../../../types';
 import { SIM_CONFIG } from '../../config/constants';
 
@@ -146,7 +146,9 @@ function calculateTurnoverChance(
     }
 
     // Calculate Total Turnover Probability
-    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + contextRisk + archetypeRisk;
+    // [SaveTendency] composure: ±1% turnover probability (positive composure = fewer turnovers)
+    const composureFactor = -(actor.tendencies?.composure ?? 0) * 0.01;
+    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + contextRisk + archetypeRisk + composureFactor;
 
     // Cap Probability (Min 2%, Max 25%)
     totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
@@ -330,6 +332,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         baseFoulChance += offFoulConfig.MANIPULATOR_FOUL_BONUS;
     }
 
+    // [SaveTendency] foulProneness: ±2% foul chance for defender
+    baseFoulChance += (defender.tendencies?.foulProneness ?? 0) * 0.02;
+    baseFoulChance = Math.max(0.03, baseFoulChance); // Minimum 3%
+
     // Foul Trouble: 파울 트러블 수비자는 조심스럽게 수비 → 파울 확률 감소 + 수비력 약화
     const ft = SIM_CONFIG.FOUL_TROUBLE;
     const defFouls = defender.pf;
@@ -391,7 +397,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 3.6 Technical Foul Check (독립 이벤트, 낮은 확률)
-    if (Math.random() < offFoulConfig.TECHNICAL_FOUL_CHANCE) {
+    // [SaveTendency] temperament: hot-headed(+1.0) → 1.8x tech foul chance, cool(-1.0) → 0.2x
+    const techChance = offFoulConfig.TECHNICAL_FOUL_CHANCE
+        * (1 + (defender.tendencies?.temperament ?? 0) * 0.8);
+    if (Math.random() < techChance) {
         return {
             type: 'technicalFoul' as const,
             offTeam, defTeam, actor, defender,
@@ -436,11 +445,19 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         ? (5 - defTeam.tactics.sliders.zoneUsage) * 0.003
         : 0;
 
+    // [SaveTendency] shotDiscipline: ±1.5% hit rate (good shot selection)
+    const shotDiscMod = (actor.tendencies?.shotDiscipline ?? 0) * 0.015;
+
+    // [SaveTendency] ego: option rank performance differential
+    // 1옵션(에이스) + ego=+1.0 → +1.5%, 5옵션 + ego=+1.0 → -1.5%
+    const actorOptionRank = getTeamOptionRanks(offTeam).get(actor.playerId) || 3;
+    const egoMod = (actor.tendencies?.ego ?? 0) * ((3 - actorOptionRank) / 2) * 0.015;
+
     const shotContext = calculateHitRate(
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
