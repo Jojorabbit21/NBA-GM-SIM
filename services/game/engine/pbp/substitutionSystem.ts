@@ -167,18 +167,16 @@ export function checkSubstitutionsV2(
             return;
         }
 
-        // --- Priority 2: 탈진 (임시, 맵 설정 시 무시) ---
+        // --- Priority 2: 탈진 (스케줄 무관, 무조건 임시 벤치) ---
+        //     benchWithOverride가 맵을 보존하고, 체력 회복 시 checkTemporaryReturns가 원상 복구함.
+        //     (기존: isScheduled일 때 스킵 → 체력 0%에도 계속 기용되는 버그)
         if (p.currentCondition <= HARD_FLOOR) {
-            if (isScheduled) {
-                // 유저가 명시적으로 스케줄 → 계속 기용
-            } else {
-                p.isShutdown = true;
-                requests.push({
-                    outPlayer: p, reason: '탈진(Shutdown)', exitType: 'temporary',
-                    returnMinute: null, benchReason: 'shutdown'
-                });
-                return;
-            }
+            p.isShutdown = true;
+            requests.push({
+                outPlayer: p, reason: '탈진(Shutdown)', exitType: 'temporary',
+                returnMinute: null, benchReason: 'shutdown'
+            });
+            return;
         }
 
         // --- Priority 3: 파울 트러블 (매트릭스 기반, 맵 설정 시 무시) ---

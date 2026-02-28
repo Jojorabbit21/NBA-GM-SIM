@@ -10,31 +10,88 @@ export interface SubRequest {
     reason: string;
 }
 
+/** 포지션 인접성 맵: 해당 포지션을 대체할 수 있는 인접 포지션 */
+const POSITION_ADJACENCY: Record<string, string[]> = {
+    PG: ['SG'],
+    SG: ['PG', 'SF'],
+    SF: ['SG', 'PF'],
+    PF: ['SF', 'C'],
+    C:  ['PF'],
+};
+
+/**
+ * 뎁스차트에서 특정 포지션의 대체자 후보를 순서대로 반환
+ * 반환: Map<playerId, rank> — rank가 낮을수록 우선순위 높음
+ *   동일 포지션: rank 0~2 / 인접 포지션: rank 10~12
+ */
+function getDepthChartCandidates(
+    depthChart: DepthChart | undefined,
+    targetPosition: string,
+    excludeIds: Set<string>
+): Map<string, number> {
+    const rankMap = new Map<string, number>();
+    if (!depthChart) return rankMap;
+
+    // 1. 동일 포지션 뎁스차트 (rank 0, 1, 2)
+    const posKey = targetPosition as keyof DepthChart;
+    const chart = depthChart[posKey];
+    if (chart) {
+        chart.forEach((pid, idx) => {
+            if (pid && !excludeIds.has(pid)) {
+                rankMap.set(pid, idx);
+            }
+        });
+    }
+
+    // 2. 인접 포지션 뎁스차트 (rank 10, 11, 12 — 동일 포지션보다 항상 뒤)
+    const adjacent = POSITION_ADJACENCY[targetPosition] || [];
+    adjacent.forEach(adjPos => {
+        const adjChart = depthChart[adjPos as keyof DepthChart];
+        if (adjChart) {
+            adjChart.forEach((pid, idx) => {
+                if (pid && !excludeIds.has(pid) && !rankMap.has(pid)) {
+                    rankMap.set(pid, 10 + idx);
+                }
+            });
+        }
+    });
+
+    return rankMap;
+}
+
 /**
  * 1. RES(로테이션 제외) 멤버 중 대체 자원 찾기
- * 정렬 기준: 1. 동일 포지션 > 2. OVR 높은 순 > 3. 체력(Condition) 높은 순
+ * 정렬 기준: 1. 뎁스차트 순위 > 2. 동일 포지션 > 3. OVR 높은 순 > 4. 체력 높은 순
  * [Update] 탈진(Shutdown) 상태인 선수는 1차적으로 배제함.
  */
 function findResCandidate(team: TeamState, targetPosition: string, excludeIds: Set<string>, allowShutdown: boolean = false): LivePlayer | null {
-    const candidates = team.bench.filter(p => 
-        p.health === 'Healthy' && 
-        p.pf < 6 && 
+    const candidates = team.bench.filter(p =>
+        p.health === 'Healthy' &&
+        p.pf < 6 &&
         !excludeIds.has(p.playerId) &&
-        (allowShutdown || !p.isShutdown) // 기본적으로 셧다운 선수는 제외, 급하면 포함
+        (allowShutdown || !p.isShutdown)
     );
 
     if (candidates.length === 0) return null;
 
+    // 뎁스차트 기반 우선순위 (없으면 빈 Map → 기존 로직으로 fallback)
+    const depthRanks = getDepthChartCandidates(team.depthChart, targetPosition, excludeIds);
+
     candidates.sort((a, b) => {
-        // 1. 동일 포지션 우선
+        // 1. 뎁스차트 순위 (낮을수록 우선, 없으면 Infinity)
+        const aRank = depthRanks.get(a.playerId) ?? Infinity;
+        const bRank = depthRanks.get(b.playerId) ?? Infinity;
+        if (aRank !== bRank) return aRank - bRank;
+
+        // 2. 동일 포지션 우선 (뎁스차트에 없는 선수들 간 비교)
         const aPosMatch = a.position === targetPosition ? 1 : 0;
         const bPosMatch = b.position === targetPosition ? 1 : 0;
         if (aPosMatch !== bPosMatch) return bPosMatch - aPosMatch;
 
-        // 2. OVR 높은 순
+        // 3. OVR 높은 순
         if (b.ovr !== a.ovr) return b.ovr - a.ovr;
 
-        // 3. 체력 높은 순
+        // 4. 체력 높은 순
         return b.currentCondition - a.currentCondition;
     });
 

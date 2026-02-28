@@ -4,7 +4,7 @@ import { Team, GameTactics, DepthChart, SimulationResult, PbpLog } from '../type
 import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
 import { LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
 import { TEAM_DATA } from '../data/teamData';
-import { TacticsSlidersPanel } from '../components/dashboard/tactics/TacticsSlidersPanel';
+import { LiveTacticsTab } from '../components/game/tabs/LiveTacticsTab';
 import { RotationGanttChart } from '../components/dashboard/RotationGanttChart';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
 import { UserPlus, UserMinus, Clock } from 'lucide-react';
@@ -763,30 +763,6 @@ const LiveShotChart: React.FC<{
 };
 
 // ─────────────────────────────────────────────────────────────
-// Tactics Tab
-// ─────────────────────────────────────────────────────────────
-
-const LiveTacticsTab: React.FC<{
-    userTactics: GameTactics;
-    userTeam: Team;
-    onApplyTactics: (sliders: GameTactics['sliders']) => void;
-}> = ({ userTactics, userTeam, onApplyTactics }) => {
-    const handleUpdate = useCallback((t: GameTactics) => {
-        onApplyTactics(t.sliders);
-    }, [onApplyTactics]);
-
-    return (
-        <div className="flex-1 overflow-y-auto p-4">
-            <TacticsSlidersPanel
-                tactics={userTactics}
-                onUpdateTactics={handleUpdate}
-                roster={userTeam.roster}
-            />
-        </div>
-    );
-};
-
-// ─────────────────────────────────────────────────────────────
 // Main View
 // ─────────────────────────────────────────────────────────────
 
@@ -828,6 +804,14 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
     const currentMinute = Math.min(47, Math.floor(((quarter - 1) * 720 + (720 - gameClock)) / 60));
     const maxSelectableQ = (isGameEnd ? 4 : quarter) as 0 | 1 | 2 | 3 | 4;
+
+    // playerNames map for LiveTacticsTab (both teams)
+    const playerNames = useMemo(() => {
+        const map: Record<string, string> = {};
+        homeTeam.roster.forEach(p => { map[p.id] = p.name; });
+        awayTeam.roster.forEach(p => { map[p.id] = p.name; });
+        return map;
+    }, [homeTeam.roster, awayTeam.roster]);
 
     // Rotation chart derived data
     const userDepthChart = isUserHome ? homeDepthChart : awayDepthChart;
@@ -1373,8 +1357,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                 {activeTab === 'tactics' && (
                     <LiveTacticsTab
                         userTactics={liveTactics}
-                        userTeam={userTeam}
+                        userTeamId={userTeamId}
+                        opponentTeamId={isUserHome ? awayTeam.id : homeTeam.id}
+                        shotEvents={shotEvents}
                         onApplyTactics={applyTactics}
+                        playerNames={playerNames}
                     />
                 )}
             </div>
