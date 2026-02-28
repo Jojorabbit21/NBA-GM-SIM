@@ -245,7 +245,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       </div>
 
       {/* Shared Month Navigation */}
-      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-800 bg-slate-800">
+      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-700 bg-slate-800">
         <button
           onClick={() => changeMonth(-1)}
           disabled={isAtMinMonth}

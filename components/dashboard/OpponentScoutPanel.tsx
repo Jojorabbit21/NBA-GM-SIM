@@ -118,7 +118,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
 
     return (
-        <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden animate-in fade-in duration-500">
+        <div className="flex flex-col h-full bg-slate-800 overflow-hidden animate-in fade-in duration-500">
             {/* Header Info */}
             <div className="flex-shrink-0 px-6 py-4 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                  <div className="flex items-center gap-3">

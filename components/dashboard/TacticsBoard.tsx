@@ -122,7 +122,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
     return (
         <div className="flex flex-col h-full bg-slate-900 relative">
             {/* Header Controls */}
-            <div className="px-8 py-4 bg-slate-900/80 border-b border-white/5 flex items-center justify-between flex-shrink-0 relative z-20 backdrop-blur-sm">
+            <div className="px-8 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between flex-shrink-0 relative z-20">
 
                 {/* Left: Slot Dropdown + Action Buttons */}
                 <div className="flex items-center gap-4">
