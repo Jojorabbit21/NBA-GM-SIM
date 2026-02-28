@@ -69,7 +69,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
             {/* Left: Target Team Roster */}
             <div className="flex-1 flex flex-col border-r border-slate-800 min-w-0">
                 {/* Left Panel Header */}
-                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 flex-shrink-0">
+                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800 flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">상대 로스터</span>
                         {selectedTargetTeam && (
@@ -91,7 +91,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
                             />
                         }
                     >
-                        <div className="p-3 border-b border-slate-800 bg-slate-950/50">
+                        <div className="p-3 border-b border-slate-800 bg-slate-800">
                             <div className="relative">
                                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
                                 <input
@@ -124,9 +124,9 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
 
                 {/* Left Panel Body */}
                 {selectedTargetTeam ? (
-                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/40">
+                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                         <table className="w-full text-left border-separate border-spacing-0">
-                            <thead className="bg-slate-950 sticky top-0 z-10">
+                            <thead className="bg-slate-800 sticky top-0 z-10">
                                 <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest">
                                     <th className="py-2.5 px-3 w-8 border-b border-slate-800"></th>
                                     <th className="py-2.5 px-1 w-10 border-b border-slate-800 text-center">OVR</th>
@@ -189,7 +189,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
             {/* Right: Requirements */}
             <div className="w-[420px] lg:w-[480px] flex flex-col flex-shrink-0 min-w-0">
                 {/* Right Panel Header */}
-                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-950/50 flex-shrink-0">
+                <div className="px-6 py-3 border-b border-slate-800 flex justify-between items-center bg-slate-800 flex-shrink-0">
                     <span className="text-[10px] font-black uppercase text-slate-500 tracking-widest">
                         상대방 요구 조건 {proposalSearchPerformed && proposalRequirements.length > 0 && `(${proposalRequirements.length}건)`}
                     </span>
@@ -204,7 +204,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
                 </div>
 
                 {/* Right Panel Body */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900/40">
+                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                     {!proposalSearchPerformed ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
                             <p className="font-black text-sm text-slate-500 uppercase oswald tracking-widest">협상 대기</p>

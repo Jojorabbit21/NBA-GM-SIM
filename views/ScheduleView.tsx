@@ -245,7 +245,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       </div>
 
       {/* Shared Month Navigation */}
-      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-800 bg-slate-900/30">
+      <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-800 bg-slate-800">
         <button
           onClick={() => changeMonth(-1)}
           disabled={isAtMinMonth}
@@ -270,7 +270,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         /* ── Single Month Calendar ── */
         <div className="flex-1 min-h-0 flex flex-col">
           {/* Calendar Grid — fills viewport, square cells, centered */}
-          <div ref={calendarContainerRef} className="flex-1 min-h-0 flex justify-center items-start p-4">
+          <div ref={calendarContainerRef} className="flex-1 min-h-0 flex justify-center items-start p-4 bg-slate-900">
             {cellSize > 0 && (() => {
               const gridWidth = cellSize * 7;
 
@@ -363,7 +363,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         </div>
       ) : (
         /* ── League Schedule List View (Flat Table) ── */
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
           <div className="px-6 py-4">
             {leagueGames.length === 0 ? (
               <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
