@@ -311,7 +311,12 @@ function _buildDisplay(
         awayBox: [...state.away.onCourt, ...state.away.bench] as PlayerBoxScore[],
         homeFouls: state.home.fouls,
         awayFouls: state.away.fouls,
-        userTactics: userTeam.tactics,
+        // 엔진이 rotationMap을 in-place 변이(transferSchedule, benchWithOverride 등)하므로
+        // 새 참조를 생성해야 React.memo가 변경을 감지하여 UI에 반영됨
+        userTactics: {
+            ...userTeam.tactics,
+            rotationMap: { ...userTeam.tactics.rotationMap },
+        },
     };
 }
 
