@@ -1363,10 +1363,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         shotEvents={shotEvents}
                         onApplyTactics={applyTactics}
                         playerNames={playerNames}
-                        avgPossessionTime={{
-                            user: isUserHome ? avgPossessionTime.home : avgPossessionTime.away,
-                            opponent: isUserHome ? avgPossessionTime.away : avgPossessionTime.home,
-                        }}
+                        avgPossessionTime={avgPossessionTime}
+                        homeBox={homeBox}
+                        awayBox={awayBox}
+                        isUserHome={isUserHome}
                     />
                 )}
             </div>
