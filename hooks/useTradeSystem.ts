@@ -111,7 +111,18 @@ export const useTradeSystem = (
     };
 
     const handleRequestRequirements = async () => {
-        if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) return;
+        console.log('[Trade] handleRequestRequirements called', {
+            selectedCount: proposalSelectedIds.size,
+            targetTeamId: proposalTargetTeamId,
+            isDeadlinePassed: isTradeDeadlinePassed,
+            isTradeLimitReached,
+            dailyTradeAttempts,
+            currentSimDate,
+        });
+        if (proposalSelectedIds.size === 0 || !proposalTargetTeamId || isTradeDeadlinePassed) {
+            console.log('[Trade] Early return - guard failed');
+            return;
+        }
         if (isTradeLimitReached) {
             onShowToast?.(`금일 트레이드 업무 한도(${MAX_DAILY_TRADES}회)를 초과했습니다.`);
             return;
@@ -129,7 +140,9 @@ export const useTradeSystem = (
                 return;
             }
             const requestedPlayers = targetTeam.roster.filter(p => proposalSelectedIds.has(p.id));
+            console.log('[Trade] Calling generateCounterOffers', { requestedPlayers: requestedPlayers.map(p => p.name), targetTeam: targetTeam.name, myTeam: team.name });
             const generatedRequirements = await generateCounterOffers(requestedPlayers, targetTeam, team, teams);
+            console.log('[Trade] Counter offers result:', generatedRequirements.length, 'offers');
             setProposalRequirements(generatedRequirements);
         } catch (e) {
             console.error(e);
