@@ -83,45 +83,45 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
 
                 {/* ── DEFENSE ── */}
                 <div className="grid grid-cols-2 gap-x-6">
-                    {/* Left col: 수비 스타일 */}
+                    {/* Left col: 온볼 수비 */}
                     <div className="flex flex-col gap-1">
-                        <h4 className="text-sm font-black text-white uppercase tracking-widest">수비 스타일</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">온볼 수비</h4>
                         <SliderControl
                             label="수비 압박 강도" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
                             leftLabel="느슨하게" rightLabel="타이트" tooltip="높을수록 상대 야투 억제와 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." fillColor="#6366f1"
-                        />
-                        <SliderControl
-                            label="헬프 수비 빈도" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
-                            leftLabel="대인 마크" rightLabel="적극 지원" tooltip="높을수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." fillColor="#6366f1"
                         />
                         <SliderControl
                             label="스위치 수비 빈도" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
                             leftLabel="따라가기" rightLabel="스위치" tooltip="스크린 대처 방식입니다. 높을수록 미스매치가 발생할 확률이 높지만 오픈 찬스는 줄어듭니다." fillColor="#6366f1"
                         />
                         <SliderControl
-                            label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
-                            leftLabel="속공 전환" rightLabel="적극 가담" tooltip="높을수록 수비 리바운드에 적극 가담하여 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#6366f1"
+                            label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
+                            min={0} max={2}
+                            leftLabel="드랍" rightLabel="블리츠"
+                            tooltip="드랍: 빅맨이 뒤로 빠져 림 보호(미드레인지 허용). 헷지: 빅맨이 순간 나와 핸들러 지연 후 복귀. 블리츠: 빅맨이 볼 핸들러를 더블팀(턴오버 유발, 킥아웃 3점 허용)."
+                            fillColor="#6366f1"
+                            valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'}
+                        />
+                        <SliderControl
+                            label="풀 코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
+                            leftLabel="안함" rightLabel="자주" tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#6366f1"
                         />
                     </div>
 
-                    {/* Right col: 수비 시스템 */}
+                    {/* Right col: 오프볼 수비 */}
                     <div className="flex flex-col gap-1">
-                        <h4 className="text-sm font-black text-white uppercase tracking-widest">수비 시스템</h4>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">오프볼 수비</h4>
                         <SliderControl
-                            label="풀 코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
-                            leftLabel="안함" rightLabel="자주" tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#d946ef"
+                            label="헬프 수비 빈도" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
+                            leftLabel="대인 마크" rightLabel="적극 지원" tooltip="높을수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." fillColor="#d946ef"
                         />
                         <SliderControl
                             label="지역 방어 빈도" value={sliders.zoneFreq} onChange={v => { updateSlider('zoneFreq', v); updateSlider('zoneUsage', v); }}
                             leftLabel="대인 방어" rightLabel="지역 방어" tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다. 외곽 수비력이 강하면 대인을 추천." fillColor="#d946ef"
                         />
                         <SliderControl
-                            label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
-                            min={0} max={2}
-                            leftLabel="드랍" rightLabel="블리츠"
-                            tooltip="드랍: 빅맨이 뒤로 빠져 림 보호(미드레인지 허용). 헷지: 빅맨이 순간 나와 핸들러 지연 후 복귀. 블리츠: 빅맨이 볼 핸들러를 더블팀(턴오버 유발, 킥아웃 3점 허용)."
-                            fillColor="#d946ef"
-                            valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'}
+                            label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
+                            leftLabel="속공 전환" rightLabel="적극 가담" tooltip="높을수록 수비 리바운드에 적극 가담하여 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#d946ef"
                         />
                     </div>
                 </div>

@@ -331,32 +331,32 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                         tooltip="드라이브/컷 능력이 좋은 선수가 있을수록 효과적." fillColor="#3b82f6" />
                 </div>
 
-                {/* 4. 수비 스타일 */}
+                {/* 4. 온볼 수비 */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">수비 스타일</h4>
+                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">온볼 수비</h4>
                     <SliderControl label="수비 압박" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
                         tooltip="높을수록 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." fillColor="#6366f1" />
-                    <SliderControl label="헬프 수비" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
-                        tooltip="높을수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." fillColor="#6366f1" />
                     <SliderControl label="스위치 수비" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
                         tooltip="높을수록 미스매치가 발생할 확률이 높지만 오픈 찬스는 줄어듭니다." fillColor="#6366f1" />
+                    <SliderControl label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
+                        min={0} max={2}
+                        tooltip="드랍: 림 보호(미드레인지 허용). 헷지: 핸들러 지연 후 복귀. 블리츠: 더블팀(턴오버 유발, 킥아웃 허용)."
+                        fillColor="#6366f1"
+                        valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'} />
+                    <SliderControl label="풀코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
+                        tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#6366f1" />
                 </div>
 
-                {/* 5. 수비 시스템 */}
+                {/* 5. 오프볼 수비 */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">수비 시스템</h4>
-                    <SliderControl label="풀코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
-                        tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#d946ef" />
+                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">오프볼 수비</h4>
+                    <SliderControl label="헬프 수비" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
+                        tooltip="높을수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." fillColor="#d946ef" />
                     <SliderControl label="지역 방어" value={sliders.zoneFreq}
                         onChange={v => { updateSlider('zoneFreq', v); }}
                         tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다." fillColor="#d946ef" />
                     <SliderControl label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
                         tooltip="높을수록 수비 리바운드에 적극 가담하여 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#d946ef" />
-                    <SliderControl label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
-                        min={0} max={2}
-                        tooltip="드랍: 림 보호(미드레인지 허용). 헷지: 핸들러 지연 후 복귀. 블리츠: 더블팀(턴오버 유발, 킥아웃 허용)."
-                        fillColor="#d946ef"
-                        valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'} />
                 </div>
             </div>
 
