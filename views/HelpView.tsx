@@ -3,7 +3,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Button } from '../components/common/Button';
-import { USER_GUIDE_MD } from '../docs/userGuideContent';
+import { USER_GUIDE_MD } from '../docs/ui/userGuideContent';
 
 interface HelpViewProps {
     onBack: () => void;
