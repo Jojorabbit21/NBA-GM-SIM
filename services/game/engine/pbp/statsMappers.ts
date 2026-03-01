@@ -136,7 +136,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
             actor.p3m += 1;
             actor.p3a += 1;
         }
-        if (zone) updateZoneStats(actor, zone, true);
+        if (zone) updateZoneStats(actor, zone, true, result.subZone);
         updateHotCold(actor, true);
 
         // Update Assist (Play-type-based probability — not all secondary actors earn credit)
@@ -201,7 +201,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Update Stats
         actor.fga += 1;
         if (zone === '3PT') actor.p3a += 1;
-        if (zone) updateZoneStats(actor, zone, false);
+        if (zone) updateZoneStats(actor, zone, false, result.subZone);
         updateHotCold(actor, false);
 
         // Generate Commentary

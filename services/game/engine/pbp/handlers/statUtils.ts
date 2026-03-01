@@ -5,9 +5,9 @@ import { resolveDynamicZone } from '../../shotDistribution';
 /**
  * Updates detailed shooting zone stats for a player.
  */
-export function updateZoneStats(p: LivePlayer, zone: 'Rim' | 'Paint' | 'Mid' | '3PT', isMake: boolean) {
+export function updateZoneStats(p: LivePlayer, zone: 'Rim' | 'Paint' | 'Mid' | '3PT', isMake: boolean, preResolvedSubZone?: string) {
     // rimA/rimM/midA/midM 집계 제거 → 10존(zone_*) 데이터로 대체됨
-    const subZoneKey = resolveDynamicZone(p, zone);
+    const subZoneKey = preResolvedSubZone || resolveDynamicZone(p, zone);
     const attemptKey = `${subZoneKey}_a` as keyof LivePlayer;
     if (typeof p[attemptKey] === 'number') (p as any)[attemptKey]++;
     if (isMake) {

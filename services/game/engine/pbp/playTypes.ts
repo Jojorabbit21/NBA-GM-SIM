@@ -2,6 +2,7 @@
 import { PlayType, TacticalSliders } from '../../../../types';
 import { LivePlayer, TeamState } from './pbpTypes';
 import { getTeamOptionRanks, getContextualMultiplier } from './usageSystem';
+import { SIM_CONFIG } from '../../config/constants';
 
 // ==========================================================================================
 //  🏀 PLAY TYPE SYSTEM
@@ -14,7 +15,7 @@ export interface PlayContext {
     actor: LivePlayer;
     secondaryActor?: LivePlayer; // Screener, Passer, etc.
     preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT';
-    shotType: 'Dunk' | 'Layup' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot';
+    shotType: 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway';
     bonusHitRate: number; // Tactic success bonus
 }
 
@@ -67,25 +68,72 @@ function selectZone(
 }
 
 /**
- * 동적으로 결정된 구역에 맞는 shotType을 반환한다.
+ * 선수 능력치 기반으로 마무리 타입을 확률적으로 선택한다.
  *
- * Rim: 수직점프(vertical) + 골밑 능력(ins)이 모두 엘리트급이면 Dunk, 아니면 Layup
- * Mid: Handoff처럼 캐치 후 바로 릴리스하면 Jumper, 드리블 뒤 풀업이면 Pullup
- * 3PT: Handoff/CatchShoot 계열이면 CatchShoot, 나머지는 Pullup
+ * 컨텍스트별 가능한 옵션:
+ *   drive  → Dunk, Layup, Floater, Pullup
+ *   post   → Dunk, Layup, Floater, Hook, Jumper, Fadeaway
+ *   roll   → Dunk, Layup, Floater, Hook, Jumper
+ *   putback→ Dunk, Layup
+ *
+ * 각 옵션에 자격 조건(eligibility) + 가중치(weight)를 적용한 뒤
+ * 가중 랜덤(roulette wheel)으로 최종 zone + shotType을 결정한다.
  */
-function shotTypeForZone(
-    zone: 'Rim' | 'Mid' | '3PT',
+type FinishContext = 'drive' | 'post' | 'roll' | 'putback';
+
+function resolveFinish(
     actor: LivePlayer,
-    playType: PlayType
-): PlayContext['shotType'] {
-    if (zone === 'Rim') {
-        return (actor.attr.vertical >= 90 && actor.attr.ins >= 88) ? 'Dunk' : 'Layup';
+    context: FinishContext,
+    sliders: TacticalSliders
+): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'] } {
+    const F = SIM_CONFIG.FINISH;
+    const B = F.BASELINE;
+    const options: { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'], weight: number }[] = [];
+
+    // Dunk (Rim) — vertical + strength 충족 시
+    if (actor.attr.vertical >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN) {
+        options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
     }
-    if (zone === '3PT') {
-        return playType === 'Handoff' ? 'CatchShoot' : 'Pullup';
+    // Layup (Rim) — 항상 가능
+    options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
+
+    // Floater (Paint) — closeShot ≥ 80, putback 제외
+    if (context !== 'putback' && actor.attr.closeShot >= F.FLOATER_CLOSESHOT_MIN) {
+        options.push({ zone: 'Paint', shotType: 'Floater', weight: Math.max(0, actor.attr.closeShot - B) * F.FLOATER_WEIGHT });
     }
-    // Mid
-    return playType === 'Handoff' ? 'Jumper' : 'Pullup';
+    // Hook (Paint) — height ≥ 208, closeShot ≥ 80, post/roll만
+    if ((context === 'post' || context === 'roll') &&
+        actor.attr.height >= F.HOOK_HEIGHT_MIN && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
+        options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT });
+    }
+    // Pullup (Mid) — drive 컨텍스트만
+    if (context === 'drive' && actor.attr.mid >= F.MID_MIN) {
+        const w = Math.max(0, actor.attr.mid - B) * F.MID_DRIVE_WEIGHT * (sliders.shot_mid / 5);
+        options.push({ zone: 'Mid', shotType: 'Pullup', weight: w });
+    }
+    // Jumper (Mid) — post/roll 컨텍스트
+    if ((context === 'post' || context === 'roll') && actor.attr.mid >= F.MID_MIN) {
+        const w = Math.max(0, actor.attr.mid - B) * F.MID_POST_WEIGHT * (sliders.shot_mid / 5);
+        options.push({ zone: 'Mid', shotType: 'Jumper', weight: w });
+    }
+    // Fadeaway (Mid) — post 컨텍스트만, 엘리트 포스트 기술
+    if (context === 'post' &&
+        actor.attr.postPlay >= F.FADEAWAY_POSTPLAY_MIN &&
+        actor.attr.mid >= F.FADEAWAY_MID_MIN &&
+        actor.attr.closeShot >= F.FADEAWAY_CLOSESHOT_MIN) {
+        const w = Math.max(0, actor.attr.mid - B) * F.FADEAWAY_WEIGHT * (sliders.shot_mid / 5);
+        options.push({ zone: 'Mid', shotType: 'Fadeaway', weight: w });
+    }
+
+    // 가중 랜덤 선택
+    const total = options.reduce((s, o) => s + o.weight, 0);
+    if (total <= 0) return { zone: 'Rim', shotType: 'Layup' }; // fallback
+    let r = Math.random() * total;
+    for (const opt of options) {
+        r -= opt.weight;
+        if (r <= 0) return { zone: opt.zone, shotType: opt.shotType };
+    }
+    return options[options.length - 1];
 }
 
 // ==========================================================================================
@@ -159,13 +207,17 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Best Iso Scorer (Handling + Agility + Shot Creation)
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
 
-            // [Updated] 3PT · Mid · Rim 모두 후보. 선수 능력치 + 팀 슬라이더로 확률 결정.
-            const zone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            // [Updated] 3PT · Mid · Rim 모두 후보. Rim이면 resolveFinish로 마무리 결정.
+            const isoZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            if (isoZone === 'Rim') {
+                const { zone, shotType } = resolveFinish(actor, 'drive', sliders);
+                return { playType, actor, preferredZone: zone, shotType, bonusHitRate: 0.00 };
+            }
             return {
                 playType,
                 actor,
-                preferredZone: zone,
-                shotType: shotTypeForZone(zone, actor, playType),
+                preferredZone: isoZone,
+                shotType: 'Pullup',
                 bonusHitRate: 0.00 // Iso: 순수 스킬 기반
             };
         }
@@ -189,12 +241,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Handler passes to Roller (Finisher)
             const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
             const handler = pickWeightedActor(p => p.archetypes.handler, screener.playerId);
+            const { zone: rollZone, shotType: rollShotType } = resolveFinish(screener, 'roll', sliders);
             return {
                 playType,
                 actor: screener, // Finisher
                 secondaryActor: handler, // Assister
-                preferredZone: 'Rim', // 고정: 롤맨은 항상 림으로
-                shotType: 'Dunk',
+                preferredZone: rollZone,
+                shotType: rollShotType,
                 bonusHitRate: 0.03 // PnR_Roll: 롤맨 림 어택 이점
             };
         }
@@ -214,12 +267,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'PostUp': {
             // Best Post Scorer (Usually Rank 1-2 Bigs)
             const actor = pickWeightedActor(p => p.archetypes.postScorer);
+            const { zone: postZone, shotType: postShotType } = resolveFinish(actor, 'post', sliders);
             return {
                 playType,
                 actor,
-                preferredZone: 'Paint', // 고정: 포스트업은 항상 인사이드
-                shotType: 'Hook',
-                bonusHitRate: 0.01 // PostUp: Paint 인사이드 소폭
+                preferredZone: postZone,
+                shotType: postShotType,
+                bonusHitRate: 0.01 // PostUp: 인사이드 소폭
             };
         }
         case 'CatchShoot': {
@@ -239,12 +293,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Best Driver/Cutter
             const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.shotIq * 0.5);
             const passer = pickWeightedActor(p => p.archetypes.connector, actor.playerId);
+            const { zone: cutZone, shotType: cutShotType } = resolveFinish(actor, 'drive', sliders);
             return {
                 playType,
                 actor,
                 secondaryActor: passer,
-                preferredZone: 'Rim', // 고정: 커팅은 항상 림
-                shotType: 'Layup',
+                preferredZone: cutZone,
+                shotType: cutShotType,
                 bonusHitRate: 0.03 // Cut: 커팅 타이밍 이점 (57+3=60%)
             };
         }
@@ -253,39 +308,44 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
             const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
 
-            // [Updated] 핸드오프 후 캐치 → 3PT or Mid 선택. Rim 드라이브는 없음.
-            const zone = selectZone(['3PT', 'Mid'], actor, sliders);
+            // [Updated] 핸드오프 후 캐치 → 3PT or Mid 선택. Rim 없음.
+            const hoZone = selectZone(['3PT', 'Mid'], actor, sliders);
             return {
                 playType,
                 actor,
                 secondaryActor: big,
-                preferredZone: zone,
-                shotType: shotTypeForZone(zone, actor, playType),
+                preferredZone: hoZone,
+                shotType: hoZone === '3PT' ? 'CatchShoot' : 'Jumper',
                 bonusHitRate: 0.02 // Handoff: 캐치 후 즉시 릴리스 이점
             };
         }
         case 'Transition': {
             // Fast break
-            const actor = pickWeightedActor(p => p.attr.speed + p.archetypes.driver);
+            const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);
 
-            // [Updated] 속공 = 레이업(Rim) or 트랜지션 3점. 중거리는 없음.
-            const zone = selectZone(['3PT', 'Rim'], actor, sliders);
+            // [Updated] 속공 = Rim(resolveFinish) or 트랜지션 3점.
+            const trZone = selectZone(['3PT', 'Rim'], actor, sliders);
+            if (trZone === 'Rim') {
+                const { zone, shotType } = resolveFinish(actor, 'drive', sliders);
+                return { playType, actor, preferredZone: zone, shotType, bonusHitRate: 0.04 };
+            }
             return {
                 playType,
                 actor,
-                preferredZone: zone,
-                shotType: shotTypeForZone(zone, actor, playType),
-                bonusHitRate: 0.04 // Transition: 속공 오픈 이점 (Rim: 57+4=61%)
+                preferredZone: trZone,
+                shotType: 'Pullup',
+                bonusHitRate: 0.04 // Transition: 속공 오픈 이점
             };
         }
         case 'Putback': {
             // Second Chance
             const actor = pickWeightedActor(p => p.attr.reb * 0.6 + p.attr.ins * 0.4);
+            const { zone: pbZone, shotType: pbShotType } = resolveFinish(actor, 'putback', sliders);
             return {
                 playType,
                 actor,
-                preferredZone: 'Rim', // 고정: 세컨드찬스는 항상 림
-                shotType: 'Layup',
+                preferredZone: pbZone,
+                shotType: pbShotType,
                 bonusHitRate: 0.05 // Putback: 세컨드찬스 이점 (57+5=62%)
             };
         }
