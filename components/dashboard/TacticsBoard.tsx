@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, useMemo, memo } from 'react';
 import { Wand2, RotateCcw, Save, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import { GameTactics, Player, Team, TacticPreset } from '../../types';
 import { DefensiveStats } from '../../utils/defensiveStats';
@@ -13,13 +13,14 @@ interface TacticsBoardProps {
   team: Team;
   tactics: GameTactics;
   roster: Player[];
+  allTeams?: Team[];
   onUpdateTactics: (t: GameTactics) => void;
   onAutoSet: () => void;
   onForceSave?: () => void;
   defensiveStats?: DefensiveStats;
 }
 
-const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats }) => {
+const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, allTeams, onUpdateTactics, onAutoSet, onForceSave, defensiveStats }) => {
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
     const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -27,6 +28,12 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
     const [showPasteInput, setShowPasteInput] = useState(false);
     const [pasteValue, setPasteValue] = useState('');
     const [toast, setToast] = useState<string | null>(null);
+
+    // 상대 전체 로스터 (우리 팀 제외 모든 선수)
+    const opponentRoster = useMemo(() => {
+        if (!allTeams || !team?.id) return [];
+        return allTeams.filter(t => t.id !== team.id).flatMap(t => t.roster || []);
+    }, [allTeams, team?.id]);
 
     // Initial Load
     useEffect(() => {
@@ -206,6 +213,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                         tactics={tactics}
                         onUpdateTactics={onUpdateTactics}
                         roster={roster}
+                        opponentRoster={opponentRoster}
                         defensiveStats={defensiveStats}
                     />
                 </div>
@@ -234,6 +242,7 @@ export const TacticsBoard = memo(TacticsBoardInner, (prev, next) =>
     prev.team === next.team &&
     prev.tactics === next.tactics &&
     prev.roster === next.roster &&
+    prev.allTeams === next.allTeams &&
     prev.onUpdateTactics === next.onUpdateTactics &&
     prev.onAutoSet === next.onAutoSet &&
     prev.onForceSave === next.onForceSave &&

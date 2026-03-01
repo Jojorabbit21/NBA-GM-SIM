@@ -9,10 +9,11 @@ interface TacticsSlidersPanelProps {
     tactics: GameTactics;
     onUpdateTactics: (t: GameTactics) => void;
     roster: Player[];
+    opponentRoster?: Player[];
     defensiveStats?: DefensiveStats;
 }
 
-export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats }) => {
+export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, opponentRoster, defensiveStats }) => {
 
     const { sliders } = tactics;
 
@@ -25,7 +26,7 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
 
             {/* Left: Data Charts (7/12) */}
             <div className="lg:col-span-7 lg:pr-6 lg:border-r lg:border-slate-800">
-                <TacticsDataPanel sliders={sliders} roster={roster} defensiveStats={defensiveStats} />
+                <TacticsDataPanel sliders={sliders} roster={roster} opponentRoster={opponentRoster} defensiveStats={defensiveStats} />
             </div>
 
             {/* Right: All Sliders (5/12) — offense + defense stacked */}
