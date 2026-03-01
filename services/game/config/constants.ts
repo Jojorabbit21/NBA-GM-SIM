@@ -209,6 +209,13 @@ export const SIM_CONFIG = {
     },
     // PnR Defense Coverage (Drop / Hedge / Blitz)
     PNR_COVERAGE: {
+        // Probability distribution by slider value (0=Drop, 1=Hedge, 2=Blitz)
+        // [dropPct, hedgePct, blitzPct]
+        DIST: {
+            0: [0.70, 0.20, 0.10],  // Drop focused
+            1: [0.15, 0.60, 0.25],  // Hedge balanced (default)
+            2: [0.10, 0.20, 0.70],  // Blitz focused
+        } as Record<number, [number, number, number]>,
         // Drop: 빅맨이 림 보호, 핸들러 미드레인지 허용
         DROP_HANDLER_MID_BONUS: 0.04,
         DROP_HANDLER_3PT_BONUS: 0.01,

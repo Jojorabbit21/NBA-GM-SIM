@@ -14,8 +14,9 @@ export const SliderControl: React.FC<{
     leftLabel?: string,
     rightLabel?: string,
     tooltip?: string,
-    fillColor?: string
-}> = ({ label, value, onChange, min = 1, max = 10, leftLabel, rightLabel, tooltip, fillColor = '#6366f1' }) => {
+    fillColor?: string,
+    valueLabel?: (val: number) => string
+}> = ({ label, value, onChange, min = 1, max = 10, leftLabel, rightLabel, tooltip, fillColor = '#6366f1', valueLabel }) => {
   const [localValue, setLocalValue] = useState(value);
   const localValueRef = useRef(value);
 
@@ -54,7 +55,7 @@ export const SliderControl: React.FC<{
               </>
           )}
         </div>
-        <span className="text-[13px] font-black text-white font-mono">{localValue}</span>
+        <span className="text-[13px] font-black text-white font-mono">{valueLabel ? valueLabel(localValue) : localValue}</span>
       </div>
       <div className="relative flex items-center h-5">
          <input

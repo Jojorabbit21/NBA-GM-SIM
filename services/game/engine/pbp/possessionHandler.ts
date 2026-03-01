@@ -69,15 +69,14 @@ function identifyDefender(
         // 4. PnR Coverage (스위치 실패 시, PnR 플레이에서만)
         const isPnrPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop'].includes(playType);
         if (isPnrPlay) {
-            const pnrDef = sliders.pnrDefense;
-            const blitzPct = (3 + (pnrDef - 1) * 8) / 100;
-            const dropPct = (85 - (pnrDef - 1) * (82 / 9)) / 100;
-            // hedgePct = 1 - blitzPct - dropPct
+            const pnrDef = Math.max(0, Math.min(2, Math.round(sliders.pnrDefense)));
+            const dist = SIM_CONFIG.PNR_COVERAGE.DIST[pnrDef] || SIM_CONFIG.PNR_COVERAGE.DIST[1];
+            const [dropPct, hedgePct] = dist;
 
             const roll = Math.random();
             let coverage: PnrCoverage;
             if (roll < dropPct) coverage = 'drop';
-            else if (roll < dropPct + (1 - dropPct - blitzPct)) coverage = 'hedge';
+            else if (roll < dropPct + hedgePct) coverage = 'hedge';
             else coverage = 'blitz';
 
             // 빅맨(스크리너 수비수) 식별

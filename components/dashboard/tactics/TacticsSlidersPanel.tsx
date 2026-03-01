@@ -4,6 +4,7 @@ import { GameTactics, TacticalSliders, Player } from '../../../types';
 import { TacticsDataPanel } from './TacticsDataPanel';
 import { SliderControl } from '../../common/SliderControl';
 import { DefensiveStats } from '../../../utils/defensiveStats';
+import { DEFAULT_SLIDERS } from '../../../services/game/config/tacticPresets';
 
 interface TacticsSlidersPanelProps {
     tactics: GameTactics;
@@ -14,7 +15,7 @@ interface TacticsSlidersPanelProps {
 
 export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactics, onUpdateTactics, roster, defensiveStats }) => {
 
-    const { sliders } = tactics;
+    const sliders = { ...DEFAULT_SLIDERS, ...tactics.sliders };
 
     const updateSlider = (key: keyof TacticalSliders, val: number) => {
         onUpdateTactics({ ...tactics, sliders: { ...sliders, [key]: val } });
@@ -112,7 +113,11 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                         />
                         <SliderControl
                             label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
-                            leftLabel="드랍" rightLabel="블리츠" tooltip="낮을수록 빅맨이 뒤로 빠져 림을 보호(미드레인지 허용). 높을수록 빅맨이 볼 핸들러를 트랩(턴오버 유발, 킥아웃 3점 허용)." fillColor="#d946ef"
+                            min={0} max={2}
+                            leftLabel="드랍" rightLabel="블리츠"
+                            tooltip="드랍: 빅맨이 뒤로 빠져 림 보호(미드레인지 허용). 헷지: 빅맨이 순간 나와 핸들러 지연 후 복귀. 블리츠: 빅맨이 볼 핸들러를 더블팀(턴오버 유발, 킥아웃 3점 허용)."
+                            fillColor="#d946ef"
+                            valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'}
                         />
                     </div>
                 </div>
