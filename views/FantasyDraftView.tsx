@@ -45,7 +45,7 @@ function collectAllPlayers(teams: Team[], poolType: DraftPoolType, freeAgents: P
     teams.forEach(t => t.roster.forEach(p => all.push(p)));
     if (poolType === 'alltime') {
         freeAgents.forEach(p => all.push(p));
-        all = all.filter(p => p.ovr >= ALLTIME_OVR_FLOOR);
+        all = all.filter(p => p.ovr >= ALLTIME_OVR_FLOOR && p.includeAlltime !== false);
     } else {
         all = all.filter(p => p.salary > 0);
     }
