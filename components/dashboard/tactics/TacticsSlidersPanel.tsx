@@ -98,6 +98,10 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                             label="스위치 수비 빈도" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
                             leftLabel="따라가기" rightLabel="스위치" tooltip="스크린 대처 방식입니다. 높을수록 미스매치가 발생할 확률이 높지만 오픈 찬스는 줄어듭니다." fillColor="#6366f1"
                         />
+                        <SliderControl
+                            label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
+                            leftLabel="속공 전환" rightLabel="적극 가담" tooltip="높을수록 수비 리바운드에 적극 가담하여 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#6366f1"
+                        />
                     </div>
 
                     {/* Right col: 수비 시스템 */}

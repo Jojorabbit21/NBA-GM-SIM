@@ -352,6 +352,11 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                         tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다." fillColor="#d946ef" />
                     <SliderControl label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
                         tooltip="높을수록 수비 리바운드에 적극 가담하여 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#d946ef" />
+                    <SliderControl label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
+                        min={0} max={2}
+                        tooltip="드랍: 림 보호(미드레인지 허용). 헷지: 핸들러 지연 후 복귀. 블리츠: 더블팀(턴오버 유발, 킥아웃 허용)."
+                        fillColor="#d946ef"
+                        valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'} />
                 </div>
             </div>
 
