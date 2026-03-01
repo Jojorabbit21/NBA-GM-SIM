@@ -38,13 +38,16 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 }
 
 // ── Collect all players from all teams (+ free agents for alltime) as the "draft pool" ──
+const ALLTIME_OVR_FLOOR = 83;
+
 function collectAllPlayers(teams: Team[], poolType: DraftPoolType, freeAgents: Player[] = []): Player[] {
-    const all: Player[] = [];
+    let all: Player[] = [];
     teams.forEach(t => t.roster.forEach(p => all.push(p)));
     if (poolType === 'alltime') {
         freeAgents.forEach(p => all.push(p));
+        all = all.filter(p => p.ovr >= ALLTIME_OVR_FLOOR);
     } else {
-        all.splice(0, all.length, ...all.filter(p => p.salary > 0));
+        all = all.filter(p => p.salary > 0);
     }
     all.sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a) || a.id.localeCompare(b.id));
     return all;

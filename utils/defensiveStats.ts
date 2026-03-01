@@ -14,6 +14,14 @@ export interface DefensiveStats {
     oppThreePct: number;
     // 우리팀 (부정적)
     teamPfPerGame: number;
+    // 우리팀 슈팅 스탯
+    teamFgmPerGame: number;
+    teamFgaPerGame: number;
+    teamP3mPerGame: number;
+    teamP3aPerGame: number;
+    teamFtmPerGame: number;
+    teamFtaPerGame: number;
+    teamTsPct: number;           // TS% = PTS / (2 * (FGA + 0.44 * FTA)) * 100
 }
 
 interface TeamBoxStats {
@@ -32,10 +40,13 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
             gamesPlayed: 0,
             teamStlPerGame: 0, teamBlkPerGame: 0, teamDrbPerGame: 0, oppTovPerGame: 0,
             oppPtsPerGame: 0, oppFgPct: 0, oppThreePct: 0, teamPfPerGame: 0,
+            teamFgmPerGame: 0, teamFgaPerGame: 0, teamP3mPerGame: 0, teamP3aPerGame: 0,
+            teamFtmPerGame: 0, teamFtaPerGame: 0, teamTsPct: 0,
         };
     }
 
     let teamStl = 0, teamBlk = 0, teamDrb = 0, teamPf = 0;
+    let teamFgm = 0, teamFga = 0, teamP3m = 0, teamP3a = 0, teamFtm = 0, teamFta = 0, teamPts = 0;
     let oppPts = 0, oppFgm = 0, oppFga = 0, opp3m = 0, opp3a = 0, oppTov = 0;
 
     for (const g of played) {
@@ -49,6 +60,17 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
             teamBlk += myStats.blk;
             teamDrb += myStats.defReb;
             teamPf += myStats.pf;
+            teamFgm += myStats.fgm;
+            teamFga += myStats.fga;
+            teamP3m += myStats.p3m;
+            teamP3a += myStats.p3a;
+            teamFtm += myStats.ftm;
+            teamFta += myStats.fta;
+        }
+
+        const myScore = isHome ? g.homeScore : g.awayScore;
+        if (myScore != null) {
+            teamPts += myScore;
         }
 
         if (oppStats) {
@@ -64,6 +86,7 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
         }
     }
 
+    const tsa = teamFga + 0.44 * teamFta; // True Shooting Attempts
     return {
         gamesPlayed: n,
         teamStlPerGame: teamStl / n,
@@ -74,5 +97,12 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
         oppFgPct: oppFga > 0 ? (oppFgm / oppFga) * 100 : 0,
         oppThreePct: opp3a > 0 ? (opp3m / opp3a) * 100 : 0,
         teamPfPerGame: teamPf / n,
+        teamFgmPerGame: teamFgm / n,
+        teamFgaPerGame: teamFga / n,
+        teamP3mPerGame: teamP3m / n,
+        teamP3aPerGame: teamP3a / n,
+        teamFtmPerGame: teamFtm / n,
+        teamFtaPerGame: teamFta / n,
+        teamTsPct: tsa > 0 ? (teamPts / (2 * tsa)) * 100 : 0,
     };
 }

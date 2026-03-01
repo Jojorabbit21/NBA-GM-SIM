@@ -112,10 +112,10 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 <PlayTypePPP sliders={sliders} roster={roster} />
             </div>
 
-            {/* Section 3: Defensive Performance */}
+            {/* Section 3: Team Shooting + Defensive Performance */}
             <div className="pb-5 border-b border-slate-800">
                 <div className="flex items-center justify-between mb-3">
-                    <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">수비 성과</h5>
+                    <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">팀 성과</h5>
                     {defensiveStats && defensiveStats.gamesPlayed > 0 && (
                         <span className="text-[11px] text-slate-500">{defensiveStats.gamesPlayed}경기 평균</span>
                     )}
@@ -125,14 +125,21 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 ) : (
                     <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
                         <div className="flex flex-col gap-1.5">
-                            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">긍정적 지표</span>
+                            <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">팀 슈팅</span>
+                            <DefStatRow label="FGM / FGA" value={`${defensiveStats.teamFgmPerGame.toFixed(1)} / ${defensiveStats.teamFgaPerGame.toFixed(1)}`} />
+                            <DefStatRow label="3PM / 3PA" value={`${defensiveStats.teamP3mPerGame.toFixed(1)} / ${defensiveStats.teamP3aPerGame.toFixed(1)}`} />
+                            <DefStatRow label="FTM / FTA" value={`${defensiveStats.teamFtmPerGame.toFixed(1)} / ${defensiveStats.teamFtaPerGame.toFixed(1)}`} />
+                            <DefStatRow label="TS%" value={`${defensiveStats.teamTsPct.toFixed(1)}%`} />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">수비 지표</span>
                             <DefStatRow label="스틸" value={`${defensiveStats.teamStlPerGame.toFixed(1)} /G`} />
                             <DefStatRow label="블록" value={`${defensiveStats.teamBlkPerGame.toFixed(1)} /G`} />
                             <DefStatRow label="수비 리바운드" value={`${defensiveStats.teamDrbPerGame.toFixed(1)} /G`} />
                             <DefStatRow label="유발 턴오버" value={`${defensiveStats.oppTovPerGame.toFixed(1)} /G`} />
                         </div>
-                        <div className="flex flex-col gap-1.5">
-                            <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">부정적 지표</span>
+                        <div className="flex flex-col gap-1.5 mt-2">
+                            <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">실점 지표</span>
                             <DefStatRow label="실점" value={`${defensiveStats.oppPtsPerGame.toFixed(1)} /G`} />
                             <DefStatRow label="상대 FG%" value={`${defensiveStats.oppFgPct.toFixed(1)}%`} />
                             <DefStatRow label="상대 3P%" value={`${defensiveStats.oppThreePct.toFixed(1)}%`} />
