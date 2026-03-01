@@ -2,6 +2,7 @@
 import { Team, GameTactics, DepthChart, Player } from '../../../types';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { DEFAULT_SLIDERS } from '../config/tacticPresets';
+import { SLIDER_STEPS, valueToStep, stepToValue } from '../config/sliderSteps';
 
 // --- Helpers ---
 const clamp = (v: number, lo = 1, hi = 10) => Math.max(lo, Math.min(hi, Math.round(v)));
@@ -13,6 +14,12 @@ const avgVals = (...vals: number[]) => vals.reduce((s, v) => s + v, 0) / vals.le
  */
 const ato = (score: number, low: number, high: number): number =>
     clamp(((score - low) / (high - low)) * 9 + 1);
+
+/** 계산된 1-10 값을 가장 가까운 step 값으로 스냅 */
+const snap = (key: string, value: number): number => {
+    if (!SLIDER_STEPS[key]) return value;
+    return stepToValue(key, valueToStep(key, value));
+};
 
 // --- Archetype Score Functions (nba-strategy.md 기반) ---
 const get3pt        = (p: Player) => (p.threeCorner + p.three45 + p.threeTop) / 3;
@@ -112,7 +119,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     // 주전 5명 미만이면 디폴트 슬라이더 반환
     if (starters.length < 5) {
         return {
-            sliders: { ...DEFAULT_SLIDERS, shot_mid: 3, play_pnr: 6, fullCourtPress: 1 },
+            sliders: { ...DEFAULT_SLIDERS },
             starters: startersMap,
             minutesLimits: {},
             rotationMap,
@@ -171,7 +178,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
 
     // 중거리 = "죽은 구역" → 기본값 낮게, 엘리트 팀만 높게
     const avgMidRange = avgOf(p => p.midRange);
-    const shot_mid = avgMidRange >= 88 ? 7 : avgMidRange >= 82 ? 5 : 3;
+    const shot_mid = avgMidRange >= 88 ? 9 : avgMidRange >= 82 ? 5 : 2;
 
     // ── Defense: 수비 스타일 ──
     const defIntensity = ato(avgOf(p => p.perDef), 60, 88);
@@ -185,35 +192,35 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     // ── Defense: 수비 시스템 ──
     // 풀코트 프레스 = 극도 체력 소모 → 보수적 (1~3)
     const guardStaminaSpeed = avgVals(PG.stamina, PG.speed, SG.stamina, SG.speed);
-    const fullCourtPress = guardStaminaSpeed >= 88 ? 3 : guardStaminaSpeed >= 82 ? 2 : 1;
+    const fullCourtPress = guardStaminaSpeed >= 88 ? 8 : guardStaminaSpeed >= 82 ? 4 : 1;
 
     // 존 vs 대인: 내선 vs 외곽 수비력 비교
     const intDefPower = avgOf(p => (p.intDef + p.blk) / 2);
     const perimPower  = avgOf(p => (p.perDef + p.steal) / 2);
     const powerDiff = intDefPower - perimPower;
-    const zoneFreq = powerDiff >= 15 ? 9 : powerDiff <= -10 ? 3 : 5;
+    const zoneFreq = powerDiff >= 15 ? 9 : powerDiff <= -10 ? 1 : 5;
 
     return {
         sliders: {
-            pace,
-            ballMovement,
-            offReb,
-            play_pnr,
-            play_iso,
-            play_post,
-            play_cns,
-            play_drive,
-            shot_3pt,
+            pace: snap('pace', pace),
+            ballMovement: snap('ballMovement', ballMovement),
+            offReb: snap('offReb', offReb),
+            play_pnr: snap('play_pnr', play_pnr),
+            play_iso: snap('play_iso', play_iso),
+            play_post: snap('play_post', play_post),
+            play_cns: snap('play_cns', play_cns),
+            play_drive: snap('play_drive', play_drive),
+            shot_3pt: snap('shot_3pt', shot_3pt),
             shot_mid,
-            shot_rim,
-            defIntensity,
-            helpDef,
-            switchFreq,
-            defReb: DEFAULT_SLIDERS.defReb,           // dead code — default
+            shot_rim: snap('shot_rim', shot_rim),
+            defIntensity: snap('defIntensity', defIntensity),
+            helpDef: snap('helpDef', helpDef),
+            switchFreq: snap('switchFreq', switchFreq),
+            defReb: DEFAULT_SLIDERS.defReb,
             zoneFreq,
             fullCourtPress,
-            zoneUsage: zoneFreq,                       // zoneFreq와 동기화
-            pnrDefense: DEFAULT_SLIDERS.pnrDefense,    // 기본값 사용
+            zoneUsage: zoneFreq,
+            pnrDefense: DEFAULT_SLIDERS.pnrDefense,
         },
         starters: startersMap,
         minutesLimits: {},

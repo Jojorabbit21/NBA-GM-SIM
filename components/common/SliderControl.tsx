@@ -1,10 +1,21 @@
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { HelpCircle } from 'lucide-react';
+
+interface SliderStep {
+    value: number;
+    label: string;
+}
 
 // Reusable Slider Component
 // Uses local state during drag so only this component re-renders while dragging.
 // Commits to parent (onChange) only on mouseup/keyup — preventing App-level re-renders at 60fps.
+//
+// steps 모드: steps prop이 제공되면 이산 단계로 동작.
+//   - value prop은 엔진 값 (예: 2, 5, 9)
+//   - 내부에서 가장 가까운 step index로 변환
+//   - onChange는 엔진 값을 emit (예: steps[stepIndex].value)
+//   - 라벨 표시: steps[stepIndex].label
 export const SliderControl: React.FC<{
     label: string,
     value: number,
@@ -15,18 +26,39 @@ export const SliderControl: React.FC<{
     rightLabel?: string,
     tooltip?: string,
     fillColor?: string,
-    valueLabel?: (val: number) => string
-}> = ({ label, value, onChange, min = 1, max = 10, leftLabel, rightLabel, tooltip, fillColor = '#6366f1', valueLabel }) => {
-  const [localValue, setLocalValue] = useState(value);
-  const localValueRef = useRef(value);
+    steps?: SliderStep[],
+}> = ({ label, value, onChange, min: propMin, max: propMax, leftLabel, rightLabel, tooltip, fillColor = '#6366f1', steps }) => {
+
+  // steps 모드: 엔진 값 → step index 변환
+  const engineToStep = useMemo(() => {
+    if (!steps) return null;
+    return (engineVal: number) => {
+      let closest = 0;
+      let minDist = Infinity;
+      for (let i = 0; i < steps.length; i++) {
+        const dist = Math.abs(steps[i].value - engineVal);
+        if (dist < minDist) { minDist = dist; closest = i; }
+      }
+      return closest;
+    };
+  }, [steps]);
+
+  const min = steps ? 0 : (propMin ?? 1);
+  const max = steps ? steps.length - 1 : (propMax ?? 10);
+
+  const initialLocal = steps && engineToStep ? engineToStep(value) : value;
+
+  const [localValue, setLocalValue] = useState(initialLocal);
+  const localValueRef = useRef(initialLocal);
 
   // Sync from parent when parent changes externally (코치 위임, 초기화, 프리셋 불러오기)
   useEffect(() => {
-    if (localValueRef.current !== value) {
-      localValueRef.current = value;
-      setLocalValue(value);
+    const mapped = steps && engineToStep ? engineToStep(value) : value;
+    if (localValueRef.current !== mapped) {
+      localValueRef.current = mapped;
+      setLocalValue(mapped);
     }
-  }, [value]);
+  }, [value, steps, engineToStep]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseInt(e.target.value);
@@ -36,10 +68,21 @@ export const SliderControl: React.FC<{
 
   // Commit to parent only when drag/key interaction ends
   const handleCommit = useCallback(() => {
-    onChange(localValueRef.current);
-  }, [onChange]);
+    const raw = localValueRef.current;
+    if (steps) {
+      const idx = Math.max(0, Math.min(steps.length - 1, raw));
+      onChange(steps[idx].value);
+    } else {
+      onChange(raw);
+    }
+  }, [onChange, steps]);
 
   const percentage = ((localValue - min) / (max - min)) * 100;
+
+  // Display label
+  const displayLabel = steps
+    ? steps[Math.max(0, Math.min(steps.length - 1, localValue))]?.label ?? ''
+    : String(localValue);
 
   return (
     <div className="space-y-1.5 w-full py-1">
@@ -55,7 +98,7 @@ export const SliderControl: React.FC<{
               </>
           )}
         </div>
-        <span className="text-[13px] font-black text-white font-mono">{valueLabel ? valueLabel(localValue) : localValue}</span>
+        <span className="text-[13px] font-black text-white font-mono">{displayLabel}</span>
       </div>
       <div className="relative flex items-center h-5">
          <input

@@ -4,7 +4,15 @@ import { GameTactics, TacticalSliders, ShotEvent, PlayerBoxScore } from '../../.
 import { TEAM_DATA } from '../../../data/teamData';
 import { COURT_WIDTH } from '../../../utils/courtCoordinates';
 import { SliderControl } from '../../common/SliderControl';
+import { SLIDER_STEPS } from '../../../services/game/config/sliderSteps';
 import { Check } from 'lucide-react';
+
+// pnrDefense는 엔진이 0-2를 직접 사용하므로 별도 steps 정의
+const PNR_STEPS = [
+    { value: 0, label: '드랍' },
+    { value: 1, label: '헷지' },
+    { value: 2, label: '블리츠' },
+];
 
 // ─────────────────────────────────────────────────────────────
 // Types & Constants
@@ -298,65 +306,64 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                 <div className="flex flex-col gap-1">
                     <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">게임 운영</h4>
                     <SliderControl label="게임 템포" value={sliders.pace} onChange={v => updateSlider('pace', v)}
-                        tooltip="높을수록 빠른 공수전환과 얼리 오펜스를 시도합니다." fillColor="#f97316" />
+                        steps={SLIDER_STEPS.pace} tooltip="빠를수록 빠른 공수전환과 얼리 오펜스를 시도합니다." fillColor="#f97316" />
                     <SliderControl label="볼 회전" value={sliders.ballMovement} onChange={v => updateSlider('ballMovement', v)}
-                        tooltip="높을수록 더 많은 패스를 돌려 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." fillColor="#f97316" />
+                        steps={SLIDER_STEPS.ballMovement} tooltip="패스 위주일수록 오픈 찬스를 찾지만, 턴오버 위험도 증가합니다." fillColor="#f97316" />
                     <SliderControl label="공격 리바운드" value={sliders.offReb} onChange={v => updateSlider('offReb', v)}
-                        tooltip="높을수록 슛 이후 공격 리바운드에 가담하지만, 상대 속공에 취약해집니다." fillColor="#f97316" />
+                        steps={SLIDER_STEPS.offReb} tooltip="적극 가담할수록 세컨드찬스가 늘지만, 상대 속공에 취약해집니다." fillColor="#f97316" />
                 </div>
 
                 {/* 2. 슈팅 전략 */}
                 <div className="flex flex-col gap-1">
                     <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">슈팅 전략</h4>
                     <SliderControl label="3점 슛 빈도" value={sliders.shot_3pt} onChange={v => updateSlider('shot_3pt', v)}
-                        tooltip="팀의 3점 시도 빈도를 결정합니다." fillColor="#10b981" />
+                        steps={SLIDER_STEPS.shot_3pt} tooltip="팀의 3점 시도 빈도를 결정합니다." fillColor="#10b981" />
                     <SliderControl label="골밑 공격" value={sliders.shot_rim} onChange={v => updateSlider('shot_rim', v)}
-                        tooltip="림 어택 빈도입니다. 가장 효율적인 슛 구역." fillColor="#10b981" />
+                        steps={SLIDER_STEPS.shot_rim} tooltip="가장 효율적인 슛 구역. 드라이브/컷 능력과 연계됩니다." fillColor="#10b981" />
                     <SliderControl label="중거리 슛" value={sliders.shot_mid} onChange={v => updateSlider('shot_mid', v)}
-                        tooltip="중거리 슛은 효율이 낮습니다. 엘리트 슈터가 없다면 낮게 유지하세요." fillColor="#10b981" />
+                        steps={SLIDER_STEPS.shot_mid} tooltip="중거리 슛은 효율이 낮습니다. 엘리트 슈터가 없다면 소극적으로 유지하세요." fillColor="#10b981" />
                 </div>
 
                 {/* 3. 공격 루트 */}
                 <div className="flex flex-col gap-1">
                     <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">공격 루트</h4>
                     <SliderControl label="픽앤롤" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)}
-                        tooltip="핸들러+스크리너 콤보가 좋을수록 효과적. 현대 농구의 핵심 공격 패턴." fillColor="#3b82f6" />
+                        steps={SLIDER_STEPS.play_pnr} tooltip="핸들러+스크리너 콤보가 좋을수록 효과적." fillColor="#3b82f6" />
                     <SliderControl label="아이솔레이션" value={sliders.play_iso} onChange={v => updateSlider('play_iso', v)}
-                        tooltip="엘리트 ISO 스코어러가 없다면 낮게 유지하세요." fillColor="#3b82f6" />
+                        steps={SLIDER_STEPS.play_iso} tooltip="엘리트 ISO 스코어러가 없다면 소극적으로 유지하세요." fillColor="#3b82f6" />
                     <SliderControl label="포스트업" value={sliders.play_post} onChange={v => updateSlider('play_post', v)}
-                        tooltip="도미넌트 포스트맨이 있을 때만 높게 설정하세요." fillColor="#3b82f6" />
+                        steps={SLIDER_STEPS.play_post} tooltip="도미넌트 포스트맨이 있을 때만 적극적으로 설정하세요." fillColor="#3b82f6" />
                     <SliderControl label="캐치 앤 슛" value={sliders.play_cns} onChange={v => updateSlider('play_cns', v)}
-                        tooltip="팀 전체의 스패이싱 능력에 따라 설정하세요." fillColor="#3b82f6" />
+                        steps={SLIDER_STEPS.play_cns} tooltip="팀 전체의 스패이싱 능력에 따라 설정하세요." fillColor="#3b82f6" />
                     <SliderControl label="컷인 & 돌파" value={sliders.play_drive} onChange={v => updateSlider('play_drive', v)}
-                        tooltip="드라이브/컷 능력이 좋은 선수가 있을수록 효과적." fillColor="#3b82f6" />
+                        steps={SLIDER_STEPS.play_drive} tooltip="드라이브/컷 능력이 좋은 선수가 있을수록 효과적." fillColor="#3b82f6" />
                 </div>
 
                 {/* 4. 온볼 수비 */}
                 <div className="flex flex-col gap-1">
                     <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">온볼 수비</h4>
                     <SliderControl label="수비 압박" value={sliders.defIntensity} onChange={v => updateSlider('defIntensity', v)}
-                        tooltip="높을수록 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." fillColor="#6366f1" />
+                        steps={SLIDER_STEPS.defIntensity} tooltip="타이트할수록 스틸 시도가 늘어나지만, 파울 트러블 위험이 커집니다." fillColor="#6366f1" />
                     <SliderControl label="스위치 수비" value={sliders.switchFreq} onChange={v => updateSlider('switchFreq', v)}
-                        tooltip="높을수록 미스매치가 발생할 확률이 높지만 오픈 찬스는 줄어듭니다." fillColor="#6366f1" />
+                        steps={SLIDER_STEPS.switchFreq} tooltip="스위치할수록 미스매치 위험이 있지만 오픈 찬스는 줄어듭니다." fillColor="#6366f1" />
                     <SliderControl label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
-                        min={0} max={2}
+                        steps={PNR_STEPS}
                         tooltip="드랍: 림 보호(미드레인지 허용). 헷지: 핸들러 지연 후 복귀. 블리츠: 더블팀(턴오버 유발, 킥아웃 허용)."
-                        fillColor="#6366f1"
-                        valueLabel={v => ['드랍', '헷지', '블리츠'][v] || '헷지'} />
+                        fillColor="#6366f1" />
                     <SliderControl label="풀코트 프레스" value={sliders.fullCourtPress} onChange={v => updateSlider('fullCourtPress', v)}
-                        tooltip="체력을 급격히 소모하며 턴오버를 유발합니다. 가드 스태미나/스피드가 높을 때만 효과적." fillColor="#6366f1" />
+                        steps={SLIDER_STEPS.fullCourtPress} tooltip="체력을 급격히 소모하며 턴오버를 유발합니다." fillColor="#6366f1" />
                 </div>
 
                 {/* 5. 오프볼 수비 */}
                 <div className="flex flex-col gap-1">
                     <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">오프볼 수비</h4>
                     <SliderControl label="헬프 수비" value={sliders.helpDef} onChange={v => updateSlider('helpDef', v)}
-                        tooltip="높을수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용할 위험이 커집니다." fillColor="#d946ef" />
+                        steps={SLIDER_STEPS.helpDef} tooltip="적극 지원할수록 페인트존 보호가 강해지지만, 외곽 3점슛을 허용합니다." fillColor="#d946ef" />
                     <SliderControl label="지역 방어" value={sliders.zoneFreq}
                         onChange={v => { updateSlider('zoneFreq', v); }}
-                        tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다." fillColor="#d946ef" />
+                        steps={SLIDER_STEPS.zoneFreq} tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다." fillColor="#d946ef" />
                     <SliderControl label="수비 리바운드" value={sliders.defReb} onChange={v => updateSlider('defReb', v)}
-                        tooltip="높을수록 수비 리바운드에 적극 가담하여 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#d946ef" />
+                        steps={SLIDER_STEPS.defReb} tooltip="박스아웃할수록 세컨드찬스를 줄이지만, 속공 전환이 느려집니다." fillColor="#d946ef" />
                 </div>
             </div>
 
