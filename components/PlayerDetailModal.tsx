@@ -79,40 +79,44 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-// ── Archetype Labels ──
-const ARCHETYPE_LABELS: Record<string, string> = {
-    handler: '핸들러', spacer: '스페이서', driver: '드라이버',
-    screener: '스크리너', roller: '롤러', popper: '파퍼',
-    rebounder: '리바운더', postScorer: '포스트 스코어러', isoScorer: '아이소 스코어러',
-    connector: '커넥터', perimLock: '페리미터 락다운', rimProtector: '림 프로텍터',
-};
-
-/** Player 스탯으로 아키타입 점수 계산 (엔진과 동일 공식, condition=100) */
-function getTopArchetypes(p: Player): { label: string; score: number }[] {
+// ── Hidden Archetypes (docs/engine/hidden-archetypes.md 기준) ──
+function getHiddenArchetypes(p: Player): string[] {
+    const list: string[] = [];
     const threeVal = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
-    const normH = Math.max(0, (p.height - 185) * 3);
-    const normW = Math.max(0, (p.weight - 80) * 1.6);
 
-    const scores: Record<string, number> = {
-        handler: p.handling * 0.30 + p.passIq * 0.25 + p.passVision * 0.25 + p.passAcc * 0.20,
-        spacer: threeVal * 0.60 + p.shotIq * 0.25 + p.offConsist * 0.15,
-        driver: p.speed * 0.20 + p.agility * 0.15 + p.vertical * 0.10 + p.ins * 0.35 + p.midRange * 0.20,
-        screener: p.strength * 0.40 + normH * 0.30 + normW * 0.30,
-        roller: p.ins * 0.40 + p.vertical * 0.30 + p.speed * 0.30,
-        popper: threeVal * 0.70 + p.shotIq * 0.30,
-        rebounder: p.reb * 0.70 + p.hustle * 0.15 + p.vertical * 0.15,
-        postScorer: p.ins * 0.50 + p.strength * 0.30 + p.hands * 0.20,
-        isoScorer: p.handling * 0.25 + p.midRange * 0.25 + p.speed * 0.25 + p.agility * 0.25,
-        connector: p.passIq * 0.30 + p.helpDefIq * 0.20 + p.hustle * 0.30 + p.hands * 0.20,
-        perimLock: p.perDef * 0.50 + p.agility * 0.25 + p.steal * 0.25,
-        rimProtector: p.blk * 0.35 + p.intDef * 0.35 + p.vertical * 0.15 + normH * 0.15,
-    };
+    // A. 클러치
+    if (p.intangibles >= 90 && p.shotIq >= 85) list.push('The Closer');
+    if (p.intangibles >= 85 && p.offConsist >= 88) list.push('Ice in Veins');
+    if (p.intangibles >= 85 && p.strength >= 85 && p.ins >= 85) list.push('Big Stage Player');
 
-    return Object.entries(scores)
-        .map(([key, score]) => ({ label: ARCHETYPE_LABELS[key], score: Math.round(score) }))
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 3)
-        .filter(a => a.score >= 70);
+    // B. 공격
+    if (p.midRange >= 97) list.push('Mr. Fundamental');
+    if (threeVal >= 90 && p.shotIq >= 85) list.push('Rangemaster');
+    if (p.ins >= 90 && (p.strength >= 88 || p.vertical >= 88)) list.push('Tyrant');
+    if (p.closeShot >= 96 && p.agility >= 85 && p.height <= 195) list.push('Levitator');
+    if (p.speed >= 95 && p.agility >= 93) list.push('Afterburner');
+    if ((p.position === 'PG' || p.position === 'SG') && p.vertical >= 95 && p.closeShot >= 93) list.push('Ascendant');
+
+    // C. 스틸
+    if (p.perDef >= 92 && p.steal >= 80) list.push('The Clamp');
+    if (p.steal >= 85 && p.agility >= 92) list.push('The Pickpocket');
+    if (p.helpDefIq >= 85 && p.passPerc >= 80 && p.steal >= 75) list.push('The Hawk');
+    if (p.speed >= 85 && p.stamina >= 85 && p.hustle >= 85) list.push('The Press');
+
+    // D. 블락 (상호 배타)
+    if (p.blk >= 97) list.push('The Wall');
+    else if (p.height >= 216 && p.blk >= 80) list.push('The Alien');
+    else if (p.vertical >= 95 && p.blk >= 75) list.push('Skywalker');
+    else if (p.helpDefIq >= 92 && p.blk >= 80) list.push('Defensive Anchor');
+
+    // E. 파울
+    if (p.drawFoul >= 95 && p.shotIq >= 88) list.push('Manipulator');
+
+    // F. 리바운드
+    if (p.offReb >= 95 || p.defReb >= 95) list.push('Harvester');
+    if (p.height <= 200 && p.offReb >= 90 && p.vertical >= 90) list.push('Raider');
+
+    return list;
 }
 
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, tendencySeed, onClose }) => {
@@ -322,9 +326,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     </div>
                 </div>
 
-                {/* 2. Archetype + Personality & Playstyle Traits */}
+                {/* 2. Hidden Archetypes + Personality & Playstyle Traits */}
                 {(() => {
-                    const archetypes = getTopArchetypes(player);
+                    const archetypes = getHiddenArchetypes(player);
                     const hasArchetypes = archetypes.length > 0;
                     const hasTraits = traits.length > 0;
                     if (!hasArchetypes && !hasTraits) return null;
@@ -333,7 +337,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">성격 & 플레이스타일</h3>
                             {hasArchetypes && (
                                 <p className="text-sm text-slate-300 mb-3">
-                                    {archetypes.map(a => a.label).join(' / ')}
+                                    {archetypes.join(' / ')}
                                 </p>
                             )}
                             {hasTraits && (
