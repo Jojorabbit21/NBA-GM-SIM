@@ -120,7 +120,6 @@ services/game/tactics/
         defConsist: number,     // 수비 일관성 (defRating 보정 + 래프스)
         passPerc: number,       // 패싱레인 인식
         drFoul: number,         // 파울 유도
-        foulTendency: number,   // 파울 성향
 
         // 리바운드
         reb: number,            // 리바운드 종합
@@ -302,7 +301,8 @@ weights = {
 }
 
 // Star Gravity: 1옵션 에이스가 코트에 있으면 Hero 플레이 비중 증가
-gravityBoost = max(0, (topGravity - 60) * 0.03)
+gravityBoost = min(0.30, max(0, (topGravity - 65) * 0.015))
+// gravity 90 → 0.30 (캡), gravity 78 → 0.195, gravity 65 이하 → 0
 weights[Iso] *= (1 + gravityBoost)
 weights[PnR_Handler] *= (1 + gravityBoost)
 weights[PostUp] *= (1 + gravityBoost * 0.5)
@@ -327,17 +327,22 @@ resolvePlayAction(team, playType, sliders) → PlayContext {
 공격자 선택 방식:
   rawScore = PlayType별 archetypeScore(player)
   usageMultiplier = PLAY_TYPE_USAGE_WEIGHTS[playType][optionRank - 1]
-  weight = rawScore^2.5 * usageMultiplier
+  weight = rawScore * usageMultiplier   // 선형 (pow=1.0)
+  weight *= ballDominance              // 텐던시: 0.5~1.5x
+  weight *= playStyleMod               // Iso/PostUp: +(ps*0.3), PnR/Handoff: -(ps*0.2)
   → 가중 랜덤 선택
 
+  * USAGE_WEIGHTS가 계층 구조를 담당, 능력치는 선형 반영
+  * Hero 1옵:5옵 ≈ 6:1, System 1옵:5옵 ≈ 1.8:1
+
 PlayType별 선택 기준:
-  Iso:         isoScorer (handling+mid+speed+agility) | 1옵션 4.0x
-  PnR_Handler: handler (handling+passIq+passVision)    | 1옵션 3.0x
-  PnR_Roll:    roller (ins+vertical+speed)              | 균등(1.5x~0.8x)
-  PnR_Pop:     popper (3pt+shotIq)                     | 균등
-  PostUp:      postScorer (ins+strength+hands)          | 1옵션 3.5x
-  CatchShoot:  spacer (3pt+shotIq+offConsist)           | 균등
-  Cut:         driver (speed+agility+vertical+ins)      | 균등
+  Iso:         isoScorer (handling+mid+speed+agility) | 1옵션 2.5x
+  PnR_Handler: handler (handling+passIq+passVision)    | 1옵션 2.5x
+  PnR_Roll:    roller (ins+vertical+speed)              | 균등(1.3x~0.9x)
+  PnR_Pop:     popper (3pt+shotIq)                     | 균등(1.6x~0.6x)
+  PostUp:      postScorer (ins+strength+hands)          | 1옵션 2.2x
+  CatchShoot:  spacer (3pt+shotIq+offConsist)           | 균등(1.5x~0.8x)
+  Cut:         driver (speed+agility+vertical+ins)      | 균등(1.4x~0.8x)
   Transition:  spdBall+driver 높은 선수                 | 완전 균등(1.0x)
 ```
 
@@ -968,19 +973,30 @@ optionRank 결정:
   → 1옵션(최고) ~ 5옵션(최하)
 
 PLAY_TYPE_USAGE_WEIGHTS (optionRank 1~5):
-  Iso:          [4.0, 2.5, 0.8, 0.2, 0.1]  ← 에이스 집중
-  PostUp:       [3.5, 2.2, 1.0, 0.3, 0.1]
-  PnR_Handler:  [3.0, 2.0, 1.2, 0.5, 0.2]
-  Handoff:      [2.0, 1.8, 1.2, 0.8, 0.4]
-  PnR_Pop:      [1.8, 1.6, 1.2, 0.8, 0.5]
-  PnR_Roll:     [1.5, 1.4, 1.2, 1.0, 0.8]  ← 핀 컷 비중
-  CatchShoot:   [1.3, 1.2, 1.2, 1.1, 0.8]
-  Cut:          [1.2, 1.2, 1.2, 1.2, 1.0]
-  Transition:   [1.0, 1.0, 1.0, 1.0, 1.0]  ← 완전 균등
-  Putback:      [1.0, 1.0, 1.0, 1.0, 1.0]
+  Hero:
+    Iso:          [2.5, 1.8, 1.2, 0.7, 0.4]  ← 에이스 집중 (1옵:5옵 = 6.3:1)
+    PostUp:       [2.2, 1.6, 1.0, 0.6, 0.3]
+    PnR_Handler:  [2.5, 1.8, 1.2, 0.7, 0.4]
+  Designed:
+    Handoff:      [2.0, 1.6, 1.2, 0.8, 0.5]
+    PnR_Pop:      [1.6, 1.4, 1.2, 0.9, 0.6]
+  System:
+    PnR_Roll:     [1.3, 1.2, 1.1, 1.0, 0.9]  ← 균등 (1옵:5옵 = 1.4:1)
+    CatchShoot:   [1.5, 1.3, 1.2, 1.0, 0.8]
+    Cut:          [1.4, 1.2, 1.1, 1.0, 0.8]
+  Chaos:
+    Transition:   [1.0, 1.0, 1.0, 1.0, 1.0]  ← 완전 균등
+    Putback:      [1.0, 1.0, 1.0, 1.0, 1.0]
+
+Star Gravity Boost:
+  gravityBoost = min(0.30, max(0, (topGravity - 65) * 0.015))
+  Hero 플레이 비중 최대 30% 증가 (캡)
 ```
 
-**의미**: 1옵션 선수가 Iso에서 4.0배 가중치 → 2옵션(2.5배)보다 선택 확률 약 3.6배 높음
+**Iso 예시 (pow=1.0)**:
+  1옵션(rawScore 130): 130 × 2.5 = 325 → 44.7%
+  5옵션(rawScore 74):  74 × 0.4 = 30  → 4.1%
+  → 목표 USG%: 1옵 ~33%, 5옵 ~11% (현실 NBA 수준)
 
 ---
 
@@ -1284,3 +1300,9 @@ hitRate *= (1 + impact / 100)
 | 어시스트 hitRate 보너스 (passVision 90) | +2.0% | |
 | CatchShoot 오픈 보너스 (passVision 90) | +3.0% | |
 | 패스 플레이 추가 턴오버 (passAcc 50) | +2.4% | |
+| **액터 선택 pow 지수** | **1.0 (선형)** | |
+| **Hero USAGE_WEIGHTS 1옵:5옵** | **6.3:1** | Iso [2.5, ..., 0.4] |
+| **System USAGE_WEIGHTS 1옵:5옵** | **1.8:1** | CatchShoot [1.5, ..., 0.8] |
+| **Star Gravity Boost** | **(topGravity-65)×0.015** | 캡 0.30 |
+| **목표 1옵션 USG%** | **~33%** | 현실 30~36% |
+| **목표 5옵션 USG%** | **~11%** | 현실 10~15% |

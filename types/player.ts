@@ -147,6 +147,8 @@ export interface Player {
         'speed' | 'agility' | 'strength' | 'vertical' | 'stamina' |
         'hustle' | 'durability' | 'intangibles'
     >>;
+    // 올타임 드래프트 풀 포함 여부 (DB include_alltime 컬럼, 기본 true)
+    includeAlltime?: boolean;
     stats: PlayerStats;
     playoffStats?: PlayerStats;
     // Runtime hidden tendencies (Calculated or DB)

@@ -60,7 +60,7 @@
 
 | 파일 | 비고 |
 |------|------|
-| `docs/fantasy-draft-plan.md` | ~980줄 종합 설계 문서 (타입, 엔진, AI, 저장, UI, 구현 로드맵) |
+| `docs/plan/fantasy-draft-plan.md` | ~980줄 종합 설계 문서 (타입, 엔진, AI, 저장, UI, 구현 로드맵) |
 
 ---
 
@@ -111,7 +111,7 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 
 ## 5. CPU AI 알고리즘 설계 (미구현)
 
-> 상세 설계: `docs/fantasy-draft-plan.md` 참조
+> 상세 설계: `docs/plan/fantasy-draft-plan.md` 참조
 
 ### GM 성격 시스템 (6종)
 
@@ -442,7 +442,7 @@ interface Player {
 ## 12. 작업 시 주의사항
 
 1. **OVR 계산**: 항상 `calculatePlayerOvr(player)` 사용. `player.ovr` 직접 접근 금지 (deprecated)
-2. **디자인 시스템**: `docs/design-system.md` 준수 (다크 테마, 인디고 액센트, oswald 헤더)
+2. **디자인 시스템**: `docs/ui/design-system.md` 준수 (다크 테마, 인디고 액센트, oswald 헤더)
 3. **Dead Code**: `DraftView.tsx`는 레거시. 참조하지 말 것
 4. **드래프트 픽 트레이드**: 현재 설계에서 불가 (선수만 트레이드 가능)
 5. **선수 정렬**: stableSort — OVR 내림차순, 동점 시 ID 오름차순 (결정론적)
