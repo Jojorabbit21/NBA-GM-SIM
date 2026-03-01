@@ -5,6 +5,8 @@ import { ZONE_PATHS, COURT_LINES, ZONE_AVG, ZONE_CONFIG, getZoneStyle, getZonePi
 
 interface TeamZoneChartProps {
     roster: Player[];
+    /** zone_rim_m, zone_rim_a 등 키-값 맵 (있으면 roster 대신 이 데이터 사용) */
+    zoneOverride?: Record<string, number>;
     hideTitle?: boolean;
     fullWidth?: boolean;
 }
@@ -24,18 +26,22 @@ const ZONE_STAT_MAP: Record<ZoneKey, { m: string; a: string }> = {
     atb3R: { m: 'zone_atb3_r_m', a: 'zone_atb3_r_a' },
 };
 
-export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, hideTitle, fullWidth }) => {
+export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, zoneOverride, hideTitle, fullWidth }) => {
     const teamZones = useMemo(() => {
         const result: Record<ZoneKey, { m: number; a: number }> = {} as any;
         for (const key of Object.keys(ZONE_STAT_MAP) as ZoneKey[]) {
             const { m, a } = ZONE_STAT_MAP[key];
-            result[key] = {
-                m: roster.reduce((sum, p) => sum + ((p.stats as any)[m] || 0), 0),
-                a: roster.reduce((sum, p) => sum + ((p.stats as any)[a] || 0), 0),
-            };
+            if (zoneOverride) {
+                result[key] = { m: zoneOverride[m] || 0, a: zoneOverride[a] || 0 };
+            } else {
+                result[key] = {
+                    m: roster.reduce((sum, p) => sum + ((p.stats as any)[m] || 0), 0),
+                    a: roster.reduce((sum, p) => sum + ((p.stats as any)[a] || 0), 0),
+                };
+            }
         }
         return result;
-    }, [roster]);
+    }, [roster, zoneOverride]);
 
     const zones = useMemo(() =>
         ZONE_CONFIG.map(cfg => ({

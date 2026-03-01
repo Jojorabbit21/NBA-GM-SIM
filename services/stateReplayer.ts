@@ -91,7 +91,7 @@ export const replayGameState = (
 };
 
 function sumTeamBoxScore(box: PlayerBoxScore[]) {
-    return box.reduce((acc, s) => {
+    return box.reduce((acc: Record<string, number>, s) => {
         acc.fgm    += (s.fgm    || 0);
         acc.fga    += (s.fga    || 0);
         acc.p3m    += (s.p3m    || 0);
@@ -108,6 +108,19 @@ function sumTeamBoxScore(box: PlayerBoxScore[]) {
         acc.pf     += (s.pf     || 0);
         acc.techFouls += (s.techFouls || 0);
         acc.flagrantFouls += (s.flagrantFouls || 0);
+        // Zone stats (flat keys from statLine + nested zoneData)
+        Object.keys(s).forEach(key => {
+            if (key.startsWith('zone_') && typeof (s as any)[key] === 'number') {
+                acc[key] = (acc[key] || 0) + ((s as any)[key] || 0);
+            }
+        });
+        if (s.zoneData) {
+            Object.keys(s.zoneData).forEach(key => {
+                if (typeof (s.zoneData as any)[key] === 'number') {
+                    acc[key] = (acc[key] || 0) + (s.zoneData as any)[key];
+                }
+            });
+        }
         return acc;
     }, { fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0 });
 }

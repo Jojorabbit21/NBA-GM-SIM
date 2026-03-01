@@ -1,6 +1,9 @@
 
 import { Game } from '../types';
 
+/** zone_rim_m, zone_rim_a 등 10개 zone × m/a = 20개 키 */
+export type ZoneStatsMap = Record<string, number>;
+
 export interface DefensiveStats {
     gamesPlayed: number;
     // 우리팀 (긍정적)
@@ -22,6 +25,8 @@ export interface DefensiveStats {
     teamFtmPerGame: number;
     teamFtaPerGame: number;
     teamTsPct: number;           // TS% = PTS / (2 * (FGA + 0.44 * FTA)) * 100
+    // 상대팀 zone 슈팅 (우리 상대 경기에서만 누적)
+    oppZoneStats: ZoneStatsMap;
 }
 
 interface TeamBoxStats {
@@ -29,6 +34,7 @@ interface TeamBoxStats {
     ftm: number; fta: number; reb: number; offReb: number;
     defReb: number; ast: number; stl: number; blk: number;
     tov: number; pf: number;
+    [key: string]: number; // zone_* 키 허용
 }
 
 export function computeDefensiveStats(schedule: Game[], userTeamId: string): DefensiveStats {
@@ -42,12 +48,14 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
             oppPtsPerGame: 0, oppFgPct: 0, oppThreePct: 0, teamPfPerGame: 0,
             teamFgmPerGame: 0, teamFgaPerGame: 0, teamP3mPerGame: 0, teamP3aPerGame: 0,
             teamFtmPerGame: 0, teamFtaPerGame: 0, teamTsPct: 0,
+            oppZoneStats: {},
         };
     }
 
     let teamStl = 0, teamBlk = 0, teamDrb = 0, teamPf = 0;
     let teamFgm = 0, teamFga = 0, teamP3m = 0, teamP3a = 0, teamFtm = 0, teamFta = 0, teamPts = 0;
     let oppPts = 0, oppFgm = 0, oppFga = 0, opp3m = 0, opp3a = 0, oppTov = 0;
+    const oppZoneStats: ZoneStatsMap = {};
 
     for (const g of played) {
         const isHome = g.homeTeamId === userTeamId;
@@ -79,6 +87,12 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
             opp3m += oppStats.p3m;
             opp3a += oppStats.p3a;
             oppTov += oppStats.tov;
+            // 상대 zone 슈팅 누적
+            Object.keys(oppStats).forEach(key => {
+                if (key.startsWith('zone_') && typeof oppStats[key] === 'number') {
+                    oppZoneStats[key] = (oppZoneStats[key] || 0) + oppStats[key];
+                }
+            });
         }
 
         if (oppScore != null) {
@@ -104,5 +118,6 @@ export function computeDefensiveStats(schedule: Game[], userTeamId: string): Def
         teamFtmPerGame: teamFtm / n,
         teamFtaPerGame: teamFta / n,
         teamTsPct: tsa > 0 ? (teamPts / (2 * tsa)) * 100 : 0,
+        oppZoneStats,
     };
 }

@@ -11,7 +11,6 @@ import { PLAY_TYPES, getPlayTypeDistribution } from './charts/playTypeConstants'
 interface TacticsDataPanelProps {
     sliders: TacticalSliders;
     roster: Player[];
-    opponentRoster?: Player[];
     defensiveStats?: DefensiveStats;
 }
 
@@ -45,9 +44,9 @@ const DefStatRow: React.FC<{ label: string; value: string }> = ({ label, value }
     </div>
 );
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, opponentRoster, defensiveStats }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats }) => {
     const [showOpponentZone, setShowOpponentZone] = useState(false);
-    const hasOpponentData = opponentRoster && opponentRoster.length > 0;
+    const hasOpponentData = defensiveStats && defensiveStats.gamesPlayed > 0 && Object.keys(defensiveStats.oppZoneStats).length > 0;
 
     // Offense risk values
     const offenseRisk = useMemo(() => {
@@ -103,13 +102,13 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                         {hasOpponentData && (
                             <button
                                 onClick={() => setShowOpponentZone(v => !v)}
-                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-colors ${
-                                    showOpponentZone
-                                        ? 'bg-red-500/15 text-red-400 border-red-500/30'
-                                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
-                                }`}
+                                className="flex items-center gap-1.5 group"
                             >
-                                {showOpponentZone ? '상대 데이터' : '우리 팀'}
+                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${!showOpponentZone ? 'text-indigo-400' : 'text-slate-500'}`}>우리 팀</span>
+                                <div className="relative w-8 h-[18px] rounded-full bg-slate-700 transition-colors">
+                                    <div className={`absolute top-[3px] w-3 h-3 rounded-full transition-all duration-200 ${showOpponentZone ? 'left-[14px] bg-red-400' : 'left-[3px] bg-indigo-400'}`} />
+                                </div>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${showOpponentZone ? 'text-red-400' : 'text-slate-500'}`}>상대</span>
                             </button>
                         )}
                     </div>
@@ -119,7 +118,11 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                         <RadarChart roster={roster} hideTitle />
                     </div>
                     <div className="flex-1">
-                        <TeamZoneChart roster={showOpponentZone && hasOpponentData ? opponentRoster! : roster} fullWidth hideTitle />
+                        <TeamZoneChart
+                            roster={roster}
+                            zoneOverride={showOpponentZone && hasOpponentData ? defensiveStats!.oppZoneStats : undefined}
+                            fullWidth hideTitle
+                        />
                     </div>
                 </div>
             </div>
