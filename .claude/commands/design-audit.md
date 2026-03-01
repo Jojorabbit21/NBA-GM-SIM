@@ -4,7 +4,7 @@
 
 ## 지시사항
 
-1. `docs/design-system.md`를 읽어 디자인 규칙을 확인합니다
+1. `docs/ui/design-system.md`를 읽어 디자인 규칙을 확인합니다
 2. `components/` 및 `views/` 내 모든 `.tsx` 파일을 스캔합니다 (`components/common/`은 제외)
 3. 아래 검사 항목별로 위반사항을 집계합니다
 4. 결과를 요약 테이블 + 상세 분석으로 리포트합니다

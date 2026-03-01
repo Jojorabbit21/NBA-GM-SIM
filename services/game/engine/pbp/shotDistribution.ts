@@ -132,7 +132,7 @@ function calculateWeightsFromArchetype(player: Player, tendency: HiddenTendencie
             passVision: player.passVision, passIq: player.passIq, shotIq: player.shotIq, offConsist: player.offConsist,
             drFoul: player.drawFoul, def: player.def, intDef: player.intDef, perDef: player.perDef,
             blk: player.blk, stl: player.steal, helpDefIq: player.helpDefIq, defConsist: player.defConsist,
-            passPerc: player.passPerc, foulTendency: 50, reb: player.reb, postPlay: player.postPlay
+            passPerc: player.passPerc, reb: player.reb, postPlay: player.postPlay
         };
         archs = calculatePlayerArchetypes(mockAttr, player.condition || 100);
     }

@@ -289,6 +289,9 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
 
         // [New] Custom mode overrides (저장만, 적용은 커스텀 모드 진입 시)
         customOverrides,
+
+        // 올타임 드래프트 풀 포함 여부 (기본 true, false면 제외)
+        includeAlltime: raw.include_alltime !== false,
     };
 };
 

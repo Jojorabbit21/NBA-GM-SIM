@@ -166,9 +166,9 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const rank = optionRanks.get(p.playerId) || 3;
             const usageMultiplier = getContextualMultiplier(rank, playType);
 
-            // C. Final Weight = Skill^2.5 * OptionMultiplier * Tendencies
-            // Power of 2.5 emphasizes skill gap, OptionMultiplier enforces hierarchy
-            let weight = Math.pow(Math.max(1, rawScore), 2.5) * usageMultiplier;
+            // C. Final Weight = Skill * OptionMultiplier * Tendencies
+            // Linear (pow=1.0): USAGE_WEIGHTS가 계층 구조를 담당, 능력치는 선형 반영
+            let weight = Math.max(1, rawScore) * usageMultiplier;
 
             // [SaveTendency] ballDominance: scales actor selection weight (0.5x~1.5x)
             weight *= (p.tendencies?.ballDominance ?? 1.0);

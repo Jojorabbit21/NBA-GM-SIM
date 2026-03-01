@@ -332,10 +332,10 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         // Star Gravity: 1옵션의 공격력이 높을수록 Hero 플레이 비중 증가
         // 현실 NBA에서 에이스가 코트에 있으면 팀 전술 자체가 스타 중심으로 변하는 것을 반영
         const topGravity = getTopPlayerGravity(offTeam);
-        const gravityBoost = Math.max(0, (topGravity - 60) * 0.03);
-        // gravity 80 → boost 0.6 → Iso 60% 증가
-        // gravity 70 → boost 0.3 → Iso 30% 증가
-        // gravity 60 이하 → boost 0 (벤치 유닛은 시스템 플레이 유지)
+        const gravityBoost = Math.min(0.30, Math.max(0, (topGravity - 65) * 0.015));
+        // gravity 90 → min(0.30, 0.375) = 0.30 → Hero 30% 증가
+        // gravity 78 → 0.195 → Hero 20% 증가
+        // gravity 65 이하 → 0 (벤치 유닛은 시스템 플레이 유지)
         weights['Iso'] *= (1 + gravityBoost);
         weights['PnR_Handler'] *= (1 + gravityBoost);
         weights['PostUp'] *= (1 + gravityBoost * 0.5);
