@@ -213,6 +213,7 @@ export const generateAutoTactics = (team: Team): GameTactics => {
             zoneFreq,
             fullCourtPress,
             zoneUsage: zoneFreq,                       // zoneFreq와 동기화
+            pnrDefense: DEFAULT_SLIDERS.pnrDefense,    // 기본값 사용
         },
         starters: startersMap,
         minutesLimits: {},

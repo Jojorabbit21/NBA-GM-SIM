@@ -207,6 +207,27 @@ export const SIM_CONFIG = {
         ASCENDANT_CLOSESHOT_THRESHOLD: 93,
         ASCENDANT_BLOCK_MULTIPLIER: 0.60,    // Rim 블락 확률 × 0.6 (PG/SG 전용)
     },
+    // PnR Defense Coverage (Drop / Hedge / Blitz)
+    PNR_COVERAGE: {
+        // Drop: 빅맨이 림 보호, 핸들러 미드레인지 허용
+        DROP_HANDLER_MID_BONUS: 0.04,
+        DROP_HANDLER_3PT_BONUS: 0.01,
+        DROP_ROLL_PENALTY: 0.04,
+        DROP_POP_BONUS: 0.015,
+        DROP_BLOCK_BONUS: 0.03,
+        // Hedge: 빅맨이 순간 앞으로 나와 핸들러 지연 후 복귀
+        HEDGE_HANDLER_PENALTY: 0.02,
+        HEDGE_ROLL_BONUS: 0.03,
+        HEDGE_SLOW_BIG_EXTRA: 0.02,
+        HEDGE_SLOW_BIG_THRESHOLD: 55,
+        HEDGE_TOV_BONUS: 0.015,
+        // Blitz: 더블팀 고위험 고보상
+        BLITZ_HANDLER_PENALTY: 0.08,
+        BLITZ_ROLL_BONUS: 0.07,
+        BLITZ_POP_BONUS: 0.06,
+        BLITZ_BLOCK_PENALTY: 0.02,
+        BLITZ_TOV_BONUS: 0.04,
+    },
     // Foul Trouble Logic
     FOUL_TROUBLE: {
         PROB_MOD: {

@@ -238,4 +238,7 @@ export interface PossessionResult {
 
     // [New] Flagrant Foul
     isFlagrant2?: boolean;
+
+    // [New] PnR Defense Coverage
+    pnrCoverage?: 'drop' | 'hedge' | 'blitz';
 }

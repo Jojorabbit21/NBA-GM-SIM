@@ -5,6 +5,7 @@ import { calculatePlayerArchetypes } from './archetypeSystem';
 import { INITIAL_STATS, calculatePlayerOvr } from '../../../../utils/constants';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
+import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
 
 export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
@@ -17,9 +18,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         safeTactics = {
             ...tactics,
             sliders: {
-                pace: 5, offReb: 5, defIntensity: 5, defReb: 5, fullCourtPress: 5, zoneUsage: 5,
-                ballMovement: 5, play_pnr: 5, play_post: 5, play_iso: 5, play_cns: 5, play_drive: 5,
-                shot_3pt: 5, shot_mid: 5, shot_rim: 5, helpDef: 5, switchFreq: 5, zoneFreq: 5,
+                ...DEFAULT_SLIDERS,
                 ...tactics.sliders
             }
         };
