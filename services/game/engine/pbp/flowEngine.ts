@@ -26,6 +26,8 @@ export interface HitRateResult {
     isMismatch: boolean;
 }
 
+type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
+
 export function calculateHitRate(
     actor: LivePlayer,
     defender: LivePlayer,
@@ -39,7 +41,9 @@ export function calculateHitRate(
     isSwitch: boolean = false,
     minHitRate?: number, // [New] Buzzer beater: enforce hit rate lower bound
     isHome: boolean = false,
-    clutchContext?: ClutchContext
+    clutchContext?: ClutchContext,
+    pnrCoverage: PnrCoverage = 'none',
+    screenerDefender?: LivePlayer
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -135,6 +139,45 @@ export function calculateHitRate(
             actor.attr.speed >= zCfg.AFTERBURNER_SPEED_THRESHOLD &&
             actor.attr.agility >= zCfg.AFTERBURNER_AGILITY_THRESHOLD) {
             hitRate += zCfg.AFTERBURNER_TRANSITION_BONUS;
+        }
+    }
+
+    // --- PnR COVERAGE MODIFIERS ---
+    if (pnrCoverage !== 'none') {
+        const pCfg = SIM_CONFIG.PNR_COVERAGE;
+        const isPnrHandler = playType === 'PnR_Handler';
+        const isPnrRoll = playType === 'PnR_Roll';
+        const isPnrPop = playType === 'PnR_Pop';
+
+        if (pnrCoverage === 'drop') {
+            // Drop: 빅맨이 림 보호 → 핸들러 미드레인지 오픈, 롤맨 림 차단
+            const scale = screenerDefender
+                ? 0.7 + (screenerDefender.attr.intDef - 70) * 0.01
+                : 1.0;
+            if (isPnrHandler && preferredZone === 'Mid') hitRate += pCfg.DROP_HANDLER_MID_BONUS * scale;
+            if (isPnrHandler && preferredZone === '3PT') hitRate += pCfg.DROP_HANDLER_3PT_BONUS * scale;
+            if (isPnrRoll) hitRate -= pCfg.DROP_ROLL_PENALTY * scale;
+            if (isPnrPop) hitRate += pCfg.DROP_POP_BONUS * scale;
+        }
+
+        if (pnrCoverage === 'hedge') {
+            // Hedge: 빅맨 순간 쇼 → 핸들러 리듬 방해, 리커버리 실패 시 롤맨 오픈
+            const bigSpeed = screenerDefender?.attr.speed ?? 70;
+            if (isPnrHandler) hitRate -= pCfg.HEDGE_HANDLER_PENALTY;
+            if (isPnrRoll) {
+                hitRate += pCfg.HEDGE_ROLL_BONUS;
+                if (bigSpeed < pCfg.HEDGE_SLOW_BIG_THRESHOLD) hitRate += pCfg.HEDGE_SLOW_BIG_EXTRA;
+            }
+        }
+
+        if (pnrCoverage === 'blitz') {
+            // Blitz: 더블팀 → 핸들러 대폭 억제, 롤맨/팝퍼 와이드 오픈
+            const scale = screenerDefender
+                ? 0.7 + ((screenerDefender.attr.perDef + screenerDefender.attr.speed) / 2 - 70) * 0.01
+                : 1.0;
+            if (isPnrHandler) hitRate -= pCfg.BLITZ_HANDLER_PENALTY * scale;
+            if (isPnrRoll) hitRate += pCfg.BLITZ_ROLL_BONUS;
+            if (isPnrPop) hitRate += pCfg.BLITZ_POP_BONUS;
         }
     }
 

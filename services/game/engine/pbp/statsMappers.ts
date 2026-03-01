@@ -80,7 +80,7 @@ function addLog(state: GameState, teamId: string, text: string, type: PbpLog['ty
  */
 export function applyPossessionResult(state: GameState, result: PossessionResult) {
     const { type, actor, defender, assister, rebounder, points, zone, isBlock, isSteal, offTeam, defTeam, isAndOne, playType } = result;
-    const { isSwitch, isMismatch, isBotchedSwitch } = result;
+    const { isSwitch, isMismatch, isBotchedSwitch, pnrCoverage } = result;
 
     // 1. Update Matchup Tracking (Ace Stopper Logic)
     if (result.isAceTarget && typeof result.matchupEffect === 'number') {
@@ -118,6 +118,12 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     // [New] Mismatch Announcement
     if (isMismatch) {
         addLog(state, offTeam.id, `⚡ 미스매치! ${actor.playerName}가 이점을 활용합니다.`, 'info');
+    }
+
+    // [New] PnR Coverage Announcement
+    if (pnrCoverage) {
+        const coverageLabel = pnrCoverage === 'drop' ? '드랍' : pnrCoverage === 'hedge' ? '헷지' : '블리츠';
+        addLog(state, defTeam.id, `🛡️ ${coverageLabel} 수비 전개`, 'info');
     }
 
     // 3. Apply Logic based on Result Type
@@ -158,7 +164,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Generate Commentary
         let logText = generateCommentary('score', actor, defender, assister, playType, zone, {
             isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
-            isBlock: false, isSteal: false, points
+            isBlock: false, isSteal: false, points, pnrCoverage: pnrCoverage || undefined
         });
         
         let totalPointsAdded = points; 
@@ -201,7 +207,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Generate Commentary
         let logText = generateCommentary('miss', actor, defender, assister, playType, zone, {
              isSwitch: !!isSwitch, isMismatch: !!isMismatch, isBotchedSwitch: !!isBotchedSwitch,
-             isBlock: !!isBlock, isSteal: false, points: 0
+             isBlock: !!isBlock, isSteal: false, points: 0, pnrCoverage: pnrCoverage || undefined
         });
 
         // Handle Block Stat
@@ -229,7 +235,7 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         
         let logText = generateCommentary('turnover', actor, defender, undefined, playType, undefined, {
              isSwitch: !!isSwitch, isMismatch: false, isBotchedSwitch: false,
-             isBlock: false, isSteal: !!isSteal, points: 0
+             isBlock: false, isSteal: !!isSteal, points: 0, pnrCoverage: pnrCoverage || undefined
         });
         
         if (isSteal && defender) {

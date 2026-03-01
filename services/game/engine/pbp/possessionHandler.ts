@@ -7,6 +7,8 @@ import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
 import { PlayType } from '../../../../types';
 import { SIM_CONFIG } from '../../config/constants';
 
+type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
+
 /**
  * Identify Defender using Sliders
  */
@@ -18,23 +20,23 @@ function identifyDefender(
     isActorAce: boolean,
     targetZone: 'Rim' | 'Paint' | 'Mid' | '3PT',
     isZone: boolean  // Pre-calculated in simulatePossession (probabilistic: zoneFreq*0.08)
-): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean } {
+): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean, pnrCoverage: PnrCoverage, screenerDefender?: LivePlayer } {
 
     const sliders = defTeam.tactics.sliders;
 
     if (isZone) {
         // Funnel inside shots to Bigs
         if (targetZone === 'Rim' || targetZone === 'Paint') {
-            const anchor = defTeam.onCourt.find(p => p.position === 'C') || 
+            const anchor = defTeam.onCourt.find(p => p.position === 'C') ||
                            defTeam.onCourt.find(p => p.position === 'PF');
-            if (anchor) return { defender: anchor, isSwitch: false, isBotchedSwitch: false };
+            if (anchor) return { defender: anchor, isSwitch: false, isBotchedSwitch: false, pnrCoverage: 'none' };
         }
     }
 
     // 1. Ace Stopper Logic (If explicitly set in Tactics, still respected)
     if (isActorAce && defTeam.tactics.stopperId && !isZone) {
         const stopper = defTeam.onCourt.find(p => p.playerId === defTeam.tactics.stopperId);
-        if (stopper) return { defender: stopper, isSwitch: false, isBotchedSwitch: false };
+        if (stopper) return { defender: stopper, isSwitch: false, isBotchedSwitch: false, pnrCoverage: 'none' };
     }
 
     // 2. Default Defender
@@ -45,27 +47,49 @@ function identifyDefender(
     // Driven by 'switchFreq' slider (1-10)
     // 1 = 5%, 5 = 25%, 10 = 50% base switch chance on screens
     const isScreenPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop', 'Handoff'].includes(playType);
-    
+
     if (isScreenPlay && !isZone && secondaryActor) {
         const switchChance = sliders.switchFreq * 0.05;
-        
+
         if (Math.random() < switchChance) {
             // Find screener's defender
             let switchDef = defTeam.onCourt.find(p => p.position === secondaryActor.position);
             if (!switchDef) switchDef = defTeam.onCourt.find(p => p.playerId !== defender!.playerId);
-            
+
             if (switchDef) {
                 // Botched Switch Check based on HelpDef slider
                 // Lower HelpDef = Higher confusion risk
                 const confusionChance = Math.max(0, (10 - sliders.helpDef) * 0.02);
                 const isBotched = Math.random() < confusionChance;
-                
-                return { defender: switchDef, isSwitch: true, isBotchedSwitch: isBotched };
+
+                return { defender: switchDef, isSwitch: true, isBotchedSwitch: isBotched, pnrCoverage: 'none' };
             }
+        }
+
+        // 4. PnR Coverage (스위치 실패 시, PnR 플레이에서만)
+        const isPnrPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop'].includes(playType);
+        if (isPnrPlay) {
+            const pnrDef = sliders.pnrDefense;
+            const blitzPct = (3 + (pnrDef - 1) * 8) / 100;
+            const dropPct = (85 - (pnrDef - 1) * (82 / 9)) / 100;
+            // hedgePct = 1 - blitzPct - dropPct
+
+            const roll = Math.random();
+            let coverage: PnrCoverage;
+            if (roll < dropPct) coverage = 'drop';
+            else if (roll < dropPct + (1 - dropPct - blitzPct)) coverage = 'hedge';
+            else coverage = 'blitz';
+
+            // 빅맨(스크리너 수비수) 식별
+            const screenerDef = defTeam.onCourt.find(p => p.position === secondaryActor.position)
+                             || defTeam.onCourt.find(p => p.position === 'C')
+                             || defTeam.onCourt.find(p => p.position === 'PF');
+
+            return { defender, isSwitch: false, isBotchedSwitch: false, pnrCoverage: coverage, screenerDefender: screenerDef || undefined };
         }
     }
 
-    return { defender, isSwitch: false, isBotchedSwitch: false };
+    return { defender, isSwitch: false, isBotchedSwitch: false, pnrCoverage: 'none' };
 }
 
 /**
@@ -77,7 +101,8 @@ function calculateTurnoverChance(
     defTeam: TeamState,
     actor: LivePlayer,
     defender: LivePlayer,
-    playType: PlayType
+    playType: PlayType,
+    pnrCoverage: PnrCoverage = 'none'
 ): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer } {
     
     const sliders = offTeam.tactics.sliders;
@@ -107,6 +132,15 @@ function calculateTurnoverChance(
     if (playType === 'Transition') contextRisk = 0.03; // Fast breaks are risky
     else if (playType === 'Iso') contextRisk = 0.01;
     else if (playType === 'PostUp') contextRisk = 0.02; // Crowded paint
+
+    // PnR Coverage Turnover Modifiers
+    const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
+    if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
+        contextRisk += pnrCfg.BLITZ_TOV_BONUS;  // +4% 턴오버 (더블팀 압박)
+    }
+    if (pnrCoverage === 'hedge' && playType === 'PnR_Handler') {
+        contextRisk += pnrCfg.HEDGE_TOV_BONUS;  // +1.5% 턴오버 (빅맨 쇼 압박)
+    }
 
     // --- STEAL ARCHETYPE BONUSES (턴오버 유발력) ---
     const stlCfg = SIM_CONFIG.STEAL;
@@ -316,7 +350,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     // 2. Identify Defender
     // zoneFreq=1: 8% 발동, zoneFreq=5: 40%, zoneFreq=10: 80%
     const isZone = Math.random() < defTeam.tactics.sliders.zoneFreq * 0.08;
-    const { defender, isSwitch, isBotchedSwitch } = identifyDefender(
+    const { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
         defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone
     );
 
@@ -427,15 +461,16 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     // 4. Turnover / Steal Check (Enhanced Logic with Baseline + Context)
-    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType);
+    const tovResult = calculateTurnoverChance(offTeam, defTeam, actor, defender, selectedPlayType, pnrCoverage);
     
     if (tovResult.isTurnover) {
         return {
-            type: 'turnover', 
-            offTeam, defTeam, actor, 
+            type: 'turnover',
+            offTeam, defTeam, actor,
             defender: tovResult.stealer || defender, // Assign credit to helper if Shadow trait triggered
-            isSteal: tovResult.isSteal, 
-            points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
+            isSteal: tovResult.isSteal,
+            points: 0, isAndOne: false, playType: selectedPlayType, isSwitch,
+            pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
         };
     }
 
@@ -462,7 +497,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
         state.possession === 'home',
-        options?.clutchContext
+        options?.clutchContext,
+        pnrCoverage,
+        screenerDefender
     );
 
     const isScore = Math.random() < shotContext.rate;
@@ -537,6 +574,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
             blockProb -= Math.max(0, offResist);
 
+            // D-2. PnR Coverage Block Modifiers
+            const pnrBlkCfg = SIM_CONFIG.PNR_COVERAGE;
+            if (pnrCoverage === 'drop' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+                blockProb += pnrBlkCfg.DROP_BLOCK_BONUS;  // +3% 블록 (빅맨이 림 보호)
+            }
+            if (pnrCoverage === 'blitz' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+                blockProb -= pnrBlkCfg.BLITZ_BLOCK_PENALTY;  // -2% 블록 (빅맨이 핸들러에 몰림)
+            }
+
             // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
             const zCfg = SIM_CONFIG.ZONE_SHOOTING;
             if (zCfg.ENABLED) {
@@ -609,12 +655,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             matchupEffect: shotContext.matchupEffect,
             isAceTarget: shotContext.isAceTarget,
             isSwitch,
-            isMismatch: shotContext.isMismatch
+            isMismatch: shotContext.isMismatch,
+            pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
         };
     }
 
     const points = preferredZone === '3PT' ? 3 : 2;
     return {
-        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch
+        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch,
+        pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
     };
 }

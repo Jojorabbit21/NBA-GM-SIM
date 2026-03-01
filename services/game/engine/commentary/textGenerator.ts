@@ -39,14 +39,59 @@ export function generateCommentary(
     assister: LivePlayer | undefined,
     playType: PlayType | undefined,
     zone: 'Rim' | 'Paint' | 'Mid' | '3PT' | undefined,
-    flags: { isSwitch: boolean; isMismatch: boolean; isBotchedSwitch: boolean; isBlock: boolean; isSteal: boolean; points: number }
+    flags: { isSwitch: boolean; isMismatch: boolean; isBotchedSwitch: boolean; isBlock: boolean; isSteal: boolean; points: number; pnrCoverage?: 'drop' | 'hedge' | 'blitz' }
 ): string {
-    const { isSwitch, isMismatch, isBotchedSwitch, isBlock, isSteal, points } = flags;
+    const { isSwitch, isMismatch, isBotchedSwitch, isBlock, isSteal, points, pnrCoverage } = flags;
     const canDunk = actor.attr.vertical > 70 && actor.attr.ins > 60;
 
     // --- 1. SCORING ---
     if (type === 'score') {
         const scoreTag = ` (+${points})`;
+
+        // --- PnR Coverage Context Commentary ---
+        if (pnrCoverage === 'drop') {
+            if (zone === 'Mid' && playType === 'PnR_Handler') {
+                return pick([
+                    `${actor.playerName}, 드랍 수비 사이로 풀업 점퍼! 성공!${scoreTag}`,
+                    `${actor.playerName}, 빅맨이 빠진 공간에서 미드레인지 적중!${scoreTag}`,
+                    `${actor.playerName}, 스크린 이후 열린 공간에서 정확한 점퍼!${scoreTag}`,
+                ]);
+            }
+            if ((zone === 'Rim' || zone === 'Paint') && playType === 'PnR_Roll') {
+                return pick([
+                    `${actor.playerName}, 드랍 수비를 뚫고 림에서 마무리!${scoreTag}`,
+                    `${actor.playerName}, 빅맨의 견제를 이겨내고 골밑 득점!${scoreTag}`,
+                ]);
+            }
+        }
+        if (pnrCoverage === 'hedge') {
+            if (playType === 'PnR_Roll' && (zone === 'Rim' || zone === 'Paint')) {
+                return pick([
+                    `${actor.playerName}, 헷지 수비 사이를 파고들어 림 피니시!${scoreTag}`,
+                    `${actor.playerName}, 빅맨이 리커버리하기 전에 골밑으로 다이브! 성공!${scoreTag}`,
+                ]);
+            }
+        }
+        if (pnrCoverage === 'blitz') {
+            if (playType === 'PnR_Handler') {
+                return pick([
+                    `${actor.playerName}, 더블팀을 빠져나와 슛! 들어갑니다!${scoreTag}`,
+                    `${actor.playerName}, 블리츠를 분할하며 득점에 성공합니다!${scoreTag}`,
+                ]);
+            }
+            if (playType === 'PnR_Roll') {
+                return pick([
+                    `${actor.playerName}, 더블팀 틈을 타 골밑 프리! 이지 레이업!${scoreTag}`,
+                    `${assister?.playerName || '핸들러'}의 패스, 블리츠 빈 공간으로 ${actor.playerName} 다이브!${scoreTag}`,
+                ]);
+            }
+            if (playType === 'PnR_Pop') {
+                return pick([
+                    `${actor.playerName}, 블리츠 수비 사이로 와이드 오픈 3점! 적중!${scoreTag}`,
+                    `${actor.playerName}, 더블팀이 풀리며 열린 3점 라인에서 슛! 꽂힙니다!${scoreTag}`,
+                ]);
+            }
+        }
 
         // 3-Point
         if (zone === '3PT') {
@@ -129,6 +174,26 @@ export function generateCommentary(
 
     // --- 2. MISS ---
     if (type === 'miss') {
+        // PnR Coverage Defense Success
+        if (pnrCoverage === 'drop' && playType === 'PnR_Roll') {
+            return pick([
+                `${actor.playerName}의 골밑 시도, 드랍 수비에 가로막힙니다.`,
+                `${actor.playerName}, 림 어택을 시도하지만 빅맨의 드랍 커버리지에 막힙니다.`,
+            ]);
+        }
+        if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
+            return pick([
+                `${actor.playerName}, 블리츠 더블팀에 막혀 억지 슛... 빗나갑니다.`,
+                `${actor.playerName}, 트랩 속에서 어려운 슛을 시도하지만 실패.`,
+            ]);
+        }
+        if (pnrCoverage === 'hedge' && playType === 'PnR_Handler') {
+            return pick([
+                `${actor.playerName}, 헷지 수비에 걸려 리듬이 깨진 슛... 빗나갑니다.`,
+                `${actor.playerName}, 빅맨의 쇼 수비에 막혀 무리한 점퍼를 시도합니다.`,
+            ]);
+        }
+
         if (isBlock && defender) {
             return pick([
                 `${actor.playerName}의 슛, ${defender.playerName}에게 가로막힙니다! (블록)`,
@@ -159,6 +224,20 @@ export function generateCommentary(
 
     // --- 3. TURNOVER ---
     if (type === 'turnover') {
+        // Blitz 턴오버 전용 코멘터리
+        if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
+            if (isSteal && defender) {
+                return pick([
+                    `${defender.playerName}, 블리츠 더블팀에서 ${actor.playerName}의 공을 빼앗습니다!`,
+                    `${actor.playerName}, 트랩에 걸려 패스 미스! ${defender.playerName}의 스틸!`,
+                ]);
+            }
+            return pick([
+                `${actor.playerName}, 블리츠 수비에 갇혀 턴오버를 범합니다.`,
+                `${actor.playerName}, 더블팀 압박에 공을 넘겨주고 맙니다.`,
+            ]);
+        }
+
         if (isSteal && defender) {
             return pick([
                 `${defender.playerName}, ${actor.playerName}의 공을 가로챕니다! (스틸)`,

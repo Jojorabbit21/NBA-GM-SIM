@@ -110,6 +110,10 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                             label="지역 방어 빈도" value={sliders.zoneFreq} onChange={v => { updateSlider('zoneFreq', v); updateSlider('zoneUsage', v); }}
                             leftLabel="대인 방어" rightLabel="지역 방어" tooltip="내선 수비력(블락+인사이드수비)이 강한 팀에게 유리합니다. 외곽 수비력이 강하면 대인을 추천." fillColor="#d946ef"
                         />
+                        <SliderControl
+                            label="픽앤롤 수비" value={sliders.pnrDefense} onChange={v => updateSlider('pnrDefense', v)}
+                            leftLabel="드랍" rightLabel="블리츠" tooltip="낮을수록 빅맨이 뒤로 빠져 림을 보호(미드레인지 허용). 높을수록 빅맨이 볼 핸들러를 트랩(턴오버 유발, 킥아웃 3점 허용)." fillColor="#d946ef"
+                        />
                     </div>
                 </div>
 
