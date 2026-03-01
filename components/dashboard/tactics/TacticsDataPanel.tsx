@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { TacticalSliders, Player } from '../../../types';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { DefensiveStats } from '../../../utils/defensiveStats';
@@ -11,6 +11,7 @@ import { PLAY_TYPES, getPlayTypeDistribution } from './charts/playTypeConstants'
 interface TacticsDataPanelProps {
     sliders: TacticalSliders;
     roster: Player[];
+    opponentRoster?: Player[];
     defensiveStats?: DefensiveStats;
 }
 
@@ -44,7 +45,9 @@ const DefStatRow: React.FC<{ label: string; value: string }> = ({ label, value }
     </div>
 );
 
-export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, defensiveStats }) => {
+export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, roster, opponentRoster, defensiveStats }) => {
+    const [showOpponentZone, setShowOpponentZone] = useState(false);
+    const hasOpponentData = opponentRoster && opponentRoster.length > 0;
 
     // Offense risk values
     const offenseRisk = useMemo(() => {
@@ -95,14 +98,28 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
             <div className="flex flex-col gap-2 pb-5 border-b border-slate-800">
                 <div className="flex gap-4">
                     <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">로스터 레이더</h5>
-                    <h5 className="flex-1 text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
+                    <div className="flex-1 flex items-center justify-between">
+                        <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>
+                        {hasOpponentData && (
+                            <button
+                                onClick={() => setShowOpponentZone(v => !v)}
+                                className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border transition-colors ${
+                                    showOpponentZone
+                                        ? 'bg-red-500/15 text-red-400 border-red-500/30'
+                                        : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200'
+                                }`}
+                            >
+                                {showOpponentZone ? '상대 데이터' : '우리 팀'}
+                            </button>
+                        )}
+                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <div className="flex-1">
                         <RadarChart roster={roster} hideTitle />
                     </div>
                     <div className="flex-1">
-                        <TeamZoneChart roster={roster} fullWidth hideTitle />
+                        <TeamZoneChart roster={showOpponentZone && hasOpponentData ? opponentRoster! : roster} fullWidth hideTitle />
                     </div>
                 </div>
             </div>
@@ -123,13 +140,20 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                 {!defensiveStats || defensiveStats.gamesPlayed === 0 ? (
                     <p className="text-xs text-slate-500">경기 데이터 없음</p>
                 ) : (
-                    <div className="grid grid-cols-2 gap-x-8 gap-y-1.5">
+                    <div className="grid grid-cols-3 gap-x-5 gap-y-1.5">
                         <div className="flex flex-col gap-1.5">
                             <span className="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">팀 슈팅</span>
-                            <DefStatRow label="FGM / FGA" value={`${defensiveStats.teamFgmPerGame.toFixed(1)} / ${defensiveStats.teamFgaPerGame.toFixed(1)}`} />
-                            <DefStatRow label="3PM / 3PA" value={`${defensiveStats.teamP3mPerGame.toFixed(1)} / ${defensiveStats.teamP3aPerGame.toFixed(1)}`} />
-                            <DefStatRow label="FTM / FTA" value={`${defensiveStats.teamFtmPerGame.toFixed(1)} / ${defensiveStats.teamFtaPerGame.toFixed(1)}`} />
+                            <DefStatRow label="FGM/FGA" value={`${defensiveStats.teamFgmPerGame.toFixed(1)} / ${defensiveStats.teamFgaPerGame.toFixed(1)}`} />
+                            <DefStatRow label="3PM/3PA" value={`${defensiveStats.teamP3mPerGame.toFixed(1)} / ${defensiveStats.teamP3aPerGame.toFixed(1)}`} />
+                            <DefStatRow label="FTM/FTA" value={`${defensiveStats.teamFtmPerGame.toFixed(1)} / ${defensiveStats.teamFtaPerGame.toFixed(1)}`} />
                             <DefStatRow label="TS%" value={`${defensiveStats.teamTsPct.toFixed(1)}%`} />
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">실점 지표</span>
+                            <DefStatRow label="실점" value={`${defensiveStats.oppPtsPerGame.toFixed(1)} /G`} />
+                            <DefStatRow label="상대 FG%" value={`${defensiveStats.oppFgPct.toFixed(1)}%`} />
+                            <DefStatRow label="상대 3P%" value={`${defensiveStats.oppThreePct.toFixed(1)}%`} />
+                            <DefStatRow label="파울" value={`${defensiveStats.teamPfPerGame.toFixed(1)} /G`} />
                         </div>
                         <div className="flex flex-col gap-1.5">
                             <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">수비 지표</span>
@@ -137,13 +161,6 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                             <DefStatRow label="블록" value={`${defensiveStats.teamBlkPerGame.toFixed(1)} /G`} />
                             <DefStatRow label="수비 리바운드" value={`${defensiveStats.teamDrbPerGame.toFixed(1)} /G`} />
                             <DefStatRow label="유발 턴오버" value={`${defensiveStats.oppTovPerGame.toFixed(1)} /G`} />
-                        </div>
-                        <div className="flex flex-col gap-1.5 mt-2">
-                            <span className="text-[11px] font-bold text-red-400 uppercase tracking-wider">실점 지표</span>
-                            <DefStatRow label="실점" value={`${defensiveStats.oppPtsPerGame.toFixed(1)} /G`} />
-                            <DefStatRow label="상대 FG%" value={`${defensiveStats.oppFgPct.toFixed(1)}%`} />
-                            <DefStatRow label="상대 3P%" value={`${defensiveStats.oppThreePct.toFixed(1)}%`} />
-                            <DefStatRow label="파울" value={`${defensiveStats.teamPfPerGame.toFixed(1)} /G`} />
                         </div>
                     </div>
                 )}
