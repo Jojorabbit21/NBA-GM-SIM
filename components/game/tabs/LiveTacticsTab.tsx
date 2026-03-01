@@ -84,9 +84,16 @@ function calculatePlayTypePPP(shots: ShotEvent[]): PlayTypeStats[] {
 /** 팀 스탯 비교 (TeamStatsCompare와 동일 디자인) */
 const COMPARE_STATS: { key: string; label: string; fmt: (v: number) => string }[] = [
     { key: 'pts',   label: 'PTS',  fmt: v => String(v) },
+    { key: 'fgm',   label: 'FGM',  fmt: v => String(v) },
+    { key: 'fga',   label: 'FGA',  fmt: v => String(v) },
     { key: 'fgPct', label: 'FG%',  fmt: v => v.toFixed(1) },
+    { key: 'p3m',   label: '3PM',  fmt: v => String(v) },
+    { key: 'p3a',   label: '3PA',  fmt: v => String(v) },
     { key: 'p3Pct', label: '3P%',  fmt: v => v.toFixed(1) },
+    { key: 'ftm',   label: 'FTM',  fmt: v => String(v) },
+    { key: 'fta',   label: 'FTA',  fmt: v => String(v) },
     { key: 'ftPct', label: 'FT%',  fmt: v => v.toFixed(1) },
+    { key: 'tsPct', label: 'TS%',  fmt: v => v.toFixed(1) },
     { key: 'oreb',  label: 'OREB', fmt: v => String(v) },
     { key: 'dreb',  label: 'DREB', fmt: v => String(v) },
     { key: 'reb',   label: 'REB',  fmt: v => String(v) },
@@ -103,9 +110,13 @@ function computeTeamStats(box: PlayerBoxScore[]) {
     const fgm = sum('fgm'), fga = sum('fga');
     const p3m = sum('p3m'), p3a = sum('p3a');
     const ftm = sum('ftm'), fta = sum('fta');
+    const pts = sum('pts');
+    const tsa = fga + 0.44 * fta;
     return {
-        pts: sum('pts'), fgPct: fga > 0 ? (fgm / fga) * 100 : 0,
-        p3Pct: p3a > 0 ? (p3m / p3a) * 100 : 0, ftPct: fta > 0 ? (ftm / fta) * 100 : 0,
+        pts, fgm, fga, fgPct: fga > 0 ? (fgm / fga) * 100 : 0,
+        p3m, p3a, p3Pct: p3a > 0 ? (p3m / p3a) * 100 : 0,
+        ftm, fta, ftPct: fta > 0 ? (ftm / fta) * 100 : 0,
+        tsPct: tsa > 0 ? (pts / (2 * tsa)) * 100 : 0,
         oreb: sum('offReb'), dreb: sum('defReb'), reb: sum('reb'),
         ast: sum('ast'), stl: sum('stl'), blk: sum('blk'), tov: sum('tov'), pf: sum('pf'),
         pace: 0, // 외부에서 주입
