@@ -199,6 +199,7 @@ export const SIM_CONFIG = {
 
         // B-5. Afterburner (애프터버너) — Ja Morant, De'Aaron Fox, Russell Westbrook
         AFTERBURNER_SPEED_THRESHOLD: 95,
+        AFTERBURNER_SPDBALL_THRESHOLD: 90,
         AFTERBURNER_AGILITY_THRESHOLD: 93,
         AFTERBURNER_TRANSITION_BONUS: 0.02,  // Transition hitRate +2%
 
@@ -206,6 +207,35 @@ export const SIM_CONFIG = {
         ASCENDANT_VERTICAL_THRESHOLD: 95,
         ASCENDANT_CLOSESHOT_THRESHOLD: 93,
         ASCENDANT_BLOCK_MULTIPLIER: 0.60,    // Rim 블락 확률 × 0.6 (PG/SG 전용)
+
+    },
+    // Finish System: resolveFinish에서 마무리 타입 결정 (playTypes.ts)
+    FINISH: {
+        BASELINE: 60,
+        DUNK_VERT_MIN: 70,
+        DUNK_STR_MIN: 65,
+        DUNK_WEIGHT: 1.5,
+        LAYUP_WEIGHT: 1.0,
+        FLOATER_CLOSESHOT_MIN: 80,
+        FLOATER_WEIGHT: 0.7,
+        HOOK_HEIGHT_MIN: 208,
+        HOOK_CLOSESHOT_MIN: 80,
+        HOOK_WEIGHT: 0.8,
+        MID_MIN: 72,
+        MID_DRIVE_WEIGHT: 0.5,    // Pullup (drive)
+        MID_POST_WEIGHT: 0.7,     // Jumper (post/roll)
+        FADEAWAY_POSTPLAY_MIN: 80,
+        FADEAWAY_MID_MIN: 85,
+        FADEAWAY_CLOSESHOT_MIN: 85,
+        FADEAWAY_WEIGHT: 0.6,
+    },
+    // Shot Defense: shotType별 수비 차등 (flowEngine + possessionHandler)
+    SHOT_DEFENSE: {
+        CONTEST: { Dunk: 0.85, Layup: 1.0, Floater: 0.6, Hook: 0.5, Pullup: 0.8, Jumper: 0.85, Fadeaway: 0.4, CatchShoot: 1.0 } as Record<string, number>,
+        BLOCK_MULT: { Dunk: 0.85, Layup: 1.0, Floater: 0.3, Hook: 0.4, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.2, CatchShoot: 1.0 } as Record<string, number>,
+        AND1_MULT: { Dunk: 1.5, Layup: 1.0, Floater: 0.3, Hook: 0.5, Pullup: 0.0, Jumper: 0.0, Fadeaway: 0.0, CatchShoot: 0.0 } as Record<string, number>,
+        DUNK_STR_RESIST: 0.001,
+        DUNK_VERT_RESIST: 0.0005,
     },
     // PnR Defense Coverage (Drop / Hedge / Blitz)
     PNR_COVERAGE: {

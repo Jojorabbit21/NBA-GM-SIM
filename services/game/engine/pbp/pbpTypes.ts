@@ -41,11 +41,12 @@ export interface LivePlayer extends PlayerBoxScore {
         // General
         ins: number; out: number; mid: number;
         ft: number; threeVal: number; // Derived 3pt average
+        threeCorner: number; three45: number; threeTop: number; // 3PT sub-zone attributes
         // Inside sub-attributes (Rim/Paint 세분화)
         layup: number; dunk: number; closeShot: number;
         
         // Physical
-        speed: number; agility: number; strength: number; vertical: number;
+        speed: number; spdBall: number; agility: number; strength: number; vertical: number;
         stamina: number; durability: number; hustle: number;
         height: number; weight: number;
 
@@ -241,4 +242,7 @@ export interface PossessionResult {
 
     // [New] PnR Defense Coverage
     pnrCoverage?: 'drop' | 'hedge' | 'blitz';
+
+    // [New] 3PT sub-zone key (hitRate ↔ 스탯 기록 일관성)
+    subZone?: string;
 }

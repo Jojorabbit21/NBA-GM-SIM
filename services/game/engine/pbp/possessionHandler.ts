@@ -6,6 +6,7 @@ import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
 import { PlayType } from '../../../../types';
 import { SIM_CONFIG } from '../../config/constants';
+import { resolveDynamicZone } from '../shotDistribution';
 
 type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
 
@@ -109,11 +110,15 @@ function calculateTurnoverChance(
 
     // 1. Base Turnover Probability (Significantly Lowered)
     // Old: ~25% base -> New: ~13% target average
-    let baseProb = 0.08; 
+    let baseProb = 0.085;
 
     // 2. Modifiers
     // Ball Movement: High passing increases risk slightly (0.005 per point > 5)
-    const passRisk = Math.max(0, (sliders.ballMovement - 5) * 0.004);
+    const rawPassRisk = Math.max(0, (sliders.ballMovement - 5) * 0.004);
+    // [A-2] 팀 평균 passVision으로 패스 리스크 완화 (시야 좋은 팀 = 복잡한 볼무브에서도 안정)
+    const teamAvgVision = offTeam.onCourt.reduce((s, p) => s + p.attr.passVision, 0) / 5;
+    const visionDampen = Math.max(0.85, Math.min(1.15, 1 - (teamAvgVision - 70) * 0.005));
+    const passRisk = rawPassRisk * visionDampen;
     
     // Defense Intensity: Pressure increases TOV (0.008 per point > 5)
     const pressureRisk = Math.max(0, (defIntensity - 5) * 0.008);
@@ -126,9 +131,19 @@ function calculateTurnoverChance(
     const isContactPlay = playType === 'PostUp' || playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
     const handsFactor = (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
 
+    // [B-1] 패스 정확도 부족 → 패스 미스 턴오버 (패스 관련 플레이에서 강화)
+    const isPassPlay = playType === 'CatchShoot' || playType === 'Handoff'
+        || playType === 'PnR_Handler' || playType === 'PnR_Roll'
+        || playType === 'PnR_Pop' || playType === 'Cut';
+    const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
+
     // Play Type Context
     let contextRisk = 0;
-    if (playType === 'Transition') contextRisk = 0.03; // Fast breaks are risky
+    if (playType === 'Transition') {
+        contextRisk = 0.03; // Fast breaks are risky
+        // [B-3] 속공 롱패스 리스크: passAcc 부족 시 추가 턴오버
+        contextRisk += Math.max(0, (70 - actor.attr.passAcc)) * 0.001;
+    }
     else if (playType === 'Iso') contextRisk = 0.01;
     else if (playType === 'PostUp') contextRisk = 0.02; // Crowded paint
 
@@ -181,7 +196,20 @@ function calculateTurnoverChance(
     // Calculate Total Turnover Probability
     // [SaveTendency] composure: ±1% turnover probability (positive composure = fewer turnovers)
     const composureFactor = -(actor.tendencies?.composure ?? 0) * 0.01;
-    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + contextRisk + archetypeRisk + composureFactor;
+
+    // speed↑ spdBall↓ 갭: 드리블 플레이에서 볼 컨트롤 실수 위험 (gap 20pt → +2%)
+    let dribbleGapRisk = 0;
+    const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
+    if (isDribblePlay) {
+        dribbleGapRisk = Math.max(0, actor.attr.speed - actor.attr.spdBall) * 0.001;
+    }
+
+    // [Gradual] 수비자 stl → 볼 탈취 압박 (모든 상황, stl 90: +1.6%, stl 50: -1.6%)
+    const defStlPressure = (da.stl - 70) * 0.0008;
+    // [Gradual] 수비자 passPerc → 패싱레인 읽기 (패싱 플레이 전용, 비패싱 = 0)
+    const defLaneReading = isPassPlay ? (da.passPerc - 70) * 0.0010 : 0;
+
+    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + passAccFactor + contextRisk + archetypeRisk + composureFactor + dribbleGapRisk + defStlPressure + defLaneReading;
 
     // Cap Probability (Min 2%, Max 25%)
     totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
@@ -204,6 +232,13 @@ function calculateTurnoverChance(
     // Defender Bonuses
     const d = defender.attr;
 
+    // [Gradual] stl → 스틸 실행력 (모든 상황, stl 90: +6%, stl 50: -6%)
+    stealRatio += (d.stl - 70) * 0.003;
+    // [Gradual] passPerc → 인터셉트 위치 확보 (패싱 플레이 전용)
+    if (isPassPlay) {
+        stealRatio += (d.passPerc - 70) * 0.0025;
+    }
+
     // Archetype 1: "The Glove" (On-Ball) — was +0.20/+0.10, now +0.15/+0.08
     if (d.stl >= 90) stealRatio += 0.15;
     else if (d.stl >= 80) stealRatio += 0.08;
@@ -218,6 +253,9 @@ function calculateTurnoverChance(
         d.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
         stealRatio += stlCfg.PRESS_STEAL_RATIO_BONUS;
     }
+
+    // [Safety] stealRatio 상하한 (NBA 현실: 최대 ~75%)
+    stealRatio = Math.max(0.15, Math.min(0.75, stealRatio));
 
     // Archetype 3: "The Shadow" (Help Defender)
     // Check if a helper steals it instead of primary defender
@@ -343,7 +381,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
-    const { actor, secondaryActor, preferredZone, bonusHitRate } = playCtx;
+    const { actor, secondaryActor, preferredZone, bonusHitRate, shotType } = playCtx;
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
@@ -487,18 +525,79 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const actorOptionRank = getTeamOptionRanks(offTeam).get(actor.playerId) || 3;
     const egoMod = (actor.tendencies?.ego ?? 0) * ((3 - actorOptionRank) / 2) * 0.015;
 
+    // [A-1] 어시스트 퀄리티: 패서의 passVision이 높으면 슈터가 더 좋은 위치에서 캐치
+    const assistQualityMod = secondaryActor
+        ? (secondaryActor.attr.passVision - 70) * 0.001
+        : 0;
+
+    // [A-3] CatchShoot/Handoff 오픈 탐지: 패서 시야가 넓으면 더 좋은 오픈 찬스
+    let openDetectionMod = 0;
+    if (secondaryActor && (selectedPlayType === 'CatchShoot' || selectedPlayType === 'Handoff')) {
+        openDetectionMod = (secondaryActor.attr.passVision - 70) * 0.0015;
+    }
+
+    // [B-2] 어시스트 전달 퀄리티: 패서의 passAcc가 높으면 슈터가 리듬 유지
+    const deliveryQualityMod = secondaryActor
+        ? (secondaryActor.attr.passAcc - 70) * 0.0008
+        : 0;
+
+    // [B-4] PnR 랍패스 메카닉: PnR_Roll + Rim + Dunk/Layup → 랍 시도/성공 판정
+    let lobBonus = 0;
+    if (selectedPlayType === 'PnR_Roll' && preferredZone === 'Rim'
+        && (shotType === 'Dunk' || shotType === 'Layup') && secondaryActor) {
+        const handler = secondaryActor;
+        const roller = actor;
+
+        // 랍 시도 확률: 롤러 수직, 핸들러 시야, 수비 커버리지
+        let lobChance = 0.15;
+        lobChance += (roller.attr.vertical - 70) * 0.003;
+        lobChance += (handler.attr.passVision - 70) * 0.002;
+        if (pnrCoverage === 'blitz') lobChance += 0.10;
+        if (pnrCoverage === 'drop') lobChance -= 0.08;
+        lobChance = Math.max(0.05, Math.min(0.45, lobChance));
+
+        if (Math.random() < lobChance) {
+            // 랍 성공 판정: passAcc가 핵심
+            const lobSuccessRate = Math.max(0.15, Math.min(0.90,
+                0.50
+                + (handler.attr.passAcc - 70) * 0.008
+                + (roller.attr.hands - 70) * 0.004
+                + (roller.attr.vertical - 70) * 0.003
+            ));
+
+            if (Math.random() < lobSuccessRate) {
+                lobBonus = 0.08; // 성공: 이지 피니시 보너스
+            } else {
+                // 실패: 악송구 턴오버
+                return {
+                    type: 'turnover',
+                    offTeam, defTeam, actor, defender,
+                    isSteal: false,
+                    points: 0, isAndOne: false,
+                    playType: selectedPlayType, isSwitch,
+                    pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
+                };
+            }
+        }
+    }
+
+    // 3PT 서브존 결정 (hitRate에 개별 능력치 적용 + 스탯 기록 일관성)
+    const subZone = preferredZone === '3PT' ? resolveDynamicZone(actor, '3PT') : undefined;
+
     const shotContext = calculateHitRate(
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
         state.possession === 'home',
         options?.clutchContext,
         pnrCoverage,
-        screenerDefender
+        screenerDefender,
+        shotType,
+        subZone
     );
 
     const isScore = Math.random() < shotContext.rate;
@@ -511,7 +610,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         const intensityMod = Math.max(0, (defIntensity - 5) * 0.004);
         // drawFoul 보정: 70 기준 ±0.05%/pt (drFoul 50→-1%, 90→+1%)
         const drawFoulAndOneMod = (actor.attr.drFoul - offFoulConfig.DRAW_FOUL_BASELINE) * offFoulConfig.DRAW_FOUL_AND1_FACTOR;
-        if (Math.random() < Math.max(0, andOneBase + intensityMod + drawFoulAndOneMod)) {
+        // shotType별 And-1 배율: Dunk 1.5x, Floater 0.3x 등
+        const and1Mult = SIM_CONFIG.SHOT_DEFENSE.AND1_MULT[shotType ?? 'Layup'] ?? 1.0;
+        if (Math.random() < Math.max(0, (andOneBase + intensityMod + drawFoulAndOneMod) * and1Mult)) {
             isAndOne = true;
         }
     }
@@ -610,6 +711,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 }
             }
 
+            // E-0. shotType별 블록 배율
+            const blockMult = SIM_CONFIG.SHOT_DEFENSE.BLOCK_MULT[shotType ?? 'Layup'] ?? 1.0;
+            blockProb *= blockMult;
+            // Dunk 전용: 공격자 strength/vertical 블록 저항
+            if (shotType === 'Dunk') {
+                blockProb -= Math.max(0, (actor.attr.strength - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_STR_RESIST;
+                blockProb -= Math.max(0, (actor.attr.vertical - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_VERT_RESIST;
+            }
+
             // E. Roll Primary Block
             if (Math.random() < Math.max(0, blockProb)) {
                 isBlock = true;
@@ -649,19 +759,22 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             points: 0,
             zone: preferredZone,
             playType: selectedPlayType,
+            shotType,
             isBlock, // Calculated Result
             isAndOne: false,
             matchupEffect: shotContext.matchupEffect,
             isAceTarget: shotContext.isAceTarget,
             isSwitch,
             isMismatch: shotContext.isMismatch,
-            pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
+            pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
+            subZone
         };
     }
 
     const points = preferredZone === '3PT' ? 3 : 2;
     return {
-        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch,
-        pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
+        type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, shotType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch,
+        pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
+        subZone
     };
 }

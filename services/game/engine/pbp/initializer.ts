@@ -33,8 +33,9 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         const threeAvg = (p.threeCorner + p.three45 + p.threeTop) / 3;
         const attr = {
             ins: p.ins, out: p.out, mid: p.midRange, ft: p.ft, threeVal: threeAvg,
+            threeCorner: p.threeCorner, three45: p.three45, threeTop: p.threeTop,
             layup: p.layup ?? p.ins, dunk: p.dunk ?? p.ins, closeShot: p.closeShot ?? p.ins,
-            speed: p.speed, agility: p.agility, strength: p.strength, vertical: p.vertical,
+            speed: p.speed, spdBall: p.spdBall, agility: p.agility, strength: p.strength, vertical: p.vertical,
             stamina: p.stamina, durability: p.durability, hustle: p.hustle,
             height: p.height, weight: p.weight,
             handling: p.handling, hands: p.hands, pas: p.passAcc, passAcc: p.passAcc,

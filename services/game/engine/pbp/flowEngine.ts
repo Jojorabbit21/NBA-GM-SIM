@@ -1,6 +1,7 @@
 
 import { SIM_CONFIG } from '../../config/constants';
 import { LivePlayer, TeamState, ClutchContext } from './pbpTypes';
+import { PlayContext } from './playTypes';
 import { calculateAceStopperImpact } from '../aceStopperSystem';
 import { Player, PlayType, TacticalSliders } from '../../../../types';
 
@@ -43,7 +44,9 @@ export function calculateHitRate(
     isHome: boolean = false,
     clutchContext?: ClutchContext,
     pnrCoverage: PnrCoverage = 'none',
-    screenerDefender?: LivePlayer
+    screenerDefender?: LivePlayer,
+    shotType?: PlayContext['shotType'],
+    threeSubZone?: string
 ): HitRateResult {
     const S = SIM_CONFIG.SHOOTING;
     let hitRate = 0.45;
@@ -55,12 +58,31 @@ export function calculateHitRate(
 
     hitRate += bonusHitRate; // playTypes/zoneQualityMod 보정치 적용
 
-    // [Fix] 존별 정확한 공격 능력치 매핑
-    const zoneOffRating = preferredZone === '3PT' ? actor.attr.threeVal
-        : preferredZone === 'Mid' ? actor.attr.mid
-        : preferredZone === 'Rim'
-            ? (actor.attr.layup * 0.40 + actor.attr.dunk * 0.35 + actor.attr.closeShot * 0.25)
-            : (actor.attr.postPlay * 0.45 + actor.attr.closeShot * 0.30 + actor.attr.hands * 0.25);
+    // [Fix] 존별 정확한 공격 능력치 매핑 (Rim: shotType별 단독 능력치)
+    let zoneOffRating: number;
+    if (preferredZone === '3PT') {
+        // 서브존별 개별 3PT 능력치 적용 (corner/wing/top)
+        if (threeSubZone?.startsWith('zone_c3'))
+            zoneOffRating = actor.attr.threeCorner;
+        else if (threeSubZone === 'zone_atb3_c')
+            zoneOffRating = actor.attr.threeTop;
+        else if (threeSubZone?.startsWith('zone_atb3'))
+            zoneOffRating = actor.attr.three45;
+        else
+            zoneOffRating = actor.attr.threeVal; // fallback
+    } else if (preferredZone === 'Mid') {
+        if (shotType === 'Fadeaway')
+            zoneOffRating = actor.attr.postPlay * 0.3 + actor.attr.mid * 0.5 + actor.attr.closeShot * 0.2;
+        else
+            zoneOffRating = actor.attr.mid; // Pullup, Jumper
+    } else if (preferredZone === 'Rim') {
+        if (shotType === 'Dunk') zoneOffRating = actor.attr.dunk;
+        else                     zoneOffRating = actor.attr.layup; // Layup (default)
+    } else {
+        // Paint: Floater는 closeShot 단독, Hook은 포스트 복합
+        if (shotType === 'Floater') zoneOffRating = actor.attr.closeShot;
+        else zoneOffRating = actor.attr.postPlay * 0.45 + actor.attr.closeShot * 0.30 + actor.attr.hands * 0.25;
+    }
 
     // 0. Botched Switch = Wide Open Shot (선수 능력치 반영, 고정값 제거)
     if (isBotchedSwitch) {
@@ -90,7 +112,16 @@ export function calculateHitRate(
     const offRating = zoneOffRating;
     const baseDefRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;
     // [SaveTendency] defensiveMotor: ±3pt to effective def rating
-    const defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 3;
+    let defRating = baseDefRating + (defender.tendencies?.defensiveMotor ?? 0) * 3;
+
+    // [defConsist] 수비 일관성 반영
+    // 1. Flat modifier: defConsist 70 기준 ±0.3/pt
+    defRating += (defender.attr.defConsist - 70) * 0.3;
+    // 2. Defensive lapse: defConsist 낮을수록 간헐적 집중력 저하
+    const lapseChance = Math.max(0, (70 - defender.attr.defConsist) * 0.003);
+    if (lapseChance > 0 && Math.random() < lapseChance) {
+        defRating *= 0.7;
+    }
     
     // Apply Sliders
     // Def Intensity: Reduces Shot PCT
@@ -101,7 +132,9 @@ export function calculateHitRate(
     // [Update] Reduced impact (0.015 -> 0.008)
     const helpMod = (defTeam.tactics.sliders.helpDef - 5) * 0.008;
 
-    hitRate += (offRating - defRating) * 0.002;
+    // shotType별 컨테스트 효과: 수비자의 defRating 영향력 스케일링
+    const contestFactor = SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
+    hitRate += (offRating - defRating * contestFactor) * 0.002;
     hitRate -= intensityMod;
 
     if (preferredZone === 'Rim' || preferredZone === 'Paint') {
@@ -137,9 +170,17 @@ export function calculateHitRate(
         // B-5. Afterburner: 폭발적 스피드로 트랜지션 마무리력 상승
         if (playType === 'Transition' &&
             actor.attr.speed >= zCfg.AFTERBURNER_SPEED_THRESHOLD &&
+            actor.attr.spdBall >= zCfg.AFTERBURNER_SPDBALL_THRESHOLD &&
             actor.attr.agility >= zCfg.AFTERBURNER_AGILITY_THRESHOLD) {
             hitRate += zCfg.AFTERBURNER_TRANSITION_BONUS;
         }
+    }
+
+    // --- DRIVE SPDBALL BONUS ---
+    // 드라이브 spdBall 보너스: Rim/Paint 드리블 공격 시 (70 기준 ±0.1%/pt)
+    if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
+        (playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler')) {
+        hitRate += (actor.attr.spdBall - 70) * 0.001;
     }
 
     // --- PnR COVERAGE MODIFIERS ---
@@ -185,7 +226,7 @@ export function calculateHitRate(
     let isMismatch = false;
     if (isSwitch) {
         const heightDiff  = defender.attr.height - actor.attr.height; // 양수 = 수비자가 더 큼
-        const speedAdv    = actor.attr.speed     - defender.attr.speed;
+        const speedAdv    = actor.attr.spdBall   - defender.attr.speed; // 공격자 볼 드리블 vs 수비자 추격
         const agilityAdv  = actor.attr.agility   - defender.attr.agility;
         const strengthAdv = actor.attr.strength  - defender.attr.strength;
 
