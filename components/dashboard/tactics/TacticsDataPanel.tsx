@@ -104,11 +104,11 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
                                 onClick={() => setShowOpponentZone(v => !v)}
                                 className="flex items-center gap-1.5 group"
                             >
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${!showOpponentZone ? 'text-indigo-400' : 'text-slate-500'}`}>우리 팀</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${!showOpponentZone ? 'text-emerald-400' : 'text-slate-500'}`}>우리 팀</span>
                                 <div className="relative w-8 h-[18px] rounded-full bg-slate-700 transition-colors">
-                                    <div className={`absolute top-[3px] w-3 h-3 rounded-full transition-all duration-200 ${showOpponentZone ? 'left-[14px] bg-red-400' : 'left-[3px] bg-indigo-400'}`} />
+                                    <div className={`absolute top-[3px] w-3 h-3 rounded-full transition-all duration-200 ${showOpponentZone ? 'left-[17px] bg-emerald-400' : 'left-[3px] bg-emerald-400'}`} />
                                 </div>
-                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${showOpponentZone ? 'text-red-400' : 'text-slate-500'}`}>상대</span>
+                                <span className={`text-[10px] font-bold uppercase tracking-wider transition-colors ${showOpponentZone ? 'text-emerald-400' : 'text-slate-500'}`}>상대</span>
                             </button>
                         )}
                     </div>
