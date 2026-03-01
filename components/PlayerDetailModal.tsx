@@ -79,6 +79,42 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
+// ── Archetype Labels ──
+const ARCHETYPE_LABELS: Record<string, string> = {
+    handler: '핸들러', spacer: '스페이서', driver: '드라이버',
+    screener: '스크리너', roller: '롤러', popper: '파퍼',
+    rebounder: '리바운더', postScorer: '포스트 스코어러', isoScorer: '아이소 스코어러',
+    connector: '커넥터', perimLock: '페리미터 락다운', rimProtector: '림 프로텍터',
+};
+
+/** Player 스탯으로 아키타입 점수 계산 (엔진과 동일 공식, condition=100) */
+function getTopArchetypes(p: Player): { label: string; score: number }[] {
+    const threeVal = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
+    const normH = Math.max(0, (p.height - 185) * 3);
+    const normW = Math.max(0, (p.weight - 80) * 1.6);
+
+    const scores: Record<string, number> = {
+        handler: p.handling * 0.30 + p.passIq * 0.25 + p.passVision * 0.25 + p.passAcc * 0.20,
+        spacer: threeVal * 0.60 + p.shotIq * 0.25 + p.offConsist * 0.15,
+        driver: p.speed * 0.20 + p.agility * 0.15 + p.vertical * 0.10 + p.ins * 0.35 + p.midRange * 0.20,
+        screener: p.strength * 0.40 + normH * 0.30 + normW * 0.30,
+        roller: p.ins * 0.40 + p.vertical * 0.30 + p.speed * 0.30,
+        popper: threeVal * 0.70 + p.shotIq * 0.30,
+        rebounder: p.reb * 0.70 + p.hustle * 0.15 + p.vertical * 0.15,
+        postScorer: p.ins * 0.50 + p.strength * 0.30 + p.hands * 0.20,
+        isoScorer: p.handling * 0.25 + p.midRange * 0.25 + p.speed * 0.25 + p.agility * 0.25,
+        connector: p.passIq * 0.30 + p.helpDefIq * 0.20 + p.hustle * 0.30 + p.hands * 0.20,
+        perimLock: p.perDef * 0.50 + p.agility * 0.25 + p.steal * 0.25,
+        rimProtector: p.blk * 0.35 + p.intDef * 0.35 + p.vertical * 0.15 + normH * 0.15,
+    };
+
+    return Object.entries(scores)
+        .map(([key, score]) => ({ label: ARCHETYPE_LABELS[key], score: Math.round(score) }))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .filter(a => a.score >= 70);
+}
+
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, tendencySeed, onClose }) => {
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
     const calculatedOvr = calculatePlayerOvr(player);
@@ -286,19 +322,32 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     </div>
                 </div>
 
-                {/* 2. Personality & Playstyle Traits */}
-                {traits.length > 0 && (
-                    <div className="mb-6">
-                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">성격 & 플레이스타일</h3>
-                        <div className="flex flex-wrap gap-2">
-                            {traits.map((t, i) => (
-                                <span key={i} className={`px-3 py-1 rounded-full text-xs font-bold border ${TRAIT_COLORS[t.color] || TRAIT_COLORS.slate}`}>
-                                    {t.label}
-                                </span>
-                            ))}
+                {/* 2. Archetype + Personality & Playstyle Traits */}
+                {(() => {
+                    const archetypes = getTopArchetypes(player);
+                    const hasArchetypes = archetypes.length > 0;
+                    const hasTraits = traits.length > 0;
+                    if (!hasArchetypes && !hasTraits) return null;
+                    return (
+                        <div className="mb-6">
+                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">성격 & 플레이스타일</h3>
+                            {hasArchetypes && (
+                                <p className="text-sm text-slate-300 mb-3">
+                                    {archetypes.map(a => a.label).join(' / ')}
+                                </p>
+                            )}
+                            {hasTraits && (
+                                <div className="flex flex-wrap gap-2">
+                                    {traits.map((t, i) => (
+                                        <span key={i} className={`px-3 py-1 rounded-full text-xs font-bold border ${TRAIT_COLORS[t.color] || TRAIT_COLORS.slate}`}>
+                                            {t.label}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
                         </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {/* 3. Stats + Shot Chart — Side by Side */}
                 <div className="flex gap-6 items-start">

@@ -27,17 +27,21 @@ docs/
 │   ├── stat-handlers.md      스탯 기록 파이프라인
 │   └── commentary.md         한국어 PBP 해설
 │
+├── evaluation/           ← 선수 평가 (4개)
+│   ├── evaluation-index.md   인덱스
+│   ├── rating-standards.md   35개 능력치 평가 기준서
+│   ├── new-player-process.md 신규 선수 추가 프로세스
+│   ├── rating-generation.md  능력치 생성 파이프라인
+│   └── rating-tuning.md      능력치 세부 튜닝
+│
 ├── domain/               ← 도메인 지식 (3개)
 │   ├── domain-index.md       인덱스
 │   ├── nba-strategy.md       NBA 전술/경기 운영/선수 역할
 │   ├── nba-trade-salary.md   트레이드 & 샐러리 캡 규칙
 │   └── glossary.md           스탯 용어집 (계산 공식 포함)
 │
-├── data/                 ← 데이터 (3개)
-│   ├── data-index.md         인덱스
-│   ├── rating-generation.md  능력치 생성 파이프라인
-│   ├── rating-tuning.md      능력치 세부 튜닝
-│   └── vert_analysis.md      Vertical 능력치 통계 분석
+├── data/                 ← 데이터 (비어있음)
+│   └── data-index.md         인덱스 (평가 문서는 evaluation/로 이동)
 │
 ├── ui/                   ← UI/UX (3개)
 │   ├── ui-index.md           인덱스
@@ -63,6 +67,15 @@ PBP(Play-by-Play) 기반 경기 시뮬레이션의 모든 구성요소.
 **수정 빈도**: 가장 높음 — 엔진 밸런스 조정, 새 시스템 추가 시 항상 참조.
 **시작점**: [engine-index.md](engine/engine-index.md)에서 파일↔문서 매핑으로 원하는 문서 찾기.
 
+### [evaluation/](evaluation/evaluation-index.md) — 선수 평가
+선수 능력치 평가 기준, 생성 파이프라인, 튜닝 가이드, 신규 선수 추가 프로세스.
+
+**필수 참조 상황**:
+- 새 선수 추가 → [new-player-process.md](evaluation/new-player-process.md)
+- 능력치 평가 기준 → [rating-standards.md](evaluation/rating-standards.md)
+- 시즌 데이터 업데이트 → [rating-generation.md](evaluation/rating-generation.md)
+- 밸런스 조정 → [rating-tuning.md](evaluation/rating-tuning.md)
+
 ### [domain/](domain/domain-index.md) — 도메인 지식
 NBA 현실 규칙, 전술 이론, 스탯 공식 등 시뮬레이션의 근거가 되는 지식.
 
@@ -70,11 +83,6 @@ NBA 현실 규칙, 전술 이론, 스탯 공식 등 시뮬레이션의 근거가
 - 스탯 공식 수정 → [glossary.md](domain/glossary.md)
 - 전술/아키타입 설계 → [nba-strategy.md](domain/nba-strategy.md)
 - 트레이드/샐러리 캡 → [nba-trade-salary.md](domain/nba-trade-salary.md)
-
-### [data/](data/data-index.md) — 데이터
-선수 능력치 생성 및 조정 프로세스. CSV → JSONB 변환, 밸런스 튜닝.
-
-**참조 시점**: 새 시즌 데이터 업데이트, 개별 선수 밸런스 조정.
 
 ### [ui/](ui/ui-index.md) — UI/UX
 디자인 시스템, 컴포넌트 규칙, 라우팅 설계.
@@ -94,6 +102,11 @@ NBA 현실 규칙, 전술 이론, 스탯 공식 등 시뮬레이션의 근거가
 1. [engine-index.md](engine/engine-index.md)의 **파일↔문서 매핑** 테이블에서 해당 파일의 문서 확인
 2. 관련 문서를 읽고 현재 공식/상수/로직 파악
 3. 수정 후 해당 문서도 함께 업데이트
+
+### 새 선수 추가 시
+1. [new-player-process.md](evaluation/new-player-process.md) 7단계 프로세스 따라가기
+2. 능력치 평가 시 [rating-standards.md](evaluation/rating-standards.md) 참조
+3. OVR 검증 후 시뮬레이션 테스트
 
 ### 새 시스템 추가 시
 1. [sim-structure.md](engine/sim-structure.md)에서 파이프라인 내 위치 확인
