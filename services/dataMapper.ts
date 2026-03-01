@@ -226,6 +226,32 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         zone_atb3_r_m: 0, zone_atb3_r_a: 0
     };
 
+    // [New] custom_overrides 저장 (적용은 useGameData에서 모드별로)
+    const CSV_TO_RUNTIME_KEY: Record<string, string> = {
+        close: 'closeShot', mid: 'midRange', '3c': 'threeCorner',
+        '3_45': 'three45', '3t': 'threeTop', siq: 'shotIq',
+        ocon: 'offConsist', lay: 'layup', dnk: 'dunk',
+        post: 'postPlay', draw: 'drawFoul', pacc: 'passAcc',
+        handl: 'handling', spwb: 'spdBall', piq: 'passIq',
+        pvis: 'passVision', idef: 'intDef', pdef: 'perDef',
+        stl: 'steal', hdef: 'helpDefIq', pper: 'passPerc',
+        dcon: 'defConsist', oreb: 'offReb', dreb: 'defReb',
+        spd: 'speed', agi: 'agility', str: 'strength',
+        vert: 'vertical', sta: 'stamina', hus: 'hustle',
+        dur: 'durability',
+    };
+    let customOverrides: Record<string, number> | undefined;
+    const rawOverrides = baseAttrs.custom_overrides;
+    if (rawOverrides && typeof rawOverrides === 'object' && !Array.isArray(rawOverrides)) {
+        customOverrides = {};
+        for (const [csvKey, val] of Object.entries(rawOverrides)) {
+            if (typeof val !== 'number') continue;
+            const runtimeKey = CSV_TO_RUNTIME_KEY[csvKey] || csvKey;
+            customOverrides[runtimeKey] = val;
+        }
+        if (Object.keys(customOverrides).length === 0) customOverrides = undefined;
+    }
+
     return {
         id,
         name,
@@ -235,11 +261,11 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         weight: Number(getCol(p, ['weight', 'Weight', 'Wt']) || 100),
         salary: Number(getCol(p, ['salary', 'Salary']) || 5),
         contractYears: Number(getCol(p, ['contractyears', 'contractYears', 'ContractYears']) || 1),
-        
+
         ovr,
         potential,
         revealedPotential: potential,
-        
+
         health,
         injuryType,
         returnDate,
@@ -257,9 +283,12 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
 
         stats: p.stats || defaultStats,
         playoffStats: p.playoffStats || defaultStats,
-        
+
         // [New] Real Tendencies from DB
-        tendencies: tendencies
+        tendencies: tendencies,
+
+        // [New] Custom mode overrides (저장만, 적용은 커스텀 모드 진입 시)
+        customOverrides,
     };
 };
 

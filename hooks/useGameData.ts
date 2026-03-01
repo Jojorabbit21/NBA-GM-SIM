@@ -9,7 +9,7 @@ import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/per
 import { replayGameState } from '../services/stateReplayer';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
-import { clearPlayerInjury } from '../utils/injuries';
+import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
 
@@ -47,24 +47,50 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
 
-    // --- Custom Mode: Injury-free freeAgents ---
+    // --- Custom Mode: 부상 제거 + override 머지 + OVR 재계산 ---
+    const applyCustomMode = useCallback((player: Player): Player => {
+        // 1. 부상 제거
+        let p: Player = { ...player, health: 'Healthy' as const, injuryType: undefined, returnDate: undefined };
+
+        // 2. customOverrides 머지
+        if (p.customOverrides) {
+            p = { ...p, ...p.customOverrides };
+        }
+
+        // 3. 카테고리 평균 재계산
+        const avg3pt = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
+        const ins = Math.round((p.layup + p.dunk + p.postPlay + p.drawFoul + p.hands) / 5);
+        const out = Math.round((p.closeShot + p.midRange + avg3pt + p.ft + p.shotIq + p.offConsist) / 6);
+        const plm = Math.round((p.passAcc + p.handling + p.spdBall + p.passIq + p.passVision) / 5);
+        const def = Math.round((p.intDef + p.perDef + p.steal + p.blk + p.helpDefIq + p.passPerc + p.defConsist) / 7);
+        const reb = Math.round((p.offReb + p.defReb) / 2);
+        const ath = Math.round((p.speed + p.agility + p.strength + p.vertical + p.stamina + p.hustle + p.durability) / 7);
+
+        // 4. OVR 재계산
+        const ovrInput = { ...p, ins, out, plm, def, reb, ath, potential: p.potential };
+        const ovr = calculateOvr(ovrInput, p.position);
+
+        return { ...p, ins, out, plm, def, reb, ath, ovr };
+    }, []);
+
+    // --- Custom Mode: freeAgents에 적용 ---
     const effectiveFreeAgents = useMemo(() => {
         const fa = baseData?.freeAgents || [];
         if (rosterMode !== 'custom') return fa;
-        return fa.map(clearPlayerInjury);
-    }, [baseData?.freeAgents, rosterMode]);
+        return fa.map(applyCustomMode);
+    }, [baseData?.freeAgents, rosterMode, applyCustomMode]);
 
-    // --- Custom Mode: Clear hardcoded injuries from teams ---
+    // --- Custom Mode: teams에 적용 ---
     useEffect(() => {
         if (rosterMode !== 'custom') return;
         setTeams(prev => {
             if (prev.length === 0) return prev;
             return prev.map(t => ({
                 ...t,
-                roster: t.roster.map(clearPlayerInjury),
+                roster: t.roster.map(applyCustomMode),
             }));
         });
-    }, [rosterMode]);
+    }, [rosterMode, applyCustomMode]);
 
     // ------------------------------------------------------------------
     //  INIT LOGIC

@@ -137,6 +137,16 @@ export interface Player {
     hustle: number;
     durability: number;
     intangibles: number;
+    // 커스텀 모드용 전성기 능력치 오버라이드 (base_attributes.custom_overrides에서 로드)
+    customOverrides?: Partial<Pick<Player,
+        'closeShot' | 'midRange' | 'threeCorner' | 'three45' | 'threeTop' |
+        'ft' | 'shotIq' | 'offConsist' | 'layup' | 'dunk' | 'postPlay' |
+        'drawFoul' | 'hands' | 'passAcc' | 'handling' | 'spdBall' |
+        'passIq' | 'passVision' | 'intDef' | 'perDef' | 'steal' | 'blk' |
+        'helpDefIq' | 'passPerc' | 'defConsist' | 'offReb' | 'defReb' |
+        'speed' | 'agility' | 'strength' | 'vertical' | 'stamina' |
+        'hustle' | 'durability' | 'intangibles'
+    >>;
     stats: PlayerStats;
     playoffStats?: PlayerStats;
     // Runtime hidden tendencies (Calculated or DB)
