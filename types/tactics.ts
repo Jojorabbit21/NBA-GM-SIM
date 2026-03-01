@@ -23,7 +23,7 @@ export interface TacticalSliders {
     switchFreq: number;    // 1-10: Frequency of switching screens
     defReb: number;        // 1-10: Defensive rebound commitment (box-out vs fast break)
     zoneFreq: number;      // 1-10: Frequency of using Zone logic
-    pnrDefense: number;    // 1-10: PnR coverage (1=Drop, 5=Hedge, 10=Blitz)
+    pnrDefense: number;    // 0-2: PnR coverage (0=Drop, 1=Hedge, 2=Blitz)
 
     // Additional
     fullCourtPress: number; // 1-10
