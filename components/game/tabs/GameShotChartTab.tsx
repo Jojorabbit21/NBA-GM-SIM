@@ -63,6 +63,15 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
         return () => ro.disconnect();
     }, []);
 
+    // Build player name lookup from both rosters (for legacy data without playerName)
+    const playerNameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const p of [...homeTeam.roster, ...awayTeam.roster]) {
+            map.set(p.id, p.name);
+        }
+        return map;
+    }, [homeTeam, awayTeam]);
+
     // Filter and Transform Shots to Half Court (Left Hoop Perspective)
     const displayShots = useMemo(() => {
         // [Fix] Defensive check for null shotEvents from legacy/broken data
@@ -80,9 +89,14 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                     y = COURT_HEIGHT - y;
                 }
 
-                return { ...shot, x, y };
+                // Enrich legacy data: resolve names from roster if missing
+                const playerName = shot.playerName || playerNameMap.get(shot.playerId) || 'Unknown';
+                const assistPlayerName = shot.assistPlayerName || (shot.assistPlayerId ? playerNameMap.get(shot.assistPlayerId) : undefined);
+                const points = shot.points ?? (shot.isMake ? (shot.zone === '3PT' ? 3 : 2) : 0);
+
+                return { ...shot, x, y, playerName, assistPlayerName, points: points as 0 | 2 | 3 };
             });
-    }, [shotEvents, selectedTeamId, selectedPlayerIds]);
+    }, [shotEvents, selectedTeamId, selectedPlayerIds, playerNameMap]);
 
     // Shot chart tooltip
     const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave } = useShotChartTooltip(displayShots, 10);
