@@ -55,7 +55,7 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, zoneOverri
     return (
         <div className="flex flex-col gap-2">
             {!hideTitle && <h5 className="text-sm font-black text-slate-300 uppercase tracking-widest">슈팅 존 히트맵</h5>}
-            <div className={`relative w-full ${fullWidth ? '' : 'max-w-[300px]'} mx-auto aspect-[435/403] bg-slate-950 rounded-xl overflow-hidden border border-slate-800`}>
+            <div className={`relative w-full ${fullWidth ? '' : 'max-w-[300px]'} mx-auto aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900`}>
             <svg viewBox="0 0 435 403" className="w-full h-full">
                 <rect x="0" y="0" width="435" height="403" fill="#020617" />
 
@@ -69,14 +69,17 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, zoneOverri
                                 d={z.path}
                                 fill={style.fill}
                                 fillOpacity={style.opacity}
-                                stroke="none"
+                                stroke={style.fill}
+                                strokeWidth={0.5}
+                                strokeOpacity={style.opacity}
+                                className="transition-all duration-300"
                             />
                         );
                     })}
                 </g>
 
                 {/* Court Lines */}
-                <g fill="none" stroke="#334155" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
+                <g fill="#0f172a" fillRule="evenodd" stroke="none" pointerEvents="none">
                     {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
                 </g>
 
@@ -87,25 +90,24 @@ export const TeamZoneChart: React.FC<TeamZoneChartProps> = ({ roster, zoneOverri
                         const style = getZoneStyle(z.data.m, z.data.a, z.avg);
                         const colors = getZonePillColors(style.delta, z.data.a > 0);
                         const hasData = z.data.a > 0;
-                        const width = 64;
-                        const height = hasData ? 52 : 32;
+                        const width = 54;
+                        const height = hasData ? 42 : 32;
 
                         return (
                             <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
                                 <rect
                                     x={-width / 2} y={-height / 2}
                                     width={width} height={height}
-                                    rx={6}
+                                    rx={8}
                                     fill={colors.pillFill}
                                     stroke={colors.borderStroke}
                                     strokeWidth={1}
-                                    fillOpacity={0.95}
                                 />
-                                <text textAnchor="middle" y={hasData ? -6 : 2} fill="#ffffff" fontSize="15" fontWeight="800">
+                                <text textAnchor="middle" y={hasData ? -5 : 0} fill={colors.textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
                                     {pct}%
                                 </text>
                                 {hasData && (
-                                    <text textAnchor="middle" y={16} fill="#ffffff" fontSize="15" fontWeight="700">
+                                    <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
                                         {z.data.m}/{z.data.a}
                                     </text>
                                 )}
