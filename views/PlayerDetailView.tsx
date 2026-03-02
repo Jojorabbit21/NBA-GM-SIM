@@ -326,7 +326,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="mx-6 border-t border-slate-700/50" />
 
                     {/* Player info table + Star Rating */}
-                    <div className="px-6 py-3 relative z-10 flex items-center justify-between">
+                    <div className="px-6 py-3 relative z-10 flex items-center gap-8">
                         <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
                             <thead>
                                 <tr className="text-[10px] uppercase tracking-wider" style={{ opacity: 0.5 }}>
