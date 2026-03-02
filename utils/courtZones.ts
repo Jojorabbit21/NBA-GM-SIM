@@ -52,6 +52,6 @@ export const getZoneStyle = (makes: number, attempts: number, avg: number) => {
 
 // Get pill label colors — fixed solid colors
 export const getZonePillColors = (delta: number, hasAttempts: boolean) => {
-    if (!hasAttempts) return { pillFill: '#1e293b', textFill: '#94a3b8', borderStroke: '#334155' };
-    return { pillFill: '#0f172a', textFill: '#ffffff', borderStroke: '#334155' };
+    if (!hasAttempts) return { pillFill: 'rgba(30,41,59,0.8)', textFill: '#94a3b8', borderStroke: 'rgba(255,255,255,0.1)' };
+    return { pillFill: 'rgba(0,0,0,0.6)', textFill: '#ffffff', borderStroke: 'rgba(255,255,255,0.2)' };
 };

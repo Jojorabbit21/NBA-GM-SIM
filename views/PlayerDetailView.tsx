@@ -396,10 +396,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                         </div>
                                         {/* Attribute rows */}
-                                        {attrKeys.map(k => {
+                                        {attrKeys.map((k, ki) => {
                                             const val = (player as any)[k] || 0;
+                                            const isLastAttr = ki === attrKeys.length - 1;
                                             return (
-                                                <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
+                                                <div key={k} className={`flex items-center justify-between px-3 h-9 ${!isLastAttr ? 'border-b border-slate-800/50' : ''} transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
                                                     <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
                                                     <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
                                                 </div>
@@ -443,7 +444,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         {chartZones.map((z, i) => {
                                             const style = getZoneStyle(z.m, z.a, z.avg);
                                             return (
-                                                <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke="none" className="transition-all duration-300" />
+                                                <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke={style.fill} strokeWidth={0.5} strokeOpacity={style.opacity} className="transition-all duration-300" />
                                             );
                                         })}
                                     </g>
@@ -455,15 +456,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
                                             const style = getZoneStyle(z.m, z.a, z.avg);
                                             const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
-                                            const w = 52, h = z.a > 0 ? 36 : 30;
+                                            const w = 54, h = z.a > 0 ? 42 : 32;
                                             return (
                                                 <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                    <rect x={-w/2} y={-h/2} width={w} height={h} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
-                                                    <text textAnchor="middle" y={z.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+                                                    <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
+                                                    <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
                                                         {pct}%
                                                     </text>
                                                     {z.a > 0 && (
-                                                        <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
+                                                        <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
                                                             {z.m}/{z.a}
                                                         </text>
                                                     )}
