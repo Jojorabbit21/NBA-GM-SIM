@@ -68,3 +68,25 @@ export const calculateOvr = (attributes: any, position: string): number => {
     const rawAvg = totalWeight > 0 ? totalScore / totalWeight : 50;
     return Math.min(99, Math.max(40, Math.round(rawAvg * 0.6 + 40)));
 };
+
+/**
+ * OVR → 별점 변환 (0.5 ~ 5.0, 0.5 단위)
+ *
+ * 선형 매핑: OVR 60 → 0.5★, OVR 97 → 5.0★
+ * | OVR   | Stars | Tier              |
+ * |-------|-------|-------------------|
+ * | 97+   | 5.0★  | MVP 슈퍼스타       |
+ * | 93-96 | 4.5★  | All-NBA           |
+ * | 89-92 | 4.0★  | All-Star          |
+ * | 85-88 | 3.5★  | 주전급             |
+ * | 81-84 | 3.0★  | 준주전             |
+ * | 76-80 | 2.5★  | 로테이션           |
+ * | 72-75 | 2.0★  | 벤치              |
+ * | 68-71 | 1.5★  | 엔드 벤치          |
+ * | 64-67 | 1.0★  | 투웨이/G리그        |
+ * | <64   | 0.5★  | 리플레이스먼트 이하  |
+ */
+export const getPlayerStarRating = (ovr: number): number => {
+    const raw = (ovr - 60) / 37 * 4.5 + 0.5;
+    return Math.round(Math.max(0.5, Math.min(5.0, raw)) * 2) / 2;
+};

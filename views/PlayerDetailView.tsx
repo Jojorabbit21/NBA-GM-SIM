@@ -274,15 +274,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 <div className="absolute top-0 left-0 right-0 h-0.5" style={{ backgroundColor: teamColor }} />
                 <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
 
-                {/* Player info — single row */}
-                <div className="px-6 py-3 relative z-10 flex items-center gap-4 flex-wrap">
+                {/* Back button row */}
+                <div className="px-6 pt-4 pb-2 relative z-10">
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors"
                     >
                         <ArrowLeft size={14} />
                         <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
                     </button>
+                </div>
+
+                {/* Player info row */}
+                <div className="px-6 pb-3 relative z-10 flex items-center gap-4 flex-wrap">
                     <OvrBadge value={calculatedOvr} size="md" />
                     <h2 className="text-lg font-black text-white uppercase tracking-tight oswald leading-tight">{player.name}</h2>
                     {teamId && (
