@@ -5,7 +5,7 @@ import { Player, HiddenTendencies, SaveTendencies } from '../types';
  * Deterministic Hash Function (String -> Number)
  * Ensures the same player always gets the same hidden stats.
  */
-function stringToHash(str: string): number {
+export function stringToHash(str: string): number {
     let hash = 0;
     if (str.length === 0) return hash;
     for (let i = 0; i < str.length; i++) {
