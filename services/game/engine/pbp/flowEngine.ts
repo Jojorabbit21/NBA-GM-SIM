@@ -133,7 +133,15 @@ export function calculateHitRate(
     const helpMod = (defTeam.tactics.sliders.helpDef - 5) * 0.008;
 
     // shotType별 컨테스트 효과: 수비자의 defRating 영향력 스케일링
-    const contestFactor = SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
+    let contestFactor = SIM_CONFIG.SHOT_DEFENSE.CONTEST[shotType ?? 'Layup'] ?? 1.0;
+
+    // B-7. Deadeye: 3PT 존 엘리트 슈터의 컨테스트 저항
+    if (SIM_CONFIG.ZONE_SHOOTING.ENABLED && preferredZone === '3PT' &&
+        actor.attr.shotIq >= SIM_CONFIG.ZONE_SHOOTING.DEADEYE_SHOTIQ_THRESHOLD &&
+        actor.attr.offConsist >= SIM_CONFIG.ZONE_SHOOTING.DEADEYE_OFFCONSIST_THRESHOLD) {
+        contestFactor *= SIM_CONFIG.ZONE_SHOOTING.DEADEYE_CONTEST_MULTIPLIER;
+    }
+
     hitRate += (offRating - defRating * contestFactor) * 0.002;
     hitRate -= intensityMod;
 

@@ -121,6 +121,45 @@ export const useScoutingReport = (player: Player | null) => {
     });
 };
 
+// --- Player Game Log (최근 경기 기록) ---
+export const usePlayerGameLog = (playerId: string, teamId?: string) => {
+    return useQuery({
+        queryKey: ['playerGameLog', playerId, teamId],
+        queryFn: async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            const userId = session?.user?.id;
+            if (!userId || !teamId) return [];
+
+            const { data } = await supabase
+                .from('user_game_results')
+                .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
+                .eq('user_id', userId)
+                .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+                .order('date', { ascending: false })
+                .limit(10);
+
+            return (data || [])
+                .map(game => {
+                    const isHome = game.home_team_id === teamId;
+                    const box = isHome ? game.box_score?.home : game.box_score?.away;
+                    const playerBox = box?.find((p: any) => p.playerId === playerId);
+                    if (!playerBox) return null;
+                    return {
+                        date: game.date,
+                        opponentId: isHome ? game.away_team_id : game.home_team_id,
+                        isHome,
+                        teamScore: isHome ? game.home_score : game.away_score,
+                        opponentScore: isHome ? game.away_score : game.home_score,
+                        ...playerBox,
+                    };
+                })
+                .filter(Boolean);
+        },
+        enabled: !!teamId,
+        staleTime: 60_000,
+    });
+};
+
 // --- Mutations ---
 
 export const saveGameResults = async (results: any[]) => {

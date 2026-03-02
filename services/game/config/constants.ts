@@ -228,6 +228,10 @@ export const SIM_CONFIG = {
         ASCENDANT_CLOSESHOT_THRESHOLD: 93,
         ASCENDANT_BLOCK_MULTIPLIER: 0.60,    // Rim 블락 확률 × 0.6 (PG/SG 전용)
 
+        // B-7. Deadeye (데드아이) — KD, Klay Thompson, Khris Middleton
+        DEADEYE_SHOTIQ_THRESHOLD: 88,
+        DEADEYE_OFFCONSIST_THRESHOLD: 88,
+        DEADEYE_CONTEST_MULTIPLIER: 0.90,    // 3PT 전용, contestFactor × 0.9
     },
     // Finish System: resolveFinish에서 마무리 타입 결정 (playTypes.ts)
     FINISH: {
