@@ -6,6 +6,7 @@ import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { OvrBadge } from '../components/common/OvrBadge';
+import { StarRating } from '../components/common/StarRating';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import {
     ZONE_PATHS, COURT_LINES, ZONE_AVG,
@@ -324,8 +325,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* Divider */}
                     <div className="mx-6 border-t border-slate-700/50" />
 
-                    {/* Player info table */}
-                    <div className="px-6 py-4 relative z-10">
+                    {/* Player info table + Star Rating */}
+                    <div className="px-6 py-3 relative z-10 flex items-center justify-between">
                         <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
                             <thead>
                                 <tr className="text-[10px] uppercase tracking-wider" style={{ opacity: 0.5 }}>
@@ -357,6 +358,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </tr>
                             </tbody>
                         </table>
+                        <StarRating ovr={player.ovr ?? 0} size="lg" showValue />
                     </div>
 
                     {/* Divider */}
@@ -364,7 +366,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* Scout Report */}
                     {(archetypes.length > 0 || scoutReport.length > 0) && (
-                        <div className="px-6 py-4 relative z-10 flex flex-col gap-2">
+                        <div className="px-6 pt-3 pb-6 relative z-10 flex flex-col gap-2">
                             {scoutReport.length > 0 && (
                                 <span className="text-sm leading-relaxed italic" style={{ color: theme.text, opacity: 0.6 }}>
                                     "{scoutReport}"
