@@ -10,7 +10,7 @@ import {
     ZONE_CONFIG as CHART_ZONES,
     getZoneStyle, getZonePillColors
 } from '../utils/courtZones';
-import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_NAME_MAP } from '../data/attributeConfig';
+import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_KR_LABEL } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
 
@@ -367,13 +367,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 <div key={gr.id} className="flex flex-col">
                                     {/* Category Header */}
                                     <div className="pb-2 mb-1.5 border-b border-slate-700">
-                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
+                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                     </div>
                                     {/* Attribute Rows */}
                                     {attrKeys.map(k => {
                                         const val = (player as any)[k] || 0;
-                                        const nameRaw = ATTR_NAME_MAP[k] || k;
-                                        const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
+                                        const label = ATTR_KR_LABEL[k] || k;
                                         return (
                                             <div key={k} className="flex items-center justify-between py-1.5">
                                                 <span className="text-xs text-slate-500 truncate mr-2">{label}</span>
