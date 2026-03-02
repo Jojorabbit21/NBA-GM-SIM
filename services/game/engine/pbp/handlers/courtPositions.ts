@@ -207,14 +207,14 @@ export function computeCourtPositions(
     // Ball handler
     const bhTemplate = addJitter(formation.ballHandler);
     const bhDisplay = toDisplay(bhTemplate);
-    positions.push({ playerId: actorId, x: bhDisplay.x, y: bhDisplay.y, role: 'ballHandler', hasBall: true });
+    positions.push({ playerId: actorId, x: bhDisplay.x, y: bhDisplay.y, role: 'ballHandler', hasBall: true, position: actor.position, isHome: isHomePossession });
     offPosMap.set(actorId, bhDisplay);
 
     // Screen partner
     if (secondaryId) {
         const spTemplate = addJitter(formation.screenPartner);
         const spDisplay = toDisplay(spTemplate);
-        positions.push({ playerId: secondaryId, x: spDisplay.x, y: spDisplay.y, role: 'screener', hasBall: false });
+        positions.push({ playerId: secondaryId, x: spDisplay.x, y: spDisplay.y, role: 'screener', hasBall: false, position: assister!.position, isHome: isHomePossession });
         offPosMap.set(secondaryId, spDisplay);
     }
 
@@ -225,7 +225,7 @@ export function computeCourtPositions(
         if (!secondaryId && slotIdx === 0) {
             const spTemplate = addJitter(formation.screenPartner);
             const spDisplay = toDisplay(spTemplate);
-            positions.push({ playerId: p.playerId, x: spDisplay.x, y: spDisplay.y, role: 'spacer', hasBall: false });
+            positions.push({ playerId: p.playerId, x: spDisplay.x, y: spDisplay.y, role: 'spacer', hasBall: false, position: p.position, isHome: isHomePossession });
             offPosMap.set(p.playerId, spDisplay);
             slotIdx++;
             continue;
@@ -234,7 +234,7 @@ export function computeCourtPositions(
         if (spacerIdx < formation.spacers.length) {
             const sTemplate = addJitter(formation.spacers[spacerIdx]);
             const sDisplay = toDisplay(sTemplate);
-            positions.push({ playerId: p.playerId, x: sDisplay.x, y: sDisplay.y, role: 'spacer', hasBall: false });
+            positions.push({ playerId: p.playerId, x: sDisplay.x, y: sDisplay.y, role: 'spacer', hasBall: false, position: p.position, isHome: isHomePossession });
             offPosMap.set(p.playerId, sDisplay);
         }
         slotIdx++;
@@ -249,7 +249,7 @@ export function computeCourtPositions(
     if (defender) {
         const actorPos = offPosMap.get(actorId)!;
         const defPos = computeDefPos(actorPos, basketX, 2.5);
-        positions.push({ playerId: defender.playerId, x: defPos.x, y: defPos.y, role: 'onBallDef', hasBall: false });
+        positions.push({ playerId: defender.playerId, x: defPos.x, y: defPos.y, role: 'onBallDef', hasBall: false, position: defender.position, isHome: !isHomePossession });
         assignedDefIds.add(defender.playerId);
     }
 
@@ -265,7 +265,7 @@ export function computeCourtPositions(
             const offDisplay = offPosMap.get(offP.playerId);
             if (offDisplay) {
                 const defPos = computeDefPos(offDisplay, basketX, 3.5);
-                positions.push({ playerId: matchedDef.playerId, x: defPos.x, y: defPos.y, role: 'helpDef', hasBall: false });
+                positions.push({ playerId: matchedDef.playerId, x: defPos.x, y: defPos.y, role: 'helpDef', hasBall: false, position: matchedDef.position, isHome: !isHomePossession });
             }
         }
     }
@@ -275,7 +275,7 @@ export function computeCourtPositions(
         if (!assignedDefIds.has(d.playerId)) {
             assignedDefIds.add(d.playerId);
             const fallbackPos = toDisplay(addJitter({ x: 25, y: 25 }));
-            positions.push({ playerId: d.playerId, x: fallbackPos.x, y: fallbackPos.y, role: 'helpDef', hasBall: false });
+            positions.push({ playerId: d.playerId, x: fallbackPos.x, y: fallbackPos.y, role: 'helpDef', hasBall: false, position: d.position, isHome: !isHomePossession });
         }
     }
 
