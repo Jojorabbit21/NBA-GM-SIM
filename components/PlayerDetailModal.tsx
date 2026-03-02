@@ -206,30 +206,53 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
             <div className="absolute top-0 right-0 w-64 h-64 blur-[80px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
 
             {/* Header */}
-            <div className="shrink-0 px-8 py-5 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between relative z-10">
-                <div className="flex items-center gap-6">
-                    <OvrBadge value={calculatedOvr} size="xl" />
-                    <div>
-                        <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
-                        <div className="flex items-center gap-4 mt-2 text-sm font-bold text-slate-400">
-                            {teamId && (
-                                <div className="flex items-center gap-2">
-                                    <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                    <span>{teamName || 'Free Agent'}</span>
-                                </div>
-                            )}
-                            <div className="w-1 h-1 bg-slate-600 rounded-full" />
-                            <span>{player.position}</span>
-                            <div className="w-1 h-1 bg-slate-600 rounded-full" />
-                            <span>{player.height}cm / {player.weight}kg</span>
-                            <div className="w-1 h-1 bg-slate-600 rounded-full" />
-                            <span>{player.age}세</span>
+            <div className="shrink-0 px-8 py-5 border-b border-slate-800 bg-slate-900/80 relative z-10">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-6">
+                        <OvrBadge value={calculatedOvr} size="xl" />
+                        <div>
+                            <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
+                            <div className="flex items-center gap-4 mt-2 text-sm font-bold text-slate-400">
+                                {teamId && (
+                                    <div className="flex items-center gap-2">
+                                        <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
+                                        <span>{teamName || 'Free Agent'}</span>
+                                    </div>
+                                )}
+                                <div className="w-1 h-1 bg-slate-600 rounded-full" />
+                                <span>{player.position}</span>
+                                <div className="w-1 h-1 bg-slate-600 rounded-full" />
+                                <span>{player.height}cm / {player.weight}kg</span>
+                                <div className="w-1 h-1 bg-slate-600 rounded-full" />
+                                <span>{player.age}세</span>
+                            </div>
                         </div>
                     </div>
+                    <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
+                        <X size={24} />
+                    </button>
                 </div>
-                <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
-                    <X size={24} />
-                </button>
+                {/* Archetypes + Scout Report */}
+                {(() => {
+                    const archetypes = getHiddenArchetypes(player);
+                    const hasArchetypes = archetypes.length > 0;
+                    const hasReport = scoutReport.length > 0;
+                    if (!hasArchetypes && !hasReport) return null;
+                    return (
+                        <div className="mt-3 pt-3 border-t border-slate-800/50">
+                            {hasArchetypes && (
+                                <p className="text-xs font-bold text-indigo-400 mb-1">
+                                    {archetypes.join(' / ')}
+                                </p>
+                            )}
+                            {hasReport && (
+                                <p className="text-xs text-slate-400 leading-relaxed">
+                                    {scoutReport}
+                                </p>
+                            )}
+                        </div>
+                    );
+                })()}
             </div>
 
             {/* Scrollable Content */}
@@ -280,30 +303,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     </div>
                 </div>
 
-                {/* 2. Hidden Archetypes + Scout Report */}
-                {(() => {
-                    const archetypes = getHiddenArchetypes(player);
-                    const hasArchetypes = archetypes.length > 0;
-                    const hasReport = scoutReport.length > 0;
-                    if (!hasArchetypes && !hasReport) return null;
-                    return (
-                        <div className="mb-6">
-                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">성격 & 플레이스타일</h3>
-                            {hasArchetypes && (
-                                <p className="text-sm text-slate-300 mb-3">
-                                    {archetypes.join(' / ')}
-                                </p>
-                            )}
-                            {hasReport && (
-                                <p className="text-sm text-slate-300 leading-relaxed">
-                                    {scoutReport}
-                                </p>
-                            )}
-                        </div>
-                    );
-                })()}
-
-                {/* 3. Stats + Shot Chart — Side by Side */}
+                {/* 2. Stats + Shot Chart — Side by Side */}
                 <div className="flex gap-6 items-start">
 
                     {/* Left: Combined Stats Card */}
