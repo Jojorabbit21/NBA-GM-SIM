@@ -24,13 +24,17 @@ interface PlayerDetailViewProps {
 }
 
 
-// ── Stats Sections Config ──
+// ── Stats Sections Config (matches Leaderboard Player > Traditional) ──
 const TRAD_COLS = [
-    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
-    { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
-    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
+    { key: 'g', label: 'G' }, { key: 'mp', label: 'MIN' },
+    { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
+    { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
+    { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+    { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' },
+    { key: 'ts%', label: 'TS%' }, { key: 'pm', label: '+/-' },
 ];
 
+// ── Advanced (matches Leaderboard Player > Advanced) ──
 const ADVANCED_COLS = [
     { key: 'ts%', label: 'TS%' }, { key: 'efg%', label: 'eFG%' }, { key: 'tov%', label: 'TOV%' },
     { key: 'usg%', label: 'USG%' }, { key: 'ast%', label: 'AST%' },
@@ -40,7 +44,7 @@ const ADVANCED_COLS = [
     { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
 ];
 
-// ── Zone Table Config ──
+// ── Zone stat key mapping (for shot chart SVG) ──
 const ZONE_TABLE = [
     { key: 'rim', label: 'RIM', keyM: 'zone_rim_m', keyA: 'zone_rim_a' },
     { key: 'paint', label: 'PAINT', keyM: 'zone_paint_m', keyA: 'zone_paint_a' },
@@ -53,25 +57,18 @@ const ZONE_TABLE = [
     { key: 'atb3R', label: 'ATB-R', keyM: 'zone_atb3_r_m', keyA: 'zone_atb3_r_a' },
     { key: 'c3R', label: 'C3-R', keyM: 'zone_c3_r_m', keyA: 'zone_c3_r_a' },
 ];
-
-// ── Zone stat key mapping (for shot chart SVG) ──
 const ZONE_STAT_KEYS: Record<string, { keyM: string; keyA: string }> = {};
 ZONE_TABLE.forEach(z => { ZONE_STAT_KEYS[z.key] = { keyM: z.keyM, keyA: z.keyA }; });
 
-// ── Game Log Columns ──
+// ── Game Log Columns (matches Traditional + DATE/OPP/RESULT) ──
 const GAME_LOG_COLS = [
-    { key: 'date', label: 'DATE', width: 58 },
-    { key: 'opp', label: 'OPP', width: 55 },
-    { key: 'result', label: 'RESULT', width: 80 },
-    { key: 'min', label: 'MIN', width: 45 },
-    { key: 'pts', label: 'PTS', width: 45 },
-    { key: 'reb', label: 'REB', width: 45 },
-    { key: 'ast', label: 'AST', width: 45 },
-    { key: 'stl', label: 'STL', width: 40 },
-    { key: 'blk', label: 'BLK', width: 40 },
-    { key: 'fg', label: 'FG%', width: 50 },
-    { key: '3p', label: '3P%', width: 50 },
-    { key: 'pm', label: '+/-', width: 48 },
+    { key: 'date', label: 'DATE' }, { key: 'opp', label: 'OPP' }, { key: 'result', label: 'RESULT' },
+    { key: 'min', label: 'MIN' },
+    { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
+    { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
+    { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+    { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' },
+    { key: 'ts%', label: 'TS%' }, { key: 'pm', label: '+/-' },
 ];
 
 const getAttrColor = (val: number) => {
@@ -182,7 +179,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
     return { display: val, color };
 }
 
-// ── Reusable: Stats sub-table (header + single data row) ──
+// ── Reusable: Stats sub-table (header + single data row), NO card wrapper ──
 const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
     <table className="w-full border-separate border-spacing-0">
         <thead>
@@ -194,7 +191,7 @@ const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: P
                 ))}
             </tr>
         </thead>
-        <tbody className="bg-slate-900">
+        <tbody>
             <tr className="h-10">
                 {cols.map((c, i) => {
                     const { display, color } = resolveStatVal(stats, c.key);
@@ -209,7 +206,41 @@ const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: P
     </table>
 );
 
-// (SHOOTING_VERTICAL removed — zone data used directly from ZONE_TABLE)
+// ── Game log cell builder ──
+function buildGameLogCells(g: any): { val: string; color?: string }[] {
+    const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
+    const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
+    const won = g.teamScore > g.opponentScore;
+    const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
+    const fgPct = g.fga > 0 ? (g.fgm / g.fga * 100).toFixed(1) + '%' : '-';
+    const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a * 100).toFixed(1) + '%' : '-';
+    const ftPct = g.fta > 0 ? (g.ftm / g.fta * 100).toFixed(1) + '%' : '-';
+    const tsa = g.fga + 0.44 * (g.fta || 0);
+    const tsPct = tsa > 0 ? ((g.pts || 0) / (2 * tsa) * 100).toFixed(1) + '%' : '-';
+    const pmVal = g.plusMinus || 0;
+    const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
+
+    return [
+        { val: dateStr },
+        { val: oppLabel },
+        { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
+        { val: String(Math.round(g.mp || 0)) },
+        { val: String(g.pts || 0) },
+        { val: String(g.offReb || 0) },
+        { val: String(g.defReb || 0) },
+        { val: String(g.reb || 0) },
+        { val: String(g.ast || 0) },
+        { val: String(g.stl || 0) },
+        { val: String(g.blk || 0) },
+        { val: String(g.tov || 0) },
+        { val: String(g.pf || 0) },
+        { val: fgPct },
+        { val: p3Pct },
+        { val: ftPct },
+        { val: tsPct },
+        { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
+    ];
+}
 
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, tendencySeed, onBack }) => {
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
@@ -309,53 +340,51 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 {/* ═══ BODY — 3 sections ═══ */}
                 <div className="p-6 space-y-8">
 
-                {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
-                <div>
-                    <div className="pb-1.5 mb-1">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">2025-26 시즌 스탯</span>
-                    </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden overflow-x-auto custom-scrollbar">
-                        {/* Traditional */}
-                        <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
-                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Traditional</span>
-                        </div>
-                        <StatsSubTable cols={TRAD_COLS} stats={s} />
-                        {/* Advanced */}
-                        <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
-                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Advanced</span>
-                        </div>
-                        <StatsSubTable cols={ADVANCED_COLS} stats={s} />
-                    </div>
-                </div>
-                {hasPlayoffs && (
+                    {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div>
                         <div className="pb-1.5 mb-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">플레이오프 스탯</span>
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden overflow-x-auto custom-scrollbar">
+                        <div className="overflow-x-auto custom-scrollbar">
+                            {/* Traditional */}
                             <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
                                 <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Traditional</span>
                             </div>
-                            <StatsSubTable cols={TRAD_COLS} stats={player.playoffStats!} />
+                            <StatsSubTable cols={TRAD_COLS} stats={s} />
+                            {/* Advanced */}
                             <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
                                 <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Advanced</span>
                             </div>
-                            <StatsSubTable cols={ADVANCED_COLS} stats={player.playoffStats!} />
+                            <StatsSubTable cols={ADVANCED_COLS} stats={s} />
                         </div>
                     </div>
-                )}
+                    {hasPlayoffs && (
+                        <div>
+                            <div className="pb-1.5 mb-1">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">플레이오프 스탯</span>
+                            </div>
+                            <div className="overflow-x-auto custom-scrollbar">
+                                <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Traditional</span>
+                                </div>
+                                <StatsSubTable cols={TRAD_COLS} stats={player.playoffStats!} />
+                                <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Advanced</span>
+                                </div>
+                                <StatsSubTable cols={ADVANCED_COLS} stats={player.playoffStats!} />
+                            </div>
+                        </div>
+                    )}
 
-                {/* ═══ SECTION 2: 능력치 6개 그룹 (Leaderboard table style) ═══ */}
-                <div>
-                    <div className="pb-1.5 mb-1">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">능력치</span>
-                    </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                    {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
+                    <div>
+                        <div className="pb-1.5 mb-1">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">능력치</span>
+                        </div>
                         <div className="grid grid-cols-6">
                             {ATTR_GROUPS.map((gr, gi) => {
-                                const avgKey = gr.keys[0];
                                 const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
-                                const avgVal = (player as any)[avgKey] || 0;
+                                const avgVal = (player as any)[gr.keys[0]] || 0;
                                 const isLastCol = gi === ATTR_GROUPS.length - 1;
                                 return (
                                     <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
@@ -366,10 +395,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         {/* Attribute rows */}
                                         {attrKeys.map(k => {
                                             const val = (player as any)[k] || 0;
-                                            const label = ATTR_KR_LABEL[k] || k;
                                             return (
                                                 <div key={k} className="flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5">
-                                                    <span className="text-xs text-slate-500 truncate mr-2">{label}</span>
+                                                    <span className="text-xs text-slate-500 truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
                                                     <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
                                                 </div>
                                             );
@@ -386,121 +414,80 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             })}
                         </div>
                     </div>
-                </div>
 
-                {/* ═══ SECTION 3: 슈팅기록(수직) | 샷차트 | 최근경기 — 1:2:7 비율 ═══ */}
-                <div className="grid gap-6 items-start" style={{ gridTemplateColumns: '1fr 2fr 7fr' }}>
+                    {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율 ═══ */}
+                    <div className="grid gap-6 items-start" style={{ gridTemplateColumns: '4fr 6fr' }}>
 
-                    {/* Col 1: 구역별 슈팅 기록 */}
-                    <div>
-                        <div className="pb-1.5 mb-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">구역별 슈팅</span>
-                        </div>
-                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                            <table className="w-full border-separate border-spacing-0">
-                                <thead>
-                                    <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                                        <th className="py-3 px-2 text-left whitespace-nowrap border-b border-slate-800 border-r border-r-slate-800/30">ZONE</th>
-                                        <th className="py-3 px-2 text-center whitespace-nowrap border-b border-slate-800 border-r border-r-slate-800/30">M/A</th>
-                                        <th className="py-3 px-2 text-center whitespace-nowrap border-b border-slate-800">FG%</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-slate-900">
-                                    {ZONE_TABLE.map((z, i) => {
-                                        const m = (s as any)[z.keyM] || 0;
-                                        const a = (s as any)[z.keyA] || 0;
-                                        const pct = a > 0 ? (m / a * 100).toFixed(1) + '%' : '-';
-                                        const pctColor = a === 0 ? 'text-slate-600' : 'text-slate-300';
-                                        return (
-                                            <tr key={z.key} className="h-9 transition-colors hover:bg-white/5">
-                                                <td className={`py-1.5 px-2 text-left whitespace-nowrap border-r border-r-slate-800/30 ${i < ZONE_TABLE.length - 1 ? 'border-b border-b-slate-800/50' : ''}`}>
-                                                    <span className="text-[10px] font-medium text-slate-400">{z.label}</span>
-                                                </td>
-                                                <td className={`py-1.5 px-2 text-center border-r border-r-slate-800/30 ${i < ZONE_TABLE.length - 1 ? 'border-b border-b-slate-800/50' : ''}`}>
-                                                    <span className="font-mono font-medium text-[10px] tabular-nums text-slate-300">{m}/{a}</span>
-                                                </td>
-                                                <td className={`py-1.5 px-2 text-center ${i < ZONE_TABLE.length - 1 ? 'border-b border-b-slate-800/50' : ''}`}>
-                                                    <span className={`font-mono font-medium text-[10px] tabular-nums ${pctColor}`}>{pct}</span>
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    {/* Col 2: 샷 차트 */}
-                    <div>
-                        <div className="pb-1.5 mb-1 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">샷 차트</span>
-                            <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
-                                <span>LOW</span>
-                                <div className="flex gap-0.5">
-                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
-                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
-                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                        {/* Col 1: 샷 차트 */}
+                        <div>
+                            <div className="pb-1.5 mb-1 flex items-center justify-between">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">샷 차트</span>
+                                <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                                    <span>LOW</span>
+                                    <div className="flex gap-0.5">
+                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
+                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
+                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                                    </div>
+                                    <span>HIGH</span>
                                 </div>
-                                <span>HIGH</span>
                             </div>
-                        </div>
-                        <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden">
-                            <svg viewBox="0 0 435 403" className="w-full h-full">
-                                <rect x="0" y="0" width="435" height="403" fill="#020617" />
-                                <g>
-                                    {chartZones.map((z, i) => {
-                                        const style = getZoneStyle(z.m, z.a, z.avg);
-                                        return (
-                                            <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke="none" className="transition-all duration-300" />
-                                        );
-                                    })}
-                                </g>
-                                <g fill="none" stroke="#0f172a" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
-                                    {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
-                                </g>
-                                <g pointerEvents="none">
-                                    {chartZones.map((z, i) => {
-                                        const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
-                                        const style = getZoneStyle(z.m, z.a, z.avg);
-                                        const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
-                                        const w = 52, h = z.a > 0 ? 36 : 30;
-                                        return (
-                                            <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                <rect x={-w/2} y={-h/2} width={w} height={h} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
-                                                <text textAnchor="middle" y={z.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
-                                                    {pct}%
-                                                </text>
-                                                {z.a > 0 && (
-                                                    <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
-                                                        {z.m}/{z.a}
+                            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden">
+                                <svg viewBox="0 0 435 403" className="w-full h-full">
+                                    <rect x="0" y="0" width="435" height="403" fill="#020617" />
+                                    <g>
+                                        {chartZones.map((z, i) => {
+                                            const style = getZoneStyle(z.m, z.a, z.avg);
+                                            return (
+                                                <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke="none" className="transition-all duration-300" />
+                                            );
+                                        })}
+                                    </g>
+                                    <g fill="none" stroke="#0f172a" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
+                                        {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
+                                    </g>
+                                    <g pointerEvents="none">
+                                        {chartZones.map((z, i) => {
+                                            const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
+                                            const style = getZoneStyle(z.m, z.a, z.avg);
+                                            const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
+                                            const w = 52, h = z.a > 0 ? 36 : 30;
+                                            return (
+                                                <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                    <rect x={-w/2} y={-h/2} width={w} height={h} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
+                                                    <text textAnchor="middle" y={z.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+                                                        {pct}%
                                                     </text>
-                                                )}
-                                            </g>
-                                        );
-                                    })}
-                                </g>
-                            </svg>
+                                                    {z.a > 0 && (
+                                                        <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
+                                                            {z.m}/{z.a}
+                                                        </text>
+                                                    )}
+                                                </g>
+                                            );
+                                        })}
+                                    </g>
+                                </svg>
+                            </div>
                         </div>
-                    </div>
 
-                    {/* Col 3: 최근 경기 */}
-                    <div className="flex flex-col min-h-0">
-                        <div className="pb-1.5 mb-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">최근 경기</span>
-                        </div>
-                        {gameLogLoading && teamId && (
-                            <div className="flex items-center justify-center py-8">
-                                <Loader2 size={16} className="text-slate-500 animate-spin" />
+                        {/* Col 2: 최근 경기 (full Traditional stats) */}
+                        <div className="flex flex-col min-h-0">
+                            <div className="pb-1.5 mb-1">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">최근 경기</span>
                             </div>
-                        )}
-                        {!gameLogLoading && (!gameLog || gameLog.length === 0) && (
-                            <div className="flex items-center justify-center py-8">
-                                <span className="text-xs text-slate-600">경기 기록이 없습니다</span>
-                            </div>
-                        )}
-                        {gameLog && gameLog.length > 0 && (
-                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" style={{ maxHeight: 520 }}>
-                                <div className="overflow-y-auto overflow-x-auto custom-scrollbar h-full">
+                            {gameLogLoading && teamId && (
+                                <div className="flex items-center justify-center py-8">
+                                    <Loader2 size={16} className="text-slate-500 animate-spin" />
+                                </div>
+                            )}
+                            {!gameLogLoading && (!gameLog || gameLog.length === 0) && (
+                                <div className="flex items-center justify-center py-8">
+                                    <span className="text-xs text-slate-600">경기 기록이 없습니다</span>
+                                </div>
+                            )}
+                            {gameLog && gameLog.length > 0 && (
+                                <div className="overflow-y-auto overflow-x-auto custom-scrollbar" style={{ maxHeight: 520 }}>
                                     <table className="w-full border-separate border-spacing-0">
                                         <thead className="sticky top-0 z-10">
                                             <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
@@ -511,36 +498,13 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 ))}
                                             </tr>
                                         </thead>
-                                        <tbody className="bg-slate-900">
+                                        <tbody>
                                             {gameLog.map((g: any, i: number) => {
-                                                const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
-                                                const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
-                                                const won = g.teamScore > g.opponentScore;
-                                                const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
-                                                const fgPct = g.fga > 0 ? (g.fgm / g.fga).toFixed(3) : '-';
-                                                const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a).toFixed(3) : '-';
-                                                const pmVal = g.plusMinus || 0;
-                                                const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
-
-                                                const cells: { val: string; color?: string }[] = [
-                                                    { val: dateStr },
-                                                    { val: oppLabel },
-                                                    { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
-                                                    { val: String(Math.round(g.mp || 0)) },
-                                                    { val: String(g.pts || 0) },
-                                                    { val: String(g.reb || 0) },
-                                                    { val: String(g.ast || 0) },
-                                                    { val: String(g.stl || 0) },
-                                                    { val: String(g.blk || 0) },
-                                                    { val: fgPct },
-                                                    { val: p3Pct },
-                                                    { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
-                                                ];
-
+                                                const cells = buildGameLogCells(g);
                                                 return (
                                                     <tr key={i} className="h-10 transition-colors hover:bg-white/5">
                                                         {cells.map((cell, ci) => (
-                                                            <td key={ci} className={`py-2 px-3 text-center whitespace-nowrap border-b border-slate-800/50 ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
+                                                            <td key={ci} className={`py-2 px-1.5 text-center whitespace-nowrap border-b border-slate-800/50 ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
                                                                 <span className={`font-mono font-medium text-xs tabular-nums ${cell.color || 'text-white'}`}>
                                                                     {cell.val}
                                                                 </span>
@@ -552,11 +516,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         </tbody>
                                     </table>
                                 </div>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
 
-                </div>
+                    </div>
 
                 </div>
             </div>
