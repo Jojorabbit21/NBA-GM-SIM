@@ -150,6 +150,26 @@ export const SIM_CONFIG = {
         PRESS_TOV_BONUS: 0.05,        // +5% (Transition 전용)
         PRESS_STEAL_RATIO_BONUS: 0.15, // +15% 스틸 비율
     },
+    // Playmaking Archetypes (플레이메이킹 히든 아키타입)
+    PLAYMAKING: {
+        ENABLED: true,              // 플레이메이킹 아키타입 마스터 스위치
+
+        // G-1. Clairvoyant (천리안) — CP3, Magic, LeBron, Jokic
+        CLAIRVOYANT_PASSIQ_THRESHOLD: 92,
+        CLAIRVOYANT_PASSVISION_THRESHOLD: 90,
+        CLAIRVOYANT_PASSACC_THRESHOLD: 90,
+        CLAIRVOYANT_HITRATE_BONUS: 0.02,  // 어시스트 시 슈터 hitRate +2%
+
+        // G-2. Overseer (오버시어) — Trae Young, Luka, Harden
+        OVERSEER_PASSIQ_THRESHOLD: 88,
+        OVERSEER_PASSACC_THRESHOLD: 95,
+        OVERSEER_PNR_ROLLER_BONUS: 0.03,  // PnR_Roller hitRate +3%
+
+        // G-3. Needle (니들) — Steve Nash, Jason Kidd, Rajon Rondo
+        NEEDLE_PASSACC_THRESHOLD: 93,
+        NEEDLE_PASSIQ_THRESHOLD: 88,
+        NEEDLE_TOV_REDUCTION: 0.03,       // 패스 플레이 턴오버 -3%
+    },
     // Clutch Hidden Archetypes (flowEngine.ts clutch section)
     CLUTCH_ARCHETYPE: {
         ENABLED: true,              // 클러치 아키타입 마스터 스위치

@@ -108,6 +108,11 @@ function getHiddenArchetypes(p: Player): string[] {
     if (p.offReb >= 95 || p.defReb >= 95) list.push('Harvester');
     if (p.height <= 200 && p.offReb >= 90 && p.vertical >= 90) list.push('Raider');
 
+    // G. 플레이메이킹
+    if (p.passIq >= 92 && p.passVision >= 90 && p.passAcc >= 90) list.push('Clairvoyant');
+    if (p.passIq >= 88 && p.passAcc >= 95) list.push('Overseer');
+    if (p.passAcc >= 93 && p.passIq >= 88) list.push('Needle');
+
     return list;
 }
 

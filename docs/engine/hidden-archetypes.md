@@ -97,7 +97,9 @@
 > 적용 위치: `possessionHandler.ts` (calculateTurnoverChance)
 > 설정: `SIM_CONFIG.STEAL` (ENABLED 마스터 스위치)
 
-### C-1. The Clamp (질식 수비)
+### ~~C-1. The Clamp (질식 수비)~~ — 비활성화
+
+> 스틸 아키타입 밸런스 조정으로 비활성화됨. 상수는 `SIM_CONFIG.STEAL`에 유지.
 
 | 항목 | 값 |
 |:-----|:---|
@@ -121,7 +123,9 @@
 | 효과 | 상대 ballMovement ≥ 7 시 턴오버 확률 +3% |
 | 대표 선수 | Draymond, Jimmy Butler |
 
-### C-4. The Press (풀코트 프레스)
+### ~~C-4. The Press (풀코트 프레스)~~ — 비활성화
+
+> 스틸 아키타입 밸런스 조정으로 비활성화됨. 상수는 `SIM_CONFIG.STEAL`에 유지.
 
 | 항목 | 값 |
 |:-----|:---|
@@ -189,6 +193,40 @@
 
 ---
 
+## G. 플레이메이킹 아키타입
+
+> 적용 위치: `possessionHandler.ts` (hitRate 보너스, 턴오버 감소)
+> 설정: `SIM_CONFIG.PLAYMAKING` (ENABLED 마스터 스위치)
+
+### G-1. Clairvoyant (천리안)
+
+| 항목 | 값 |
+|:-----|:---|
+| 조건 | passIq ≥ 92, passVision ≥ 90, passAcc ≥ 90 |
+| 효과 | 어시스트 시 슈터 hitRate +2% |
+| 적용 파일 | possessionHandler.ts (bonusHitRate 합산) |
+| 대표 선수 | CP3, Magic Johnson, LeBron, Jokic |
+
+### G-2. Overseer (오버시어)
+
+| 항목 | 값 |
+|:-----|:---|
+| 조건 | passIq ≥ 88, passAcc ≥ 95 |
+| 효과 | PnR_Roll/PnR_Pop 시 롤러 hitRate +3% |
+| 적용 파일 | possessionHandler.ts (bonusHitRate 합산) |
+| 대표 선수 | Trae Young, Luka Doncic, Harden |
+
+### G-3. Needle (니들)
+
+| 항목 | 값 |
+|:-----|:---|
+| 조건 | passAcc ≥ 93, passIq ≥ 88 |
+| 효과 | 패스 플레이(BallMovement, SpotUp, PnR_Handler)에서 턴오버 확률 -3% |
+| 적용 파일 | possessionHandler.ts (calculateTurnoverChance) |
+| 대표 선수 | Steve Nash, Jason Kidd, Rajon Rondo |
+
+---
+
 ## 기본 공식 (Base Formula)
 
 아키타입과 별개로 **모든 선수에게** 능력치에 비례하여 적용되는 기본 보정:
@@ -212,5 +250,5 @@
 |:-----|:---------|
 | `constants.ts` | 전체 상수 정의 |
 | `flowEngine.ts` | A-1~3 (클러치), B-1~3 (Zone hitRate), B-5 (Afterburner) |
-| `possessionHandler.ts` | B-3 (Tyrant 블락), B-4 (Levitator), B-6 (Ascendant), C-1~4 (스틸), D-1~4 (블락), E-1 (Manipulator) |
+| `possessionHandler.ts` | B-3 (Tyrant 블락), B-4 (Levitator), B-6 (Ascendant), ~~C-1~~ C-2~3 ~~C-4~~ (스틸), D-1~4 (블락), E-1 (Manipulator), G-1~3 (플레이메이킹) |
 | `reboundLogic.ts` | F-1 (Harvester), F-2 (Raider) |
