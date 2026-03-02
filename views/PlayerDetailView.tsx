@@ -190,7 +190,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 
 // ── Reusable: Stats sub-table (header + single data row), uses common Table ──
 const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
-    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false}>
+    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
         <TableHead>
             {cols.map((c, i) => (
                 <TableHeaderCell
@@ -355,12 +355,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 </div>
 
                 {/* ═══ BODY — 3 sections ═══ */}
-                <div className="text-xs divide-y divide-slate-800 bg-slate-950">
+                <div className="text-xs bg-slate-950">
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
-                    <div className="pb-6">
+                    <div className="pb-6 border-b-2 border-slate-700">
                         <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                            <span className="text-xs font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
+                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
                             <StatsSubTable cols={TRAD_COLS} stats={s} />
@@ -368,9 +368,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                     </div>
                     {hasPlayoffs && (
-                        <div className="pb-6">
+                        <div className="pb-6 border-b-2 border-slate-700">
                             <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
+                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
                             </div>
                             <div className="overflow-x-auto custom-scrollbar">
                                 <StatsSubTable cols={TRAD_COLS} stats={player.playoffStats!} />
@@ -380,9 +380,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     )}
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
-                    <div className="pb-6">
+                    <div className="pb-6 border-b-2 border-slate-700">
                         <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                            <span className="text-xs font-black text-slate-300 uppercase tracking-widest">능력치</span>
+                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
                         <div className="grid grid-cols-6">
                             {ATTR_GROUPS.map((gr, gi) => {
@@ -419,12 +419,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율 ═══ */}
-                    <div className="pb-6 grid items-start" style={{ gridTemplateColumns: '4fr 6fr' }}>
+                    <div className="pb-6 border-b-2 border-slate-700 grid items-start" style={{ gridTemplateColumns: '4fr 6fr' }}>
 
                         {/* Col 1: 샷 차트 */}
                         <div className="border-r border-slate-800">
                             <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center justify-between">
-                                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
+                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
                                 <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
                                     <span>LOW</span>
                                     <div className="flex gap-0.5">
@@ -479,7 +479,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
                             <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
+                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
                                 <div className="flex items-center justify-center py-8">
@@ -492,7 +492,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false} style={{ maxHeight: 520 }}>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false} style={{ maxHeight: 520 }}>
                                     <TableHead>
                                         {GAME_LOG_COLS.map((c, i) => (
                                             <TableHeaderCell
