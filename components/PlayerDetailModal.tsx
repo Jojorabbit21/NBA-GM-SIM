@@ -1,8 +1,8 @@
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Loader2 } from 'lucide-react';
-import { Player, Team } from '../types';
+import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
 import { OvrBadge } from './common/OvrBadge';
@@ -23,6 +23,9 @@ interface PlayerDetailModalProps {
     tendencySeed?: string;
     onClose: () => void;
 }
+
+type TabId = 'attributes' | 'season' | 'shooting' | 'gameLog' | 'playoffs';
+
 const ATTR_W = 50;
 
 // ── Stats Sections Config ──
@@ -86,15 +89,28 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
+// ── Header Helpers ──
+const formatSalary = (salary: number): string => {
+    if (salary >= 1_000_000) return `$${(salary / 1_000_000).toFixed(1)}M`;
+    if (salary >= 1_000) return `$${(salary / 1_000).toFixed(0)}k`;
+    return `$${salary}`;
+};
+
+const getConditionColor = (val: number): string => {
+    if (val >= 80) return 'text-emerald-400 bg-emerald-950/50';
+    if (val >= 50) return 'text-amber-400 bg-amber-950/50';
+    return 'text-red-400 bg-red-950/50';
+};
+
 // ── Hidden Archetypes (docs/engine/hidden-archetypes.md 기준) ──
 function getHiddenArchetypes(p: Player): string[] {
     const list: string[] = [];
     const threeVal = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
 
     // A. 클러치
-    if (p.intangibles >= 90 && p.shotIq >= 85) list.push('The Closer');
+    if (p.intangibles >= 90 && p.shotIq >= 85) list.push('Curtain Call');
     if (p.intangibles >= 85 && p.offConsist >= 88) list.push('Ice in Veins');
-    if (p.intangibles >= 85 && p.strength >= 85 && p.ins >= 85) list.push('Big Stage Player');
+    if (p.intangibles >= 85 && p.strength >= 85 && p.ins >= 85) list.push('High Roller');
 
     // B. 공격
     if (p.midRange >= 97) list.push('Mr. Fundamental');
@@ -114,8 +130,7 @@ function getHiddenArchetypes(p: Player): string[] {
     // if (p.speed >= 85 && p.stamina >= 85 && p.hustle >= 85) list.push('The Press');
 
     // D. 블락 (상호 배타)
-    if (p.blk >= 97) list.push('The Wall');
-    else if (p.height >= 216 && p.blk >= 80) list.push('The Alien');
+    if (p.height >= 216 && p.blk >= 80) list.push('The Alien');
     else if (p.vertical >= 95 && p.blk >= 75) list.push('Skywalker');
     else if (p.helpDefIq >= 92 && p.blk >= 80) list.push('Defensive Anchor');
 
@@ -134,9 +149,117 @@ function getHiddenArchetypes(p: Player): string[] {
     return list;
 }
 
+// ── Reusable: Stat value resolver for any PlayerStats ──
+function resolveStatVal(st: PlayerStats, key: string): { display: string; color: string } {
+    const dash = { display: '-', color: 'text-slate-600' };
+    const gp = st.g || 1;
+    const noData = st.mp === 0;
+    if (noData && key !== 'g' && key !== 'gs') return dash;
+
+    let val: string;
+    let color = 'text-slate-300';
+
+    switch (key) {
+        case 'g': val = String(st.g); break;
+        case 'gs': val = String(st.gs); break;
+        case 'mp': val = (st.mp / gp).toFixed(1); break;
+        case 'oreb': val = ((st.offReb || 0) / gp).toFixed(1); break;
+        case 'dreb': val = ((st.defReb || 0) / gp).toFixed(1); break;
+        case 'pf': val = ((st.pf || 0) / gp).toFixed(1); break;
+        case 'pm': {
+            const v = st.plusMinus / gp;
+            val = (v > 0 ? '+' : '') + v.toFixed(1);
+            color = v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : 'text-slate-500';
+            break;
+        }
+        case 'fgm': val = (st.fgm / gp).toFixed(1); break;
+        case 'fga': val = (st.fga / gp).toFixed(1); break;
+        case '3pm': val = (st.p3m / gp).toFixed(1); break;
+        case '3pa': val = (st.p3a / gp).toFixed(1); break;
+        case 'ftm': val = (st.ftm / gp).toFixed(1); break;
+        case 'fta': val = (st.fta / gp).toFixed(1); break;
+        case 'fg%': val = st.fga > 0 ? (st.fgm / st.fga * 100).toFixed(1) + '%' : '-'; break;
+        case '3p%': val = st.p3a > 0 ? (st.p3m / st.p3a * 100).toFixed(1) + '%' : '-'; break;
+        case 'ft%': val = st.fta > 0 ? (st.ftm / st.fta * 100).toFixed(1) + '%' : '-'; break;
+        case 'ts%': {
+            const tsa = st.fga + 0.44 * st.fta;
+            val = tsa > 0 ? (st.pts / (2 * tsa) * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'efg%': {
+            val = st.fga > 0 ? ((st.fgm + 0.5 * st.p3m) / st.fga * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'tov%': {
+            const den = st.fga + 0.44 * st.fta + st.tov;
+            val = den > 0 ? (st.tov / den * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case '3par': val = st.fga > 0 ? (st.p3a / st.fga).toFixed(3) : '-'; break;
+        case 'ftr': val = st.fga > 0 ? (st.fta / st.fga).toFixed(3) : '-'; break;
+        default:
+            if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov'].includes(key)) {
+                val = ((st as any)[key] / gp).toFixed(1);
+            } else {
+                val = '0';
+            }
+    }
+    return { display: val, color };
+}
+
+// ── Reusable: Stats Table (Traditional + Shooting + Advanced) ──
+const StatsTable: React.FC<{ stats: PlayerStats }> = ({ stats }) => (
+    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+        <div className="overflow-x-auto custom-scrollbar">
+            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
+                <colgroup>
+                    {TRAD_COLS.map(c => <col key={c.key} style={{ width: 55 }} />)}
+                    {SHOOTING_COLS.map(c => <col key={c.key} style={{ width: 58 }} />)}
+                    {ADVANCED_COLS.map(c => <col key={c.key} style={{ width: 62 }} />)}
+                </colgroup>
+                <thead className="bg-slate-950">
+                    <tr className="h-7">
+                        <th colSpan={TRAD_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Traditional</span>
+                        </th>
+                        <th colSpan={SHOOTING_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Shooting</span>
+                        </th>
+                        <th colSpan={ADVANCED_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Advanced</span>
+                        </th>
+                    </tr>
+                    <tr className="h-7">
+                        {[...TRAD_COLS, ...SHOOTING_COLS, ...ADVANCED_COLS].map(c => (
+                            <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">
+                                {c.label}
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr className="h-9">
+                        {[...TRAD_COLS, ...SHOOTING_COLS, ...ADVANCED_COLS].map(c => {
+                            const { display, color } = resolveStatVal(stats, c.key);
+                            return (
+                                <td key={c.key} className="py-1.5 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
+                                    <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
+                                </td>
+                            );
+                        })}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+);
+
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, tendencySeed, onClose }) => {
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
     const calculatedOvr = calculatePlayerOvr(player);
+
+    // ── Tab State ──
+    const [activeTab, setActiveTab] = useState<TabId>('attributes');
 
     // ── Scout Report (서술형 텐던시 리포트) ──
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
@@ -156,64 +279,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
     }, []);
 
     const s = player.stats;
-    const g = s.g || 1;
-    const noData = s.mp === 0;
-
-    // ── Stat value resolver ──
-    const getStatVal = (key: string): { display: string; color: string } => {
-        const dash = { display: '-', color: 'text-slate-600' };
-        if (noData && key !== 'g' && key !== 'gs') return dash;
-
-        let val: string;
-        let color = 'text-slate-300';
-
-        switch (key) {
-            case 'g': val = String(s.g); break;
-            case 'gs': val = String(s.gs); break;
-            case 'mp': val = (s.mp / g).toFixed(1); break;
-            case 'oreb': val = ((s.offReb || 0) / g).toFixed(1); break;
-            case 'dreb': val = ((s.defReb || 0) / g).toFixed(1); break;
-            case 'pf': val = ((s.pf || 0) / g).toFixed(1); break;
-            case 'pm': {
-                const v = s.plusMinus / g;
-                val = (v > 0 ? '+' : '') + v.toFixed(1);
-                color = v > 0 ? 'text-emerald-400' : v < 0 ? 'text-red-400' : 'text-slate-500';
-                break;
-            }
-            case 'fgm': val = (s.fgm / g).toFixed(1); break;
-            case 'fga': val = (s.fga / g).toFixed(1); break;
-            case '3pm': val = (s.p3m / g).toFixed(1); break;
-            case '3pa': val = (s.p3a / g).toFixed(1); break;
-            case 'ftm': val = (s.ftm / g).toFixed(1); break;
-            case 'fta': val = (s.fta / g).toFixed(1); break;
-            case 'fg%': val = s.fga > 0 ? (s.fgm / s.fga * 100).toFixed(1) + '%' : '-'; break;
-            case '3p%': val = s.p3a > 0 ? (s.p3m / s.p3a * 100).toFixed(1) + '%' : '-'; break;
-            case 'ft%': val = s.fta > 0 ? (s.ftm / s.fta * 100).toFixed(1) + '%' : '-'; break;
-            case 'ts%': {
-                const tsa = s.fga + 0.44 * s.fta;
-                val = tsa > 0 ? (s.pts / (2 * tsa) * 100).toFixed(1) + '%' : '-';
-                break;
-            }
-            case 'efg%': {
-                val = s.fga > 0 ? ((s.fgm + 0.5 * s.p3m) / s.fga * 100).toFixed(1) + '%' : '-';
-                break;
-            }
-            case 'tov%': {
-                const den = s.fga + 0.44 * s.fta + s.tov;
-                val = den > 0 ? (s.tov / den * 100).toFixed(1) + '%' : '-';
-                break;
-            }
-            case '3par': val = s.fga > 0 ? (s.p3a / s.fga).toFixed(3) : '-'; break;
-            case 'ftr': val = s.fga > 0 ? (s.fta / s.fga).toFixed(3) : '-'; break;
-            default:
-                if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov'].includes(key)) {
-                    val = ((s as any)[key] / g).toFixed(1);
-                } else {
-                    val = '0';
-                }
-        }
-        return { display: val, color };
-    };
 
     // ── Shot chart zone data ──
     const chartZones = useMemo(() =>
@@ -224,6 +289,18 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
             return { ...z, m, a, avg: ZONE_AVG[z.avgKey] };
         }),
     [s]);
+
+    // ── Playoffs availability ──
+    const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
+
+    // ── Tab Config ──
+    const tabs: { id: TabId; label: string; disabled?: boolean }[] = [
+        { id: 'attributes', label: '능력치' },
+        { id: 'season', label: '시즌 기록' },
+        { id: 'shooting', label: '슈팅 기록' },
+        { id: 'gameLog', label: '최근 경기' },
+        { id: 'playoffs', label: '플레이오프', disabled: !hasPlayoffs },
+    ];
 
     return createPortal(
         <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col animate-in fade-in duration-200">
@@ -237,7 +314,29 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     <div className="flex items-center gap-6">
                         <OvrBadge value={calculatedOvr} size="xl" />
                         <div>
-                            <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
+                            <div className="flex items-center gap-4">
+                                <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
+                                {/* Salary & Contract */}
+                                {player.salary > 0 && (
+                                    <span className="text-sm font-bold text-slate-300">
+                                        {formatSalary(player.salary)}
+                                        {player.contractYears > 0 && <span className="text-slate-500 ml-1">· {player.contractYears}yr</span>}
+                                    </span>
+                                )}
+                                {/* Condition Badge */}
+                                {player.condition != null && (
+                                    <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${getConditionColor(player.condition)}`}>
+                                        {player.condition}
+                                    </span>
+                                )}
+                                {/* Injury Badge */}
+                                {player.health && player.health !== 'Healthy' && (
+                                    <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-0.5 rounded-lg">
+                                        {player.injuryType || player.health}
+                                        {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                                    </span>
+                                )}
+                            </div>
                             <div className="flex items-center gap-4 mt-2 text-sm font-bold text-slate-400">
                                 {teamId && (
                                     <div className="flex items-center gap-2">
@@ -279,14 +378,34 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                         </div>
                     );
                 })()}
+
+                {/* Tab Bar */}
+                <div className="mt-4 flex items-center gap-6 overflow-x-auto">
+                    {tabs.map(tab => (
+                        <button
+                            key={tab.id}
+                            onClick={() => !tab.disabled && setActiveTab(tab.id)}
+                            disabled={tab.disabled}
+                            className={`
+                                pb-2 text-xs font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap
+                                ${activeTab === tab.id
+                                    ? 'text-indigo-400 border-indigo-400'
+                                    : tab.disabled
+                                        ? 'text-slate-700 border-transparent cursor-not-allowed'
+                                        : 'text-slate-500 border-transparent hover:text-slate-300'}
+                            `}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             {/* Scrollable Content */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-900/50">
 
-                {/* 1. Attributes Table */}
-                <div className="mb-6">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">능력치</h3>
+                {/* ═══ TAB: 능력치 ═══ */}
+                {activeTab === 'attributes' && (
                     <div className="overflow-x-auto custom-scrollbar bg-slate-900 border border-slate-800 rounded-xl shadow-lg">
                         <table className="text-left border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
                             <colgroup>
@@ -327,243 +446,205 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                             </tbody>
                         </table>
                     </div>
-                </div>
+                )}
 
-                {/* 2. Stats + Shot Chart — Side by Side */}
-                <div className="flex gap-6 items-start">
+                {/* ═══ TAB: 시즌 기록 ═══ */}
+                {activeTab === 'season' && (
+                    <StatsTable stats={s} />
+                )}
 
-                    {/* Left: Combined Stats Card */}
-                    <div className="flex-1 min-w-0 flex flex-col gap-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                {/* ═══ TAB: 슈팅 기록 ═══ */}
+                {activeTab === 'shooting' && (
+                    <div className="flex gap-6 items-start">
 
-                        {/* Traditional + Shooting + Advanced — 한 줄 테이블 */}
-                        <div className="overflow-x-auto custom-scrollbar border-b border-slate-800">
-                            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
-                                <colgroup>
-                                    {TRAD_COLS.map(c => <col key={c.key} style={{ width: 55 }} />)}
-                                    {SHOOTING_COLS.map(c => <col key={c.key} style={{ width: 58 }} />)}
-                                    {ADVANCED_COLS.map(c => <col key={c.key} style={{ width: 62 }} />)}
-                                </colgroup>
-                                <thead className="bg-slate-950">
-                                    {/* Group Header Row */}
-                                    <tr className="h-7">
-                                        <th colSpan={TRAD_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Traditional</span>
-                                        </th>
-                                        <th colSpan={SHOOTING_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Shooting</span>
-                                        </th>
-                                        <th colSpan={ADVANCED_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
-                                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Advanced</span>
-                                        </th>
-                                    </tr>
-                                    {/* Column Label Row */}
-                                    <tr className="h-7">
-                                        {[...TRAD_COLS, ...SHOOTING_COLS, ...ADVANCED_COLS].map(c => (
-                                            <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">
-                                                {c.label}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr className="h-9">
-                                        {[...TRAD_COLS, ...SHOOTING_COLS, ...ADVANCED_COLS].map(c => {
-                                            const { display, color } = getStatVal(c.key);
-                                            return (
-                                                <td key={c.key} className="py-1.5 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
-                                                    <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-
-                        {/* Zone Efficiency — M / A / % per zone */}
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
-                                <colgroup>
-                                    {ZONE_TABLE.flatMap(z => [
-                                        <col key={`${z.key}-m`} style={{ width: 45 }} />,
-                                        <col key={`${z.key}-a`} style={{ width: 45 }} />,
-                                        <col key={`${z.key}-p`} style={{ width: 50 }} />,
-                                    ])}
-                                </colgroup>
-                                <thead className="bg-slate-950">
-                                    {/* Zone Group Header */}
-                                    <tr className="h-7">
-                                        {ZONE_TABLE.map(z => (
-                                            <th key={z.key} colSpan={3} className="bg-slate-950 border-b border-r border-slate-800 px-1 align-middle last:border-r-0">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{z.label}</span>
-                                            </th>
-                                        ))}
-                                    </tr>
-                                    {/* M / A / % Sub-headers */}
-                                    <tr className="h-7">
+                        {/* Left: Zone Efficiency Table */}
+                        <div className="flex-1 min-w-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                            <div className="overflow-x-auto custom-scrollbar">
+                                <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
+                                    <colgroup>
                                         {ZONE_TABLE.flatMap(z => [
-                                            <th key={`${z.key}-m`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-500 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap">M</th>,
-                                            <th key={`${z.key}-a`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-500 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap">A</th>,
-                                            <th key={`${z.key}-p`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-300 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">%</th>,
+                                            <col key={`${z.key}-m`} style={{ width: 45 }} />,
+                                            <col key={`${z.key}-a`} style={{ width: 45 }} />,
+                                            <col key={`${z.key}-p`} style={{ width: 50 }} />,
                                         ])}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <tr className="h-9">
-                                        {ZONE_TABLE.flatMap(z => {
-                                            const m = (s as any)[z.keyM] || 0;
-                                            const a = (s as any)[z.keyA] || 0;
-                                            const pct = a > 0 ? ((m / a) * 100).toFixed(0) + '%' : '-';
-                                            const pctColor = a > 0 ? (m / a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600';
-                                            return [
-                                                <td key={`${z.key}-m`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30">
-                                                    <span className="font-mono font-medium text-xs text-slate-300 tabular-nums">{m}</span>
-                                                </td>,
-                                                <td key={`${z.key}-a`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30">
-                                                    <span className="font-mono font-medium text-xs text-slate-500 tabular-nums">{a}</span>
-                                                </td>,
-                                                <td key={`${z.key}-p`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30 last:border-r-0">
-                                                    <span className={`font-mono font-semibold text-xs tabular-nums ${pctColor}`}>{pct}</span>
-                                                </td>,
-                                            ];
-                                        })}
-                                    </tr>
-                                </tbody>
-                            </table>
+                                    </colgroup>
+                                    <thead className="bg-slate-950">
+                                        <tr className="h-7">
+                                            {ZONE_TABLE.map(z => (
+                                                <th key={z.key} colSpan={3} className="bg-slate-950 border-b border-r border-slate-800 px-1 align-middle last:border-r-0">
+                                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{z.label}</span>
+                                                </th>
+                                            ))}
+                                        </tr>
+                                        <tr className="h-7">
+                                            {ZONE_TABLE.flatMap(z => [
+                                                <th key={`${z.key}-m`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-500 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap">M</th>,
+                                                <th key={`${z.key}-a`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-500 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap">A</th>,
+                                                <th key={`${z.key}-p`} className="py-1 px-0.5 text-center text-[10px] font-black text-slate-300 border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">%</th>,
+                                            ])}
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr className="h-9">
+                                            {ZONE_TABLE.flatMap(z => {
+                                                const m = (s as any)[z.keyM] || 0;
+                                                const a = (s as any)[z.keyA] || 0;
+                                                const pct = a > 0 ? ((m / a) * 100).toFixed(0) + '%' : '-';
+                                                const pctColor = a > 0 ? (m / a >= 0.4 ? 'text-emerald-400' : 'text-slate-300') : 'text-slate-600';
+                                                return [
+                                                    <td key={`${z.key}-m`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30">
+                                                        <span className="font-mono font-medium text-xs text-slate-300 tabular-nums">{m}</span>
+                                                    </td>,
+                                                    <td key={`${z.key}-a`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30">
+                                                        <span className="font-mono font-medium text-xs text-slate-500 tabular-nums">{a}</span>
+                                                    </td>,
+                                                    <td key={`${z.key}-p`} className="py-1.5 px-0.5 text-center border-b border-r border-slate-800/30 last:border-r-0">
+                                                        <span className={`font-mono font-semibold text-xs tabular-nums ${pctColor}`}>{pct}</span>
+                                                    </td>,
+                                                ];
+                                            })}
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
-                    </div>
-
-                    {/* Right: Shot Chart */}
-                    <div className="w-[380px] shrink-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-                        <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/50 flex items-center justify-between">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Shot Chart</span>
-                            <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
-                                <span>LOW</span>
-                                <div className="flex gap-0.5">
-                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
-                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
-                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                        {/* Right: Shot Chart */}
+                        <div className="w-[380px] shrink-0 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                            <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/50 flex items-center justify-between">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Shot Chart</span>
+                                <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                                    <span>LOW</span>
+                                    <div className="flex gap-0.5">
+                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
+                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
+                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                                    </div>
+                                    <span>HIGH</span>
                                 </div>
-                                <span>HIGH</span>
                             </div>
-                        </div>
-                        <div className="p-3">
-                            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden">
-                                <svg viewBox="0 0 435 403" className="w-full h-full">
-                                    <rect x="0" y="0" width="435" height="403" fill="#020617" />
-
-                                    {/* Heatmap Zones */}
-                                    <g>
-                                        {chartZones.map((z, i) => {
-                                            const style = getZoneStyle(z.m, z.a, z.avg);
-                                            return (
-                                                <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke="none" className="transition-all duration-300" />
-                                            );
-                                        })}
-                                    </g>
-
-                                    {/* Court Lines */}
-                                    <g fill="none" stroke="#0f172a" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
-                                        {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
-                                    </g>
-
-                                    {/* Data Pills */}
-                                    <g pointerEvents="none">
-                                        {chartZones.map((z, i) => {
-                                            const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
-                                            const style = getZoneStyle(z.m, z.a, z.avg);
-                                            const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
-                                            const w = 52, h = z.a > 0 ? 36 : 30;
-                                            return (
-                                                <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                    <rect x={-w/2} y={-h/2} width={w} height={h} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
-                                                    <text textAnchor="middle" y={z.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
-                                                        {pct}%
-                                                    </text>
-                                                    {z.a > 0 && (
-                                                        <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
-                                                            {z.m}/{z.a}
+                            <div className="p-3">
+                                <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden">
+                                    <svg viewBox="0 0 435 403" className="w-full h-full">
+                                        <rect x="0" y="0" width="435" height="403" fill="#020617" />
+                                        <g>
+                                            {chartZones.map((z, i) => {
+                                                const style = getZoneStyle(z.m, z.a, z.avg);
+                                                return (
+                                                    <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke="none" className="transition-all duration-300" />
+                                                );
+                                            })}
+                                        </g>
+                                        <g fill="none" stroke="#0f172a" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
+                                            {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
+                                        </g>
+                                        <g pointerEvents="none">
+                                            {chartZones.map((z, i) => {
+                                                const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
+                                                const style = getZoneStyle(z.m, z.a, z.avg);
+                                                const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
+                                                const w = 52, h = z.a > 0 ? 36 : 30;
+                                                return (
+                                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                        <rect x={-w/2} y={-h/2} width={w} height={h} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
+                                                        <text textAnchor="middle" y={z.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+                                                            {pct}%
                                                         </text>
-                                                    )}
-                                                </g>
-                                            );
-                                        })}
-                                    </g>
-                                </svg>
+                                                        {z.a > 0 && (
+                                                            <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
+                                                                {z.m}/{z.a}
+                                                            </text>
+                                                        )}
+                                                    </g>
+                                                );
+                                            })}
+                                        </g>
+                                    </svg>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                </div>
-
-                {/* 3. Recent Game Log */}
-                {gameLogLoading && teamId && (
-                    <div className="mt-6 flex items-center justify-center py-8">
-                        <Loader2 size={20} className="text-slate-500 animate-spin" />
                     </div>
                 )}
-                {gameLog && gameLog.length > 0 && (
-                    <div className="mt-6 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
-                        <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/50">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Recent Game Log</span>
-                        </div>
-                        <div className="overflow-x-auto custom-scrollbar">
-                            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
-                                <colgroup>
-                                    {GAME_LOG_COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
-                                </colgroup>
-                                <thead className="bg-slate-950">
-                                    <tr className="h-7">
-                                        {GAME_LOG_COLS.map(c => (
-                                            <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">
-                                                {c.label}
-                                            </th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {gameLog.map((g: any, i: number) => {
-                                        const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
-                                        const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
-                                        const won = g.teamScore > g.opponentScore;
-                                        const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
-                                        const fgPct = g.fga > 0 ? (g.fgm / g.fga).toFixed(3) : '-';
-                                        const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a).toFixed(3) : '-';
-                                        const pmVal = g.plusMinus || 0;
-                                        const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
 
-                                        const cells: { val: string; color?: string }[] = [
-                                            { val: dateStr },
-                                            { val: oppLabel },
-                                            { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
-                                            { val: String(Math.round(g.mp || 0)) },
-                                            { val: String(g.pts || 0) },
-                                            { val: String(g.reb || 0) },
-                                            { val: String(g.ast || 0) },
-                                            { val: String(g.stl || 0) },
-                                            { val: String(g.blk || 0) },
-                                            { val: fgPct },
-                                            { val: p3Pct },
-                                            { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
-                                        ];
-
-                                        return (
-                                            <tr key={i} className="h-8 hover:bg-slate-800/30 transition-colors">
-                                                {cells.map((cell, ci) => (
-                                                    <td key={ci} className="py-1 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
-                                                        <span className={`font-mono text-xs tabular-nums ${cell.color || 'text-slate-300'}`}>
-                                                            {cell.val}
-                                                        </span>
-                                                    </td>
+                {/* ═══ TAB: 최근 경기 ═══ */}
+                {activeTab === 'gameLog' && (
+                    <div>
+                        {gameLogLoading && teamId && (
+                            <div className="flex items-center justify-center py-16">
+                                <Loader2 size={20} className="text-slate-500 animate-spin" />
+                            </div>
+                        )}
+                        {!gameLogLoading && (!gameLog || gameLog.length === 0) && (
+                            <div className="flex items-center justify-center py-16">
+                                <span className="text-sm text-slate-600">경기 기록이 없습니다</span>
+                            </div>
+                        )}
+                        {gameLog && gameLog.length > 0 && (
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
+                                        <colgroup>
+                                            {GAME_LOG_COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
+                                        </colgroup>
+                                        <thead className="bg-slate-950">
+                                            <tr className="h-7">
+                                                {GAME_LOG_COLS.map(c => (
+                                                    <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">
+                                                        {c.label}
+                                                    </th>
                                                 ))}
                                             </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        </div>
+                                        </thead>
+                                        <tbody>
+                                            {gameLog.map((g: any, i: number) => {
+                                                const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
+                                                const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
+                                                const won = g.teamScore > g.opponentScore;
+                                                const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
+                                                const fgPct = g.fga > 0 ? (g.fgm / g.fga).toFixed(3) : '-';
+                                                const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a).toFixed(3) : '-';
+                                                const pmVal = g.plusMinus || 0;
+                                                const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
+
+                                                const cells: { val: string; color?: string }[] = [
+                                                    { val: dateStr },
+                                                    { val: oppLabel },
+                                                    { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
+                                                    { val: String(Math.round(g.mp || 0)) },
+                                                    { val: String(g.pts || 0) },
+                                                    { val: String(g.reb || 0) },
+                                                    { val: String(g.ast || 0) },
+                                                    { val: String(g.stl || 0) },
+                                                    { val: String(g.blk || 0) },
+                                                    { val: fgPct },
+                                                    { val: p3Pct },
+                                                    { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
+                                                ];
+
+                                                return (
+                                                    <tr key={i} className="h-8 hover:bg-slate-800/30 transition-colors">
+                                                        {cells.map((cell, ci) => (
+                                                            <td key={ci} className="py-1 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
+                                                                <span className={`font-mono text-xs tabular-nums ${cell.color || 'text-slate-300'}`}>
+                                                                    {cell.val}
+                                                                </span>
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
                     </div>
+                )}
+
+                {/* ═══ TAB: 플레이오프 ═══ */}
+                {activeTab === 'playoffs' && hasPlayoffs && (
+                    <StatsTable stats={player.playoffStats!} />
                 )}
 
             </div>

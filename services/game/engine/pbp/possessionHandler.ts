@@ -668,33 +668,27 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             const defBlk = defender.attr.blk;
             const defVert = defender.attr.vertical;
             const defHeight = defender.attr.height;
-            const defIQ = defender.attr.helpDefIq;
 
             const heightBonus = Math.max(0, (defHeight - 200) * blkCfg.HEIGHT_FACTOR);
             const statBonus = ((defBlk - 70) * blkCfg.BLK_STAT_FACTOR) + ((defVert - 70) * blkCfg.VERT_STAT_FACTOR);
 
             blockProb += (heightBonus + statBonus);
 
-            // C. ELITE THRESHOLD BONUSES (Blocker Archetypes)
+            // C. ELITE THRESHOLD BONUSES (Blocker Archetypes — 조건부 발동)
             let archetypeBonus = 0;
 
             if (blkCfg.ENABLED) {
-                // Type 1: "The Wall" (Elite Rating)
-                if (defBlk >= 97) {
-                    archetypeBonus = blkCfg.ARCHETYPE_WALL;
-                }
-                // Type 2: "The Alien" (Length Freak)
-                else if (defHeight >= 216 && defBlk >= 80) {
+                // D-2. The Alien: Rim + Paint 존에서만 발동 (긴 팔로 영역 커버)
+                if (defHeight >= 216 && defBlk >= 80 &&
+                    (preferredZone === 'Rim' || preferredZone === 'Paint')) {
                     archetypeBonus = blkCfg.ARCHETYPE_ALIEN;
                 }
-                // Type 3: "Skywalker" (Athletic Beast)
-                else if (defVert >= 95 && defBlk >= 75) {
+                // D-3. Skywalker: Transition + Cut에서만 발동 (체이스다운/헬프사이드)
+                else if (defVert >= 95 && defBlk >= 75 &&
+                    (selectedPlayType === 'Transition' || selectedPlayType === 'Cut')) {
                     archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
                 }
-                // Type 4: "Defensive Anchor" (High IQ Positioning)
-                else if (defIQ >= 92 && defBlk >= 80) {
-                    archetypeBonus = blkCfg.ARCHETYPE_ANCHOR;
-                }
+                // D-4. Defensive Anchor: 1차 블락 아닌 헬프 블락에서 발동 (아래 F 섹션)
             }
 
             blockProb += archetypeBonus;
@@ -764,6 +758,11 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                      let helpChance = blkCfg.HELP_BASE;
                      if (helper.attr.blk >= blkCfg.HELP_BLK_THRESHOLD) helpChance += blkCfg.HELP_BLK_BONUS;
                      if (helper.archetypes.rimProtector > blkCfg.HELP_RIM_THRESHOLD) helpChance += blkCfg.HELP_RIM_BONUS;
+
+                     // D-4. Defensive Anchor: 스마트 로테이션 → 헬프 블락 확률 2배
+                     if (blkCfg.ENABLED && helper.attr.helpDefIq >= 92 && helper.attr.blk >= 80) {
+                         helpChance *= blkCfg.ARCHETYPE_ANCHOR_HELP_MULT;
+                     }
 
                      // Mid-range: 체이스다운 블락은 림보다 희귀
                      if (preferredZone === 'Mid') helpChance *= blkCfg.HELP_MID_FACTOR;

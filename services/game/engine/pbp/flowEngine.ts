@@ -305,7 +305,7 @@ export function calculateHitRate(
         clutchModifier += (actor.tendencies?.clutchGene ?? 0) * 0.03;
 
         if (cCfg.ENABLED) {
-            // A-1. The Closer: 클러치 보정치 2배
+            // A-1. Curtain Call: 클러치 보정치 ×1.6
             if (a.intangibles >= cCfg.CLOSER_INTANGIBLES_THRESHOLD &&
                 a.shotIq >= cCfg.CLOSER_SHOTIQ_THRESHOLD) {
                 clutchModifier *= cCfg.CLOSER_MODIFIER_MULTIPLIER;
@@ -322,7 +322,7 @@ export function calculateHitRate(
             hitRate -= 0.015; // 프레셔 페널티 (Ice in Veins만 면제)
         }
 
-        // A-3. Big Stage Player: 클러치 + 인사이드 = 추가 보너스
+        // A-3. High Roller: 클러치 + 인사이드 = 추가 보너스
         if (cCfg.ENABLED &&
             (preferredZone === 'Rim' || preferredZone === 'Paint') &&
             a.intangibles >= cCfg.BIGSTAGE_INTANGIBLES_THRESHOLD &&

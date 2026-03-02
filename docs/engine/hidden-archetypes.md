@@ -19,9 +19,9 @@
 
 | # | 이름 | 조건 | 효과 | 대표 선수 |
 |:--|:-----|:-----|:-----|:----------|
-| A-1 | **The Closer** | intangibles ≥ 90, shotIq ≥ 85 | clutchModifier ×2 | Kobe, MJ, Kawhi |
+| A-1 | **Curtain Call** | intangibles ≥ 90, shotIq ≥ 85 | clutchModifier ×1.6 | Kobe, MJ, Kawhi |
 | A-2 | **Ice in Veins** | intangibles ≥ 85, offConsist ≥ 88 | 프레셔 페널티(-1.5%) 면제 | Dame, Kyrie, Dirk |
-| A-3 | **Big Stage Player** | intangibles ≥ 85, strength ≥ 85, ins ≥ 85 | 클러치 Rim/Paint hitRate +3% | LeBron, Giannis |
+| A-3 | **High Roller** | intangibles ≥ 85, strength ≥ 85, ins ≥ 85 | 클러치 Rim/Paint hitRate +3% | LeBron, Giannis |
 
 ### 클러치 조건 정의
 - **isClutch**: Q4, gameClock ≤ 300초(5분), scoreDiff ≤ 10
@@ -58,7 +58,7 @@
 | 항목 | 값 |
 |:-----|:---|
 | 조건 | ins ≥ 90, (strength ≥ 88 OR vertical ≥ 88) |
-| 효과 1 | Rim/Paint hitRate +3% |
+| 효과 1 | Rim/Paint hitRate +1.5% |
 | 효과 2 | Rim/Paint 블락 확률 -3% (절대값) |
 | 적용 파일 | flowEngine.ts (hitRate), possessionHandler.ts (block) |
 | 대표 선수 | Giannis, Shaq, Zion |
@@ -152,14 +152,18 @@
 > 적용 위치: `possessionHandler.ts` (블락 판정 섹션)
 > 설정: `SIM_CONFIG.BLOCK` (ENABLED 마스터 스위치)
 
-| # | 이름 | 조건 | 효과 |
-|:--|:-----|:-----|:-----|
-| D-1 | **The Wall** | blk ≥ 97 | 블락 확률 +8% |
-| D-2 | **The Alien** | height ≥ 216, blk ≥ 80 | 블락 확률 +6% |
-| D-3 | **Skywalker** | vertical ≥ 95, blk ≥ 75 | 블락 확률 +5% |
-| D-4 | **Defensive Anchor** | helpDefIq ≥ 92, blk ≥ 80 | 블락 확률 +3% |
+| # | 이름 | 조건 | 발동 상황 | 효과 |
+|:--|:-----|:-----|:----------|:-----|
+| ~~D-1~~ | ~~The Wall~~ | ~~blk ≥ 97~~ | — | 삭제 (The Alien이 역할 대체) |
+| D-2 | **The Alien** | height ≥ 216, blk ≥ 80 | **Rim + Paint 존만** | 블락 확률 +3% |
+| D-3 | **Skywalker** | vertical ≥ 95, blk ≥ 75 | **Transition + Cut만** | 블락 확률 +5% |
+| D-4 | **Defensive Anchor** | helpDefIq ≥ 92, blk ≥ 80 | **헬프 블락만** | 헬프 블락 확률 ×2 |
 
-> D-1 ~ D-4는 상호 배타적 (if/else if 구조). 가장 높은 보너스 하나만 적용.
+> D-2 ~ D-3는 1차 블락에서 상호 배타 (if/else if). D-4는 별도의 헬프 블락 단계에서 발동.
+> 각 아키타입이 **서로 다른 상황**에서 발동하므로 캐릭터가 겹치지 않음:
+> - The Alien: 림 근처 정적 수비 (영역 커버)
+> - Skywalker: 동적 상황 (체이스다운, 헬프사이드 비상)
+> - Defensive Anchor: 스마트 로테이션 (1차가 아닌 2차 헬프 블락)
 
 ---
 
@@ -261,5 +265,5 @@
 |:-----|:---------|
 | `constants.ts` | 전체 상수 정의 |
 | `flowEngine.ts` | A-1~3 (클러치), B-1~3 (Zone hitRate), B-5 (Afterburner), B-7 (Deadeye) |
-| `possessionHandler.ts` | B-3 (Tyrant 블락), B-4 (Levitator), B-6 (Ascendant), ~~C-1~~ C-2~3 ~~C-4~~ (스틸), D-1~4 (블락), E-1 (Manipulator), G-1~3 (플레이메이킹) |
+| `possessionHandler.ts` | B-3 (Tyrant 블락), B-4 (Levitator), B-6 (Ascendant), ~~C-1~~ C-2~3 ~~C-4~~ (스틸), ~~D-1~~ D-2~4 (블락), E-1 (Manipulator), G-1~3 (플레이메이킹) |
 | `reboundLogic.ts` | F-1 (Harvester), F-2 (Raider) |
