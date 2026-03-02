@@ -366,7 +366,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                 {/* ═══ TAB: 능력치 (FM-style vertical columns) ═══ */}
                 {activeTab === 'attributes' && (
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-6 gap-2">
                         {ATTR_GROUPS.map(gr => {
                             const avgKey = gr.keys[0];
                             const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
@@ -374,7 +374,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             return (
                                 <div key={gr.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
                                     {/* Category Header */}
-                                    <div className="px-4 py-2 bg-slate-950 border-b border-slate-800">
+                                    <div className="px-3 py-1.5 bg-slate-950 border-b border-slate-800">
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
                                     </div>
                                     {/* Attribute Rows */}
@@ -384,17 +384,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             const nameRaw = ATTR_NAME_MAP[k] || k;
                                             const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
                                             return (
-                                                <div key={k} className="flex items-center justify-between px-4 py-1.5">
-                                                    <span className="text-xs text-slate-400 truncate mr-3">{label}</span>
-                                                    <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                                <div key={k} className="flex items-center justify-between px-3 py-1">
+                                                    <span className="text-[11px] text-slate-400 truncate mr-2">{label}</span>
+                                                    <span className={`font-mono font-black text-[11px] tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
                                                 </div>
                                             );
                                         })}
                                     </div>
                                     {/* Category Average */}
-                                    <div className="flex items-center justify-between px-4 py-2 bg-slate-950/60 border-t border-slate-800">
+                                    <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950/60 border-t border-slate-800">
                                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
-                                        <span className={`font-mono font-black text-sm tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                        <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                     </div>
                                 </div>
                             );
