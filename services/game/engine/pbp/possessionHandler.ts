@@ -162,10 +162,10 @@ function calculateTurnoverChance(
     let archetypeRisk = 0;
 
     if (stlCfg.ENABLED) {
-        // A. The Clamp: 질식 수비 → 모든 플레이에서 턴오버 유발
-        if (da.perDef >= stlCfg.CLAMP_PERIMDEF_THRESHOLD && da.stl >= stlCfg.CLAMP_STL_THRESHOLD) {
-            archetypeRisk += stlCfg.CLAMP_TOV_BONUS;
-        }
+        // A. The Clamp: 비활성화 (스틸 아키타입 밸런스 조정)
+        // if (da.perDef >= stlCfg.CLAMP_PERIMDEF_THRESHOLD && da.stl >= stlCfg.CLAMP_STL_THRESHOLD) {
+        //     archetypeRisk += stlCfg.CLAMP_TOV_BONUS;
+        // }
 
         // B. The Pickpocket: 접촉 플레이(PostUp/Iso/Cut) 전용
         if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.agility >= stlCfg.PICKPOCKET_AGILITY_THRESHOLD) {
@@ -183,14 +183,14 @@ function calculateTurnoverChance(
             }
         }
 
-        // E. The Press: Transition 전용 풀코트 프레스
-        if (da.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
-            da.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
-            da.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
-            if (playType === 'Transition') {
-                archetypeRisk += stlCfg.PRESS_TOV_BONUS;
-            }
-        }
+        // E. The Press: 비활성화 (스틸 아키타입 밸런스 조정)
+        // if (da.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
+        //     da.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
+        //     da.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
+        //     if (playType === 'Transition') {
+        //         archetypeRisk += stlCfg.PRESS_TOV_BONUS;
+        //     }
+        // }
     }
 
     // Calculate Total Turnover Probability
@@ -246,13 +246,13 @@ function calculateTurnoverChance(
     // Archetype 2: "Interceptor" (Passing Lanes) — was +0.15, now +0.10 (max combined ~0.70)
     if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.10;
 
-    // E. The Press: Transition에서 스틸 비율 추가 증가
-    if (stlCfg.ENABLED && playType === 'Transition' &&
-        d.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
-        d.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
-        d.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
-        stealRatio += stlCfg.PRESS_STEAL_RATIO_BONUS;
-    }
+    // E. The Press: 비활성화 (스틸 아키타입 밸런스 조정)
+    // if (stlCfg.ENABLED && playType === 'Transition' &&
+    //     d.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
+    //     d.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
+    //     d.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
+    //     stealRatio += stlCfg.PRESS_STEAL_RATIO_BONUS;
+    // }
 
     // [Safety] stealRatio 상하한 (NBA 현실: 최대 ~75%)
     stealRatio = Math.max(0.15, Math.min(0.75, stealRatio));

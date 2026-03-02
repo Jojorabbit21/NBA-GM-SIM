@@ -12,7 +12,7 @@ import {
     getZoneStyle, getZonePillColors
 } from '../utils/courtZones';
 import { ATTR_GROUPS } from '../data/attributeConfig';
-import { generateHiddenTendencies, generateSaveTendencies } from '../utils/hiddenTendencies';
+import { generateScoutReport } from '../utils/scoutReport';
 
 interface PlayerDetailModalProps {
     player: Player;
@@ -23,16 +23,6 @@ interface PlayerDetailModalProps {
     onClose: () => void;
 }
 const ATTR_W = 50;
-
-// ── Trait Badge Color Map (Tailwind dynamic class workaround) ──
-const TRAIT_COLORS: Record<string, string> = {
-    emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    red: 'bg-red-500/10 text-red-400 border-red-500/20',
-    amber: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    sky: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
-    indigo: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-    slate: 'bg-slate-700/50 text-slate-400 border-slate-600/30',
-};
 
 // ── Stats Sections Config ──
 const TRAD_COLS = [
@@ -98,10 +88,12 @@ function getHiddenArchetypes(p: Player): string[] {
     if ((p.position === 'PG' || p.position === 'SG') && p.vertical >= 95 && p.closeShot >= 93) list.push('Ascendant');
 
     // C. 스틸
-    if (p.perDef >= 92 && p.steal >= 80) list.push('The Clamp');
+    // The Clamp: 비활성화 (스틸 아키타입 밸런스 조정)
+    // if (p.perDef >= 92 && p.steal >= 80) list.push('The Clamp');
     if (p.steal >= 85 && p.agility >= 92) list.push('The Pickpocket');
     if (p.helpDefIq >= 85 && p.passPerc >= 80 && p.steal >= 75) list.push('The Hawk');
-    if (p.speed >= 85 && p.stamina >= 85 && p.hustle >= 85) list.push('The Press');
+    // The Press: 비활성화 (스틸 아키타입 밸런스 조정)
+    // if (p.speed >= 85 && p.stamina >= 85 && p.hustle >= 85) list.push('The Press');
 
     // D. 블락 (상호 배타)
     if (p.blk >= 97) list.push('The Wall');
@@ -123,46 +115,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
     const calculatedOvr = calculatePlayerOvr(player);
 
-    // ── Personality & Playstyle Traits ──
-    const traits = useMemo(() => {
-        const list: { label: string; color: string }[] = [];
-
-        // 1. 선호 지역 (zones from meta_players)
-        if (player.tendencies?.zones) {
-            const z = player.tendencies.zones;
-            const paint = z.ra + z.itp;
-            const mid = z.mid;
-            const three = z.cnr + z.p45 + z.atb;
-            const max = Math.max(paint, mid, three);
-            if (max === three) list.push({ label: '3점 라인 바깥 선호', color: 'indigo' });
-            else if (max === mid) list.push({ label: '미드레인지 선호', color: 'indigo' });
-            else list.push({ label: '페인트존 선호', color: 'indigo' });
-        }
-
-        // 2. 좌우 편향 (lateralBias from hash-based hidden tendencies)
-        const hidden = generateHiddenTendencies(player);
-        if (hidden.lateralBias <= -0.3) list.push({ label: '왼쪽 선호', color: 'slate' });
-        else if (hidden.lateralBias >= 0.3) list.push({ label: '오른쪽 선호', color: 'slate' });
-        else list.push({ label: '균형', color: 'slate' });
-
-        // 3~6. 세이브 텐던시 (seed-dependent, threshold ±0.4)
-        if (tendencySeed) {
-            const st = generateSaveTendencies(tendencySeed, player.id);
-            if (st.clutchGene >= 0.4) list.push({ label: '강심장', color: 'emerald' });
-            else if (st.clutchGene <= -0.4) list.push({ label: '새가슴', color: 'red' });
-
-            if (st.composure >= 0.4) list.push({ label: '침착함', color: 'emerald' });
-            else if (st.composure <= -0.4) list.push({ label: '부담감을 느낌', color: 'amber' });
-
-            if (st.temperament >= 0.4) list.push({ label: '다혈질', color: 'amber' });
-            else if (st.temperament <= -0.4) list.push({ label: '냉정함', color: 'sky' });
-
-            if (st.ego >= 0.4) list.push({ label: '자존심이 강함', color: 'amber' });
-            else if (st.ego <= -0.4) list.push({ label: '모두와 잘 어울림', color: 'emerald' });
-        }
-
-        return list;
-    }, [player, tendencySeed]);
+    // ── Scout Report (서술형 텐던시 리포트) ──
+    const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -326,12 +280,12 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     </div>
                 </div>
 
-                {/* 2. Hidden Archetypes + Personality & Playstyle Traits */}
+                {/* 2. Hidden Archetypes + Scout Report */}
                 {(() => {
                     const archetypes = getHiddenArchetypes(player);
                     const hasArchetypes = archetypes.length > 0;
-                    const hasTraits = traits.length > 0;
-                    if (!hasArchetypes && !hasTraits) return null;
+                    const hasReport = scoutReport.length > 0;
+                    if (!hasArchetypes && !hasReport) return null;
                     return (
                         <div className="mb-6">
                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest mb-3">성격 & 플레이스타일</h3>
@@ -340,14 +294,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                                     {archetypes.join(' / ')}
                                 </p>
                             )}
-                            {hasTraits && (
-                                <div className="flex flex-wrap gap-2">
-                                    {traits.map((t, i) => (
-                                        <span key={i} className={`px-3 py-1 rounded-full text-xs font-bold border ${TRAIT_COLORS[t.color] || TRAIT_COLORS.slate}`}>
-                                            {t.label}
-                                        </span>
-                                    ))}
-                                </div>
+                            {hasReport && (
+                                <p className="text-sm text-slate-300 leading-relaxed">
+                                    {scoutReport}
+                                </p>
                             )}
                         </div>
                     );
