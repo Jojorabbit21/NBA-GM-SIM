@@ -109,11 +109,13 @@ export const SIM_CONFIG = {
         VERT_STAT_FACTOR: 0.00075,// (defVert - 70) × factor
         HEIGHT_FACTOR: 0.001,     // (defHeight - 200) × factor
 
-        // 엘리트 블로커 아키타입 보너스
-        ARCHETYPE_WALL: 0.08,     // blk ≥ 97
-        ARCHETYPE_ALIEN: 0.06,    // height ≥ 216 && blk ≥ 80
-        ARCHETYPE_SKYWALKER: 0.05,// vert ≥ 95 && blk ≥ 75
-        ARCHETYPE_ANCHOR: 0.03,   // helpDefIq ≥ 92 && blk ≥ 80
+        // 엘리트 블로커 아키타입 보너스 (조건부 발동)
+        // D-2. The Alien: Rim + Paint 존만 (height ≥ 216, blk ≥ 80)
+        ARCHETYPE_ALIEN: 0.03,
+        // D-3. Skywalker: Transition + Cut 플레이만 (vert ≥ 95, blk ≥ 75)
+        ARCHETYPE_SKYWALKER: 0.05,
+        // D-4. Defensive Anchor: 헬프 블락 확률 배율 (helpDefIq ≥ 92, blk ≥ 80)
+        ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
 
         // 헬프 블락 (림 프로텍터 회전 블락)
         HELP_BASE: 0.02,          // 기본 확률
@@ -174,17 +176,17 @@ export const SIM_CONFIG = {
     CLUTCH_ARCHETYPE: {
         ENABLED: true,              // 클러치 아키타입 마스터 스위치
 
-        // A-1. The Closer (마무리 장인) — Kobe, MJ, Kawhi
+        // A-1. Curtain Call (커튼콜) — Kobe, MJ, Kawhi
         CLOSER_INTANGIBLES_THRESHOLD: 90,
         CLOSER_SHOTIQ_THRESHOLD: 85,
-        CLOSER_MODIFIER_MULTIPLIER: 2.0,    // clutchModifier × 2
+        CLOSER_MODIFIER_MULTIPLIER: 1.6,    // clutchModifier × 1.6
 
         // A-2. Ice in Veins (냉혈한) — Dame, Kyrie, Dirk
         ICE_INTANGIBLES_THRESHOLD: 85,
         ICE_OFFCONSIST_THRESHOLD: 88,
         // 효과: 프레셔 페널티(-1.5%) 면제
 
-        // A-3. Big Stage Player (대무대 사나이) — LeBron, Giannis
+        // A-3. High Roller (하이 롤러) — LeBron, Giannis
         BIGSTAGE_INTANGIBLES_THRESHOLD: 85,
         BIGSTAGE_STRENGTH_THRESHOLD: 85,
         BIGSTAGE_INS_THRESHOLD: 85,
@@ -208,7 +210,7 @@ export const SIM_CONFIG = {
         TYRANT_INS_THRESHOLD: 90,
         TYRANT_STRENGTH_THRESHOLD: 88,
         TYRANT_VERTICAL_THRESHOLD: 88,
-        TYRANT_HITRATE_BONUS: 0.03,         // Rim/Paint +3%
+        TYRANT_HITRATE_BONUS: 0.015,        // Rim/Paint +1.5%
         TYRANT_BLOCK_REDUCTION: 0.03,       // 블락 확률 -3%
 
         // B-4. Levitator (레비테이터) — Tony Parker, Trae Young
