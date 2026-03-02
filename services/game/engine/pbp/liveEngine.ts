@@ -326,20 +326,21 @@ export function stepPossession(state: GameState): StepResult {
     sideAccum.total += timeTaken;
     sideAccum.count += 1;
 
+    // 시간 차감을 로그 기록 전에 수행 (PBP 로그에 포세션 소요 후 시간이 찍히도록)
+    state.gameClock = Math.max(0, state.gameClock - timeTaken);
+    updateOnCourtStates(state, timeTaken);
+
     // 득점 추적 (momentum 업데이트용 — FT 포함)
     const scoreBefore = { home: state.home.score, away: state.away.score };
 
     applyPossessionResult(state, result);
 
     // 득점 후 momentum 업데이트
-    const currentTotalSecAfter = ((state.quarter - 1) * 720) + (720 - Math.max(0, state.gameClock - timeTaken));
+    const currentTotalSecAfter = ((state.quarter - 1) * 720) + (720 - state.gameClock);
     const homeScored = state.home.score - scoreBefore.home;
     const awayScored = state.away.score - scoreBefore.away;
     if (homeScored > 0) updateMomentum(state, state.home.id, homeScored, currentTotalSecAfter);
     if (awayScored > 0) updateMomentum(state, state.away.id, awayScored, currentTotalSecAfter);
-
-    state.gameClock = Math.max(0, state.gameClock - timeTaken);
-    updateOnCourtStates(state, timeTaken);
 
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
     const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));

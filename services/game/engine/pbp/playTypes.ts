@@ -206,16 +206,19 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
+            // 아이소 진입 패스를 제공한 선수 (어시스트 후보)
+            const passer = pickWeightedActor(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
 
             // [Updated] 3PT · Mid · Rim 모두 후보. Rim이면 resolveFinish로 마무리 결정.
             const isoZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
             if (isoZone === 'Rim') {
                 const { zone, shotType } = resolveFinish(actor, 'drive', sliders);
-                return { playType, actor, preferredZone: zone, shotType, bonusHitRate: 0.00 };
+                return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.00 };
             }
             return {
                 playType,
                 actor,
+                secondaryActor: passer,
                 preferredZone: isoZone,
                 shotType: 'Pullup',
                 bonusHitRate: 0.00 // Iso: 순수 스킬 기반
@@ -267,10 +270,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'PostUp': {
             // Best Post Scorer (Usually Rank 1-2 Bigs)
             const actor = pickWeightedActor(p => p.archetypes.postScorer);
+            // 엔트리 패스를 제공한 선수 (어시스트 후보)
+            const entryPasser = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
             const { zone: postZone, shotType: postShotType } = resolveFinish(actor, 'post', sliders);
             return {
                 playType,
                 actor,
+                secondaryActor: entryPasser,
                 preferredZone: postZone,
                 shotType: postShotType,
                 bonusHitRate: 0.01 // PostUp: 인사이드 소폭
@@ -322,16 +328,19 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'Transition': {
             // Fast break
             const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);
+            // 속공 패스를 제공한 선수 (아웃렛/푸시어헤드 패스)
+            const outletPasser = pickWeightedActor(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
 
             // [Updated] 속공 = Rim(resolveFinish) or 트랜지션 3점.
             const trZone = selectZone(['3PT', 'Rim'], actor, sliders);
             if (trZone === 'Rim') {
                 const { zone, shotType } = resolveFinish(actor, 'drive', sliders);
-                return { playType, actor, preferredZone: zone, shotType, bonusHitRate: 0.04 };
+                return { playType, actor, secondaryActor: outletPasser, preferredZone: zone, shotType, bonusHitRate: 0.04 };
             }
             return {
                 playType,
                 actor,
+                secondaryActor: outletPasser,
                 preferredZone: trZone,
                 shotType: 'Pullup',
                 bonusHitRate: 0.04 // Transition: 속공 오픈 이점
