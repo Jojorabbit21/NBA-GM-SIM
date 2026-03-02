@@ -1,7 +1,6 @@
 
 import React from 'react';
 import { CourtSnapshot } from '../../services/game/engine/pbp/pbpTypes';
-import { GameSpeed } from '../../hooks/useLiveGame';
 
 interface PlayerMarkersProps {
     courtSnapshot: CourtSnapshot | null;
@@ -9,15 +8,7 @@ interface PlayerMarkersProps {
     homeColor: string;
     awayColor: string;
     scale: number;
-    speed: GameSpeed;
 }
-
-const TRANSITION_MS: Record<GameSpeed, number> = {
-    0.5: 500,
-    1: 400,
-    2: 250,
-    4: 120,
-};
 
 export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
     courtSnapshot,
@@ -25,11 +16,9 @@ export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
     homeColor,
     awayColor,
     scale,
-    speed,
 }) => {
     if (!courtSnapshot) return null;
 
-    const transMs = TRANSITION_MS[speed] || 400;
     const isOffenseHome = courtSnapshot.offTeamId === homeTeamId;
 
     return (
@@ -45,10 +34,7 @@ export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
                 return (
                     <g
                         key={pos.playerId}
-                        style={{
-                            transform: `translate(${cx}px, ${cy}px)`,
-                            transition: `transform ${transMs}ms ease-out`,
-                        }}
+                        transform={`translate(${cx}, ${cy})`}
                     >
                         {/* Ball indicator ring */}
                         {pos.hasBall && (
@@ -58,7 +44,7 @@ export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
                         <circle
                             r={18}
                             fill={color}
-                            opacity={isOffense ? 0.9 : 0.5}
+                            opacity={1}
                             stroke={isOffense ? '#fff' : '#64748b'}
                             strokeWidth={isOffense ? 2 : 1}
                         />
@@ -67,7 +53,7 @@ export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
                             textAnchor="middle"
                             dominantBaseline="central"
                             fill="white"
-                            fontSize={11}
+                            fontSize={14}
                             fontWeight="bold"
                             fontFamily="monospace"
                             style={{ pointerEvents: 'none' }}
