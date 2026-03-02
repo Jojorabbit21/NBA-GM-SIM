@@ -310,7 +310,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* Player name + OVR */}
-                    <div className="px-6 pb-2 relative z-10 flex items-center gap-4">
+                    <div className="px-6 pt-1 pb-4 relative z-10 flex items-center gap-4">
                         <OvrBadge value={calculatedOvr} size="md" />
                         <h2 className="text-3xl font-black uppercase tracking-tight oswald" style={{ color: theme.text }}>{player.name}</h2>
                         {player.health && player.health !== 'Healthy' && (
@@ -321,8 +321,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         )}
                     </div>
 
+                    {/* Divider */}
+                    <div className="mx-6 border-t border-slate-700/50" />
+
                     {/* Player info table */}
-                    <div className="px-6 pb-4 relative z-10">
+                    <div className="px-6 py-4 relative z-10">
                         <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
                             <thead>
                                 <tr className="text-[10px] uppercase tracking-wider" style={{ opacity: 0.5 }}>
@@ -356,9 +359,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </table>
                     </div>
 
+                    {/* Divider */}
+                    <div className="mx-6 border-t border-slate-700/50" />
+
                     {/* Scout Report */}
                     {(archetypes.length > 0 || scoutReport.length > 0) && (
-                        <div className="px-6 pb-4 relative z-10 flex flex-col gap-2">
+                        <div className="px-6 py-4 relative z-10 flex flex-col gap-2">
                             {scoutReport.length > 0 && (
                                 <span className="text-sm leading-relaxed italic" style={{ color: theme.text, opacity: 0.6 }}>
                                     "{scoutReport}"
