@@ -358,7 +358,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 <div className="text-xs bg-slate-950">
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
-                    <div className="pb-6 border-b-2 border-slate-700">
+                    <div className="border-b-2 border-slate-700">
                         <div className="px-6 py-3 bg-slate-700 flex items-center">
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
@@ -368,7 +368,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
                     </div>
                     {hasPlayoffs && (
-                        <div className="pb-6 border-b-2 border-slate-700">
+                        <div className="border-b-2 border-slate-700">
                             <div className="px-6 py-3 bg-slate-700 flex items-center">
                                 <span className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
                             </div>
@@ -380,7 +380,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     )}
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
-                    <div className="pb-6 border-b-2 border-slate-700">
+                    <div className="border-b-2 border-slate-700">
                         <div className="px-6 py-3 bg-slate-700 flex items-center">
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
@@ -419,7 +419,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율 ═══ */}
-                    <div className="pb-6 border-b-2 border-slate-700 grid items-stretch" style={{ gridTemplateColumns: '4fr 6fr' }}>
+                    <div className="grid items-stretch" style={{ gridTemplateColumns: '4fr 6fr' }}>
 
                         {/* Col 1: 샷 차트 */}
                         <div className="border-r border-slate-800">
@@ -492,7 +492,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false} style={{ maxHeight: 520 }}>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false} style={{ maxHeight: 520 }}>
                                     <TableHead>
                                         {GAME_LOG_COLS.map((c, i) => (
                                             <TableHeaderCell
