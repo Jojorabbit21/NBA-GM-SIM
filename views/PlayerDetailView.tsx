@@ -79,6 +79,13 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
+const getAttrBg = (val: number) => {
+    if (val >= 90) return 'bg-fuchsia-500/10';
+    if (val >= 80) return 'bg-emerald-500/10';
+    if (val >= 70) return 'bg-amber-500/10';
+    return '';
+};
+
 const formatSalary = (salary: number): string => {
     if (salary >= 1_000_000) return `$${(salary / 1_000_000).toFixed(1)}M`;
     if (salary >= 1_000) return `$${(salary / 1_000).toFixed(0)}k`;
@@ -349,8 +356,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div>
-                        <div className="pb-1.5 mb-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">2025-26 시즌 스탯</span>
+                        <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                            <span className="text-xs font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
                             {/* Traditional */}
@@ -367,8 +374,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
                     {hasPlayoffs && (
                         <div>
-                            <div className="pb-1.5 mb-1">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">플레이오프 스탯</span>
+                            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
                             </div>
                             <div className="overflow-x-auto custom-scrollbar">
                                 <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
@@ -385,8 +392,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div>
-                        <div className="pb-1.5 mb-1">
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">능력치</span>
+                        <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                            <span className="text-xs font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
                         <div className="grid grid-cols-6">
                             {ATTR_GROUPS.map((gr, gi) => {
@@ -403,7 +410,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         {attrKeys.map(k => {
                                             const val = (player as any)[k] || 0;
                                             return (
-                                                <div key={k} className="flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5">
+                                                <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
                                                     <span className="text-xs text-slate-500 truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
                                                     <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
                                                 </div>
@@ -412,7 +419,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         {/* Spacer to align AVG */}
                                         <div className="flex-1" />
                                         {/* AVG row */}
-                                        <div className="flex items-center justify-between px-3 h-10 bg-slate-950/50 border-t border-slate-800">
+                                        <div className={`flex items-center justify-between px-3 h-10 bg-slate-950/50 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
                                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
                                             <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                         </div>
@@ -427,8 +434,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 1: 샷 차트 */}
                         <div>
-                            <div className="pb-1.5 mb-1 flex items-center justify-between">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">샷 차트</span>
+                            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
                                 <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
                                     <span>LOW</span>
                                     <div className="flex gap-0.5">
@@ -480,8 +487,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
-                            <div className="pb-1.5 mb-1">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">최근 경기</span>
+                            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                                <span className="text-xs font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
                                 <div className="flex items-center justify-center py-8">
