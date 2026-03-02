@@ -5,6 +5,7 @@ import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
 import { OvrBadge } from '../components/common/OvrBadge';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import {
     ZONE_PATHS, COURT_LINES, ZONE_AVG,
     ZONE_CONFIG as CHART_ZONES,
@@ -179,31 +180,37 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
     return { display: val, color };
 }
 
-// ── Reusable: Stats sub-table (header + single data row), NO card wrapper ──
+// ── Reusable: Stats sub-table (header + single data row), uses common Table ──
 const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
-    <table className="w-full border-separate border-spacing-0">
-        <thead>
-            <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                {cols.map((c, i) => (
-                    <th key={c.key} className={`py-3 px-1.5 text-center whitespace-nowrap border-b border-slate-800 ${i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
-                        {c.label}
-                    </th>
-                ))}
-            </tr>
-        </thead>
-        <tbody>
-            <tr className="h-10">
+    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent" fullHeight={false}>
+        <TableHead>
+            {cols.map((c, i) => (
+                <TableHeaderCell
+                    key={c.key}
+                    align="center"
+                    className={i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}
+                >
+                    {c.label}
+                </TableHeaderCell>
+            ))}
+        </TableHead>
+        <TableBody>
+            <TableRow className="h-10">
                 {cols.map((c, i) => {
                     const { display, color } = resolveStatVal(stats, c.key);
                     return (
-                        <td key={c.key} className={`py-2 px-3 text-center border-b border-slate-800/50 ${i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
-                            <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
-                        </td>
+                        <TableCell
+                            key={c.key}
+                            align="center"
+                            className={i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}
+                        >
+                            <span className={`font-mono font-medium tabular-nums ${color}`}>{display}</span>
+                        </TableCell>
                     );
                 })}
-            </tr>
-        </tbody>
-    </table>
+            </TableRow>
+        </TableBody>
+    </Table>
 );
 
 // ── Game log cell builder ──
@@ -338,7 +345,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 </div>
 
                 {/* ═══ BODY — 3 sections ═══ */}
-                <div className="p-6 space-y-8">
+                <div className="text-xs">
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div>
@@ -487,35 +494,39 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <div className="overflow-y-auto overflow-x-auto custom-scrollbar" style={{ maxHeight: 520 }}>
-                                    <table className="w-full border-separate border-spacing-0">
-                                        <thead className="sticky top-0 z-10">
-                                            <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                                                {GAME_LOG_COLS.map((c, i) => (
-                                                    <th key={c.key} className={`py-3 px-1.5 text-center whitespace-nowrap border-b border-slate-800 ${i < GAME_LOG_COLS.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
-                                                        {c.label}
-                                                    </th>
-                                                ))}
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {gameLog.map((g: any, i: number) => {
-                                                const cells = buildGameLogCells(g);
-                                                return (
-                                                    <tr key={i} className="h-10 transition-colors hover:bg-white/5">
-                                                        {cells.map((cell, ci) => (
-                                                            <td key={ci} className={`py-2 px-1.5 text-center whitespace-nowrap border-b border-slate-800/50 ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
-                                                                <span className={`font-mono font-medium text-xs tabular-nums ${cell.color || 'text-white'}`}>
-                                                                    {cell.val}
-                                                                </span>
-                                                            </td>
-                                                        ))}
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent" fullHeight={false} style={{ maxHeight: 520 }}>
+                                    <TableHead>
+                                        {GAME_LOG_COLS.map((c, i) => (
+                                            <TableHeaderCell
+                                                key={c.key}
+                                                align="center"
+                                                className={i < GAME_LOG_COLS.length - 1 ? 'border-r border-r-slate-800/30' : ''}
+                                            >
+                                                {c.label}
+                                            </TableHeaderCell>
+                                        ))}
+                                    </TableHead>
+                                    <TableBody>
+                                        {gameLog.map((g: any, i: number) => {
+                                            const cells = buildGameLogCells(g);
+                                            return (
+                                                <TableRow key={i} className="h-10">
+                                                    {cells.map((cell, ci) => (
+                                                        <TableCell
+                                                            key={ci}
+                                                            align="center"
+                                                            className={ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}
+                                                        >
+                                                            <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
+                                                                {cell.val}
+                                                            </span>
+                                                        </TableCell>
+                                                    ))}
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
                             )}
                         </div>
 
