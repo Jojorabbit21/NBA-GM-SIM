@@ -4,6 +4,7 @@ import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
+import { getTeamTheme } from '../utils/teamTheme';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import {
@@ -83,7 +84,7 @@ const getAttrBg = (val: number) => {
     if (val >= 90) return 'bg-fuchsia-500/10';
     if (val >= 80) return 'bg-emerald-500/10';
     if (val >= 70) return 'bg-amber-500/10';
-    return '';
+    return 'bg-slate-900';
 };
 
 const formatSalary = (salary: number): string => {
@@ -257,7 +258,8 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
 }
 
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, tendencySeed, onBack }) => {
-    const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
+    const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
+    const theme = getTeamTheme(teamId || null, teamColors);
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
@@ -291,15 +293,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
 
                 {/* ═══ HEADER ═══ */}
-                <div className="bg-slate-900 border-b border-slate-800 relative overflow-hidden">
-                    {/* Team Color Glow */}
-                    <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
+                <div className="border-b border-white/5 relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                    {/* Dark overlay — heavier tint than DashboardHeader */}
+                    <div className="absolute inset-0 bg-black/40 pointer-events-none" />
 
                     {/* Back button row */}
                     <div className="px-6 pt-5 pb-4 relative z-10">
                         <button
                             onClick={onBack}
-                            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors"
+                            className="flex items-center gap-1.5 bg-black/30 hover:bg-black/50 backdrop-blur-sm ring-1 ring-white/15 px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ color: theme.text }}
                         >
                             <ArrowLeft size={14} />
                             <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
@@ -309,19 +312,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* Player info row */}
                     <div className="px-6 pb-4 relative z-10 flex items-center gap-4 flex-wrap">
                         <OvrBadge value={calculatedOvr} size="md" />
-                        <h2 className="text-lg font-black text-white uppercase tracking-tight oswald">{player.name}</h2>
+                        <h2 className="text-lg font-black uppercase tracking-tight oswald" style={{ color: theme.text }}>{player.name}</h2>
                         {teamId && (
-                            <div className="flex items-center gap-2 text-lg text-slate-400">
-                                <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
+                            <div className="flex items-center gap-2 text-lg" style={{ color: theme.text, opacity: 0.7 }}>
+                                <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain" alt="" />
                                 <span className="font-bold">{teamName || 'FA'}</span>
                             </div>
                         )}
-                        <span className="text-lg font-bold text-slate-400">{player.position}</span>
-                        <span className="text-lg font-bold text-slate-400">{player.age}세</span>
-                        <span className="text-lg font-bold text-slate-400">{player.height}cm</span>
-                        <span className="text-lg font-bold text-slate-400">{player.weight}kg</span>
+                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.position}</span>
+                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.age}세</span>
+                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.height}cm</span>
+                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.weight}kg</span>
                         {player.salary > 0 && (
-                            <span className="text-lg font-bold text-slate-400">
+                            <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>
                                 {formatSalary(player.salary)}
                                 {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
                             </span>
@@ -338,12 +341,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {(archetypes.length > 0 || scoutReport.length > 0) && (
                         <div className="px-6 pb-4 relative z-10">
                             {archetypes.length > 0 && (
-                                <span className="text-sm font-bold text-indigo-400 mr-2">
+                                <span className="text-sm font-bold mr-2" style={{ color: theme.accent }}>
                                     {archetypes.join(' / ')}
                                 </span>
                             )}
                             {scoutReport.length > 0 && (
-                                <span className="text-sm text-slate-400 leading-relaxed">
+                                <span className="text-sm leading-relaxed" style={{ color: theme.text, opacity: 0.6 }}>
                                     {scoutReport}
                                 </span>
                             )}
@@ -356,7 +359,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div>
-                        <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                        <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
@@ -374,7 +377,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
                     {hasPlayoffs && (
                         <div>
-                            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
                             </div>
                             <div className="overflow-x-auto custom-scrollbar">
@@ -392,7 +395,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div>
-                        <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                        <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
                         <div className="grid grid-cols-6">
@@ -434,7 +437,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 1: 샷 차트 */}
                         <div>
-                            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+                            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
                                 <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
                                     <span>LOW</span>
@@ -487,7 +490,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
-                            <div className="px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center">
+                            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
