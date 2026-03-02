@@ -26,16 +26,18 @@ interface PlayerDetailViewProps {
 
 // ── Stats Sections Config ──
 const TRAD_COLS = [
-    { key: 'g', label: 'GP' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' },
-    { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
-    { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
-    { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
-    { key: 'pm', label: '+/-' }
+    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
+    { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
+    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
 ];
 
 const ADVANCED_COLS = [
-    { key: 'ts%', label: 'TS%' }, { key: 'efg%', label: 'eFG%' },
-    { key: 'tov%', label: 'TOV%' }, { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
+    { key: 'ts%', label: 'TS%' }, { key: 'efg%', label: 'eFG%' }, { key: 'tov%', label: 'TOV%' },
+    { key: 'usg%', label: 'USG%' }, { key: 'ast%', label: 'AST%' },
+    { key: 'orb%', label: 'ORB%' }, { key: 'drb%', label: 'DRB%' }, { key: 'trb%', label: 'TRB%' },
+    { key: 'stl%', label: 'STL%' }, { key: 'blk%', label: 'BLK%' },
+    { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
+    { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
 ];
 
 // ── Zone Table Config ──
@@ -161,8 +163,15 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
             val = den > 0 ? (st.tov / den * 100).toFixed(1) + '%' : '-';
             break;
         }
-        case '3par': val = st.fga > 0 ? (st.p3a / st.fga).toFixed(3) : '-'; break;
-        case 'ftr': val = st.fga > 0 ? (st.fta / st.fga).toFixed(3) : '-'; break;
+        case '3par': val = st.fga > 0 ? (st.p3a / st.fga * 100).toFixed(1) + '%' : '-'; break;
+        case 'ftr': val = st.fga > 0 ? (st.fta / st.fga * 100).toFixed(1) + '%' : '-'; break;
+        case 'usg%': case 'ast%': case 'orb%': case 'drb%': case 'trb%': case 'stl%': case 'blk%': {
+            const v = (st as any)[key];
+            val = (v !== undefined && v > 0) ? (v * 100).toFixed(1) + '%' : '-';
+            break;
+        }
+        case 'tf': val = ((st.techFouls || 0) / gp).toFixed(1); break;
+        case 'ff': val = ((st.flagrantFouls || 0) / gp).toFixed(1); break;
         default:
             if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov'].includes(key)) {
                 val = ((st as any)[key] / gp).toFixed(1);
@@ -173,48 +182,34 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
     return { display: val, color };
 }
 
-// ── Reusable: Flat Stats Row ──
-const FlatStatsRow: React.FC<{ label: string; cols: { key: string; label: string }[]; stats: PlayerStats; colWidth?: number }> = ({ label, cols, stats, colWidth = 55 }) => (
-    <div>
-        <div className="pb-1.5 mb-1">
-            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
-        </div>
-        <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full border-separate border-spacing-0">
-                <thead>
-                    <tr className="h-7">
-                        {cols.map(c => (
-                            <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-700 whitespace-nowrap">
-                                {c.label}
-                            </th>
-                        ))}
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr className="h-9">
-                        {cols.map(c => {
-                            const { display, color } = resolveStatVal(stats, c.key);
-                            return (
-                                <td key={c.key} className="py-1.5 px-1 text-center">
-                                    <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
-                                </td>
-                            );
-                        })}
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+// ── Reusable: Stats sub-table (header + single data row) ──
+const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
+    <table className="w-full border-separate border-spacing-0">
+        <thead>
+            <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                {cols.map((c, i) => (
+                    <th key={c.key} className={`py-3 px-1.5 text-center whitespace-nowrap border-b border-slate-800 ${i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
+                        {c.label}
+                    </th>
+                ))}
+            </tr>
+        </thead>
+        <tbody className="bg-slate-900">
+            <tr className="h-10">
+                {cols.map((c, i) => {
+                    const { display, color } = resolveStatVal(stats, c.key);
+                    return (
+                        <td key={c.key} className={`py-2 px-3 text-center border-b border-slate-800/50 ${i < cols.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
+                            <span className={`font-mono font-medium text-xs tabular-nums ${color}`}>{display}</span>
+                        </td>
+                    );
+                })}
+            </tr>
+        </tbody>
+    </table>
 );
 
-// ── Shooting stats vertical config ──
-const SHOOTING_VERTICAL = [
-    { key: 'fgm', label: 'FGM' }, { key: 'fga', label: 'FGA' }, { key: 'fg%', label: 'FG%' },
-    { key: '3pm', label: '3PM' }, { key: '3pa', label: '3PA' }, { key: '3p%', label: '3P%' },
-    { key: 'ftm', label: 'FTM' }, { key: 'fta', label: 'FTA' }, { key: 'ft%', label: 'FT%' },
-    { key: 'ts%', label: 'TS%' }, { key: 'efg%', label: 'eFG%' },
-    { key: 'tov%', label: 'TOV%' }, { key: '3par', label: '3PAr' }, { key: 'ftr', label: 'FTr' },
-];
+// (SHOOTING_VERTICAL removed — zone data used directly from ZONE_TABLE)
 
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, tendencySeed, onBack }) => {
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
@@ -247,145 +242,198 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
 
-            {/* ═══ HEADER ═══ */}
-            <div className="flex-shrink-0 bg-slate-900 border-b border-slate-800 relative overflow-hidden">
-                {/* Team Color Glow */}
-                <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
+            {/* ═══ Single scrollable area (header + body) ═══ */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">
 
-                {/* Back button row */}
-                <div className="px-6 pt-5 pb-4 relative z-10">
-                    <button
-                        onClick={onBack}
-                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                        <ArrowLeft size={14} />
-                        <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
-                    </button>
-                </div>
+                {/* ═══ HEADER ═══ */}
+                <div className="bg-slate-900 border-b border-slate-800 relative overflow-hidden">
+                    {/* Team Color Glow */}
+                    <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
 
-                {/* Player info row */}
-                <div className="px-6 pb-4 relative z-10 flex items-center gap-4 flex-wrap">
-                    <OvrBadge value={calculatedOvr} size="md" />
-                    <h2 className="text-lg font-black text-white uppercase tracking-tight oswald">{player.name}</h2>
-                    {teamId && (
-                        <div className="flex items-center gap-2 text-lg text-slate-400">
-                            <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
-                            <span className="font-bold">{teamName || 'FA'}</span>
+                    {/* Back button row */}
+                    <div className="px-6 pt-5 pb-4 relative z-10">
+                        <button
+                            onClick={onBack}
+                            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                            <ArrowLeft size={14} />
+                            <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
+                        </button>
+                    </div>
+
+                    {/* Player info row */}
+                    <div className="px-6 pb-4 relative z-10 flex items-center gap-4 flex-wrap">
+                        <OvrBadge value={calculatedOvr} size="md" />
+                        <h2 className="text-lg font-black text-white uppercase tracking-tight oswald">{player.name}</h2>
+                        {teamId && (
+                            <div className="flex items-center gap-2 text-lg text-slate-400">
+                                <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
+                                <span className="font-bold">{teamName || 'FA'}</span>
+                            </div>
+                        )}
+                        <span className="text-lg font-bold text-slate-400">{player.position}</span>
+                        <span className="text-lg font-bold text-slate-400">{player.age}세</span>
+                        <span className="text-lg font-bold text-slate-400">{player.height}cm</span>
+                        <span className="text-lg font-bold text-slate-400">{player.weight}kg</span>
+                        {player.salary > 0 && (
+                            <span className="text-lg font-bold text-slate-400">
+                                {formatSalary(player.salary)}
+                                {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
+                            </span>
+                        )}
+                        {player.health && player.health !== 'Healthy' && (
+                            <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md">
+                                {player.injuryType || player.health}
+                                {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Scout Report */}
+                    {(archetypes.length > 0 || scoutReport.length > 0) && (
+                        <div className="px-6 pb-4 relative z-10">
+                            {archetypes.length > 0 && (
+                                <span className="text-sm font-bold text-indigo-400 mr-2">
+                                    {archetypes.join(' / ')}
+                                </span>
+                            )}
+                            {scoutReport.length > 0 && (
+                                <span className="text-sm text-slate-400 leading-relaxed">
+                                    {scoutReport}
+                                </span>
+                            )}
                         </div>
                     )}
-                    <span className="text-lg font-bold text-slate-400">{player.position}</span>
-                    <span className="text-lg font-bold text-slate-400">{player.age}세</span>
-                    <span className="text-lg font-bold text-slate-400">{player.height}cm</span>
-                    <span className="text-lg font-bold text-slate-400">{player.weight}kg</span>
-                    {player.salary > 0 && (
-                        <span className="text-lg font-bold text-slate-400">
-                            {formatSalary(player.salary)}
-                            {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
-                        </span>
-                    )}
-                    {player.health && player.health !== 'Healthy' && (
-                        <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md">
-                            {player.injuryType || player.health}
-                            {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                        </span>
-                    )}
                 </div>
 
-                {/* Scout Report */}
-                {(archetypes.length > 0 || scoutReport.length > 0) && (
-                    <div className="px-6 pb-4 relative z-10">
-                        {archetypes.length > 0 && (
-                            <span className="text-sm font-bold text-indigo-400 mr-2">
-                                {archetypes.join(' / ')}
-                            </span>
-                        )}
-                        {scoutReport.length > 0 && (
-                            <span className="text-sm text-slate-400 leading-relaxed">
-                                {scoutReport}
-                            </span>
-                        )}
+                {/* ═══ BODY — 3 sections ═══ */}
+                <div className="p-6 space-y-8">
+
+                {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
+                <div>
+                    <div className="pb-1.5 mb-1">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">2025-26 시즌 스탯</span>
                     </div>
-                )}
-
-            </div>
-
-            {/* ═══ BODY — single scroll, 3 sections ═══ */}
-            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 space-y-8">
-
-                {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced) ═══ */}
-                <div className="flex gap-8">
-                    <div className="flex-1 min-w-0">
-                        <FlatStatsRow label="Traditional" cols={TRAD_COLS} stats={s} />
-                    </div>
-                    <div className="shrink-0">
-                        <FlatStatsRow label="Advanced" cols={ADVANCED_COLS} stats={s} colWidth={62} />
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden overflow-x-auto custom-scrollbar">
+                        {/* Traditional */}
+                        <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Traditional</span>
+                        </div>
+                        <StatsSubTable cols={TRAD_COLS} stats={s} />
+                        {/* Advanced */}
+                        <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Advanced</span>
+                        </div>
+                        <StatsSubTable cols={ADVANCED_COLS} stats={s} />
                     </div>
                 </div>
                 {hasPlayoffs && (
-                    <div className="flex gap-8">
-                        <div className="flex-1 min-w-0">
-                            <FlatStatsRow label="Playoff Traditional" cols={TRAD_COLS} stats={player.playoffStats!} />
+                    <div>
+                        <div className="pb-1.5 mb-1">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">플레이오프 스탯</span>
                         </div>
-                        <div className="shrink-0">
-                            <FlatStatsRow label="Playoff Advanced" cols={ADVANCED_COLS} stats={player.playoffStats!} colWidth={62} />
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden overflow-x-auto custom-scrollbar">
+                            <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Traditional</span>
+                            </div>
+                            <StatsSubTable cols={TRAD_COLS} stats={player.playoffStats!} />
+                            <div className="bg-slate-950/80 px-3 py-1.5 border-b border-slate-800">
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Advanced</span>
+                            </div>
+                            <StatsSubTable cols={ADVANCED_COLS} stats={player.playoffStats!} />
                         </div>
                     </div>
                 )}
 
-                {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
-                <div className="grid grid-cols-6 gap-x-4">
-                    {ATTR_GROUPS.map(gr => {
-                        const avgKey = gr.keys[0];
-                        const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
-                        const avgVal = (player as any)[avgKey] || 0;
-                        return (
-                            <div key={gr.id} className="flex flex-col">
-                                <div className="pb-2 mb-1.5 border-b border-slate-700">
-                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
-                                </div>
-                                {attrKeys.map(k => {
-                                    const val = (player as any)[k] || 0;
-                                    const label = ATTR_KR_LABEL[k] || k;
-                                    return (
-                                        <div key={k} className="flex items-center justify-between py-1.5">
-                                            <span className="text-xs text-slate-500 truncate mr-2">{label}</span>
-                                            <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                {/* ═══ SECTION 2: 능력치 6개 그룹 (Leaderboard table style) ═══ */}
+                <div>
+                    <div className="pb-1.5 mb-1">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">능력치</span>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="grid grid-cols-6">
+                            {ATTR_GROUPS.map((gr, gi) => {
+                                const avgKey = gr.keys[0];
+                                const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
+                                const avgVal = (player as any)[avgKey] || 0;
+                                const isLastCol = gi === ATTR_GROUPS.length - 1;
+                                return (
+                                    <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
+                                        {/* Group header */}
+                                        <div className="bg-slate-950 h-10 flex items-center justify-center border-b border-slate-800">
+                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                         </div>
-                                    );
-                                })}
-                                <div className="flex-1" />
-                                <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-slate-700">
-                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest">AVG</span>
-                                    <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
-                                </div>
-                            </div>
-                        );
-                    })}
+                                        {/* Attribute rows */}
+                                        {attrKeys.map(k => {
+                                            const val = (player as any)[k] || 0;
+                                            const label = ATTR_KR_LABEL[k] || k;
+                                            return (
+                                                <div key={k} className="flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5">
+                                                    <span className="text-xs text-slate-500 truncate mr-2">{label}</span>
+                                                    <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                                </div>
+                                            );
+                                        })}
+                                        {/* Spacer to align AVG */}
+                                        <div className="flex-1" />
+                                        {/* AVG row */}
+                                        <div className="flex items-center justify-between px-3 h-10 bg-slate-950/50 border-t border-slate-800">
+                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
+                                            <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
 
-                {/* ═══ SECTION 3: 슈팅기록(수직) | 샷차트 | 최근경기 — 3컬럼 ═══ */}
-                <div className="grid grid-cols-3 gap-6 items-start">
+                {/* ═══ SECTION 3: 슈팅기록(수직) | 샷차트 | 최근경기 — 1:2:7 비율 ═══ */}
+                <div className="grid gap-6 items-start" style={{ gridTemplateColumns: '1fr 2fr 7fr' }}>
 
-                    {/* Col 1: 슈팅 기록 (수직 리스트) */}
+                    {/* Col 1: 구역별 슈팅 기록 */}
                     <div>
-                        <div className="pb-2 mb-1.5 border-b border-slate-700">
-                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">슈팅 기록</span>
+                        <div className="pb-1.5 mb-1">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">구역별 슈팅</span>
                         </div>
-                        {SHOOTING_VERTICAL.map(c => {
-                            const { display, color } = resolveStatVal(s, c.key);
-                            return (
-                                <div key={c.key} className="flex items-center justify-between py-1.5">
-                                    <span className="text-xs text-slate-500">{c.label}</span>
-                                    <span className={`font-mono font-black text-xs tabular-nums ${color}`}>{display}</span>
-                                </div>
-                            );
-                        })}
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <table className="w-full border-separate border-spacing-0">
+                                <thead>
+                                    <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                                        <th className="py-3 px-2 text-left whitespace-nowrap border-b border-slate-800 border-r border-r-slate-800/30">ZONE</th>
+                                        <th className="py-3 px-2 text-center whitespace-nowrap border-b border-slate-800 border-r border-r-slate-800/30">M/A</th>
+                                        <th className="py-3 px-2 text-center whitespace-nowrap border-b border-slate-800">FG%</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-slate-900">
+                                    {ZONE_TABLE.map((z, i) => {
+                                        const m = (s as any)[z.keyM] || 0;
+                                        const a = (s as any)[z.keyA] || 0;
+                                        const pct = a > 0 ? (m / a * 100).toFixed(1) + '%' : '-';
+                                        const pctColor = a === 0 ? 'text-slate-600' : 'text-slate-300';
+                                        return (
+                                            <tr key={z.key} className="h-9 transition-colors hover:bg-white/5">
+                                                <td className={`py-1.5 px-2 text-left whitespace-nowrap border-r border-r-slate-800/30 ${i < ZONE_TABLE.length - 1 ? 'border-b border-b-slate-800/50' : ''}`}>
+                                                    <span className="text-[10px] font-medium text-slate-400">{z.label}</span>
+                                                </td>
+                                                <td className={`py-1.5 px-2 text-center border-r border-r-slate-800/30 ${i < ZONE_TABLE.length - 1 ? 'border-b border-b-slate-800/50' : ''}`}>
+                                                    <span className="font-mono font-medium text-[10px] tabular-nums text-slate-300">{m}/{a}</span>
+                                                </td>
+                                                <td className={`py-1.5 px-2 text-center ${i < ZONE_TABLE.length - 1 ? 'border-b border-b-slate-800/50' : ''}`}>
+                                                    <span className={`font-mono font-medium text-[10px] tabular-nums ${pctColor}`}>{pct}</span>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
 
                     {/* Col 2: 샷 차트 */}
                     <div>
-                        <div className="pb-2 mb-1.5 border-b border-slate-700 flex items-center justify-between">
-                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">샷 차트</span>
+                        <div className="pb-1.5 mb-1 flex items-center justify-between">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">샷 차트</span>
                             <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
                                 <span>LOW</span>
                                 <div className="flex gap-0.5">
@@ -436,9 +484,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* Col 3: 최근 경기 */}
-                    <div>
-                        <div className="pb-2 mb-1.5 border-b border-slate-700">
-                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">최근 경기</span>
+                    <div className="flex flex-col min-h-0">
+                        <div className="pb-1.5 mb-1">
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">최근 경기</span>
                         </div>
                         {gameLogLoading && teamId && (
                             <div className="flex items-center justify-center py-8">
@@ -451,63 +499,66 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </div>
                         )}
                         {gameLog && gameLog.length > 0 && (
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <table className="w-full border-separate border-spacing-0">
-                                    <thead>
-                                        <tr className="h-7">
-                                            {GAME_LOG_COLS.map(c => (
-                                                <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-700 whitespace-nowrap">
-                                                    {c.label}
-                                                </th>
-                                            ))}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {gameLog.map((g: any, i: number) => {
-                                            const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
-                                            const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
-                                            const won = g.teamScore > g.opponentScore;
-                                            const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
-                                            const fgPct = g.fga > 0 ? (g.fgm / g.fga).toFixed(3) : '-';
-                                            const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a).toFixed(3) : '-';
-                                            const pmVal = g.plusMinus || 0;
-                                            const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden" style={{ maxHeight: 520 }}>
+                                <div className="overflow-y-auto overflow-x-auto custom-scrollbar h-full">
+                                    <table className="w-full border-separate border-spacing-0">
+                                        <thead className="sticky top-0 z-10">
+                                            <tr className="bg-slate-950 h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                                                {GAME_LOG_COLS.map((c, i) => (
+                                                    <th key={c.key} className={`py-3 px-1.5 text-center whitespace-nowrap border-b border-slate-800 ${i < GAME_LOG_COLS.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
+                                                        {c.label}
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-slate-900">
+                                            {gameLog.map((g: any, i: number) => {
+                                                const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
+                                                const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
+                                                const won = g.teamScore > g.opponentScore;
+                                                const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
+                                                const fgPct = g.fga > 0 ? (g.fgm / g.fga).toFixed(3) : '-';
+                                                const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a).toFixed(3) : '-';
+                                                const pmVal = g.plusMinus || 0;
+                                                const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
 
-                                            const cells: { val: string; color?: string }[] = [
-                                                { val: dateStr },
-                                                { val: oppLabel },
-                                                { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
-                                                { val: String(Math.round(g.mp || 0)) },
-                                                { val: String(g.pts || 0) },
-                                                { val: String(g.reb || 0) },
-                                                { val: String(g.ast || 0) },
-                                                { val: String(g.stl || 0) },
-                                                { val: String(g.blk || 0) },
-                                                { val: fgPct },
-                                                { val: p3Pct },
-                                                { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
-                                            ];
+                                                const cells: { val: string; color?: string }[] = [
+                                                    { val: dateStr },
+                                                    { val: oppLabel },
+                                                    { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
+                                                    { val: String(Math.round(g.mp || 0)) },
+                                                    { val: String(g.pts || 0) },
+                                                    { val: String(g.reb || 0) },
+                                                    { val: String(g.ast || 0) },
+                                                    { val: String(g.stl || 0) },
+                                                    { val: String(g.blk || 0) },
+                                                    { val: fgPct },
+                                                    { val: p3Pct },
+                                                    { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
+                                                ];
 
-                                            return (
-                                                <tr key={i} className="h-7 hover:bg-slate-800/30 transition-colors">
-                                                    {cells.map((cell, ci) => (
-                                                        <td key={ci} className="py-0.5 px-0.5 text-center">
-                                                            <span className={`font-mono text-[10px] tabular-nums ${cell.color || 'text-slate-300'}`}>
-                                                                {cell.val}
-                                                            </span>
-                                                        </td>
-                                                    ))}
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
+                                                return (
+                                                    <tr key={i} className="h-10 transition-colors hover:bg-white/5">
+                                                        {cells.map((cell, ci) => (
+                                                            <td key={ci} className={`py-2 px-3 text-center whitespace-nowrap border-b border-slate-800/50 ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}>
+                                                                <span className={`font-mono font-medium text-xs tabular-nums ${cell.color || 'text-white'}`}>
+                                                                    {cell.val}
+                                                                </span>
+                                                            </td>
+                                                        ))}
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         )}
                     </div>
 
                 </div>
 
+                </div>
             </div>
         </div>
     );
