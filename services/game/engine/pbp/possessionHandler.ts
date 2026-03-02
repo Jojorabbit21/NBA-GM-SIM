@@ -432,7 +432,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 type: 'flagrantFoul' as const,
                 offTeam, defTeam, actor, defender, points: 0 as const,
                 isAndOne: false, playType: selectedPlayType, isSwitch,
-                isFlagrant2,
+                isFlagrant2, isZone,
             };
         }
 
@@ -452,7 +452,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
         return {
             type: isShootingFoul ? 'freethrow' : 'foul',
-            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch
+            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
         };
     }
 
@@ -472,7 +472,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         return {
             type: 'offensiveFoul' as const,
             offTeam, defTeam, actor, defender,
-            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
         };
     }
 
@@ -484,7 +484,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         return {
             type: 'technicalFoul' as const,
             offTeam, defTeam, actor, defender,
-            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
         };
     }
 
@@ -502,7 +502,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         return {
             type: 'shotClockViolation' as const,
             offTeam, defTeam, actor,
-            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch
+            points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
         };
     }
 
@@ -515,7 +515,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             offTeam, defTeam, actor,
             defender: tovResult.stealer || defender, // Assign credit to helper if Shadow trait triggered
             isSteal: tovResult.isSteal,
-            points: 0, isAndOne: false, playType: selectedPlayType, isSwitch,
+            points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone,
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
         };
     }
@@ -583,7 +583,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                     offTeam, defTeam, actor, defender,
                     isSteal: false,
                     points: 0, isAndOne: false,
-                    playType: selectedPlayType, isSwitch,
+                    playType: selectedPlayType, isSwitch, isZone,
                     pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined
                 };
             }
@@ -796,7 +796,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             isSwitch,
             isMismatch: shotContext.isMismatch,
             pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
-            subZone
+            subZone, isZone
         };
     }
 
@@ -804,6 +804,6 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     return {
         type: 'score', offTeam, defTeam, actor, assister: secondaryActor, points, zone: preferredZone, playType: selectedPlayType, shotType, isAndOne, matchupEffect: shotContext.matchupEffect, isAceTarget: shotContext.isAceTarget, isSwitch, isMismatch: shotContext.isMismatch, isBotchedSwitch,
         pnrCoverage: pnrCoverage !== 'none' ? pnrCoverage : undefined,
-        subZone
+        subZone, isZone
     };
 }

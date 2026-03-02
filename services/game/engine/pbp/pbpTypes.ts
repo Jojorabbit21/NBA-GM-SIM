@@ -220,7 +220,7 @@ export interface PlayerCourtPosition {
     playerId: string;
     x: number;  // court feet (0-94)
     y: number;  // court feet (0-50)
-    role: 'ballHandler' | 'screener' | 'spacer' | 'onBallDef' | 'helpDef';
+    role: 'ballHandler' | 'screener' | 'spacer' | 'onBallDef' | 'helpDef' | 'zoneDef';
     hasBall: boolean;
     position: string;  // PG/SG/SF/PF/C
     isHome: boolean;
@@ -274,4 +274,7 @@ export interface PossessionResult {
 
     // [New] 3PT sub-zone key (hitRate ↔ 스탯 기록 일관성)
     subZone?: string;
+
+    // [New] Zone Defense flag (for court visualization)
+    isZone?: boolean;
 }
