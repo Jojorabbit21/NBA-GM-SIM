@@ -649,8 +649,7 @@ const LiveShotChart: React.FC<{
     homeTeam: Team;
     awayTeam: Team;
     courtSnapshot: CourtSnapshot | null;
-    speed: GameSpeed;
-}> = ({ shotEvents, homeTeam, awayTeam, courtSnapshot, speed }) => {
+}> = ({ shotEvents, homeTeam, awayTeam, courtSnapshot }) => {
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
     const homeColor = homeData?.colors.primary || '#6366f1';
@@ -795,7 +794,6 @@ const LiveShotChart: React.FC<{
                         homeColor={homeColor}
                         awayColor={awayColor}
                         scale={S}
-                        speed={speed}
                     />
                 )}
             </svg>
@@ -1203,7 +1201,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     homeTeam={homeTeam}
                                     awayTeam={awayTeam}
                                     courtSnapshot={displayState.courtSnapshot}
-                                    speed={displayState.speed}
                                 />
                             </div>
 
