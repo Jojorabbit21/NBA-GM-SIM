@@ -41,6 +41,24 @@ export const ATTR_LABEL: Record<string, string> = {
     speed: 'SPD', agility: 'AGI', strength: 'STR', vertical: 'VERT', stamina: 'STA', hustle: 'HST', durability: 'DUR',
 };
 
+/** 능력치 한글 짧은 라벨 — PlayerDetailView 등 UI 표시용 */
+export const ATTR_KR_LABEL: Record<string, string> = {
+    // Category headers
+    ins: '인사이드', out: '아웃사이드', plm: '패스&기회창출', def: '수비', reb: '리바운드', ath: '운동 능력',
+    // Inside
+    closeShot: '훅/플로터', layup: '레이업', dunk: '덩크', postPlay: '포스트 플레이', drawFoul: '파울 유도', hands: '볼 간수',
+    // Outside
+    midRange: '미드레인지', threeCorner: '코너 3점', three45: '윙 3점', threeTop: '탑 3점', ft: '자유투', shotIq: '슈팅 IQ', offConsist: '공격 일관성',
+    // Playmaking
+    passAcc: '패스 정확도', handling: '볼 핸들링', spdBall: '드리블 속도', passVision: '패스 시야', passIq: '패스 지능',
+    // Defense
+    intDef: '인사이드 수비', perDef: '퍼리미터 수비', steal: '스틸', blk: '블락', helpDefIq: '도움 수비 지능', passPerc: '패스 경로 예측', defConsist: '수비 일관성',
+    // Rebound
+    offReb: '공격 리바운드', defReb: '수비 리바운드',
+    // Athletic
+    speed: '속도', agility: '민첩성', strength: '근력', vertical: '점프력', stamina: '지구력', hustle: '허슬', durability: '내구도',
+};
+
 /** 전체 능력치 이름 — 툴팁용 (한국어 + 영어) */
 export const ATTR_NAME_MAP: Record<string, string> = {
     ins: '인사이드 득점 평균 (Inside Scoring Avg)',
