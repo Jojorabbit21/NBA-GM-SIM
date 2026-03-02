@@ -649,10 +649,8 @@ const LiveShotChart: React.FC<{
     homeTeam: Team;
     awayTeam: Team;
     courtSnapshot: CourtSnapshot | null;
-    homeOnCourt: LivePlayer[];
-    awayOnCourt: LivePlayer[];
     speed: GameSpeed;
-}> = ({ shotEvents, homeTeam, awayTeam, courtSnapshot, homeOnCourt, awayOnCourt, speed }) => {
+}> = ({ shotEvents, homeTeam, awayTeam, courtSnapshot, speed }) => {
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
     const homeColor = homeData?.colors.primary || '#6366f1';
@@ -764,20 +762,6 @@ const LiveShotChart: React.FC<{
                     <circle cx="892" cy="250" r="7.5" stroke="#e65100" />
                 </g>
 
-                {/* Player Position Markers */}
-                {showMarkers && (
-                    <PlayerMarkers
-                        courtSnapshot={courtSnapshot}
-                        homeTeamId={homeTeam.id}
-                        homeColor={homeColor}
-                        awayColor={awayColor}
-                        homeOnCourt={homeOnCourt}
-                        awayOnCourt={awayOnCourt}
-                        scale={S}
-                        speed={speed}
-                    />
-                )}
-
                 {/* Shot Dots (coords in 94x50, scaled to 940x500) */}
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
@@ -802,6 +786,18 @@ const LiveShotChart: React.FC<{
                         </g>
                     );
                 })}
+
+                {/* Player Position Markers (on top of shot dots) */}
+                {showMarkers && (
+                    <PlayerMarkers
+                        courtSnapshot={courtSnapshot}
+                        homeTeamId={homeTeam.id}
+                        homeColor={homeColor}
+                        awayColor={awayColor}
+                        scale={S}
+                        speed={speed}
+                    />
+                )}
             </svg>
             {tooltip && (
                 <ShotTooltip tooltip={tooltip} containerWidth={containerSize.w} containerHeight={containerSize.h} />
@@ -1207,8 +1203,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     homeTeam={homeTeam}
                                     awayTeam={awayTeam}
                                     courtSnapshot={displayState.courtSnapshot}
-                                    homeOnCourt={displayState.homeOnCourt}
-                                    awayOnCourt={displayState.awayOnCourt}
                                     speed={displayState.speed}
                                 />
                             </div>

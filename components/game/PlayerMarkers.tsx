@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CourtSnapshot, LivePlayer } from '../../services/game/engine/pbp/pbpTypes';
+import { CourtSnapshot } from '../../services/game/engine/pbp/pbpTypes';
 import { GameSpeed } from '../../hooks/useLiveGame';
 
 interface PlayerMarkersProps {
@@ -8,8 +8,6 @@ interface PlayerMarkersProps {
     homeTeamId: string;
     homeColor: string;
     awayColor: string;
-    homeOnCourt: LivePlayer[];
-    awayOnCourt: LivePlayer[];
     scale: number;
     speed: GameSpeed;
 }
@@ -26,36 +24,20 @@ export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
     homeTeamId,
     homeColor,
     awayColor,
-    homeOnCourt,
-    awayOnCourt,
     scale,
     speed,
 }) => {
     if (!courtSnapshot) return null;
 
     const transMs = TRANSITION_MS[speed] || 400;
-
-    // Build lookup maps
-    const playerPosMap = new Map<string, string>(); // playerId → position string
-    const playerTeamMap = new Map<string, boolean>(); // playerId → isHome
-    for (const p of homeOnCourt) {
-        playerPosMap.set(p.playerId, p.position);
-        playerTeamMap.set(p.playerId, true);
-    }
-    for (const p of awayOnCourt) {
-        playerPosMap.set(p.playerId, p.position);
-        playerTeamMap.set(p.playerId, false);
-    }
-
     const isOffenseHome = courtSnapshot.offTeamId === homeTeamId;
 
     return (
         <g className="player-markers">
             {courtSnapshot.positions.map(pos => {
-                const isHome = playerTeamMap.get(pos.playerId) ?? false;
+                const isHome = pos.isHome;
                 const isOffense = (isHome && isOffenseHome) || (!isHome && !isOffenseHome);
                 const color = isHome ? homeColor : awayColor;
-                const posLabel = playerPosMap.get(pos.playerId) || '?';
 
                 const cx = pos.x * scale;
                 const cy = pos.y * scale;
@@ -63,32 +45,34 @@ export const PlayerMarkers: React.FC<PlayerMarkersProps> = ({
                 return (
                     <g
                         key={pos.playerId}
-                        transform={`translate(${cx}, ${cy})`}
-                        style={{ transition: `transform ${transMs}ms ease-out` }}
+                        style={{
+                            transform: `translate(${cx}px, ${cy}px)`,
+                            transition: `transform ${transMs}ms ease-out`,
+                        }}
                     >
                         {/* Ball indicator ring */}
                         {pos.hasBall && (
-                            <circle r={18} fill="none" stroke="#fbbf24" strokeWidth={3} opacity={0.9} />
+                            <circle r={22} fill="none" stroke="#fbbf24" strokeWidth={3} opacity={0.9} />
                         )}
                         {/* Player circle */}
                         <circle
-                            r={14}
+                            r={18}
                             fill={color}
                             opacity={isOffense ? 0.9 : 0.5}
                             stroke={isOffense ? '#fff' : '#64748b'}
-                            strokeWidth={isOffense ? 1.5 : 1}
+                            strokeWidth={isOffense ? 2 : 1}
                         />
                         {/* Position label */}
                         <text
                             textAnchor="middle"
                             dominantBaseline="central"
                             fill="white"
-                            fontSize={9}
+                            fontSize={11}
                             fontWeight="bold"
                             fontFamily="monospace"
                             style={{ pointerEvents: 'none' }}
                         >
-                            {posLabel}
+                            {pos.position}
                         </text>
                     </g>
                 );

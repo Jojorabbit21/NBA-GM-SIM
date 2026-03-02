@@ -222,6 +222,8 @@ export interface PlayerCourtPosition {
     y: number;  // court feet (0-50)
     role: 'ballHandler' | 'screener' | 'spacer' | 'onBallDef' | 'helpDef';
     hasBall: boolean;
+    position: string;  // PG/SG/SF/PF/C
+    isHome: boolean;
 }
 
 export interface CourtSnapshot {
