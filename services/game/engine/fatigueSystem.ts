@@ -1,6 +1,6 @@
 
 import { LivePlayer } from './pbp/pbpTypes';
-import { TacticalSliders } from '../../../types';
+import { TacticalSliders, Player, Team } from '../../../types';
 import { SIM_CONFIG } from '../config/constants';
 
 /**
@@ -73,4 +73,38 @@ export function calculateRecovery(player: LivePlayer, baseAmount: number): numbe
         + staminaBonus   * C.RECOVERY_STAMINA_FACTOR
         + durabilityBonus * C.RECOVERY_DURABILITY_FACTOR;
     return baseAmount * multiplier;
+}
+
+/**
+ * 비경기일 휴식 회복: 모든 팀의 모든 선수에게 REST_DAY_RECOVERY 적용.
+ * stamina/durability가 높을수록 더 빠르게 회복.
+ *
+ * 기본 25pt 회복 기준:
+ *   stamina 50 / durability 50 → 25 회복
+ *   stamina 90 / durability 90 → 30 회복
+ *   stamina 30 / durability 30 → 22.5 회복
+ */
+export function applyRestDayRecovery(teams: Team[]): void {
+    const C = SIM_CONFIG.FATIGUE;
+    const base = C.REST_DAY_RECOVERY;
+
+    for (const team of teams) {
+        for (const player of team.roster) {
+            const current = player.condition ?? 100;
+            if (current >= 100) continue;
+
+            const staminaBonus = ((player.stamina ?? 50) - 50) / 100;
+            const durabilityBonus = ((player.durability ?? 50) - 50) / 100;
+            const multiplier = 1
+                + staminaBonus * C.RECOVERY_STAMINA_FACTOR
+                + durabilityBonus * C.RECOVERY_DURABILITY_FACTOR;
+
+            const recovery = base * multiplier;
+            const newCondition = Math.min(100, current + recovery);
+            const delta = newCondition - current;
+
+            player.condition = parseFloat(newCondition.toFixed(1));
+            player.conditionDelta = parseFloat(delta.toFixed(1));
+        }
+    }
 }

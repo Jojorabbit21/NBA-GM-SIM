@@ -1,7 +1,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
-import { GameState, LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
+import { GameState, LivePlayer, ShotEvent, CourtSnapshot } from '../services/game/engine/pbp/pbpTypes';
 import {
     createGameState,
     stepPossession,
@@ -50,6 +50,7 @@ export interface LiveDisplayState {
     awayFouls: number;
     userTactics: GameTactics;   // 유저 팀 현재 전술 (전술 탭 초기값)
     avgPossessionTime: { home: number; away: number }; // 평균 포세션 소모 시간 (초)
+    courtSnapshot: CourtSnapshot | null; // 코트 위 선수 위치 스냅샷
 }
 
 export interface UseLiveGameReturn {
@@ -327,6 +328,7 @@ function _buildDisplay(
                 ? state.possessionTimeAccum.away.total / state.possessionTimeAccum.away.count
                 : 0,
         },
+        courtSnapshot: state.courtSnapshot,
     };
 }
 

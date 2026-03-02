@@ -2,16 +2,17 @@
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog } from '../types';
 import { useLiveGame, PauseReason, GameSpeed } from '../hooks/useLiveGame';
-import { LivePlayer, ShotEvent } from '../services/game/engine/pbp/pbpTypes';
+import { LivePlayer, ShotEvent, CourtSnapshot } from '../services/game/engine/pbp/pbpTypes';
 import { TEAM_DATA } from '../data/teamData';
 import { LiveTacticsTab } from '../components/game/tabs/LiveTacticsTab';
 import { RotationGanttChart } from '../components/dashboard/RotationGanttChart';
 import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/courtCoordinates';
-import { UserPlus, UserMinus, Clock } from 'lucide-react';
+import { UserPlus, UserMinus, Clock, Users } from 'lucide-react';
 import { calculateWinProbability } from '../utils/simulationMath';
 import { calculatePlayerOvr } from '../utils/constants';
 import { useShotChartTooltip } from '../hooks/useShotChartTooltip';
 import { ShotTooltip } from '../components/game/ShotTooltip';
+import { PlayerMarkers } from '../components/game/PlayerMarkers';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -647,11 +648,16 @@ const LiveShotChart: React.FC<{
     shotEvents: ShotEvent[];
     homeTeam: Team;
     awayTeam: Team;
-}> = ({ shotEvents, homeTeam, awayTeam }) => {
+    courtSnapshot: CourtSnapshot | null;
+    homeOnCourt: LivePlayer[];
+    awayOnCourt: LivePlayer[];
+    speed: GameSpeed;
+}> = ({ shotEvents, homeTeam, awayTeam, courtSnapshot, homeOnCourt, awayOnCourt, speed }) => {
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
     const homeColor = homeData?.colors.primary || '#6366f1';
     const awayColor = awayData?.colors.primary || '#f59e0b';
+    const [showMarkers, setShowMarkers] = useState(true);
 
     const displayShots = useMemo(() => shotEvents.map(s => {
         const isHome = s.teamId === homeTeam.id;
@@ -758,6 +764,20 @@ const LiveShotChart: React.FC<{
                     <circle cx="892" cy="250" r="7.5" stroke="#e65100" />
                 </g>
 
+                {/* Player Position Markers */}
+                {showMarkers && (
+                    <PlayerMarkers
+                        courtSnapshot={courtSnapshot}
+                        homeTeamId={homeTeam.id}
+                        homeColor={homeColor}
+                        awayColor={awayColor}
+                        homeOnCourt={homeOnCourt}
+                        awayOnCourt={awayOnCourt}
+                        scale={S}
+                        speed={speed}
+                    />
+                )}
+
                 {/* Shot Dots (coords in 94x50, scaled to 940x500) */}
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
@@ -786,6 +806,18 @@ const LiveShotChart: React.FC<{
             {tooltip && (
                 <ShotTooltip tooltip={tooltip} containerWidth={containerSize.w} containerHeight={containerSize.h} />
             )}
+            {/* Marker toggle */}
+            <button
+                onClick={() => setShowMarkers(v => !v)}
+                className={`absolute top-2 left-2 z-10 p-1.5 rounded-lg border transition-colors ${
+                    showMarkers
+                        ? 'bg-indigo-600/80 border-indigo-500 text-white'
+                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white'
+                }`}
+                title={showMarkers ? '선수 마커 숨기기' : '선수 마커 표시'}
+            >
+                <Users size={14} />
+            </button>
         </div>
     );
 };
@@ -1174,6 +1206,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     shotEvents={shotEvents}
                                     homeTeam={homeTeam}
                                     awayTeam={awayTeam}
+                                    courtSnapshot={displayState.courtSnapshot}
+                                    homeOnCourt={displayState.homeOnCourt}
+                                    awayOnCourt={displayState.awayOnCourt}
+                                    speed={displayState.speed}
                                 />
                             </div>
 
