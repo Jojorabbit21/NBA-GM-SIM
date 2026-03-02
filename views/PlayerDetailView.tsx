@@ -1,11 +1,10 @@
 
 import React, { useMemo, useEffect, useState } from 'react';
-import { createPortal } from 'react-dom';
-import { X, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
-import { OvrBadge } from './common/OvrBadge';
+import { OvrBadge } from '../components/common/OvrBadge';
 import {
     ZONE_PATHS, COURT_LINES, ZONE_AVG,
     ZONE_CONFIG as CHART_ZONES,
@@ -15,13 +14,13 @@ import { ATTR_GROUPS } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
 
-interface PlayerDetailModalProps {
+interface PlayerDetailViewProps {
     player: Player;
     teamName?: string;
     teamId?: string;
     allTeams?: Team[];
     tendencySeed?: string;
-    onClose: () => void;
+    onBack: () => void;
 }
 
 type TabId = 'attributes' | 'season' | 'shooting' | 'gameLog' | 'playoffs';
@@ -89,7 +88,6 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-// ── Header Helpers ──
 const formatSalary = (salary: number): string => {
     if (salary >= 1_000_000) return `$${(salary / 1_000_000).toFixed(1)}M`;
     if (salary >= 1_000) return `$${(salary / 1_000).toFixed(0)}k`;
@@ -102,17 +100,14 @@ const getConditionColor = (val: number): string => {
     return 'text-red-400 bg-red-950/50';
 };
 
-// ── Hidden Archetypes (docs/engine/hidden-archetypes.md 기준) ──
+// ── Hidden Archetypes ──
 function getHiddenArchetypes(p: Player): string[] {
     const list: string[] = [];
     const threeVal = Math.round((p.threeCorner + p.three45 + p.threeTop) / 3);
 
-    // A. 클러치
     if (p.intangibles >= 90 && p.shotIq >= 85) list.push('Curtain Call');
     if (p.intangibles >= 85 && p.offConsist >= 88) list.push('Ice in Veins');
     if (p.intangibles >= 85 && p.strength >= 85 && p.ins >= 85) list.push('High Roller');
-
-    // B. 공격
     if (p.midRange >= 97) list.push('Mr. Fundamental');
     if (threeVal >= 90 && p.shotIq >= 85) list.push('Rangemaster');
     if (p.ins >= 90 && (p.strength >= 88 || p.vertical >= 88)) list.push('Tyrant');
@@ -120,24 +115,14 @@ function getHiddenArchetypes(p: Player): string[] {
     if (p.speed >= 95 && p.agility >= 93) list.push('Afterburner');
     if ((p.position === 'PG' || p.position === 'SG') && p.vertical >= 95 && p.closeShot >= 93) list.push('Ascendant');
     if (p.shotIq >= 88 && p.offConsist >= 88) list.push('Deadeye');
-
-    // C. 스틸
     if (p.steal >= 85 && p.agility >= 92) list.push('The Pickpocket');
     if (p.helpDefIq >= 85 && p.passPerc >= 80 && p.steal >= 75) list.push('The Hawk');
-
-    // D. 블락 (상호 배타)
     if (p.height >= 216 && p.blk >= 80) list.push('The Alien');
     else if (p.vertical >= 95 && p.blk >= 75) list.push('Skywalker');
     else if (p.helpDefIq >= 92 && p.blk >= 80) list.push('Defensive Anchor');
-
-    // E. 파울
     if (p.drawFoul >= 95 && p.shotIq >= 88) list.push('Manipulator');
-
-    // F. 리바운드
     if (p.offReb >= 95 || p.defReb >= 95) list.push('Harvester');
     if (p.height <= 200 && p.offReb >= 90 && p.vertical >= 90) list.push('Raider');
-
-    // G. 플레이메이킹
     if (p.passIq >= 92 && p.passVision >= 90 && p.passAcc >= 90) list.push('Clairvoyant');
     if (p.passIq >= 88 && p.passAcc >= 95) list.push('Overseer');
     if (p.passAcc >= 93 && p.passIq >= 88) list.push('Needle');
@@ -145,7 +130,7 @@ function getHiddenArchetypes(p: Player): string[] {
     return list;
 }
 
-// ── Reusable: Stat value resolver for any PlayerStats ──
+// ── Stat value resolver ──
 function resolveStatVal(st: PlayerStats, key: string): { display: string; color: string } {
     const dash = { display: '-', color: 'text-slate-600' };
     const gp = st.g || 1;
@@ -203,7 +188,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
     return { display: val, color };
 }
 
-// ── Reusable: Stats Table (Traditional + Shooting + Advanced) ──
+// ── Reusable: Stats Table ──
 const StatsTable: React.FC<{ stats: PlayerStats }> = ({ stats }) => (
     <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
         <div className="overflow-x-auto custom-scrollbar">
@@ -250,33 +235,23 @@ const StatsTable: React.FC<{ stats: PlayerStats }> = ({ stats }) => (
     </div>
 );
 
-export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, teamName, teamId, tendencySeed, onClose }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, tendencySeed, onBack }) => {
     const teamColor = teamId ? (TEAM_DATA[teamId]?.colors.primary || '#6366f1') : '#6366f1';
     const calculatedOvr = calculatePlayerOvr(player);
 
-    // ── Tab State ──
     const [activeTab, setActiveTab] = useState<TabId>('attributes');
 
-    // ── Scout Report (서술형 텐던시 리포트) ──
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
-
-    // ── Game Log (최근 경기 기록) ──
     const { data: gameLog, isLoading: gameLogLoading } = usePlayerGameLog(player.id, teamId);
 
     useEffect(() => {
-        const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onBack(); };
         window.addEventListener('keydown', handleKey);
         return () => window.removeEventListener('keydown', handleKey);
-    }, [onClose]);
-
-    useEffect(() => {
-        document.body.style.overflow = 'hidden';
-        return () => { document.body.style.overflow = 'unset'; };
-    }, []);
+    }, [onBack]);
 
     const s = player.stats;
 
-    // ── Shot chart zone data ──
     const chartZones = useMemo(() =>
         CHART_ZONES.map(z => {
             const sk = ZONE_STAT_KEYS[z.key];
@@ -286,10 +261,8 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
         }),
     [s]);
 
-    // ── Playoffs availability ──
     const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
 
-    // ── Tab Config ──
     const tabs: { id: TabId; label: string; disabled?: boolean }[] = [
         { id: 'attributes', label: '능력치' },
         { id: 'season', label: '시즌 기록' },
@@ -298,118 +271,112 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
         { id: 'playoffs', label: '플레이오프', disabled: !hasPlayoffs },
     ];
 
-    // ── Archetypes (memoized) ──
     const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
 
-    return createPortal(
-        <div className="fixed inset-0 z-[500] bg-slate-950 flex animate-in fade-in duration-200">
+    return (
+        <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
 
-            {/* ═══ LEFT PANEL ═══ */}
-            <div className="w-80 shrink-0 flex flex-col bg-slate-900 border-r border-slate-800 overflow-y-auto custom-scrollbar relative">
-                {/* Team Color Accent — vertical left stripe */}
-                <div className="absolute top-0 left-0 bottom-0 w-1 z-20" style={{ backgroundColor: teamColor }} />
+            {/* ═══ HEADER ═══ */}
+            <div className="flex-shrink-0 bg-slate-900 border-b border-slate-800 relative overflow-hidden">
+                {/* Team Color Accent Bar */}
+                <div className="absolute top-0 left-0 right-0 h-0.5" style={{ backgroundColor: teamColor }} />
                 <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
 
-                {/* 1. Player Identity */}
-                <div className="px-6 pt-6 pb-4 relative z-10">
-                    <div className="flex justify-center mb-3">
+                {/* Back button row */}
+                <div className="px-6 pt-3 pb-2 relative z-10">
+                    <button
+                        onClick={onBack}
+                        className="flex items-center gap-2 text-slate-500 hover:text-slate-300 transition-colors"
+                    >
+                        <ArrowLeft size={16} />
+                        <span className="text-xs font-bold uppercase tracking-widest">뒤로</span>
+                    </button>
+                </div>
+
+                {/* Player info */}
+                <div className="px-6 pb-4 relative z-10">
+                    <div className="flex items-center gap-5">
                         <OvrBadge value={calculatedOvr} size="xl" />
-                    </div>
-                    <h2 className="text-xl font-black text-white uppercase tracking-tight oswald text-center leading-tight">{player.name}</h2>
-                    <div className="flex items-center justify-center gap-2 mt-2 text-sm font-bold text-slate-400">
-                        {teamId && (
-                            <>
-                                <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
-                                <span>{teamName || 'Free Agent'}</span>
+                        <div className="flex-1 min-w-0">
+                            <h2 className="text-2xl font-black text-white uppercase tracking-tight oswald leading-tight">{player.name}</h2>
+                            <div className="flex items-center gap-2 mt-1 text-sm font-bold text-slate-400">
+                                {teamId && (
+                                    <>
+                                        <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
+                                        <span>{teamName || 'Free Agent'}</span>
+                                        <span className="text-slate-600">·</span>
+                                    </>
+                                )}
+                                <span>{player.position}</span>
                                 <span className="text-slate-600">·</span>
-                            </>
-                        )}
-                        <span>{player.position}</span>
+                                <span className="text-slate-500 text-xs">{player.height}cm / {player.weight}kg · {player.age}세</span>
+                            </div>
+                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                                {player.salary > 0 && (
+                                    <span className="text-sm font-bold text-slate-300">
+                                        {formatSalary(player.salary)}
+                                        {player.contractYears > 0 && <span className="text-slate-500 ml-1">· {player.contractYears}yr</span>}
+                                    </span>
+                                )}
+                                {player.condition != null && (
+                                    <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${getConditionColor(player.condition)}`}>
+                                        {player.condition}
+                                    </span>
+                                )}
+                                {player.health && player.health !== 'Healthy' && (
+                                    <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-0.5 rounded-lg">
+                                        {player.injuryType || player.health}
+                                        {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                    <p className="text-xs text-slate-500 text-center mt-1">
-                        {player.height}cm / {player.weight}kg · {player.age}세
-                    </p>
 
-                    {/* Salary & Contract */}
-                    {player.salary > 0 && (
-                        <p className="text-sm font-bold text-slate-300 text-center mt-2">
-                            {formatSalary(player.salary)}
-                            {player.contractYears > 0 && <span className="text-slate-500 ml-1">· {player.contractYears}yr</span>}
-                        </p>
-                    )}
-
-                    {/* Badges: Condition + Injury */}
-                    {(player.condition != null || (player.health && player.health !== 'Healthy')) && (
-                        <div className="flex items-center justify-center gap-2 mt-2">
-                            {player.condition != null && (
-                                <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${getConditionColor(player.condition)}`}>
-                                    {player.condition}
-                                </span>
+                    {/* Archetypes + Scout Report */}
+                    {(archetypes.length > 0 || scoutReport.length > 0) && (
+                        <div className="mt-3 pt-3 border-t border-slate-800/50">
+                            {archetypes.length > 0 && (
+                                <p className="text-xs font-bold text-indigo-400 mb-1">
+                                    {archetypes.join(' / ')}
+                                </p>
                             )}
-                            {player.health && player.health !== 'Healthy' && (
-                                <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-0.5 rounded-lg">
-                                    {player.injuryType || player.health}
-                                    {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                                </span>
+                            {scoutReport.length > 0 && (
+                                <p className="text-xs text-slate-400 leading-relaxed">
+                                    {scoutReport}
+                                </p>
                             )}
                         </div>
                     )}
                 </div>
 
-                {/* 2. Archetypes + Scout Report */}
-                {(archetypes.length > 0 || scoutReport.length > 0) && (
-                    <div className="px-6 py-4 border-t border-slate-800/50">
-                        {archetypes.length > 0 && (
-                            <p className="text-xs font-bold text-indigo-400 mb-2">
-                                {archetypes.join(' / ')}
-                            </p>
-                        )}
-                        {scoutReport.length > 0 && (
-                            <p className="text-xs text-slate-400 leading-relaxed">
-                                {scoutReport}
-                            </p>
-                        )}
-                    </div>
-                )}
-
-                {/* 3. Tab Navigation */}
-                <div className="px-3 py-3 border-t border-slate-800/50 space-y-1">
+                {/* Tab Bar */}
+                <div className="px-6 flex gap-1 border-t border-slate-800/50">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => !tab.disabled && setActiveTab(tab.id)}
                             disabled={tab.disabled}
                             className={`
-                                w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all
+                                px-4 py-2.5 text-xs font-black uppercase tracking-widest transition-all relative
                                 ${activeTab === tab.id
-                                    ? 'bg-indigo-500/10 text-indigo-400'
+                                    ? 'text-indigo-400'
                                     : tab.disabled
                                         ? 'text-slate-700 cursor-not-allowed'
-                                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}
+                                        : 'text-slate-500 hover:text-slate-300'}
                             `}
                         >
                             {tab.label}
+                            {activeTab === tab.id && (
+                                <div className="absolute bottom-0 left-2 right-2 h-0.5 bg-indigo-500 rounded-full" />
+                            )}
                         </button>
                     ))}
                 </div>
-
-                {/* Spacer */}
-                <div className="flex-1" />
-
-                {/* 4. Close Button */}
-                <div className="px-3 pb-4">
-                    <button
-                        onClick={onClose}
-                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors"
-                    >
-                        <X size={14} />
-                        <span>닫기</span>
-                    </button>
-                </div>
             </div>
 
-            {/* ═══ RIGHT CONTENT BODY ═══ */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-950/50">
+            {/* ═══ TAB CONTENT BODY ═══ */}
+            <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6">
 
                 {/* ═══ TAB: 능력치 ═══ */}
                 {activeTab === 'attributes' && (
@@ -655,7 +622,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                 )}
 
             </div>
-        </div>,
-        document.body
+        </div>
     );
 };

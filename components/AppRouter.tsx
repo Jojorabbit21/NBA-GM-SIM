@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useRef } from 'react';
-import { AppView, Team, GameTactics, DraftPoolType } from '../types';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { AppView, Team, Player, GameTactics, DraftPoolType } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
@@ -17,6 +17,8 @@ import { InboxView } from '../views/InboxView';
 import { FantasyDraftView } from '../views/FantasyDraftView';
 import { DraftHistoryView } from '../views/DraftHistoryView';
 import { DraftLotteryView } from '../views/DraftLotteryView';
+import { PlayerDetailView } from '../views/PlayerDetailView';
+import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
 
 interface AppRouterProps {
@@ -37,8 +39,15 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const myTeam = gameData.teams.find((t: Team) => t.id === gameData.myTeamId);
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
+    const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
     const scheduleMonthRef = useRef<Date | null>(null);
+
+    const handleViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
+        setViewPlayerData({ player, teamName, teamId });
+        previousViewRef.current = view;
+        setView('PlayerDetail');
+    }, [view, setView]);
 
     // Reset selected team when leaving Roster view (unless navigating from Standings)
     useEffect(() => {
@@ -147,6 +156,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         depthChart={gameData.depthChart} onUpdateDepthChart={gameData.setDepthChart}
                         onForceSave={gameData.forceSave}
                         tendencySeed={gameData.tendencySeed || undefined}
+                        onViewPlayer={handleViewPlayer}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {
@@ -157,8 +167,26 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 );
             }
             return null;
+        case 'PlayerDetail':
+            if (viewPlayerData) {
+                return (
+                    <PlayerDetailView
+                        player={{...viewPlayerData.player, ovr: calculatePlayerOvr(viewPlayerData.player)}}
+                        teamName={viewPlayerData.teamName}
+                        teamId={viewPlayerData.teamId}
+                        allTeams={gameData.teams}
+                        tendencySeed={gameData.tendencySeed || undefined}
+                        onBack={() => {
+                            setViewPlayerData(null);
+                            setView(previousViewRef.current);
+                        }}
+                    />
+                );
+            }
+            setView('Dashboard');
+            return null;
         case 'Roster':
-            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} />;
+            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} />;
         case 'Schedule':
             return (
                 <ScheduleView
@@ -188,7 +216,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'Leaderboard':
-            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} />;
+            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} />;
         case 'Transactions':
             return (
                 <TransactionsView
@@ -197,6 +225,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     transactions={gameData.transactions} onAddTransaction={(tx) => gameData.setTransactions((prev: any) => [tx, ...prev])}
                     onForceSave={gameData.forceSave} userId={session?.user?.id} refreshUnreadCount={refreshUnreadCount}
                     tendencySeed={gameData.tendencySeed || undefined}
+                    onViewPlayer={handleViewPlayer}
                 />
             );
         case 'Playoffs':
@@ -213,6 +242,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     teams={gameData.teams}
                     onUpdateUnreadCount={refreshUnreadCount}
                     tendencySeed={gameData.tendencySeed || undefined}
+                    onViewPlayer={handleViewPlayer}
                     onViewGameResult={(result) => {
                         previousViewRef.current = 'Inbox';
                         sim.loadSavedGameResult(result);

@@ -2,7 +2,6 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeftRight, Loader2 } from 'lucide-react';
 import { Team, Player, Transaction } from '../types';
-import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // Components & Hooks
@@ -26,14 +25,14 @@ interface TransactionsViewProps {
   userId?: string;
   refreshUnreadCount?: () => void;
   tendencySeed?: string;
+  onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
 
 export const TransactionsView: React.FC<TransactionsViewProps> = ({ 
     team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions,
-    onAddTransaction, onForceSave, userId, refreshUnreadCount, tendencySeed
+    onAddTransaction, onForceSave, userId, refreshUnreadCount, tendencySeed, onViewPlayer
 }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
-  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
 
   // Use Custom Hook for Business Logic
   const tradeSystem = useTradeSystem(
@@ -58,17 +57,15 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
       </span>
   );
 
-  const handleViewPlayer = (partialPlayer: Player) => {
+  const handleViewPlayerClick = (partialPlayer: Player) => {
       let fullPlayer: Player | undefined;
+      let foundTeam: Team | undefined;
       for (const t of teams) {
-          fullPlayer = t.roster.find(p => p.id === partialPlayer.id);
-          if (fullPlayer) break;
+          const found = t.roster.find(p => p.id === partialPlayer.id);
+          if (found) { fullPlayer = found; foundTeam = t; break; }
       }
-      setViewPlayer(fullPlayer || partialPlayer);
+      onViewPlayer(fullPlayer || partialPlayer, foundTeam?.id, foundTeam?.name);
   };
-
-  const getPlayerTeam = (p: Player) => teams.find(t => t.roster.some(rp => rp.id === p.id));
-  const playerTeam = viewPlayer ? getPlayerTeam(viewPlayer) : null;
   
   // Memoize Rosters
   const sortedUserRoster = useMemo(() => [...(team?.roster || [])].sort((a,b) => calculatePlayerOvr(b) - calculatePlayerOvr(a)), [team?.roster]);
@@ -87,7 +84,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal">
-       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} tendencySeed={tendencySeed} />}
+       {/* Player detail is now handled via onViewPlayer → AppRouter */}
        
        {pendingTrade && (
          <div className="relative z-[200]">
@@ -138,7 +135,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     targetPositions={targetPositions}
                     isTradeDeadlinePassed={isTradeDeadlinePassed}
                     toggleBlockPlayer={toggleBlockPlayer}
-                    handleViewPlayer={handleViewPlayer}
+                    handleViewPlayer={handleViewPlayerClick}
                     toggleTargetPosition={toggleTargetPosition}
                     handleSearchBlockOffers={handleSearchBlockOffers}
                     onAcceptOffer={(offer) => setPendingTrade({
@@ -164,7 +161,7 @@ export const TransactionsView: React.FC<TransactionsViewProps> = ({
                     setProposalRequirements={setProposalRequirements}
                     setProposalSearchPerformed={setProposalSearchPerformed}
                     toggleProposalPlayer={toggleProposalPlayer}
-                    handleViewPlayer={handleViewPlayer}
+                    handleViewPlayer={handleViewPlayerClick}
                     handleRequestRequirements={handleRequestRequirements}
                     onAcceptRequirement={(req, targetTeam) => setPendingTrade({
                         userAssets: req.players,

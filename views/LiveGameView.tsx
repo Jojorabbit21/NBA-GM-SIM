@@ -10,6 +10,8 @@ import { COURT_WIDTH, COURT_HEIGHT, HOOP_X_LEFT, HOOP_Y_CENTER } from '../utils/
 import { UserPlus, UserMinus, Clock } from 'lucide-react';
 import { calculateWinProbability } from '../utils/simulationMath';
 import { calculatePlayerOvr } from '../utils/constants';
+import { useShotChartTooltip } from '../hooks/useShotChartTooltip';
+import { ShotTooltip } from '../components/game/ShotTooltip';
 
 // ─────────────────────────────────────────────────────────────
 // Props
@@ -659,10 +661,24 @@ const LiveShotChart: React.FC<{
 
     // SVG court at 940x500 scale (10x of 94x50 ft). Shot coords are in 94x50 → multiply by 10.
     const S = 10;
+    const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave } = useShotChartTooltip(displayShots, S);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerSize, setContainerSize] = useState({ w: 940, h: 500 });
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const obs = new ResizeObserver(entries => {
+            const { width, height } = entries[0].contentRect;
+            setContainerSize({ w: width, h: height });
+        });
+        obs.observe(containerRef.current);
+        return () => obs.disconnect();
+    }, []);
 
     return (
-        <div className="w-full" style={{ aspectRatio: '940/500' }}>
-            <svg viewBox="0 0 940 500" className="w-full h-full">
+        <div ref={containerRef} className="w-full relative" style={{ aspectRatio: '940/500' }}
+            onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>
+            <svg ref={svgRef} viewBox="0 0 940 500" className="w-full h-full">
                 {/* Court Background */}
                 <rect width="940" height="500" fill="rgb(221,200,173)" />
                 {/* Paint Fills */}
@@ -745,20 +761,31 @@ const LiveShotChart: React.FC<{
                 {/* Shot Dots (coords in 94x50, scaled to 940x500) */}
                 {displayShots.map((shot, i) => {
                     const color = shot.isHome ? homeColor : awayColor;
+                    const isHighlighted = highlightShotIds.has(shot.id);
                     return (
                         <g key={`${shot.id}-${i}`}>
                             {shot.isMake ? (
-                                <circle cx={shot.x * S} cy={shot.y * S} r={6.5} fill={color} stroke="white" strokeWidth="1" opacity="0.9" />
+                                <circle cx={shot.x * S} cy={shot.y * S}
+                                    r={isHighlighted ? 8.5 : 6.5} fill={color}
+                                    stroke={isHighlighted ? '#fff' : 'white'}
+                                    strokeWidth={isHighlighted ? 2 : 1}
+                                    opacity={isHighlighted ? 1 : 0.9}
+                                    className="transition-all duration-150" />
                             ) : (
-                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`} opacity="0.5">
-                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke={color} strokeWidth="2.5" />
-                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke={color} strokeWidth="2.5" />
+                                <g transform={`translate(${shot.x * S}, ${shot.y * S})`}
+                                    opacity={isHighlighted ? 1 : 0.5}
+                                    className="transition-all duration-150">
+                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke={isHighlighted ? '#fff' : color} strokeWidth={isHighlighted ? 3 : 2.5} />
+                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke={isHighlighted ? '#fff' : color} strokeWidth={isHighlighted ? 3 : 2.5} />
                                 </g>
                             )}
                         </g>
                     );
                 })}
             </svg>
+            {tooltip && (
+                <ShotTooltip tooltip={tooltip} containerWidth={containerSize.w} containerHeight={containerSize.h} />
+            )}
         </div>
     );
 };
