@@ -359,8 +359,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div className="pb-6 border-b-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
+                        <div className="px-6 py-3 flex items-center relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                            <div className="absolute inset-0 bg-black/60 pointer-events-none" />
+                            <span className="relative z-10 text-sm font-black uppercase tracking-widest" style={{ color: theme.text }}>2025-26 시즌 스탯</span>
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
                             <StatsSubTable cols={TRAD_COLS} stats={s} />
@@ -369,8 +370,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
                     {hasPlayoffs && (
                         <div className="pb-6 border-b-2 border-slate-700">
-                            <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
+                            <div className="px-6 py-3 flex items-center relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                                <div className="absolute inset-0 bg-black/60 pointer-events-none" />
+                                <span className="relative z-10 text-sm font-black uppercase tracking-widest" style={{ color: theme.text }}>플레이오프 스탯</span>
                             </div>
                             <div className="overflow-x-auto custom-scrollbar">
                                 <StatsSubTable cols={TRAD_COLS} stats={player.playoffStats!} />
@@ -381,8 +383,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="pb-6 border-b-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">능력치</span>
+                        <div className="px-6 py-3 flex items-center relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                            <div className="absolute inset-0 bg-black/60 pointer-events-none" />
+                            <span className="relative z-10 text-sm font-black uppercase tracking-widest" style={{ color: theme.text }}>능력치</span>
                         </div>
                         <div className="grid grid-cols-6">
                             {ATTR_GROUPS.map((gr, gi) => {
@@ -419,13 +422,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율 ═══ */}
-                    <div className="pb-6 border-b-2 border-slate-700 grid items-start" style={{ gridTemplateColumns: '4fr 6fr' }}>
+                    <div className="pb-6 border-b-2 border-slate-700 grid items-stretch" style={{ gridTemplateColumns: '4fr 6fr' }}>
 
                         {/* Col 1: 샷 차트 */}
                         <div className="border-r border-slate-800">
-                            <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center justify-between">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
-                                <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                            <div className="px-6 py-3 flex items-center justify-between relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                                <div className="absolute inset-0 bg-black/60 pointer-events-none" />
+                                <span className="relative z-10 text-sm font-black uppercase tracking-widest" style={{ color: theme.text }}>샷 차트</span>
+                                <div className="relative z-10 flex items-center gap-1.5 text-[9px] text-slate-500">
                                     <span>LOW</span>
                                     <div className="flex gap-0.5">
                                         <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
@@ -478,8 +482,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
-                            <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
+                            <div className="px-6 py-3 flex items-center relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+                                <div className="absolute inset-0 bg-black/60 pointer-events-none" />
+                                <span className="relative z-10 text-sm font-black uppercase tracking-widest" style={{ color: theme.text }}>최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
                                 <div className="flex items-center justify-center py-8">
