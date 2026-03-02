@@ -10,7 +10,7 @@ import {
     ZONE_CONFIG as CHART_ZONES,
     getZoneStyle, getZonePillColors
 } from '../utils/courtZones';
-import { ATTR_GROUPS } from '../data/attributeConfig';
+import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_NAME_MAP } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
 import { usePlayerGameLog } from '../services/queries';
 
@@ -24,8 +24,6 @@ interface PlayerDetailViewProps {
 }
 
 type TabId = 'attributes' | 'season' | 'shooting' | 'gameLog' | 'playoffs';
-
-const ATTR_W = 50;
 
 // ── Stats Sections Config ──
 const TRAD_COLS = [
@@ -282,73 +280,61 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 <div className="absolute top-0 left-0 right-0 h-0.5" style={{ backgroundColor: teamColor }} />
                 <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
 
-                {/* Back button row */}
-                <div className="px-6 pt-3 pb-2 relative z-10">
+                {/* Player info — single row */}
+                <div className="px-6 py-3 relative z-10 flex items-center gap-4 flex-wrap">
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-2 text-slate-500 hover:text-slate-300 transition-colors"
+                        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 transition-colors shrink-0"
                     >
-                        <ArrowLeft size={16} />
-                        <span className="text-xs font-bold uppercase tracking-widest">뒤로</span>
+                        <ArrowLeft size={14} />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
                     </button>
-                </div>
-
-                {/* Player info */}
-                <div className="px-6 pb-4 relative z-10">
-                    <div className="flex items-center gap-5">
-                        <OvrBadge value={calculatedOvr} size="xl" />
-                        <div className="flex-1 min-w-0">
-                            <h2 className="text-2xl font-black text-white uppercase tracking-tight oswald leading-tight">{player.name}</h2>
-                            <div className="flex items-center gap-2 mt-1 text-sm font-bold text-slate-400">
-                                {teamId && (
-                                    <>
-                                        <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
-                                        <span>{teamName || 'Free Agent'}</span>
-                                        <span className="text-slate-600">·</span>
-                                    </>
-                                )}
-                                <span>{player.position}</span>
-                                <span className="text-slate-600">·</span>
-                                <span className="text-slate-500 text-xs">{player.height}cm / {player.weight}kg · {player.age}세</span>
-                            </div>
-                            <div className="flex items-center gap-3 mt-1.5 flex-wrap">
-                                {player.salary > 0 && (
-                                    <span className="text-sm font-bold text-slate-300">
-                                        {formatSalary(player.salary)}
-                                        {player.contractYears > 0 && <span className="text-slate-500 ml-1">· {player.contractYears}yr</span>}
-                                    </span>
-                                )}
-                                {player.condition != null && (
-                                    <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${getConditionColor(player.condition)}`}>
-                                        {player.condition}
-                                    </span>
-                                )}
-                                {player.health && player.health !== 'Healthy' && (
-                                    <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-0.5 rounded-lg">
-                                        {player.injuryType || player.health}
-                                        {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Archetypes + Scout Report */}
-                    {(archetypes.length > 0 || scoutReport.length > 0) && (
-                        <div className="mt-3 pt-3 border-t border-slate-800/50">
-                            {archetypes.length > 0 && (
-                                <p className="text-xs font-bold text-indigo-400 mb-1">
-                                    {archetypes.join(' / ')}
-                                </p>
-                            )}
-                            {scoutReport.length > 0 && (
-                                <p className="text-xs text-slate-400 leading-relaxed">
-                                    {scoutReport}
-                                </p>
-                            )}
+                    <OvrBadge value={calculatedOvr} size="md" />
+                    <h2 className="text-lg font-black text-white uppercase tracking-tight oswald leading-none">{player.name}</h2>
+                    {teamId && (
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                            <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
+                            <span>{teamName || 'FA'}</span>
                         </div>
                     )}
+                    <span className="text-xs font-bold text-slate-400">{player.position}</span>
+                    <span className="text-xs text-slate-500">{player.age}세</span>
+                    <span className="text-xs text-slate-500">{player.height}cm</span>
+                    <span className="text-xs text-slate-500">{player.weight}kg</span>
+                    {player.salary > 0 && (
+                        <span className="text-xs font-bold text-slate-300">
+                            {formatSalary(player.salary)}
+                            {player.contractYears > 0 && <span className="text-slate-500 ml-0.5">· {player.contractYears}yr</span>}
+                        </span>
+                    )}
+                    {player.condition != null && (
+                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${getConditionColor(player.condition)}`}>
+                            {player.condition}
+                        </span>
+                    )}
+                    {player.health && player.health !== 'Healthy' && (
+                        <span className="text-[10px] font-black text-red-400 bg-red-950/50 px-1.5 py-0.5 rounded-md">
+                            {player.injuryType || player.health}
+                            {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                        </span>
+                    )}
                 </div>
+
+                {/* Scout Report */}
+                {(archetypes.length > 0 || scoutReport.length > 0) && (
+                    <div className="px-6 pb-3 relative z-10">
+                        {archetypes.length > 0 && (
+                            <span className="text-xs font-bold text-indigo-400 mr-2">
+                                {archetypes.join(' / ')}
+                            </span>
+                        )}
+                        {scoutReport.length > 0 && (
+                            <span className="text-xs text-slate-400 leading-relaxed">
+                                {scoutReport}
+                            </span>
+                        )}
+                    </div>
+                )}
 
                 {/* Tab Bar */}
                 <div className="px-6 flex gap-1 border-t border-slate-800/50">
@@ -378,47 +364,41 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
             {/* ═══ TAB CONTENT BODY ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6">
 
-                {/* ═══ TAB: 능력치 ═══ */}
+                {/* ═══ TAB: 능력치 (FM-style vertical columns) ═══ */}
                 {activeTab === 'attributes' && (
-                    <div className="overflow-x-auto custom-scrollbar bg-slate-900 border border-slate-800 rounded-xl shadow-lg">
-                        <table className="text-left border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
-                            <colgroup>
-                                {ATTR_GROUPS.flatMap(gr => gr.keys.map((_, i) => <col key={`${gr.id}-${i}`} style={{ width: ATTR_W }} />))}
-                            </colgroup>
-                            <thead className="bg-slate-950">
-                                <tr className="h-8">
-                                    {ATTR_GROUPS.map(gr => (
-                                        <th key={gr.id} colSpan={gr.keys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
-                                            <div className="flex items-center justify-center">
-                                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
-                                            </div>
-                                        </th>
-                                    ))}
-                                </tr>
-                                <tr className="h-8 text-slate-500 text-[10px] font-black uppercase tracking-widest">
-                                    {ATTR_GROUPS.flatMap(gr => gr.keys.map((k, ki) => {
-                                        const label = ki === 0 ? 'AVG' : (k === 'threeCorner' ? '3PT' : k.slice(0, 3).toUpperCase());
-                                        return (
-                                            <th key={k} className="py-2 px-1 text-center border-b border-r border-slate-800/50 whitespace-nowrap bg-slate-950">
-                                                {label}
-                                            </th>
-                                        );
-                                    }))}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr className="h-10">
-                                    {ATTR_GROUPS.flatMap(gr => gr.keys.map(k => {
-                                        const val = (player as any)[k] || 0;
-                                        return (
-                                            <td key={k} className="py-2 px-1 text-center border-b border-r border-slate-800/30 whitespace-nowrap">
-                                                <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(val)}`}>{val}</span>
-                                            </td>
-                                        );
-                                    }))}
-                                </tr>
-                            </tbody>
-                        </table>
+                    <div className="grid grid-cols-3 gap-3">
+                        {ATTR_GROUPS.map(gr => {
+                            const avgKey = gr.keys[0];
+                            const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
+                            const avgVal = (player as any)[avgKey] || 0;
+                            return (
+                                <div key={gr.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                                    {/* Category Header */}
+                                    <div className="px-4 py-2 bg-slate-950 border-b border-slate-800">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
+                                    </div>
+                                    {/* Attribute Rows */}
+                                    <div className="divide-y divide-slate-800/30">
+                                        {attrKeys.map(k => {
+                                            const val = (player as any)[k] || 0;
+                                            const nameRaw = ATTR_NAME_MAP[k] || k;
+                                            const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
+                                            return (
+                                                <div key={k} className="flex items-center justify-between px-4 py-1.5">
+                                                    <span className="text-xs text-slate-400 truncate mr-3">{label}</span>
+                                                    <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    {/* Category Average */}
+                                    <div className="flex items-center justify-between px-4 py-2 bg-slate-950/60 border-t border-slate-800">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
+                                        <span className={`font-mono font-black text-sm tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
 
