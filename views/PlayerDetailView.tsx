@@ -92,12 +92,6 @@ const formatSalary = (salary: number): string => {
     return `$${salary}`;
 };
 
-const getConditionColor = (val: number): string => {
-    if (val >= 80) return 'text-emerald-400 bg-emerald-950/50';
-    if (val >= 50) return 'text-amber-400 bg-amber-950/50';
-    return 'text-red-400 bg-red-950/50';
-};
-
 // ── Hidden Archetypes ──
 function getHiddenArchetypes(p: Player): string[] {
     const list: string[] = [];
@@ -284,36 +278,31 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 <div className="px-6 py-3 relative z-10 flex items-center gap-4 flex-wrap">
                     <button
                         onClick={onBack}
-                        className="flex items-center gap-1.5 text-slate-500 hover:text-slate-300 transition-colors shrink-0"
+                        className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors shrink-0"
                     >
                         <ArrowLeft size={14} />
                         <span className="text-[10px] font-bold uppercase tracking-widest">뒤로</span>
                     </button>
                     <OvrBadge value={calculatedOvr} size="md" />
-                    <h2 className="text-lg font-black text-white uppercase tracking-tight oswald leading-none">{player.name}</h2>
+                    <h2 className="text-lg font-black text-white uppercase tracking-tight oswald leading-tight">{player.name}</h2>
                     {teamId && (
-                        <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400">
+                        <div className="flex items-center gap-1.5 text-xs leading-tight text-slate-400">
                             <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
                             <span>{teamName || 'FA'}</span>
                         </div>
                     )}
-                    <span className="text-xs font-bold text-slate-400">{player.position}</span>
-                    <span className="text-xs text-slate-500">{player.age}세</span>
-                    <span className="text-xs text-slate-500">{player.height}cm</span>
-                    <span className="text-xs text-slate-500">{player.weight}kg</span>
+                    <span className="text-xs leading-tight text-slate-400">{player.position}</span>
+                    <span className="text-xs leading-tight text-slate-400">{player.age}세</span>
+                    <span className="text-xs leading-tight text-slate-400">{player.height}cm</span>
+                    <span className="text-xs leading-tight text-slate-400">{player.weight}kg</span>
                     {player.salary > 0 && (
-                        <span className="text-xs font-bold text-slate-300">
+                        <span className="text-xs leading-tight text-slate-400">
                             {formatSalary(player.salary)}
-                            {player.contractYears > 0 && <span className="text-slate-500 ml-0.5">· {player.contractYears}yr</span>}
-                        </span>
-                    )}
-                    {player.condition != null && (
-                        <span className={`text-[10px] font-black px-1.5 py-0.5 rounded-md ${getConditionColor(player.condition)}`}>
-                            {player.condition}
+                            {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
                         </span>
                     )}
                     {player.health && player.health !== 'Healthy' && (
-                        <span className="text-[10px] font-black text-red-400 bg-red-950/50 px-1.5 py-0.5 rounded-md">
+                        <span className="text-[10px] leading-tight font-black text-red-400 bg-red-950/50 px-1.5 py-0.5 rounded-md">
                             {player.injuryType || player.health}
                             {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
                         </span>
@@ -364,35 +353,33 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
             {/* ═══ TAB CONTENT BODY ═══ */}
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6">
 
-                {/* ═══ TAB: 능력치 (FM-style vertical columns) ═══ */}
+                {/* ═══ TAB: 능력치 (FM-style flat columns) ═══ */}
                 {activeTab === 'attributes' && (
-                    <div className="grid grid-cols-6 gap-2">
+                    <div className="grid grid-cols-6 gap-x-4">
                         {ATTR_GROUPS.map(gr => {
                             const avgKey = gr.keys[0];
                             const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
                             const avgVal = (player as any)[avgKey] || 0;
                             return (
-                                <div key={gr.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                                <div key={gr.id}>
                                     {/* Category Header */}
-                                    <div className="px-3 py-1.5 bg-slate-950 border-b border-slate-800">
+                                    <div className="pb-1.5 mb-1 border-b border-slate-700">
                                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
                                     </div>
                                     {/* Attribute Rows */}
-                                    <div className="divide-y divide-slate-800/30">
-                                        {attrKeys.map(k => {
-                                            const val = (player as any)[k] || 0;
-                                            const nameRaw = ATTR_NAME_MAP[k] || k;
-                                            const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
-                                            return (
-                                                <div key={k} className="flex items-center justify-between px-3 py-1">
-                                                    <span className="text-[11px] text-slate-400 truncate mr-2">{label}</span>
-                                                    <span className={`font-mono font-black text-[11px] tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                    {attrKeys.map(k => {
+                                        const val = (player as any)[k] || 0;
+                                        const nameRaw = ATTR_NAME_MAP[k] || k;
+                                        const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
+                                        return (
+                                            <div key={k} className="flex items-center justify-between py-0.5">
+                                                <span className="text-[11px] text-slate-500 truncate mr-2">{label}</span>
+                                                <span className={`font-mono font-black text-[11px] tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                            </div>
+                                        );
+                                    })}
                                     {/* Category Average */}
-                                    <div className="flex items-center justify-between px-3 py-1.5 bg-slate-950/60 border-t border-slate-800">
+                                    <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-slate-700">
                                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
                                         <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                     </div>
