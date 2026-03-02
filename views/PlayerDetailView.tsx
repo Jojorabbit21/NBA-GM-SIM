@@ -355,7 +355,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 </div>
 
                 {/* ═══ BODY — 3 sections ═══ */}
-                <div className="text-xs divide-y divide-slate-700">
+                <div className="text-xs divide-y divide-slate-700 bg-slate-900">
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div className="pb-6">
@@ -422,7 +422,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="pb-6 grid items-start" style={{ gridTemplateColumns: '4fr 6fr' }}>
 
                         {/* Col 1: 샷 차트 */}
-                        <div className="p-4">
+                        <div>
                             <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
                                 <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
@@ -435,6 +435,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <span>HIGH</span>
                                 </div>
                             </div>
+                            <div className="p-4">
                             <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden">
                                 <svg viewBox="0 0 435 403" className="w-full h-full">
                                     <rect x="0" y="0" width="435" height="403" fill="#020617" />
@@ -472,10 +473,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     </g>
                                 </svg>
                             </div>
+                            </div>
                         </div>
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
-                        <div className="flex flex-col min-h-0 p-4">
+                        <div className="flex flex-col min-h-0">
                             <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
