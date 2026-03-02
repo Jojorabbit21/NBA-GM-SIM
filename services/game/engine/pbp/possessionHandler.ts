@@ -204,12 +204,21 @@ function calculateTurnoverChance(
         dribbleGapRisk = Math.max(0, actor.attr.speed - actor.attr.spdBall) * 0.001;
     }
 
+    // --- PLAYMAKING ARCHETYPE: Needle (패스 플레이 턴오버 감소) ---
+    let needleReduction = 0;
+    const pmCfg = SIM_CONFIG.PLAYMAKING;
+    if (pmCfg.ENABLED && isPassPlay &&
+        actor.attr.passAcc >= pmCfg.NEEDLE_PASSACC_THRESHOLD &&
+        actor.attr.passIq >= pmCfg.NEEDLE_PASSIQ_THRESHOLD) {
+        needleReduction = pmCfg.NEEDLE_TOV_REDUCTION;
+    }
+
     // [Gradual] 수비자 stl → 볼 탈취 압박 (모든 상황, stl 90: +1.6%, stl 50: -1.6%)
     const defStlPressure = (da.stl - 70) * 0.0008;
     // [Gradual] 수비자 passPerc → 패싱레인 읽기 (패싱 플레이 전용, 비패싱 = 0)
     const defLaneReading = isPassPlay ? (da.passPerc - 70) * 0.0010 : 0;
 
-    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + passAccFactor + contextRisk + archetypeRisk + composureFactor + dribbleGapRisk + defStlPressure + defLaneReading;
+    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + passAccFactor + contextRisk + archetypeRisk + composureFactor + dribbleGapRisk + defStlPressure + defLaneReading - needleReduction;
 
     // Cap Probability (Min 2%, Max 25%)
     totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
@@ -581,6 +590,27 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         }
     }
 
+    // --- PLAYMAKING ARCHETYPE BONUSES (패서 히든 아키타입) ---
+    let playmakingBonus = 0;
+    const pmCfg = SIM_CONFIG.PLAYMAKING;
+    if (pmCfg.ENABLED && secondaryActor) {
+        const pa = secondaryActor.attr;
+
+        // G-1. Clairvoyant: 어시스트 시 슈터 hitRate +2%
+        if (pa.passIq >= pmCfg.CLAIRVOYANT_PASSIQ_THRESHOLD &&
+            pa.passVision >= pmCfg.CLAIRVOYANT_PASSVISION_THRESHOLD &&
+            pa.passAcc >= pmCfg.CLAIRVOYANT_PASSACC_THRESHOLD) {
+            playmakingBonus += pmCfg.CLAIRVOYANT_HITRATE_BONUS;
+        }
+
+        // G-2. Overseer: PnR_Roll/PnR_Pop 시 롤러 hitRate +3%
+        if ((selectedPlayType === 'PnR_Roll' || selectedPlayType === 'PnR_Pop') &&
+            pa.passIq >= pmCfg.OVERSEER_PASSIQ_THRESHOLD &&
+            pa.passAcc >= pmCfg.OVERSEER_PASSACC_THRESHOLD) {
+            playmakingBonus += pmCfg.OVERSEER_PNR_ROLLER_BONUS;
+        }
+    }
+
     // 3PT 서브존 결정 (hitRate에 개별 능력치 적용 + 스탯 기록 일관성)
     const subZone = preferredZone === '3PT' ? resolveDynamicZone(actor, '3PT') : undefined;
 
@@ -588,7 +618,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         actor, defender, defTeam,
         selectedPlayType, preferredZone,
         sliders, // Pass full sliders
-        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus,
+        bonusHitRate + zoneQualityMod + getMomentumBonus(state, offTeam.id) + foulDefPenalty + shotDiscMod + egoMod + assistQualityMod + openDetectionMod + deliveryQualityMod + lobBonus + playmakingBonus,
         offTeam.acePlayerId,
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
