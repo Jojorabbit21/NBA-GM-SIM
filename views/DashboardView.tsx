@@ -2,7 +2,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Team, Game, Player, PlayoffSeries, GameTactics, DepthChart } from '../types';
 import { generateAutoTactics } from '../services/gameEngine';
-import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { calculatePlayerOvr } from '../utils/constants';
 import { computeDefensiveStats } from '../utils/defensiveStats';
 
@@ -29,6 +28,7 @@ interface DashboardViewProps {
   onUpdateDepthChart?: (dc: DepthChart) => void;
   onForceSave?: () => void;
   tendencySeed?: string;
+  onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
 
 type DashboardTab = 'rotation' | 'tactics' | 'opponent';
@@ -36,10 +36,9 @@ type DashboardTab = 'rotation' | 'tactics' | 'opponent';
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
-  playoffSeries = [], depthChart, onUpdateDepthChart, onForceSave, tendencySeed
+  playoffSeries = [], depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
-  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
 
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
@@ -102,11 +101,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   if (!team) return null;
 
-  const playerTeam = viewPlayer ? (effectiveRoster.some(rp => rp.id === viewPlayer.id) ? team : teams.find(t => t.roster.some(rp => rp.id === viewPlayer.id))) : null;
+  const handlePlayerClick = useCallback((p: Player) => {
+    const playerTeam = effectiveRoster.some(rp => rp.id === p.id) ? team : teams.find(t => t.roster.some(rp => rp.id === p.id));
+    onViewPlayer(p, playerTeam?.id, playerTeam?.name);
+  }, [effectiveRoster, team, teams, onViewPlayer]);
 
   return (
     <div className="h-full animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col overflow-hidden">
-      {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} tendencySeed={tendencySeed} />}
 
       <DashboardReviewBanners
         onShowSeasonReview={onShowSeasonReview}
@@ -151,7 +152,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       depthChart={depthChart || null}
                       healthySorted={healthySorted}
                       onUpdateTactics={onUpdateTactics}
-                      onViewPlayer={setViewPlayer}
+                      onViewPlayer={handlePlayerClick}
                       onUpdateDepthChart={onUpdateDepthChart}
                   />
               )}
@@ -174,7 +175,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   <OpponentScoutPanel
                       opponent={teams.find(t => t.id !== team.id && t.roster.some(rp => rp.id === oppHealthySorted[0]?.id))}
                       oppHealthySorted={oppHealthySorted}
-                      onViewPlayer={setViewPlayer}
+                      onViewPlayer={handlePlayerClick}
                   />
               )}
           </div>

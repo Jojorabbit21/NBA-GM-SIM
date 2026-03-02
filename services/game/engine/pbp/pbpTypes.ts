@@ -116,6 +116,14 @@ export interface ShotEvent {
     isMake: boolean;
     playType?: string;
     assistPlayerId?: string;
+    // Tooltip data
+    playerName?: string;
+    assistPlayerName?: string;
+    defenderName?: string;
+    shotType?: string;
+    points?: 0 | 2 | 3;
+    isBlock?: boolean;
+    subZone?: string;
 }
 
 // [New] Structured Injury Event

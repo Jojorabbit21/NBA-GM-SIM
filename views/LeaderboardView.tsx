@@ -1,9 +1,7 @@
 
 import React, { useState } from 'react';
 import { Team, Player, Game } from '../types';
-import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { calculatePlayerOvr } from '../utils/constants';
 import { useLeaderboardData } from '../hooks/useLeaderboardData';
 import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar';
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
@@ -13,12 +11,12 @@ interface LeaderboardViewProps {
   teams: Team[];
   schedule?: Game[];
   tendencySeed?: string;
+  onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
   const [statCategory, setStatCategory] = useState<StatCategory>('Traditional');
-  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
@@ -100,10 +98,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const handleRowClick = (item: any) => {
       if (mode === 'Players') {
           const p = item as Player & { teamName: string, teamId: string };
-          // Re-calculate OVR to ensure freshness if needed, though usually passed in item
-          setViewPlayer(p);
+          onViewPlayer(p, p.teamId, p.teamName);
       }
-      // For Teams, maybe navigate to roster? (Future implementation)
   };
 
   const handleModeChange = (newMode: ViewMode) => {
@@ -120,17 +116,6 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">
-      {viewPlayer && (
-        <PlayerDetailModal
-            player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}}
-            teamName={(viewPlayer as any).teamName}
-            teamId={(viewPlayer as any).teamId}
-            onClose={() => setViewPlayer(null)}
-            allTeams={teams}
-            tendencySeed={tendencySeed}
-        />
-      )}
-
       {/* Toolbar (sticky top) */}
       <div className="flex-shrink-0">
           <LeaderboardToolbar

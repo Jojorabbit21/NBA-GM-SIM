@@ -1,10 +1,12 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Team, ShotEvent } from '../../../types';
 import { TEAM_DATA } from '../../../data/teamData';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { Check } from 'lucide-react';
 import { COURT_WIDTH, COURT_HEIGHT } from '../../../utils/courtCoordinates';
+import { useShotChartTooltip } from '../../../hooks/useShotChartTooltip';
+import { ShotTooltip } from '../ShotTooltip';
 
 interface GameShotChartTabProps {
     homeTeam: Team;
@@ -47,6 +49,20 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
         }
     };
     
+    // Container size for tooltip clamping
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
+
+    useEffect(() => {
+        const el = containerRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(([entry]) => {
+            setContainerSize({ w: entry.contentRect.width, h: entry.contentRect.height });
+        });
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
     // Filter and Transform Shots to Half Court (Left Hoop Perspective)
     const displayShots = useMemo(() => {
         // [Fix] Defensive check for null shotEvents from legacy/broken data
@@ -67,6 +83,9 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                 return { ...shot, x, y };
             });
     }, [shotEvents, selectedTeamId, selectedPlayerIds]);
+
+    // Shot chart tooltip
+    const { tooltip, highlightShotIds, svgRef, handleMouseMove, handleMouseLeave } = useShotChartTooltip(displayShots, 10);
 
     // Calculate Efficiency Stats
     const stats = useMemo(() => {
@@ -146,8 +165,14 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                     
                     {/* Left: Shot Chart (8 Cols) */}
                     <div className="lg:col-span-8 flex items-center justify-center relative p-6 border-b lg:border-b-0 lg:border-r border-slate-800">
-                        <div className="relative w-full max-h-full max-w-[700px]" style={{ aspectRatio: '470/500' }}>
-                            <svg viewBox="0 0 470 500" className="w-full h-full drop-shadow-xl">
+                        <div
+                            ref={containerRef}
+                            className="relative w-full max-h-full max-w-[700px]"
+                            style={{ aspectRatio: '470/500' }}
+                            onMouseMove={handleMouseMove}
+                            onMouseLeave={handleMouseLeave}
+                        >
+                            <svg ref={svgRef} viewBox="0 0 470 500" className="w-full h-full drop-shadow-xl">
                                 {/* Court Background */}
                                 <rect width="470" height="500" fill="#020617" />
                                 {/* Paint Fill */}
@@ -196,24 +221,36 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                 {/* Shots (coords in 94x50ft, normalized to left half → scale by 10) */}
                                 {displayShots.map((shot) => {
                                     const missColor = "#cbd5e1";
+                                    const isHl = highlightShotIds.has(shot.id);
                                     return (
                                         <g key={shot.id} className="animate-in fade-in zoom-in duration-300">
                                             {shot.isMake ? (
                                                 <circle
                                                     cx={shot.x * 10} cy={shot.y * 10}
-                                                    r={6.5} fill={teamColor}
-                                                    stroke="white" strokeWidth="1" opacity="1"
+                                                    r={isHl ? 9 : 6.5} fill={teamColor}
+                                                    stroke={isHl ? '#fff' : 'white'}
+                                                    strokeWidth={isHl ? 2.5 : 1}
+                                                    opacity="1"
+                                                    style={{ transition: 'r 0.15s, stroke-width 0.15s' }}
                                                 />
                                             ) : (
-                                                <g transform={`translate(${shot.x * 10}, ${shot.y * 10})`} opacity="0.8">
-                                                    <line x1="-5" y1="-5" x2="5" y2="5" stroke={missColor} strokeWidth="2.5" />
-                                                    <line x1="-5" y1="5" x2="5" y2="-5" stroke={missColor} strokeWidth="2.5" />
+                                                <g transform={`translate(${shot.x * 10}, ${shot.y * 10})`} opacity={isHl ? 1 : 0.8}>
+                                                    <line x1={isHl ? -7 : -5} y1={isHl ? -7 : -5} x2={isHl ? 7 : 5} y2={isHl ? 7 : 5} stroke={isHl ? '#fff' : missColor} strokeWidth={isHl ? 3 : 2.5} style={{ transition: 'all 0.15s' }} />
+                                                    <line x1={isHl ? -7 : -5} y1={isHl ? 7 : 5} x2={isHl ? 7 : 5} y2={isHl ? -7 : -5} stroke={isHl ? '#fff' : missColor} strokeWidth={isHl ? 3 : 2.5} style={{ transition: 'all 0.15s' }} />
                                                 </g>
                                             )}
                                         </g>
                                     );
                                 })}
                             </svg>
+
+                            {tooltip && (
+                                <ShotTooltip
+                                    tooltip={tooltip}
+                                    containerWidth={containerSize.w}
+                                    containerHeight={containerSize.h}
+                                />
+                            )}
                         </div>
 
                         {/* Legend */}

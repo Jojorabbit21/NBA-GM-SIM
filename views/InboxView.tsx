@@ -6,7 +6,6 @@ import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../serv
 import { fetchFullGameResult } from '../services/queries'; // [New]
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
-import { PlayerDetailModal } from '../components/PlayerDetailModal';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
 
@@ -18,15 +17,15 @@ interface InboxViewProps {
   teams: Team[];
   onUpdateUnreadCount: () => void;
   tendencySeed?: string;
+  onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   onViewGameResult: (result: any) => void; // [New] Prop to trigger view switch
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewGameResult }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
-  const [viewPlayer, setViewPlayer] = useState<Player | null>(null);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
@@ -68,14 +67,11 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       for (const t of teams) {
           const p = t.roster.find(rp => rp.id === playerId);
           if (p) {
-              setViewPlayer(p);
+              onViewPlayer(p, t.id, t.name);
               return;
           }
       }
   };
-  
-  const getPlayerTeam = (p: Player) => teams.find(t => t.roster.some(rp => rp.id === p.id));
-  const playerTeam = viewPlayer ? getPlayerTeam(viewPlayer) : null;
   
   const getDisplayDate = (msg: Message) => {
       if (msg.type === 'GAME_RECAP' && msg.date === 'PLAYOFF') {
@@ -98,7 +94,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 ko-normal overflow-hidden">
-       {viewPlayer && <PlayerDetailModal player={{...viewPlayer, ovr: calculatePlayerOvr(viewPlayer)}} teamName={playerTeam?.name} teamId={playerTeam?.id} onClose={() => setViewPlayer(null)} allTeams={teams} tendencySeed={tendencySeed} />}
+       {/* Player detail is now handled via onViewPlayer → AppRouter */}
        
       {/* Main Layout: Left Sidebar + Right Body */}
       <div className="flex-1 flex gap-0 min-h-0 overflow-hidden">
