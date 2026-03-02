@@ -357,50 +357,42 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
             <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6">
 
                 {/* ═══ TAB: 능력치 (FM-style flat columns) ═══ */}
-                {activeTab === 'attributes' && (() => {
-                    const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
-                    return (
-                        <div className="grid grid-cols-6 gap-x-4">
-                            {ATTR_GROUPS.map(gr => {
-                                const avgKey = gr.keys[0];
-                                const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
-                                const avgVal = (player as any)[avgKey] || 0;
-                                const ghostCount = maxRows - attrKeys.length;
-                                return (
-                                    <div key={gr.id} className="flex flex-col">
-                                        {/* Category Header */}
-                                        <div className="pb-2 mb-1.5 border-b border-slate-700">
-                                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
-                                        </div>
-                                        {/* Attribute Rows */}
-                                        {attrKeys.map(k => {
-                                            const val = (player as any)[k] || 0;
-                                            const nameRaw = ATTR_NAME_MAP[k] || k;
-                                            const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
-                                            return (
-                                                <div key={k} className="flex items-center justify-between py-1.5">
-                                                    <span className="text-xs text-slate-500 truncate mr-2">{label}</span>
-                                                    <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
-                                                </div>
-                                            );
-                                        })}
-                                        {/* Ghost rows */}
-                                        {Array.from({ length: ghostCount }).map((_, i) => (
-                                            <div key={`ghost-${i}`} className="py-1.5">
-                                                <span className="text-xs invisible">-</span>
-                                            </div>
-                                        ))}
-                                        {/* Category Average */}
-                                        <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-slate-700">
-                                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">AVG</span>
-                                            <span className={`font-mono font-black text-sm tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
-                                        </div>
+                {activeTab === 'attributes' && (
+                    <div className="grid grid-cols-6 gap-x-4">
+                        {ATTR_GROUPS.map(gr => {
+                            const avgKey = gr.keys[0];
+                            const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
+                            const avgVal = (player as any)[avgKey] || 0;
+                            return (
+                                <div key={gr.id} className="flex flex-col">
+                                    {/* Category Header */}
+                                    <div className="pb-2 mb-1.5 border-b border-slate-700">
+                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{gr.label}</span>
                                     </div>
-                                );
-                            })}
-                        </div>
-                    );
-                })()}
+                                    {/* Attribute Rows */}
+                                    {attrKeys.map(k => {
+                                        const val = (player as any)[k] || 0;
+                                        const nameRaw = ATTR_NAME_MAP[k] || k;
+                                        const label = nameRaw.replace(/.*\((.+)\).*/, '$1');
+                                        return (
+                                            <div key={k} className="flex items-center justify-between py-1.5">
+                                                <span className="text-xs text-slate-500 truncate mr-2">{label}</span>
+                                                <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                            </div>
+                                        );
+                                    })}
+                                    {/* Spacer — pushes AVG to bottom */}
+                                    <div className="flex-1" />
+                                    {/* Category Average */}
+                                    <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-slate-700">
+                                        <span className="text-xs font-black text-slate-500 uppercase tracking-widest">AVG</span>
+                                        <span className={`font-mono font-black text-sm tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
 
                 {/* ═══ TAB: 시즌 기록 ═══ */}
                 {activeTab === 'season' && (
