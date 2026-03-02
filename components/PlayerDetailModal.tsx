@@ -122,12 +122,8 @@ function getHiddenArchetypes(p: Player): string[] {
     if (p.shotIq >= 88 && p.offConsist >= 88) list.push('Deadeye');
 
     // C. 스틸
-    // The Clamp: 비활성화 (스틸 아키타입 밸런스 조정)
-    // if (p.perDef >= 92 && p.steal >= 80) list.push('The Clamp');
     if (p.steal >= 85 && p.agility >= 92) list.push('The Pickpocket');
     if (p.helpDefIq >= 85 && p.passPerc >= 80 && p.steal >= 75) list.push('The Hawk');
-    // The Press: 비활성화 (스틸 아키타입 밸런스 조정)
-    // if (p.speed >= 85 && p.stamina >= 85 && p.hustle >= 85) list.push('The Press');
 
     // D. 블락 (상호 배타)
     if (p.height >= 216 && p.blk >= 80) list.push('The Alien');
@@ -302,107 +298,118 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
         { id: 'playoffs', label: '플레이오프', disabled: !hasPlayoffs },
     ];
 
+    // ── Archetypes (memoized) ──
+    const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
+
     return createPortal(
-        <div className="fixed inset-0 z-[500] bg-slate-950 flex flex-col animate-in fade-in duration-200">
-            {/* Team Color Accent */}
-            <div className="absolute top-0 left-0 right-0 h-1 z-20" style={{ backgroundColor: teamColor }} />
-            <div className="absolute top-0 right-0 w-64 h-64 blur-[80px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
+        <div className="fixed inset-0 z-[500] bg-slate-950 flex animate-in fade-in duration-200">
 
-            {/* Header */}
-            <div className="shrink-0 px-8 py-5 border-b border-slate-800 bg-slate-900/80 relative z-10">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-6">
+            {/* ═══ LEFT PANEL ═══ */}
+            <div className="w-80 shrink-0 flex flex-col bg-slate-900 border-r border-slate-800 overflow-y-auto custom-scrollbar relative">
+                {/* Team Color Accent — vertical left stripe */}
+                <div className="absolute top-0 left-0 bottom-0 w-1 z-20" style={{ backgroundColor: teamColor }} />
+                <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
+
+                {/* 1. Player Identity */}
+                <div className="px-6 pt-6 pb-4 relative z-10">
+                    <div className="flex justify-center mb-3">
                         <OvrBadge value={calculatedOvr} size="xl" />
-                        <div>
-                            <div className="flex items-center gap-4">
-                                <h2 className="text-3xl font-black text-white uppercase tracking-tight leading-none oswald">{player.name}</h2>
-                                {/* Salary & Contract */}
-                                {player.salary > 0 && (
-                                    <span className="text-sm font-bold text-slate-300">
-                                        {formatSalary(player.salary)}
-                                        {player.contractYears > 0 && <span className="text-slate-500 ml-1">· {player.contractYears}yr</span>}
-                                    </span>
-                                )}
-                                {/* Condition Badge */}
-                                {player.condition != null && (
-                                    <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${getConditionColor(player.condition)}`}>
-                                        {player.condition}
-                                    </span>
-                                )}
-                                {/* Injury Badge */}
-                                {player.health && player.health !== 'Healthy' && (
-                                    <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-0.5 rounded-lg">
-                                        {player.injuryType || player.health}
-                                        {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-4 mt-2 text-sm font-bold text-slate-400">
-                                {teamId && (
-                                    <div className="flex items-center gap-2">
-                                        <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
-                                        <span>{teamName || 'Free Agent'}</span>
-                                    </div>
-                                )}
-                                <div className="w-1 h-1 bg-slate-600 rounded-full" />
-                                <span>{player.position}</span>
-                                <div className="w-1 h-1 bg-slate-600 rounded-full" />
-                                <span>{player.height}cm / {player.weight}kg</span>
-                                <div className="w-1 h-1 bg-slate-600 rounded-full" />
-                                <span>{player.age}세</span>
-                            </div>
-                        </div>
                     </div>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors">
-                        <X size={24} />
-                    </button>
-                </div>
-                {/* Archetypes + Scout Report */}
-                {(() => {
-                    const archetypes = getHiddenArchetypes(player);
-                    const hasArchetypes = archetypes.length > 0;
-                    const hasReport = scoutReport.length > 0;
-                    if (!hasArchetypes && !hasReport) return null;
-                    return (
-                        <div className="mt-3 pt-3 border-t border-slate-800/50">
-                            {hasArchetypes && (
-                                <p className="text-xs font-bold text-indigo-400 mb-1">
-                                    {archetypes.join(' / ')}
-                                </p>
+                    <h2 className="text-xl font-black text-white uppercase tracking-tight oswald text-center leading-tight">{player.name}</h2>
+                    <div className="flex items-center justify-center gap-2 mt-2 text-sm font-bold text-slate-400">
+                        {teamId && (
+                            <>
+                                <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
+                                <span>{teamName || 'Free Agent'}</span>
+                                <span className="text-slate-600">·</span>
+                            </>
+                        )}
+                        <span>{player.position}</span>
+                    </div>
+                    <p className="text-xs text-slate-500 text-center mt-1">
+                        {player.height}cm / {player.weight}kg · {player.age}세
+                    </p>
+
+                    {/* Salary & Contract */}
+                    {player.salary > 0 && (
+                        <p className="text-sm font-bold text-slate-300 text-center mt-2">
+                            {formatSalary(player.salary)}
+                            {player.contractYears > 0 && <span className="text-slate-500 ml-1">· {player.contractYears}yr</span>}
+                        </p>
+                    )}
+
+                    {/* Badges: Condition + Injury */}
+                    {(player.condition != null || (player.health && player.health !== 'Healthy')) && (
+                        <div className="flex items-center justify-center gap-2 mt-2">
+                            {player.condition != null && (
+                                <span className={`text-xs font-black px-2 py-0.5 rounded-lg ${getConditionColor(player.condition)}`}>
+                                    {player.condition}
+                                </span>
                             )}
-                            {hasReport && (
-                                <p className="text-xs text-slate-400 leading-relaxed">
-                                    {scoutReport}
-                                </p>
+                            {player.health && player.health !== 'Healthy' && (
+                                <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-0.5 rounded-lg">
+                                    {player.injuryType || player.health}
+                                    {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
+                                </span>
                             )}
                         </div>
-                    );
-                })()}
+                    )}
+                </div>
 
-                {/* Tab Bar */}
-                <div className="mt-4 flex items-center gap-6 overflow-x-auto">
+                {/* 2. Archetypes + Scout Report */}
+                {(archetypes.length > 0 || scoutReport.length > 0) && (
+                    <div className="px-6 py-4 border-t border-slate-800/50">
+                        {archetypes.length > 0 && (
+                            <p className="text-xs font-bold text-indigo-400 mb-2">
+                                {archetypes.join(' / ')}
+                            </p>
+                        )}
+                        {scoutReport.length > 0 && (
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                                {scoutReport}
+                            </p>
+                        )}
+                    </div>
+                )}
+
+                {/* 3. Tab Navigation */}
+                <div className="px-3 py-3 border-t border-slate-800/50 space-y-1">
                     {tabs.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => !tab.disabled && setActiveTab(tab.id)}
                             disabled={tab.disabled}
                             className={`
-                                pb-2 text-xs font-black uppercase tracking-widest transition-all border-b-2 whitespace-nowrap
+                                w-full text-left px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all
                                 ${activeTab === tab.id
-                                    ? 'text-indigo-400 border-indigo-400'
+                                    ? 'bg-indigo-500/10 text-indigo-400'
                                     : tab.disabled
-                                        ? 'text-slate-700 border-transparent cursor-not-allowed'
-                                        : 'text-slate-500 border-transparent hover:text-slate-300'}
+                                        ? 'text-slate-700 cursor-not-allowed'
+                                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'}
                             `}
                         >
                             {tab.label}
                         </button>
                     ))}
                 </div>
+
+                {/* Spacer */}
+                <div className="flex-1" />
+
+                {/* 4. Close Button */}
+                <div className="px-3 pb-4">
+                    <button
+                        onClick={onClose}
+                        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-300 hover:bg-slate-800/50 transition-colors"
+                    >
+                        <X size={14} />
+                        <span>닫기</span>
+                    </button>
+                </div>
             </div>
 
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-900/50">
+            {/* ═══ RIGHT CONTENT BODY ═══ */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-8 bg-slate-950/50">
 
                 {/* ═══ TAB: 능력치 ═══ */}
                 {activeTab === 'attributes' && (
