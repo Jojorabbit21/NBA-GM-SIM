@@ -291,15 +291,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {teamId && (
                         <div className="flex items-center gap-2 text-lg text-slate-400">
                             <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
-                            <span className="font-bold oswald">{teamName || 'FA'}</span>
+                            <span className="font-bold">{teamName || 'FA'}</span>
                         </div>
                     )}
-                    <span className="text-lg font-bold oswald text-slate-400">{player.position}</span>
-                    <span className="text-lg font-bold oswald text-slate-400">{player.age}세</span>
-                    <span className="text-lg font-bold oswald text-slate-400">{player.height}cm</span>
-                    <span className="text-lg font-bold oswald text-slate-400">{player.weight}kg</span>
+                    <span className="text-lg font-bold text-slate-400">{player.position}</span>
+                    <span className="text-lg font-bold text-slate-400">{player.age}세</span>
+                    <span className="text-lg font-bold text-slate-400">{player.height}cm</span>
+                    <span className="text-lg font-bold text-slate-400">{player.weight}kg</span>
                     {player.salary > 0 && (
-                        <span className="text-lg font-bold oswald text-slate-400">
+                        <span className="text-lg font-bold text-slate-400">
                             {formatSalary(player.salary)}
                             {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
                         </span>
@@ -316,12 +316,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 {(archetypes.length > 0 || scoutReport.length > 0) && (
                     <div className="px-6 pb-4 relative z-10">
                         {archetypes.length > 0 && (
-                            <span className="text-xs font-bold text-indigo-400 mr-2">
+                            <span className="text-sm font-bold text-indigo-400 mr-2">
                                 {archetypes.join(' / ')}
                             </span>
                         )}
                         {scoutReport.length > 0 && (
-                            <span className="text-xs text-slate-400 leading-relaxed">
+                            <span className="text-sm text-slate-400 leading-relaxed">
                                 {scoutReport}
                             </span>
                         )}
@@ -386,7 +386,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     {/* Category Average */}
                                     <div className="flex items-center justify-between pt-2 mt-1.5 border-t border-slate-700">
                                         <span className="text-xs font-black text-slate-500 uppercase tracking-widest">AVG</span>
-                                        <span className={`font-mono font-black text-sm tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                        <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                     </div>
                                 </div>
                             );
