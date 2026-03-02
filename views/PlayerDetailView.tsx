@@ -312,7 +312,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* Player info row */}
                     <div className="px-6 pb-4 relative z-10 flex items-center gap-4 flex-wrap">
                         <OvrBadge value={calculatedOvr} size="md" />
-                        <h2 className="text-lg font-black uppercase tracking-tight oswald" style={{ color: theme.text }}>{player.name}</h2>
+                        <h2 className="text-3xl font-black uppercase tracking-tight oswald" style={{ color: theme.text }}>{player.name}</h2>
                         {teamId && (
                             <div className="flex items-center gap-2 text-lg" style={{ color: theme.text, opacity: 0.7 }}>
                                 <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain" alt="" />
@@ -346,8 +346,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </span>
                             )}
                             {scoutReport.length > 0 && (
-                                <span className="text-sm leading-relaxed" style={{ color: theme.text, opacity: 0.6 }}>
-                                    {scoutReport}
+                                <span className="text-sm leading-relaxed italic" style={{ color: theme.text, opacity: 0.6 }}>
+                                    "{scoutReport}"
                                 </span>
                             )}
                         </div>
