@@ -274,7 +274,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 <div className="absolute top-0 left-0 w-48 h-48 blur-[60px] rounded-full opacity-10 pointer-events-none" style={{ backgroundColor: teamColor }} />
 
                 {/* Back button row */}
-                <div className="px-6 pt-4 pb-2 relative z-10">
+                <div className="px-6 pt-5 pb-4 relative z-10">
                     <button
                         onClick={onBack}
                         className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-900/30 ring-1 ring-indigo-500/50 px-3 py-1.5 rounded-lg transition-colors"
@@ -285,27 +285,27 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 </div>
 
                 {/* Player info row */}
-                <div className="px-6 pb-3 relative z-10 flex items-center gap-4 flex-wrap">
+                <div className="px-6 pb-4 relative z-10 flex items-center gap-4 flex-wrap">
                     <OvrBadge value={calculatedOvr} size="md" />
-                    <h2 className="text-lg font-black text-white uppercase tracking-tight oswald leading-tight">{player.name}</h2>
+                    <h2 className="text-lg font-black text-white uppercase tracking-tight oswald">{player.name}</h2>
                     {teamId && (
-                        <div className="flex items-center gap-1.5 text-xs leading-tight text-slate-400">
-                            <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain opacity-80" alt="" />
-                            <span>{teamName || 'FA'}</span>
+                        <div className="flex items-center gap-2 text-lg text-slate-400">
+                            <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain opacity-80" alt="" />
+                            <span className="font-bold oswald">{teamName || 'FA'}</span>
                         </div>
                     )}
-                    <span className="text-xs leading-tight text-slate-400">{player.position}</span>
-                    <span className="text-xs leading-tight text-slate-400">{player.age}세</span>
-                    <span className="text-xs leading-tight text-slate-400">{player.height}cm</span>
-                    <span className="text-xs leading-tight text-slate-400">{player.weight}kg</span>
+                    <span className="text-lg font-bold oswald text-slate-400">{player.position}</span>
+                    <span className="text-lg font-bold oswald text-slate-400">{player.age}세</span>
+                    <span className="text-lg font-bold oswald text-slate-400">{player.height}cm</span>
+                    <span className="text-lg font-bold oswald text-slate-400">{player.weight}kg</span>
                     {player.salary > 0 && (
-                        <span className="text-xs leading-tight text-slate-400">
+                        <span className="text-lg font-bold oswald text-slate-400">
                             {formatSalary(player.salary)}
                             {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
                         </span>
                     )}
                     {player.health && player.health !== 'Healthy' && (
-                        <span className="text-[10px] leading-tight font-black text-red-400 bg-red-950/50 px-1.5 py-0.5 rounded-md">
+                        <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md">
                             {player.injuryType || player.health}
                             {player.returnDate && <span className="text-red-500/70 ml-1">({player.returnDate})</span>}
                         </span>
@@ -314,7 +314,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                 {/* Scout Report */}
                 {(archetypes.length > 0 || scoutReport.length > 0) && (
-                    <div className="px-6 pb-3 relative z-10">
+                    <div className="px-6 pb-4 relative z-10">
                         {archetypes.length > 0 && (
                             <span className="text-xs font-bold text-indigo-400 mr-2">
                                 {archetypes.join(' / ')}
