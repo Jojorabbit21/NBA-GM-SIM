@@ -309,26 +309,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </button>
                     </div>
 
-                    {/* Player info row */}
-                    <div className="px-6 pb-4 relative z-10 flex items-center gap-4 flex-wrap">
+                    {/* Player name + OVR */}
+                    <div className="px-6 pb-2 relative z-10 flex items-center gap-4">
                         <OvrBadge value={calculatedOvr} size="md" />
                         <h2 className="text-3xl font-black uppercase tracking-tight oswald" style={{ color: theme.text }}>{player.name}</h2>
-                        {teamId && (
-                            <div className="flex items-center gap-2 text-lg" style={{ color: theme.text, opacity: 0.7 }}>
-                                <img src={getTeamLogoUrl(teamId)} className="w-5 h-5 object-contain" alt="" />
-                                <span className="font-bold">{teamName || 'FA'}</span>
-                            </div>
-                        )}
-                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.position}</span>
-                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.age}세</span>
-                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.height}cm</span>
-                        <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>{player.weight}kg</span>
-                        {player.salary > 0 && (
-                            <span className="text-lg font-bold" style={{ color: theme.text, opacity: 0.7 }}>
-                                {formatSalary(player.salary)}
-                                {player.contractYears > 0 && <span className="ml-0.5">· {player.contractYears}yr</span>}
-                            </span>
-                        )}
                         {player.health && player.health !== 'Healthy' && (
                             <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md">
                                 {player.injuryType || player.health}
@@ -337,18 +321,57 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         )}
                     </div>
 
+                    {/* Player info table */}
+                    <div className="px-6 pb-4 relative z-10">
+                        <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
+                            <thead>
+                                <tr className="text-[10px] uppercase tracking-wider" style={{ opacity: 0.5 }}>
+                                    <th className="pr-5 pb-1 text-left font-bold">팀</th>
+                                    <th className="pr-5 pb-1 text-left font-bold">포지션</th>
+                                    <th className="pr-5 pb-1 text-left font-bold">나이</th>
+                                    <th className="pr-5 pb-1 text-left font-bold">신장</th>
+                                    <th className="pr-5 pb-1 text-left font-bold">체중</th>
+                                    <th className="pr-5 pb-1 text-left font-bold">연봉</th>
+                                    <th className="pb-1 text-left font-bold">계약</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr className="font-bold">
+                                    <td className="pr-5">
+                                        {teamId ? (
+                                            <span className="flex items-center gap-1.5">
+                                                <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />
+                                                {teamName || 'FA'}
+                                            </span>
+                                        ) : 'FA'}
+                                    </td>
+                                    <td className="pr-5">{player.position}</td>
+                                    <td className="pr-5">{player.age}세</td>
+                                    <td className="pr-5">{player.height}cm</td>
+                                    <td className="pr-5">{player.weight}kg</td>
+                                    <td className="pr-5">{player.salary > 0 ? formatSalary(player.salary) : '-'}</td>
+                                    <td>{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
                     {/* Scout Report */}
                     {(archetypes.length > 0 || scoutReport.length > 0) && (
-                        <div className="px-6 pb-4 relative z-10">
-                            {archetypes.length > 0 && (
-                                <span className="text-sm font-bold mr-2" style={{ color: theme.accent }}>
-                                    {archetypes.join(' / ')}
-                                </span>
-                            )}
+                        <div className="px-6 pb-4 relative z-10 flex flex-col gap-2">
                             {scoutReport.length > 0 && (
                                 <span className="text-sm leading-relaxed italic" style={{ color: theme.text, opacity: 0.6 }}>
                                     "{scoutReport}"
                                 </span>
+                            )}
+                            {archetypes.length > 0 && (
+                                <div className="flex flex-wrap gap-1.5">
+                                    {archetypes.map((arch, i) => (
+                                        <span key={i} className="px-2.5 py-0.5 rounded-full text-xs font-bold border" style={{ color: theme.accent, borderColor: theme.accent, opacity: 0.8 }}>
+                                            {arch}
+                                        </span>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     )}
