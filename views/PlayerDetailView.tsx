@@ -359,7 +359,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div className="pb-6">
-                        <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
+                        <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
@@ -369,7 +369,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
                     {hasPlayoffs && (
                         <div className="pb-6">
-                            <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
+                            <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
                             </div>
                             <div className="overflow-x-auto custom-scrollbar">
@@ -381,7 +381,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="pb-6">
-                        <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
+                        <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
                         <div className="grid grid-cols-6">
@@ -393,14 +393,14 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
                                         {/* Group header */}
                                         <div className="bg-slate-900 h-10 flex items-center justify-center border-b border-slate-800">
-                                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
+                                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                         </div>
                                         {/* Attribute rows */}
                                         {attrKeys.map(k => {
                                             const val = (player as any)[k] || 0;
                                             return (
                                                 <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
-                                                    <span className="text-xs text-slate-400 truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
+                                                    <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
                                                     <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
                                                 </div>
                                             );
@@ -409,7 +409,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         <div className="flex-1" />
                                         {/* AVG row */}
                                         <div className={`flex items-center justify-between px-3 h-10 bg-slate-900 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
-                                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
+                                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">종합</span>
                                             <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                         </div>
                                     </div>
@@ -423,7 +423,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 1: 샷 차트 */}
                         <div className="border-r border-slate-800">
-                            <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
+                            <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center justify-between">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
                                 <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
                                     <span>LOW</span>
@@ -478,7 +478,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
-                            <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
+                            <div className="px-6 py-3 bg-slate-700 border-b border-slate-800 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
