@@ -448,7 +448,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             );
                                         })}
                                     </g>
-                                    <g fill="none" stroke="#0f172a" strokeWidth="0.5" strokeOpacity="1" pointerEvents="none">
+                                    <g fill="#0f172a" fillRule="evenodd" stroke="none" pointerEvents="none">
                                         {COURT_LINES.map((d, i) => <path key={i} d={d} />)}
                                     </g>
                                     <g pointerEvents="none">
