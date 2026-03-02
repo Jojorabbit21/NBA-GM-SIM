@@ -437,7 +437,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             </div>
                             <div className="p-4">
-                            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-700">
+                            <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900">
                                 <svg viewBox="0 0 435 403" className="w-full h-full">
                                     <rect x="0" y="0" width="435" height="403" fill="#020617" />
                                     <g>
