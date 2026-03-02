@@ -90,6 +90,17 @@
 | 적용 파일 | possessionHandler.ts |
 | 대표 선수 | Ja Morant, Zach LaVine, Derrick Rose |
 
+### B-7. Deadeye (데드아이)
+
+| 항목 | 값 |
+|:-----|:---|
+| 조건 | shotIq ≥ 88, offConsist ≥ 88 |
+| 효과 | **3PT 존 전용**, contestFactor ×0.9 (수비 영향 10% 감소) |
+| 적용 파일 | flowEngine.ts (contestFactor 계산 직후) |
+| 대표 선수 | KD, Klay Thompson, Khris Middleton |
+
+> Mr. Fundamental/Rangemaster는 클러치 flat 보너스, Deadeye는 평상시 수비 저항으로 역할 분리. 3PT 존 한정이므로 Rim/Paint은 Tyrant/Levitator가 담당.
+
 ---
 
 ## C. 스틸 아키타입
@@ -249,6 +260,6 @@
 | 파일 | 아키타입 |
 |:-----|:---------|
 | `constants.ts` | 전체 상수 정의 |
-| `flowEngine.ts` | A-1~3 (클러치), B-1~3 (Zone hitRate), B-5 (Afterburner) |
+| `flowEngine.ts` | A-1~3 (클러치), B-1~3 (Zone hitRate), B-5 (Afterburner), B-7 (Deadeye) |
 | `possessionHandler.ts` | B-3 (Tyrant 블락), B-4 (Levitator), B-6 (Ascendant), ~~C-1~~ C-2~3 ~~C-4~~ (스틸), D-1~4 (블락), E-1 (Manipulator), G-1~3 (플레이메이킹) |
 | `reboundLogic.ts` | F-1 (Harvester), F-2 (Raider) |

@@ -1,7 +1,7 @@
 
 import React, { useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { Player, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { TEAM_DATA } from '../data/teamData';
@@ -13,6 +13,7 @@ import {
 } from '../utils/courtZones';
 import { ATTR_GROUPS } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
+import { usePlayerGameLog } from '../services/queries';
 
 interface PlayerDetailModalProps {
     player: Player;
@@ -62,6 +63,22 @@ const ZONE_TABLE = [
 const ZONE_STAT_KEYS: Record<string, { keyM: string; keyA: string }> = {};
 ZONE_TABLE.forEach(z => { ZONE_STAT_KEYS[z.key] = { keyM: z.keyM, keyA: z.keyA }; });
 
+// ── Game Log Columns ──
+const GAME_LOG_COLS = [
+    { key: 'date', label: 'DATE', width: 58 },
+    { key: 'opp', label: 'OPP', width: 55 },
+    { key: 'result', label: 'RESULT', width: 80 },
+    { key: 'min', label: 'MIN', width: 45 },
+    { key: 'pts', label: 'PTS', width: 45 },
+    { key: 'reb', label: 'REB', width: 45 },
+    { key: 'ast', label: 'AST', width: 45 },
+    { key: 'stl', label: 'STL', width: 40 },
+    { key: 'blk', label: 'BLK', width: 40 },
+    { key: 'fg', label: 'FG%', width: 50 },
+    { key: '3p', label: '3P%', width: 50 },
+    { key: 'pm', label: '+/-', width: 48 },
+];
+
 const getAttrColor = (val: number) => {
     if (val >= 90) return 'text-fuchsia-400';
     if (val >= 80) return 'text-emerald-400';
@@ -86,6 +103,7 @@ function getHiddenArchetypes(p: Player): string[] {
     if (p.closeShot >= 96 && p.agility >= 85 && p.height <= 195) list.push('Levitator');
     if (p.speed >= 95 && p.agility >= 93) list.push('Afterburner');
     if ((p.position === 'PG' || p.position === 'SG') && p.vertical >= 95 && p.closeShot >= 93) list.push('Ascendant');
+    if (p.shotIq >= 88 && p.offConsist >= 88) list.push('Deadeye');
 
     // C. 스틸
     // The Clamp: 비활성화 (스틸 아키타입 밸런스 조정)
@@ -122,6 +140,9 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
 
     // ── Scout Report (서술형 텐던시 리포트) ──
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
+
+    // ── Game Log (최근 경기 기록) ──
+    const { data: gameLog, isLoading: gameLogLoading } = usePlayerGameLog(player.id, teamId);
 
     useEffect(() => {
         const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -475,6 +496,76 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({ player, te
                     </div>
 
                 </div>
+
+                {/* 3. Recent Game Log */}
+                {gameLogLoading && teamId && (
+                    <div className="mt-6 flex items-center justify-center py-8">
+                        <Loader2 size={20} className="text-slate-500 animate-spin" />
+                    </div>
+                )}
+                {gameLog && gameLog.length > 0 && (
+                    <div className="mt-6 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-lg">
+                        <div className="px-3 py-1.5 bg-slate-950/80 border-b border-slate-800/50">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Recent Game Log</span>
+                        </div>
+                        <div className="overflow-x-auto custom-scrollbar">
+                            <table style={{ tableLayout: 'fixed' }} className="border-separate border-spacing-0">
+                                <colgroup>
+                                    {GAME_LOG_COLS.map(c => <col key={c.key} style={{ width: c.width }} />)}
+                                </colgroup>
+                                <thead className="bg-slate-950">
+                                    <tr className="h-7">
+                                        {GAME_LOG_COLS.map(c => (
+                                            <th key={c.key} className="py-1 px-1 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-r border-slate-800/50 bg-slate-950 whitespace-nowrap last:border-r-0">
+                                                {c.label}
+                                            </th>
+                                        ))}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {gameLog.map((g: any, i: number) => {
+                                        const dateStr = g.date ? `${parseInt(g.date.split('-')[1])}/${parseInt(g.date.split('-')[2])}` : '-';
+                                        const oppLabel = g.isHome ? g.opponentId?.toUpperCase() : `@${g.opponentId?.toUpperCase()}`;
+                                        const won = g.teamScore > g.opponentScore;
+                                        const resultStr = `${won ? 'W' : 'L'} ${g.teamScore}-${g.opponentScore}`;
+                                        const fgPct = g.fga > 0 ? (g.fgm / g.fga).toFixed(3) : '-';
+                                        const p3Pct = g.p3a > 0 ? (g.p3m / g.p3a).toFixed(3) : '-';
+                                        const pmVal = g.plusMinus || 0;
+                                        const pmStr = (pmVal > 0 ? '+' : '') + pmVal;
+
+                                        const cells: { val: string; color?: string }[] = [
+                                            { val: dateStr },
+                                            { val: oppLabel },
+                                            { val: resultStr, color: won ? 'text-emerald-400' : 'text-red-400' },
+                                            { val: String(Math.round(g.mp || 0)) },
+                                            { val: String(g.pts || 0) },
+                                            { val: String(g.reb || 0) },
+                                            { val: String(g.ast || 0) },
+                                            { val: String(g.stl || 0) },
+                                            { val: String(g.blk || 0) },
+                                            { val: fgPct },
+                                            { val: p3Pct },
+                                            { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
+                                        ];
+
+                                        return (
+                                            <tr key={i} className="h-8 hover:bg-slate-800/30 transition-colors">
+                                                {cells.map((cell, ci) => (
+                                                    <td key={ci} className="py-1 px-1 text-center border-b border-r border-slate-800/30 last:border-r-0">
+                                                        <span className={`font-mono text-xs tabular-nums ${cell.color || 'text-slate-300'}`}>
+                                                            {cell.val}
+                                                        </span>
+                                                    </td>
+                                                ))}
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
+
             </div>
         </div>,
         document.body
