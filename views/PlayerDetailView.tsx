@@ -84,7 +84,7 @@ const getAttrBg = (val: number) => {
     if (val >= 90) return 'bg-fuchsia-500/10';
     if (val >= 80) return 'bg-emerald-500/10';
     if (val >= 70) return 'bg-amber-500/10';
-    return 'bg-slate-900';
+    return '';
 };
 
 const formatSalary = (salary: number): string => {
@@ -190,7 +190,7 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
 
 // ── Reusable: Stats sub-table (header + single data row), uses common Table ──
 const StatsSubTable: React.FC<{ cols: { key: string; label: string }[]; stats: PlayerStats }> = ({ cols, stats }) => (
-    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent" fullHeight={false}>
+    <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false}>
         <TableHead>
             {cols.map((c, i) => (
                 <TableHeaderCell
@@ -355,11 +355,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                 </div>
 
                 {/* ═══ BODY — 3 sections ═══ */}
-                <div className="text-xs divide-y divide-slate-700 bg-slate-900">
+                <div className="text-xs divide-y divide-slate-800 bg-slate-950">
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div className="pb-6">
-                        <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
+                        <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
@@ -369,7 +369,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
                     {hasPlayoffs && (
                         <div className="pb-6">
-                            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
+                            <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
                             </div>
                             <div className="overflow-x-auto custom-scrollbar">
@@ -381,7 +381,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="pb-6">
-                        <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
+                        <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
                             <span className="text-xs font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
                         <div className="grid grid-cols-6">
@@ -392,7 +392,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 return (
                                     <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
                                         {/* Group header */}
-                                        <div className="bg-slate-950 h-10 flex items-center justify-center border-b border-slate-800">
+                                        <div className="bg-slate-900 h-10 flex items-center justify-center border-b border-slate-800">
                                             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                         </div>
                                         {/* Attribute rows */}
@@ -408,7 +408,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         {/* Spacer to align AVG */}
                                         <div className="flex-1" />
                                         {/* AVG row */}
-                                        <div className={`flex items-center justify-between px-3 h-10 bg-slate-950/50 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
+                                        <div className={`flex items-center justify-between px-3 h-10 bg-slate-900 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
                                             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">AVG</span>
                                             <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
                                         </div>
@@ -422,8 +422,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     <div className="pb-6 grid items-start" style={{ gridTemplateColumns: '4fr 6fr' }}>
 
                         {/* Col 1: 샷 차트 */}
-                        <div>
-                            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
+                        <div className="border-r border-slate-800">
+                            <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
                                 <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
                                     <span>LOW</span>
@@ -478,7 +478,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
-                            <div className="px-6 py-3 bg-slate-800 border-b border-slate-700 flex items-center">
+                            <div className="px-6 py-3 bg-slate-900 border-b border-slate-800 flex items-center">
                                 <span className="text-xs font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
@@ -492,7 +492,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent" fullHeight={false} style={{ maxHeight: 520 }}>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false} style={{ maxHeight: 520 }}>
                                     <TableHead>
                                         {GAME_LOG_COLS.map((c, i) => (
                                             <TableHeaderCell
