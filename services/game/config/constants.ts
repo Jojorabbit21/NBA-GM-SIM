@@ -19,6 +19,7 @@ export const SIM_CONFIG = {
         FATIGUE_PENALTY_LOW: 0.02,
         FATIGUE_PENALTY_MED: 0.10,
         FATIGUE_PENALTY_HIGH: 0.25,
+        REST_DAY_RECOVERY: 25,          // 비경기일 1일 휴식 시 기본 회복량 (stamina/durability 보정 적용)
     },
     STATS: {
         STL_BASE_FACTOR: 0.08,

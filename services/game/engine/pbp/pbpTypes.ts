@@ -210,6 +210,25 @@ export interface GameState {
         home: { total: number; count: number };
         away: { total: number; count: number };
     };
+
+    // [New] Court Position Snapshot (라이브 시각화용)
+    courtSnapshot: CourtSnapshot | null;
+}
+
+// ── Court Position Visualization ──
+export interface PlayerCourtPosition {
+    playerId: string;
+    x: number;  // court feet (0-94)
+    y: number;  // court feet (0-50)
+    role: 'ballHandler' | 'screener' | 'spacer' | 'onBallDef' | 'helpDef';
+    hasBall: boolean;
+}
+
+export interface CourtSnapshot {
+    offTeamId: string;
+    playType?: PlayType;
+    zone?: 'Rim' | 'Paint' | 'Mid' | '3PT';
+    positions: PlayerCourtPosition[];
 }
 
 export interface PossessionResult {

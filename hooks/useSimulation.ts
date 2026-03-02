@@ -6,6 +6,7 @@ import { runUserSimulation, applyUserGameResult } from '../services/simulation/u
 import { handleSeasonEvents } from '../services/simulation/seasonService';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult } from '../services/playoffService';
+import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 
 export const useSimulation = (
     teams: Team[],
@@ -138,7 +139,10 @@ export const useSimulation = (
 
             } else {
                 // No User Game - Advance Day Only
-                
+
+                // 비경기일 체력 회복 (모든 팀 선수)
+                applyRestDayRecovery(newTeams);
+
                 // Handle Season Events
                 const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode);
                 

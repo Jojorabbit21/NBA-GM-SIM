@@ -10,6 +10,7 @@ import { formatTime, calculatePossessionTime } from './timeEngine';
 import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
 import { calculateRecovery } from '../fatigueSystem';
 import { SIM_CONFIG } from '../../config/constants';
+import { computeCourtPositions } from './handlers/courtPositions';
 
 // ─────────────────────────────────────────────────────────────
 // Public Types
@@ -198,6 +199,7 @@ export function createGameState(
             home: { total: 0, count: 0 },
             away: { total: 0, count: 0 },
         },
+        courtSnapshot: null,
     };
 
     // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
@@ -319,6 +321,7 @@ export function stepPossession(state: GameState): StepResult {
     }
 
     const result = simulatePossession(state, { clutchContext });
+    state.courtSnapshot = computeCourtPositions(result, state.home.id);
     const timeTaken = calculatePossessionTime(state, offTeam.tactics.sliders, result.playType);
 
     // 포세션 시간 누적 (평균 샷클락 소모 추적)
