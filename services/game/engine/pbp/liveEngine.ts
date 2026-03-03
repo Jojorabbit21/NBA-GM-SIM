@@ -5,7 +5,7 @@ import { initTeamState } from './initializer';
 import { updateOnCourtStates } from './stateUpdater';
 import { simulatePossession } from './possessionHandler';
 import { checkSubstitutionsV2, SubRequestV2 } from './substitutionSystem';
-import { checkAndApplyRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit } from './rotationLogic';
+import { checkAndApplyRotation, forceSubstitution, transferSchedule, checkTemporaryReturns, benchWithOverride, handleFillerExit, executeGarbageSubstitution } from './rotationLogic';
 import { formatTime, calculatePossessionTime } from './timeEngine';
 import { applyPossessionResult, dampenHotCold, resetHotCold } from './statsMappers';
 import { calculateRecovery } from '../fatigueSystem';
@@ -359,9 +359,13 @@ export function stepPossession(state: GameState): StepResult {
     const hSubs = checkSubstitutionsV2(state, state.home, currentMinute);
     const aSubs = checkSubstitutionsV2(state, state.away, currentMinute);
 
-    // 3. 교체 실행 (임시/영구 분기)
-    hSubs.forEach(req => executeSubstitution(state, state.home, req, currentMinute));
-    aSubs.forEach(req => executeSubstitution(state, state.away, req, currentMinute));
+    // 3. 교체 실행 (가비지타임 일괄 / 임시·영구 분기)
+    const hGarbage = hSubs.filter(r => r.benchReason === 'garbage');
+    const aGarbage = aSubs.filter(r => r.benchReason === 'garbage');
+    if (hGarbage.length > 0) executeGarbageSubstitution(state, state.home, hGarbage.map(r => r.outPlayer));
+    if (aGarbage.length > 0) executeGarbageSubstitution(state, state.away, aGarbage.map(r => r.outPlayer));
+    hSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.home, req, currentMinute));
+    aSubs.filter(r => r.benchReason !== 'garbage').forEach(req => executeSubstitution(state, state.away, req, currentMinute));
 
     // 4. 정기 로테이션 (맵 기반 교체) — 승계 후 갱신된 맵 기반으로 정확한 라인업 구성
     checkAndApplyRotation(state, state.home, currentTotalSec);

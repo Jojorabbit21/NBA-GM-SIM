@@ -101,6 +101,7 @@ export interface TeamState {
     fouls: number; // Team fouls in quarter
     bonus: boolean; // Penalty situation
     acePlayerId?: string; // [New] Identify the team's Ace (Highest OVR Starter)
+    garbageApplied?: boolean; // 가비지타임 일괄교체 완료 플래그
 }
 
 // [New] Structured Shot Event for Visualization

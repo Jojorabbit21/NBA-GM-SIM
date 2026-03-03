@@ -188,7 +188,7 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                         >
                             <svg ref={svgRef} viewBox="0 0 470 500" className="w-full h-full drop-shadow-xl">
                                 {/* Court Background */}
-                                <rect width="470" height="500" fill="#020617" />
+                                <rect width="470" height="500" fill="#020617" stroke="#334155" strokeWidth="2" />
                                 {/* Paint Fill */}
                                 <rect y="170" width="190" height="160" fill="#0f172a" />
 
@@ -225,11 +225,6 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                     <line x1="40" y1="222" x2="40" y2="278" stroke="white" />
                                     {/* Basket */}
                                     <circle cx="48" cy="250" r="7.5" stroke="white" />
-                                    {/* Half-Court Line */}
-                                    <line x1="470" y1="0" x2="470" y2="500" />
-                                    {/* Center Circles */}
-                                    <circle cx="470" cy="250" r="60" />
-                                    <circle cx="470" cy="250" r="20" />
                                 </g>
 
                                 {/* Shots (coords in 94x50ft, normalized to left half → scale by 10) */}
@@ -297,29 +292,27 @@ export const GameShotChartTab: React.FC<GameShotChartTabProps> = ({
                                 .sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a))
                                 .map(player => {
                                     const isSelected = selectedPlayerIds.has(player.id);
-                                    
-                                    // Count shots for this player
-                                    // [Fix] Add safe fallback for shotEvents null check
+
                                     const safeEvents = shotEvents || [];
                                     const playerShots = safeEvents.filter(s => s.teamId === activeTeam.id && s.playerId === player.id);
                                     const made = playerShots.filter(s => s.isMake).length;
                                     const total = playerShots.length;
-                                    
-                                    if (total === 0) return null; // Hide players with 0 shots
+
+                                    if (total === 0) return null;
 
                                     return (
                                         <button
                                             key={player.id}
                                             onClick={() => togglePlayer(player.id)}
-                                            className={`w-full flex items-center justify-between p-3 rounded-xl transition-all border ${isSelected ? 'bg-slate-800/80 border-slate-700' : 'hover:bg-slate-900 border-transparent hover:border-slate-800 text-slate-500'}`}
+                                            className="w-full flex items-center justify-between py-2 px-3 rounded-lg hover:bg-slate-800/40 transition-colors"
                                         >
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-500' : 'bg-transparent border-slate-600'}`}>
-                                                    {isSelected && <Check size={12} className="text-white" />}
+                                            <div className="flex items-center gap-2.5">
+                                                <div className={`w-3.5 h-3.5 rounded flex items-center justify-center border transition-colors ${isSelected ? 'bg-indigo-600 border-indigo-500' : 'bg-transparent border-slate-600'}`}>
+                                                    {isSelected && <Check size={10} className="text-white" />}
                                                 </div>
-                                                <span className={`text-xs font-bold ${isSelected ? 'text-white' : 'text-slate-500'}`}>{player.name}</span>
+                                                <span className={`text-xs font-bold transition-colors ${isSelected ? 'text-white' : 'text-slate-600'}`}>{player.name}</span>
                                             </div>
-                                            <span className="text-[10px] font-mono text-slate-400">{made}/{total}</span>
+                                            <span className={`text-[10px] font-mono transition-colors ${isSelected ? 'text-slate-400' : 'text-slate-600'}`}>{made}/{total}</span>
                                         </button>
                                     );
                                 })

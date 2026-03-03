@@ -675,3 +675,66 @@ export function handleFillerExit(
         override.active = false;
     }
 }
+
+// ─────────────────────────────────────────────────────────────
+// 8. 가비지 타임 일괄 교체
+// ─────────────────────────────────────────────────────────────
+/**
+ * 코트 위 선수 전원을 벤치로 내리고, 벤치에서 OVR 낮은 순으로 5명을 투입.
+ * 로테이션맵을 무시하며, 복귀 없음 (영구 교체).
+ */
+export function executeGarbageSubstitution(
+    state: GameState, team: TeamState, outPlayers: LivePlayer[]
+): void {
+    const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
+    const currentMinute = Math.min(47, Math.floor(currentTotalSec / 60));
+
+    // 벤치에서 투입 가능한 선수: 건강 + 파울아웃 아님
+    const available = team.bench
+        .filter(p => p.health === 'Healthy' && p.pf < 6)
+        .sort((a, b) => a.ovr - b.ovr); // OVR 낮은 순 (가비지 멤버 우선)
+
+    const usedIds = new Set<string>();
+    const inPlayers: LivePlayer[] = [];
+    const outNames: string[] = [];
+    const inNames: string[] = [];
+
+    for (const outP of outPlayers) {
+        // 1차: 같은 포지션 + OVR 낮은 순
+        let inP = available.find(p => !usedIds.has(p.playerId) && p.position === outP.position);
+        // 2차: 포지션 무관
+        if (!inP) inP = available.find(p => !usedIds.has(p.playerId));
+        if (!inP) break;
+
+        const outIdx = team.onCourt.indexOf(outP);
+        const inIdx = team.bench.indexOf(inP);
+        if (outIdx === -1 || inIdx === -1) continue;
+
+        // 교체 실행
+        team.onCourt.splice(outIdx, 1);
+        team.bench.push(outP);
+        team.bench.splice(team.bench.indexOf(inP), 1);
+        team.onCourt.push(inP);
+
+        // 로테이션 기록
+        const histOut = state.rotationHistory[outP.playerId];
+        if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
+        if (!state.rotationHistory[inP.playerId]) state.rotationHistory[inP.playerId] = [];
+        state.rotationHistory[inP.playerId].push({ in: currentTotalSec, out: currentTotalSec });
+
+        usedIds.add(inP.playerId);
+        inPlayers.push(inP);
+        outNames.push(outP.playerName);
+        inNames.push(inP.playerName);
+    }
+
+    if (inNames.length > 0) {
+        state.logs.push({
+            quarter: state.quarter,
+            timeRemaining: formatTime(state.gameClock),
+            teamId: team.id,
+            text: `가비지 타임 — IN [${inNames.join(', ')}] OUT [${outNames.join(', ')}]`,
+            type: 'info'
+        });
+    }
+}
