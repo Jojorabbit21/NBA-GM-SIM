@@ -377,6 +377,12 @@ export const useLeaderboardData = (
                 update('blk', s.blk / g);
                 update('tov', s.tov / g);
                 update('pf', (s.pf || 0) / g);
+                update('fgm', s.fgm / g);
+                update('fga', s.fga / g);
+                update('p3m', s.p3m / g);
+                update('p3a', s.p3a / g);
+                update('ftm', s.ftm / g);
+                update('fta', s.fta / g);
                 update('fg%', s.fga > 0 ? s.fgm / s.fga : 0);
                 update('3p%', s.p3a > 0 ? s.p3m / s.p3a : 0);
                 update('ft%', s.fta > 0 ? s.ftm / s.fta : 0);
