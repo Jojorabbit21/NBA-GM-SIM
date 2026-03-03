@@ -20,7 +20,8 @@ function identifyDefender(
     playType: PlayType,
     isActorAce: boolean,
     targetZone: 'Rim' | 'Paint' | 'Mid' | '3PT',
-    isZone: boolean  // Pre-calculated in simulatePossession (probabilistic: zoneFreq*0.08)
+    isZone: boolean,  // Pre-calculated in simulatePossession (probabilistic: zoneFreq*0.08)
+    screener?: LivePlayer  // OffBallScreen: 스크리너 (수비 스위치 기준)
 ): { defender: LivePlayer, isSwitch: boolean, isBotchedSwitch: boolean, pnrCoverage: PnrCoverage, screenerDefender?: LivePlayer } {
 
     const sliders = defTeam.tactics.sliders;
@@ -47,14 +48,17 @@ function identifyDefender(
     // 3. Switch Logic
     // Driven by 'switchFreq' slider (1-10)
     // 1 = 5%, 5 = 25%, 10 = 50% base switch chance on screens
-    const isScreenPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop', 'Handoff'].includes(playType);
+    const isScreenPlay = ['PnR_Handler', 'PnR_Roll', 'PnR_Pop', 'Handoff', 'OffBallScreen'].includes(playType);
 
-    if (isScreenPlay && !isZone && secondaryActor) {
+    // OffBallScreen: screener의 포지션으로 수비수 탐색, 나머지: secondaryActor 사용
+    const screenPlayer = screener || secondaryActor;
+
+    if (isScreenPlay && !isZone && screenPlayer) {
         const switchChance = sliders.switchFreq * 0.05;
 
         if (Math.random() < switchChance) {
             // Find screener's defender
-            let switchDef = defTeam.onCourt.find(p => p.position === secondaryActor.position);
+            let switchDef = defTeam.onCourt.find(p => p.position === screenPlayer.position);
             if (!switchDef) switchDef = defTeam.onCourt.find(p => p.playerId !== defender!.playerId);
 
             if (switchDef) {
@@ -81,7 +85,7 @@ function identifyDefender(
             else coverage = 'blitz';
 
             // 빅맨(스크리너 수비수) 식별
-            const screenerDef = defTeam.onCourt.find(p => p.position === secondaryActor.position)
+            const screenerDef = defTeam.onCourt.find(p => p.position === screenPlayer.position)
                              || defTeam.onCourt.find(p => p.position === 'C')
                              || defTeam.onCourt.find(p => p.position === 'PF');
 
@@ -134,7 +138,8 @@ function calculateTurnoverChance(
     // [B-1] 패스 정확도 부족 → 패스 미스 턴오버 (패스 관련 플레이에서 강화)
     const isPassPlay = playType === 'CatchShoot' || playType === 'Handoff'
         || playType === 'PnR_Handler' || playType === 'PnR_Roll'
-        || playType === 'PnR_Pop' || playType === 'Cut';
+        || playType === 'PnR_Pop' || playType === 'Cut'
+        || playType === 'OffBallScreen' || playType === 'DriveKick';
     const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
 
     // Play Type Context
@@ -335,6 +340,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             'CatchShoot': sliders.play_cns,
             'Cut': sliders.play_drive,
             'Handoff': 2, // Base
+            'OffBallScreen': 2, // Base (Handoff와 동급)
+            'DriveKick': 3, // Base (현대 NBA 가장 흔한 플레이)
             'Transition': 0 // Handled by pace check
         };
 
@@ -390,14 +397,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     const playCtx = resolvePlayAction(offTeam, selectedPlayType, sliders);
-    const { actor, secondaryActor, preferredZone, bonusHitRate, shotType } = playCtx;
+    const { actor, secondaryActor, screener, preferredZone, bonusHitRate, shotType } = playCtx;
     const isActorAce = actor.playerId === offTeam.acePlayerId;
 
     // 2. Identify Defender
     // zoneFreq=1: 8% 발동, zoneFreq=5: 40%, zoneFreq=10: 80%
     const isZone = Math.random() < defTeam.tactics.sliders.zoneFreq * 0.08;
     const { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
-        defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone
+        defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
     );
 
     // 3. Defensive Foul Check (Intensity Slider)
@@ -541,7 +548,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     // [A-3] CatchShoot/Handoff 오픈 탐지: 패서 시야가 넓으면 더 좋은 오픈 찬스
     let openDetectionMod = 0;
-    if (secondaryActor && (selectedPlayType === 'CatchShoot' || selectedPlayType === 'Handoff')) {
+    if (secondaryActor && (selectedPlayType === 'CatchShoot' || selectedPlayType === 'Handoff'
+        || selectedPlayType === 'OffBallScreen' || selectedPlayType === 'DriveKick')) {
         openDetectionMod = (secondaryActor.attr.passVision - 70) * 0.0015;
     }
 

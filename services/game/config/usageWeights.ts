@@ -20,13 +20,15 @@ export const PLAY_TYPE_USAGE_WEIGHTS: Record<PlayType, [number, number, number, 
 
     // [Designed Action] 상위 옵션 선호하나 극단적이지 않음
     // 전술적인 움직임이므로 3옵션까지는 기회가 갑니다.
-    'Handoff':      [2.0, 1.6, 1.2, 0.8, 0.5],
-    'PnR_Pop':      [1.6, 1.4, 1.2, 0.9, 0.6],
+    'Handoff':        [2.0, 1.6, 1.2, 0.8, 0.5],
+    'OffBallScreen':  [2.0, 1.6, 1.2, 0.8, 0.5],
+    'PnR_Pop':        [1.6, 1.4, 1.2, 0.9, 0.6],
 
     // [Finisher/System] 받아먹기는 비교적 평등하되 상위 옵션 선호도 소폭 반영
     // 롤맨이나 스팟업 슈터는 4~5옵션이어도 찬스가 나면 쏴야 합니다.
     'PnR_Roll':     [1.3, 1.2, 1.1, 1.0, 0.9],
     'CatchShoot':   [1.5, 1.3, 1.2, 1.0, 0.8],
+    'DriveKick':    [1.5, 1.3, 1.2, 1.0, 0.8],
     'Cut':          [1.4, 1.2, 1.1, 1.0, 0.8],
 
     // [Chaos/Athletic] 옵션 시스템 무시 (모두 1.0)

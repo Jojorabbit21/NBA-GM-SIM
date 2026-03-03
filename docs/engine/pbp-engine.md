@@ -71,7 +71,7 @@ services/game/tactics/
     hotColdRating: number,    // -1.0 ~ +1.0
     recentShots: boolean[],   // 최근 5개 슛 결과
 
-    // 능력치 (NBA 2K 기반, initializer.ts에서 매핑)
+    // 능력치 (독자 생성 레이팅, initializer.ts에서 매핑)
     attr: {
         // 슈팅
         ins: number,            // 골밑 종합
@@ -106,6 +106,7 @@ services/game/tactics/
         passAcc: number,        // 패스 정확도
         passVision: number,     // 패스 비전
         passIq: number,         // 패스 IQ
+        offBallMovement: number, // 오프볼 무브먼트 (Cut/OffBallScreen 액터 선정)
         shotIq: number,         // 슛 선택 IQ
         offConsist: number,     // 공격 일관성
         postPlay: number,       // 포스트 무브
@@ -125,6 +126,7 @@ services/game/tactics/
         reb: number,            // 리바운드 종합
         offReb: number,         // 공격 리바운드
         defReb: number,         // 수비 리바운드
+        boxOut: number,         // 박스아웃 (수비 리바운드 파워 보정)
 
         // 기타
         intangibles: number,    // 클러치/강심장
@@ -342,7 +344,7 @@ PlayType별 선택 기준:
   PnR_Pop:     popper (3pt+shotIq)                     | 균등(1.6x~0.6x)
   PostUp:      postScorer (ins+strength+hands)          | 1옵션 2.2x
   CatchShoot:  spacer (3pt+shotIq+offConsist)           | 균등(1.5x~0.8x)
-  Cut:         driver (speed+agility+vertical+ins)      | 균등(1.4x~0.8x)
+  Cut:         driver (speed+agility+vertical+ins) + offBallMovement×0.5 | 균등(1.4x~0.8x)
   Transition:  spdBall+driver 높은 선수                 | 완전 균등(1.0x)
 ```
 
@@ -570,14 +572,18 @@ resolveRebound(homeTeam, awayTeam, shooterId)
 2단계 시스템:
   Step 1: ORB% 판정 (공격 리바운드 확률)
     BASE_ORB_RATE = 0.23 (NBA 평균)
-    ± 슬라이더/팀 리바 능력 보정
+    offPower = Σ(offTeam) [offReb×0.6 + vertical×0.2 + (height-180)×0.5 + hands×0.1] × posBonus
+    defPower = Σ(defTeam) [defReb×0.6 + vertical×0.2 + (height-180)×0.5 + hands×0.1 + boxOut×0.15] × posBonus
+    ↳ boxOut은 수비 리바운드 파워에만 가산 (박스아웃 = 수비 기술)
+    ± 슬라이더 보정
     범위: 0.12 ~ 0.38
 
   Step 2: 리바운더 선택
-    score = (reb*0.6 + vertical*0.2 + height*0.2)
-            * positionBonus * fatigueMultiplier
+    score = (rebAttr×0.6 + vertical×0.2 + (height-180)×0.5 + hands×0.1 + boxOutMod)
+            × posBonus × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity×0.6)
+    ↳ boxOutMod = 수비 리바운드일 때만 boxOut × 0.15 (공격 리바운드에서는 0)
 
-    positionBonus: C:1.3, PF:1.2, SF:1.05, SG:0.90, PG:0.75
+    positionBonus: C:1.3, PF:1.2, 기타:1.0
 
     슈터 패널티: score *= 0.3
 

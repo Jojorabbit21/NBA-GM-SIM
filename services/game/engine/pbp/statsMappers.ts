@@ -142,16 +142,18 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Update Assist (Play-type-based probability — not all secondary actors earn credit)
         if (assister) {
             const assistOdds: Record<string, number> = {
-                'CatchShoot':  0.92, // Kick-out to open shooter → almost always assisted
-                'Cut':         0.88, // Passer to cutting slasher
-                'PnR_Pop':     0.85, // Handler kicks to popping big
-                'PnR_Roll':    0.80, // Handler feeds rolling big
-                'Handoff':     0.70, // Ball-handler hands off
-                'Transition':  0.60, // Push-ahead / outlet pass on break
-                'PostUp':      0.50, // Entry pass to post
-                'PnR_Handler': 0.35, // 스크린 후 핸들러 자체 공격 — 어시스트 낮음
-                'Iso':         0.30, // 진입 패스 후 아이소 — 어시스트 낮음
-                'Putback':     0.10, // Tip-in rarely credited
+                'CatchShoot':    0.92, // Kick-out to open shooter → almost always assisted
+                'DriveKick':     0.92, // 드라이브 킥아웃 = 의도적 패스, CatchShoot와 동급
+                'Cut':           0.88, // Passer to cutting slasher
+                'OffBallScreen': 0.88, // 스크린 후 캐치앤슛, 의도적 패스
+                'PnR_Pop':       0.85, // Handler kicks to popping big
+                'PnR_Roll':      0.80, // Handler feeds rolling big
+                'Handoff':       0.70, // Ball-handler hands off
+                'Transition':    0.60, // Push-ahead / outlet pass on break
+                'PostUp':        0.50, // Entry pass to post
+                'PnR_Handler':   0.35, // 스크린 후 핸들러 자체 공격 — 어시스트 낮음
+                'Iso':           0.30, // 진입 패스 후 아이소 — 어시스트 낮음
+                'Putback':       0.10, // Tip-in rarely credited
             };
             const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
             // [SaveTendency] playStyle: pass-first(-1.0) → +10% assist prob, shoot-first(+1.0) → -10%

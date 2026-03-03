@@ -96,4 +96,4 @@ export interface SimulationResult {
     injuries?: InjuryEvent[];
 }
 
-export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition' | 'Putback';
+export type PlayType = 'Iso' | 'PnR_Handler' | 'PnR_Roll' | 'PnR_Pop' | 'PostUp' | 'CatchShoot' | 'Cut' | 'Handoff' | 'Transition' | 'Putback' | 'OffBallScreen' | 'DriveKick';

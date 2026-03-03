@@ -120,6 +120,7 @@ export interface Player {
     spdBall: number;
     passIq: number;
     passVision: number;
+    offBallMovement: number;
     intDef: number;
     perDef: number;
     steal: number;
@@ -129,6 +130,7 @@ export interface Player {
     defConsist: number;
     offReb: number;
     defReb: number;
+    boxOut: number;
     speed: number;
     agility: number;
     strength: number;
@@ -142,8 +144,8 @@ export interface Player {
         'closeShot' | 'midRange' | 'threeCorner' | 'three45' | 'threeTop' |
         'ft' | 'shotIq' | 'offConsist' | 'layup' | 'dunk' | 'postPlay' |
         'drawFoul' | 'hands' | 'passAcc' | 'handling' | 'spdBall' |
-        'passIq' | 'passVision' | 'intDef' | 'perDef' | 'steal' | 'blk' |
-        'helpDefIq' | 'passPerc' | 'defConsist' | 'offReb' | 'defReb' |
+        'passIq' | 'passVision' | 'offBallMovement' | 'intDef' | 'perDef' | 'steal' | 'blk' |
+        'helpDefIq' | 'passPerc' | 'defConsist' | 'offReb' | 'defReb' | 'boxOut' |
         'speed' | 'agility' | 'strength' | 'vertical' | 'stamina' |
         'hustle' | 'durability' | 'intangibles'
     >>;

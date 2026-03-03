@@ -12,7 +12,7 @@
 - `saves` : 사용자 체크포인트 (팀선택, 날짜, 전술, 로스터 상태)
 - `user_game_results` : 경기별 박스스코어 (사용자별 누적)
 - `players`, `schedule` 테이블은 **실제 존재하지 않음** → queries.ts의 fallback 코드는 dead code
-- 선수 데이터 원본: **NBA 2K 능력치** (base_attributes JSONB)
+- 선수 데이터 원본: **독자 생성 레이팅** (base_attributes JSONB, Claude AI 기반)
 
 ### 상태 재구성 방식 (핵심 설계)
 사용자별 선수 스탯 테이블을 따로 두지 않음 → DB 부담 최소화
@@ -63,7 +63,7 @@
 
 ## 데이터 관련
 - meta_players 원본: 사용자가 직접 작성한 CSV → JSONB 변환 스크립트로 Supabase 업로드
-- 선수 데이터: NBA 2K 능력치 기반, 필요시 세부 레이팅만 조정
+- 선수 데이터: Claude AI 독자 생성 레이팅 (NBA 도메인 지식 기반)
 
 ## 도메인 지식 파일
 - `docs/domain/nba-strategy.md` : NBA 전술/경기 운영/선수 역할/평가 이론 전체 정리
