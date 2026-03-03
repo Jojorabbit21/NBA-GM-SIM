@@ -51,10 +51,11 @@ export const TacticsDataPanel: React.FC<TacticsDataPanelProps> = ({ sliders, ros
     // Offense risk values
     const offenseRisk = useMemo(() => {
         const dist = getPlayTypeDistribution(sliders);
-        const isoIdx = PLAY_TYPES.findIndex(pt => pt.key === 'iso');
-        const driveIdx = PLAY_TYPES.findIndex(pt => pt.key === 'drive');
+        const isoIdx = PLAY_TYPES.findIndex(pt => pt.key === 'Iso');
+        const cutIdx = PLAY_TYPES.findIndex(pt => pt.key === 'Cut');
+        const driveKickIdx = PLAY_TYPES.findIndex(pt => pt.key === 'DriveKick');
         const isoShare = dist[isoIdx] || 0;
-        const driveShare = dist[driveIdx] || 0;
+        const driveShare = (dist[cutIdx] || 0) + (dist[driveKickIdx] || 0);
 
         const tovRisk = ((sliders.pace - 1) / 9) * 30
             + ((10 - sliders.ballMovement) / 9) * 35

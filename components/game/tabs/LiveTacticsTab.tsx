@@ -324,19 +324,15 @@ export const LiveTacticsTab: React.FC<LiveTacticsTabProps> = ({
                         steps={SLIDER_STEPS.shot_mid} tooltip="중거리 슛은 효율이 낮습니다. 엘리트 슈터가 없다면 소극적으로 유지하세요." fillColor="#10b981" />
                 </div>
 
-                {/* 3. 공격 루트 */}
+                {/* 3. 코칭 철학 */}
                 <div className="flex flex-col gap-1">
-                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">공격 루트</h4>
-                    <SliderControl label="픽앤롤" value={sliders.play_pnr} onChange={v => updateSlider('play_pnr', v)}
-                        steps={SLIDER_STEPS.play_pnr} tooltip="핸들러+스크리너 콤보가 좋을수록 효과적." fillColor="#3b82f6" />
-                    <SliderControl label="아이솔레이션" value={sliders.play_iso} onChange={v => updateSlider('play_iso', v)}
-                        steps={SLIDER_STEPS.play_iso} tooltip="엘리트 ISO 스코어러가 없다면 소극적으로 유지하세요." fillColor="#3b82f6" />
-                    <SliderControl label="포스트업" value={sliders.play_post} onChange={v => updateSlider('play_post', v)}
-                        steps={SLIDER_STEPS.play_post} tooltip="도미넌트 포스트맨이 있을 때만 적극적으로 설정하세요." fillColor="#3b82f6" />
-                    <SliderControl label="캐치 앤 슛" value={sliders.play_cns} onChange={v => updateSlider('play_cns', v)}
-                        steps={SLIDER_STEPS.play_cns} tooltip="팀 전체의 스패이싱 능력에 따라 설정하세요." fillColor="#3b82f6" />
-                    <SliderControl label="컷인 & 돌파" value={sliders.play_drive} onChange={v => updateSlider('play_drive', v)}
-                        steps={SLIDER_STEPS.play_drive} tooltip="드라이브/컷 능력이 좋은 선수가 있을수록 효과적." fillColor="#3b82f6" />
+                    <h4 className="text-[11px] font-black text-white uppercase tracking-widest mb-1">코칭 철학</h4>
+                    <SliderControl label="공격 스타일" value={sliders.playStyle} onChange={v => updateSlider('playStyle', v)}
+                        steps={SLIDER_STEPS.playStyle} tooltip="히어로 볼은 스타의 1:1 창조력에 의존. 시스템 농구는 팀 패싱/무빙으로 오픈 슛을 만듭니다." fillColor="#3b82f6" />
+                    <SliderControl label="공격 포인트" value={sliders.insideOut} onChange={v => updateSlider('insideOut', v)}
+                        steps={SLIDER_STEPS.insideOut} tooltip="인사이드는 포스트업/컷/롤 강조. 아웃사이드는 캐치앤슛/팝/드라이브킥 강조." fillColor="#3b82f6" />
+                    <SliderControl label="P&R 의존도" value={sliders.pnrFreq} onChange={v => updateSlider('pnrFreq', v)}
+                        steps={SLIDER_STEPS.pnrFreq} tooltip="높을수록 픽앤롤 관련 플레이 비중이 커집니다. 핸들러+스크리너 콤비가 좋을수록 효과적." fillColor="#3b82f6" />
                 </div>
 
                 {/* 4. 온볼 수비 */}

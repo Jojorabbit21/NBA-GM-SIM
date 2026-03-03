@@ -495,16 +495,16 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                 <table className="border-separate border-spacing-0 w-full" style={{ minWidth: '960px' }}>
                     <thead className={`${SH} sticky top-0 z-50`}>
                         {/* Row 1: column headers + quarter labels */}
-                        <tr className="text-[9px] font-black text-slate-500 uppercase tracking-tighter">
-                            <th rowSpan={2} className={`sticky left-0 z-50 ${SH} ${SB} border-b border-slate-800 w-[50px] min-w-[50px] text-center`}>POS</th>
-                            <th rowSpan={2} className={`sticky left-[50px] z-50 ${SH} ${SB} border-b border-slate-800 w-[160px] min-w-[160px] text-left px-3`}>PLAYER</th>
+                        <tr className="text-xs font-black text-slate-500 uppercase tracking-tighter">
+                            <th rowSpan={2} className={`sticky left-0 z-50 ${SH} ${SB} border-b border-slate-800 w-[50px] min-w-[50px] text-center`}>포지션</th>
+                            <th rowSpan={2} className={`sticky left-[50px] z-50 ${SH} ${SB} border-b border-slate-800 w-[160px] min-w-[160px] text-left px-3`}>선수</th>
                             <th rowSpan={2} className={`sticky left-[210px] z-50 ${SH} ${SB} border-b border-slate-800 w-[40px] min-w-[40px] text-center`}>OVR</th>
-                            <th rowSpan={2} className={`sticky left-[250px] z-50 ${SH} ${SB} border-b border-slate-800 w-[55px] min-w-[55px] text-center`}>COND</th>
-                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${SH} ${SB} border-r-2 border-r-indigo-500/50 border-b border-slate-800 w-[40px] min-w-[40px] text-center`}>MIN</th>
+                            <th rowSpan={2} className={`sticky left-[250px] z-50 ${SH} ${SB} border-b border-slate-800 w-[55px] min-w-[55px] text-center`}>체력</th>
+                            <th rowSpan={2} className={`sticky left-[305px] z-50 ${SH} ${SB} border-r-2 border-r-indigo-500/50 border-b border-slate-800 w-[40px] min-w-[40px] text-center`}>시간</th>
                             {/* Quarter label cell */}
                             <th className={`${SH} border-b border-slate-800/50 p-0`}>
-                                <div className="flex h-7 text-[10px] font-black">
-                                    {['Q1', 'Q2', 'Q3', 'Q4'].map((q, qi) => (
+                                <div className="flex h-7 text-xs font-black">
+                                    {['1쿼터', '2쿼터', '3쿼터', '4쿼터'].map((q, qi) => (
                                         <div
                                             key={q}
                                             className={`flex-1 flex items-center justify-center text-slate-400 ${qi < 3 ? 'border-r-2 border-indigo-500/40' : ''}`}

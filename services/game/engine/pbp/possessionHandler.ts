@@ -6,6 +6,7 @@ import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
 import { PlayType } from '../../../../types';
 import { SIM_CONFIG } from '../../config/constants';
+import { computePlayTypeWeights } from '../../config/playTypeProfiles';
 import { resolveDynamicZone } from '../shotDistribution';
 
 type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
@@ -330,20 +331,8 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     }
 
     if (!isSecondChance) {
-        // Calculate total weight
-        const weights: Record<string, number> = {
-            'Iso': sliders.play_iso,
-            'PnR_Handler': sliders.play_pnr * 0.6,
-            'PnR_Roll': sliders.play_pnr * 0.2,
-            'PnR_Pop': sliders.play_pnr * 0.2,
-            'PostUp': sliders.play_post,
-            'CatchShoot': sliders.play_cns,
-            'Cut': sliders.play_drive,
-            'Handoff': 2, // Base
-            'OffBallScreen': 2, // Base (Handoff와 동급)
-            'DriveKick': 3, // Base (현대 NBA 가장 흔한 플레이)
-            'Transition': 0 // Handled by pace check
-        };
+        // 3개 추상 슬라이더 → 10개 하프코트 플레이타입 가중치 산출
+        const weights = computePlayTypeWeights(sliders);
 
         // Star Gravity: 1옵션의 공격력이 높을수록 Hero 플레이 비중 증가
         // 현실 NBA에서 에이스가 코트에 있으면 팀 전술 자체가 스타 중심으로 변하는 것을 반영
