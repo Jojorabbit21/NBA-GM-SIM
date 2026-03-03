@@ -831,7 +831,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const {
         displayState, callTimeout, applyTactics, applyRotationMap,
         makeSubstitution, resume, pause, getResult,
-        setSpeed,
+        setSpeed, skipToEnd,
     } = useLiveGame(
         homeTeam, awayTeam, userTeamId, userTactics,
         isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed
@@ -1055,7 +1055,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     {!isUserHome && (
                         <>
                             <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                                {([0.5, 1, 2, 4] as GameSpeed[]).map((s, idx) => (
+                                {([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map((s, idx) => (
                                     <button
                                         key={s}
                                         onClick={() => setSpeed(s)}
@@ -1088,6 +1088,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             >
                                 {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
                             </button>
+                            <button
+                                onClick={skipToEnd}
+                                disabled={isGameEnd}
+                                className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-white text-[10px] font-bold transition-colors"
+                            >
+                                경기 종료까지 ▶▶
+                            </button>
                         </>
                     )}
                 </div>
@@ -1112,6 +1121,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     {isUserHome && (
                         <>
                             <button
+                                onClick={skipToEnd}
+                                disabled={isGameEnd}
+                                className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
+                                           disabled:opacity-40 disabled:cursor-not-allowed
+                                           text-white text-[10px] font-bold transition-colors"
+                            >
+                                경기 종료까지 ▶▶
+                            </button>
+                            <button
                                 onClick={pauseReason ? resume : pause}
                                 disabled={isGameEnd}
                                 className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
@@ -1130,7 +1148,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 타임아웃 ({userTimeoutsLeft})
                             </button>
                             <div className="flex rounded-lg overflow-hidden border border-slate-700">
-                                {([0.5, 1, 2, 4] as GameSpeed[]).map((s, idx) => (
+                                {([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map((s, idx) => (
                                     <button
                                         key={s}
                                         onClick={() => setSpeed(s)}

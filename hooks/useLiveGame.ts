@@ -16,10 +16,10 @@ import {
 
 export type PauseReason = 'timeout' | 'quarterEnd' | 'halftime' | 'gameEnd';
 
-export type GameSpeed = 0.5 | 1 | 2 | 4; // 포세션 간격 배수
+export type GameSpeed = 0.5 | 1 | 1.5 | 3 | 6; // 포세션 간격 배수
 
-/** 포세션당 ms (1x = 600ms) */
-const BASE_INTERVAL_MS = 600;
+/** 포세션당 ms (1x = 1200ms) */
+const BASE_INTERVAL_MS = 1200;
 
 export interface LiveDisplayState {
     homeScore: number;
@@ -69,6 +69,8 @@ export interface UseLiveGameReturn {
     userBench: LivePlayer[];
     // 속도 조절
     setSpeed: (s: GameSpeed) => void;
+    // 경기 끝까지 즉시 진행
+    skipToEnd: () => void;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -246,6 +248,26 @@ export function useLiveGame(
         syncDisplay();
     }, [startInterval, syncDisplay]);
 
+    const skipToEnd = useCallback(() => {
+        if (isGameEndRef.current) return;
+        // 타이머 중단
+        if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+        }
+        // 모든 포세션을 동기적으로 실행
+        const state = gameStateRef.current;
+        const MAX_POSSESSIONS = 10000; // 무한루프 방지
+        for (let i = 0; i < MAX_POSSESSIONS; i++) {
+            const step = stepPossession(state);
+            if (step.isGameEnd) break;
+            // 쿼터 전환/타임아웃 pause 없이 계속 진행
+        }
+        pauseReasonRef.current = 'gameEnd';
+        isGameEndRef.current = true;
+        syncDisplay();
+    }, [syncDisplay]);
+
     // ────────────────────────────────────────────────────────
     // Derived values
     // ────────────────────────────────────────────────────────
@@ -265,6 +287,7 @@ export function useLiveGame(
         userOnCourt: userTeam.onCourt,
         userBench: userTeam.bench,
         setSpeed,
+        skipToEnd,
     };
 }
 
