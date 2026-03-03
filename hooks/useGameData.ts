@@ -358,7 +358,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 supabase.from('user_tactics').delete().eq('user_id', userId)
             ]);
             
-            queryClient.removeQueries();
+            queryClient.removeQueries({ predicate: q => q.queryKey[0] !== 'baseData' });
             
             Object.keys(localStorage).forEach((key) => {
                 if (key.startsWith('trade_ops_')) {
