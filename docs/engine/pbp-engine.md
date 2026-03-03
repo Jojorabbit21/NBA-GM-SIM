@@ -67,6 +67,10 @@ services/game/tactics/
     // 세이브별 고유 성향 (hiddenTendencies.ts)
     tendencies: SaveTendencies,
 
+    // 선수 DNA — 광역 존 선호도 (합계 = 1.0)
+    // tendencies.zones → buildZonePref()로 정규화 (initializer.ts)
+    zonePref: { rim: number; mid: number; three: number },
+
     // 핫/콜드 스트릭
     hotColdRating: number,    // -1.0 ~ +1.0
     recentShots: boolean[],   // 최근 5개 슛 결과
@@ -1102,12 +1106,18 @@ checkAndApplyRotation(state, currentMinute):
 ```
 selectZone(zones, actor, sliders):
 
-  score(zone) = (attr(zone) / 100) × 0.60 + (slider(zone) / 10) × 0.40
+  score(zone) = zonePref(zone) × 0.70 + (slider(zone) / 10) × 0.30
 
-  속성 매핑:
-    3PT → attr.out, slider: shot_3pt
-    Mid → attr.mid, slider: shot_mid
-    Rim → attr.ins, slider: shot_rim
+  선호도 매핑 (LivePlayer.zonePref):
+    3PT → actor.zonePref.three,   slider: shot_3pt
+    Mid → actor.zonePref.mid,     slider: shot_mid
+    Rim → actor.zonePref.rim,     slider: shot_rim
+
+  zonePref 생성 (initializer.ts:buildZonePref):
+    tendencies.zones 있음 → ra+itp=rim, mid=mid, cnr+p45+atb=three → 정규화
+    tendencies.zones 없음 → ins/midRange/threeAvg 능력치 기반 폴백
+
+  ※ 능력치(attr)는 존 선택에 관여하지 않음 — hitRate에서 별도 처리
 ```
 
 ---

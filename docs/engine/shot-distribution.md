@@ -4,6 +4,9 @@
 슈팅 시도를 10개 세부 존으로 분배하는 시스템.
 DB 텐던시 데이터(우선) 또는 아키타입 기반 폴백으로 선수별 슈팅 존 성향을 결정.
 
+> **광역 존 선택(Rim/Mid/3PT)** 은 `playTypes.ts:selectZone()`에서 `LivePlayer.zonePref` 70% + 전술 슬라이더 30%로 결정.
+> 본 파일(shotDistribution)은 광역 존이 결정된 후 **10개 세부 존**으로 분배하는 역할.
+
 **파일**:
 - `services/game/engine/pbp/shotDistribution.ts` — PBP 엔진용 (포세션 중 동적 존 결정)
 - `services/game/engine/shotDistribution.ts` — 배치 분배용 (시즌 스탯 프로젝션)

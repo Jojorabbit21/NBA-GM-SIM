@@ -49,11 +49,9 @@ AI 팀 및 사용자 초기 설정을 위한 전술 자동 생성 시스템.
 | `pace` | 가드 평균 speed → stamina 낮으면 -2 |
 | `ballMovement` | plm + passVision 평균 |
 | `offReb` | 빅맨 reb 평균 → 하이페이스면 -2 |
-| `play_pnr` | handler + screener + roller 복합 (최소 6 보장) |
-| `play_iso` | maxOf(isoScore), 고임계값 72~92 |
-| `play_post` | maxOf(postScore), 매우 고임계값 78~95 |
-| `play_cns` | avgOf(spacerScore) |
-| `play_drive` | maxOf(driverScore) |
+| `playStyle` | 히어로 볼(2) ↔ 시스템 농구(9) — heroScore vs systemScore 비교 |
+| `insideOut` | 인사이드(2) ↔ 아웃사이드(9) — insideScore vs outsideScore 비교 |
+| `pnrFreq` | P&R 의존도 낮음(2) ↔ 높음(9) — handler+screener+roller 복합 |
 | `shot_3pt` | avgOf(3pt), `shot_rim`, `shot_mid` |
 
 **수비 슬라이더**:
@@ -65,10 +63,14 @@ AI 팀 및 사용자 초기 설정을 위한 전술 자동 생성 시스템.
 | `fullCourtPress` | 가드 stamina×speed 평균 (88+→8, 82+→4, else→1) |
 | `zoneFreq` | 내선 vs 외곽 수비력 차이 |
 
+**코칭 철학 슬라이더**: 3개 추상 슬라이더가 내부적으로 10개 하프코트 플레이타입 가중치를 자동 산출:
+- `playStyle` (2~9): 히어로 볼 ↔ 시스템 농구
+- `insideOut` (2~9): 인사이드 ↔ 아웃사이드
+- `pnrFreq` (2~9): P&R 의존도 낮음 ↔ 높음
+- 가중치 산출: `computePlayTypeWeights(sliders)` (`playTypeProfiles.ts`)
+- 10개 플레이타입: Iso, PostUp, PnR_Handler, PnR_Roll, PnR_Pop, CatchShoot, OffBallScreen, DriveKick, Cut, Handoff
+
 **NBA 전술 철학 반영**:
-- PnR = 현대 NBA 핵심 → baseline 6
-- ISO/PostUp = 비효율 기본 → 고임계값
-- 중거리 = "죽은 구역" → 엘리트만 높게
 - 풀코트 프레스 = 극도 체력 소모 → 보수적
 
 ---
@@ -76,6 +78,7 @@ AI 팀 및 사용자 초기 설정을 위한 전술 자동 생성 시스템.
 ## tacticPresets.ts — `DEFAULT_SLIDERS`
 
 모든 슬라이더 5 (중립) + fullCourtPress=1, zoneUsage=5, pnrDefense=1
+코칭 철학: playStyle=5, insideOut=5, pnrFreq=5 (밸런스)
 
 ---
 
@@ -113,3 +116,4 @@ pace: [{ value: 2, label: '느림' }, { value: 5, label: '보통' }, { value: 9,
 - `snap(key, value)`: 계산된 값을 가장 가까운 스텝 값으로 스냅
 - 슬라이더 추가 시: tacticPresets + sliderSteps + tacticGenerator 모두 업데이트
 - generateAutoTactics는 AI 팀과 초기 사용자 설정 모두에 사용됨
+- 플레이타입 가중치 산출: `playTypeProfiles.ts`의 `computePlayTypeWeights()` 사용 (possessionHandler에서 호출)

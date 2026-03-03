@@ -257,6 +257,11 @@
   - 기타 플레이: factor = 0.0005
 - **리바운드 점수**: `hands × 0.1` (calcPower + selectRebounder)
 
+### boxOut 기본 공식
+- **수비 리바운드 파워**: `boxOut × 0.15` (calcPower의 defPower에만 가산)
+- **수비 리바운드 선택 점수**: `boxOut × 0.15` (selectRebounder — 수비 리바운드일 때만)
+- 박스아웃은 수비 기술(상대를 밀어내고 리바운드 포지션 확보)이므로 공격 리바운드에는 적용되지 않음
+
 ---
 
 ## 파일별 아키타입 매핑
