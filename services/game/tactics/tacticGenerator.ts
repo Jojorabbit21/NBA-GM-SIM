@@ -155,22 +155,22 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     let offReb = ato(bigRebAvg, 65, 90);
     if (pace >= 8) offReb = clamp(offReb - 2);
 
-    // ── Offense: 공격 루트 비중 ──
-    // PnR = 현대 NBA 핵심 → baseline 6 유지
+    // ── Offense: 코칭 철학 (3개 추상 슬라이더) ──
+    // playStyle: 히어로(2) ↔ 시스템(9)
+    // 개인 창조력(iso/post) vs 팀 시스템(spacing/driving) 비교
+    const heroInd = (maxOf(isoScore) + maxOf(postScore)) / 2;
+    const sysInd = (avgOf(spacerScore) + avgOf(driverScore)) / 2;
+    const playStyle = clamp(Math.round(5 + (sysInd - heroInd) * 0.15));
+
+    // insideOut: 인사이드(2) ↔ 아웃사이드(9)
+    // 포스트/롤/드라이브 vs 스페이싱/슈팅 비교
+    const insideInd = maxOf(postScore) * 0.5 + maxOf(rollerScore) * 0.3 + maxOf(driverScore) * 0.2;
+    const outsideInd = avgOf(spacerScore) * 0.6 + avgOf(get3pt) * 0.4;
+    const insideOut = clamp(Math.round(5 + (outsideInd - insideInd) * 0.15));
+
+    // pnrFreq: P&R 의존도 — 현대 NBA baseline 6 유지
     const pnrRaw = maxOf(handlerScore) * 0.5 + maxOf(screenerScore) * 0.3 + maxOf(rollerScore) * 0.2;
-    const play_pnr = clamp(Math.max(6, ato(pnrRaw, 62, 88)));
-
-    // ISO = 엘리트 스코어러에게만 효율적 (고임계값)
-    const play_iso = ato(maxOf(isoScore), 72, 92);
-
-    // 포스트업 = 비효율 기본 (매우 고임계값)
-    const play_post = ato(maxOf(postScore), 78, 95);
-
-    // C&S = 팀 스패이싱 능력
-    const play_cns = ato(avgOf(spacerScore), 55, 82);
-
-    // 드라이브/컷
-    const play_drive = ato(maxOf(driverScore), 62, 88);
+    const pnrFreq = clamp(Math.max(6, ato(pnrRaw, 62, 88)));
 
     // ── Offense: 슈팅 전략 ──
     const shot_3pt = ato(avgOf(get3pt), 62, 85);
@@ -205,11 +205,9 @@ export const generateAutoTactics = (team: Team): GameTactics => {
             pace: snap('pace', pace),
             ballMovement: snap('ballMovement', ballMovement),
             offReb: snap('offReb', offReb),
-            play_pnr: snap('play_pnr', play_pnr),
-            play_iso: snap('play_iso', play_iso),
-            play_post: snap('play_post', play_post),
-            play_cns: snap('play_cns', play_cns),
-            play_drive: snap('play_drive', play_drive),
+            playStyle: snap('playStyle', playStyle),
+            insideOut: snap('insideOut', insideOut),
+            pnrFreq: snap('pnrFreq', pnrFreq),
             shot_3pt: snap('shot_3pt', shot_3pt),
             shot_mid,
             shot_rim: snap('shot_rim', shot_rim),

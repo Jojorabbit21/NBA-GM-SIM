@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { TacticalSliders, Player } from '../../../../types';
 import { calculatePlayerOvr } from '../../../../utils/constants';
-import { PLAY_TYPES } from './playTypeConstants';
+import { PLAY_TYPES, getPlayTypeDistribution } from './playTypeConstants';
 
 interface PlayTypePPPProps {
     sliders: TacticalSliders;
@@ -24,10 +24,7 @@ const CIRCUMFERENCE = 2 * Math.PI * DONUT_R;
 
 export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => {
     const data = useMemo(() => {
-        const rawWeights = PLAY_TYPES.map(pt => sliders[pt.sliderKey] || 5);
-        const totalWeight = rawWeights.reduce((s, v) => s + v, 0);
-        const distribution = rawWeights.map(w => (w / totalWeight) * 100);
-
+        const distribution = getPlayTypeDistribution(sliders);
         return PLAY_TYPES.map((pt, i) => ({
             ...pt,
             distribution: distribution[i],
@@ -113,32 +110,16 @@ export const PlayTypePPP: React.FC<PlayTypePPPProps> = ({ sliders, roster }) => 
                         </svg>
                     </div>
 
-                    {/* PlayType + Share */}
-                    <table className="border-collapse">
-                        <thead>
-                            <tr>
-                                <th className="text-left text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5">플레이타입</th>
-                                <th className="text-right text-[11px] font-bold text-slate-500 uppercase tracking-wider pb-1.5 pl-3">비중</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {data.map(item => (
-                                <tr key={item.key} className="h-9">
-                                    <td className="align-middle">
-                                        <div className="flex items-center gap-1.5">
-                                            <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                                            <span className="text-xs font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
-                                        </div>
-                                    </td>
-                                    <td className="align-middle pl-3">
-                                        <div className="flex items-center justify-end h-full">
-                                            <span className="text-xs font-black text-white tabular-nums">{item.distribution.toFixed(0)}%</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                    {/* PlayType + Share — 2열 레이아웃 */}
+                    <div className="grid grid-cols-2 gap-x-4">
+                        {data.map(item => (
+                            <div key={item.key} className="flex items-center gap-1.5 h-7">
+                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
+                                <span className="text-[10px] font-bold text-slate-300 whitespace-nowrap">{item.label}</span>
+                                <span className="text-[10px] font-black text-white tabular-nums ml-auto">{item.distribution.toFixed(0)}%</span>
+                            </div>
+                        ))}
+                    </div>
                 </div>
             </div>
 

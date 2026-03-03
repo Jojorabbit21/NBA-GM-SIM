@@ -23,31 +23,21 @@ export const SLIDER_STEPS: Record<string, SliderStep[]> = {
         { value: 8, label: '적극 가담' },
     ],
 
-    // ── 공격 루트 비중 ──
-    play_pnr: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
+    // ── 코칭 철학 ──
+    playStyle: [
+        { value: 2, label: '히어로 볼' },
+        { value: 5, label: '밸런스' },
+        { value: 9, label: '시스템 농구' },
     ],
-    play_iso: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
+    insideOut: [
+        { value: 2, label: '인사이드' },
+        { value: 5, label: '밸런스' },
+        { value: 9, label: '아웃사이드' },
     ],
-    play_post: [
-        { value: 2, label: '소극적' },
+    pnrFreq: [
+        { value: 2, label: '낮음' },
         { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
-    ],
-    play_cns: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
-    ],
-    play_drive: [
-        { value: 2, label: '소극적' },
-        { value: 5, label: '보통' },
-        { value: 9, label: '적극적' },
+        { value: 9, label: '높음' },
     ],
 
     // ── 슈팅 전략 ──

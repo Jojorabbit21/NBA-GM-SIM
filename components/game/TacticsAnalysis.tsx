@@ -300,11 +300,9 @@ export const TacticsAnalysis: React.FC<TacticsAnalysisProps> = ({
                             <SliderBar label="볼 무브먼트" value={tactics.sliders.ballMovement || 5} color={teamColor} />
                             <SliderBar label="도움 수비" value={tactics.sliders.helpDef || 5} color={teamColor} />
                             <SliderBar label="스위치 빈도" value={tactics.sliders.switchFreq || 5} color={teamColor} />
-                            <SliderBar label="아이솔레이션" value={tactics.sliders.play_iso || 5} color={teamColor} />
-                            <SliderBar label="픽앤롤" value={tactics.sliders.play_pnr || 5} color={teamColor} />
-                            <SliderBar label="포스트업" value={tactics.sliders.play_post || 5} color={teamColor} />
-                            <SliderBar label="캐치앤슛" value={tactics.sliders.play_cns || 5} color={teamColor} />
-                            <SliderBar label="돌파" value={tactics.sliders.play_drive || 5} color={teamColor} />
+                            <SliderBar label="공격 스타일" value={tactics.sliders.playStyle || 5} color={teamColor} />
+                            <SliderBar label="공격 포인트" value={tactics.sliders.insideOut || 5} color={teamColor} />
+                            <SliderBar label="P&R 의존도" value={tactics.sliders.pnrFreq || 5} color={teamColor} />
                             <SliderBar label="3점슛 비중" value={tactics.sliders.shot_3pt || 5} color={teamColor} />
                             <SliderBar label="중거리슛 비중" value={tactics.sliders.shot_mid || 5} color={teamColor} />
                             <SliderBar label="골밑슛 비중" value={tactics.sliders.shot_rim || 5} color={teamColor} />

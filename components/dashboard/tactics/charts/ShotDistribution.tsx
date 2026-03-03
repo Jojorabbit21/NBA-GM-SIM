@@ -2,7 +2,7 @@
 import React, { useMemo } from 'react';
 import { TacticalSliders, Player } from '../../../../types';
 import { calculatePlayerOvr } from '../../../../utils/constants';
-import { PLAY_TYPES } from './playTypeConstants';
+import { PLAY_TYPES, getPlayTypeDistribution } from './playTypeConstants';
 
 interface ShotDistributionProps {
     sliders: TacticalSliders;
@@ -16,74 +16,35 @@ const ZONE_CATS = [
     { key: '3pt', label: '3PT' },
 ] as const;
 
-// Mirrors engine's selectZone: score(zone) = (attr/100)*0.6 + (slider/10)*0.4
-const calcZoneProbs = (
-    zones: string[],
-    teamOut: number,
-    teamMid: number,
-    teamIns: number,
-    sliders: TacticalSliders
-): Record<string, number> => {
-    const attrMap: Record<string, number> = { '3pt': teamOut, mid: teamMid, rim: teamIns };
-    const sliderMap: Record<string, number> = { '3pt': sliders.shot_3pt, mid: sliders.shot_mid, rim: sliders.shot_rim };
-
-    const scored = zones.map(z => ({
-        zone: z,
-        score: (attrMap[z] / 100) * 0.60 + (sliderMap[z] / 10) * 0.40,
-    }));
-    const total = scored.reduce((s, c) => s + c.score, 0);
-    const result: Record<string, number> = { rim: 0, paint: 0, mid: 0, '3pt': 0 };
-    for (const { zone, score } of scored) {
-        result[zone] = total > 0 ? score / total : 0;
-    }
-    return result;
+// 10개 플레이타입별 슈팅 존 프로파일
+const PLAY_ZONE_MAP: Record<string, Record<string, number>> = {
+    'PnR_Handler':   { '3pt': 0.35, mid: 0.30, rim: 0.35 },
+    'PnR_Roll':      { rim: 0.85, paint: 0.15 },
+    'PnR_Pop':       { '3pt': 0.85, mid: 0.15 },
+    'CatchShoot':    { '3pt': 0.85, mid: 0.15 },
+    'DriveKick':     { '3pt': 0.70, mid: 0.30 },
+    'Iso':           { '3pt': 0.25, mid: 0.35, rim: 0.40 },
+    'PostUp':        { paint: 0.70, mid: 0.30 },
+    'Cut':           { rim: 0.85, paint: 0.15 },
+    'OffBallScreen': { '3pt': 0.75, mid: 0.25 },
+    'Handoff':       { '3pt': 0.60, mid: 0.30, rim: 0.10 },
 };
 
 export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, roster }) => {
     const data = useMemo(() => {
-        const sorted = [...roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
-        const rot = sorted.slice(0, Math.min(8, sorted.length));
-        const avg = (key: string) => rot.length > 0
-            ? rot.reduce((s, p) => s + ((p as any)[key] || 70), 0) / rot.length
-            : 70;
+        const dist = getPlayTypeDistribution(sliders);
 
-        const teamOut = avg('out');
-        const teamMid = avg('midRange');
-        const teamIns = avg('ins');
-
-        const rawWeights = PLAY_TYPES.map(pt => sliders[pt.sliderKey] || 5);
-        const totalWeight = rawWeights.reduce((s, v) => s + v, 0);
-        const dist = rawWeights.map(w => w / totalWeight);
-
+        // 플레이타입 비중 × 존 프로파일 → 전체 존 분포 예측
         const predicted: Record<string, number> = { rim: 0, paint: 0, mid: 0, '3pt': 0 };
-
-        // play_pnr → Handler 40% (3pt/mid flex), Roll 40% (rim fixed), Pop 20% (3pt fixed)
-        const pnrFlex = calcZoneProbs(['3pt', 'mid'], teamOut, teamMid, teamIns, sliders);
-        predicted.rim += dist[0] * 0.40;
-        predicted['3pt'] += dist[0] * 0.20;
-        predicted['3pt'] += dist[0] * 0.40 * (pnrFlex['3pt'] || 0);
-        predicted.mid += dist[0] * 0.40 * (pnrFlex.mid || 0);
-
-        // play_iso → 3pt/mid/rim all flexible
-        const isoFlex = calcZoneProbs(['3pt', 'mid', 'rim'], teamOut, teamMid, teamIns, sliders);
-        predicted.rim += dist[1] * (isoFlex.rim || 0);
-        predicted.mid += dist[1] * (isoFlex.mid || 0);
-        predicted['3pt'] += dist[1] * (isoFlex['3pt'] || 0);
-
-        // play_post → Paint fixed
-        predicted.paint += dist[2];
-
-        // play_cns → CatchShoot 60% (3pt fixed), Handoff 40% (3pt/mid flex)
-        const cnsFlex = calcZoneProbs(['3pt', 'mid'], teamOut, teamMid, teamIns, sliders);
-        predicted['3pt'] += dist[3] * 0.60;
-        predicted['3pt'] += dist[3] * 0.40 * (cnsFlex['3pt'] || 0);
-        predicted.mid += dist[3] * 0.40 * (cnsFlex.mid || 0);
-
-        // play_drive → Cut 50% (rim fixed), Transition 50% (3pt/rim flex)
-        const drvFlex = calcZoneProbs(['3pt', 'rim'], teamOut, teamMid, teamIns, sliders);
-        predicted.rim += dist[4] * 0.50;
-        predicted.rim += dist[4] * 0.50 * (drvFlex.rim || 0);
-        predicted['3pt'] += dist[4] * 0.50 * (drvFlex['3pt'] || 0);
+        PLAY_TYPES.forEach((pt, i) => {
+            const share = dist[i] / 100;
+            const zoneProfile = PLAY_ZONE_MAP[pt.key];
+            if (zoneProfile) {
+                for (const [zone, pct] of Object.entries(zoneProfile)) {
+                    predicted[zone] = (predicted[zone] || 0) + share * pct;
+                }
+            }
+        });
 
         const totalPred = Object.values(predicted).reduce((s, v) => s + v, 0);
         const predPct: Record<string, number> = {};
@@ -150,7 +111,7 @@ export const ShotDistribution: React.FC<ShotDistributionProps> = ({ sliders, ros
                     );
                 })}
             </div>
-            <div className="text-xs text-slate-400 text-right">* 슬라이더+로스터 기반 예측 {data.actualPct && '| 흰선=실적'}</div>
+            <div className="text-xs text-slate-400 text-right">* 슬라이더 기반 예측 {data.actualPct && '| 흰선=실적'}</div>
         </div>
     );
 };

@@ -5,12 +5,10 @@ export interface TacticalSliders {
     ballMovement: number;  // 1-10: Pass vs Iso tendency
     offReb: number;        // 1-10: Crash glass vs Get back
 
-    // B. Play Types (Weights 1-10)
-    play_pnr: number;      // Pick & Roll frequency
-    play_post: number;     // Post-up frequency
-    play_iso: number;      // Isolation frequency
-    play_cns: number;      // Catch & Shoot frequency
-    play_drive: number;    // Drive/Cut frequency
+    // B. Coaching Philosophy (abstract sliders → 10 play type weights)
+    playStyle: number;     // 2=히어로 볼, 5=밸런스, 9=시스템 농구
+    insideOut: number;     // 2=인사이드, 5=밸런스, 9=아웃사이드
+    pnrFreq: number;       // 2=P&R 낮음, 5=보통, 9=P&R 높음
 
     // C. Shot Tendency (Weights 1-10)
     shot_3pt: number;      // Preference for 3PT shots
