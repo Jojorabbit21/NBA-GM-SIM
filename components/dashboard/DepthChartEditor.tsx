@@ -249,11 +249,11 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                 </div>
             </div>
             <Table className="border-0 !rounded-none shadow-none">
-                <TableHead className="text-xs">
-                    <TableHeaderCell align="center" className="w-16 border-r border-slate-800/50 py-2">포지션</TableHeaderCell>
-                    <TableHeaderCell align="center" className="w-1/3 border-r border-slate-800/50 py-2 text-indigo-400">주전</TableHeaderCell>
-                    <TableHeaderCell align="center" className="w-1/3 border-r border-slate-800/50 py-2 text-slate-300">벤치</TableHeaderCell>
-                    <TableHeaderCell align="center" className="w-1/3 border-r border-slate-800/50 py-2 text-slate-500">써드</TableHeaderCell>
+                <TableHead>
+                    <TableHeaderCell align="center" className="text-xs w-16 border-r border-slate-800/50 py-2">포지션</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-1/3 border-r border-slate-800/50 py-2 text-indigo-400">주전</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-1/3 border-r border-slate-800/50 py-2 text-slate-300">벤치</TableHeaderCell>
+                    <TableHeaderCell align="center" className="text-xs w-1/3 border-r border-slate-800/50 py-2 text-slate-500">써드</TableHeaderCell>
                 </TableHead>
                 <TableBody>
                     {positions.map(pos => (
