@@ -132,7 +132,7 @@ export const GameResultView: React.FC<{
       { id: 'ShotChart', label: '샷 차트' },
       { id: 'PbpLog', label: '중계 로그' },
       { id: 'Rotation', label: '로테이션' },
-      { id: 'Tactics', label: '전술 분석' },
+      // { id: 'Tactics', label: '전술 분석' }, // 디버그용 — 추후 재활성화
   ];
 
   return (

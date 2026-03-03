@@ -3,7 +3,8 @@ import React from 'react';
 import { getPlayerStarRating } from '../../utils/ovrUtils';
 
 interface StarRatingProps {
-    ovr: number;
+    ovr?: number;
+    stars?: number;       // 직접 별점 전달 (OVR 변환 생략)
     size?: 'sm' | 'md' | 'lg';
     showValue?: boolean;
     className?: string;
@@ -27,8 +28,8 @@ const STAR_PATH = 'M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.27 5.82 21 7 1
 
 const sizeMap = { sm: 12, md: 16, lg: 20 };
 
-export const StarRating: React.FC<StarRatingProps> = ({ ovr, size = 'md', showValue = false, className = '' }) => {
-    const stars = getPlayerStarRating(ovr);
+export const StarRating: React.FC<StarRatingProps> = ({ ovr, stars: directStars, size = 'md', showValue = false, className = '' }) => {
+    const stars = directStars ?? getPlayerStarRating(ovr ?? 0);
     const [hi, mid, lo] = getStarGradient(stars, ovr);
     const px = sizeMap[size];
     const fullCount = Math.floor(stars);

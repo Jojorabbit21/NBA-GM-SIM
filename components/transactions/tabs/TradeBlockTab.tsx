@@ -46,7 +46,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
     return (
         <div className="flex flex-1 min-h-0 h-full">
             {/* Left: My Roster */}
-            <div className="w-[380px] lg:w-[420px] border-r border-slate-800 flex flex-col flex-shrink-0">
+            <div className="w-[380px] lg:w-[420px] border-r border-slate-700 flex flex-col flex-shrink-0">
                 <div className="px-6 py-3 border-b border-slate-700 flex justify-between items-center bg-slate-800">
                     <span className="text-xs font-bold uppercase text-slate-500">내 트레이드 블록</span>
                     <span className={`text-xs font-bold uppercase ${blockSelectedIds.size > 0 ? 'text-indigo-400' : 'text-slate-600'}`}>
