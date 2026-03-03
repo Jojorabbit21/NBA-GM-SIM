@@ -53,14 +53,15 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
 
   // --- Data Hook ---
   const { sortedData, statRanges } = useLeaderboardData(
-      teams, 
-      schedule, 
-      activeFilters, 
-      sortConfig, 
+      teams,
+      schedule,
+      activeFilters,
+      sortConfig,
       mode,
       selectedTeams,
       selectedPositions,
-      searchQuery
+      searchQuery,
+      statCategory
   );
 
   // --- Pagination ---
