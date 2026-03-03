@@ -34,6 +34,10 @@ export interface PlayContext {
  *   Mid → attr.mid      (중거리)
  *   Rim → attr.ins      (골밑/드라이브 마무리)
  *
+ * 가중치 구조 (v2 — 선수 DNA 우선):
+ *   텐던시(존 선호도) 70% + 전술 슬라이더 30%
+ *   능력치(out/mid/ins)는 hitRate에서 반영되므로 존 선택에서는 제외.
+ *
  * @param zones  해당 플레이 타입에서 가능한 구역 후보 (플레이 전술 원리에 따라 제한)
  * @param actor  공격 주체 선수
  * @param sliders 공격팀 전술 슬라이더
@@ -43,10 +47,11 @@ function selectZone(
     actor: LivePlayer,
     sliders: TacticalSliders
 ): 'Rim' | 'Mid' | '3PT' {
-    const attrMap: Record<string, number> = {
-        '3PT': actor.attr.out,   // out = 외곽 슈팅 종합 (flowEngine 기준 동일)
-        'Mid': actor.attr.mid,   // mid = 중거리 슈팅 (attr.midRange 아님 — LivePlayer.attr 기준)
-        'Rim': actor.attr.ins,   // ins = 골밑/드라이브 마무리
+    // 선수 DNA: tendencies.zones → 광역 존 비율 (초기화 시 정규화 완료)
+    const prefMap: Record<string, number> = {
+        '3PT': actor.zonePref.three,
+        'Mid': actor.zonePref.mid,
+        'Rim': actor.zonePref.rim,
     };
     const sliderMap: Record<string, number> = {
         '3PT': sliders.shot_3pt,
@@ -56,7 +61,7 @@ function selectZone(
 
     const scored = zones.map(z => ({
         zone: z,
-        score: (attrMap[z] / 100) * 0.60 + (sliderMap[z] / 10) * 0.40,
+        score: prefMap[z] * 0.70 + (sliderMap[z] / 10) * 0.30,
     }));
 
     const total = scored.reduce((s, c) => s + c.score, 0);

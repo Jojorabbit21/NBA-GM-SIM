@@ -36,6 +36,9 @@ export interface LivePlayer extends PlayerBoxScore {
     // [New] Save-seeded hidden tendencies (세이브별 고유 성향)
     tendencies: SaveTendencies;
 
+    // [New] 선수 DNA — 광역 존 선호도 (합계 = 1.0)
+    zonePref: { rim: number; mid: number; three: number };
+
     // Attributes needed for simulation (Expanded for precise archetype calc)
     attr: {
         // General
