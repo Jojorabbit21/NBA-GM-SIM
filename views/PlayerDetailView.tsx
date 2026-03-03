@@ -417,39 +417,46 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         <div className="px-6 py-3 bg-slate-700 flex items-center">
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">능력치</span>
                         </div>
-                        <div className="grid grid-cols-6">
-                            {ATTR_GROUPS.map((gr, gi) => {
-                                const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
-                                const avgVal = (player as any)[gr.keys[0]] || 0;
-                                const isLastCol = gi === ATTR_GROUPS.length - 1;
-                                return (
-                                    <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
-                                        {/* Group header */}
-                                        <div className="bg-slate-900 h-10 flex items-center justify-center border-b border-slate-800">
-                                            <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
-                                        </div>
-                                        {/* Attribute rows */}
-                                        {attrKeys.map((k, ki) => {
-                                            const val = (player as any)[k] || 0;
-                                            const isLastAttr = ki === attrKeys.length - 1;
-                                            return (
-                                                <div key={k} className={`flex items-center justify-between px-3 h-9 ${!isLastAttr ? 'border-b border-slate-800/50' : ''} transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
-                                                    <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
-                                                    <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                        {(() => {
+                            const maxRows = Math.max(...ATTR_GROUPS.map(gr => gr.keys.filter(k => !ATTR_AVG_KEYS.has(k)).length));
+                            return (
+                                <div className="grid grid-cols-6">
+                                    {ATTR_GROUPS.map((gr, gi) => {
+                                        const attrKeys = gr.keys.filter(k => !ATTR_AVG_KEYS.has(k));
+                                        const avgVal = (player as any)[gr.keys[0]] || 0;
+                                        const isLastCol = gi === ATTR_GROUPS.length - 1;
+                                        const emptyRows = maxRows - attrKeys.length;
+                                        return (
+                                            <div key={gr.id} className={`flex flex-col ${!isLastCol ? 'border-r border-slate-800/30' : ''}`}>
+                                                {/* Group header */}
+                                                <div className="bg-slate-900 h-10 flex items-center justify-center border-b border-slate-800">
+                                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">{ATTR_KR_LABEL[gr.keys[0]] || gr.label}</span>
                                                 </div>
-                                            );
-                                        })}
-                                        {/* Spacer to align AVG */}
-                                        <div className="flex-1" />
-                                        {/* AVG row */}
-                                        <div className={`flex items-center justify-between px-3 h-10 bg-slate-900 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
-                                            <span className="text-xs font-black text-slate-500 uppercase tracking-widest">종합</span>
-                                            <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
+                                                {/* Attribute rows */}
+                                                {attrKeys.map((k) => {
+                                                    const val = (player as any)[k] || 0;
+                                                    return (
+                                                        <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
+                                                            <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
+                                                            <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {/* Empty rows with dividers to align columns */}
+                                                {Array.from({ length: emptyRows }).map((_, i) => (
+                                                    <div key={`empty-${i}`} className="h-9 border-b border-slate-800/50" />
+                                                ))}
+                                                {/* AVG row */}
+                                                <div className={`flex items-center justify-between px-3 h-10 bg-slate-900 border-t border-slate-800 ${getAttrBg(avgVal)}`}>
+                                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest">종합</span>
+                                                    <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(avgVal)}`}>{avgVal}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율 ═══ */}
