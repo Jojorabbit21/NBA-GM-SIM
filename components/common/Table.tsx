@@ -8,8 +8,9 @@ export type CellVariant = 'text' | 'player' | 'stat' | 'attribute' | 'ovr' | 'ra
 interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> {
     children?: React.ReactNode;
     className?: string;
-    fullHeight?: boolean; 
+    fullHeight?: boolean;
     style?: React.CSSProperties;
+    tableStyle?: React.CSSProperties;
 }
 
 interface TableHeadProps extends React.HTMLAttributes<HTMLTableSectionElement> {
@@ -66,9 +67,9 @@ const getAttrColor = (val: number) => {
     return 'text-slate-500';
 };
 
-export const Table = ({ children, className = '', fullHeight = true, style, ...props }: TableProps) => (
+export const Table = ({ children, className = '', fullHeight = true, style, tableStyle, ...props }: TableProps) => (
     <div className={`w-full overflow-auto custom-scrollbar relative bg-slate-900 border border-slate-800 rounded-xl shadow-lg ${fullHeight ? 'h-full' : ''} ${className}`} style={style}>
-        <table className="w-full text-left border-separate border-spacing-0" {...props}>
+        <table className="w-full text-left border-separate border-spacing-0" style={tableStyle} {...props}>
             {children}
         </table>
     </div>

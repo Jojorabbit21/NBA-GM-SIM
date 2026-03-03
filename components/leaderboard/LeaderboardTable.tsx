@@ -79,7 +79,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     if (data.length === 0) {
         return (
             <div className="relative h-full">
-                <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                <Table className="!rounded-none !border-0 !shadow-none" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
                     <colgroup>
                         {visibleColumns.map(col => (
                             <col key={col.key} style={{ width: col.width }} />
@@ -158,7 +158,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     }
 
     return (
-        <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+        <Table className="!rounded-none !border-0 !shadow-none" fullHeight tableStyle={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
                 {visibleColumns.map(col => (
                     <col key={col.key} style={{ width: col.width }} />
