@@ -135,8 +135,7 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
                 .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
                 .eq('user_id', userId)
                 .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
-                .order('date', { ascending: false })
-                .limit(10);
+                .order('date', { ascending: false });
 
             return (data || [])
                 .map(game => {
