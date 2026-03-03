@@ -76,6 +76,87 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
         return groups;
     })() : null;
 
+    if (data.length === 0) {
+        return (
+            <div className="relative h-full">
+                <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
+                    <colgroup>
+                        {visibleColumns.map(col => (
+                            <col key={col.key} style={{ width: col.width }} />
+                        ))}
+                    </colgroup>
+                    <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow={!!attrGroupRow}>
+                        {attrGroupRow ? (
+                            <>
+                                <tr className="h-6">
+                                    {attrGroupRow.map((g, i) => {
+                                        if (!g.label) {
+                                            const col = visibleColumns[attrGroupRow.slice(0, i).reduce((s, x) => s + x.colSpan, 0)];
+                                            const stickyStyle = col?.stickyLeft !== undefined ? {
+                                                position: 'sticky' as const, left: col.stickyLeft, zIndex: 50,
+                                            } : undefined;
+                                            return <th key={i} colSpan={g.colSpan} className="bg-slate-950 border-b border-r border-slate-800" style={stickyStyle} />;
+                                        }
+                                        return (
+                                            <th key={i} colSpan={g.colSpan}
+                                                className="bg-slate-950 border-b border-r border-slate-800 text-[9px] font-black uppercase tracking-widest text-center text-slate-400 px-2 align-middle"
+                                            >
+                                                {g.label}
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-8">
+                                    {visibleColumns.map((col, idx) => {
+                                        const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                                        const style = getStickyStyle(col, isLastSticky);
+                                        return (
+                                            <TableHeaderCell
+                                                key={col.key}
+                                                style={style}
+                                                stickyLeft={col.stickyLeft !== undefined}
+                                                align={col.key === 'name' ? 'left' : 'center'}
+                                                className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                                sortable={col.sortable}
+                                                onSort={() => col.sortable && onSort(col.key)}
+                                                sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                            >
+                                                {col.label}
+                                            </TableHeaderCell>
+                                        );
+                                    })}
+                                </tr>
+                            </>
+                        ) : (
+                            visibleColumns.map((col, idx) => {
+                                const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
+                                const style = getStickyStyle(col, isLastSticky);
+                                return (
+                                    <TableHeaderCell
+                                        key={col.key}
+                                        style={style}
+                                        stickyLeft={col.stickyLeft !== undefined}
+                                        align={col.key === 'name' ? 'left' : 'center'}
+                                        className={`border-r border-slate-800 bg-slate-950 ${sortConfig.key === col.key ? 'text-indigo-400 font-bold' : 'text-slate-400'} ${col.key === 'name' ? 'pl-4' : ''}`}
+                                        sortable={col.sortable}
+                                        onSort={() => col.sortable && onSort(col.key)}
+                                        sortDirection={sortConfig.key === col.key ? sortConfig.direction : null}
+                                    >
+                                        {col.label}
+                                    </TableHeaderCell>
+                                );
+                            })
+                        )}
+                    </TableHead>
+                    <TableBody />
+                </Table>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span className="text-slate-500 font-bold uppercase tracking-widest text-sm">데이터가 없습니다.</span>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <Table className="!rounded-none !border-0 !shadow-none" fullHeight style={{ tableLayout: 'fixed', minWidth: '100%' }}>
             <colgroup>
@@ -314,13 +395,6 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                         </TableRow>
                     );
                 })}
-                {data.length === 0 && (
-                    <TableRow>
-                        <TableCell colSpan={visibleColumns.length} className="py-20 text-center text-slate-500 font-bold uppercase tracking-widest">
-                            데이터가 없습니다.
-                        </TableCell>
-                    </TableRow>
-                )}
             </TableBody>
         </Table>
     );
