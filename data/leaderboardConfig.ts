@@ -232,10 +232,15 @@ export const PLAYER_COLUMNS: ColumnDef[] = [
     { key: 'blk', label: 'BLK', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'tov', label: 'TOV', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Traditional', format: 'number' },
     { key: 'pf', label: 'PF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Traditional', format: 'number' },
+    { key: 'fgm', label: 'FGM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
+    { key: 'fga', label: 'FGA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'fg%', label: 'FG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
+    { key: 'p3m', label: '3PM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
+    { key: 'p3a', label: '3PA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: '3p%', label: '3P%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
+    { key: 'ftm', label: 'FTM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
+    { key: 'fta', label: 'FTA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'ft%', label: 'FT%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
-    { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
     { key: 'pm', label: '+/-', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
 
     // Shooting Stats
@@ -279,10 +284,15 @@ export const TEAM_COLUMNS: ColumnDef[] = [
     { key: 'stl', label: 'STL', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'blk', label: 'BLK', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'tov', label: 'TOV', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Traditional', format: 'number' },
+    { key: 'fgm', label: 'FGM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
+    { key: 'fga', label: 'FGA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'fg%', label: 'FG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
+    { key: 'p3m', label: '3PM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
+    { key: 'p3a', label: '3PA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: '3p%', label: '3P%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
+    { key: 'ftm', label: 'FTM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
+    { key: 'fta', label: 'FTA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'ft%', label: 'FT%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
-    { key: 'ts%', label: 'TS%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
     { key: 'pm', label: '+/-', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
 
     // Shooting

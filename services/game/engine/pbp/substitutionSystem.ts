@@ -147,7 +147,22 @@ export function checkSubstitutionsV2(
 ): SubRequestV2[] {
     const { tactics } = team;
     const scoreDiff = Math.abs(state.home.score - state.away.score);
-    const isGarbage = state.quarter >= 4 && state.gameClock < 300 && scoreDiff > 20;
+
+    // ── 가비지 타임: Q4 잔여 2:30 이내 + 15점차 이상 → 코트 위 5명 전원 일괄 교체 ──
+    const isGarbage = state.quarter >= 4 && state.gameClock < 150 && scoreDiff >= 15
+        && !team.garbageApplied;   // 이미 적용된 팀은 재실행 방지
+
+    if (isGarbage) {
+        team.garbageApplied = true;
+        return team.onCourt
+            .filter(p => p.health !== 'Injured' && p.pf < 6)
+            .map(p => ({
+                outPlayer: p,
+                reason: '가비지 타임',
+                exitType: 'permanent' as const,
+                benchReason: 'garbage' as const,
+            }));
+    }
 
     const requests: SubRequestV2[] = [];
 
@@ -192,11 +207,6 @@ export function checkSubstitutionsV2(
                 });
                 return;
             }
-        }
-
-        // --- Priority 4: 가비지 타임 ---
-        if (isGarbage && p.isStarter && !isScheduled) {
-            requests.push({ outPlayer: p, reason: '가비지 타임', exitType: 'permanent', benchReason: 'garbage' });
         }
     });
 

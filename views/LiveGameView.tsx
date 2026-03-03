@@ -333,6 +333,7 @@ const COMPARE_STATS = [
     { key: 'pts', label: 'PTS', fmt: (v: number) => String(v) },
     { key: 'fgPct', label: 'FG%', fmt: (v: number) => v.toFixed(1) },
     { key: 'p3Pct', label: '3P%', fmt: (v: number) => v.toFixed(1) },
+    { key: 'ftPct', label: 'FT%', fmt: (v: number) => v.toFixed(1) },
     { key: 'oreb', label: 'OREB', fmt: (v: number) => String(v) },
     { key: 'reb', label: 'REB', fmt: (v: number) => String(v) },
     { key: 'ast', label: 'AST', fmt: (v: number) => String(v) },
@@ -343,12 +344,12 @@ const COMPARE_STATS = [
 ] as const;
 
 const TeamStatsCompare: React.FC<{
-    homeBox: { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number }[];
-    awayBox: { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number }[];
+    homeBox: { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number }[];
+    awayBox: { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number }[];
     homeColor: string;
     awayColor: string;
 }> = ({ homeBox, awayBox, homeColor, awayColor }) => {
-    type BoxRow = { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number };
+    type BoxRow = { pts: number; reb: number; offReb: number; ast: number; stl: number; blk: number; tov: number; pf: number; fgm: number; fga: number; p3m: number; p3a: number; ftm: number; fta: number };
     const stats = useMemo(() => {
         const sum = (arr: BoxRow[], key: keyof BoxRow) =>
             arr.reduce((s, p) => s + (p[key] ?? 0), 0);
@@ -357,11 +358,14 @@ const TeamStatsCompare: React.FC<{
         const aFgm = sum(awayBox, 'fgm'), aFga = sum(awayBox, 'fga');
         const hP3m = sum(homeBox, 'p3m'), hP3a = sum(homeBox, 'p3a');
         const aP3m = sum(awayBox, 'p3m'), aP3a = sum(awayBox, 'p3a');
+        const hFtm = sum(homeBox, 'ftm'), hFta = sum(homeBox, 'fta');
+        const aFtm = sum(awayBox, 'ftm'), aFta = sum(awayBox, 'fta');
 
         return {
             pts:   { h: sum(homeBox, 'pts'), a: sum(awayBox, 'pts') },
             fgPct: { h: hFga > 0 ? (hFgm / hFga) * 100 : 0, a: aFga > 0 ? (aFgm / aFga) * 100 : 0 },
             p3Pct: { h: hP3a > 0 ? (hP3m / hP3a) * 100 : 0, a: aP3a > 0 ? (aP3m / aP3a) * 100 : 0 },
+            ftPct: { h: hFta > 0 ? (hFtm / hFta) * 100 : 0, a: aFta > 0 ? (aFtm / aFta) * 100 : 0 },
             oreb:  { h: sum(homeBox, 'offReb'), a: sum(awayBox, 'offReb') },
             reb:   { h: sum(homeBox, 'reb'), a: sum(awayBox, 'reb') },
             ast:   { h: sum(homeBox, 'ast'), a: sum(awayBox, 'ast') },
