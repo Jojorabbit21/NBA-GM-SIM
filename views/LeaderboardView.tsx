@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Team, Player, Game } from '../types';
 import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLeaderboardData } from '../hooks/useLeaderboardData';
@@ -36,6 +36,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const pageBeforeSearchRef = useRef<number | null>(null);
 
   // --- Filter Handlers ---
   const addFilter = (item: FilterItem) => {
@@ -141,7 +142,18 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               selectedPositions={selectedPositions}
               setSelectedPositions={setSelectedPositions}
               searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
+              setSearchQuery={(q: string) => {
+                  if (q && !searchQuery) {
+                      pageBeforeSearchRef.current = currentPage;
+                  }
+                  setSearchQuery(q);
+                  if (!q && pageBeforeSearchRef.current) {
+                      setCurrentPage(pageBeforeSearchRef.current);
+                      pageBeforeSearchRef.current = null;
+                  } else if (q) {
+                      setCurrentPage(1);
+                  }
+              }}
           />
       </div>
 
