@@ -1080,15 +1080,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 타임아웃 ({userTimeoutsLeft})
                             </button>
                             <button
-                                onClick={pauseReason ? resume : pause}
-                                disabled={isGameEnd}
-                                className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
-                                           disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-slate-300 text-[10px] font-bold transition-colors"
-                            >
-                                {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
-                            </button>
-                            <button
                                 onClick={skipToEnd}
                                 disabled={isGameEnd}
                                 className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
@@ -1128,15 +1119,6 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                            text-white text-[10px] font-bold transition-colors"
                             >
                                 경기 종료까지 ▶▶
-                            </button>
-                            <button
-                                onClick={pauseReason ? resume : pause}
-                                disabled={isGameEnd}
-                                className="px-3 py-0.5 rounded-lg bg-slate-700 hover:bg-slate-600
-                                           disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-slate-300 text-[10px] font-bold transition-colors"
-                            >
-                                {pauseReason ? '재개(개발용)' : '일시정지(개발용)'}
                             </button>
                             <button
                                 onClick={callTimeout}

@@ -260,12 +260,24 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
     ];
 }
 
-export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, tendencySeed, onBack }) => {
+export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, onBack }) => {
     const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
     const theme = getTeamTheme(teamId || null, teamColors);
     const calculatedOvr = calculatePlayerOvr(player);
 
     const scoutReport = useMemo(() => generateScoutReport(player, tendencySeed), [player, tendencySeed]);
+
+    // 포지션 내 백분위 → 별점 (0.5~5.0)
+    const positionStars = useMemo(() => {
+        if (!allTeams) return null;
+        const allPlayers = allTeams.flatMap(t => t.roster);
+        const samePos = allPlayers.filter(p => p.position === player.position);
+        const ovrs = samePos.map(p => calculatePlayerOvr(p));
+        const belowCount = ovrs.filter(o => o < calculatedOvr).length;
+        const pct = belowCount / Math.max(1, ovrs.length);
+        return Math.round(Math.max(0.5, Math.min(5.0, 0.5 + pct * 4.5)) * 2) / 2;
+    }, [player, allTeams, calculatedOvr]);
+
     const { data: gameLog, isLoading: gameLogLoading } = usePlayerGameLog(player.id, teamId);
 
     useEffect(() => {
@@ -327,23 +339,25 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* Divider */}
                     <div className="mx-6 border-t border-slate-700/50" />
 
-                    {/* Player info table + Star Rating */}
-                    <div className="px-6 py-3 relative z-10 flex items-center gap-8">
+                    {/* Player info table */}
+                    <div className="px-6 py-3 relative z-10">
                         <table className="text-sm" style={{ color: theme.text, opacity: 0.7 }}>
                             <thead>
-                                <tr className="text-[10px] uppercase tracking-wider" style={{ opacity: 0.5 }}>
-                                    <th className="pr-5 pb-1 text-left font-bold">팀</th>
-                                    <th className="pr-5 pb-1 text-left font-bold">포지션</th>
-                                    <th className="pr-5 pb-1 text-left font-bold">나이</th>
-                                    <th className="pr-5 pb-1 text-left font-bold">신장</th>
-                                    <th className="pr-5 pb-1 text-left font-bold">체중</th>
-                                    <th className="pr-5 pb-1 text-left font-bold">연봉</th>
-                                    <th className="pb-1 text-left font-bold">계약</th>
+                                <tr className="text-xs uppercase tracking-wider border-b border-white/15" style={{ opacity: 0.5 }}>
+                                    <th className="pr-5 pb-2 text-left font-bold">팀</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">포지션</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">나이</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">신장</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">체중</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">연봉</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">계약</th>
+                                    <th className="pr-5 pb-2 text-left font-bold">리그에서의 레벨</th>
+                                    <th className="pb-2 text-left font-bold">포지션 평점</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr className="font-bold">
-                                    <td className="pr-5">
+                                    <td className="pr-5 pt-2">
                                         {teamId ? (
                                             <span className="flex items-center gap-1.5">
                                                 <img src={getTeamLogoUrl(teamId)} className="w-4 h-4 object-contain" alt="" />
@@ -351,16 +365,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             </span>
                                         ) : 'FA'}
                                     </td>
-                                    <td className="pr-5">{player.position}</td>
-                                    <td className="pr-5">{player.age}세</td>
-                                    <td className="pr-5">{player.height}cm</td>
-                                    <td className="pr-5">{player.weight}kg</td>
-                                    <td className="pr-5">{player.salary > 0 ? formatSalary(player.salary) : '-'}</td>
-                                    <td>{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</td>
+                                    <td className="pr-5 pt-2">{player.position}</td>
+                                    <td className="pr-5 pt-2">{player.age}세</td>
+                                    <td className="pr-5 pt-2">{player.height}cm</td>
+                                    <td className="pr-5 pt-2">{player.weight}kg</td>
+                                    <td className="pr-5 pt-2">{player.salary > 0 ? formatSalary(player.salary) : '-'}</td>
+                                    <td className="pr-5 pt-2">{player.contractYears > 0 ? `${player.contractYears}년` : '-'}</td>
+                                    <td className="pr-5 pt-2"><StarRating ovr={calculatedOvr} size="md" /></td>
+                                    <td className="pt-2">{positionStars !== null ? <StarRating stars={positionStars} size="md" /> : '-'}</td>
                                 </tr>
                             </tbody>
                         </table>
-                        <StarRating ovr={player.ovr ?? 0} size="lg" showValue />
                     </div>
 
                     {/* Divider */}
