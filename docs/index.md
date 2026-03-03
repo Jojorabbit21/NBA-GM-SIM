@@ -29,7 +29,7 @@ docs/
 │
 ├── evaluation/           ← 선수 평가 (4개)
 │   ├── evaluation-index.md   인덱스
-│   ├── rating-standards.md   35개 능력치 평가 기준서
+│   ├── rating-standards.md   37개 능력치 평가 기준서
 │   ├── new-player-process.md 신규 선수 추가 프로세스
 │   ├── rating-generation.md  능력치 생성 파이프라인
 │   └── rating-tuning.md      능력치 세부 튜닝
