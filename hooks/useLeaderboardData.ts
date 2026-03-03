@@ -25,7 +25,8 @@ export const useLeaderboardData = (
     mode: ViewMode,
     selectedTeams: string[] = [],
     selectedPositions: string[] = [],
-    searchQuery: string = ''
+    searchQuery: string = '',
+    statCategory: string = 'Traditional'
 ) => {
     // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {
@@ -443,7 +444,9 @@ export const useLeaderboardData = (
 
     // 4. Sort and Filter Data
     const sortedData = useMemo(() => {
-        let data: any[] = mode === 'Players' ? [...allPlayers.filter(p => p.stats.g > 0)] : [...teamStats];
+        let data: any[] = mode === 'Players'
+            ? (statCategory === 'Attributes' ? [...allPlayers] : [...allPlayers.filter(p => p.stats.g > 0)])
+            : [...teamStats];
 
         // --- APPLY NEW FILTERS (Team, Position, Search) ---
         if (mode === 'Players') {
@@ -610,7 +613,7 @@ export const useLeaderboardData = (
             return sortConfig.direction === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
         });
 
-    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery]);
+    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, statCategory]);
 
     return { sortedData, statRanges };
 };
