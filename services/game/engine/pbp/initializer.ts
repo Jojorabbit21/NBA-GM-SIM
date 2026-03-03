@@ -1,11 +1,38 @@
 
-import { Team, GameTactics, DepthChart } from '../../../../types';
+import { Team, GameTactics, DepthChart, Player } from '../../../../types';
 import { TeamState, LivePlayer } from './pbpTypes';
 import { calculatePlayerArchetypes } from './archetypeSystem';
 import { INITIAL_STATS, calculatePlayerOvr } from '../../../../utils/constants';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
+
+/**
+ * Player.tendencies.zones(선수 DNA) → 광역 존 선호도(rim/mid/three) 정규화.
+ * 텐던시 데이터가 없으면 능력치(ins/mid/out) 기반 fallback.
+ */
+function buildZonePref(p: Player): { rim: number; mid: number; three: number } {
+    let rawRim: number, rawMid: number, rawThree: number;
+
+    if (p.tendencies?.zones) {
+        const z = p.tendencies.zones;
+        rawRim   = (z.ra || 0) + (z.itp || 0);
+        rawMid   = z.mid || 0;
+        rawThree = (z.cnr || 0) + (z.p45 || 0) + (z.atb || 0);
+    } else {
+        // fallback: 능력치 기반 (기존 selectZone 방식과 유사)
+        rawRim   = p.ins || 70;
+        rawMid   = p.midRange || 70;
+        rawThree = ((p.threeCorner || 70) + (p.three45 || 70) + (p.threeTop || 70)) / 3;
+    }
+
+    const total = rawRim + rawMid + rawThree || 1;
+    return {
+        rim:   rawRim / total,
+        mid:   rawMid / total,
+        three: rawThree / total,
+    };
+}
 
 export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
@@ -76,6 +103,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             attr,
             archetypes: calculatePlayerArchetypes(attr, currentCondition),
             tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
+            zonePref: buildZonePref(p),
             zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,
             zone_mid_l_m: 0, zone_mid_l_a: 0, zone_mid_c_m: 0, zone_mid_c_a: 0, zone_mid_r_m: 0, zone_mid_r_a: 0,
             zone_c3_l_m: 0, zone_c3_l_a: 0, zone_c3_r_m: 0, zone_c3_r_a: 0,
