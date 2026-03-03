@@ -53,6 +53,7 @@ export interface LivePlayer extends PlayerBoxScore {
         // Skill
         handling: number; hands: number;
         pas: number; passAcc: number; passVision: number; passIq: number;
+        offBallMovement: number;
         shotIq: number; offConsist: number;
         postPlay: number;
         
@@ -66,6 +67,7 @@ export interface LivePlayer extends PlayerBoxScore {
         reb: number;
         offReb: number;  // 공격 리바운드 전용 능력치
         defReb: number;  // 수비 리바운드 전용 능력치
+        boxOut: number;  // 박스아웃 (리바운드 포지셔닝)
 
         // Intangibles (클러치, 강심장, 해결사 능력)
         intangibles: number;

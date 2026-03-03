@@ -15,9 +15,9 @@ const WEIGHT_LABELS: Record<string, string> = {
     closeShot: '근거리', midRange: '중거리', threeAvg: '3점평균', ft: '자유투', shotIq: '샷IQ', offConsist: '공격기복',
     layup: '레이업', dunk: '덩크', postPlay: '포스트', drawFoul: '파울유도', hands: '핸즈',
     intDef: '내곽수비', perDef: '외곽수비', steal: '스틸', blk: '블록', helpDefIq: '헬프수비', passPerc: '패스차단', defConsist: '수비기복',
-    offReb: '공격리바', defReb: '수비리바',
+    offReb: '공격리바', defReb: '수비리바', boxOut: '박스아웃',
     speed: '스피드', agility: '민첩성', strength: '힘', vertical: '점프력', stamina: '지구력', hustle: '허슬', durability: '내구도',
-    passAcc: '패스정확', handling: '핸들링', spdBall: '볼스피드', passVision: '시야', passIq: '패스IQ',
+    passAcc: '패스정확', handling: '핸들링', spdBall: '볼스피드', passVision: '시야', passIq: '패스IQ', offBallMovement: '오프볼',
     intangibles: '무형자산', potential: '잠재력', height: '신장(cm)'
 };
 
@@ -26,8 +26,8 @@ const WEIGHT_GROUPS = [
     { label: 'INSIDE', keys: ['layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
     { label: 'DEFENSE', keys: ['intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
     { label: 'ATHLETIC', keys: ['speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] },
-    { label: 'PLAYMAKING', keys: ['passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
-    { label: 'REB & ETC', keys: ['offReb', 'defReb', 'intangibles', 'potential', 'height'] },
+    { label: 'PLAYMAKING', keys: ['passAcc', 'handling', 'spdBall', 'passVision', 'passIq', 'offBallMovement'] },
+    { label: 'REB & ETC', keys: ['offReb', 'defReb', 'boxOut', 'intangibles', 'potential', 'height'] },
 ];
 
 export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams, freeAgents = [] }) => {
@@ -51,9 +51,9 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams, fre
         closeShot: p.closeShot, midRange: p.midRange, threeAvg: pThreeAvg, ft: p.ft, shotIq: p.shotIq, offConsist: p.offConsist,
         layup: p.layup, dunk: p.dunk, postPlay: p.postPlay, drawFoul: p.drawFoul, hands: p.hands,
         intDef: p.intDef, perDef: p.perDef, steal: p.steal, blk: p.blk, helpDefIq: p.helpDefIq, passPerc: p.passPerc, defConsist: p.defConsist,
-        offReb: p.offReb, defReb: p.defReb,
+        offReb: p.offReb, defReb: p.defReb, boxOut: p.boxOut,
         speed: p.speed, agility: p.agility, strength: p.strength, vertical: p.vertical, stamina: p.stamina, hustle: p.hustle, durability: p.durability,
-        passAcc: p.passAcc, handling: p.handling, spdBall: p.spdBall, passVision: p.passVision, passIq: p.passIq,
+        passAcc: p.passAcc, handling: p.handling, spdBall: p.spdBall, passVision: p.passVision, passIq: p.passIq, offBallMovement: p.offBallMovement,
         intangibles: p.intangibles, potential: p.potential, height: p.height
     };
 

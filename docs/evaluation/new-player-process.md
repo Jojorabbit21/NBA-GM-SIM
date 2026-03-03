@@ -12,7 +12,7 @@
 ```
 1. 선수 정보 수집
       ↓
-2. 35개 능력치 평가 (rating-standards.md 참조)
+2. 37개 능력치 평가 (rating-standards.md 참조)
       ↓
 3. base_attributes JSON 작성
       ↓
@@ -53,7 +53,7 @@
 
 ---
 
-## Step 2: 35개 능력치 평가
+## Step 2: 37개 능력치 평가
 
 [rating-standards.md](rating-standards.md)의 각 능력치별 기준에 따라 평가.
 
@@ -70,7 +70,7 @@
 5. **피지컬**: spd, agi, str, vert → 추적 데이터, 컴바인
 
 #### Phase C: 보조 능력치
-6. **나머지**: siq, ocon, dcon, draw, hands, pper, spwb, oreb, dreb
+6. **나머지**: siq, ocon, dcon, draw, hands, pper, spwb, obm, oreb, dreb, box
 7. **체력**: sta, dur, hus
 8. **무형자산**: intangibles → 5-Factor 모델
 
@@ -94,10 +94,10 @@
     "close": 88, "mid": 72, "3c": 85, "3_45": 82, "3t": 80,
     "ft": 78, "siq": 85, "ocon": 82,
     "lay": 90, "dnk": 95, "post": 45, "draw": 72, "hands": 75,
-    "pacc": 65, "handl": 60, "spwb": 88, "piq": 62, "pvis": 58,
+    "pacc": 65, "handl": 60, "spwb": 88, "piq": 62, "pvis": 58, "obm": 55,
     "idef": 92, "pdef": 75, "stl": 65, "blk": 95, "hdef": 82,
     "pper": 72, "dcon": 80,
-    "oreb": 70, "dreb": 88,
+    "oreb": 70, "dreb": 88, "box": 80,
     "spd": 82, "agi": 78, "str": 72, "vert": 92,
     "sta": 80, "hus": 85, "dur": 88,
     "intangibles": 82, "pot": 95,
@@ -119,6 +119,7 @@
 | siq | shotIq | dcon | defConsist |
 | ocon | offConsist | oreb | offReb |
 | lay | layup | dreb | defReb |
+| | | box | boxOut |
 | dnk | dunk | spd | speed |
 | post | postPlay | agi | agility |
 | draw | drawFoul | str | strength |
@@ -127,7 +128,7 @@
 | handl | handling | hus | hustle |
 | spwb | spdBall | dur | durability |
 | piq | passIq | pot | potential |
-| pvis | passVision | | |
+| pvis | passVision | obm | offBallMovement |
 
 ---
 

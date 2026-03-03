@@ -14,9 +14,9 @@ export interface AttrGroupDef {
 export const ATTR_GROUPS: AttrGroupDef[] = [
     { id: 'INS', label: 'INSIDE', keys: ['ins', 'closeShot', 'layup', 'dunk', 'postPlay', 'drawFoul', 'hands'] },
     { id: 'OUT', label: 'OUTSIDE', keys: ['out', 'midRange', 'threeCorner', 'three45', 'threeTop', 'ft', 'shotIq', 'offConsist'] },
-    { id: 'PLM', label: 'PLAYMAKING', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq'] },
+    { id: 'PLM', label: 'PLAYMAKING', keys: ['plm', 'passAcc', 'handling', 'spdBall', 'passVision', 'passIq', 'offBallMovement'] },
     { id: 'DEF', label: 'DEFENSE', keys: ['def', 'intDef', 'perDef', 'steal', 'blk', 'helpDefIq', 'passPerc', 'defConsist'] },
-    { id: 'REB', label: 'REBOUND', keys: ['reb', 'offReb', 'defReb'] },
+    { id: 'REB', label: 'REBOUND', keys: ['reb', 'offReb', 'defReb', 'boxOut'] },
     { id: 'ATH', label: 'ATHLETIC', keys: ['ath', 'speed', 'agility', 'strength', 'vertical', 'stamina', 'hustle', 'durability'] },
 ];
 
@@ -32,11 +32,11 @@ export const ATTR_LABEL: Record<string, string> = {
     // Outside
     midRange: 'MID', threeCorner: '3C', three45: '3-45', threeTop: '3T', ft: 'FT', shotIq: 'SIQ', offConsist: 'OCON',
     // Playmaking
-    passAcc: 'PASS', handling: 'HNDL', spdBall: 'SPDB', passVision: 'VISN', passIq: 'PIQ',
+    passAcc: 'PASS', handling: 'HNDL', spdBall: 'SPDB', passVision: 'VISN', passIq: 'PIQ', offBallMovement: 'OBM',
     // Defense
     intDef: 'INTD', perDef: 'PERD', steal: 'STL', blk: 'BLK', helpDefIq: 'HELP', passPerc: 'PPRC', defConsist: 'DCON',
     // Rebound
-    offReb: 'OREB', defReb: 'DREB',
+    offReb: 'OREB', defReb: 'DREB', boxOut: 'BOX',
     // Athletic
     speed: 'SPD', agility: 'AGI', strength: 'STR', vertical: 'VERT', stamina: 'STA', hustle: 'HST', durability: 'DUR',
 };
@@ -50,11 +50,11 @@ export const ATTR_KR_LABEL: Record<string, string> = {
     // Outside
     midRange: '미드레인지', threeCorner: '코너 3점', three45: '윙 3점', threeTop: '탑 3점', ft: '자유투', shotIq: '슈팅 IQ', offConsist: '공격 일관성',
     // Playmaking
-    passAcc: '패스 정확도', handling: '볼 핸들링', spdBall: '드리블 속도', passVision: '패스 시야', passIq: '패스 지능',
+    passAcc: '패스 정확도', handling: '볼 핸들링', spdBall: '드리블 속도', passVision: '패스 시야', passIq: '패스 지능', offBallMovement: '오프볼 무브먼트',
     // Defense
     intDef: '인사이드 수비', perDef: '퍼리미터 수비', steal: '스틸', blk: '블락', helpDefIq: '도움 수비 지능', passPerc: '패스 경로 예측', defConsist: '수비 일관성',
     // Rebound
-    offReb: '공격 리바운드', defReb: '수비 리바운드',
+    offReb: '공격 리바운드', defReb: '수비 리바운드', boxOut: '박스아웃',
     // Athletic
     speed: '속도', agility: '민첩성', strength: '근력', vertical: '점프력', stamina: '지구력', hustle: '허슬', durability: '내구도',
 };
@@ -82,6 +82,7 @@ export const ATTR_NAME_MAP: Record<string, string> = {
     spdBall: '볼 핸들링 속도 (Speed with Ball)',
     passVision: '시야 (Pass Vision)',
     passIq: '패스 지능 (Pass IQ)',
+    offBallMovement: '오프볼 무브먼트 (Off-Ball Movement)',
     def: '수비 평균 (Defense Avg)',
     intDef: '내곽 수비 (Interior Defense)',
     perDef: '외곽 수비 (Perimeter Defense)',
@@ -93,6 +94,7 @@ export const ATTR_NAME_MAP: Record<string, string> = {
     reb: '리바운드 평균 (Rebound Avg)',
     offReb: '공격 리바운드 (Offensive Rebound)',
     defReb: '수비 리바운드 (Defensive Rebound)',
+    boxOut: '박스아웃 (Box Out)',
     ath: '운동 능력 평균 (Athleticism Avg)',
     speed: '속도 (Speed)',
     agility: '민첩성 (Agility)',

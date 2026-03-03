@@ -120,6 +120,7 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         spdBall: Number(getCol(p, ['spwb', 'spdBall', 'SpdBall', 'SpeedWithBall']) || plm),
         passIq: Number(getCol(p, ['piq', 'passIq', 'PassIQ']) || plm),
         passVision: Number(getCol(p, ['pvis', 'passVision', 'PassVision', 'Vision']) || plm),
+        offBallMovement: Number(getCol(p, ['obm', 'offBallMovement', 'OffBallMovement']) || plm),
 
         // Defense
         intDef: Number(getCol(p, ['idef', 'intDef', 'IntDef', 'InteriorDef']) || def),
@@ -133,6 +134,7 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         // Rebound
         offReb: Number(getCol(p, ['oreb', 'offReb', 'OffReb', 'ORB']) || reb),
         defReb: Number(getCol(p, ['dreb', 'defReb', 'DefReb', 'DRB']) || reb),
+        boxOut: Number(getCol(p, ['box', 'boxOut', 'BoxOut']) || reb),
 
         // Athleticism
         speed: Number(getCol(p, ['spd', 'speed', 'Speed', 'SPD']) || ath),
@@ -196,9 +198,9 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const avg3pt = Math.round((statsObj.threeCorner + statsObj.three45 + statsObj.threeTop) / 3);
     const calculatedIns = Math.round((statsObj.layup + statsObj.dunk + statsObj.postPlay + statsObj.drawFoul + statsObj.hands) / 5);
     const calculatedOut = Math.round((statsObj.closeShot + statsObj.midRange + avg3pt + statsObj.ft + statsObj.shotIq + statsObj.offConsist) / 6);
-    const calculatedPlm = Math.round((statsObj.passAcc + statsObj.handling + statsObj.spdBall + statsObj.passIq + statsObj.passVision) / 5);
+    const calculatedPlm = Math.round((statsObj.passAcc + statsObj.handling + statsObj.spdBall + statsObj.passIq + statsObj.passVision + statsObj.offBallMovement) / 6);
     const calculatedDef = Math.round((statsObj.intDef + statsObj.perDef + statsObj.steal + statsObj.blk + statsObj.helpDefIq + statsObj.passPerc + statsObj.defConsist) / 7);
-    const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb) / 2);
+    const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb + statsObj.boxOut) / 3);
     const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
 
     // 3. Determine OVR from recalculated categories (ensures player.ovr === calculatePlayerOvr(player))
@@ -233,9 +235,9 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         ocon: 'offConsist', lay: 'layup', dnk: 'dunk',
         post: 'postPlay', draw: 'drawFoul', pacc: 'passAcc',
         handl: 'handling', spwb: 'spdBall', piq: 'passIq',
-        pvis: 'passVision', idef: 'intDef', pdef: 'perDef',
+        pvis: 'passVision', obm: 'offBallMovement', idef: 'intDef', pdef: 'perDef',
         stl: 'steal', hdef: 'helpDefIq', pper: 'passPerc',
-        dcon: 'defConsist', oreb: 'offReb', dreb: 'defReb',
+        dcon: 'defConsist', oreb: 'offReb', dreb: 'defReb', box: 'boxOut',
         spd: 'speed', agi: 'agility', str: 'strength',
         vert: 'vertical', sta: 'stamina', hus: 'hustle',
         dur: 'durability',

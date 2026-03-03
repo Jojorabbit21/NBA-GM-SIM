@@ -39,13 +39,15 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             stamina: p.stamina, durability: p.durability, hustle: p.hustle,
             height: p.height, weight: p.weight,
             handling: p.handling, hands: p.hands, pas: p.passAcc, passAcc: p.passAcc,
-            passVision: p.passVision, passIq: p.passIq, shotIq: p.shotIq, offConsist: p.offConsist,
+            passVision: p.passVision, passIq: p.passIq, offBallMovement: p.offBallMovement ?? 70,
+            shotIq: p.shotIq, offConsist: p.offConsist,
             postPlay: p.postPlay,
             def: p.def, intDef: p.intDef, perDef: p.perDef, blk: p.blk, stl: p.steal,
             helpDefIq: p.helpDefIq, defConsist: p.defConsist, passPerc: p.passPerc, drFoul: p.drawFoul,
             reb: p.reb,
             offReb: p.offReb ?? p.reb,
             defReb: p.defReb ?? p.reb,
+            boxOut: p.boxOut ?? 70,
             intangibles: p.intangibles ?? 70
         };
 

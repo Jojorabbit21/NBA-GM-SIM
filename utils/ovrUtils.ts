@@ -55,8 +55,8 @@ export const calculateOvr = (attributes: any, position: string): number => {
              else if (['layup','dunk','postPlay','drawFoul','hands'].includes(key)) val = ins;
              else if (['intDef','perDef','steal','blk','helpDefIq','passPerc','defConsist'].includes(key)) val = def;
              else if (['speed','agility','strength','vertical','stamina','hustle','durability'].includes(key)) val = ath;
-             else if (['passAcc','handling','spdBall','passVision','passIq'].includes(key)) val = plm;
-             else if (['offReb','defReb'].includes(key)) val = reb;
+             else if (['passAcc','handling','spdBall','passVision','passIq','offBallMovement'].includes(key)) val = plm;
+             else if (['offReb','defReb','boxOut'].includes(key)) val = reb;
              else val = 70; 
         }
         

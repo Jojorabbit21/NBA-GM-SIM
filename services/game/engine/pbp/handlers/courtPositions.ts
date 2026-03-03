@@ -130,6 +130,26 @@ const FORMATIONS: Record<PlayType, FormationConfig> = {
             spacers: [{ x: 12, y: 18 }, { x: 12, y: 32 }, { x: 30, y: 10 }],
         },
     },
+    OffBallScreen: {
+        // 슈터가 스크린 돌아 나와 캐치앤슛 (Handoff와 유사한 포메이션)
+        base: {
+            ballHandler:   { x: 28, y: 12 },   // 슈터: 윙 3점 라인
+            screenPartner: { x: 18, y: 18 },   // 스크리너: 엘보우 근처
+            spacers: [{ x: 30, y: 25 }, { x: 10, y: 46 }, { x: 32, y: 42 }],
+        },
+        zoneOverrides: {
+            Mid:   { ballHandler: { x: 22, y: 15 } },
+            '3PT': { ballHandler: { x: 30, y: 10 } },
+        },
+    },
+    DriveKick: {
+        // 드라이버가 침투 후 킥아웃 → 슈터 캐치앤슛 (CatchShoot와 유사)
+        base: {
+            ballHandler:   { x: 28, y: 8 },    // 슈터: 코너/윙 3점 라인
+            screenPartner: { x: 14, y: 25 },   // 드라이버: 페인트 근처 (침투 후)
+            spacers: [{ x: 30, y: 42 }, { x: 10, y: 46 }, { x: 10, y: 4 }],
+        },
+    },
 };
 
 // Position order for spacer slot assignment (guards → perimeter, bigs → interior)

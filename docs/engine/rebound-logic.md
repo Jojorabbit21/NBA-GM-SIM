@@ -29,9 +29,11 @@ orbChance = clamp(MIN, MAX, BASE + qualityAdj + sliderAdj)
 ### qualityAdj (팀 능력치 차이)
 ```
 offPower = Σ(공격팀 onCourt) [offReb × 0.6 + vertical × 0.2 + (height - 180) × 0.5 + hands × 0.1] × posBonus
-defPower = Σ(수비팀 onCourt) [defReb × 0.6 + vertical × 0.2 + (height - 180) × 0.5 + hands × 0.1] × posBonus
+defPower = Σ(수비팀 onCourt) [defReb × 0.6 + vertical × 0.2 + (height - 180) × 0.5 + hands × 0.1 + boxOut × 0.15] × posBonus
 qualityAdj = (offPower / defPower - 1) × QUALITY_FACTOR
 ```
+
+> **boxOut**: 수비 리바운드 파워(defPower)에만 `boxOut × 0.15` 가산. 박스아웃은 수비 기술(상대를 밀어내고 리바운드 포지션 확보)이므로 공격 리바운드 파워에는 포함되지 않음.
 
 ### posBonus (포지션 가중치)
 | 포지션 | 가중치 |
@@ -53,11 +55,12 @@ sliderAdj = (offTeam.offReb - 5) × 0.012 - (defTeam.defReb - 5) × 0.012
 
 ### 점수 공식
 ```
-score = (rebAttr × 0.6 + vertical × 0.2 + (height - 180) × 0.5 + hands × 0.1)
+score = (rebAttr × 0.6 + vertical × 0.2 + (height - 180) × 0.5 + hands × 0.1 + boxOutMod)
         × posBonus × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity × 0.6)
 ```
 
 - `rebAttr`: 공격 리바운드 → `offReb`, 수비 리바운드 → `defReb`
+- `boxOutMod`: 수비 리바운드일 때만 `boxOut × 0.15`, 공격 리바운드일 때는 0
 - `shooterPenalty`: 슈터 본인 = 0.3, 그 외 = 1.0
 - `random`: `Math.random() × (0.7 + motorIntensity × 0.6)` — 히든 텐던시 motorIntensity 반영
 

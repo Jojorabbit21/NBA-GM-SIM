@@ -14,6 +14,7 @@ export interface PlayContext {
     playType: PlayType;
     actor: LivePlayer;
     secondaryActor?: LivePlayer; // Screener, Passer, etc.
+    screener?: LivePlayer;       // OffBallScreen: 스크리너 (수비 스위치 + bonusHitRate)
     preferredZone: 'Rim' | 'Paint' | 'Mid' | '3PT';
     shotType: 'Dunk' | 'Layup' | 'Floater' | 'Jumper' | 'Pullup' | 'Hook' | 'CatchShoot' | 'Fadeaway';
     bonusHitRate: number; // Tactic success bonus
@@ -297,7 +298,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         }
         case 'Cut': {
             // Best Driver/Cutter
-            const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.shotIq * 0.5);
+            const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.offBallMovement * 0.5);
             const passer = pickWeightedActor(p => p.archetypes.connector, actor.playerId);
             const { zone: cutZone, shotType: cutShotType } = resolveFinish(actor, 'drive', sliders);
             return {
@@ -356,6 +357,54 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
                 preferredZone: pbZone,
                 shotType: pbShotType,
                 bonusHitRate: 0.05 // Putback: 세컨드찬스 이점 (57+5=62%)
+            };
+        }
+        case 'OffBallScreen': {
+            // 오프볼 스크린 후 슈터 캐치앤슛
+            // 1. 슈터: 스크린을 활용하는 캐치앤슛 전문가
+            const actor = pickWeightedActor(
+                p => p.archetypes.spacer + p.attr.offBallMovement * 0.3 + p.attr.speed * 0.1
+            );
+            // 2. 스크리너: 오프볼 스크린 퀄리티 (피지컬 기반)
+            const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
+            // 3. 패서: 스크린 후 오픈된 슈터를 찾아 패스 (어시스트 담당)
+            const passer = pickWeightedActor(
+                p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId
+            );
+
+            // 스크린 퀄리티 → bonusHitRate 보정
+            // screener 아키타입 50 기준, 0~100 범위 → 0.00~0.02 보너스
+            const screenBonus = Math.max(0, (screener.archetypes.screener - 50) / 50 * 0.02);
+
+            const obsZone = selectZone(['3PT', 'Mid'], actor, sliders);
+            return {
+                playType, actor, secondaryActor: passer,
+                screener,
+                preferredZone: obsZone,
+                shotType: obsZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                bonusHitRate: 0.02 + screenBonus
+            };
+        }
+        case 'DriveKick': {
+            // 드라이브 킥아웃: 드라이버가 침투 후 외곽 슈터에게 패스
+            const actor = pickWeightedActor(p => p.archetypes.spacer + p.attr.out * 0.3);
+            const driver = pickWeightedActor(
+                p => p.archetypes.driver + p.archetypes.handler * 0.3, actor.playerId
+            );
+
+            // 드라이버 퀄리티 → bonusHitRate 보정
+            // 침투력 (speed, agility, handling) + 킥아웃 패스 (passVision, passAcc)
+            const penetration = (driver.attr.speed + driver.attr.agility + driver.attr.handling) / 3;
+            const kickPass = (driver.attr.passVision + driver.attr.passAcc) / 2;
+            const driveQuality = penetration * 0.6 + kickPass * 0.4;
+            const driveBonus = Math.max(0, (driveQuality - 70) / 30 * 0.02);
+
+            const dkZone = selectZone(['3PT', 'Mid'], actor, sliders);
+            return {
+                playType, actor, secondaryActor: driver,
+                preferredZone: dkZone,
+                shotType: dkZone === '3PT' ? 'CatchShoot' : 'Jumper',
+                bonusHitRate: 0.02 + driveBonus
             };
         }
         default: {
