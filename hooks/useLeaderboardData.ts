@@ -198,9 +198,9 @@ export const useLeaderboardData = (
                 '3par': totals.fga > 0 ? totals.p3a / totals.fga : 0,
                 'ftr':  totals.fga > 0 ? totals.fta / totals.fga : 0,
 
-                // --- Technical / Flagrant Fouls (per game) ---
-                'tf': (totals.techFouls || 0) / playedCount,
-                'ff': (totals.flagrantFouls || 0) / playedCount,
+                // --- Technical / Flagrant Fouls (시즌 합계) ---
+                'tf': totals.techFouls || 0,
+                'ff': totals.flagrantFouls || 0,
 
                 // --- POSS / PACE ---
                 // POSS: 팀 포제션 수 per game (FGA + 0.44×FTA + TOV - ORB)
@@ -344,9 +344,9 @@ export const useLeaderboardData = (
                 s['ft%'] = s.fta > 0 ? s.ftm / s.fta : 0;
                 s['pm'] = (s.plusMinus || 0) / g;
 
-                // Technical / Flagrant Fouls (per game)
-                s['tf'] = (s.techFouls || 0) / g;
-                s['ff'] = (s.flagrantFouls || 0) / g;
+                // Technical / Flagrant Fouls (시즌 합계)
+                s['tf'] = s.techFouls || 0;
+                s['ff'] = s.flagrantFouls || 0;
 
                 return { 
                     ...p, 

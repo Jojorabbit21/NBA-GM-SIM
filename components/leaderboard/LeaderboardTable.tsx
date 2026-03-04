@@ -54,6 +54,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
             return (pct >= 100 ? '100' : pct.toFixed(1)) + '%';
         }
         if (format === 'number') return val.toFixed(1);
+        if (format === 'integer') return Math.round(val).toString();
         return val;
     };
 
