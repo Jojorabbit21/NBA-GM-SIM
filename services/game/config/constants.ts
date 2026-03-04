@@ -106,15 +106,53 @@ export const SIM_CONFIG = {
         SHOT_CLOCK_LOW_PACE_FACTOR: 0.001,
         SHOT_CLOCK_HIGH_BM_FACTOR: 0.0008,
 
-        // drawFoul 공격자 파울 유도 보정
-        DRAW_FOUL_BASELINE: 70,              // 중립 기준점
-        DRAW_FOUL_SHOOTING_FACTOR: 0.0015,   // 슈팅파울 비율: (drFoul - 70) × factor
-        DRAW_FOUL_AND1_FACTOR: 0.0005,       // And-1 확률: (drFoul - 70) × factor
+    },
+    // Shooting Foul (존별 단일 게이트 + drawFoul 커브)
+    // 이중 게이트(baseFoulChance × shootingFoulRatio) 제거 → 존별 직접 확률
+    SHOOTING_FOUL: {
+        // 존별 기본 슈팅파울 확률 (NBA 2023-24 기준)
+        BASE_RATE_RIM: 0.16,       // NBA Rim FTA rate ~21.5% (drawFoul 70 기준 16%)
+        BASE_RATE_PAINT: 0.10,     // Floater/Paint (Rim과 Mid 사이)
+        BASE_RATE_MID: 0.045,      // 미드레인지 (잡다한 슈팅파울)
+        BASE_RATE_3PT: 0.025,      // 3점 슈팅파울 (착지 공간 침범 등)
 
-        // Manipulator 아키타입 (파울 유도 장인) — Harden, Embiid, Trae Young
-        MANIPULATOR_DRFOUL_THRESHOLD: 95,    // drFoul ≥ 95
-        MANIPULATOR_SHOTIQ_THRESHOLD: 88,    // shotIq ≥ 88
-        MANIPULATOR_FOUL_BONUS: 0.03,        // baseFoulChance +3% (18% 캡 무시)
+        // drawFoul 커브: 선수 능력치 → 슈팅파울 확률 보정
+        // drFoul 99 (+19%p) vs drFoul 50 (-4.3%p) → 격차 ~23%p (NBA ~24%p)
+        DRAW_FOUL_CURVE: [
+            [40, -0.06],
+            [55, -0.035],
+            [70, 0.00],     // 중립 기준점
+            [80, 0.035],
+            [85, 0.065],
+            [90, 0.10],
+            [95, 0.15],
+            [99, 0.19],
+        ] as [number, number][],
+
+        // 존별 커브 스케일링 (Rim 100%, Paint 80%, Mid 50%, 3PT 25%)
+        // → 인사이드에서 drawFoul 영향이 크고, 3점에서는 작음
+        ZONE_CURVE_SCALE: { 'Rim': 1.0, 'Paint': 0.8, 'Mid': 0.5, '3PT': 0.25 } as Record<string, number>,
+
+        // defIntensity 보정: intensity 6-10에서 슈팅파울 증가
+        DEF_INTENSITY_FACTOR: 0.006,
+
+        // Manipulator 아키타입 (Harden, Embiid, Trae Young)
+        MANIPULATOR_DRFOUL_THRESHOLD: 95,
+        MANIPULATOR_SHOTIQ_THRESHOLD: 88,
+        MANIPULATOR_BONUS: 0.03,
+
+        // And-1 drawFoul 커브 스케일 (DRAW_FOUL_CURVE × 이 값)
+        AND1_CURVE_SCALE: 0.15,
+
+        // 클램프
+        MIN_RATE: 0.01,
+        MAX_RATE: 0.40,
+    },
+    // Non-Shooting Foul (팀 파울 / 루스볼 파울 — 보너스 상황에서만 FT)
+    NON_SHOOTING_FOUL: {
+        BASE_RATE: 0.025,
+        DEF_INTENSITY_FACTOR: 0.004,
+        MAX_RATE: 0.06,
     },
     // Rebound System (2-Step: ORB% 판정 → 팀 내 리바운더 선택)
     REBOUND: {
@@ -140,35 +178,37 @@ export const SIM_CONFIG = {
         RAIDER_VERTICAL_THRESHOLD: 90,       // vertical ≥ 90
         RAIDER_SCORE_MULTIPLIER: 1.4,        // 공격 리바운드 선택 점수 ×1.4
     },
-    // Block System (미스 중 블락 판정)
+    // Block System (미스 중 블락 판정, 커브 기반)
     BLOCK: {
-        ENABLED: true,              // 블락 아키타입 마스터 스위치
-        // 존별 베이스 블락 확률 (원래 값 복원)
-        BASE_RIM: 0.10,           // 10% (was 5%)
-        BASE_PAINT: 0.05,         // 5%  (was 3%)
-        BASE_MID: 0.035,          // 3.5% (was 1.5%)
-        BASE_3PT: 0.01,           // 1%  (was 0.5%)
+        ENABLED: true,
+        // 존별 베이스 블락 확률
+        BASE_RIM: 0.10,
+        BASE_PAINT: 0.05,
+        BASE_MID: 0.035,
+        BASE_3PT: 0.01,
 
-        // 수비자 능력치 보정 계수 (3× 이전값)
-        BLK_STAT_FACTOR: 0.0015,  // (defBlk - 70) × factor
-        VERT_STAT_FACTOR: 0.00075,// (defVert - 70) × factor
-        HEIGHT_FACTOR: 0.001,     // (defHeight - 200) × factor
+        // 블락 능력치 커브: blk → 추가 블락 확률 (85까지 완만, 90+ 가속)
+        BLK_CURVE: [
+            [40, -0.02], [55, -0.01], [70, 0.00],
+            [80, 0.02], [85, 0.035], [90, 0.055],
+            [95, 0.085], [99, 0.105],
+        ] as [number, number][],
+
+        // 키 보너스 (블락에서는 키가 독립적으로 중요)
+        HEIGHT_FACTOR: 0.001,
 
         // 엘리트 블로커 아키타입 보너스 (조건부 발동)
-        // D-2. The Alien: Rim + Paint 존만 (height ≥ 216, blk ≥ 80)
         ARCHETYPE_ALIEN: 0.03,
-        // D-3. Skywalker: Transition + Cut 플레이만 (vert ≥ 95, blk ≥ 75)
         ARCHETYPE_SKYWALKER: 0.05,
-        // D-4. Defensive Anchor: 헬프 블락 확률 배율 (helpDefIq ≥ 92, blk ≥ 80)
         ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
 
         // 헬프 블락 (림 프로텍터 회전 블락)
-        HELP_BASE: 0.02,          // 기본 확률
-        HELP_BLK_THRESHOLD: 85,   // 블락 능력치 기준
-        HELP_BLK_BONUS: 0.03,     // 기준 이상 시 추가
-        HELP_RIM_THRESHOLD: 75,   // 림프로텍터 아키타입 기준
-        HELP_RIM_BONUS: 0.03,     // 기준 이상 시 추가
-        HELP_MID_FACTOR: 0.5,     // 미드레인지 헬프 블락 효과 배수
+        HELP_BASE: 0.02,
+        HELP_BLK_THRESHOLD: 85,
+        HELP_BLK_BONUS: 0.03,
+        HELP_RIM_THRESHOLD: 75,
+        HELP_RIM_BONUS: 0.03,
+        HELP_MID_FACTOR: 0.5,
     },
     // Steal System (커브 기반 재설계)
     STEAL: {
@@ -303,7 +343,7 @@ export const SIM_CONFIG = {
     SHOT_DEFENSE: {
         CONTEST: { Dunk: 0.85, Layup: 1.0, Floater: 0.6, Hook: 0.5, Pullup: 0.8, Jumper: 0.85, Fadeaway: 0.4, CatchShoot: 1.0 } as Record<string, number>,
         BLOCK_MULT: { Dunk: 0.85, Layup: 1.0, Floater: 0.3, Hook: 0.4, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.2, CatchShoot: 1.0 } as Record<string, number>,
-        AND1_MULT: { Dunk: 1.5, Layup: 1.0, Floater: 0.3, Hook: 0.5, Pullup: 0.0, Jumper: 0.0, Fadeaway: 0.0, CatchShoot: 0.0 } as Record<string, number>,
+        AND1_MULT: { Dunk: 1.5, Layup: 1.0, Floater: 0.3, Hook: 0.5, Pullup: 0.15, Jumper: 0.10, Fadeaway: 0.10, CatchShoot: 0.08 } as Record<string, number>,
         DUNK_STR_RESIST: 0.001,
         DUNK_VERT_RESIST: 0.0005,
     },

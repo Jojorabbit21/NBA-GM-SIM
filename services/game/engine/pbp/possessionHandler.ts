@@ -337,31 +337,47 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
     );
 
-    // 3. Defensive Foul Check (Intensity Slider)
-    // [Fix] Linear growth capped at 18%: intensity=5→15.5%, intensity>=7→18% cap
+    // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
+    // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
     const defIntensity = defTeam.tactics.sliders.defIntensity;
     const offFoulConfig = SIM_CONFIG.FOUL_EVENTS;
-    let baseFoulChance = Math.min(0.18, 0.08 + (defIntensity * 0.015));
+    const sFoulCfg = SIM_CONFIG.SHOOTING_FOUL;
 
-    // Manipulator 아키타입: 엘리트 파울 드로어는 baseFoulChance 자체를 상승 (18% 캡 무시)
-    if (actor.attr.drFoul >= offFoulConfig.MANIPULATOR_DRFOUL_THRESHOLD &&
-        actor.attr.shotIq >= offFoulConfig.MANIPULATOR_SHOTIQ_THRESHOLD) {
-        baseFoulChance += offFoulConfig.MANIPULATOR_FOUL_BONUS;
+    // 존별 기본 슈팅파울 확률
+    let shootingFoulRate = preferredZone === 'Rim' ? sFoulCfg.BASE_RATE_RIM
+        : preferredZone === 'Paint' ? sFoulCfg.BASE_RATE_PAINT
+        : preferredZone === 'Mid' ? sFoulCfg.BASE_RATE_MID
+        : sFoulCfg.BASE_RATE_3PT;
+
+    // drawFoul 커브 보정 (존별 스케일링)
+    const drawFoulBonus = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE);
+    const zoneScale = sFoulCfg.ZONE_CURVE_SCALE[preferredZone] ?? 1.0;
+    shootingFoulRate += drawFoulBonus * zoneScale;
+
+    // defIntensity 보정: intensity 6-10에서 슈팅파울 증가
+    shootingFoulRate += Math.max(0, (defIntensity - 5)) * sFoulCfg.DEF_INTENSITY_FACTOR;
+
+    // Manipulator 아키타입: 엘리트 파울 드로어 보너스
+    if (actor.attr.drFoul >= sFoulCfg.MANIPULATOR_DRFOUL_THRESHOLD &&
+        actor.attr.shotIq >= sFoulCfg.MANIPULATOR_SHOTIQ_THRESHOLD) {
+        shootingFoulRate += sFoulCfg.MANIPULATOR_BONUS;
     }
 
-    // [SaveTendency] foulProneness: ±2% foul chance for defender
-    baseFoulChance += (defender.tendencies?.foulProneness ?? 0) * 0.02;
-    baseFoulChance = Math.max(0.03, baseFoulChance); // Minimum 3%
+    // [SaveTendency] foulProneness: 수비자 파울 성향
+    shootingFoulRate += (defender.tendencies?.foulProneness ?? 0) * 0.02;
 
     // Foul Trouble: 파울 트러블 수비자는 조심스럽게 수비 → 파울 확률 감소 + 수비력 약화
     const ft = SIM_CONFIG.FOUL_TROUBLE;
     const defFouls = defender.pf;
     const foulProbMod = defFouls >= 5 ? ft.PROB_MOD[5] : defFouls >= 4 ? ft.PROB_MOD[4] : defFouls >= 3 ? ft.PROB_MOD[3] : 1.0;
-    baseFoulChance *= foulProbMod;
+    shootingFoulRate *= foulProbMod;
     // DEF_PENALTY → hitRate 보너스 (×0.10 스케일링: 4파울 +1.5%, 5파울 +4%)
     const foulDefPenalty = defFouls >= 5 ? ft.DEF_PENALTY[5] * 0.10 : defFouls >= 4 ? ft.DEF_PENALTY[4] * 0.10 : 0;
 
-    if (Math.random() < baseFoulChance) {
+    // 클램프
+    shootingFoulRate = Math.max(sFoulCfg.MIN_RATE, Math.min(sFoulCfg.MAX_RATE, shootingFoulRate));
+
+    if (Math.random() < shootingFoulRate) {
         // ★ Flagrant Foul Conversion (수비 파울 중 일부가 플래그런트로 전환)
         if (Math.random() < offFoulConfig.FLAGRANT_CONVERT_RATE) {
             const isFlagrant2 = Math.random() < offFoulConfig.FLAGRANT_2_CHANCE;
@@ -372,23 +388,21 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
                 isFlagrant2, isZone,
             };
         }
-
-        // Shooting foul vs Team foul 구분
-        // [Fix] 파울 빈도는 18% 캡, 하지만 슈팅 파울 비율은 intensity로 차등 스케일링
-        // → intensity 7과 10은 파울 횟수는 같지만 10이 더 비싼 파울(슈팅파울)을 많이 유발
-        const isInsidePlay = preferredZone === 'Rim' || preferredZone === 'Paint';
-        const intensityBonus = Math.max(0, defIntensity - 5);
-        // drawFoul 보정: 70 기준 ±0.15%/pt (drFoul 50→-3%, 70→0%, 90→+3%, 99→+4.35%)
-        const drawFoulMod = (actor.attr.drFoul - offFoulConfig.DRAW_FOUL_BASELINE) * offFoulConfig.DRAW_FOUL_SHOOTING_FACTOR;
-        const shootingFoulChance = isInsidePlay
-            ? Math.min(0.65, 0.45 + intensityBonus * 0.015 + drawFoulMod)
-            : preferredZone === 'Mid'
-            ? Math.min(0.40, 0.25 + intensityBonus * 0.012 + drawFoulMod)
-            : Math.min(0.25, 0.10 + intensityBonus * 0.008 + drawFoulMod);
-        const isShootingFoul = Math.random() < shootingFoulChance;
-
         return {
-            type: isShootingFoul ? 'freethrow' : 'foul',
+            type: 'freethrow',
+            offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
+        };
+    }
+
+    // 3.2 Non-Shooting Foul (팀 파울 / 루스볼 — 보너스 상황에서만 FT)
+    const nsFoulCfg = SIM_CONFIG.NON_SHOOTING_FOUL;
+    let nonShootingFoulRate = nsFoulCfg.BASE_RATE + Math.max(0, (defIntensity - 5)) * nsFoulCfg.DEF_INTENSITY_FACTOR;
+    nonShootingFoulRate *= foulProbMod;
+    nonShootingFoulRate = Math.min(nsFoulCfg.MAX_RATE, nonShootingFoulRate);
+
+    if (Math.random() < nonShootingFoulRate) {
+        return {
+            type: 'foul',
             offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
         };
     }
@@ -570,15 +584,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
     const isScore = Math.random() < shotContext.rate;
 
-    // And-1: 득점 성공 + 슈팅 파울 동시 발생 (Rim/Paint 공격에서만)
-    // defIntensity=5: 3%, defIntensity=10: 5%
+    // And-1: 득점 성공 + 슈팅 파울 동시 발생 (전 존, shotType별 배율)
     let isAndOne = false;
-    if (isScore && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-        const andOneBase = 0.03;
+    if (isScore) {
+        const andOneBase = (preferredZone === 'Rim' || preferredZone === 'Paint') ? 0.03 : 0.012;
         const intensityMod = Math.max(0, (defIntensity - 5) * 0.004);
-        // drawFoul 보정: 70 기준 ±0.05%/pt (drFoul 50→-1%, 90→+1%)
-        const drawFoulAndOneMod = (actor.attr.drFoul - offFoulConfig.DRAW_FOUL_BASELINE) * offFoulConfig.DRAW_FOUL_AND1_FACTOR;
-        // shotType별 And-1 배율: Dunk 1.5x, Floater 0.3x 등
+        // drawFoul 커브 기반 And-1 보정 (DRAW_FOUL_CURVE × AND1_CURVE_SCALE)
+        const drawFoulAndOneMod = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE) * sFoulCfg.AND1_CURVE_SCALE;
+        // shotType별 And-1 배율: Dunk 1.5x, Layup 1.0x, Pullup 0.15x 등
         const and1Mult = SIM_CONFIG.SHOT_DEFENSE.AND1_MULT[shotType ?? 'Layup'] ?? 1.0;
         if (Math.random() < Math.max(0, (andOneBase + intensityMod + drawFoulAndOneMod) * and1Mult)) {
             isAndOne = true;
@@ -602,15 +615,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             else if (preferredZone === 'Mid') blockProb = blkCfg.BASE_MID;
             else if (preferredZone === '3PT') blockProb = blkCfg.BASE_3PT;
 
-            // B. Defender Attribute Modifiers (3× 이전 계수)
+            // B. Defender Attribute Modifiers (커브 기반)
             const defBlk = defender.attr.blk;
             const defVert = defender.attr.vertical;
             const defHeight = defender.attr.height;
 
+            const blkBonus = interpolateCurve(defBlk, blkCfg.BLK_CURVE);
             const heightBonus = Math.max(0, (defHeight - 200) * blkCfg.HEIGHT_FACTOR);
-            const statBonus = ((defBlk - 70) * blkCfg.BLK_STAT_FACTOR) + ((defVert - 70) * blkCfg.VERT_STAT_FACTOR);
 
-            blockProb += (heightBonus + statBonus);
+            blockProb += blkBonus + heightBonus;
 
             // C. ELITE THRESHOLD BONUSES (Blocker Archetypes — 조건부 발동)
             let archetypeBonus = 0;
