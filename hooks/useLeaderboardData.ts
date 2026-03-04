@@ -338,6 +338,12 @@ export const useLeaderboardData = (
                 s['3par'] = s.fga > 0 ? s.p3a / s.fga : 0;
                 s['ftr'] = s.fga > 0 ? s.fta / s.fga : 0;
 
+                // Traditional percentage stats (pre-calculate for sorting)
+                s['fg%'] = s.fga > 0 ? s.fgm / s.fga : 0;
+                s['3p%'] = s.p3a > 0 ? s.p3m / s.p3a : 0;
+                s['ft%'] = s.fta > 0 ? s.ftm / s.fta : 0;
+                s['pm'] = (s.plusMinus || 0) / g;
+
                 // Technical / Flagrant Fouls (per game)
                 s['tf'] = (s.techFouls || 0) / g;
                 s['ff'] = (s.flagrantFouls || 0) / g;
@@ -574,22 +580,22 @@ export const useLeaderboardData = (
                         return getAttrVal(p, sortConfig.key);
                     }
 
-                    // Direct access for most keys now (including advanced)
-                    if (s[sortConfig.key] !== undefined) {
-                        const val = s[sortConfig.key];
-                        // If it's a count stat, average it. If ratio, use as is.
-                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pf', 'pm', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
-                            return val / g;
-                        }
-                        return val;
-                    }
-                    
-                    // Zone Keys (M, A, PCT)
+                    // Zone Keys (M, A per-game, PCT as-is) — check before generic access
                     if (sortConfig.key.endsWith('_m') || sortConfig.key.endsWith('_a')) {
                          return (s[sortConfig.key] || 0) / g;
                     }
                     if (sortConfig.key.endsWith('_pct')) {
                          return s[sortConfig.key] || 0;
+                    }
+
+                    // Direct access for most keys now (including advanced)
+                    if (s[sortConfig.key] !== undefined) {
+                        const val = s[sortConfig.key];
+                        // Count stats: per-game. pm is already pre-calculated as per-game.
+                        if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
+                            return val / g;
+                        }
+                        return val;
                     }
 
                     return 0;
