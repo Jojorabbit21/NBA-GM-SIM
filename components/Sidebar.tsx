@@ -253,7 +253,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
       {/* 시즌 전체 진행 확인 다이얼로그 */}
       {showBatchConfirm && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-[2000]">
           <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
             <h3 className="text-lg font-black text-slate-100 oswald uppercase tracking-wide mb-4">시즌 전체 진행</h3>
             <p className="text-sm text-slate-400 leading-relaxed mb-6">
