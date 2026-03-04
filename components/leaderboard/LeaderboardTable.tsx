@@ -49,7 +49,10 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
     };
 
     const formatValue = (val: number, format?: string) => {
-        if (format === 'percent') return (val * 100).toFixed(1) + '%';
+        if (format === 'percent') {
+            const pct = val * 100;
+            return (pct >= 100 ? '100' : pct.toFixed(1)) + '%';
+        }
         if (format === 'number') return val.toFixed(1);
         return val;
     };

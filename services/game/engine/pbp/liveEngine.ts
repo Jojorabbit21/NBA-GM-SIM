@@ -493,6 +493,8 @@ export function extractSimResult(state: GameState): SimulationResult {
                 g: p.mp > 0 ? 1 : 0,
                 gs: p.gs,
                 pf: p.pf,
+                techFouls: p.techFouls || 0,
+                flagrantFouls: p.flagrantFouls || 0,
                 plusMinus: p.plusMinus,
                 condition: parseFloat(p.currentCondition.toFixed(1)),
                 isStopper: teamState.tactics.stopperId === p.playerId,
