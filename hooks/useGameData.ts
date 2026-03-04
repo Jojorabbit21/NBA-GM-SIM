@@ -66,9 +66,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         const reb = Math.round((p.offReb + p.defReb) / 2);
         const ath = Math.round((p.speed + p.agility + p.strength + p.vertical + p.stamina + p.hustle + p.durability) / 7);
 
-        // 4. OVR 재계산
+        // 4. OVR — 수동 OVR이 있으면 유지, 없으면 재계산
         const ovrInput = { ...p, ins, out, plm, def, reb, ath, potential: p.potential };
-        const ovr = calculateOvr(ovrInput, p.position);
+        const ovr = p.manualOvr ? p.manualOvr : calculateOvr(ovrInput, p.position);
 
         return { ...p, ins, out, plm, def, reb, ath, ovr };
     }, []);

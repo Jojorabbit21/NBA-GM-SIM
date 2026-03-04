@@ -89,6 +89,7 @@ export interface Player {
     salary: number;
     contractYears: number;
     ovr: number;
+    manualOvr?: number;
     potential: number;
     revealedPotential: number;
     health: 'Healthy' | 'Injured' | 'Day-to-Day';
