@@ -170,32 +170,31 @@ export const SIM_CONFIG = {
         HELP_RIM_BONUS: 0.03,     // 기준 이상 시 추가
         HELP_MID_FACTOR: 0.5,     // 미드레인지 헬프 블락 효과 배수
     },
-    // Steal Archetypes (턴오버 유발 히든 아키타입)
+    // Steal System (커브 기반 재설계)
     STEAL: {
-        ENABLED: true,              // 스틸 아키타입 마스터 스위치
-        // A. The Clamp (질식 수비) — Kawhi, Scottie Pippen
-        CLAMP_PERIMDEF_THRESHOLD: 92,
-        CLAMP_STL_THRESHOLD: 80,
-        CLAMP_TOV_BONUS: 0.03,        // +3% 턴오버 확률
+        // 온볼 스틸 커브: 수비자 stl → 스틸 확률 (주 수비자 전용)
+        // 85까지 완만, 90부터 급가속 (stl 95 → ~2.7 SPG, stl 99 → ~3.2 SPG 목표)
+        ONBALL_STEAL_CURVE: [
+            [40, 0.015], [55, 0.025], [70, 0.040],
+            [80, 0.055], [85, 0.070], [90, 0.095],
+            [95, 0.145], [99, 0.170],
+        ] as [number, number][],
 
-        // B. The Pickpocket (볼 스트립) — CP3, Marcus Smart
-        PICKPOCKET_STL_THRESHOLD: 85,
-        PICKPOCKET_AGILITY_THRESHOLD: 92,
-        PICKPOCKET_TOV_BONUS: 0.04,   // +4% (접촉 플레이 전용)
+        // 패싱레인 스틸 커브: 오프볼 수비자 stl → 패스 가로채기 확률
+        // 패스 플레이 전용, 주 수비자 외 4명 각각 판정
+        LANE_STEAL_CURVE: [
+            [40, 0.001], [55, 0.002], [70, 0.004],
+            [80, 0.006], [85, 0.009], [90, 0.013],
+            [95, 0.022], [99, 0.028],
+        ] as [number, number][],
 
-        // C. The Hawk (패싱레인 사냥꾼) — Draymond, Jimmy Butler
-        HAWK_HELPDEF_THRESHOLD: 85,
-        HAWK_PASSPERC_THRESHOLD: 80,
-        HAWK_STL_THRESHOLD: 75,
-        HAWK_BM_THRESHOLD: 7,         // 상대 ballMovement ≥ 7 시 발동
-        HAWK_TOV_BONUS: 0.03,         // +3% 턴오버 확률
+        // 공격자 핸들링 저항 계수 (온볼 스틸 확률에서 감산)
+        // handling 90 → 스틸 확률 -2%, handling 50 → +2%
+        HANDLING_RESIST_COEFF: 0.001,
 
-        // E. The Press (풀코트 프레스) — Pat Beverley, Tony Allen
-        PRESS_SPEED_THRESHOLD: 85,
-        PRESS_STAMINA_THRESHOLD: 85,
-        PRESS_HUSTLE_THRESHOLD: 85,
-        PRESS_TOV_BONUS: 0.05,        // +5% (Transition 전용)
-        PRESS_STEAL_RATIO_BONUS: 0.15, // +15% 스틸 비율
+        // 패스 정확도 저항 계수 (패싱레인 스틸 확률에서 감산)
+        // passAcc 90 → 레인 스틸 확률 -1%, passAcc 50 → +1%
+        PASSACC_RESIST_COEFF: 0.0005,
     },
     // Playmaking Archetypes (플레이메이킹 히든 아키타입)
     PLAYMAKING: {
