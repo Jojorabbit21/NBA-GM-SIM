@@ -47,7 +47,12 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             sliders: {
                 ...DEFAULT_SLIDERS,
                 ...tactics.sliders
-            }
+            },
+            rotationMap: tactics.rotationMap
+                ? Object.fromEntries(
+                    Object.entries(tactics.rotationMap).map(([pid, arr]) => [pid, [...arr]])
+                  )
+                : {}
         };
     }
 
