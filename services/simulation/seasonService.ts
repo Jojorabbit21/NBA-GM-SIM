@@ -1,6 +1,7 @@
 import { Team, Game, PlayoffSeries, Transaction } from '../../types';
 import { advancePlayoffState, generateNextPlayoffGames, checkAndInitPlayoffs } from '../../utils/playoffLogic';
 import { simulateCPUTrades } from '../../services/tradeEngine';
+import { runCPUTradeRound } from '../../services/tradeEngine/cpuTradeSimulator';
 import { generateCPUTradeNews } from '../../services/geminiService';
 import { savePlayoffState } from '../../services/playoffService';
 
@@ -77,10 +78,62 @@ export const handleSeasonEvents = async (
         await savePlayoffState(userId, myTeamId, updatedSeries, currentRound, isFinished, championId);
     }
 
-    return { 
+    return {
         updatedPlayoffSeries: updatedSeries,
-        newTransactions, 
-        newsItems, 
-        tradeToast 
+        newTransactions,
+        newsItems,
+        tradeToast
     };
+};
+
+/**
+ * handleSeasonEvents의 동기 버전 (배치 시뮬레이션용).
+ * DB 저장, Gemini 호출, 뉴스 생성을 모두 생략.
+ */
+export const handleSeasonEventsSync = (
+    teams: Team[],
+    schedule: Game[],
+    playoffSeries: PlayoffSeries[],
+    currentSimDate: string,
+    myTeamId: string
+) => {
+    let newTransactions: Transaction[] = [];
+    let updatedSeries = [...playoffSeries];
+
+    // 1. Playoffs
+    if (updatedSeries.length > 0) {
+        const advancedSeries = advancePlayoffState(updatedSeries, teams);
+        if (advancedSeries !== updatedSeries) {
+            updatedSeries = advancedSeries;
+        }
+        const { newGames, updatedSeries: nextSeries } = generateNextPlayoffGames(schedule, updatedSeries, currentSimDate);
+        if (newGames.length > 0) {
+            schedule.push(...newGames);
+            updatedSeries = nextSeries;
+        }
+    } else {
+        const initializedSeries = checkAndInitPlayoffs(teams, schedule, [], currentSimDate);
+        if (initializedSeries.length > 0) {
+            updatedSeries = initializedSeries;
+            const { newGames, updatedSeries: nextSeries } = generateNextPlayoffGames(schedule, updatedSeries, currentSimDate);
+            schedule.push(...newGames);
+            updatedSeries = nextSeries;
+        }
+    }
+
+    // 2. CPU Trades (동기 — Gemini 뉴스 생략)
+    if (updatedSeries.length === 0) {
+        const tradeResults = runCPUTradeRound(teams, myTeamId, currentSimDate);
+        if (tradeResults && tradeResults.transactions.length > 0) {
+            for (const tx of tradeResults.transactions) {
+                newTransactions.push({ ...tx, date: currentSimDate });
+            }
+        }
+    }
+
+    // playoffSeries 원본 배열 교체 (caller에서 참조 갱신 필요)
+    playoffSeries.length = 0;
+    playoffSeries.push(...updatedSeries);
+
+    return { newTransactions };
 };

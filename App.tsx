@@ -9,6 +9,7 @@ import { Toast } from './components/SharedComponents';
 import { AppView, RosterMode, DraftPoolType } from './types';
 import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
+import { useFullSeasonSim } from './hooks/useFullSeasonSim';
 
 function shuffleArray<T>(arr: T[]): T[] {
     const a = [...arr];
@@ -62,6 +63,15 @@ const App: React.FC = () => {
         gameData.playoffSeries, gameData.setPlayoffSeries, gameData.setTransactions,
         gameData.setNews, setToastMessage, gameData.forceSave,
         session, isGuestMode, refreshUnreadCount, gameData.depthChart,
+        gameData.tendencySeed || undefined
+    );
+
+    const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
+        gameData.teams, gameData.setTeams, gameData.schedule, gameData.setSchedule,
+        gameData.myTeamId, gameData.currentSimDate, gameData.setCurrentSimDate,
+        gameData.playoffSeries, gameData.setPlayoffSeries, gameData.setTransactions,
+        gameData.forceSave, session, isGuestMode,
+        gameData.userTactics, gameData.depthChart,
         gameData.tendencySeed || undefined
     );
 
@@ -159,8 +169,12 @@ const App: React.FC = () => {
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,
-                    onLogout: handleLogout
+                    onLogout: handleLogout,
+                    onSimulateSeason: handleSimulateSeason,
+                    isBatchRunning: batchProgress?.isRunning ?? false,
                 }}
+                batchProgress={batchProgress}
+                onCancelBatch={handleCancelBatch}
                 gameHeaderProps={{
                     schedule: gameData.schedule,
                     teams: gameData.teams,

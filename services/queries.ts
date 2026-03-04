@@ -194,6 +194,16 @@ export const saveGameResults = async (results: any[]) => {
     }
 };
 
+/** 배치 시뮬레이션용: 대량 결과를 50건씩 청크로 나눠 저장 */
+export const bulkSaveGameResults = async (results: any[], chunkSize = 50) => {
+    if (!results || results.length === 0) return;
+    for (let i = 0; i < results.length; i += chunkSize) {
+        const chunk = results.slice(i, i + chunkSize);
+        await saveGameResults(chunk);
+    }
+    console.log(`✅ Bulk saved ${results.length} game results in ${Math.ceil(results.length / chunkSize)} chunks.`);
+};
+
 export const saveUserTransaction = async (userId: string, tx: Transaction) => {
     console.log("💾 Saving Transaction:", { userId, tx }); 
     const { data, error } = await supabase.from('user_transactions').insert({

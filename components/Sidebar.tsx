@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, // FlaskConical
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -26,6 +26,8 @@ interface SidebarProps {
   onResetClick: () => void;
   onEditorClick: () => void;
   onLogout: () => void;
+  onSimulateSeason?: () => void;
+  isBatchRunning?: boolean;
 }
 
 // Team color theme — shared utility (utils/teamTheme.ts)
@@ -88,9 +90,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onNavigate,
   onResetClick,
   onEditorClick,
-  onLogout
+  onLogout,
+  onSimulateSeason,
+  isBatchRunning,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const DEV_MODE = import.meta.env.DEV;
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
 
@@ -222,8 +228,56 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <NavItem active={currentView === 'Schedule'} icon={<CalendarIcon size={20}/>} label="일정" onClick={() => onNavigate('Schedule')} {...navProps} />
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
+
+        {/* 시즌 전체 진행 (DEV 전용) */}
+        {DEV_MODE && !isRegularSeasonOver && onSimulateSeason && (
+          <button
+            onClick={() => setShowBatchConfirm(true)}
+            disabled={isBatchRunning}
+            className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
+              isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
+            } opacity-60 hover:opacity-90 hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed`}
+            title={isCollapsed ? '시즌 전체 진행' : undefined}
+          >
+            <div className={`flex items-center relative z-10 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-4'}`}>
+              <span className="shrink-0"><FastForward size={20} /></span>
+              <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
+                isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
+              }`}>
+                시즌 전체 진행
+              </span>
+            </div>
+          </button>
+        )}
         <div className="mt-auto" />
       </nav>
+
+      {/* 시즌 전체 진행 확인 다이얼로그 */}
+      {showBatchConfirm && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+            <h3 className="text-lg font-black text-slate-100 oswald uppercase tracking-wide mb-4">시즌 전체 진행</h3>
+            <p className="text-sm text-slate-400 leading-relaxed mb-6">
+              현재 전술로 남은 정규시즌을 자동 시뮬레이션합니다.<br />
+              경기 중 전술 변경은 불가능합니다. 계속하시겠습니까?
+            </p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowBatchConfirm(false)}
+                className="px-5 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-bold transition-all"
+              >
+                취소
+              </button>
+              <button
+                onClick={() => { setShowBatchConfirm(false); onSimulateSeason?.(); }}
+                className="px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all"
+              >
+                시작
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Collapse Toggle */}
       <div className="p-4 border-t border-white/10 transition-all duration-500">
