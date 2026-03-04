@@ -96,7 +96,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
-  const DEV_MODE = import.meta.env.DEV;
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
 
@@ -229,8 +228,8 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <NavItem active={currentView === 'Transactions'} icon={<ArrowLeftRight size={20}/>} label="트레이드" onClick={() => onNavigate('Transactions')} {...navProps} />
         {/* <NavItem active={currentView === 'OvrCalculator'} icon={<FlaskConical size={20}/>} label="OVR 실험실" onClick={() => onNavigate('OvrCalculator')} {...navProps} /> */}
 
-        {/* 시즌 전체 진행 (DEV 전용) */}
-        {DEV_MODE && !isRegularSeasonOver && onSimulateSeason && (
+        {/* 시즌 전체 진행 */}
+        {!isRegularSeasonOver && onSimulateSeason && (
           <button
             onClick={() => setShowBatchConfirm(true)}
             disabled={isBatchRunning}
