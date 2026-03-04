@@ -127,6 +127,8 @@ export const SIM_CONFIG = {
         POS_WEIGHT_PF: 1.2,           // 파워포워드 가중치
         POS_WEIGHT_DEFAULT: 1.0,      // 기본 가중치
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
+        TEAM_REB_RATE_FG: 0.10,       // FG 미스 → 팀 리바운드 확률 (개인 미기록, NBA 평균 ~10%)
+        TEAM_REB_RATE_FT: 0.15,       // FT 라스트샷 미스 → 팀 리바운드 확률
 
         // F-1. Harvester (하베스터) — Andre Drummond, DeAndre Jordan
         HARVESTER_REB_THRESHOLD: 95,         // offReb ≥ 95 OR defReb ≥ 95

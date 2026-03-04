@@ -773,7 +773,15 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         }
         // --- BLOCK CALCULATION LOGIC END ---
 
-        const { player: rebounder, type: reboundType } = resolveRebound(state.home, state.away, actor.playerId);
+        // Team Rebound Check (dead ball, out-of-bounds → 개인 리바운드 미기록)
+        let rebounder: LivePlayer | undefined;
+        let reboundType: 'off' | 'def' | undefined;
+
+        if (Math.random() >= SIM_CONFIG.REBOUND.TEAM_REB_RATE_FG) {
+            const reb = resolveRebound(state.home, state.away, actor.playerId);
+            rebounder = reb.player;
+            reboundType = reb.type;
+        }
 
         return {
             type: 'miss',
