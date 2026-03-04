@@ -292,13 +292,14 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Best Spacer
             const actor = pickWeightedActor(p => p.archetypes.spacer);
             const passer = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
+            const catchZone = selectZone(['3PT', 'Mid'], actor, sliders);
             return {
                 playType,
                 actor,
                 secondaryActor: passer,
-                preferredZone: '3PT', // 고정: 스팟업 캐치샷은 항상 3점
+                preferredZone: catchZone,
                 shotType: 'CatchShoot',
-                bonusHitRate: 0.02 // CatchShoot: 오픈 3점 이점 (34+2=36% = NBA 평균 3P%)
+                bonusHitRate: 0.02
             };
         }
         case 'Cut': {

@@ -30,7 +30,7 @@ export interface HitRateResult {
 type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
 
 /** Piecewise linear interpolation: curve = [[x0,y0], [x1,y1], ...] (sorted by x) */
-function interpolateCurve(x: number, curve: readonly (readonly [number, number])[]): number {
+export function interpolateCurve(x: number, curve: readonly (readonly [number, number])[]): number {
     if (x <= curve[0][0]) return curve[0][1];
     if (x >= curve[curve.length - 1][0]) return curve[curve.length - 1][1];
     for (let i = 1; i < curve.length; i++) {

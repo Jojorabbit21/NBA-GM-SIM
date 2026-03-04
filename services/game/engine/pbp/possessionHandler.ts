@@ -1,7 +1,7 @@
 
 import { GameState, PossessionResult, LivePlayer, TeamState, ClutchContext } from './pbpTypes';
 import { resolvePlayAction } from './playTypes';
-import { calculateHitRate } from './flowEngine';
+import { calculateHitRate, interpolateCurve } from './flowEngine';
 import { resolveRebound } from './reboundLogic';
 import { getTopPlayerGravity, getTeamOptionRanks } from './usageSystem';
 import { PlayType } from '../../../../types';
@@ -98,8 +98,14 @@ function identifyDefender(
 }
 
 /**
- * Calculates Turnover/Steal Probability based on Defender Archetypes
- * Updated: Single-roll logic to prevent double-dipping and reduce excessive turnovers.
+ * 턴오버/스틸 판정 (인과관계 정상화 재설계)
+ *
+ * A. 스틸 판정 (수비가 원인 → 턴오버가 결과)
+ *    A-1. 온볼 스틸: 주 수비자가 볼 핸들러에게서 직접 탈취
+ *    A-2. 패싱레인 스틸: 오프볼 수비자가 패스를 가로챔 (패스 플레이 전용)
+ *
+ * B. 비강제 턴오버 (공격자 자체 실수, 스틸 아님)
+ *    핸들링 실수, 악송구, 밟힘 등
  */
 function calculateTurnoverChance(
     offTeam: TeamState,
@@ -109,108 +115,103 @@ function calculateTurnoverChance(
     playType: PlayType,
     pnrCoverage: PnrCoverage = 'none'
 ): { isTurnover: boolean, isSteal: boolean, stealer?: LivePlayer } {
-    
+
+    const stlCfg = SIM_CONFIG.STEAL;
     const sliders = offTeam.tactics.sliders;
     const defIntensity = defTeam.tactics.sliders.defIntensity;
 
-    // 1. Base Turnover Probability (Significantly Lowered)
-    // Old: ~25% base -> New: ~13% target average
-    let baseProb = 0.085;
-
-    // 2. Modifiers
-    // Ball Movement: High passing increases risk slightly (0.005 per point > 5)
-    const rawPassRisk = Math.max(0, (sliders.ballMovement - 5) * 0.004);
-    // [A-2] 팀 평균 passVision으로 패스 리스크 완화 (시야 좋은 팀 = 복잡한 볼무브에서도 안정)
-    const teamAvgVision = offTeam.onCourt.reduce((s, p) => s + p.attr.passVision, 0) / 5;
-    const visionDampen = Math.max(0.85, Math.min(1.15, 1 - (teamAvgVision - 70) * 0.005));
-    const passRisk = rawPassRisk * visionDampen;
-    
-    // Defense Intensity: Pressure increases TOV (0.008 per point > 5)
-    const pressureRisk = Math.max(0, (defIntensity - 5) * 0.008);
-    
-    // Actor Attributes: Bad handle/IQ increases risk
-    // Handle 90 -> -0.02, Handle 50 -> +0.02
-    const handlingFactor = (70 - actor.attr.handling) * 0.001;
-    const iqFactor = (70 - actor.attr.passIq) * 0.001;
-    // Hands: 볼 확보/컨트롤 → 턴오버 저항 (기본 0.0005/pt, PostUp/PnR에서 0.0015/pt)
-    const isContactPlay = playType === 'PostUp' || playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
-    const handsFactor = (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
-
-    // [B-1] 패스 정확도 부족 → 패스 미스 턴오버 (패스 관련 플레이에서 강화)
     const isPassPlay = playType === 'CatchShoot' || playType === 'Handoff'
         || playType === 'PnR_Handler' || playType === 'PnR_Roll'
         || playType === 'PnR_Pop' || playType === 'Cut'
         || playType === 'OffBallScreen' || playType === 'DriveKick';
+
+    // ================================================================
+    // A-1. 온볼 스틸 (주 수비자 → 볼 핸들러 직접 탈취)
+    // ================================================================
+    const onballBase = interpolateCurve(defender.attr.stl, stlCfg.ONBALL_STEAL_CURVE);
+    // 공격자 핸들링 저항: handling 높을수록 스틸당할 확률 감소
+    const handlingResist = (actor.attr.handling - 70) * stlCfg.HANDLING_RESIST_COEFF;
+    // 수비 강도 슬라이더 보너스 (defIntensity > 5일 때 소폭 증가)
+    const intensityBonus = Math.max(0, (defIntensity - 5) * 0.003);
+    // PnR 블리츠: 더블팀 압박으로 온볼 스틸 확률 증가
+    const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
+    const blitzBonus = (pnrCoverage === 'blitz' && playType === 'PnR_Handler') ? 0.02 : 0;
+
+    const onballProb = Math.max(0.005, onballBase - handlingResist + intensityBonus + blitzBonus);
+
+    if (Math.random() < onballProb) {
+        return { isTurnover: true, isSteal: true, stealer: defender };
+    }
+
+    // ================================================================
+    // A-2. 패싱레인 스틸 (오프볼 수비자 → 패스 가로채기, 패스 플레이 전용)
+    // ================================================================
+    if (isPassPlay) {
+        // 공격자 패스 정확도 저항
+        const passResist = (actor.attr.passAcc - 70) * stlCfg.PASSACC_RESIST_COEFF;
+
+        for (const helper of defTeam.onCourt) {
+            if (helper.playerId === defender.playerId) continue;
+
+            // passPerc 가중 stl: 패싱레인 읽기 능력 반영
+            const effectiveStl = helper.attr.stl * 0.7 + helper.attr.passPerc * 0.3;
+            const laneBase = interpolateCurve(effectiveStl, stlCfg.LANE_STEAL_CURVE);
+            const laneProb = Math.max(0.001, laneBase - passResist);
+
+            if (Math.random() < laneProb) {
+                return { isTurnover: true, isSteal: true, stealer: helper };
+            }
+        }
+    }
+
+    // ================================================================
+    // B. 비강제 턴오버 (공격자 자체 실수, 스틸 기록 없음)
+    // ================================================================
+    let baseProb = 0.06;
+
+    // 볼무브 리스크: 패스 많이 돌릴수록 실수 확률 증가
+    const rawPassRisk = Math.max(0, (sliders.ballMovement - 5) * 0.004);
+    const teamAvgVision = offTeam.onCourt.reduce((s, p) => s + p.attr.passVision, 0) / 5;
+    const visionDampen = Math.max(0.85, Math.min(1.15, 1 - (teamAvgVision - 70) * 0.005));
+    const passRisk = rawPassRisk * visionDampen;
+
+    // 수비 압박: 수비 강도가 높으면 실수 유발
+    const pressureRisk = Math.max(0, (defIntensity - 5) * 0.005);
+
+    // 공격자 능력치: 핸들링/IQ/손 부족 → 실수
+    const handlingFactor = (70 - actor.attr.handling) * 0.001;
+    const iqFactor = (70 - actor.attr.passIq) * 0.001;
+    const isContactPlay = playType === 'PostUp' || playType === 'PnR_Handler' || playType === 'PnR_Roll' || playType === 'PnR_Pop';
+    const handsFactor = (70 - actor.attr.hands) * (isContactPlay ? 0.0015 : 0.0005);
     const passAccFactor = (70 - actor.attr.passAcc) * (isPassPlay ? 0.0012 : 0.0005);
 
-    // Play Type Context
+    // 플레이타입 컨텍스트
     let contextRisk = 0;
     if (playType === 'Transition') {
-        contextRisk = 0.03; // Fast breaks are risky
-        // [B-3] 속공 롱패스 리스크: passAcc 부족 시 추가 턴오버
+        contextRisk = 0.03;
         contextRisk += Math.max(0, (70 - actor.attr.passAcc)) * 0.001;
-    }
-    else if (playType === 'Iso') contextRisk = 0.01;
-    else if (playType === 'PostUp') contextRisk = 0.02; // Crowded paint
+    } else if (playType === 'Iso') contextRisk = 0.01;
+    else if (playType === 'PostUp') contextRisk = 0.02;
 
-    // PnR Coverage Turnover Modifiers
-    const pnrCfg = SIM_CONFIG.PNR_COVERAGE;
+    // PnR 커버리지 압박
     if (pnrCoverage === 'blitz' && playType === 'PnR_Handler') {
-        contextRisk += pnrCfg.BLITZ_TOV_BONUS;  // +4% 턴오버 (더블팀 압박)
+        contextRisk += pnrCfg.BLITZ_TOV_BONUS;
     }
     if (pnrCoverage === 'hedge' && playType === 'PnR_Handler') {
-        contextRisk += pnrCfg.HEDGE_TOV_BONUS;  // +1.5% 턴오버 (빅맨 쇼 압박)
+        contextRisk += pnrCfg.HEDGE_TOV_BONUS;
     }
 
-    // --- STEAL ARCHETYPE BONUSES (턴오버 유발력) ---
-    const stlCfg = SIM_CONFIG.STEAL;
-    const da = defender.attr;
-    let archetypeRisk = 0;
-
-    if (stlCfg.ENABLED) {
-        // A. The Clamp: 비활성화 (스틸 아키타입 밸런스 조정)
-        // if (da.perDef >= stlCfg.CLAMP_PERIMDEF_THRESHOLD && da.stl >= stlCfg.CLAMP_STL_THRESHOLD) {
-        //     archetypeRisk += stlCfg.CLAMP_TOV_BONUS;
-        // }
-
-        // B. The Pickpocket: 접촉 플레이(PostUp/Iso/Cut) 전용
-        if (da.stl >= stlCfg.PICKPOCKET_STL_THRESHOLD && da.agility >= stlCfg.PICKPOCKET_AGILITY_THRESHOLD) {
-            if (playType === 'PostUp' || playType === 'Iso' || playType === 'Cut') {
-                archetypeRisk += stlCfg.PICKPOCKET_TOV_BONUS;
-            }
-        }
-
-        // C. The Hawk: 상대 팀이 패스를 많이 돌릴 때 (ballMovement ≥ threshold)
-        if (da.helpDefIq >= stlCfg.HAWK_HELPDEF_THRESHOLD &&
-            da.passPerc >= stlCfg.HAWK_PASSPERC_THRESHOLD &&
-            da.stl >= stlCfg.HAWK_STL_THRESHOLD) {
-            if (offTeam.tactics.sliders.ballMovement >= stlCfg.HAWK_BM_THRESHOLD) {
-                archetypeRisk += stlCfg.HAWK_TOV_BONUS;
-            }
-        }
-
-        // E. The Press: 비활성화 (스틸 아키타입 밸런스 조정)
-        // if (da.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
-        //     da.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
-        //     da.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
-        //     if (playType === 'Transition') {
-        //         archetypeRisk += stlCfg.PRESS_TOV_BONUS;
-        //     }
-        // }
-    }
-
-    // Calculate Total Turnover Probability
-    // [SaveTendency] composure: ±1% turnover probability (positive composure = fewer turnovers)
+    // 침착성 (SaveTendency)
     const composureFactor = -(actor.tendencies?.composure ?? 0) * 0.01;
 
-    // speed↑ spdBall↓ 갭: 드리블 플레이에서 볼 컨트롤 실수 위험 (gap 20pt → +2%)
+    // 드리블 갭 리스크: speed↑ spdBall↓ 차이
     let dribbleGapRisk = 0;
     const isDribblePlay = playType === 'Iso' || playType === 'Cut' || playType === 'Transition' || playType === 'PnR_Handler';
     if (isDribblePlay) {
         dribbleGapRisk = Math.max(0, actor.attr.speed - actor.attr.spdBall) * 0.001;
     }
 
-    // --- PLAYMAKING ARCHETYPE: Needle (패스 플레이 턴오버 감소) ---
+    // Needle 아키타입: 패스 플레이 턴오버 감소
     let needleReduction = 0;
     const pmCfg = SIM_CONFIG.PLAYMAKING;
     if (pmCfg.ENABLED && isPassPlay &&
@@ -219,78 +220,18 @@ function calculateTurnoverChance(
         needleReduction = pmCfg.NEEDLE_TOV_REDUCTION;
     }
 
-    // [Gradual] 수비자 stl → 볼 탈취 압박 (모든 상황, stl 90: +1.6%, stl 50: -1.6%)
-    const defStlPressure = (da.stl - 70) * 0.0008;
-    // [Gradual] 수비자 passPerc → 패싱레인 읽기 (패싱 플레이 전용, 비패싱 = 0)
-    const defLaneReading = isPassPlay ? (da.passPerc - 70) * 0.0010 : 0;
+    let unforcedProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor
+        + handsFactor + passAccFactor + contextRisk + composureFactor
+        + dribbleGapRisk - needleReduction;
 
-    let totalTovProb = baseProb + passRisk + pressureRisk + handlingFactor + iqFactor + handsFactor + passAccFactor + contextRisk + archetypeRisk + composureFactor + dribbleGapRisk + defStlPressure + defLaneReading - needleReduction;
+    unforcedProb = Math.max(0.015, Math.min(0.18, unforcedProb));
 
-    // Cap Probability (Min 2%, Max 25%)
-    totalTovProb = Math.max(0.02, Math.min(0.25, totalTovProb));
-
-    // 3. Roll for Turnover
-    if (Math.random() > totalTovProb) {
-        return { isTurnover: false, isSteal: false };
+    if (Math.random() < unforcedProb) {
+        return { isTurnover: true, isSteal: false };
     }
 
-    // 4. If Turnover Occurred, Determine if it was a Steal
-    // This depends on the defender's ability
-    let isSteal = false;
-    let stealer: LivePlayer | undefined = undefined;
-
-    // Base Steal Ratio (What % of turnovers are steals?)
-    // NBA Avg: ~50% of TOVs result in steals (the rest are out-of-bounds, violations, etc.)
-    // [Fix] Reduced from 0.50 to 0.45 base; archetype bonuses cut to cap at ~0.70
-    let stealRatio = 0.45;
-
-    // Defender Bonuses
-    const d = defender.attr;
-
-    // [Gradual] stl → 스틸 실행력 (모든 상황, stl 90: +6%, stl 50: -6%)
-    stealRatio += (d.stl - 70) * 0.003;
-    // [Gradual] passPerc → 인터셉트 위치 확보 (패싱 플레이 전용)
-    if (isPassPlay) {
-        stealRatio += (d.passPerc - 70) * 0.0025;
-    }
-
-    // Archetype 1: "The Glove" (On-Ball) — was +0.20/+0.10, now +0.15/+0.08
-    if (d.stl >= 90) stealRatio += 0.15;
-    else if (d.stl >= 80) stealRatio += 0.08;
-
-    // Archetype 2: "Interceptor" (Passing Lanes) — was +0.15, now +0.10 (max combined ~0.70)
-    if (d.passPerc >= 85 && d.agility >= 85) stealRatio += 0.10;
-
-    // E. The Press: 비활성화 (스틸 아키타입 밸런스 조정)
-    // if (stlCfg.ENABLED && playType === 'Transition' &&
-    //     d.speed >= stlCfg.PRESS_SPEED_THRESHOLD &&
-    //     d.stamina >= stlCfg.PRESS_STAMINA_THRESHOLD &&
-    //     d.hustle >= stlCfg.PRESS_HUSTLE_THRESHOLD) {
-    //     stealRatio += stlCfg.PRESS_STEAL_RATIO_BONUS;
-    // }
-
-    // [Safety] stealRatio 상하한 (NBA 현실: 최대 ~75%)
-    stealRatio = Math.max(0.15, Math.min(0.75, stealRatio));
-
-    // Archetype 3: "The Shadow" (Help Defender)
-    // Check if a helper steals it instead of primary defender
-    const shadow = defTeam.onCourt.find(p => 
-        p.playerId !== defender.playerId && 
-        p.attr.stl >= 85 && 
-        p.attr.helpDefIq >= 90
-    );
-
-    if (Math.random() < stealRatio) {
-        isSteal = true;
-        // 20% chance the steal comes from the helper (Shadow) if available
-        if (shadow && Math.random() < 0.20) {
-            stealer = shadow;
-        } else {
-            stealer = defender;
-        }
-    }
-
-    return { isTurnover: true, isSteal, stealer };
+    // C. 턴오버 없음
+    return { isTurnover: false, isSteal: false };
 }
 
 /**
