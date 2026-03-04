@@ -29,6 +29,20 @@ export interface HitRateResult {
 
 type PnrCoverage = 'drop' | 'hedge' | 'blitz' | 'none';
 
+/** Piecewise linear interpolation: curve = [[x0,y0], [x1,y1], ...] (sorted by x) */
+function interpolateCurve(x: number, curve: readonly (readonly [number, number])[]): number {
+    if (x <= curve[0][0]) return curve[0][1];
+    if (x >= curve[curve.length - 1][0]) return curve[curve.length - 1][1];
+    for (let i = 1; i < curve.length; i++) {
+        if (x <= curve[i][0]) {
+            const [x0, y0] = curve[i - 1];
+            const [x1, y1] = curve[i];
+            return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
+        }
+    }
+    return curve[curve.length - 1][1];
+}
+
 export function calculateHitRate(
     actor: LivePlayer,
     defender: LivePlayer,
@@ -142,7 +156,40 @@ export function calculateHitRate(
         contestFactor *= SIM_CONFIG.ZONE_SHOOTING.DEADEYE_CONTEST_MULTIPLIER;
     }
 
-    hitRate += (offRating - defRating * contestFactor) * 0.002;
+    // 3PT: 비선형 커브 (공격/수비 분리), 나머지: 기존 선형
+    if (preferredZone === '3PT') {
+        const offMod = interpolateCurve(offRating, S.THREE_OFF_CURVE);
+        const defMod = defRating * contestFactor * S.THREE_DEF_COEFF;
+        hitRate += offMod - defMod;
+        // 코너 3PT 보너스 (NBA 통계: 코너 3 > 다른 구역 ~1.5%p)
+        if (threeSubZone?.startsWith('zone_c3')) hitRate += S.THREE_CORNER_BONUS;
+    } else {
+        // Non-3PT: per-shotType 비선형 커브
+        const st = shotType ?? 'Layup';
+        const shotCurve = st === 'Dunk' ? S.DUNK_OFF_CURVE
+            : st === 'Layup' ? S.LAYUP_OFF_CURVE
+            : st === 'Floater' ? S.FLOATER_OFF_CURVE
+            : st === 'Hook' ? S.HOOK_OFF_CURVE
+            : S.MID_OFF_CURVE;  // Pullup, Jumper, Fadeaway
+        const defCoeff = st === 'Dunk' ? S.DUNK_DEF_COEFF
+            : preferredZone === 'Mid' ? S.MID_DEF_COEFF
+            : S.INSIDE_DEF_COEFF;
+        const offMod = interpolateCurve(offRating, shotCurve);
+        const defMod = defRating * contestFactor * defCoeff;
+        hitRate += offMod - defMod;
+    }
+
+    // shotIq + offConsist 일관성 시스템 (모든 존)
+    // shotIq: 편향 노이즈 (높으면 상방 0~+max, 낮으면 하방 -max~0)
+    const shotIqRange = (actor.attr.shotIq - S.CONSIST_BASELINE) * S.SHOTIQ_NOISE_COEFF;
+    const shotIqNoise = shotIqRange !== 0
+        ? (shotIqRange > 0 ? Math.random() * shotIqRange : -Math.random() * -shotIqRange)
+        : 0;
+    // offConsist: 대칭 노이즈 (70 미만일 때만 양방향 기복)
+    const consistRange = Math.max(0, (S.CONSIST_BASELINE - actor.attr.offConsist)) * S.CONSIST_NOISE_COEFF;
+    const consistNoise = consistRange > 0 ? (Math.random() * 2 - 1) * consistRange : 0;
+    hitRate += shotIqNoise + consistNoise;
+
     hitRate -= intensityMod;
 
     if (preferredZone === 'Rim' || preferredZone === 'Paint') {

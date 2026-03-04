@@ -36,12 +36,54 @@ export const SIM_CONFIG = {
         MID_BASE_PCT: 0.38,
         THREE_BASE_PCT: 0.34,
         
-        // [Normalization] Reduced Defense Impact to prevent > 140pt games (or < 60)
-        // Attribute gaps now matter slightly less, pulling results to average.
-        // Old: 0.003 - 0.004 range. New: 0.0025 range.
-        INSIDE_DEF_IMPACT: 0.0025, 
-        MID_DEF_IMPACT: 0.0025,    
-        THREE_DEF_IMPACT: 0.0020, 
+        // Per-zone/shotType 수비 계수 (offense/defense 분리)
+        THREE_DEF_COEFF: 0.001,     // 3PT
+        INSIDE_DEF_COEFF: 0.0015,   // Rim/Paint (Layup, Floater, Hook)
+        MID_DEF_COEFF: 0.0012,      // Mid (Pullup, Jumper, Fadeaway)
+        DUNK_DEF_COEFF: 0.002,      // Dunk only (수비 영향 최대)
+
+        // [3PT Non-linear Curve] 공격 능력치→FG% 비선형 커브
+        // 25-85: 감속형 완만 (5%→33%), 86-99: 급경사 (33%→42%)
+        THREE_OFF_CURVE: [
+            [25, -0.234], [40, -0.154], [55, -0.084], [70, -0.014],
+            [85, +0.046], [90, +0.078], [95, +0.110], [99, +0.136],
+        ] as [number, number][],
+        THREE_CORNER_BONUS: 0.015,
+
+        // [Layup] 33%→48%(plateau@90)→60%(steep 91-99)
+        LAYUP_OFF_CURVE: [
+            [25, -0.135], [40, -0.105], [55, -0.075], [70, -0.045],
+            [85, -0.005], [90, +0.015], [95, +0.075], [99, +0.135],
+        ] as [number, number][],
+
+        // [Dunk] 65%→92% (균일 상승, 수비 영향 최대)
+        DUNK_OFF_CURVE: [
+            [40, +0.199], [55, +0.269], [70, +0.339], [80, +0.389],
+            [90, +0.429], [99, +0.469],
+        ] as [number, number][],
+
+        // [Mid] Pullup/Jumper/Fadeaway 공통: 23%→41%(plateau@92)→50%
+        MID_OFF_CURVE: [
+            [25, -0.083], [40, -0.033], [55, +0.007], [70, +0.047],
+            [85, +0.077], [92, +0.097], [95, +0.137], [99, +0.187],
+        ] as [number, number][],
+
+        // [Floater] 33%→52% (완만 가속, breakpoint 없음)
+        FLOATER_OFF_CURVE: [
+            [50, -0.177], [60, -0.147], [70, -0.107], [80, -0.067],
+            [85, -0.047], [90, -0.027], [95, -0.007], [99, +0.013],
+        ] as [number, number][],
+
+        // [Hook] 30%→55% (키 큰 센터 전용)
+        HOOK_OFF_CURVE: [
+            [50, -0.217], [60, -0.167], [70, -0.107], [80, -0.037],
+            [85, -0.017], [90, +0.003], [95, +0.023], [99, +0.033],
+        ] as [number, number][],
+
+        // shotIq + offConsist 일관성 시스템 (모든 존)
+        SHOTIQ_NOISE_COEFF: 0.0008,
+        CONSIST_NOISE_COEFF: 0.0010,
+        CONSIST_BASELINE: 70,
     },
     // Foul Events (오펜시브 파울 / 테크니컬 / 플래그런트 / 샷클락 바이올레이션)
     FOUL_EVENTS: {
