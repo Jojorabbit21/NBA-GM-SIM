@@ -3,6 +3,7 @@ import { GameState, PossessionResult, LivePlayer } from './pbpTypes';
 import { PbpLog } from '../../../../types';
 import { formatTime } from './timeEngine';
 import { resolveRebound } from './reboundLogic';
+import { SIM_CONFIG } from '../../config/constants';
 
 // Modularized Imports
 import { generateCommentary, getReboundCommentary, getTechnicalFoulCommentary, getFlagrant1Commentary, getFlagrant2Commentary } from '../commentary/textGenerator';
@@ -102,8 +103,11 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
     // Helper: Resolve and record rebound on missed free throw
     // Kept here because it requires state context
     const handleFreeThrowRebound = (shooter: LivePlayer) => {
+        // Team rebound check (dead ball, out-of-bounds on FT miss)
+        if (Math.random() < SIM_CONFIG.REBOUND.TEAM_REB_RATE_FT) return;
+
         const { player: rebPlayer, type: rebType } = resolveRebound(state.home, state.away, shooter.playerId);
-        
+
         rebPlayer.reb += 1;
         if (rebType === 'off') rebPlayer.offReb += 1;
         else rebPlayer.defReb += 1;
@@ -142,17 +146,17 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         // Update Assist (Play-type-based probability — not all secondary actors earn credit)
         if (assister) {
             const assistOdds: Record<string, number> = {
-                'CatchShoot':    0.92, // Kick-out to open shooter → almost always assisted
-                'DriveKick':     0.92, // 드라이브 킥아웃 = 의도적 패스, CatchShoot와 동급
-                'Cut':           0.88, // Passer to cutting slasher
-                'OffBallScreen': 0.88, // 스크린 후 캐치앤슛, 의도적 패스
-                'PnR_Pop':       0.85, // Handler kicks to popping big
-                'PnR_Roll':      0.80, // Handler feeds rolling big
-                'Handoff':       0.70, // Ball-handler hands off
-                'Transition':    0.60, // Push-ahead / outlet pass on break
-                'PostUp':        0.50, // Entry pass to post
-                'PnR_Handler':   0.35, // 스크린 후 핸들러 자체 공격 — 어시스트 낮음
-                'Iso':           0.30, // 진입 패스 후 아이소 — 어시스트 낮음
+                'CatchShoot':    0.97, // Kick-out to open shooter → 거의 항상 어시스트
+                'DriveKick':     0.97, // 드라이브 킥아웃 = 의도적 패스
+                'Cut':           0.95, // Passer to cutting slasher
+                'OffBallScreen': 0.95, // 스크린 후 캐치앤슛, 의도적 패스
+                'PnR_Pop':       0.95, // Handler kicks to popping big
+                'PnR_Roll':      0.90, // Handler feeds rolling big
+                'Handoff':       0.78, // Ball-handler hands off
+                'Transition':    0.55, // Push-ahead / outlet pass on break
+                'PostUp':        0.40, // Entry pass to post (자가 창출 비중 높음)
+                'PnR_Handler':   0.33, // 스크린 후 핸들러 자체 공격 — 어시스트 낮음
+                'Iso':           0.22, // 아이소 — 자가 창출, 어시스트 드묾
                 'Putback':       0.10, // Tip-in rarely credited
             };
             const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;

@@ -54,9 +54,6 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
     const rebAttr: 'offReb' | 'defReb' = isOffensive ? 'offReb' : 'defReb';
 
     const candidates = team.onCourt.map(p => {
-        const posBonus = p.position === 'C' ? cfg.POS_WEIGHT_C
-            : p.position === 'PF' ? cfg.POS_WEIGHT_PF
-            : cfg.POS_WEIGHT_DEFAULT;
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
         const boxOutMod = !isOffensive ? p.attr.boxOut * 0.15 : 0;
@@ -66,7 +63,7 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
             (p.attr.height - 180) * 0.5 +
             p.attr.hands * 0.1 +
             boxOutMod
-        ) * posBonus * shooterPenalty;
+        ) * shooterPenalty;
 
         // F-1. Harvester: 압도적 리바운드 능력치 보유자
         if (p.attr.offReb >= cfg.HARVESTER_REB_THRESHOLD || p.attr.defReb >= cfg.HARVESTER_REB_THRESHOLD) {
