@@ -203,11 +203,11 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
     const calculatedReb = Math.round((statsObj.offReb + statsObj.defReb + statsObj.boxOut) / 3);
     const calculatedAth = Math.round((statsObj.speed + statsObj.agility + statsObj.strength + statsObj.vertical + statsObj.stamina + statsObj.hustle + statsObj.durability) / 7);
 
-    // 3. Determine OVR from recalculated categories (ensures player.ovr === calculatePlayerOvr(player))
-    // [Fix] potential을 ovrInput에 포함하여 POSITION_WEIGHTS의 potential 가중치가 실제 값을 사용하도록 수정
+    // 3. Determine OVR — manual override from base_attributes.ovr takes priority
+    const manualOvr = Number(getCol(p, ['ovr', 'OVR']));
     const potentialForOvr = (potentialRaw && !isNaN(potentialRaw)) ? potentialRaw : 75;
     const ovrInput = { ...statsObj, ins: calculatedIns, out: calculatedOut, plm: calculatedPlm, def: calculatedDef, reb: calculatedReb, ath: calculatedAth, potential: potentialForOvr };
-    const ovr = calculateOvr(ovrInput, position);
+    const ovr = (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : calculateOvr(ovrInput, position);
     const potential = (potentialRaw && !isNaN(potentialRaw)) ? Math.max(potentialRaw, ovr) : Math.max(75, ovr + 5);
 
     // [Fix] Zero-initialize zone stats in fallback to prevent undefined errors in UI
@@ -265,6 +265,7 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         contractYears: Number(getCol(p, ['contractyears', 'contractYears', 'ContractYears']) || 1),
 
         ovr,
+        manualOvr: (manualOvr > 0 && !isNaN(manualOvr)) ? manualOvr : undefined,
         potential,
         revealedPotential: potential,
 
