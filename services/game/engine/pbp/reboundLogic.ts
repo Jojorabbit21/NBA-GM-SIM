@@ -23,8 +23,7 @@ export function calculateOrbChance(
             const posBonus = p.position === 'C' ? cfg.POS_WEIGHT_C
                 : p.position === 'PF' ? cfg.POS_WEIGHT_PF
                 : cfg.POS_WEIGHT_DEFAULT;
-            const boxOutMod = rebAttr === 'defReb' ? p.attr.boxOut * 0.15 : 0;
-            return sum + (p.attr[rebAttr] * 0.6 + p.attr.vertical * 0.2 + (p.attr.height - 180) * 0.5 + p.attr.hands * 0.1 + boxOutMod) * posBonus;
+            return sum + (p.attr[rebAttr] * 0.5 + p.attr.vertical * 0.2 + p.attr.strength * 0.15 + p.attr.boxOut * 0.15) * posBonus;
         }, 0);
 
     const offPower = calcPower(offTeam, 'offReb');
@@ -56,13 +55,11 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
     const candidates = team.onCourt.map(p => {
         const shooterPenalty = p.playerId === shooterId ? cfg.SHOOTER_PENALTY : 1.0;
 
-        const boxOutMod = !isOffensive ? p.attr.boxOut * 0.15 : 0;
         let score = (
-            p.attr[rebAttr] * 0.6 +
+            p.attr[rebAttr] * 0.5 +
             p.attr.vertical * 0.2 +
-            (p.attr.height - 180) * 0.5 +
-            p.attr.hands * 0.1 +
-            boxOutMod
+            p.attr.strength * 0.15 +
+            p.attr.boxOut * 0.15
         ) * shooterPenalty;
 
         // F-1. Harvester: 압도적 리바운드 능력치 보유자
