@@ -232,6 +232,9 @@ export const useSimulation = (
                 if (cpuData.gameResultsToSave.length > 0) {
                     await saveGameResults(cpuData.gameResultsToSave);
                 }
+                if (cpuData.playoffResultsToSave.length > 0) {
+                    await Promise.all(cpuData.playoffResultsToSave.map(res => savePlayoffGameResult(res as any)));
+                }
             }
 
             const homeTeam = newTeams.find(t => t.id === userGame.homeTeamId)!;

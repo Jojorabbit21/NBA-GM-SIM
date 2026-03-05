@@ -124,7 +124,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     console.log(`📂 Found Save: ${checkpoint.team_id} @ ${checkpoint.sim_date}`);
                     const history = await loadUserHistory(userId);
                     const playoffState = await loadPlayoffState(userId, checkpoint.team_id);
-                    const playoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
+                    const rawPlayoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
+                    // user_playoffs_results 테이블에 is_playoff 컬럼이 없으므로 로드 시 태그
+                    const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
                     const allGameResults = [...history.games, ...playoffResults];
 
                     // 드래프트 결과가 저장되어 있으면 로스터를 드래프트 결과로 재구성

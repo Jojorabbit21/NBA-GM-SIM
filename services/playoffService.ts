@@ -56,11 +56,29 @@ export const savePlayoffState = async (
 /**
  * Saves a single playoff game result.
  */
-export const savePlayoffGameResult = async (result: PlayoffGameResultDB) => {
+export const savePlayoffGameResult = async (result: any) => {
+    // user_playoffs_results 테이블에 존재하는 컬럼만 전송
+    // (is_playoff, shot_events, pbp_logs 등은 테이블에 없음)
+    const payload = {
+        user_id: result.user_id,
+        game_id: result.game_id,
+        date: result.date,
+        series_id: result.series_id,
+        round_number: result.round_number || 0,
+        game_number: result.game_number || 0,
+        home_team_id: result.home_team_id,
+        away_team_id: result.away_team_id,
+        home_score: result.home_score,
+        away_score: result.away_score,
+        box_score: result.box_score,
+        tactics: result.tactics,
+        rotation_data: result.rotation_data,
+    };
+
     const { error } = await supabase
         .from('user_playoffs_results')
-        .insert(result);
-        
+        .insert(payload);
+
     if (error) {
         console.error("❌ Failed to save playoff game result:", error);
     }
