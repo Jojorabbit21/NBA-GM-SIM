@@ -28,6 +28,10 @@ interface SidebarProps {
   onLogout: () => void;
   onSimulateSeason?: () => void;
   isBatchRunning?: boolean;
+  showSeasonReview?: boolean;
+  showPlayoffReview?: boolean;
+  onShowSeasonReview?: () => void;
+  onShowPlayoffReview?: () => void;
 }
 
 // Team color theme — shared utility (utils/teamTheme.ts)
@@ -93,6 +97,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onLogout,
   onSimulateSeason,
   isBatchRunning,
+  showSeasonReview,
+  showPlayoffReview,
+  onShowSeasonReview,
+  onShowPlayoffReview,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
@@ -214,6 +222,28 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           </div>
         </div>
       </div>
+
+      {/* Season / Playoff Review Buttons */}
+      {!isCollapsed && (showSeasonReview || showPlayoffReview) && (
+        <div className="px-6 py-3 border-b border-white/10 space-y-2">
+          {showSeasonReview && (
+            <button
+              onClick={onShowSeasonReview}
+              className="w-full px-4 py-2.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold transition-all"
+            >
+              정규시즌 리뷰
+            </button>
+          )}
+          {showPlayoffReview && (
+            <button
+              onClick={onShowPlayoffReview}
+              className="w-full px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all"
+            >
+              플레이오프 리뷰
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>

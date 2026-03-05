@@ -1,8 +1,10 @@
 
 import { useMemo } from 'react';
 import { Team, Game, Player } from '../types';
-import { calculatePlayerOvr } from '../utils/constants';
+import { calculatePlayerOvr, INITIAL_STATS } from '../utils/constants';
 import { FilterItem, ViewMode, ATTRIBUTE_KEYS, ATTR_PLAYER_PROPS } from '../data/leaderboardConfig';
+
+export type SeasonType = 'regular' | 'playoff';
 
 // Helper: get attribute value from Player object
 const getAttrVal = (p: any, key: string): number => {
@@ -26,7 +28,8 @@ export const useLeaderboardData = (
     selectedTeams: string[] = [],
     selectedPositions: string[] = [],
     searchQuery: string = '',
-    statCategory: string = 'Traditional'
+    statCategory: string = 'Traditional',
+    seasonType: SeasonType = 'regular'
 ) => {
     // 2. Aggregate Team Stats including Zones AND Opponent Stats
     const teamStats = useMemo(() => {
@@ -36,12 +39,15 @@ export const useLeaderboardData = (
         const allRawTotals = new Map<string, any>();
         const allGameCounts = new Map<string, number>();
 
+        const isPlayoffMode = seasonType === 'playoff';
+        const filteredSchedule = schedule.filter(g => g.played && (isPlayoffMode ? g.isPlayoff : !g.isPlayoff));
+
         teams.forEach(t => {
-            const gamesPlayed = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id)).length || 1;
+            const gamesPlayed = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id).length || 1;
             allGameCounts.set(t.id, gamesPlayed);
 
             const totals = t.roster.reduce((acc: any, p) => {
-                const s = p.stats;
+                const s = isPlayoffMode ? (p.playoffStats || INITIAL_STATS()) : p.stats;
                 acc.reb    += s.reb;
                 acc.offReb += (s.offReb || 0);
                 acc.defReb += (s.defReb || 0);
@@ -77,7 +83,7 @@ export const useLeaderboardData = (
 
         // --- Pass 2: 각 팀의 전체 스탯 계산 (상대팀 데이터 포함) ---
         return teams.map(t => {
-            const teamGames = schedule.filter(g => g.played && (g.homeTeamId === t.id || g.awayTeamId === t.id));
+            const teamGames = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id);
             const playedCount = teamGames.length || 1;
             const totals = allRawTotals.get(t.id)!;
 
@@ -247,7 +253,7 @@ export const useLeaderboardData = (
                 rawOppTotals: { oppFgm, oppFga, opp3pm, opp3pa, oppFtm, oppFta, oppReb, oppOreb, oppDreb, oppAst, oppStl, oppBlk, oppTov, oppPoss }
             };
         });
-    }, [teams, schedule]);
+    }, [teams, schedule, seasonType]);
 
     // 1. Flatten Players & Pre-calculate Zone % AND Advanced Stats
     const allPlayers = useMemo(() => {
@@ -256,7 +262,8 @@ export const useLeaderboardData = (
             const tStat = teamStats.find(ts => ts.id === t.id);
             // Tm MP = 전체 선수 출전시간 합계. 실제 로스터 MP 합산 사용 (정확도).
             // Fallback: g × 240 (5명 × 48분). BBRef 공식의 Tm MP / 5 에 사용됨.
-            const teamMin = t.roster.reduce((sum, p) => sum + (p.stats.mp || 0), 0)
+            const getPlayerStats = (p: Player) => seasonType === 'playoff' ? (p.playoffStats || INITIAL_STATS()) : p.stats;
+            const teamMin = t.roster.reduce((sum, p) => sum + (getPlayerStats(p).mp || 0), 0)
                 || (tStat?.stats.g || 1) * 240;
             const teamFgm = tStat?.rawTotals.fgm || 0;
             // teamPoss: STL%, BLK% 등 포제션 기반 스탯에 사용 (offReb 차감)
@@ -271,7 +278,7 @@ export const useLeaderboardData = (
             const opp2pa = (tStat?.rawOppTotals.oppFga || 0) - (tStat?.rawOppTotals.opp3pa || 0);
 
             return t.roster.map(p => {
-                const s = { ...p.stats } as any;
+                const s = { ...getPlayerStats(p) } as any;
                 const g = s.g || 1;
                 const mp = s.mp || 1; // Total minutes played
                 
@@ -357,7 +364,7 @@ export const useLeaderboardData = (
                 };
             });
         });
-    }, [teams, teamStats]);
+    }, [teams, teamStats, seasonType]);
 
     // 3. Calculate Global Min/Max for Color Scale (Heatmap)
     const statRanges = useMemo(() => {
@@ -451,7 +458,12 @@ export const useLeaderboardData = (
     // 4. Sort and Filter Data
     const sortedData = useMemo(() => {
         let data: any[] = mode === 'Players'
-            ? (statCategory === 'Attributes' ? [...allPlayers] : [...allPlayers.filter(p => p.stats.g > 0)])
+            ? (statCategory === 'Attributes'
+                ? [...allPlayers]
+                : [...allPlayers.filter(p => {
+                    const g = seasonType === 'playoff' ? (p.playoffStats?.g || 0) : p.stats.g;
+                    return g > 0;
+                })])
             : [...teamStats];
 
         // --- APPLY NEW FILTERS (Team, Position, Search) ---
@@ -619,7 +631,7 @@ export const useLeaderboardData = (
             return sortConfig.direction === 'asc' ? (valA as number) - (valB as number) : (valB as number) - (valA as number);
         });
 
-    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, statCategory]);
+    }, [allPlayers, teamStats, mode, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, statCategory, seasonType]);
 
     return { sortedData, statRanges };
 };

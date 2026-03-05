@@ -2,7 +2,7 @@
 import React, { useState, useRef } from 'react';
 import { Team, Player, Game } from '../types';
 import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
-import { useLeaderboardData } from '../hooks/useLeaderboardData';
+import { useLeaderboardData, SeasonType } from '../hooks/useLeaderboardData';
 import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar';
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
 import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
@@ -36,6 +36,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [seasonType, setSeasonType] = useState<SeasonType>('regular');
   const pageBeforeSearchRef = useRef<number | null>(null);
 
   // --- Filter Handlers ---
@@ -62,7 +63,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       selectedTeams,
       selectedPositions,
       searchQuery,
-      statCategory
+      statCategory,
+      seasonType
   );
 
   // --- Pagination ---
@@ -141,6 +143,8 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               setSelectedTeams={setSelectedTeams}
               selectedPositions={selectedPositions}
               setSelectedPositions={setSelectedPositions}
+              seasonType={seasonType}
+              setSeasonType={setSeasonType}
               searchQuery={searchQuery}
               setSearchQuery={(q: string) => {
                   if (q && !searchQuery) {

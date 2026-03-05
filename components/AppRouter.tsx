@@ -151,8 +151,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         onSim={sim.handleExecuteSim} tactics={gameData.userTactics}
                         onUpdateTactics={gameData.setUserTactics} currentSimDate={gameData.currentSimDate}
                         isSimulating={sim.isSimulating}
-                        onShowSeasonReview={() => setView('SeasonReview')}
-                        onShowPlayoffReview={() => setView('PlayoffReview')}
                         depthChart={gameData.depthChart} onUpdateDepthChart={gameData.setDepthChart}
                         onForceSave={gameData.forceSave}
                         tendencySeed={gameData.tendencySeed || undefined}

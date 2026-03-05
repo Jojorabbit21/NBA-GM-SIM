@@ -26,6 +26,8 @@ interface MainLayoutProps {
         onLogout: () => void;
         onSimulateSeason?: () => void;
         isBatchRunning?: boolean;
+        onShowSeasonReview?: () => void;
+        onShowPlayoffReview?: () => void;
     };
     batchProgress?: BatchProgress | null;
     onCancelBatch?: () => void;
@@ -66,6 +68,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         const regularGames = schedule.filter(g => !g.isPlayoff);
         return regularGames.length > 0 && regularGames.every(g => g.played);
     }, [schedule]);
+
+    const isPostseasonOver = useMemo(() => {
+        if (!team?.id || !playoffSeries || playoffSeries.length === 0) return false;
+        const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
+        if (myPlayoffSeries.length === 0) return false;
+        const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
+        if (!latest.finished) return false;
+        if (latest.winnerId !== team.id) return true;
+        return latest.round === 4;
+    }, [playoffSeries, team?.id]);
 
     const currentSeries = useMemo(() => {
         if (!nextGame?.isPlayoff || !nextGame.seriesId || !playoffSeries) return undefined;
@@ -111,6 +123,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 isRegularSeasonOver={isRegularSeasonOver}
                 isCollapsed={isCollapsed}
                 onToggleCollapse={() => setIsCollapsed(prev => !prev)}
+                showSeasonReview={isRegularSeasonOver}
+                showPlayoffReview={isPostseasonOver}
             />
             <main className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
                 {/* Global Game Header — hidden for full-height views only (DraftRoom) */}

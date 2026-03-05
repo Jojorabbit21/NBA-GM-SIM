@@ -172,6 +172,8 @@ const App: React.FC = () => {
                     onLogout: handleLogout,
                     onSimulateSeason: handleSimulateSeason,
                     isBatchRunning: batchProgress?.isRunning ?? false,
+                    onShowSeasonReview: () => setView('SeasonReview'),
+                    onShowPlayoffReview: () => setView('PlayoffReview'),
                 }}
                 batchProgress={batchProgress}
                 onCancelBatch={handleCancelBatch}
