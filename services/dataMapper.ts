@@ -285,7 +285,7 @@ const mapRawPlayerToRuntimePlayer = (raw: any): Player => {
         ath: calculatedAth,
 
         stats: p.stats || defaultStats,
-        playoffStats: p.playoffStats || defaultStats,
+        playoffStats: p.playoffStats || { ...defaultStats },
 
         // [New] Real Tendencies from DB
         tendencies: tendencies,
