@@ -1,5 +1,5 @@
 
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
@@ -298,6 +298,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     [s]);
 
     const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
+    const [showPlayoffStats, setShowPlayoffStats] = useState(false);
 
     const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
 
@@ -407,25 +408,27 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ═══ SECTION 1: 시즌 기록 (Traditional + Advanced 수직 배치) ═══ */}
                     <div className="border-b-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700 flex items-center">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">2025-26 시즌 스탯</span>
+                        <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
+                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">
+                                {showPlayoffStats ? '플레이오프 스탯' : '2025-26 시즌 스탯'}
+                            </span>
+                            {hasPlayoffs && (
+                                <button
+                                    onClick={() => setShowPlayoffStats(prev => !prev)}
+                                    className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
+                                >
+                                    <span>{showPlayoffStats ? '정규시즌' : '플레이오프 스탯'}</span>
+                                    <div className={`w-8 h-4.5 rounded-full relative transition-colors ${showPlayoffStats ? 'bg-indigo-500' : 'bg-slate-600'}`}>
+                                        <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${showPlayoffStats ? 'left-4' : 'left-0.5'}`} />
+                                    </div>
+                                </button>
+                            )}
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
-                            <StatsSubTable cols={TRAD_COLS} stats={s} />
-                            <StatsSubTable cols={ADVANCED_COLS} stats={s} />
+                            <StatsSubTable cols={TRAD_COLS} stats={showPlayoffStats ? player.playoffStats! : s} />
+                            <StatsSubTable cols={ADVANCED_COLS} stats={showPlayoffStats ? player.playoffStats! : s} />
                         </div>
                     </div>
-                    {hasPlayoffs && (
-                        <div className="border-b-2 border-slate-700">
-                            <div className="px-6 py-3 bg-slate-700 flex items-center">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">플레이오프 스탯</span>
-                            </div>
-                            <div className="overflow-x-auto custom-scrollbar">
-                                <StatsSubTable cols={TRAD_COLS} stats={player.playoffStats!} />
-                                <StatsSubTable cols={ADVANCED_COLS} stats={player.playoffStats!} />
-                            </div>
-                        </div>
-                    )}
 
                     {/* ═══ SECTION 2: 능력치 6개 그룹 ═══ */}
                     <div className="border-b-2 border-slate-700">
