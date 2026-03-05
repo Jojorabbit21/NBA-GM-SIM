@@ -66,9 +66,10 @@ export const applyUserGameResult = async (
     const isHome = userGame.homeTeamId === myTeamId;
 
     // 1. Update Stats (team wins/losses + player season stats)
-    updateTeamStats(homeTeam, awayTeam, result.homeScore, result.awayScore);
-    applyBoxToRoster(homeTeam, result.homeBox);
-    applyBoxToRoster(awayTeam, result.awayBox);
+    const isPlayoff = !!userGame.isPlayoff;
+    updateTeamStats(homeTeam, awayTeam, result.homeScore, result.awayScore, isPlayoff);
+    applyBoxToRoster(homeTeam, result.homeBox, isPlayoff);
+    applyBoxToRoster(awayTeam, result.awayBox, isPlayoff);
 
     // 2. Update Roster (Fatigue/Injury)
     if (result.rosterUpdates) {

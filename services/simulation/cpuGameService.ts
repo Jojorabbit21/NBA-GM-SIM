@@ -31,9 +31,10 @@ export const processCpuGames = (
 
         if (home && away) {
             // Update Stats (team wins/losses + player season stats)
-            updateTeamStats(home, away, res.homeScore, res.awayScore);
-            if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home);
-            if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away);
+            const isPlayoff = !!res.isPlayoff;
+            updateTeamStats(home, away, res.homeScore, res.awayScore, isPlayoff);
+            if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home, isPlayoff);
+            if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away, isPlayoff);
 
             // Update Schedule (Mutates schedule)
             const gameIdx = schedule.findIndex(g => g.id === res.gameId);
