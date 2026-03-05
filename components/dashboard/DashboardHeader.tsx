@@ -100,6 +100,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
 
             {/* Matchup */}
+            {nextGame ? (
             <div className="flex items-center gap-8 shrink-0">
                 {/* Away Team */}
                 <div className="flex items-center gap-3">
@@ -116,7 +117,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         <div className="w-10 h-10 rounded-full bg-slate-800 animate-pulse"></div>
                     )}
                 </div>
-                
+
                 {/* Center: Match Info (Replaced VS with Date/Series) */}
                 <div className="flex flex-col items-center justify-center px-4 border-x border-white/5 min-w-[160px]">
                     {currentSeries ? (
@@ -148,10 +149,17 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     )}
                 </div>
             </div>
+            ) : (
+            <div className="flex items-center gap-4 shrink-0">
+                <div className="flex flex-col items-center justify-center px-6 min-w-[160px]">
+                    <span className="text-sm font-bold" style={{ color: theme.text, opacity: 0.5 }}>다음 일정 없음</span>
+                </div>
+            </div>
+            )}
 
             {/* Right: Simulation Action */}
             <div className="flex-1 flex items-center justify-end gap-3">
-                {isGameToday && onAutoSimClick && (
+                {nextGame && isGameToday && onAutoSimClick && (
                     <button
                         onClick={onAutoSimClick}
                         disabled={isSimulating}
@@ -162,6 +170,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     </button>
                 )}
 
+                {nextGame && (
                 <button
                     onClick={onSimClick}
                     disabled={isSimulating}
@@ -174,6 +183,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         isGameToday ? '경기 시작' : '내일로 이동'
                     )}
                 </button>
+                )}
             </div>
         </div>
     </div>
