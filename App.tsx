@@ -10,6 +10,7 @@ import { AppView, RosterMode, DraftPoolType } from './types';
 import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
 import { useFullSeasonSim } from './hooks/useFullSeasonSim';
+import { FullSeasonSimModal } from './components/simulation/FullSeasonSimModal';
 
 function shuffleArray<T>(arr: T[]): T[] {
     const a = [...arr];
@@ -175,8 +176,6 @@ const App: React.FC = () => {
                     onShowSeasonReview: () => setView('SeasonReview'),
                     onShowPlayoffReview: () => setView('PlayoffReview'),
                 }}
-                batchProgress={batchProgress}
-                onCancelBatch={handleCancelBatch}
                 gameHeaderProps={{
                     schedule: gameData.schedule,
                     teams: gameData.teams,
@@ -206,6 +205,10 @@ const App: React.FC = () => {
                     onClose={() => setIsEditorModalOpen(false)}
                 />
             </MainLayout>
+            {/* 시즌 전체 시뮬레이션 프로그레스 모달 — MainLayout 바깥에서 렌더링하여 stacking context 회피 */}
+            {batchProgress && (
+                <FullSeasonSimModal progress={batchProgress} onCancel={() => handleCancelBatch()} />
+            )}
         </>
     );
 };
