@@ -159,7 +159,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
 
             {/* Right: Simulation Action */}
             <div className="flex-1 flex items-center justify-end gap-3">
-                {nextGame && isGameToday && onAutoSimClick && (
+                {isGameToday && onAutoSimClick && (
                     <button
                         onClick={onAutoSimClick}
                         disabled={isSimulating}
@@ -170,7 +170,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     </button>
                 )}
 
-                {nextGame && (
                 <button
                     onClick={onSimClick}
                     disabled={isSimulating}
@@ -183,7 +182,6 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         isGameToday ? '경기 시작' : '내일로 이동'
                     )}
                 </button>
-                )}
             </div>
         </div>
     </div>
