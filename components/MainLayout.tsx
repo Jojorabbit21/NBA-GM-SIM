@@ -52,7 +52,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
         if (!team?.id) return undefined;
         const myGames = schedule.filter(g => g.homeTeamId === team.id || g.awayTeamId === team.id);
         myGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        return myGames.find(g => !g.played) || myGames[myGames.length - 1];
+        return myGames.find(g => !g.played);
     }, [schedule, team?.id]);
 
     const isHome = nextGame?.homeTeamId === team?.id;
