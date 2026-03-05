@@ -413,15 +413,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 {showPlayoffStats ? '플레이오프 스탯' : '2025-26 시즌 스탯'}
                             </span>
                             {hasPlayoffs && (
-                                <button
+                                <div
+                                    className="flex items-center gap-2 cursor-pointer select-none"
                                     onClick={() => setShowPlayoffStats(prev => !prev)}
-                                    className="flex items-center gap-2 text-xs font-bold text-slate-400 hover:text-slate-200 transition-colors"
                                 >
-                                    <span>{showPlayoffStats ? '정규시즌' : '플레이오프 스탯'}</span>
-                                    <div className={`w-8 h-4.5 rounded-full relative transition-colors ${showPlayoffStats ? 'bg-indigo-500' : 'bg-slate-600'}`}>
-                                        <div className={`absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-all ${showPlayoffStats ? 'left-4' : 'left-0.5'}`} />
+                                    <span className={`text-xs font-bold transition-colors ${showPlayoffStats ? 'text-indigo-400' : 'text-slate-500'}`}>
+                                        {showPlayoffStats ? '정규시즌' : '플레이오프'}
+                                    </span>
+                                    <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showPlayoffStats ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                                        <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showPlayoffStats ? 'right-0.5' : 'left-0.5'}`} />
                                     </div>
-                                </button>
+                                </div>
                             )}
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
