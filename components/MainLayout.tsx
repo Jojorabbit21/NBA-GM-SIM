@@ -4,8 +4,6 @@ import { Sidebar } from './Sidebar';
 import { Footer } from './Footer';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
 import FullScreenLoader from './FullScreenLoader';
-import { FullSeasonSimModal } from './simulation/FullSeasonSimModal';
-import { BatchProgress } from '../hooks/useFullSeasonSim';
 import { DashboardHeader } from './dashboard/DashboardHeader';
 import { calculatePlayerOvr } from '../utils/constants';
 import { computeStandingsStats } from '../utils/standingsStats';
@@ -29,8 +27,6 @@ interface MainLayoutProps {
         onShowSeasonReview?: () => void;
         onShowPlayoffReview?: () => void;
     };
-    batchProgress?: BatchProgress | null;
-    onCancelBatch?: () => void;
     gameHeaderProps: {
         schedule: Game[];
         teams: Team[];
@@ -42,7 +38,7 @@ interface MainLayoutProps {
     };
 }
 
-const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps, batchProgress, onCancelBatch }) => {
+const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHeaderProps }) => {
     const { team, currentSimDate } = sidebarProps;
     const { schedule, teams, onSim, onLiveSim, isSimulating, playoffSeries, userTactics } = gameHeaderProps;
     const [isCollapsed, setIsCollapsed] = useState(false);
@@ -155,10 +151,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 </div>
                 {!isFullHeightView && !isNoPaddingView && sidebarProps.currentView !== 'Help' && <Footer onNavigate={sidebarProps.onNavigate} />}
             </main>
-            {/* 시즌 전체 시뮬레이션 프로그레스 모달 */}
-            {batchProgress && (
-                <FullSeasonSimModal progress={batchProgress} onCancel={() => onCancelBatch?.()} />
-            )}
         </div>
     );
 };
