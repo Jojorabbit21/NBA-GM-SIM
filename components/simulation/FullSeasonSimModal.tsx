@@ -20,7 +20,7 @@ export const FullSeasonSimModal: React.FC<Props> = ({ progress, onCancel }) => {
             : '경기 시뮬레이션 중...';
 
     return (
-        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-[2000]">
             <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-10 max-w-md w-full mx-4 shadow-2xl">
                 {/* Title */}
                 <h2 className="text-xl font-black text-slate-100 text-center mb-6 oswald uppercase tracking-wide">

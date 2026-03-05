@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
-import { Button } from '../common/Button';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
@@ -181,48 +180,3 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   );
 };
 
-// [Fix] Add missing DashboardReviewBanners component as requested by views/DashboardView.tsx
-interface DashboardReviewBannersProps {
-  onShowSeasonReview: () => void;
-  onShowPlayoffReview: () => void;
-  hasPlayoffHistory: boolean;
-  showSeasonBanner: boolean;
-  showPlayoffBanner: boolean;
-}
-
-export const DashboardReviewBanners: React.FC<DashboardReviewBannersProps> = ({
-  onShowSeasonReview,
-  onShowPlayoffReview,
-  hasPlayoffHistory,
-  showSeasonBanner,
-  showPlayoffBanner
-}) => {
-  if (!showSeasonBanner && !showPlayoffBanner) return null;
-  
-  return (
-    <div className="w-full max-w-[1900px] flex flex-col gap-4">
-      {showSeasonBanner && (
-        <div className="bg-gradient-to-r from-orange-600 to-orange-800 p-6 rounded-3xl flex items-center justify-between shadow-xl animate-in slide-in-from-top-4">
-          <div className="flex flex-col gap-1">
-            <h3 className="text-xl font-black text-white oswald uppercase tracking-wider">정규시즌 종료</h3>
-            <p className="text-sm font-bold text-orange-100 opacity-80">이번 시즌의 최종 성적과 통계를 확인하세요.</p>
-          </div>
-          <Button onClick={onShowSeasonReview} variant="secondary" className="!bg-white !text-orange-700 !border-none hover:!bg-orange-50 font-black">
-            시즌 리포트 보기
-          </Button>
-        </div>
-      )}
-      {showPlayoffBanner && (
-        <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 p-6 rounded-3xl flex items-center justify-between shadow-xl animate-in slide-in-from-top-4">
-          <div className="flex flex-col gap-1">
-            <h3 className="text-xl font-black text-white oswald uppercase tracking-wider">포스트시즌 종료</h3>
-            <p className="text-sm font-bold text-indigo-100 opacity-80">플레이오프 여정의 마침표를 확인하세요.</p>
-          </div>
-          <Button onClick={onShowPlayoffReview} variant="secondary" className="!bg-white !text-indigo-700 !border-none hover:!bg-indigo-50 font-black">
-            플레이오프 리포트 보기
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-};

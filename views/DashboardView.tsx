@@ -1,12 +1,11 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { Team, Game, Player, PlayoffSeries, GameTactics, DepthChart } from '../types';
+import { Team, Game, Player, GameTactics, DepthChart } from '../types';
 import { generateAutoTactics } from '../services/gameEngine';
 import { calculatePlayerOvr } from '../utils/constants';
 import { computeDefensiveStats } from '../utils/defensiveStats';
 
 // Import sub-components
-import { DashboardReviewBanners } from '../components/dashboard/DashboardHeader';
 import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
@@ -20,10 +19,6 @@ interface DashboardViewProps {
   onUpdateTactics: (t: GameTactics) => void;
   currentSimDate?: string;
   isSimulating?: boolean;
-  onShowSeasonReview: () => void;
-  onShowPlayoffReview: () => void;
-  hasPlayoffHistory?: boolean;
-  playoffSeries?: PlayoffSeries[];
   depthChart?: DepthChart | null;
   onUpdateDepthChart?: (dc: DepthChart) => void;
   onForceSave?: () => void;
@@ -35,8 +30,8 @@ type DashboardTab = 'rotation' | 'tactics' | 'opponent';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
-  currentSimDate, isSimulating, onShowSeasonReview, onShowPlayoffReview, hasPlayoffHistory = false,
-  playoffSeries = [], depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer
+  currentSimDate, isSimulating,
+  depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
 
@@ -46,24 +41,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       myGames.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       return myGames.find(g => !g.played) || myGames[myGames.length - 1];
   }, [schedule, team?.id]);
-
-  const isRegularSeasonFinished = useMemo(() => {
-      if (!team?.id) return false;
-      const myRegularGames = schedule.filter(g => !g.isPlayoff && (g.homeTeamId === team.id || g.awayTeamId === team.id));
-      return myRegularGames.length > 0 && myRegularGames.every(g => g.played);
-  }, [schedule, team?.id]);
-
-  const isPostseasonOver = useMemo(() => {
-      if (!team?.id || !playoffSeries || playoffSeries.length === 0) return false;
-      const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
-      if (myPlayoffSeries.length === 0) return false;
-
-      const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
-      if (!latest.finished) return false;
-
-      if (latest.winnerId !== team.id) return true;
-      return latest.round === 4;
-  }, [playoffSeries, team?.id]);
 
   const defensiveStats = useMemo(() => {
       if (!team?.id) return computeDefensiveStats([], '');
@@ -108,14 +85,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   return (
     <div className="h-full animate-in fade-in duration-700 ko-normal relative text-slate-200 flex flex-col overflow-hidden">
-
-      <DashboardReviewBanners
-        onShowSeasonReview={onShowSeasonReview}
-        onShowPlayoffReview={onShowPlayoffReview}
-        hasPlayoffHistory={hasPlayoffHistory}
-        showSeasonBanner={isRegularSeasonFinished}
-        showPlayoffBanner={isPostseasonOver}
-      />
 
       {/* Main Content Area with Navigation */}
       <div className="w-full flex flex-col flex-1 min-h-0">

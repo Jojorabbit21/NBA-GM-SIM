@@ -4,6 +4,7 @@ import { Filter, Calendar, X, Plus, ChevronDown, Table as TableIcon, Crosshair, 
 import { Dropdown } from '../common/Dropdown';
 import { TRADITIONAL_STAT_OPTIONS, SHOOTING_STAT_OPTIONS, ADVANCED_STAT_OPTIONS, OPPONENT_STAT_OPTIONS, ATTRIBUTES_STAT_OPTIONS, FilterItem, ViewMode, StatCategory, Operator } from '../../data/leaderboardConfig';
 import { Team } from '../../types';
+import { SeasonType } from '../../hooks/useLeaderboardData';
 import { TeamLogo } from '../common/TeamLogo';
 
 interface LeaderboardToolbarProps {
@@ -24,6 +25,8 @@ interface LeaderboardToolbarProps {
     setSelectedPositions: (pos: string[]) => void;
     searchQuery: string;
     setSearchQuery: (q: string) => void;
+    seasonType: SeasonType;
+    setSeasonType: (t: SeasonType) => void;
 }
 
 export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
@@ -32,7 +35,8 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
     showHeatmap, setShowHeatmap,
     teams, selectedTeams, setSelectedTeams,
     selectedPositions, setSelectedPositions,
-    searchQuery, setSearchQuery
+    searchQuery, setSearchQuery,
+    seasonType, setSeasonType
 }) => {
     // Determine available options based on category
     let options = TRADITIONAL_STAT_OPTIONS;
@@ -159,6 +163,26 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         width="w-48"
                         align="left"
                     />
+
+                    {/* Season Type Toggle */}
+                    <div className="flex items-center bg-slate-950 rounded-lg border border-slate-800 h-[32px] overflow-hidden ml-3">
+                        <button
+                            onClick={() => setSeasonType('regular')}
+                            className={`px-3 h-full text-[11px] font-bold transition-colors ${
+                                seasonType === 'regular'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-500 hover:text-white'
+                            }`}
+                        >정규시즌</button>
+                        <button
+                            onClick={() => setSeasonType('playoff')}
+                            className={`px-3 h-full text-[11px] font-bold transition-colors ${
+                                seasonType === 'playoff'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'text-slate-500 hover:text-white'
+                            }`}
+                        >플레이오프</button>
+                    </div>
                 </div>
 
                 {/* Right Group: Filters & Toggles */}

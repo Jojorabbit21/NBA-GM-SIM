@@ -53,7 +53,7 @@ export const replayGameState = (
         const homeTeam = teamMap.get(res.home_team_id);
         const awayTeam = teamMap.get(res.away_team_id);
         
-        if (homeTeam && awayTeam) {
+        if (homeTeam && awayTeam && !res.is_playoff) {
             const homeWon = res.home_score > res.away_score;
             if (homeWon) {
                 homeTeam.wins++;
@@ -78,8 +78,8 @@ export const replayGameState = (
                 if (res.box_score.away) (schedule[idx] as any).awayStats = sumTeamBoxScore(res.box_score.away);
             }
 
-            if (res.box_score.home) applyBoxScore(teamMap, res.home_team_id, res.box_score.home);
-            if (res.box_score.away) applyBoxScore(teamMap, res.away_team_id, res.box_score.away);
+            if (res.box_score.home) applyBoxScore(teamMap, res.home_team_id, res.box_score.home, !!res.is_playoff);
+            if (res.box_score.away) applyBoxScore(teamMap, res.away_team_id, res.box_score.away, !!res.is_playoff);
         }
     });
 
@@ -125,40 +125,44 @@ function sumTeamBoxScore(box: PlayerBoxScore[]) {
     }, { fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0 });
 }
 
-function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[]) {
+function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[], isPlayoff = false) {
     const team = teamMap.get(teamId);
     if (!team) return;
 
     box.forEach(statLine => {
         const player = team.roster.find(p => p.id === statLine.playerId);
         if (player) {
-            if (!player.stats) player.stats = INITIAL_STATS();
-            player.stats.g += 1;
-            player.stats.gs += (statLine.gs || 0);
-            player.stats.mp += (statLine.mp || 0);
-            player.stats.pts += (statLine.pts || 0);
-            player.stats.reb += (statLine.reb || 0);
-            player.stats.offReb += (statLine.offReb || 0);
-            player.stats.defReb += (statLine.defReb || 0);
-            player.stats.ast += (statLine.ast || 0);
-            player.stats.stl += (statLine.stl || 0);
-            player.stats.blk += (statLine.blk || 0);
-            player.stats.tov += (statLine.tov || 0);
-            player.stats.fgm += (statLine.fgm || 0);
-            player.stats.fga += (statLine.fga || 0);
-            player.stats.p3m += (statLine.p3m || 0);
-            player.stats.p3a += (statLine.p3a || 0);
-            player.stats.ftm += (statLine.ftm || 0);
-            player.stats.fta += (statLine.fta || 0);
-            player.stats.pf += (statLine.pf || 0);
-            player.stats.techFouls += (statLine.techFouls || 0);
-            player.stats.flagrantFouls += (statLine.flagrantFouls || 0);
-            player.stats.plusMinus += (statLine.plusMinus || 0);
+            // 정규시즌 vs 플레이오프 대상 선택
+            const target = isPlayoff
+                ? (player.playoffStats ??= INITIAL_STATS())
+                : (player.stats ??= INITIAL_STATS());
+
+            target.g += 1;
+            target.gs += (statLine.gs || 0);
+            target.mp += (statLine.mp || 0);
+            target.pts += (statLine.pts || 0);
+            target.reb += (statLine.reb || 0);
+            target.offReb += (statLine.offReb || 0);
+            target.defReb += (statLine.defReb || 0);
+            target.ast += (statLine.ast || 0);
+            target.stl += (statLine.stl || 0);
+            target.blk += (statLine.blk || 0);
+            target.tov += (statLine.tov || 0);
+            target.fgm += (statLine.fgm || 0);
+            target.fga += (statLine.fga || 0);
+            target.p3m += (statLine.p3m || 0);
+            target.p3a += (statLine.p3a || 0);
+            target.ftm += (statLine.ftm || 0);
+            target.fta += (statLine.fta || 0);
+            target.pf += (statLine.pf || 0);
+            target.techFouls += (statLine.techFouls || 0);
+            target.flagrantFouls += (statLine.flagrantFouls || 0);
+            target.plusMinus += (statLine.plusMinus || 0);
 
             // [Fix] Aggregate Zone Stats (Flat Legacy Keys)
             Object.keys(statLine).forEach(key => {
                 if (key.startsWith('zone_') && typeof (statLine as any)[key] === 'number') {
-                    player.stats[key] = (player.stats[key] || 0) + ((statLine as any)[key] || 0);
+                    (target as any)[key] = ((target as any)[key] || 0) + ((statLine as any)[key] || 0);
                 }
             });
 
@@ -167,7 +171,7 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
                 Object.keys(statLine.zoneData).forEach(key => {
                     const val = (statLine.zoneData as any)[key];
                     if (typeof val === 'number') {
-                        player.stats[key] = (player.stats[key] || 0) + val;
+                        (target as any)[key] = ((target as any)[key] || 0) + val;
                     }
                 });
             }
