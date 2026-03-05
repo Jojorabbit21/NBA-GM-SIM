@@ -300,6 +300,90 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
     const [showPlayoffStats, setShowPlayoffStats] = useState(false);
 
+    // Compute advanced rate stats (USG%, AST%, ORB%, etc.) for display
+    // These are normally computed only in the leaderboard hook, not on the original stats objects.
+    const displayStats = useMemo(() => {
+        const rawStats = showPlayoffStats ? player.playoffStats! : s;
+        if (!rawStats || !allTeams || !teamId) return rawStats;
+
+        const team = allTeams.find(t => t.id === teamId);
+        if (!team) return rawStats;
+
+        const enriched = { ...rawStats } as any;
+        const mp = enriched.mp || 0;
+        if (mp === 0) return enriched;
+
+        // Compute team totals from roster
+        const getStats = (p: Player) => showPlayoffStats ? (p.playoffStats || { mp: 0, fga: 0, fta: 0, tov: 0, fgm: 0, offReb: 0, defReb: 0, reb: 0, stl: 0, blk: 0, p3a: 0 } as any) : p.stats;
+        const teamMin = team.roster.reduce((sum, p) => sum + (getStats(p).mp || 0), 0) || 1;
+        const teamFga = team.roster.reduce((sum, p) => sum + (getStats(p).fga || 0), 0);
+        const teamFta = team.roster.reduce((sum, p) => sum + (getStats(p).fta || 0), 0);
+        const teamTov = team.roster.reduce((sum, p) => sum + (getStats(p).tov || 0), 0);
+        const teamFgm = team.roster.reduce((sum, p) => sum + (getStats(p).fgm || 0), 0);
+        const teamOreb = team.roster.reduce((sum, p) => sum + (getStats(p).offReb || 0), 0);
+        const teamDreb = team.roster.reduce((sum, p) => sum + (getStats(p).defReb || 0), 0);
+        const teamReb = team.roster.reduce((sum, p) => sum + (getStats(p).reb || 0), 0);
+        const teamUsage = teamFga + 0.44 * teamFta + teamTov;
+
+        // USG%
+        const playerPoss = enriched.fga + 0.44 * enriched.fta + enriched.tov;
+        if (teamUsage > 0) {
+            enriched['usg%'] = (playerPoss * (teamMin / 5)) / (mp * teamUsage);
+        }
+
+        // AST%
+        const astDenom = ((mp / (teamMin / 5)) * teamFgm) - enriched.fgm;
+        enriched['ast%'] = astDenom > 0 ? enriched.ast / astDenom : 0;
+
+        // For opponent-dependent stats, approximate using league-wide averages
+        let leagueOreb = 0, leagueDreb = 0, leagueReb = 0, leagueFga = 0, leagueFta = 0, leagueTov = 0, leagueOrebAll = 0, league3pa = 0;
+        let playoffTeamCount = 0;
+        allTeams.forEach(t => {
+            let tOreb = 0, tDreb = 0, tReb = 0, tFga = 0, tFta = 0, tTov = 0, tOrebAll = 0, t3pa = 0, hasData = false;
+            t.roster.forEach(p => {
+                const ps = getStats(p);
+                if ((ps.g || 0) > 0) hasData = true;
+                tOreb += (ps.offReb || 0); tDreb += (ps.defReb || 0); tReb += (ps.reb || 0);
+                tFga += (ps.fga || 0); tFta += (ps.fta || 0); tTov += (ps.tov || 0);
+                tOrebAll += (ps.offReb || 0); t3pa += (ps.p3a || 0);
+            });
+            if (hasData) {
+                playoffTeamCount++;
+                leagueOreb += tOreb; leagueDreb += tDreb; leagueReb += tReb;
+                leagueFga += tFga; leagueFta += tFta; leagueTov += tTov;
+                leagueOrebAll += tOrebAll; league3pa += t3pa;
+            }
+        });
+
+        if (playoffTeamCount > 1) {
+            // Average opponent stats (exclude own team)
+            const oppDreb = (leagueDreb - teamDreb) / (playoffTeamCount - 1);
+            const oppOreb = (leagueOreb - teamOreb) / (playoffTeamCount - 1);
+            const oppReb = (leagueReb - teamReb) / (playoffTeamCount - 1);
+            const oppFga = (leagueFga - teamFga) / (playoffTeamCount - 1);
+            const oppFta = (leagueFta - teamFta) / (playoffTeamCount - 1);
+            const oppTov = (leagueTov - teamTov) / (playoffTeamCount - 1);
+            const oppOrebApprox = (leagueOrebAll - teamOreb) / (playoffTeamCount - 1);
+            const opp3pa = (league3pa - team.roster.reduce((sum, p) => sum + (getStats(p).p3a || 0), 0)) / (playoffTeamCount - 1);
+            const oppPoss = oppFga + 0.44 * oppFta + oppTov - oppOrebApprox;
+            const opp2pa = oppFga - opp3pa;
+
+            const totalOrebChances = teamOreb + oppDreb;
+            if (totalOrebChances > 0) enriched['orb%'] = ((enriched.offReb || 0) * (teamMin / 5)) / (mp * totalOrebChances);
+
+            const totalDrebChances = teamDreb + oppOreb;
+            if (totalDrebChances > 0) enriched['drb%'] = ((enriched.defReb || 0) * (teamMin / 5)) / (mp * totalDrebChances);
+
+            const totalRebChances = teamReb + oppReb;
+            if (totalRebChances > 0) enriched['trb%'] = (enriched.reb * (teamMin / 5)) / (mp * totalRebChances);
+
+            if (oppPoss > 0) enriched['stl%'] = (enriched.stl * (teamMin / 5)) / (mp * oppPoss);
+            if (opp2pa > 0) enriched['blk%'] = (enriched.blk * (teamMin / 5)) / (mp * opp2pa);
+        }
+
+        return enriched;
+    }, [player.stats, player.playoffStats, showPlayoffStats, allTeams, teamId]);
+
     const archetypes = useMemo(() => getHiddenArchetypes(player), [player]);
 
     return (
@@ -427,8 +511,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             )}
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
-                            <StatsSubTable cols={TRAD_COLS} stats={showPlayoffStats ? player.playoffStats! : s} />
-                            <StatsSubTable cols={ADVANCED_COLS} stats={showPlayoffStats ? player.playoffStats! : s} />
+                            <StatsSubTable cols={TRAD_COLS} stats={displayStats} />
+                            <StatsSubTable cols={ADVANCED_COLS} stats={displayStats} />
                         </div>
                     </div>
 

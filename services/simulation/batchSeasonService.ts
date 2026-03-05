@@ -193,9 +193,10 @@ function processCpuGamesInPlace(
         const away = teams.find(t => t.id === res.awayTeamId);
         if (!home || !away) continue;
 
-        updateTeamStats(home, away, res.homeScore, res.awayScore);
-        if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home);
-        if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away);
+        const isPlayoff = !!res.isPlayoff;
+        updateTeamStats(home, away, res.homeScore, res.awayScore, isPlayoff);
+        if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home, isPlayoff);
+        if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away, isPlayoff);
 
         const gameIdx = schedule.findIndex(g => g.id === res.gameId);
         if (gameIdx !== -1) {
@@ -243,9 +244,10 @@ function applyGameResultInPlace(
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
 
-    updateTeamStats(homeTeam, awayTeam, result.homeScore, result.awayScore);
-    applyBoxToRoster(homeTeam, result.homeBox);
-    applyBoxToRoster(awayTeam, result.awayBox);
+    const isPlayoff = !!userGame.isPlayoff;
+    updateTeamStats(homeTeam, awayTeam, result.homeScore, result.awayScore, isPlayoff);
+    applyBoxToRoster(homeTeam, result.homeBox, isPlayoff);
+    applyBoxToRoster(awayTeam, result.awayBox, isPlayoff);
 
     // 로스터 업데이트 (체력/부상)
     if (result.rosterUpdates) {
