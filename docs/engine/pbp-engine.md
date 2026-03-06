@@ -294,21 +294,29 @@ if isScreenPlay:
 if Random < pace * 0.03:  // pace=5 → 15%
   playType = 'Transition'
 
-// 아니면 가중 랜덤 선택
-weights = {
-  Iso:         sliders.play_iso,
-  PnR_Handler: sliders.play_pnr * 0.6,
-  PnR_Roll:    sliders.play_pnr * 0.2,
-  PnR_Pop:     sliders.play_pnr * 0.2,
-  PostUp:      sliders.play_post,
-  CatchShoot:  sliders.play_cns,
-  Cut:         sliders.play_drive,
-  Handoff:     2 (고정),
-}
+// 아니면 3개 추상 슬라이더 → 10개 하프코트 플레이타입 가중 랜덤 선택
+// playTypeProfiles.ts:computePlayTypeWeights(sliders)
+weight(pt) = max(0.5, base + hero×heroFactor + inside×insideFactor + pnr×pnrFactor)
+  heroFactor   = (5 - playStyle) / 5
+  insideFactor = (5 - insideOut) / 5
+  pnrFactor    = (pnrFreq - 5) / 5
+
+PLAY_TYPE_PROFILES:
+  | 플레이타입      | base | hero  | inside | pnr  |
+  |---------------|------|-------|--------|------|
+  | Iso           | 2.0  | +3.0  |  0.0   | 0.0  |
+  | PostUp        | 1.5  | +1.5  | +2.5   | 0.0  |
+  | PnR_Handler   | 3.0  | +1.0  |  0.0   | +3.0 |
+  | PnR_Roll      | 1.5  |  0.0  | +1.5   | +2.0 |
+  | PnR_Pop       | 1.0  |  0.0  | -1.5   | +2.0 |
+  | CatchShoot    | 3.5  | -2.5  | -2.0   | 0.0  |
+  | OffBallScreen | 1.5  | -1.5  | -1.0   | 0.0  |
+  | DriveKick     | 2.5  | -1.5  | -1.0   | 0.0  |
+  | Cut           | 2.0  | -0.5  | +1.5   | 0.0  |
+  | Handoff       | 1.5  | -1.0  |  0.0   | 0.0  |
 
 // Star Gravity: 1옵션 에이스가 코트에 있으면 Hero 플레이 비중 증가
 gravityBoost = min(0.30, max(0, (topGravity - 65) * 0.015))
-// gravity 90 → 0.30 (캡), gravity 78 → 0.195, gravity 65 이하 → 0
 weights[Iso] *= (1 + gravityBoost)
 weights[PnR_Handler] *= (1 + gravityBoost)
 weights[PostUp] *= (1 + gravityBoost * 0.5)
@@ -342,14 +350,57 @@ resolvePlayAction(team, playType, sliders) → PlayContext {
   * Hero 1옵:5옵 ≈ 6:1, System 1옵:5옵 ≈ 1.8:1
 
 PlayType별 선택 기준:
-  Iso:         isoScorer (handling+mid+speed+agility) | 1옵션 2.5x
-  PnR_Handler: handler (handling+passIq+passVision)    | 1옵션 2.5x
-  PnR_Roll:    roller (ins+vertical+speed)              | 균등(1.3x~0.9x)
-  PnR_Pop:     popper (3pt+shotIq)                     | 균등(1.6x~0.6x)
-  PostUp:      postScorer (ins+strength+hands)          | 1옵션 2.2x
-  CatchShoot:  spacer (3pt+shotIq+offConsist)           | 균등(1.5x~0.8x)
-  Cut:         driver (speed+agility+vertical+ins) + offBallMovement×0.5 | 균등(1.4x~0.8x)
-  Transition:  spdBall+driver 높은 선수                 | 완전 균등(1.0x)
+  Iso:           isoScorer (handling+mid+speed+agility) | 1옵션 2.5x
+  PnR_Handler:   handler (handling+passIq+passVision)    | 1옵션 2.5x
+  PnR_Roll:      roller (ins+vertical+speed)              | 균등(1.3x~0.9x)
+  PnR_Pop:       popper (3pt+shotIq)                     | 균등(1.6x~0.6x)
+  PostUp:        postScorer (ins+strength+hands)          | 1옵션 2.2x
+  CatchShoot:    spacer (3pt+shotIq+offConsist)           | 균등(1.5x~0.8x)
+  Cut:           driver (speed+agility+vertical+ins) + offBallMovement×0.5 | 균등(1.4x~0.8x)
+  Handoff:       spacer + driver×0.5                      | Designed(2.0x~0.5x)
+  OffBallScreen: spacer + offBallMovement×0.3 + speed×0.1 | Designed(2.0x~0.5x)
+  DriveKick:     spacer + out×0.3 (슈터), driver+handler×0.3 (드라이버) | System(1.5x~0.8x)
+  Transition:    spdBall+driver 높은 선수                 | 완전 균등(1.0x)
+```
+
+#### 플레이 리다이렉트 시스템 (Zone Pref Threshold + Rim Redirect)
+
+선수의 존 선호도(`zonePref`)가 임계값(0.15) 미만이면 해당 존을 `selectZone` 후보에서 제거하고,
+Rim이 선택되면 `resolveFinish('drive')`로 마무리 방식을 전환한다.
+
+```
+ZONE_PREF_THRESHOLD = 0.15 (constants.ts:ZONE_SELECTION)
+
+selectZone 흐름:
+  1. 플레이타입이 제공한 존 후보에서 zonePref < 0.15인 존 제거
+  2. 전부 제거되면 → 원래 후보 중 가장 높은 선호도의 존 1개만 유지
+  3. 남은 존 중 가중 랜덤 선택
+
+적용 플레이타입 (Rim이 존 후보에 포함):
+  | 플레이타입      | 존 후보              | Rim 시 동작                    |
+  |---------------|--------------------|-----------------------------|
+  | Iso           | [3PT, Mid, Rim]    | resolveFinish('drive')       |
+  | PnR_Handler   | [3PT, Mid, Rim]    | 스크린 후 드라이브              |
+  | Handoff       | [3PT, Mid, Rim]    | 핸드오프 후 드라이브             |
+  | CatchShoot    | [3PT, Mid, Rim]    | 펌프페이크 → 드라이브 전환       |
+  | OffBallScreen | [3PT, Mid, Rim]    | 스크린 컬 드라이브              |
+  | DriveKick     | [3PT, Mid, Rim]    | 드라이버가 킥아웃 안 하고 직접 마무리 |
+  | Transition    | [3PT, Rim]         | resolveFinish('drive')       |
+
+DriveKick Rim 특이사항:
+  기존: driver 침투 → actor(슈터)에게 킥아웃 → actor가 슛
+  Rim:  driver 침투 → 킥아웃 안 함 → driver가 직접 마무리
+       → actor = driver, secondaryActor = undefined (어시스트 없음)
+
+야니스 예시 (zonePref: rim≈0.73, mid≈0.13, three≈0.13):
+  PnR_Handler: 3PT(0.13<0.15) 제거, Mid(0.13<0.15) 제거 → Rim만 남음 → 드라이브
+  CatchShoot:  3PT/Mid 제거 → Rim → 펌프페이크 후 드라이브
+
+커리 예시 (zonePref: rim≈0.10, mid≈0.10, three≈0.80):
+  PnR_Handler: Rim(0.10) 제거, Mid(0.10) 제거 → 3PT만 남음 → 풀업 3점
+
+르브론 예시 (zonePref: rim≈0.50, mid≈0.21, three≈0.29):
+  PnR_Handler: 모두 0.15 이상 → 기존과 동일하게 가중 랜덤
 ```
 
 #### resolveFinish 시스템 (마무리 타입 결정)
@@ -1103,6 +1154,12 @@ checkAndApplyRotation(state, currentMinute):
 ```
 selectZone(zones, actor, sliders):
 
+  // [Step 1] Zone Pref Threshold 필터
+  ZONE_PREF_THRESHOLD = 0.15
+  validZones = zones에서 zonePref >= 0.15인 존만 남김
+  전부 제거 시 → 가장 높은 zonePref를 가진 존 1개만 유지
+
+  // [Step 2] 가중 랜덤
   score(zone) = zonePref(zone) × 0.70 + (slider(zone) / 10) × 0.30
 
   선호도 매핑 (LivePlayer.zonePref):
@@ -1115,6 +1172,8 @@ selectZone(zones, actor, sliders):
     tendencies.zones 없음 → ins/midRange/threeAvg 능력치 기반 폴백
 
   ※ 능력치(attr)는 존 선택에 관여하지 않음 — hitRate에서 별도 처리
+  ※ Rim이 선택되면 해당 플레이타입에서 resolveFinish('drive')로 마무리 전환
+    (상세: "플레이 리다이렉트 시스템" 섹션 참조)
 ```
 
 ---
@@ -1178,12 +1237,10 @@ ZONE_SHOOTING: {
 |---------|------|------|
 | `pace` | 1-10 | 포세션 시간 (pace=1: 20초, pace=10: 11초), Transition 확률 (×3%), hitRate 페널티 (>5: -(pace-5)×1% 단계별) |
 | `ballMovement` | 1-10 | TOV 확률 (+0.4% per step above 5) |
-| `play_pnr` | 1-10 | PnR 포세션 비중 (×0.6/0.2/0.2 분배) |
-| `play_iso` | 1-10 | Iso 포세션 비중 |
-| `play_post` | 1-10 | PostUp 포세션 비중 |
-| `play_cns` | 1-10 | CatchShoot 포세션 비중 |
-| `play_drive` | 1-10 | Cut 포세션 비중 |
-| `shot_3pt` | 1-10 | 3PT 존 가중치 |
+| `playStyle` | 0-10 | 코칭 스타일: Hero(0) ↔ System(10). computePlayTypeWeights에서 Iso/PnR_Handler 비중 조정 |
+| `insideOut` | 0-10 | Inside(0) ↔ Outside(10). PostUp/PnR_Roll vs CatchShoot/OffBallScreen/DriveKick 비중 |
+| `pnrFreq` | 0-10 | PnR 빈도: Low(0) ↔ High(10). PnR_Handler/PnR_Roll/PnR_Pop 비중 조정 |
+| `shot_3pt` | 1-10 | 3PT 존 가중치 (selectZone 30% 반영) |
 | `shot_rim` | 1-10 | Rim 존 가중치 |
 | `shot_mid` | 1-10 | Mid 존 가중치 |
 | `defIntensity` | 1-10 | hitRate (-0.5% per step), TOV (±0.8%), 파울 확률 (+1.5%, cap 18%) |
