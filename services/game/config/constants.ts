@@ -373,6 +373,10 @@ export const SIM_CONFIG = {
         BLITZ_TOV_BONUS: 0.04,
     },
     // Foul Trouble Logic
+    // Zone Selection: selectZone 임계값 필터 (존 선호도 기반 플레이 리다이렉트)
+    ZONE_SELECTION: {
+        ZONE_PREF_THRESHOLD: 0.15,  // 이 값 미만의 zonePref는 selectZone 후보에서 제거
+    },
     FOUL_TROUBLE: {
         PROB_MOD: {
             3: 0.85, 

@@ -59,7 +59,16 @@ function selectZone(
         'Rim': sliders.shot_rim,
     };
 
-    const scored = zones.map(z => ({
+    // [Zone Pref Threshold] 임계값 미만인 존을 후보에서 제거
+    const threshold = SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD;
+    let validZones = zones.filter(z => prefMap[z] >= threshold);
+
+    // 전부 제거되면 → 원래 후보 중 가장 높은 선호도를 가진 존 1개만 유지
+    if (validZones.length === 0) {
+        validZones = [zones.reduce((best, z) => prefMap[z] > prefMap[best] ? z : best, zones[0])];
+    }
+
+    const scored = validZones.map(z => ({
         zone: z,
         score: prefMap[z] * 0.70 + (sliderMap[z] / 10) * 0.30,
     }));
@@ -235,15 +244,19 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.handler);
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
 
-            // [Updated] 핸들러 풀업 = 3PT or Mid만 가능. Rim 드라이브는 PnR_Roll의 역할.
-            const zone = selectZone(['3PT', 'Mid'], actor, sliders);
+            // [Updated] 핸들러 풀업 or 스크린 후 드라이브. Rim 포함 → 존 선호도에 따라 드라이브 가능.
+            const zone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            if (zone === 'Rim') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+                return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0.01 };
+            }
             return {
                 playType,
                 actor,
                 secondaryActor: screener,
                 preferredZone: zone,
                 shotType: 'Pullup',
-                bonusHitRate: 0.01 // PnR_Handler: 스크린 풀업 소폭
+                bonusHitRate: 0.01
             };
         }
         case 'PnR_Roll': {
@@ -292,7 +305,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Best Spacer
             const actor = pickWeightedActor(p => p.archetypes.spacer);
             const passer = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
-            const catchZone = selectZone(['3PT', 'Mid'], actor, sliders);
+
+            // [Play Redirect] 존 선호도에 따라 캐치 후 펌프페이크 → 드라이브 전환 가능
+            const catchZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            if (catchZone === 'Rim') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+                return { playType, actor, secondaryActor: passer, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
+            }
             return {
                 playType,
                 actor,
@@ -321,15 +340,19 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
             const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
 
-            // [Updated] 핸드오프 후 캐치 → 3PT or Mid 선택. Rim 없음.
-            const hoZone = selectZone(['3PT', 'Mid'], actor, sliders);
+            // [Updated] 핸드오프 후 캐치 → 3PT/Mid/Rim. 존 선호도에 따라 드라이브 가능.
+            const hoZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            if (hoZone === 'Rim') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+                return { playType, actor, secondaryActor: big, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
+            }
             return {
                 playType,
                 actor,
                 secondaryActor: big,
                 preferredZone: hoZone,
                 shotType: hoZone === '3PT' ? 'CatchShoot' : 'Jumper',
-                bonusHitRate: 0.02 // Handoff: 캐치 후 즉시 릴리스 이점
+                bonusHitRate: 0.02
             };
         }
         case 'Transition': {
@@ -382,7 +405,12 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // screener 아키타입 50 기준, 0~100 범위 → 0.00~0.02 보너스
             const screenBonus = Math.max(0, (screener.archetypes.screener - 50) / 50 * 0.02);
 
-            const obsZone = selectZone(['3PT', 'Mid'], actor, sliders);
+            // [Play Redirect] 존 선호도에 따라 스크린 후 컬 드라이브 가능
+            const obsZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            if (obsZone === 'Rim') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+                return { playType, actor, secondaryActor: passer, screener, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + screenBonus };
+            }
             return {
                 playType, actor, secondaryActor: passer,
                 screener,
@@ -405,7 +433,13 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const driveQuality = penetration * 0.6 + kickPass * 0.4;
             const driveBonus = Math.max(0, (driveQuality - 70) / 30 * 0.02);
 
-            const dkZone = selectZone(['3PT', 'Mid'], actor, sliders);
+            // [Play Redirect] 존 선호도에 따라 드라이버가 킥아웃 안 하고 직접 마무리 가능
+            const dkZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
+            if (dkZone === 'Rim') {
+                // 드라이버가 직접 마무리 → actor를 driver로 교체, 어시스트 없음
+                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders);
+                return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
+            }
             return {
                 playType, actor, secondaryActor: driver,
                 preferredZone: dkZone,
