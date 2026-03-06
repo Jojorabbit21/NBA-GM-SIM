@@ -5,6 +5,7 @@ import { Loader2, Trophy } from 'lucide-react';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 import { computeStandingsStats, StandingsRecord } from '../utils/standingsStats';
+import { createTiebreakerComparator } from '../utils/tiebreaker';
 import { DIVISION_KOREAN } from '../data/mappings';
 
 interface StandingsViewProps {
@@ -40,15 +41,16 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
     const statsMap = useMemo(() => computeStandingsStats(teams, schedule), [teams, schedule]);
 
     // Playoff status calculation (existing algorithm preserved)
+    const tiebreakerComparator = useMemo(
+        () => createTiebreakerComparator(teams, schedule),
+        [teams, schedule]
+    );
+
     const teamStatusMap = useMemo(() => {
         const map: Record<string, 'clinched_playoff' | 'clinched_playin' | 'eliminated' | null> = {};
         ['East', 'West'].forEach(conf => {
             const confTeams = teams.filter(t => t.conference === conf);
-            const sorted = [...confTeams].sort((a, b) => {
-                const aPct = (a.wins + a.losses === 0) ? 0 : a.wins / (a.wins + a.losses);
-                const bPct = (b.wins + b.losses === 0) ? 0 : b.wins / (b.wins + b.losses);
-                return bPct - aPct || b.wins - a.wins;
-            });
+            const sorted = [...confTeams].sort(tiebreakerComparator);
 
             const rank7 = sorted[6];
             const rank10 = sorted[9];
@@ -79,7 +81,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
             });
         });
         return map;
-    }, [teams]);
+    }, [teams, tiebreakerComparator]);
 
     // Sort helper
     const getSortValue = (t: Team, rec: StandingsRecord, key: string): number => {
@@ -117,10 +119,8 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
                 const diff = sortConfig.direction === 'desc' ? valB - valA : valA - valB;
                 if (diff !== 0) return diff;
 
-                // Tiebreaker: PCT desc, then wins desc
-                const pctDiff = recB.pct - recA.pct;
-                if (pctDiff !== 0) return pctDiff;
-                return recB.wins - recA.wins;
+                // Tiebreaker: PCT → H2H → Conf Record → Diff
+                return tiebreakerComparator(a, b);
             });
         };
 
@@ -164,7 +164,7 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
             }
         }
         return rows;
-    }, [teams, statsMap, teamStatusMap, mode, sortConfig]);
+    }, [teams, statsMap, teamStatusMap, mode, sortConfig, tiebreakerComparator]);
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({

@@ -14,7 +14,6 @@ export const handleSeasonEvents = async (
     userId: string | undefined,
     isGuestMode: boolean
 ) => {
-    let playoffUpdateTriggered = false;
     let newTransactions: Transaction[] = [];
     let newsItems: string[] = [];
     let tradeToast: string | null = null;
@@ -23,11 +22,9 @@ export const handleSeasonEvents = async (
     // 1. Playoffs
     if (updatedSeries.length > 0) {
         // Advance State
-        const advancedSeries = advancePlayoffState(updatedSeries, teams);
-        // If advancePlayoffState returns a new array reference, update our local ref
+        const advancedSeries = advancePlayoffState(updatedSeries, teams, schedule);
         if (advancedSeries !== updatedSeries) {
             updatedSeries = advancedSeries;
-            playoffUpdateTriggered = true;
         }
 
         // Generate Next Games
@@ -35,15 +32,13 @@ export const handleSeasonEvents = async (
         if (newGames.length > 0) {
             schedule.push(...newGames);
             updatedSeries = nextSeries;
-            playoffUpdateTriggered = true;
         }
     } else {
         // Check Init
         const initializedSeries = checkAndInitPlayoffs(teams, schedule, [], currentSimDate);
         if (initializedSeries.length > 0) {
             updatedSeries = initializedSeries;
-            playoffUpdateTriggered = true;
-            
+
             // Generate First Games immediately
             const { newGames, updatedSeries: nextSeries } = generateNextPlayoffGames(schedule, updatedSeries, currentSimDate);
             schedule.push(...newGames);
@@ -69,12 +64,14 @@ export const handleSeasonEvents = async (
         }
     }
 
-    // 3. Save Playoff State
-    if (!isGuestMode && playoffUpdateTriggered && updatedSeries.length > 0 && userId) {
+    // 3. Save Playoff State — 플레이오프 진행 중이면 항상 저장
+    // (updateSeriesState가 wins/finished를 직접 뮤테이션하므로,
+    //  advancePlayoffState의 changed 플래그만으로는 변경 감지 불가)
+    if (!isGuestMode && updatedSeries.length > 0 && userId) {
         const currentRound = Math.max(...updatedSeries.map(s => s.round));
         const isFinished = updatedSeries.some(s => s.round === 4 && s.finished);
         const championId = isFinished ? updatedSeries.find(s => s.round === 4)?.winnerId : undefined;
-        
+
         await savePlayoffState(userId, myTeamId, updatedSeries, currentRound, isFinished, championId);
     }
 
@@ -102,7 +99,7 @@ export const handleSeasonEventsSync = (
 
     // 1. Playoffs
     if (updatedSeries.length > 0) {
-        const advancedSeries = advancePlayoffState(updatedSeries, teams);
+        const advancedSeries = advancePlayoffState(updatedSeries, teams, schedule);
         if (advancedSeries !== updatedSeries) {
             updatedSeries = advancedSeries;
         }
