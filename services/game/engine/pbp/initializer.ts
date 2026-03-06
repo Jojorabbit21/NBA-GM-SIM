@@ -58,6 +58,15 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
 
     const effectiveDepthChart = depthChart || safeTactics.depthChart;
 
+    // 뎁스차트에서 선수의 슬롯 포지션 조회 (PG슬롯에 배치된 SG → "PG" 반환)
+    const getSlotPosition = (playerId: string): string | null => {
+        if (!effectiveDepthChart) return null;
+        for (const pos of ['PG', 'SG', 'SF', 'PF', 'C'] as const) {
+            if (effectiveDepthChart[pos]?.includes(playerId)) return pos;
+        }
+        return null;
+    };
+
     // 2. 로스터 정렬 및 라이브 플레이어 객체 생성
     const sortedRoster = [...team.roster].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
     
@@ -97,7 +106,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             condition: currentCondition,
             currentCondition,
             startCondition: currentCondition,
-            position: p.position,
+            position: getSlotPosition(p.id) || p.position,
             ovr: calculatePlayerOvr(p),
             isStarter: false,
             health: p.health || 'Healthy',
