@@ -31,6 +31,8 @@ export const TEAM_ID_MAP: Record<string, string> = {
     'toronto': 'tor', 'northguard': 'tor',
     'utah': 'uta', 'highlanders': 'uta',
     'washington': 'was', 'arcanes': 'was', 'wsh': 'was',
+    // FA (Free Agent)
+    'fa': 'fa',
     // 구 ID 하위호환 (DB 마이그레이션 전 데이터 처리용)
     'gsw': 'gs', 'lac': 'law', 'lal': 'lam', 'la1': 'lam', 'la2': 'law', 'nop': 'no', 'sas': 'sa',
     // Korean
