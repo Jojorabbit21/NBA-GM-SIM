@@ -498,15 +498,18 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </span>
                             {hasPlayoffs && (
                                 <div
-                                    className="flex items-center gap-2 cursor-pointer select-none"
+                                    className="flex items-center gap-2.5 cursor-pointer select-none"
                                     onClick={() => setShowPlayoffStats(prev => !prev)}
                                 >
-                                    <span className={`text-xs font-bold transition-colors ${showPlayoffStats ? 'text-indigo-400' : 'text-slate-500'}`}>
-                                        {showPlayoffStats ? '정규시즌' : '플레이오프'}
+                                    <span className={`text-xs font-bold transition-colors ${!showPlayoffStats ? 'text-white' : 'text-slate-500'}`}>
+                                        정규시즌
                                     </span>
-                                    <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showPlayoffStats ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                                    <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showPlayoffStats ? 'bg-indigo-600' : 'bg-slate-600'}`}>
                                         <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showPlayoffStats ? 'right-0.5' : 'left-0.5'}`} />
                                     </div>
+                                    <span className={`text-xs font-bold transition-colors ${showPlayoffStats ? 'text-white' : 'text-slate-500'}`}>
+                                        플레이오프
+                                    </span>
                                 </div>
                             )}
                         </div>

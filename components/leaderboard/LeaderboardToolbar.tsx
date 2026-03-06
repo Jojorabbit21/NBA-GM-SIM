@@ -164,8 +164,13 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         align="left"
                     />
 
+                </div>
+
+                {/* Right Group: Filters & Toggles */}
+                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
+
                     {/* Season Type Toggle */}
-                    <div className="flex items-center bg-slate-950 rounded-lg border border-slate-800 h-[32px] overflow-hidden ml-3">
+                    <div className="flex items-center bg-slate-950 rounded-lg border border-slate-800 h-[36px] overflow-hidden shrink-0">
                         <button
                             onClick={() => setSeasonType('regular')}
                             className={`px-3 h-full text-[11px] font-bold transition-colors ${
@@ -183,11 +188,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             }`}
                         >플레이오프</button>
                     </div>
-                </div>
 
-                {/* Right Group: Filters & Toggles */}
-                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
-                    
                     {/* Search Input */}
                     <div className="relative h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0 w-48">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
