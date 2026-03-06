@@ -107,7 +107,9 @@ export const getTeamLogoUrl = (teamId: string): string => {
 };
 
 // [Critical] Import OVR calc from logic file to ensure consistency
+// manualOvr(base_attributes.ovr) 가 있으면 우선 사용, 없으면 능력치 기반 재계산
 export const calculatePlayerOvr = (p: Player, position?: string): number => {
+    if (p.manualOvr && p.manualOvr > 0) return p.manualOvr;
     return calculateOvr(p, position || p.position);
 };
 

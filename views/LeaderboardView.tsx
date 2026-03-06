@@ -187,7 +187,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
               {/* Center: Page buttons */}
               <div className="absolute left-1/2 -translate-x-1/2 flex items-center gap-1">
                   <button
-                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      onClick={() => { setCurrentPage(p => Math.max(1, p - 1)); window.scrollTo(0, 0); }}
                       disabled={currentPage === 1}
                       className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
@@ -199,7 +199,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                           ? <span key={`ellipsis-${idx}`} className="w-7 text-center text-xs text-slate-600 font-bold select-none">··</span>
                           : <button
                               key={page}
-                              onClick={() => setCurrentPage(page)}
+                              onClick={() => { setCurrentPage(page); window.scrollTo(0, 0); }}
                               className={`w-7 h-7 text-xs font-bold rounded-lg transition-all ${
                                   currentPage === page
                                       ? 'bg-indigo-600 text-white'
@@ -211,7 +211,7 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
                   )}
 
                   <button
-                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      onClick={() => { setCurrentPage(p => Math.min(totalPages, p + 1)); window.scrollTo(0, 0); }}
                       disabled={currentPage === totalPages || totalPages === 0}
                       className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                   >
