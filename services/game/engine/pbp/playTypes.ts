@@ -217,12 +217,22 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         return candidates[0].p;
     };
 
+    // Passer Concentration: 어시스터(패서) 선택 시 패싱 능력치를 곱셈으로 적용
+    // passVision + passIq 합산 → 100 기준 정규화 (엘리트 1.7x, 평균 1.0x, 약체 0.6x)
+    // 결과: 팀 내 최고 플레이메이커에게 어시스트가 자연스럽게 집중됨
+    const pickPasser = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
+        return pickWeightedActor(
+            p => criteria(p) * ((p.attr.passVision + p.attr.passIq) / 100),
+            excludeId
+        );
+    };
+
     switch (playType) {
         case 'Iso': {
             // Best Iso Scorer (Handling + Agility + Shot Creation)
             const actor = pickWeightedActor(p => p.archetypes.isoScorer + p.archetypes.handler * 0.5);
             // 아이소 진입 패스를 제공한 선수 (어시스트 후보)
-            const passer = pickWeightedActor(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
+            const passer = pickPasser(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
 
             // [Updated] 3PT · Mid · Rim 모두 후보. Rim이면 resolveFinish로 마무리 결정.
             const isoZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
@@ -262,7 +272,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'PnR_Roll': {
             // Handler passes to Roller (Finisher)
             const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
-            const handler = pickWeightedActor(p => p.archetypes.handler, screener.playerId);
+            const handler = pickPasser(p => p.archetypes.handler, screener.playerId);
             const { zone: rollZone, shotType: rollShotType } = resolveFinish(screener, 'roll', sliders);
             return {
                 playType,
@@ -276,7 +286,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'PnR_Pop': {
             // Handler passes to Popper
             const popper = pickWeightedActor(p => p.archetypes.popper);
-            const handler = pickWeightedActor(p => p.archetypes.handler, popper.playerId);
+            const handler = pickPasser(p => p.archetypes.handler, popper.playerId);
             return {
                 playType,
                 actor: popper,
@@ -290,7 +300,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Best Post Scorer (Usually Rank 1-2 Bigs)
             const actor = pickWeightedActor(p => p.archetypes.postScorer);
             // 엔트리 패스를 제공한 선수 (어시스트 후보)
-            const entryPasser = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
+            const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
             const { zone: postZone, shotType: postShotType } = resolveFinish(actor, 'post', sliders);
             return {
                 playType,
@@ -304,7 +314,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'CatchShoot': {
             // Best Spacer
             const actor = pickWeightedActor(p => p.archetypes.spacer);
-            const passer = pickWeightedActor(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
+            const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
             // [Play Redirect] 존 선호도에 따라 캐치 후 펌프페이크 → 드라이브 전환 가능
             const catchZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
@@ -324,7 +334,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'Cut': {
             // Best Driver/Cutter
             const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.offBallMovement * 0.5);
-            const passer = pickWeightedActor(p => p.archetypes.connector, actor.playerId);
+            const passer = pickPasser(p => p.archetypes.connector, actor.playerId);
             const { zone: cutZone, shotType: cutShotType } = resolveFinish(actor, 'drive', sliders);
             return {
                 playType,
@@ -359,7 +369,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Fast break
             const actor = pickWeightedActor(p => p.attr.spdBall + p.archetypes.driver);
             // 속공 패스를 제공한 선수 (아웃렛/푸시어헤드 패스)
-            const outletPasser = pickWeightedActor(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
+            const outletPasser = pickPasser(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
 
             // [Updated] 속공 = Rim(resolveFinish) or 트랜지션 3점.
             const trZone = selectZone(['3PT', 'Rim'], actor, sliders);
@@ -397,7 +407,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 2. 스크리너: 오프볼 스크린 퀄리티 (피지컬 기반)
             const screener = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
             // 3. 패서: 스크린 후 오픈된 슈터를 찾아 패스 (어시스트 담당)
-            const passer = pickWeightedActor(
+            const passer = pickPasser(
                 p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId
             );
 
@@ -422,7 +432,7 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
         case 'DriveKick': {
             // 드라이브 킥아웃: 드라이버가 침투 후 외곽 슈터에게 패스
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.attr.out * 0.3);
-            const driver = pickWeightedActor(
+            const driver = pickPasser(
                 p => p.archetypes.driver + p.archetypes.handler * 0.3, actor.playerId
             );
 
