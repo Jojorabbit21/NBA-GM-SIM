@@ -115,18 +115,21 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
 
     const POSITIONS = ['PG', 'SG', 'SF', 'PF', 'C'];
 
+    const MODE_LABELS: Record<ViewMode, string> = { Players: '선수', Teams: '팀' };
+    const CATEGORY_LABELS: Record<StatCategory, string> = { Traditional: '기본', Shooting: '슈팅', Advanced: '어드밴스드', Attributes: '능력치', Opponent: '상대팀' };
+
     // Category Items
     const categoryItems = [
-        { id: 'Traditional', label: 'Traditional', onClick: () => setStatCategory('Traditional'), active: statCategory === 'Traditional' },
-        { id: 'Shooting', label: 'Shooting', onClick: () => setStatCategory('Shooting'), active: statCategory === 'Shooting' },
-        { id: 'Advanced', label: 'Advanced', onClick: () => setStatCategory('Advanced'), active: statCategory === 'Advanced' },
+        { id: 'Traditional', label: '기본', onClick: () => setStatCategory('Traditional'), active: statCategory === 'Traditional' },
+        { id: 'Shooting', label: '슈팅', onClick: () => setStatCategory('Shooting'), active: statCategory === 'Shooting' },
+        { id: 'Advanced', label: '어드밴스드', onClick: () => setStatCategory('Advanced'), active: statCategory === 'Advanced' },
     ];
 
     if (mode === 'Players') {
-        categoryItems.push({ id: 'Attributes', label: 'Attributes', onClick: () => setStatCategory('Attributes'), active: statCategory === 'Attributes' });
+        categoryItems.push({ id: 'Attributes', label: '능력치', onClick: () => setStatCategory('Attributes'), active: statCategory === 'Attributes' });
     }
     if (mode === 'Teams') {
-        categoryItems.push({ id: 'Opponent', label: 'Opponent', onClick: () => setStatCategory('Opponent'), active: statCategory === 'Opponent' });
+        categoryItems.push({ id: 'Opponent', label: '상대팀', onClick: () => setStatCategory('Opponent'), active: statCategory === 'Opponent' });
     }
 
     return (
@@ -138,13 +141,13 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                     <Dropdown
                         trigger={
                            <button className="flex items-center gap-1 text-base font-black text-white uppercase tracking-tight hover:text-indigo-400 transition-colors group">
-                               <span>{mode}</span>
+                               <span>{MODE_LABELS[mode]}</span>
                                <ChevronDown size={14} className="text-slate-600 group-hover:text-indigo-400 mt-0.5" />
                            </button>
                         }
                         items={[
-                            { id: 'Players', label: 'Players', onClick: () => { setMode('Players'); if(statCategory === 'Opponent') setStatCategory('Traditional'); }, active: mode === 'Players' },
-                            { id: 'Teams', label: 'Teams', onClick: () => { setMode('Teams'); if(statCategory === 'Attributes') setStatCategory('Traditional'); }, active: mode === 'Teams' }
+                            { id: 'Players', label: '선수', onClick: () => { setMode('Players'); if(statCategory === 'Opponent') setStatCategory('Traditional'); }, active: mode === 'Players' },
+                            { id: 'Teams', label: '팀', onClick: () => { setMode('Teams'); if(statCategory === 'Attributes') setStatCategory('Traditional'); }, active: mode === 'Teams' }
                         ]}
                         width="w-32"
                         align="left"
@@ -155,7 +158,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                     <Dropdown
                         trigger={
                            <button className="flex items-center gap-1 text-base font-black text-slate-400 uppercase tracking-tight hover:text-white transition-colors group">
-                               <span>{statCategory}</span>
+                               <span>{CATEGORY_LABELS[statCategory]}</span>
                                <ChevronDown size={14} className="text-slate-600 group-hover:text-white mt-0.5" />
                            </button>
                         }
@@ -189,23 +192,6 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
 
                 {/* Right Group: Filters & Toggles */}
                 <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
-
-                    {/* Season Type Toggle (Container Style) */}
-                    <div
-                        className="flex items-center gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
-                        onClick={() => setSeasonType(seasonType === 'regular' ? 'playoff' : 'regular')}
-                        title="정규시즌 / 플레이오프 전환"
-                    >
-                        <div className={`text-xs font-bold transition-colors ${seasonType === 'regular' ? 'text-indigo-400' : 'text-slate-500'}`}>
-                            정규시즌
-                        </div>
-                        <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${seasonType === 'playoff' ? 'bg-indigo-600' : 'bg-slate-800'}`}>
-                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${seasonType === 'playoff' ? 'right-0.5' : 'left-0.5'}`} />
-                        </div>
-                        <div className={`text-xs font-bold transition-colors ${seasonType === 'playoff' ? 'text-indigo-400' : 'text-slate-500'}`}>
-                            플레이오프
-                        </div>
-                    </div>
 
                     {/* Team Filter Dropdown */}
                     <div className="relative">
@@ -290,9 +276,46 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         </div>
                     )}
 
+                    {/* Stat Filter */}
+                    <div className="flex items-center h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0">
+                        <div className="px-3 flex items-center justify-center border-r border-slate-800 h-full text-slate-500">
+                            <Filter size={14} />
+                        </div>
+                        <div className="relative h-full border-r border-slate-800">
+                            <select
+                                className="h-full bg-transparent pl-3 pr-7 text-xs font-bold text-white outline-none cursor-pointer appearance-none hover:bg-slate-900 transition-colors w-32"
+                                value={filterCat}
+                                onChange={(e) => setFilterCat(e.target.value)}
+                            >
+                                {options.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
+                            </select>
+                            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+                        </div>
+                        <div className="relative h-full border-r border-slate-800">
+                            <select
+                                className="h-full bg-transparent px-2 text-xs font-bold text-indigo-400 outline-none cursor-pointer appearance-none text-center hover:bg-slate-900 transition-colors w-12"
+                                value={filterOp}
+                                onChange={(e) => setFilterOp(e.target.value as Operator)}
+                            >
+                                {['>=', '<=', '>', '<', '='].map(op => <option key={op} value={op} className="bg-slate-900 text-slate-300">{op}</option>)}
+                            </select>
+                        </div>
+                        <input
+                            type="number"
+                            placeholder="Value"
+                            className="h-full bg-transparent px-3 w-16 text-xs font-bold text-white outline-none placeholder:text-slate-700 [&::-webkit-inner-spin-button]:appearance-none"
+                            value={filterVal}
+                            onChange={(e) => setFilterVal(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAddStatFilter()}
+                        />
+                        <button onClick={handleAddStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-800 text-slate-500 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-lg">
+                            <Plus size={14} />
+                        </button>
+                    </div>
+
                     {/* Heatmap Toggle (Container Style) */}
-                    <div 
-                        className="flex items-center justify-between gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0" 
+                    <div
+                        className="flex items-center justify-between gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
                         onClick={() => setShowHeatmap(!showHeatmap)}
                         title="스탯 분포 색상 표시"
                     >
@@ -304,41 +327,21 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         </div>
                     </div>
 
-                    {/* Stat Filter */}
-                    <div className="flex items-center h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0">
-                        <div className="px-3 flex items-center justify-center border-r border-slate-800 h-full text-slate-500">
-                            <Filter size={14} />
+                    {/* Season Type Toggle (Container Style) */}
+                    <div
+                        className="flex items-center gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
+                        onClick={() => setSeasonType(seasonType === 'regular' ? 'playoff' : 'regular')}
+                        title="정규시즌 / 플레이오프 전환"
+                    >
+                        <div className={`text-xs font-bold transition-colors ${seasonType === 'regular' ? 'text-indigo-400' : 'text-slate-500'}`}>
+                            정규시즌
                         </div>
-                        <div className="relative h-full border-r border-slate-800">
-                            <select 
-                                className="h-full bg-transparent pl-3 pr-7 text-xs font-bold text-white outline-none cursor-pointer appearance-none hover:bg-slate-900 transition-colors w-32"
-                                value={filterCat}
-                                onChange={(e) => setFilterCat(e.target.value)}
-                            >
-                                {options.map(opt => <option key={opt.value} value={opt.value} className="bg-slate-900 text-slate-300">{opt.label}</option>)}
-                            </select>
-                            <ChevronDown size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 pointer-events-none" />
+                        <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${seasonType === 'playoff' ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${seasonType === 'playoff' ? 'right-0.5' : 'left-0.5'}`} />
                         </div>
-                        <div className="relative h-full border-r border-slate-800">
-                            <select 
-                                className="h-full bg-transparent px-2 text-xs font-bold text-indigo-400 outline-none cursor-pointer appearance-none text-center hover:bg-slate-900 transition-colors w-12"
-                                value={filterOp}
-                                onChange={(e) => setFilterOp(e.target.value as Operator)}
-                            >
-                                {['>=', '<=', '>', '<', '='].map(op => <option key={op} value={op} className="bg-slate-900 text-slate-300">{op}</option>)}
-                            </select>
+                        <div className={`text-xs font-bold transition-colors ${seasonType === 'playoff' ? 'text-indigo-400' : 'text-slate-500'}`}>
+                            플레이오프
                         </div>
-                        <input 
-                            type="number" 
-                            placeholder="Value" 
-                            className="h-full bg-transparent px-3 w-16 text-xs font-bold text-white outline-none placeholder:text-slate-700 [&::-webkit-inner-spin-button]:appearance-none"
-                            value={filterVal}
-                            onChange={(e) => setFilterVal(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAddStatFilter()}
-                        />
-                        <button onClick={handleAddStatFilter} className="h-full px-3 flex items-center justify-center border-l border-slate-800 text-slate-500 hover:text-white hover:bg-indigo-600/20 transition-all rounded-r-lg">
-                            <Plus size={14} />
-                        </button>
                     </div>
                 </div>
             </div>
