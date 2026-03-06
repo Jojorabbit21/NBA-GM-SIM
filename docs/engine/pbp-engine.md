@@ -52,7 +52,7 @@ services/game/tactics/
 {
     playerId: string,
     playerName: string,
-    position: string,
+    position: string,          // 뎁스차트 슬롯 포지션 (고유 포지션 아님, 경기 중 교체 시 계승)
     ovr: number,
     currentCondition: number,          // 현재 피로도 (0-100)
     startCondition: number,            // 입장 시 피로도 (피로 소모 계산용)
@@ -576,18 +576,15 @@ resolveRebound(homeTeam, awayTeam, shooterId)
 2단계 시스템:
   Step 1: ORB% 판정 (공격 리바운드 확률)
     BASE_ORB_RATE = 0.23 (NBA 평균)
-    offPower = Σ(offTeam) [offReb×0.6 + vertical×0.2 + (height-180)×0.5 + hands×0.1] × posBonus
-    defPower = Σ(defTeam) [defReb×0.6 + vertical×0.2 + (height-180)×0.5 + hands×0.1 + boxOut×0.15] × posBonus
-    ↳ boxOut은 수비 리바운드 파워에만 가산 (박스아웃 = 수비 기술)
+    offPower = Σ(offTeam) [offReb×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15]
+    defPower = Σ(defTeam) [defReb×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15]
     ± 슬라이더 보정
     범위: 0.12 ~ 0.38
+    ※ 포지션 가중치(posBonus) 제거됨 — 순수 능력치 기반
 
   Step 2: 리바운더 선택
-    score = (rebAttr×0.6 + vertical×0.2 + (height-180)×0.5 + hands×0.1 + boxOutMod)
-            × posBonus × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity×0.6)
-    ↳ boxOutMod = 수비 리바운드일 때만 boxOut × 0.15 (공격 리바운드에서는 0)
-
-    positionBonus: C:1.3, PF:1.2, 기타:1.0
+    score = (rebAttr×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15)
+            × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity×0.6)
 
     슈터 패널티: score *= 0.3
 

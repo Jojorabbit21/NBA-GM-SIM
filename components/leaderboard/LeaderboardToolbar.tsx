@@ -133,9 +133,9 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
         <div className="flex flex-col border-b border-slate-800 bg-slate-900">
             <div className="px-6 py-4 flex flex-col xl:flex-row items-center gap-6">
                 
-                {/* Left Group: Breadcrumb Style Selectors */}
-                <div className="flex items-center gap-2">
-                    <Dropdown 
+                {/* Left Group: Breadcrumb Style Selectors + Search */}
+                <div className="flex items-center gap-3">
+                    <Dropdown
                         trigger={
                            <button className="flex items-center gap-1 text-base font-black text-white uppercase tracking-tight hover:text-indigo-400 transition-colors group">
                                <span>{mode}</span>
@@ -152,7 +152,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
 
                     <span className="text-slate-700 text-base font-light">/</span>
 
-                    <Dropdown 
+                    <Dropdown
                         trigger={
                            <button className="flex items-center gap-1 text-base font-black text-slate-400 uppercase tracking-tight hover:text-white transition-colors group">
                                <span>{statCategory}</span>
@@ -164,51 +164,47 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         align="left"
                     />
 
-                </div>
-
-                {/* Right Group: Filters & Toggles */}
-                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
-
-                    {/* Season Type Toggle */}
-                    <div className="flex items-center bg-slate-950 rounded-lg border border-slate-800 h-[36px] overflow-hidden shrink-0">
-                        <button
-                            onClick={() => setSeasonType('regular')}
-                            className={`px-3 h-full text-[11px] font-bold transition-colors ${
-                                seasonType === 'regular'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-500 hover:text-white'
-                            }`}
-                        >정규시즌</button>
-                        <button
-                            onClick={() => setSeasonType('playoff')}
-                            className={`px-3 h-full text-[11px] font-bold transition-colors ${
-                                seasonType === 'playoff'
-                                    ? 'bg-indigo-600 text-white'
-                                    : 'text-slate-500 hover:text-white'
-                            }`}
-                        >플레이오프</button>
-                    </div>
-
                     {/* Search Input */}
                     <div className="relative h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0 w-48">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
                             <Search size={14} />
                         </div>
-                        <input 
-                            type="text" 
-                            placeholder="Search Name..." 
+                        <input
+                            type="text"
+                            placeholder="Search Name..."
                             className="h-full w-full bg-transparent pl-9 pr-3 text-xs font-bold text-white outline-none placeholder:text-slate-600"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                         {searchQuery && (
-                            <button 
+                            <button
                                 onClick={() => setSearchQuery('')}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-white"
                             >
                                 <X size={12} />
                             </button>
                         )}
+                    </div>
+                </div>
+
+                {/* Right Group: Filters & Toggles */}
+                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
+
+                    {/* Season Type Toggle (Container Style) */}
+                    <div
+                        className="flex items-center gap-3 h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm px-3 cursor-pointer group select-none hover:border-slate-700 transition-colors shrink-0"
+                        onClick={() => setSeasonType(seasonType === 'regular' ? 'playoff' : 'regular')}
+                        title="정규시즌 / 플레이오프 전환"
+                    >
+                        <div className={`text-xs font-bold transition-colors ${seasonType === 'regular' ? 'text-indigo-400' : 'text-slate-500'}`}>
+                            정규시즌
+                        </div>
+                        <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${seasonType === 'playoff' ? 'bg-indigo-600' : 'bg-slate-800'}`}>
+                            <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${seasonType === 'playoff' ? 'right-0.5' : 'left-0.5'}`} />
+                        </div>
+                        <div className={`text-xs font-bold transition-colors ${seasonType === 'playoff' ? 'text-indigo-400' : 'text-slate-500'}`}>
+                            플레이오프
+                        </div>
                     </div>
 
                     {/* Team Filter Dropdown */}

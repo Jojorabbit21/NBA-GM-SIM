@@ -159,7 +159,34 @@ interface RotationOverride {
 
 ---
 
-## 10. 엣지 케이스 정리
+## 10. Assigned Position (슬롯 포지션)
+
+`LivePlayer.position`은 선수의 고유 포지션이 아닌 **뎁스차트 슬롯 포지션**을 나타낸다.
+
+### 초기화
+- `initializer.ts`에서 `getSlotPosition(playerId, depthChart)`로 슬롯 조회
+- 뎁스차트에 없는 RES 선수는 고유 포지션 유지
+
+### 교체 시 포지션 계승
+모든 교체 경로에서 들어오는 선수가 나가는 선수의 position을 계승:
+
+| 교체 경로 | 포지션 할당 방식 |
+|---|---|
+| `checkAndApplyRotation` | 뎁스차트 슬롯 재조회 (`getSlotPosition`) |
+| `forceSubstitution` | `inPlayer.position = outPlayer.position` |
+| `benchWithOverride` | `filler.position = outPlayer.position` |
+| `executeGarbageSubstitution` | `inP.position = outP.position` |
+| `applyManualSubstitution` | `inPlayer.position = outPlayer.position` |
+
+### 영향 범위
+position은 엔진 내 수비자 매칭, 존 디펜스 앵커, PnR 스크리너 수비, 코트 비주얼 등에서 `===` 비교로 사용됨. 슬롯 포지션 덕분에 PG를 C에 넣으면 상대 C를 정상 매칭한다.
+
+### 포지션 미스매치 페널티
+별도 페널티 없음. 능력치(`intDef`, `blk`, `height`, `strength` 등) 자체가 자연 페널티 역할.
+
+---
+
+## 11. 엣지 케이스 정리
 
 | 케이스 | 처리 |
 |--------|------|

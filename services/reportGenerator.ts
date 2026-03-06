@@ -3,6 +3,7 @@ import React from 'react';
 import { Team, Player, Transaction, PlayoffSeries, Game } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
+import { createTiebreakerComparator } from '../utils/tiebreaker';
 import { Trophy, Crown, Medal, Star, Activity } from 'lucide-react';
 
 // --- Types ---
@@ -46,11 +47,14 @@ export interface PlayoffReport {
 }
 
 // --- Season Report Generator ---
-export const generateSeasonReport = (team: Team, allTeams: Team[], transactions: Transaction[]): SeasonReport => {
-    // 1. Ranks
-    const confTeams = allTeams.filter(t => t.conference === team.conference).sort((a, b) => b.wins - a.wins);
+export const generateSeasonReport = (team: Team, allTeams: Team[], transactions: Transaction[], schedule?: Game[]): SeasonReport => {
+    // 1. Ranks (with tiebreakers if schedule available)
+    const comparator = schedule
+        ? createTiebreakerComparator(allTeams, schedule)
+        : (a: Team, b: Team) => b.wins - a.wins;
+    const confTeams = allTeams.filter(t => t.conference === team.conference).sort(comparator);
     const confRank = confTeams.findIndex(t => t.id === team.id) + 1;
-    const leagueRank = [...allTeams].sort((a, b) => b.wins - a.wins).findIndex(t => t.id === team.id) + 1;
+    const leagueRank = [...allTeams].sort(comparator).findIndex(t => t.id === team.id) + 1;
     
     const totalGames = team.wins + team.losses || 82;
     const winPct = team.wins / totalGames;
