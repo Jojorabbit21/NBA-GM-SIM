@@ -13,6 +13,7 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 |------|------|----------|
 | [sim-structure.md](sim-structure.md) | 전체 파이프라인 개요 (Hook→Service→Engine) | useSimulation.ts, gameEngine.ts, main.ts |
 | [pbp-engine.md](pbp-engine.md) | PBP 엔진 내부 구조 (포세션 8단계) | possessionHandler.ts, flowEngine.ts, playTypes.ts |
+| [playoff-system.md](playoff-system.md) | 플레이오프 브래킷/타이브레이커/일정 생성 | playoffLogic.ts, tiebreaker.ts, seasonService.ts |
 
 ---
 
@@ -101,6 +102,13 @@ PBP 시뮬레이션 엔진의 모든 구성요소에 대한 문서 인덱스.
 | substitutionSystem.ts | [rotation-algorithm.md](rotation-algorithm.md) |
 | handlers/statUtils.ts | [stat-handlers.md](stat-handlers.md) |
 | handlers/visUtils.ts | [stat-handlers.md](stat-handlers.md) |
+
+### 플레이오프 & 유틸리티 (`utils/`)
+| 파일 | 문서 |
+|------|------|
+| playoffLogic.ts | [playoff-system.md](playoff-system.md) |
+| tiebreaker.ts | [playoff-system.md](playoff-system.md) |
+| simulationUtils.ts | [sim-structure.md](sim-structure.md), [playoff-system.md](playoff-system.md) |
 
 ### 외부 엔진 파일
 | 파일 | 문서 |

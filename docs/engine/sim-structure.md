@@ -114,20 +114,26 @@ useSimulation.handleExecuteSim()
 ### services/simulation/seasonService.ts
 - 경기 후 시즌 이벤트 처리
 - `handleSeasonEvents()` 반환: `{ updatedPlayoffSeries, newTransactions, newsItems, tradeToast }`
+- 플레이오프 상세 로직은 [playoff-system.md](playoff-system.md) 참조
 
 **처리 순서:**
 ```
 1. 플레이오프 상태 확인
-   ├─ 기존 시리즈 있으면: advancePlayoffState() → generateNextPlayoffGames()
-   └─ 정규시즌 종료 시: checkAndInitPlayoffs() → 1라운드 브래킷 생성
+   ├─ 기존 시리즈 있으면: advancePlayoffState(series, teams, schedule)
+   │   → generateNextPlayoffGames()
+   └─ 정규시즌 종료 시: checkAndInitPlayoffs() → Play-In 브래킷 생성
 
 2. CPU 트레이드 (정규시즌만, 30% 확률)
    ├─ simulateCPUTrades()
    └─ 트레이드 뉴스 생성
 
 3. 플레이오프 상태 DB 저장
-   └─ savePlayoffState()
+   └─ savePlayoffState() — 시리즈가 1개 이상이면 항상 실행
 ```
+
+> **주의**: `updateSeriesState()`가 시리즈 객체를 직접 mutation하므로,
+> 플레이오프 기간 중에는 조건 없이 항상 `savePlayoffState()` 호출.
+> 자세한 배경은 [playoff-system.md](playoff-system.md)의 "플레이오프 상태 저장" 섹션 참조.
 
 ---
 
