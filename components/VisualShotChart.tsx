@@ -1,7 +1,7 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Player } from '../types';
-import { ZONE_PATHS, COURT_LINES, ZONE_AVG, getZoneStyle, getZonePillColors } from '../utils/courtZones';
+import { ZONE_PATHS, COURT_LINES, ZONE_AVG, getZoneStyle, getZoneVolumeStyle, getZonePillColors } from '../utils/courtZones';
 
 // Helper for Ordinal Suffix
 const getOrdinal = (n: number) => {
@@ -39,8 +39,7 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
     const s = player.stats;
     if (!s) return null;
 
-    // Use total FGA to determine mode: Scouting (Low sample) vs Data (High sample)
-    const totalFGA = s.fga;
+    const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
     const getZ = (m: number | undefined, a: number | undefined) => ({ m: m || 0, a: a || 0 });
 
     const zData = useMemo(() => ({
@@ -115,6 +114,9 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
         { path: ZONE_PATHS.ATB3_R, data: zData.atb3R, avg: AVG.atb3, label: "우측 45도", key: 'atb3R', cx: 395, cy: 140 },
         { path: ZONE_PATHS.C3_R, data: zData.c3R, avg: AVG.c3, label: "우측 코너", key: 'c3R', cx: 400, cy: 350 },
     ], [zData, AVG]);
+
+    const maxAttempts = useMemo(() => Math.max(...zones.map(z => z.data.a), 0), [zones]);
+    const totalAttempts = useMemo(() => zones.reduce((sum, z) => sum + z.data.a, 0), [zones]);
 
     // Stats Grid Calculation
     const fgPct = s.fga > 0 ? (s.fgm / s.fga * 100).toFixed(1) + '%' : '0%';
@@ -224,14 +226,40 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                 <div className="flex flex-col gap-2 w-full max-w-[400px]">
                     <h5 className="text-base font-black text-white uppercase tracking-tight pl-1 flex justify-between items-center">
                         <span>샷 차트</span>
-                        <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
-                            <span>LOW</span>
-                            <div className="flex gap-0.5">
-                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10"></div>
-                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25"></div>
-                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50"></div>
+                        <div className="flex items-center gap-3">
+                            <div className="flex rounded-lg overflow-hidden border border-slate-600">
+                                <button
+                                    onClick={() => setShotChartMode('efficiency')}
+                                    className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'efficiency' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                                >
+                                    성공률
+                                </button>
+                                <button
+                                    onClick={() => setShotChartMode('volume')}
+                                    className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'volume' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                                >
+                                    시도수
+                                </button>
                             </div>
-                            <span>HIGH</span>
+                            <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                                <span>LOW</span>
+                                <div className="flex gap-0.5">
+                                    {shotChartMode === 'efficiency' ? (
+                                        <>
+                                            <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
+                                            <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
+                                            <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div className="w-3 h-2.5 rounded-sm bg-indigo-500/10" />
+                                            <div className="w-3 h-2.5 rounded-sm bg-indigo-500/25" />
+                                            <div className="w-3 h-2.5 rounded-sm bg-indigo-500/50" />
+                                        </>
+                                    )}
+                                </div>
+                                <span>HIGH</span>
+                            </div>
                         </div>
                     </h5>
                     
@@ -243,15 +271,17 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                             {/* Layer 1: Shot Zones (Heatmap) */}
                             <g className="zones">
                                 {zones.map((z, i) => {
-                                    const style = getZoneStyle(z.data.m, z.data.a, z.avg);
+                                    const style = shotChartMode === 'efficiency'
+                                        ? getZoneStyle(z.data.m, z.data.a, z.avg)
+                                        : getZoneVolumeStyle(z.data.a, maxAttempts);
                                     return (
                                         <path
                                             key={i}
                                             d={z.path}
                                             fill={style.fill}
                                             fillOpacity={style.opacity}
-                                            stroke="none" // Removed Stroke
-                                            className="transition-all duration-300" // Removed cursor-help
+                                            stroke="none"
+                                            className="transition-all duration-300"
                                         >
                                         </path>
                                     );
@@ -268,44 +298,45 @@ export const VisualShotChart: React.FC<{ player: Player, allPlayers?: Player[] }
                              {/* Layer 3: Data Labels Overlay (Only in Data Mode) - Pill Design */}
                             <g className="data-labels" pointerEvents="none">
                                 {zones.map((z, i) => {
-                                const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
-
-                                const style = getZoneStyle(z.data.m, z.data.a, z.avg);
-                                const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.data.a > 0);
-
                                 const width = 52;
                                 const height = z.data.a > 0 ? 36 : 30;
 
-                                return (
-                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                        <rect
-                                            x={-width / 2}
-                                            y={-height / 2}
-                                            width={width}
-                                            height={height}
-                                            rx={6}
-                                            fill={pillFill}
-                                            stroke={borderStroke}
-                                            strokeWidth={1}
-                                            fillOpacity={0.95}
-                                        />
-                                        <text
-                                            textAnchor="middle"
-                                            y={z.data.a > 0 ? -6 : -2}
-                                            fill={textFill}
-                                            fontSize="12px"
-                                            fontWeight="800"
-                                            style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
-                                        >
-                                            {pct}%
-                                        </text>
-                                        {z.data.a > 0 && (
-                                            <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
-                                                {z.data.m}/{z.data.a}
+                                if (shotChartMode === 'efficiency') {
+                                    const pct = z.data.a > 0 ? (z.data.m / z.data.a * 100).toFixed(0) : '0';
+                                    const style = getZoneStyle(z.data.m, z.data.a, z.avg);
+                                    const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.data.a > 0);
+                                    return (
+                                        <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                            <rect x={-width/2} y={-height/2} width={width} height={height} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
+                                            <text textAnchor="middle" y={z.data.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+                                                {pct}%
                                             </text>
-                                        )}
-                                    </g>
-                                );
+                                            {z.data.a > 0 && (
+                                                <text textAnchor="middle" y={10} fill="#ffffff" fontSize="9px" fontWeight="600">
+                                                    {z.data.m}/{z.data.a}
+                                                </text>
+                                            )}
+                                        </g>
+                                    );
+                                } else {
+                                    const volPct = totalAttempts > 0 ? (z.data.a / totalAttempts * 100).toFixed(1) : '0.0';
+                                    const pillFill = z.data.a > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(30,41,59,0.8)';
+                                    const textFill = z.data.a > 0 ? '#ffffff' : '#94a3b8';
+                                    const borderStroke = z.data.a > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)';
+                                    return (
+                                        <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                            <rect x={-width/2} y={-height/2} width={width} height={height} rx={6} fill={pillFill} stroke={borderStroke} strokeWidth={1} fillOpacity={0.95} />
+                                            <text textAnchor="middle" y={z.data.a > 0 ? -6 : -2} fill={textFill} fontSize="12px" fontWeight="800" style={{ textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}>
+                                                {z.data.a}
+                                            </text>
+                                            {z.data.a > 0 && (
+                                                <text textAnchor="middle" y={10} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600">
+                                                    {volPct}%
+                                                </text>
+                                            )}
+                                        </g>
+                                    );
+                                }
                                 })}
                             </g>
                         </svg>

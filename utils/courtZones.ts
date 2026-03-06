@@ -50,6 +50,13 @@ export const getZoneStyle = (makes: number, attempts: number, avg: number) => {
     return { fill: '#10b981', opacity, delta };
 };
 
+// Determine zone heatmap style for VOLUME (attempts) mode — indigo, opacity scales with attempts relative to max
+export const getZoneVolumeStyle = (attempts: number, maxAttempts: number) => {
+    if (maxAttempts === 0 || attempts === 0) return { fill: '#6366f1', opacity: 0.03 };
+    const opacity = Math.min(0.50, (attempts / maxAttempts) * 0.50);
+    return { fill: '#6366f1', opacity };
+};
+
 // Get pill label colors — fixed solid colors
 export const getZonePillColors = (delta: number, hasAttempts: boolean) => {
     if (!hasAttempts) return { pillFill: 'rgba(30,41,59,0.8)', textFill: '#94a3b8', borderStroke: 'rgba(255,255,255,0.1)' };

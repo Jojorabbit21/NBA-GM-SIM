@@ -11,7 +11,7 @@ import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } fro
 import {
     ZONE_PATHS, COURT_LINES, ZONE_AVG,
     ZONE_CONFIG as CHART_ZONES,
-    getZoneStyle, getZonePillColors
+    getZoneStyle, getZoneVolumeStyle, getZonePillColors
 } from '../utils/courtZones';
 import { ATTR_GROUPS, ATTR_AVG_KEYS, ATTR_KR_LABEL } from '../data/attributeConfig';
 import { generateScoutReport } from '../utils/scoutReport';
@@ -299,6 +299,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
     const hasPlayoffs = (player.playoffStats?.g ?? 0) > 0;
     const [showPlayoffStats, setShowPlayoffStats] = useState(false);
+    const [shotChartMode, setShotChartMode] = useState<'efficiency' | 'volume'>('efficiency');
+    const maxAttempts = useMemo(() => Math.max(...chartZones.map(z => z.a), 0), [chartZones]);
+    const totalAttempts = useMemo(() => chartZones.reduce((sum, z) => sum + z.a, 0), [chartZones]);
 
     // Compute advanced rate stats (USG%, AST%, ORB%, etc.) for display
     // These are normally computed only in the leaderboard hook, not on the original stats objects.
@@ -573,14 +576,40 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         <div className="border-r border-slate-800">
                             <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
                                 <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
-                                <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
-                                    <span>LOW</span>
-                                    <div className="flex gap-0.5">
-                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
-                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
-                                        <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                                <div className="flex items-center gap-3">
+                                    <div className="flex rounded-lg overflow-hidden border border-slate-600">
+                                        <button
+                                            onClick={() => setShotChartMode('efficiency')}
+                                            className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'efficiency' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                                        >
+                                            성공률
+                                        </button>
+                                        <button
+                                            onClick={() => setShotChartMode('volume')}
+                                            className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'volume' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                                        >
+                                            시도수
+                                        </button>
                                     </div>
-                                    <span>HIGH</span>
+                                    <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                                        <span>LOW</span>
+                                        <div className="flex gap-0.5">
+                                            {shotChartMode === 'efficiency' ? (
+                                                <>
+                                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
+                                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
+                                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <div className="w-3 h-2.5 rounded-sm bg-indigo-500/10" />
+                                                    <div className="w-3 h-2.5 rounded-sm bg-indigo-500/25" />
+                                                    <div className="w-3 h-2.5 rounded-sm bg-indigo-500/50" />
+                                                </>
+                                            )}
+                                        </div>
+                                        <span>HIGH</span>
+                                    </div>
                                 </div>
                             </div>
                             <div className="p-4">
@@ -589,7 +618,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     <rect x="0" y="0" width="435" height="403" fill="#020617" />
                                     <g>
                                         {chartZones.map((z, i) => {
-                                            const style = getZoneStyle(z.m, z.a, z.avg);
+                                            const style = shotChartMode === 'efficiency'
+                                                ? getZoneStyle(z.m, z.a, z.avg)
+                                                : getZoneVolumeStyle(z.a, maxAttempts);
                                             return (
                                                 <path key={i} d={ZONE_PATHS[z.pathKey]} fill={style.fill} fillOpacity={style.opacity} stroke={style.fill} strokeWidth={0.5} strokeOpacity={style.opacity} className="transition-all duration-300" />
                                             );
@@ -600,23 +631,44 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     </g>
                                     <g pointerEvents="none">
                                         {chartZones.map((z, i) => {
-                                            const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
-                                            const style = getZoneStyle(z.m, z.a, z.avg);
-                                            const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
-                                            const w = 54, h = z.a > 0 ? 42 : 32;
-                                            return (
-                                                <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
-                                                    <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
-                                                    <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
-                                                        {pct}%
-                                                    </text>
-                                                    {z.a > 0 && (
-                                                        <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
-                                                            {z.m}/{z.a}
+                                            if (shotChartMode === 'efficiency') {
+                                                const pct = z.a > 0 ? (z.m / z.a * 100).toFixed(0) : '0';
+                                                const style = getZoneStyle(z.m, z.a, z.avg);
+                                                const { pillFill, textFill, borderStroke } = getZonePillColors(style.delta, z.a > 0);
+                                                const w = 54, h = z.a > 0 ? 42 : 32;
+                                                return (
+                                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                        <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
+                                                        <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
+                                                            {pct}%
                                                         </text>
-                                                    )}
-                                                </g>
-                                            );
+                                                        {z.a > 0 && (
+                                                            <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
+                                                                {z.m}/{z.a}
+                                                            </text>
+                                                        )}
+                                                    </g>
+                                                );
+                                            } else {
+                                                const volPct = totalAttempts > 0 ? (z.a / totalAttempts * 100).toFixed(1) : '0.0';
+                                                const w = 54, h = z.a > 0 ? 42 : 32;
+                                                const pillFill = z.a > 0 ? 'rgba(0,0,0,0.6)' : 'rgba(30,41,59,0.8)';
+                                                const textFill = z.a > 0 ? '#ffffff' : '#94a3b8';
+                                                const borderStroke = z.a > 0 ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)';
+                                                return (
+                                                    <g key={i} transform={`translate(${z.cx}, ${z.cy})`}>
+                                                        <rect x={-w/2} y={-h/2} width={w} height={h} rx={8} fill={pillFill} stroke={borderStroke} strokeWidth={1} />
+                                                        <text textAnchor="middle" y={z.a > 0 ? -5 : 0} fill={textFill} fontSize="13px" fontWeight="800" dominantBaseline="middle">
+                                                            {z.a}
+                                                        </text>
+                                                        {z.a > 0 && (
+                                                            <text textAnchor="middle" y={12} fill="rgba(255,255,255,0.7)" fontSize="9px" fontWeight="600" dominantBaseline="middle">
+                                                                {volPct}%
+                                                            </text>
+                                                        )}
+                                                    </g>
+                                                );
+                                            }
                                         })}
                                     </g>
                                 </svg>
