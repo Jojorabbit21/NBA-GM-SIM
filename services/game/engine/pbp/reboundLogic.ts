@@ -20,10 +20,7 @@ export function calculateOrbChance(
     // 공격팀은 offReb(공격 리바운드 능력), 수비팀은 defReb(수비 리바운드 능력) 사용
     const calcPower = (team: TeamState, rebAttr: 'offReb' | 'defReb') =>
         team.onCourt.reduce((sum, p) => {
-            const posBonus = p.position === 'C' ? cfg.POS_WEIGHT_C
-                : p.position === 'PF' ? cfg.POS_WEIGHT_PF
-                : cfg.POS_WEIGHT_DEFAULT;
-            return sum + (p.attr[rebAttr] * 0.5 + p.attr.vertical * 0.2 + p.attr.strength * 0.15 + p.attr.boxOut * 0.15) * posBonus;
+            return sum + (p.attr[rebAttr] * 0.5 + p.attr.vertical * 0.2 + p.attr.strength * 0.15 + p.attr.boxOut * 0.15);
         }, 0);
 
     const offPower = calcPower(offTeam, 'offReb');
