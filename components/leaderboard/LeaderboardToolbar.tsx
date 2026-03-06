@@ -167,6 +167,11 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         align="left"
                     />
 
+                </div>
+
+                {/* Right Group: Filters & Toggles */}
+                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
+
                     {/* Search Input */}
                     <div className="relative h-[36px] bg-slate-950 rounded-lg border border-slate-800 shadow-sm shrink-0 w-48">
                         <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
@@ -188,10 +193,6 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             </button>
                         )}
                     </div>
-                </div>
-
-                {/* Right Group: Filters & Toggles */}
-                <div className="flex flex-col md:flex-row items-center gap-3 flex-1 overflow-x-auto w-full xl:w-auto xl:justify-end">
 
                     {/* Team Filter Dropdown */}
                     <div className="relative">
