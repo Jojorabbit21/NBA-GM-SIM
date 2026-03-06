@@ -161,9 +161,6 @@ export const SIM_CONFIG = {
         MAX_ORB_RATE: 0.38,           // 상한 (극단적 공격 리바 크래쉬)
         SLIDER_IMPACT: 0.012,         // 슬라이더 1포인트당 ORB% ±1.2%
         QUALITY_FACTOR: 0.08,         // 팀 리바 능력 차이 반영 계수
-        POS_WEIGHT_C: 1.3,            // 센터 리바운드 가중치
-        POS_WEIGHT_PF: 1.2,           // 파워포워드 가중치
-        POS_WEIGHT_DEFAULT: 1.0,      // 기본 가중치
         SHOOTER_PENALTY: 0.3,         // 슈터 본인 리바 확률 감소
         TEAM_REB_RATE_FG: 0.10,       // FG 미스 → 팀 리바운드 확률 (개인 미기록, NBA 평균 ~10%)
         TEAM_REB_RATE_FT: 0.15,       // FT 라스트샷 미스 → 팀 리바운드 확률
