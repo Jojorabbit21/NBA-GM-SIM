@@ -1,5 +1,6 @@
 
 import { Team, Game, PlayoffSeries } from '../types';
+import { createTiebreakerComparator } from './tiebreaker';
 
 export const PLAYOFF_ROUNDS = {
     PLAY_IN: 0,
@@ -39,10 +40,10 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
 
     console.log("🏆 Regular Season Complete. Initializing Post-Season...");
 
-    // 2. Rank Teams
-    const getRanked = (conf: 'East' | 'West') => 
-        teams.filter(t => t.conference === conf)
-             .sort((a, b) => (b.wins / (b.wins + b.losses || 1)) - (a.wins / (a.wins + a.losses || 1)));
+    // 2. Rank Teams (with tiebreakers: PCT → H2H → Conf Record → Diff)
+    const comparator = createTiebreakerComparator(teams, schedule);
+    const getRanked = (conf: 'East' | 'West') =>
+        teams.filter(t => t.conference === conf).sort(comparator);
 
     const eastRanked = getRanked('East');
     const westRanked = getRanked('West');
@@ -96,7 +97,7 @@ export function checkAndInitPlayoffs(teams: Team[], schedule: Game[], currentSer
  * Evaluates game results and advances the bracket state.
  * Handles Play-In -> R1 -> Semis -> Conf Finals -> Finals progression.
  */
-export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[]): PlayoffSeries[] {
+export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], schedule: Game[]): PlayoffSeries[] {
     let updated = [...seriesList];
     let changed = false;
 
@@ -125,8 +126,8 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[]):
     if (playInGames.length > 0 && playInGames.every(s => s.finished) && round1Games.length === 0) {
         // Generate Round 1
         const getSeeded = (conf: 'East' | 'West') => {
-            const ranked = teams.filter(t => t.conference === conf)
-                .sort((a, b) => (b.wins / (b.wins + b.losses || 1)) - (a.wins / (a.wins + a.losses || 1)));
+            const comparator = createTiebreakerComparator(teams, schedule);
+            const ranked = teams.filter(t => t.conference === conf).sort(comparator);
             
             const pi7v8 = updated.find(s => s.id === `${conf}_PI_7v8`);
             const piDecider = updated.find(s => s.id === `${conf}_PI_8th_Decider`);
@@ -217,7 +218,7 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[]):
     const eastCF = updated.find(s => s.round === 3 && s.conference === 'East');
     const westCF = updated.find(s => s.round === 3 && s.conference === 'West');
 
-    if (eastCF || westCF) {
+    if (eastCF && westCF) {
         const finals = ensureNextSeries(`BPL_FINALS`, 4, 'BPL', eastCF?.winnerId || 'TBD', westCF?.winnerId || 'TBD');
         if (eastCF?.winnerId && finals.higherSeedId === 'TBD') { finals.higherSeedId = eastCF.winnerId; changed = true; }
         if (westCF?.winnerId && finals.lowerSeedId === 'TBD') { finals.lowerSeedId = westCF.winnerId; changed = true; }

@@ -602,6 +602,8 @@ export function applyManualSubstitution(
 
         userTeam.bench.splice(inIdx, 1);
         userTeam.onCourt.push(inPlayer);
+        // 나가는 선수의 슬롯 포지션 계승
+        inPlayer.position = outPlayer.position;
 
         // rotation history 기록
         const histOut = state.rotationHistory[outPlayer.playerId];

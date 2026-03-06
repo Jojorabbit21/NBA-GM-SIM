@@ -19,6 +19,15 @@ const POSITION_ADJACENCY: Record<string, string[]> = {
     C:  ['PF'],
 };
 
+/** 뎁스차트에서 선수의 슬롯 포지션 조회 */
+function getSlotPosition(playerId: string, depthChart?: DepthChart): string | null {
+    if (!depthChart) return null;
+    for (const pos of ['PG', 'SG', 'SF', 'PF', 'C'] as const) {
+        if (depthChart[pos]?.includes(playerId)) return pos;
+    }
+    return null;
+}
+
 /**
  * 뎁스차트에서 특정 포지션의 대체자 후보를 순서대로 반환
  * 반환: Map<playerId, rank> — rank가 낮을수록 우선순위 높음
@@ -277,6 +286,8 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
             if (idx > -1) {
                 teamState.bench.splice(idx, 1);
                 teamState.onCourt.push(p);
+                // 뎁스차트 슬롯 포지션으로 업데이트
+                p.position = getSlotPosition(p.playerId, teamState.depthChart) || p.position;
                 if (!state.rotationHistory[p.playerId]) state.rotationHistory[p.playerId] = [];
                 state.rotationHistory[p.playerId].push({ in: currentTotalSec, out: currentTotalSec });
                 p.lastSubInTime = state.gameClock;
@@ -355,6 +366,8 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
 
             team.bench.splice(inIdx, 1);
             team.onCourt.push(inPlayer);
+            // 나가는 선수의 슬롯 포지션 계승
+            inPlayer.position = outPlayer.position;
 
             // 기록
             const histOut = state.rotationHistory[outPlayer.playerId];
@@ -454,6 +467,8 @@ export function benchWithOverride(
         team.bench.push(outPlayer);
         team.bench.splice(inIdx, 1);
         team.onCourt.push(filler);
+        // 나가는 선수의 슬롯 포지션 계승
+        filler.position = outPlayer.position;
 
         const histOut = state.rotationHistory[outPlayer.playerId];
         if (histOut && histOut.length > 0) histOut[histOut.length - 1].out = currentTotalSec;
@@ -715,6 +730,8 @@ export function executeGarbageSubstitution(
         team.bench.push(outP);
         team.bench.splice(team.bench.indexOf(inP), 1);
         team.onCourt.push(inP);
+        // 나가는 선수의 슬롯 포지션 계승
+        inP.position = outP.position;
 
         // 로테이션 기록
         const histOut = state.rotationHistory[outP.playerId];
