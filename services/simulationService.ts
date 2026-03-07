@@ -1,5 +1,5 @@
 
-import { Team, Game, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent } from '../types';
+import { Team, Game, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent, PbpLog } from '../types';
 import { simulateGame } from './gameEngine';
 
 export interface CpuGameResult {
@@ -12,8 +12,9 @@ export interface CpuGameResult {
     seriesId?: string;
     boxScore: { home: PlayerBoxScore[]; away: PlayerBoxScore[] };
     tactics: { home: TacticalSnapshot; away: TacticalSnapshot };
-    rotationData?: RotationData; // [New]
-    pbpShotEvents?: ShotEvent[]; // [New]
+    rotationData?: RotationData;
+    pbpShotEvents?: ShotEvent[];
+    pbpLogs?: PbpLog[]; // In-memory only, not saved to DB
 }
 
 /**
@@ -52,9 +53,9 @@ export const simulateCpuGames = (
                 seriesId: game.seriesId,
                 boxScore: { home: simResult.homeBox, away: simResult.awayBox },
                 tactics: { home: simResult.homeTactics, away: simResult.awayTactics },
-                // [Update] Save visual data (Charts), but NOT pbp logs
                 rotationData: simResult.rotationData,
-                pbpShotEvents: simResult.pbpShotEvents
+                pbpShotEvents: simResult.pbpShotEvents,
+                pbpLogs: simResult.pbpLogs
             });
         }
     }

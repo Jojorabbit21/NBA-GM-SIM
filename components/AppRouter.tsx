@@ -4,6 +4,7 @@ import { AppView, Team, Player, GameTactics, DraftPoolType } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
+import { DayGamesView } from '../views/DayGamesView';
 import { DashboardView } from '../views/DashboardView';
 import { RosterView } from '../views/RosterView';
 import { ScheduleView } from '../views/ScheduleView';
@@ -104,43 +105,63 @@ const AppRouter: React.FC<AppRouterProps> = ({
 
     if (view === 'GameResult' && sim.lastGameResult) {
         return (
-            <GameResultView 
-                result={sim.lastGameResult} 
-                myTeamId={gameData.myTeamId!} 
-                teams={gameData.teams} 
-                onFinish={() => { 
-                    // Only advance date if it's a live simulation, not a replay
-                    // Checking if currentSimDate matches the result date can be tricky due to timezones,
-                    // but usually "Finish" implies moving on.
-                    // However, if we came from Inbox, we just want to go back to Inbox or Dashboard without advancing.
-                    // For now, let's keep it simple: if it was a real sim, date was advanced INSIDE useSimulation.
-                    // Here we just clear the view.
-                    
-                    // Actually, date advancement is triggered here in original code.
-                    // We need to know if this is a "Replay" or "Live".
-                    // A simple check: if gameData.currentSimDate == result.date, it's likely Live (or same day replay).
-                    // If result.date < currentSimDate, it is definitely a replay.
-                    
+            <GameResultView
+                result={sim.lastGameResult}
+                myTeamId={gameData.myTeamId!}
+                teams={gameData.teams}
+                onFinish={() => {
                     const resultDate = new Date(sim.lastGameResult.date);
                     const currentDate = new Date(gameData.currentSimDate);
-                    
-                    // If result is from the past, go back to wherever we came from
+
                     if (resultDate < currentDate) {
                         sim.clearLastGameResult();
                         setView(previousViewRef.current);
                     } else {
-                        // Live Sim completion logic
                         const d = new Date(gameData.currentSimDate);
                         d.setDate(d.getDate() + 1);
                         const nextDate = d.toISOString().split('T')[0];
                         gameData.setCurrentSimDate(nextDate);
-                        sim.clearLastGameResult(); 
-                        sim.setIsSimulating(false); 
-                        setView('Dashboard'); 
+                        sim.clearLastGameResult();
+                        sim.setIsSimulating(false);
+                        setView('Dashboard');
                         gameData.forceSave({ currentSimDate: nextDate });
                     }
-                }} 
+                }}
             />
+        );
+    }
+
+    // 비경기일 / 플레이오프 탈락 후 CPU 경기 관전
+    if (sim.restDayData) {
+        return (
+            <>
+                <DayGamesView
+                    date={sim.restDayData.date}
+                    cpuResults={sim.restDayData.cpuResults}
+                    teams={gameData.teams}
+                    onFinish={() => {
+                        sim.finalizeRestDay();
+                        setView('Dashboard');
+                    }}
+                    onWatchGame={(gameId: string) => {
+                        sim.startSpectating(
+                            gameId,
+                            sim.restDayData!.cpuResults,
+                            gameData.teams
+                        );
+                    }}
+                />
+                {sim.spectateTarget && (
+                    <GameSimulatingView
+                        homeTeam={sim.spectateTarget.homeTeam}
+                        awayTeam={sim.spectateTarget.awayTeam}
+                        userTeamId={null}
+                        pbpLogs={sim.spectateTarget.pbpLogs}
+                        pbpShotEvents={sim.spectateTarget.pbpShotEvents}
+                        onSimulationComplete={sim.clearSpectateTarget}
+                    />
+                )}
+            </>
         );
     }
 

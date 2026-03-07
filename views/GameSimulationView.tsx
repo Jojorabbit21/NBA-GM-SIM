@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { SkipForward } from 'lucide-react';
 import { Team, PbpLog, ShotEvent } from '../types';
 import { calculateWinProbability, calculatePerMinuteStats, WPSnapshot } from '../utils/simulationMath';
 import { GAME_OVER_MESSAGES } from '../data/uiConstants';
@@ -230,12 +231,25 @@ export const GameSimulatingView: React.FC<{
        messageClass = "text-orange-400 font-bold text-lg animate-shake-gentle";
   }
 
+  const isSpectateMode = !userTeamId;
+
   return (
     <div className="fixed inset-0 bg-slate-950 z-[110] flex flex-col items-center justify-center p-4 overflow-hidden">
       <div className="absolute inset-0 opacity-10 pointer-events-none">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-500 rounded-full blur-[150px]"></div>
           <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-blue-500 rounded-full blur-[150px]"></div>
       </div>
+
+      {/* 참관 모드 건너뛰기 버튼 */}
+      {isSpectateMode && !finalMessage && (
+          <button
+              onClick={() => onCompleteRef.current?.()}
+              className="absolute top-6 right-6 z-20 flex items-center gap-2 text-xs font-bold text-slate-500 hover:text-slate-300 bg-slate-800/60 hover:bg-slate-700/60 backdrop-blur-sm px-4 py-2 rounded-xl transition-all active:scale-95"
+          >
+              <SkipForward size={14} />
+              건너뛰기
+          </button>
+      )}
 
       <div className="relative z-10 w-full max-w-4xl bg-slate-900 border border-slate-800 rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col">
           

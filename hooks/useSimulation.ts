@@ -1,12 +1,13 @@
 
 import { useState, useRef, useCallback } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart, PbpLog, ShotEvent } from '../types';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
+import { CpuGameResult } from '../services/simulationService';
 
 export const useSimulation = (
     teams: Team[],
@@ -34,6 +35,44 @@ export const useSimulation = (
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
     
     const finalizeSimRef = useRef<(() => void) | undefined>(undefined);
+
+    // ── Spectate Mode (비경기일 / 플레이오프 탈락 후 CPU 경기 관전) ──
+    const [restDayData, setRestDayData] = useState<{
+        cpuResults: CpuGameResult[];
+        date: string;
+        nextDate: string;
+    } | null>(null);
+
+    const [spectateTarget, setSpectateTarget] = useState<{
+        homeTeam: Team;
+        awayTeam: Team;
+        pbpLogs: PbpLog[];
+        pbpShotEvents: ShotEvent[];
+    } | null>(null);
+
+    const startSpectating = useCallback((gameId: string, cpuResults: CpuGameResult[], allTeams: Team[]) => {
+        const game = cpuResults.find(g => g.gameId === gameId);
+        if (!game?.pbpLogs?.length) return;
+        const homeTeam = allTeams.find(t => t.id === game.homeTeamId);
+        const awayTeam = allTeams.find(t => t.id === game.awayTeamId);
+        if (!homeTeam || !awayTeam) return;
+        setSpectateTarget({
+            homeTeam, awayTeam,
+            pbpLogs: game.pbpLogs,
+            pbpShotEvents: game.pbpShotEvents || [],
+        });
+    }, []);
+
+    const clearSpectateTarget = useCallback(() => setSpectateTarget(null), []);
+
+    const finalizeRestDay = useCallback(async () => {
+        if (!restDayData) return;
+        advanceDate(restDayData.nextDate, {});
+        if (!isGuestMode) {
+            await forceSave({ currentSimDate: restDayData.nextDate });
+        }
+        setRestDayData(null);
+    }, [restDayData, advanceDate, forceSave, isGuestMode]);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false) => {
         if (isSimulating || !myTeamId) return;
@@ -170,18 +209,21 @@ export const useSimulation = (
                 d.setDate(d.getDate() + 1);
                 const nextDate = d.toISOString().split('T')[0];
 
-                advanceDate(nextDate, { teams: newTeams, schedule: newSchedule });
-
-                // Save
-                if (!isGuestMode) {
-                    await forceSave({ 
-                        currentSimDate: nextDate,
-                        teams: newTeams 
+                // CPU 경기가 있으면 DayGamesView 표시 (날짜 이동은 유저가 닫을 때)
+                if (cpuData.cpuResults.length > 0) {
+                    setRestDayData({
+                        cpuResults: cpuData.cpuResults,
+                        date: currentSimDate,
+                        nextDate,
                     });
+                } else {
+                    advanceDate(nextDate, {});
+                    if (!isGuestMode) {
+                        await forceSave({ currentSimDate: nextDate });
+                    }
                 }
 
                 setIsSimulating(false);
-                // [UX Fix] Toast removed
             }
 
         } catch (e) {
@@ -348,6 +390,12 @@ export const useSimulation = (
         tempSimulationResult,
         finalizeSimRef,
         clearLastGameResult,
-        loadSavedGameResult
+        loadSavedGameResult,
+        // Spectate
+        restDayData,
+        spectateTarget,
+        startSpectating,
+        clearSpectateTarget,
+        finalizeRestDay,
     };
 };
