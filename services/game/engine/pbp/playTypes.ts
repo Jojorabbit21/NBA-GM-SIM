@@ -202,6 +202,14 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             return { p, weight: Math.max(0.01, weight) };
         });
 
+        // [Safety] 빈 후보군 방어 (onCourt < 2명 + excludeId 조합 시 가능)
+        if (candidates.length === 0) {
+            console.error('[PBP DEBUG] pickWeightedActor: empty candidates!', {
+                poolSize: players.length, excludeId, playType,
+            });
+            return players[0]; // onCourt 첫 번째 선수라도 반환
+        }
+
         // 2. Total Weight
         const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
 

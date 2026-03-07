@@ -44,7 +44,19 @@ function identifyDefender(
 
     // 2. Default Defender
     let defender = defTeam.onCourt.find(p => p.position === actor.position);
-    if (!defender) defender = defTeam.onCourt[Math.floor(Math.random() * 5)];
+    if (!defender && defTeam.onCourt.length > 0) {
+        defender = defTeam.onCourt[Math.floor(Math.random() * defTeam.onCourt.length)];
+    }
+    // [Debug] 수비수를 찾지 못한 경우 진단 로그
+    if (!defender) {
+        console.error('[PBP DEBUG] identifyDefender: defender undefined!', {
+            onCourtLength: defTeam.onCourt.length,
+            actorPosition: actor.position,
+            teamId: defTeam.id,
+        });
+        // 최후의 fallback: 코트에 아무나
+        defender = defTeam.onCourt[0];
+    }
 
     // 3. Switch Logic
     // Driven by 'switchFreq' slider (1-10)
@@ -255,6 +267,22 @@ function getMomentumBonus(state: GameState, offTeamId: string): number {
 export function simulatePossession(state: GameState, options?: { minHitRate?: number; clutchContext?: ClutchContext }): PossessionResult {
     const offTeam = state.possession === 'home' ? state.home : state.away;
     const defTeam = state.possession === 'home' ? state.away : state.home;
+
+    // [Debug] onCourt 상태 진단
+    if (offTeam.onCourt.length !== 5 || defTeam.onCourt.length !== 5) {
+        console.error('[PBP DEBUG] onCourt size mismatch!', {
+            offTeamId: offTeam.id, offCount: offTeam.onCourt.length,
+            defTeamId: defTeam.id, defCount: defTeam.onCourt.length,
+            quarter: state.quarter, gameClock: state.gameClock,
+        });
+    }
+    if (offTeam.onCourt.some(p => !p) || defTeam.onCourt.some(p => !p)) {
+        console.error('[PBP DEBUG] onCourt has undefined entry!', {
+            offUndefined: offTeam.onCourt.map((p, i) => !p ? i : null).filter(i => i !== null),
+            defUndefined: defTeam.onCourt.map((p, i) => !p ? i : null).filter(i => i !== null),
+        });
+    }
+
     const sliders = offTeam.tactics.sliders;
 
     // 1. Play Selection based on Sliders
@@ -336,6 +364,19 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     const { defender, isSwitch, isBotchedSwitch, pnrCoverage, screenerDefender } = identifyDefender(
         defTeam, actor, secondaryActor, selectedPlayType, isActorAce, preferredZone, isZone, screener
     );
+
+    // [Safety] defender가 undefined면 턴오버로 처리 (크래시 방지)
+    if (!defender) {
+        console.error('[PBP CRITICAL] defender is undefined after identifyDefender!', {
+            defTeamId: defTeam.id, defOnCourt: defTeam.onCourt.length,
+            actorId: actor.playerId, playType: selectedPlayType,
+        });
+        return {
+            type: 'turnover', offTeam, defTeam, actor, defender: actor,
+            points: 0, isAndOne: false, playType: selectedPlayType,
+            isSwitch: false, isZone: false,
+        };
+    }
 
     // 3. Shooting Foul Check (존별 단일 확률 + drawFoul 커브)
     // 이중 게이트(baseFoul × shootingRatio) 제거 → 존별 직접 슈팅파울 확률
