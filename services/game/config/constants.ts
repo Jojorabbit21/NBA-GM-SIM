@@ -178,24 +178,24 @@ export const SIM_CONFIG = {
     // Block System (미스 중 블락 판정, 커브 기반)
     BLOCK: {
         ENABLED: false, // ★ TEMPORARY: 아키타입 비활성화
-        // 존별 베이스 블락 확률
-        BASE_RIM: 0.12,
-        BASE_PAINT: 0.07,
-        BASE_MID: 0.04,
-        BASE_3PT: 0.01,
+        // 존별 베이스 블락 확률 (pre-shot 방식: 전체 슛 대상이므로 낮게 설정)
+        BASE_RIM: 0.08,
+        BASE_PAINT: 0.045,
+        BASE_MID: 0.025,
+        BASE_3PT: 0.007,
 
-        // 블락 능력치 커브: blk → 추가 블락 확률 (80~90 구간 강화)
+        // 블락 능력치 커브: blk → 추가 블락 확률 (pre-shot 기준)
         BLK_CURVE: [
-            [40, -0.02], [55, -0.01], [70, 0.00],
-            [80, 0.035], [85, 0.060], [90, 0.090],
-            [95, 0.130], [99, 0.160],
+            [40, -0.015], [55, -0.008], [70, 0.00],
+            [80, 0.020], [85, 0.038], [90, 0.058],
+            [95, 0.085], [99, 0.105],
         ] as [number, number][],
 
         // 키 보너스 (블락에서는 키가 독립적으로 중요)
-        HEIGHT_FACTOR: 0.001,
+        HEIGHT_FACTOR: 0.0006,
 
         // 수직 점프 보너스 (vertical 70 기준, 초과분 × 계수)
-        VERT_FACTOR: 0.001,
+        VERT_FACTOR: 0.0006,
 
         // 엘리트 블로커 아키타입 보너스 (조건부 발동)
         ARCHETYPE_ALIEN: 0.03,
@@ -203,9 +203,9 @@ export const SIM_CONFIG = {
         ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
 
         // 헬프 블락 (림 프로텍터 회전 블락)
-        HELP_BASE: 0.04,
+        HELP_BASE: 0.025,
         HELP_BLK_THRESHOLD: 82,
-        HELP_BLK_BONUS: 0.04,
+        HELP_BLK_BONUS: 0.025,
         HELP_RIM_THRESHOLD: 75,
         HELP_RIM_BONUS: 0.03,
         HELP_MID_FACTOR: 0.5,
