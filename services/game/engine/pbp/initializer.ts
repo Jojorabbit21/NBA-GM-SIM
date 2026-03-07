@@ -154,6 +154,10 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         });
     }
 
+    // [Fix] 로스터에 실제 존재하는 선수만 남김 (트레이드/방출 후 맵에 유령 ID 잔존 방지)
+    const rosterIdSet = new Set(sortedRoster.map(p => p.id));
+    startingIds = startingIds.filter(id => rosterIdSet.has(id));
+
     // [Step 2] 유효성 검사 및 보정 (정확히 5명이 아니면 뎁스차트/OVR순으로 채움)
     // 로테이션 차트가 비어있거나, 5명이 안되는 경우를 대비한 안전 장치
     if (startingIds.length !== 5) {

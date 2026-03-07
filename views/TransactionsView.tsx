@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { ArrowLeftRight, Loader2 } from 'lucide-react';
-import { Team, Player, Transaction } from '../types';
+import { Team, Player, Transaction, GameTactics } from '../types';
 import { calculatePlayerOvr } from '../utils/constants';
 
 // Components & Hooks
@@ -26,20 +26,24 @@ interface TransactionsViewProps {
   refreshUnreadCount?: () => void;
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
+  userTactics?: GameTactics;
+  setUserTactics?: React.Dispatch<React.SetStateAction<GameTactics | null>>;
 }
 
-export const TransactionsView: React.FC<TransactionsViewProps> = ({ 
+export const TransactionsView: React.FC<TransactionsViewProps> = ({
     team, teams, setTeams, addNews, onShowToast, currentSimDate, transactions,
-    onAddTransaction, onForceSave, userId, refreshUnreadCount, tendencySeed, onViewPlayer
+    onAddTransaction, onForceSave, userId, refreshUnreadCount, tendencySeed, onViewPlayer,
+    userTactics, setUserTactics
 }) => {
   const [activeTab, setActiveTab] = useState<'Block' | 'Proposal' | 'History'>('Block');
 
   // Use Custom Hook for Business Logic
   const tradeSystem = useTradeSystem(
-      team, teams, setTeams, currentSimDate, 
-      userId, 
-      onAddTransaction, onForceSave, onShowToast, 
-      refreshUnreadCount
+      team, teams, setTeams, currentSimDate,
+      userId,
+      onAddTransaction, onForceSave, onShowToast,
+      refreshUnreadCount,
+      userTactics, setUserTactics
   );
 
   const {

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Team, Player, TradeOffer, Transaction, TradeAlertContent } from '../types';
+import { Team, Player, TradeOffer, Transaction, TradeAlertContent, GameTactics } from '../types';
 import { generateTradeOffers, generateCounterOffers } from '../services/tradeEngine';
 import { TRADE_DEADLINE, calculatePlayerOvr } from '../utils/constants';
 import { logEvent } from '../services/analytics';
@@ -10,15 +10,17 @@ import { sendMessage } from '../services/messageService';
 const MAX_DAILY_TRADES = 5;
 
 export const useTradeSystem = (
-    team: Team, 
-    teams: Team[], 
+    team: Team,
+    teams: Team[],
     setTeams: React.Dispatch<React.SetStateAction<Team[]>>,
     currentSimDate: string,
-    userId?: string, // [Added] Explicit UserId
+    userId?: string,
     onAddTransaction?: (t: Transaction) => void,
     onForceSave?: (overrides?: any) => Promise<void>,
     onShowToast?: (msg: string) => void,
-    refreshUnreadCount?: () => void // [Added] Callback for badge update
+    refreshUnreadCount?: () => void,
+    userTactics?: GameTactics,
+    setUserTactics?: React.Dispatch<React.SetStateAction<GameTactics | null>>
 ) => {
     // Local State
     const [blockSelectedIds, setBlockSelectedIds] = useState<Set<string>>(new Set());
@@ -232,8 +234,66 @@ export const useTradeSystem = (
 
             setTeams(nextTeams);
 
-            // [Persistence] Save Checkpoint (Roster State)
-            if (onForceSave) await onForceSave({ teams: nextTeams });
+            // [Rotation Map] 트레이드된 선수의 로테이션을 받은 선수에게 이전
+            let updatedTactics = userTactics;
+            if (userTactics?.rotationMap) {
+                const newRotationMap = { ...userTactics.rotationMap };
+                const newStarters = { ...userTactics.starters };
+
+                // 보낸 선수 중 로테이션맵에 등록된 선수들의 스케줄 수집
+                const outSchedules: { id: string; position: string; schedule: boolean[] }[] = [];
+                for (const outPlayer of userAssets) {
+                    if (newRotationMap[outPlayer.id]) {
+                        outSchedules.push({
+                            id: outPlayer.id,
+                            position: outPlayer.position,
+                            schedule: [...newRotationMap[outPlayer.id]],
+                        });
+                        delete newRotationMap[outPlayer.id];
+                    }
+                }
+
+                // 받은 선수를 포지션 매칭으로 보낸 선수의 스케줄에 배정
+                const assignedIncoming = new Set<string>();
+                for (const out of outSchedules) {
+                    // 같은 포지션의 받은 선수 중 아직 배정되지 않은 선수 찾기
+                    const match = targetAssets.find(
+                        p => p.position === out.position && !assignedIncoming.has(p.id)
+                    );
+                    if (match) {
+                        newRotationMap[match.id] = out.schedule;
+                        assignedIncoming.add(match.id);
+                    } else {
+                        // 포지션 매칭 실패 → 아무 미배정 받은 선수에게 배정
+                        const anyMatch = targetAssets.find(p => !assignedIncoming.has(p.id));
+                        if (anyMatch) {
+                            newRotationMap[anyMatch.id] = out.schedule;
+                            assignedIncoming.add(anyMatch.id);
+                        }
+                        // 매칭할 선수 없으면 스케줄 삭제됨 (이미 delete 완료)
+                    }
+
+                    // starters에서 보낸 선수가 있으면 받은 선수로 교체
+                    for (const pos of Object.keys(newStarters) as (keyof typeof newStarters)[]) {
+                        if (newStarters[pos] === out.id) {
+                            const replacement = match || targetAssets.find(p => !assignedIncoming.has(p.id));
+                            if (replacement) {
+                                newStarters[pos] = replacement.id;
+                            }
+                        }
+                    }
+                }
+
+                updatedTactics = {
+                    ...userTactics,
+                    rotationMap: newRotationMap,
+                    starters: newStarters,
+                };
+                if (setUserTactics) setUserTactics(updatedTactics);
+            }
+
+            // [Persistence] Save Checkpoint (Roster State + Updated Tactics)
+            if (onForceSave) await onForceSave({ teams: nextTeams, userTactics: updatedTactics });
 
         } catch (e) {
             console.error("Trade Execution Failed:", e);
