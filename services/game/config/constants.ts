@@ -179,20 +179,23 @@ export const SIM_CONFIG = {
     BLOCK: {
         ENABLED: false, // ★ TEMPORARY: 아키타입 비활성화
         // 존별 베이스 블락 확률
-        BASE_RIM: 0.10,
-        BASE_PAINT: 0.05,
-        BASE_MID: 0.035,
+        BASE_RIM: 0.12,
+        BASE_PAINT: 0.07,
+        BASE_MID: 0.04,
         BASE_3PT: 0.01,
 
         // 블락 능력치 커브: blk → 추가 블락 확률 (85까지 완만, 90+ 가속)
         BLK_CURVE: [
             [40, -0.02], [55, -0.01], [70, 0.00],
-            [80, 0.02], [85, 0.035], [90, 0.055],
-            [95, 0.085], [99, 0.105],
+            [80, 0.025], [85, 0.045], [90, 0.070],
+            [95, 0.110], [99, 0.140],
         ] as [number, number][],
 
         // 키 보너스 (블락에서는 키가 독립적으로 중요)
         HEIGHT_FACTOR: 0.001,
+
+        // 수직 점프 보너스 (vertical 70 기준, 초과분 × 계수)
+        VERT_FACTOR: 0.001,
 
         // 엘리트 블로커 아키타입 보너스 (조건부 발동)
         ARCHETYPE_ALIEN: 0.03,
@@ -200,7 +203,7 @@ export const SIM_CONFIG = {
         ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
 
         // 헬프 블락 (림 프로텍터 회전 블락)
-        HELP_BASE: 0.02,
+        HELP_BASE: 0.03,
         HELP_BLK_THRESHOLD: 85,
         HELP_BLK_BONUS: 0.03,
         HELP_RIM_THRESHOLD: 75,
@@ -335,11 +338,13 @@ export const SIM_CONFIG = {
         FADEAWAY_MID_MIN: 85,
         FADEAWAY_CLOSESHOT_MIN: 85,
         FADEAWAY_WEIGHT: 0.6,
+        PAINT_JUMPER_CLOSESHOT_MIN: 75,  // Short Jumper (Paint) 진입 임계값
+        PAINT_JUMPER_WEIGHT: 0.6,        // closeShot 기반 페인트존 점퍼 가중치
     },
     // Shot Defense: shotType별 수비 차등 (flowEngine + possessionHandler)
     SHOT_DEFENSE: {
         CONTEST: { Dunk: 0.85, Layup: 1.0, Floater: 0.6, Hook: 0.5, Pullup: 0.8, Jumper: 0.85, Fadeaway: 0.4, CatchShoot: 1.0 } as Record<string, number>,
-        BLOCK_MULT: { Dunk: 0.85, Layup: 1.0, Floater: 0.3, Hook: 0.4, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.2, CatchShoot: 1.0 } as Record<string, number>,
+        BLOCK_MULT: { Dunk: 0.85, Layup: 1.0, Floater: 0.35, Hook: 0.55, Pullup: 0.7, Jumper: 0.6, Fadeaway: 0.25, CatchShoot: 1.0 } as Record<string, number>,
         AND1_MULT: { Dunk: 1.5, Layup: 1.0, Floater: 0.3, Hook: 0.5, Pullup: 0.15, Jumper: 0.10, Fadeaway: 0.10, CatchShoot: 0.08 } as Record<string, number>,
         DUNK_STR_RESIST: 0.001,
         DUNK_VERT_RESIST: 0.0005,
