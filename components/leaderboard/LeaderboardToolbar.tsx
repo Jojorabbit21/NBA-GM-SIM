@@ -179,7 +179,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         </div>
                         <input
                             type="text"
-                            placeholder="Search Name..."
+                            placeholder="이름으로 검색"
                             className="h-full w-full bg-transparent pl-9 pr-3 text-xs font-bold text-white outline-none placeholder:text-slate-600"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -201,7 +201,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                             className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-xs font-bold transition-colors ${selectedTeams.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 text-slate-400 hover:text-white'}`}
                             onClick={handleTeamDropdownToggle}
                         >
-                            <span>Teams</span>
+                            <span>팀</span>
                             {selectedTeams.length > 0 && (
                                 <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">{selectedTeams.length}</span>
                             )}
@@ -243,7 +243,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                 className={`flex items-center gap-2 h-[36px] px-3 bg-slate-950 rounded-lg border shadow-sm text-xs font-bold transition-colors ${selectedPositions.length > 0 ? 'border-indigo-500/50 text-indigo-400' : 'border-slate-800 text-slate-400 hover:text-white'}`}
                                 onClick={handlePosDropdownToggle}
                             >
-                                <span>Positions</span>
+                                <span>포지션</span>
                                 {selectedPositions.length > 0 && (
                                     <span className="bg-indigo-600 text-white text-[9px] px-1.5 py-0.5 rounded-full">{selectedPositions.length}</span>
                                 )}
@@ -303,7 +303,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         </div>
                         <input
                             type="number"
-                            placeholder="Value"
+                            placeholder="값"
                             className="h-full bg-transparent px-3 w-16 text-xs font-bold text-white outline-none placeholder:text-slate-700 [&::-webkit-inner-spin-button]:appearance-none"
                             value={filterVal}
                             onChange={(e) => setFilterVal(e.target.value)}
@@ -321,7 +321,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                         title="스탯 분포 색상 표시"
                     >
                         <div className={`text-xs font-bold transition-colors ${showHeatmap ? 'text-indigo-400' : 'text-slate-500'}`}>
-                            Color Scale
+                            색상 스케일
                         </div>
                         <div className={`w-8 h-4 rounded-full relative transition-colors duration-300 ${showHeatmap ? 'bg-indigo-600' : 'bg-slate-800'}`}>
                             <div className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-all duration-300 shadow-sm ${showHeatmap ? 'right-0.5' : 'left-0.5'}`} />

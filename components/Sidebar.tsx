@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import {
-  LayoutDashboard, Users, Trophy, BarChart3, Swords,
+  LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
   PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward,
@@ -253,7 +253,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
         <NavItem active={currentView === 'Inbox'} icon={<Mail size={20}/>} label="받은 메세지" onClick={() => onNavigate('Inbox')} badge={unreadMessagesCount} {...navProps} />
-        <NavItem active={currentView === 'Roster'} icon={<Users size={20}/>} label="선수단" onClick={() => onNavigate('Roster')} {...navProps} />
         <NavItem active={currentView === 'Standings'} icon={<Trophy size={20}/>} label="순위표" onClick={() => onNavigate('Standings')} {...navProps} />
         <NavItem active={currentView === 'Leaderboard'} icon={<BarChart3 size={20}/>} label="리더보드" onClick={() => onNavigate('Leaderboard')} {...navProps} />
         {isRegularSeasonOver && (
