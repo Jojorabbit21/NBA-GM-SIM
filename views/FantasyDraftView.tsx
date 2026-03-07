@@ -38,7 +38,7 @@ function generateSnakeDraftOrder(teamIds: string[], rounds: number): string[] {
 }
 
 // ── Collect all players from all teams (+ free agents for alltime) as the "draft pool" ──
-const ALLTIME_OVR_FLOOR = 83;
+const ALLTIME_OVR_FLOOR = 80;
 
 function collectAllPlayers(teams: Team[], poolType: DraftPoolType, freeAgents: Player[] = []): Player[] {
     let all: Player[] = [];
