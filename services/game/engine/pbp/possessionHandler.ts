@@ -358,7 +358,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     shootingFoulRate += Math.max(0, (defIntensity - 5)) * sFoulCfg.DEF_INTENSITY_FACTOR;
 
     // Manipulator 아키타입: 엘리트 파울 드로어 보너스
-    if (actor.attr.drFoul >= sFoulCfg.MANIPULATOR_DRFOUL_THRESHOLD &&
+    // ★ TEMPORARY: ZONE_SHOOTING.ENABLED 연동 (아키타입 비활성화 시 스킵)
+    if (SIM_CONFIG.ZONE_SHOOTING.ENABLED &&
+        actor.attr.drFoul >= sFoulCfg.MANIPULATOR_DRFOUL_THRESHOLD &&
         actor.attr.shotIq >= sFoulCfg.MANIPULATOR_SHOTIQ_THRESHOLD) {
         shootingFoulRate += sFoulCfg.MANIPULATOR_BONUS;
     }

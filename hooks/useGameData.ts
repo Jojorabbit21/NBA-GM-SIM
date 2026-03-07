@@ -256,7 +256,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         };
 
         initializeGame();
-    }, [baseData, isBaseDataLoading, isGuestMode, session]);
+    }, [baseData, isBaseDataLoading, isGuestMode, session?.user?.id]);
 
     // ------------------------------------------------------------------
     //  ACTIONS: Save, Select Team, Reset

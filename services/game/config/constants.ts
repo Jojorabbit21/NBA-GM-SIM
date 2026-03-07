@@ -177,7 +177,7 @@ export const SIM_CONFIG = {
     },
     // Block System (미스 중 블락 판정, 커브 기반)
     BLOCK: {
-        ENABLED: true,
+        ENABLED: false, // ★ TEMPORARY: 아키타입 비활성화
         // 존별 베이스 블락 확률
         BASE_RIM: 0.10,
         BASE_PAINT: 0.05,
@@ -235,7 +235,7 @@ export const SIM_CONFIG = {
     },
     // Playmaking Archetypes (플레이메이킹 히든 아키타입)
     PLAYMAKING: {
-        ENABLED: true,              // 플레이메이킹 아키타입 마스터 스위치
+        ENABLED: false,              // ★ TEMPORARY: 아키타입 비활성화
 
         // G-1. Clairvoyant (천리안) — CP3, Magic, LeBron, Jokic
         CLAIRVOYANT_PASSIQ_THRESHOLD: 92,
@@ -255,7 +255,7 @@ export const SIM_CONFIG = {
     },
     // Clutch Hidden Archetypes (flowEngine.ts clutch section)
     CLUTCH_ARCHETYPE: {
-        ENABLED: true,              // 클러치 아키타입 마스터 스위치
+        ENABLED: false,              // ★ TEMPORARY: 아키타입 비활성화
 
         // A-1. Curtain Call (커튼콜) — Kobe, MJ, Kawhi
         CLOSER_INTANGIBLES_THRESHOLD: 90,
@@ -275,7 +275,7 @@ export const SIM_CONFIG = {
     },
     // Zone Shooting Hidden Archetypes (flowEngine.ts + possessionHandler.ts)
     ZONE_SHOOTING: {
-        ENABLED: true,              // 구역별 야투 아키타입 마스터 스위치
+        ENABLED: false,              // ★ TEMPORARY: 아키타입 비활성화
 
         // B-1. Mr. Fundamental (미드레인지의 정석) — KD, DeRozan
         FUNDAMENTAL_MID_THRESHOLD: 97,
