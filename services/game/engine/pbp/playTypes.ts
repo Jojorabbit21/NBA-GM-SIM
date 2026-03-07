@@ -218,11 +218,11 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
     };
 
     // Passer Concentration: 어시스터(패서) 선택 시 패싱 능력치를 곱셈으로 적용
-    // passVision × passIq → 2500(50×50) 기준 정규화 후 ^1.2 지수로 격차 증폭
-    // 엘리트 3.85x, 평균 1.0x, 약체 0.28x → 최고 플레이메이커에게 어시스트 집중
+    // passVision × passIq → 2500(50×50) 기준 정규화 후 ^1.5 지수로 격차 증폭
+    // 엘리트 5.35x, 평균 1.0x, 약체 0.22x → 최고 플레이메이커에게 어시스트 집중
     const pickPasser = (criteria: (p: LivePlayer) => number, excludeId?: string) => {
         return pickWeightedActor(
-            p => criteria(p) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.2),
+            p => criteria(p) * Math.pow(p.attr.passVision * p.attr.passIq / 2500, 1.5),
             excludeId
         );
     };
