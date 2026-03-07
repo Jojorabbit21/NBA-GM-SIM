@@ -184,11 +184,11 @@ export const SIM_CONFIG = {
         BASE_MID: 0.04,
         BASE_3PT: 0.01,
 
-        // 블락 능력치 커브: blk → 추가 블락 확률 (85까지 완만, 90+ 가속)
+        // 블락 능력치 커브: blk → 추가 블락 확률 (80~90 구간 강화)
         BLK_CURVE: [
             [40, -0.02], [55, -0.01], [70, 0.00],
-            [80, 0.025], [85, 0.045], [90, 0.070],
-            [95, 0.110], [99, 0.140],
+            [80, 0.035], [85, 0.060], [90, 0.090],
+            [95, 0.130], [99, 0.160],
         ] as [number, number][],
 
         // 키 보너스 (블락에서는 키가 독립적으로 중요)
@@ -203,9 +203,9 @@ export const SIM_CONFIG = {
         ARCHETYPE_ANCHOR_HELP_MULT: 2.0,
 
         // 헬프 블락 (림 프로텍터 회전 블락)
-        HELP_BASE: 0.03,
-        HELP_BLK_THRESHOLD: 85,
-        HELP_BLK_BONUS: 0.03,
+        HELP_BASE: 0.04,
+        HELP_BLK_THRESHOLD: 82,
+        HELP_BLK_BONUS: 0.04,
         HELP_RIM_THRESHOLD: 75,
         HELP_RIM_BONUS: 0.03,
         HELP_MID_FACTOR: 0.5,
