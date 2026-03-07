@@ -3,8 +3,8 @@ import React, { useMemo } from 'react';
 import { Zap, BarChart3, Trophy } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../types';
 import { GridSeriesBox } from '../components/playoffs/GridSeriesBox';
+import { BracketConnector } from '../components/playoffs/BracketConnector';
 import { TEAM_DATA } from '../data/teamData';
-import { PageHeader } from '../components/common/PageHeader';
 
 interface PlayoffsViewProps {
   teams: Team[];
@@ -15,9 +15,8 @@ interface PlayoffsViewProps {
   myTeamId: string;
 }
 
-const HEADER_STYLE = "py-3 px-2 md:px-4 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-900/90 border-r border-slate-800 text-center truncate";
-const EAST_SECTION_HEIGHT = "h-[460px]";
-const WEST_SECTION_HEIGHT = "h-[460px]";
+const SECTION_H = 460;
+const CONNECTOR_W = 28;
 
 export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, series, setSeries, setSchedule, myTeamId }) => {
   const regularSeasonFinished = useMemo(() => {
@@ -27,7 +26,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
   const playInSeries = useMemo(() => series.filter(s => s.round === 0), [series]);
   const hasPlayInStarted = playInSeries.length > 0;
-  
+
   const isPlayInFinished = useMemo(() => {
       const mainStarted = series.some(s => s.round === 1);
       if (mainStarted) return true;
@@ -59,7 +58,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
               const piGames = playInSeries.filter(s => s.conference === conf);
               const g1 = piGames.find(s => {
                   const hSeed = regularStandingsSeeds[conf as 'East'|'West'].findIndex(t => t.id === s.higherSeedId) + 1;
-                  return hSeed === 7; 
+                  return hSeed === 7;
               });
               const g3 = piGames.find(s => s.id.includes('8th'));
               if (g1 && g1.winnerId) map[g1.winnerId] = 7;
@@ -73,30 +72,30 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       const existing = playInSeries.find(s => s.conference === conf && s.id.includes(type));
       if (existing) return existing;
       const seeds = regularStandingsSeeds[conf];
-      
+
       const seedH_7v8 = seeds[6]?.id || '';
       const seedL_7v8 = seeds[7]?.id || '';
       const seedH_9v10 = seeds[8]?.id || '';
       const seedL_9v10 = seeds[9]?.id || '';
 
       if (type === '7v8') {
-          return { 
-              id: `proj_${conf}_7v8`, higherSeedId: seedH_7v8, lowerSeedId: seedL_7v8, 
-              round: 0 as 0, conference: conf as any, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 
+          return {
+              id: `proj_${conf}_7v8`, higherSeedId: seedH_7v8, lowerSeedId: seedL_7v8,
+              round: 0 as 0, conference: conf as any, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1
           };
       }
       if (type === '9v10') {
-          return { 
-              id: `proj_${conf}_9v10`, higherSeedId: seedH_9v10, lowerSeedId: seedL_9v10, 
-              round: 0 as 0, conference: conf as any, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1 
+          return {
+              id: `proj_${conf}_9v10`, higherSeedId: seedH_9v10, lowerSeedId: seedL_9v10,
+              round: 0 as 0, conference: conf as any, higherSeedWins: 0, lowerSeedWins: 0, finished: false, targetWins: 1
           };
       }
       return undefined;
   };
 
   const getR1Match = (conf: 'East' | 'West', rankH: number, rankL: number) => {
-      const existing = series.find(s => s.conference === conf && s.round === 1 && 
-          ((s.higherSeedId === (conf==='East'?regularStandingsSeeds.East:regularStandingsSeeds.West)[rankH-1].id) || 
+      const existing = series.find(s => s.conference === conf && s.round === 1 &&
+          ((s.higherSeedId === (conf==='East'?regularStandingsSeeds.East:regularStandingsSeeds.West)[rankH-1].id) ||
            (s.lowerSeedId === (conf==='East'?regularStandingsSeeds.East:regularStandingsSeeds.West)[rankH-1].id))
       );
       if (existing) return existing;
@@ -111,16 +110,16 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
   const pi_east = [getPISeries('East', '7v8'), getPISeries('East', '9v10'), getPISeries('East', '8th')];
   const pi_west = [getPISeries('West', '7v8'), getPISeries('West', '9v10'), getPISeries('West', '8th')];
-  
+
   const r1_east = [getR1Match('East', 1, 8), getR1Match('East', 4, 5), getR1Match('East', 3, 6), getR1Match('East', 2, 7)];
   const r1_west = [getR1Match('West', 1, 8), getR1Match('West', 4, 5), getR1Match('West', 3, 6), getR1Match('West', 2, 7)];
-  
+
   const r2_east = [getRoundMatch('East', 2, 0), getRoundMatch('East', 2, 1)];
   const r2_west = [getRoundMatch('West', 2, 0), getRoundMatch('West', 2, 1)];
-  
+
   const cf_east = getRoundMatch('East', 3, 0);
   const cf_west = getRoundMatch('West', 3, 0);
-  
+
   const finals = getRoundMatch('BPL', 4, 0);
 
   const getFinalsGradient = () => {
@@ -128,138 +127,190 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       if (!finals) return defaultGradient;
       const team1 = TEAM_DATA[finals.higherSeedId];
       const team2 = TEAM_DATA[finals.lowerSeedId];
-      
+
       const c1 = team1 ? team1.colors.primary : '#1d428a';
       const c2 = team2 ? team2.colors.primary : '#c8102e';
       return `linear-gradient(to bottom right, ${c1}, ${c2})`;
   };
 
+  /* --- R1→Semis / Semis→CF bracket pairs --- */
+  const mergePairs = (inputCount: number) => {
+    const pairs = [];
+    for (let i = 0; i < inputCount; i += 2) {
+      pairs.push({ leftIndices: [i, i + 1], rightIndex: i / 2 });
+    }
+    return pairs;
+  };
+  const r1SemisPairs = mergePairs(4);   // [0,1]→0, [2,3]→1
+  const semisCfPairs = mergePairs(2);   // [0,1]→0
+
+  const headerCls = "h-10 flex items-center justify-center px-2 text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-950 border-b border-slate-800 truncate";
+
   return (
-    <div className="space-y-6 animate-in fade-in duration-700 pb-20 w-full flex flex-col h-full">
-      <PageHeader 
-        title="플레이오프" 
-        icon={<Trophy size={24} />}
-        actions={
-            <div className="flex gap-2">
-                {regularSeasonFinished && hasPlayInStarted && !isPlayInFinished && (
-                    <div className="flex items-center gap-3 bg-slate-900/80 px-4 py-2 rounded-lg border border-slate-800">
-                        <Zap size={14} className="text-yellow-400 animate-pulse" />
-                        <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Play-In Active</span>
-                    </div>
-                )}
-                {!regularSeasonFinished && (
-                    <div className="px-4 py-2 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-3">
-                        <BarChart3 size={14} className="text-emerald-400" />
-                        <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">실시간 시드 예측</span>
-                    </div>
-                )}
+    <div className="flex flex-col h-full animate-in fade-in duration-700">
+      {/* Title bar */}
+      <div className="flex items-center justify-between px-4 md:px-6 py-2.5 border-b border-slate-800 bg-slate-950/80 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <Trophy size={16} className="text-yellow-500" />
+          <span className="oswald font-black uppercase tracking-widest text-xs text-slate-400">PLAYOFFS</span>
+        </div>
+        <div className="flex gap-2">
+          {regularSeasonFinished && hasPlayInStarted && !isPlayInFinished && (
+            <div className="flex items-center gap-2 bg-slate-900/80 px-3 py-1.5 rounded-lg border border-slate-800">
+              <Zap size={12} className="text-yellow-400 animate-pulse" />
+              <span className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Play-In Active</span>
             </div>
-        }
-      />
+          )}
+          {!regularSeasonFinished && (
+            <div className="px-3 py-1.5 bg-slate-900 rounded-lg border border-slate-800 flex items-center gap-2">
+              <BarChart3 size={12} className="text-emerald-400" />
+              <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">시드 예측</span>
+            </div>
+          )}
+        </div>
+      </div>
 
-      <div className="w-full border border-slate-800 bg-slate-900 shadow-2xl rounded-sm">
-          <div className="grid grid-cols-[30px_repeat(4,minmax(0,1fr))_1.2fr] w-full">
-              <div className={`${HEADER_STYLE} !px-0 bg-slate-950 border-b border-slate-800`}></div>
-              <div className={HEADER_STYLE}>Play-In</div>
-              <div className={HEADER_STYLE}>Round 1</div>
-              <div className={HEADER_STYLE}>Semis</div>
-              <div className={HEADER_STYLE}>Conf. Finals</div>
-              <div className="py-3 px-2 md:px-4 text-[10px] md:text-[12px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] text-yellow-500 text-center bg-yellow-950/20 border-b border-yellow-500/30 flex items-center justify-center gap-1 md:gap-2 truncate">
-                  BPL FINALS
-              </div>
+      {/* Bracket */}
+      <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
+        <div className="flex min-w-[900px] h-full">
 
-              <div className="flex flex-col border-r border-slate-800">
-                  <div className={`${EAST_SECTION_HEIGHT} bg-blue-900/40 border-b border-slate-800 flex items-center justify-center relative overflow-hidden`}>
-                      <span className="text-sm font-black text-white uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 cursor-default select-none">EAST</span>
-                  </div>
-                  <div className={`${WEST_SECTION_HEIGHT} bg-red-900/40 flex items-center justify-center relative overflow-hidden`}>
-                      <span className="text-sm font-black text-white uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 cursor-default select-none">WEST</span>
-                  </div>
-              </div>
-
-              <div className="border-r border-slate-800 flex flex-col min-w-0">
-                  <div className={`${EAST_SECTION_HEIGHT} flex flex-col border-b border-slate-800`}>
-                      <div className="flex-1 flex flex-col justify-center gap-2 p-1 md:p-2 bg-slate-950/50">
-                          <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="7 vs 8" isProjected={!hasPlayInStarted} />
-                          <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="9 vs 10" isProjected={!hasPlayInStarted} />
-                          <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="8th Decider" isProjected={!hasPlayInStarted} />
-                      </div>
-                  </div>
-                  <div className={`${WEST_SECTION_HEIGHT} flex flex-col bg-slate-950/80`}>
-                      <div className="flex-1 flex flex-col justify-center gap-2 p-1 md:p-2">
-                          <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="7 vs 8" isProjected={!hasPlayInStarted} />
-                          <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="9 vs 10" isProjected={!hasPlayInStarted} />
-                          <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="8th Decider" isProjected={!hasPlayInStarted} />
-                      </div>
-                  </div>
-              </div>
-
-              <div className="border-r border-slate-800 flex flex-col min-w-0">
-                  <div className={`${EAST_SECTION_HEIGHT} flex flex-col border-b border-slate-800`}>
-                      <div className="flex-1 flex flex-col justify-around p-1 md:p-2 bg-slate-950/50">
-                          {r1_east.map((s, i) => (
-                              <GridSeriesBox key={`e_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Match ${i+1}`} isProjected={series.length===0} />
-                          ))}
-                      </div>
-                  </div>
-                  <div className={`${WEST_SECTION_HEIGHT} flex flex-col bg-slate-950/80`}>
-                      <div className="flex-1 flex flex-col justify-around p-1 md:p-2">
-                          {r1_west.map((s, i) => (
-                              <GridSeriesBox key={`w_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Match ${i+1}`} isProjected={series.length===0} />
-                          ))}
-                      </div>
-                  </div>
-              </div>
-
-              <div className="border-r border-slate-800 flex flex-col min-w-0">
-                  <div className={`${EAST_SECTION_HEIGHT} flex flex-col border-b border-slate-800`}>
-                      <div className="flex-1 flex flex-col justify-around p-1 md:p-2 bg-slate-950/50">
-                          {r2_east.map((s, i) => (
-                              <GridSeriesBox key={`e_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Semis ${i+1}`} />
-                          ))}
-                      </div>
-                  </div>
-                  <div className={`${WEST_SECTION_HEIGHT} flex flex-col bg-slate-950/80`}>
-                      <div className="flex-1 flex flex-col justify-around p-1 md:p-2">
-                          {r2_west.map((s, i) => (
-                              <GridSeriesBox key={`w_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Semis ${i+1}`} />
-                          ))}
-                      </div>
-                  </div>
-              </div>
-
-              <div className="border-r border-slate-800 flex flex-col min-w-0">
-                  <div className={`${EAST_SECTION_HEIGHT} flex flex-col border-b border-slate-800`}>
-                      <div className="flex-1 flex flex-col justify-center p-1 md:p-2 bg-slate-950/50">
-                          <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="East Finals" />
-                      </div>
-                  </div>
-                  <div className={`${WEST_SECTION_HEIGHT} flex flex-col bg-slate-950/80`}>
-                      <div className="flex-1 flex flex-col justify-center p-1 md:p-2">
-                          <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="West Finals" />
-                      </div>
-                  </div>
-              </div>
-
-              <div className="flex flex-col relative overflow-hidden border-l border-slate-800 min-w-0 bg-black">
-                  <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: getFinalsGradient() }}></div>
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <img
-                        src="/trophy_dark.png"
-                        alt="BPL Finals Trophy"
-                        className="w-40 md:w-56 opacity-20 drop-shadow-2xl grayscale"
-                        onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                        }}
-                      />
-                  </div>
-                  <div className="flex-1 flex flex-col items-center justify-center p-1 md:p-2 relative z-10 w-full">
-                      <div className="w-full flex flex-col items-center gap-8">
-                          <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="BPL FINALS" />
-                      </div>
-                  </div>
-              </div>
+          {/* ── Label column ── */}
+          <div className="w-[30px] flex-shrink-0 border-r border-slate-800">
+            <div className="h-10 bg-slate-950 border-b border-slate-800" />
+            <div className={`h-[${SECTION_H}px] bg-blue-900/30 border-b border-slate-800 flex items-center justify-center`} style={{ height: SECTION_H }}>
+              <span className="text-[10px] font-black text-blue-300/80 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 cursor-default select-none">EAST</span>
+            </div>
+            <div className="bg-red-900/30 flex items-center justify-center" style={{ height: SECTION_H }}>
+              <span className="text-[10px] font-black text-red-300/80 uppercase tracking-widest [writing-mode:vertical-rl] rotate-180 cursor-default select-none">WEST</span>
+            </div>
           </div>
+
+          {/* ── Play-In column ── */}
+          <div className="flex-1 min-w-0 flex flex-col border-r border-slate-800/50">
+            <div className={headerCls}>Play-In</div>
+            <div className="border-b border-slate-800" style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-around p-1 md:p-2">
+                <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="7 vs 8" isProjected={!hasPlayInStarted} />
+                <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="9 vs 10" isProjected={!hasPlayInStarted} />
+                <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="8th Decider" isProjected={!hasPlayInStarted} />
+              </div>
+            </div>
+            <div style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-around p-1 md:p-2">
+                <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="7 vs 8" isProjected={!hasPlayInStarted} />
+                <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="9 vs 10" isProjected={!hasPlayInStarted} />
+                <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="8th Decider" isProjected={!hasPlayInStarted} />
+              </div>
+            </div>
+          </div>
+
+          {/* ── R1 column ── */}
+          <div className="flex-1 min-w-0 flex flex-col border-r border-slate-800/50">
+            <div className={headerCls}>Round 1</div>
+            <div className="border-b border-slate-800" style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-around p-1 md:p-2">
+                {r1_east.map((s, i) => (
+                  <GridSeriesBox key={`e_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Match ${i+1}`} isProjected={series.length===0} />
+                ))}
+              </div>
+            </div>
+            <div style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-around p-1 md:p-2">
+                {r1_west.map((s, i) => (
+                  <GridSeriesBox key={`w_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Match ${i+1}`} isProjected={series.length===0} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── R1 → Semis connector ── */}
+          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
+            <div className="h-10 border-b border-slate-800" />
+            <div className="border-b border-slate-800" style={{ height: SECTION_H }}>
+              <BracketConnector leftCount={4} rightCount={2} sectionHeight={SECTION_H} pairs={r1SemisPairs} width={CONNECTOR_W} />
+            </div>
+            <div style={{ height: SECTION_H }}>
+              <BracketConnector leftCount={4} rightCount={2} sectionHeight={SECTION_H} pairs={r1SemisPairs} width={CONNECTOR_W} />
+            </div>
+          </div>
+
+          {/* ── Semis column ── */}
+          <div className="flex-1 min-w-0 flex flex-col border-r border-slate-800/50">
+            <div className={headerCls}>Semis</div>
+            <div className="border-b border-slate-800" style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-around p-1 md:p-2">
+                {r2_east.map((s, i) => (
+                  <GridSeriesBox key={`e_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Semis ${i+1}`} />
+                ))}
+              </div>
+            </div>
+            <div style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-around p-1 md:p-2">
+                {r2_west.map((s, i) => (
+                  <GridSeriesBox key={`w_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Semis ${i+1}`} />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Semis → CF connector ── */}
+          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
+            <div className="h-10 border-b border-slate-800" />
+            <div className="border-b border-slate-800" style={{ height: SECTION_H }}>
+              <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={semisCfPairs} width={CONNECTOR_W} />
+            </div>
+            <div style={{ height: SECTION_H }}>
+              <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={semisCfPairs} width={CONNECTOR_W} />
+            </div>
+          </div>
+
+          {/* ── Conf. Finals column ── */}
+          <div className="flex-1 min-w-0 flex flex-col border-r border-slate-800/50">
+            <div className={headerCls}>Conf. Finals</div>
+            <div className="border-b border-slate-800" style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-center p-1 md:p-2">
+                <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="East Finals" />
+              </div>
+            </div>
+            <div style={{ height: SECTION_H }}>
+              <div className="h-full flex flex-col justify-center p-1 md:p-2">
+                <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="West Finals" />
+              </div>
+            </div>
+          </div>
+
+          {/* ── CF → Finals connector ── */}
+          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
+            <div className="h-10 border-b border-slate-800" />
+            <div style={{ height: SECTION_H * 2 }}>
+              <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H * 2} pairs={[{ leftIndices: [0, 1], rightIndex: 0 }]} width={CONNECTOR_W} />
+            </div>
+          </div>
+
+          {/* ── Finals column ── */}
+          <div className="flex-[1.2] min-w-0 flex flex-col relative overflow-hidden bg-black">
+            <div className="h-10 flex items-center justify-center px-2 text-[10px] md:text-[12px] font-black uppercase tracking-[0.15em] text-yellow-500 bg-yellow-950/20 border-b border-yellow-500/30 truncate">
+              BPL FINALS
+            </div>
+            <div className="flex-1 relative" style={{ height: SECTION_H * 2 }}>
+              <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ background: getFinalsGradient() }} />
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <img
+                  src="/trophy_dark.png"
+                  alt="BPL Finals Trophy"
+                  className="w-40 md:w-56 opacity-20 drop-shadow-2xl grayscale"
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              </div>
+              <div className="relative z-10 h-full flex items-center justify-center p-2 md:p-4">
+                <div className="w-full max-w-[200px]">
+                  <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="BPL FINALS" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
   );
