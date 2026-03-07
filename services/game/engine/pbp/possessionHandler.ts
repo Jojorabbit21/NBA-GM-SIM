@@ -625,152 +625,150 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         subZone
     );
 
-    const isScore = Math.random() < shotContext.rate;
+    // --- BLOCK CALCULATION (모든 슛 대상, hitRate 판정 전) ---
+    let isBlock = false;
+    let finalDefender = defender;
+
+    if (defender && preferredZone) {
+        const blkCfg = SIM_CONFIG.BLOCK;
+
+        // A. Determine Base Probability by Zone
+        let blockProb = 0;
+        if (preferredZone === 'Rim') blockProb = blkCfg.BASE_RIM;
+        else if (preferredZone === 'Paint') blockProb = blkCfg.BASE_PAINT;
+        else if (preferredZone === 'Mid') blockProb = blkCfg.BASE_MID;
+        else if (preferredZone === '3PT') blockProb = blkCfg.BASE_3PT;
+
+        // B. Defender Attribute Modifiers (커브 기반)
+        const defBlk = defender.attr.blk;
+        const defVert = defender.attr.vertical;
+        const defHeight = defender.attr.height;
+
+        const blkBonus = interpolateCurve(defBlk, blkCfg.BLK_CURVE);
+        const heightBonus = Math.max(0, (defHeight - 200) * blkCfg.HEIGHT_FACTOR);
+        const vertBonus = Math.max(0, (defVert - 70) * blkCfg.VERT_FACTOR);
+
+        blockProb += blkBonus + heightBonus + vertBonus;
+
+        // C. ELITE THRESHOLD BONUSES (Blocker Archetypes — 조건부 발동)
+        let archetypeBonus = 0;
+
+        if (blkCfg.ENABLED) {
+            // D-2. The Alien: Rim + Paint 존에서만 발동 (긴 팔로 영역 커버)
+            if (defHeight >= 216 && defBlk >= 80 &&
+                (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+                archetypeBonus = blkCfg.ARCHETYPE_ALIEN;
+            }
+            // D-3. Skywalker: Transition + Cut에서만 발동 (체이스다운/헬프사이드)
+            else if (defVert >= 95 && defBlk >= 75 &&
+                (selectedPlayType === 'Transition' || selectedPlayType === 'Cut')) {
+                archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
+            }
+            // D-4. Defensive Anchor: 1차 블락 아닌 헬프 블락에서 발동 (아래 F 섹션)
+        }
+
+        blockProb += archetypeBonus;
+
+        // D. Offense Resistance (Avoidance)
+        // High ShotIQ and High Release point (Height) reduces block chance
+        const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
+        blockProb -= Math.max(0, offResist);
+
+        // D-2. PnR Coverage Block Modifiers
+        const pnrBlkCfg = SIM_CONFIG.PNR_COVERAGE;
+        if (pnrCoverage === 'drop' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+            blockProb += pnrBlkCfg.DROP_BLOCK_BONUS;
+        }
+        if (pnrCoverage === 'blitz' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
+            blockProb -= pnrBlkCfg.BLITZ_BLOCK_PENALTY;
+        }
+
+        // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
+        const zCfg = SIM_CONFIG.ZONE_SHOOTING;
+        if (zCfg.ENABLED) {
+            // B-3. Tyrant: Rim/Paint에서 블락 확률 감소
+            if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
+                actor.attr.ins >= zCfg.TYRANT_INS_THRESHOLD &&
+                (actor.attr.strength >= zCfg.TYRANT_STRENGTH_THRESHOLD ||
+                 actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
+                blockProb -= zCfg.TYRANT_BLOCK_REDUCTION;
+            }
+
+            // B-4. Levitator: Paint에서 블락 확률 50% 감소
+            if (preferredZone === 'Paint' &&
+                actor.attr.closeShot >= zCfg.FLOATER_CLOSESHOT_THRESHOLD &&
+                actor.attr.agility >= zCfg.FLOATER_AGILITY_THRESHOLD &&
+                actor.attr.height <= zCfg.FLOATER_MAX_HEIGHT) {
+                blockProb *= zCfg.FLOATER_BLOCK_MULTIPLIER;
+            }
+
+            // B-6. Ascendant: 가드의 수직 도약으로 Rim 블락 회피
+            if (preferredZone === 'Rim' &&
+                (actor.position === 'PG' || actor.position === 'SG') &&
+                actor.attr.vertical >= zCfg.ASCENDANT_VERTICAL_THRESHOLD &&
+                actor.attr.closeShot >= zCfg.ASCENDANT_CLOSESHOT_THRESHOLD) {
+                blockProb *= zCfg.ASCENDANT_BLOCK_MULTIPLIER;
+            }
+        }
+
+        // E-0. shotType별 블록 배율
+        const blockMult = SIM_CONFIG.SHOT_DEFENSE.BLOCK_MULT[shotType ?? 'Layup'] ?? 1.0;
+        blockProb *= blockMult;
+        // Dunk 전용: 공격자 strength/vertical 블록 저항
+        if (shotType === 'Dunk') {
+            blockProb -= Math.max(0, (actor.attr.strength - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_STR_RESIST;
+            blockProb -= Math.max(0, (actor.attr.vertical - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_VERT_RESIST;
+        }
+
+        // E. Roll Primary Block
+        if (Math.random() < Math.max(0, blockProb)) {
+            isBlock = true;
+        }
+        // F. Help Defense Block (Inside + Mid-range)
+        else if (preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid') {
+             const potentialHelpers = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
+             potentialHelpers.sort((a, b) => b.attr.blk - a.attr.blk);
+             const helper = potentialHelpers[0];
+
+             if (helper) {
+                 let helpChance = blkCfg.HELP_BASE;
+                 if (helper.attr.blk >= blkCfg.HELP_BLK_THRESHOLD) helpChance += blkCfg.HELP_BLK_BONUS;
+                 if (helper.archetypes.rimProtector > blkCfg.HELP_RIM_THRESHOLD) helpChance += blkCfg.HELP_RIM_BONUS;
+
+                 // D-4. Defensive Anchor: 스마트 로테이션 → 헬프 블락 확률 2배
+                 if (blkCfg.ENABLED && helper.attr.helpDefIq >= 92 && helper.attr.blk >= 80) {
+                     helpChance *= blkCfg.ARCHETYPE_ANCHOR_HELP_MULT;
+                 }
+
+                 // Mid-range: 체이스다운 블락은 림보다 희귀
+                 if (preferredZone === 'Mid') helpChance *= blkCfg.HELP_MID_FACTOR;
+
+                 if (Math.random() < helpChance) {
+                     isBlock = true;
+                     finalDefender = helper;
+                 }
+             }
+        }
+    }
+    // --- BLOCK CALCULATION END ---
+
+    // Hit/Miss 판정 (블락 성공 시 강제 미스)
+    const isScore = isBlock ? false : Math.random() < shotContext.rate;
 
     // And-1: 득점 성공 + 슈팅 파울 동시 발생 (전 존, shotType별 배율)
     let isAndOne = false;
     if (isScore) {
         const andOneBase = (preferredZone === 'Rim' || preferredZone === 'Paint') ? 0.03 : 0.012;
         const intensityMod = Math.max(0, (defIntensity - 5) * 0.004);
-        // drawFoul 커브 기반 And-1 보정 (DRAW_FOUL_CURVE × AND1_CURVE_SCALE)
         const drawFoulAndOneMod = interpolateCurve(actor.attr.drFoul, sFoulCfg.DRAW_FOUL_CURVE) * sFoulCfg.AND1_CURVE_SCALE;
-        // shotType별 And-1 배율: Dunk 1.5x, Layup 1.0x, Pullup 0.15x 등
         const and1Mult = SIM_CONFIG.SHOT_DEFENSE.AND1_MULT[shotType ?? 'Layup'] ?? 1.0;
         if (Math.random() < Math.max(0, (andOneBase + intensityMod + drawFoulAndOneMod) * and1Mult)) {
             isAndOne = true;
         }
     }
 
-    // Rebound & Block Resolution
+    // Miss path (블락 or 일반 미스)
     if (!isScore) {
-        // --- BLOCK CALCULATION LOGIC START ---
-        let isBlock = false;
-        let finalDefender = defender; // Default to primary defender
-
-        // Only calc block if we have a defender context
-        if (defender && preferredZone) {
-            const blkCfg = SIM_CONFIG.BLOCK;
-
-            // A. Determine Base Probability by Zone (원래 값 복원)
-            let blockProb = 0;
-            if (preferredZone === 'Rim') blockProb = blkCfg.BASE_RIM;
-            else if (preferredZone === 'Paint') blockProb = blkCfg.BASE_PAINT;
-            else if (preferredZone === 'Mid') blockProb = blkCfg.BASE_MID;
-            else if (preferredZone === '3PT') blockProb = blkCfg.BASE_3PT;
-
-            // B. Defender Attribute Modifiers (커브 기반)
-            const defBlk = defender.attr.blk;
-            const defVert = defender.attr.vertical;
-            const defHeight = defender.attr.height;
-
-            const blkBonus = interpolateCurve(defBlk, blkCfg.BLK_CURVE);
-            const heightBonus = Math.max(0, (defHeight - 200) * blkCfg.HEIGHT_FACTOR);
-            const vertBonus = Math.max(0, (defVert - 70) * blkCfg.VERT_FACTOR);
-
-            blockProb += blkBonus + heightBonus + vertBonus;
-
-            // C. ELITE THRESHOLD BONUSES (Blocker Archetypes — 조건부 발동)
-            let archetypeBonus = 0;
-
-            if (blkCfg.ENABLED) {
-                // D-2. The Alien: Rim + Paint 존에서만 발동 (긴 팔로 영역 커버)
-                if (defHeight >= 216 && defBlk >= 80 &&
-                    (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-                    archetypeBonus = blkCfg.ARCHETYPE_ALIEN;
-                }
-                // D-3. Skywalker: Transition + Cut에서만 발동 (체이스다운/헬프사이드)
-                else if (defVert >= 95 && defBlk >= 75 &&
-                    (selectedPlayType === 'Transition' || selectedPlayType === 'Cut')) {
-                    archetypeBonus = blkCfg.ARCHETYPE_SKYWALKER;
-                }
-                // D-4. Defensive Anchor: 1차 블락 아닌 헬프 블락에서 발동 (아래 F 섹션)
-            }
-
-            blockProb += archetypeBonus;
-
-            // D. Offense Resistance (Avoidance)
-            // High ShotIQ and High Release point (Height) reduces block chance
-            const offResist = ((actor.attr.shotIq - 70) * 0.001) + ((actor.attr.height - 190) * 0.0005);
-            blockProb -= Math.max(0, offResist);
-
-            // D-2. PnR Coverage Block Modifiers
-            const pnrBlkCfg = SIM_CONFIG.PNR_COVERAGE;
-            if (pnrCoverage === 'drop' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-                blockProb += pnrBlkCfg.DROP_BLOCK_BONUS;  // +3% 블록 (빅맨이 림 보호)
-            }
-            if (pnrCoverage === 'blitz' && (preferredZone === 'Rim' || preferredZone === 'Paint')) {
-                blockProb -= pnrBlkCfg.BLITZ_BLOCK_PENALTY;  // -2% 블록 (빅맨이 핸들러에 몰림)
-            }
-
-            // --- ZONE SHOOTING ARCHETYPES: Block Reduction ---
-            const zCfg = SIM_CONFIG.ZONE_SHOOTING;
-            if (zCfg.ENABLED) {
-                // B-3. Tyrant: Rim/Paint에서 블락 확률 감소
-                if ((preferredZone === 'Rim' || preferredZone === 'Paint') &&
-                    actor.attr.ins >= zCfg.TYRANT_INS_THRESHOLD &&
-                    (actor.attr.strength >= zCfg.TYRANT_STRENGTH_THRESHOLD ||
-                     actor.attr.vertical >= zCfg.TYRANT_VERTICAL_THRESHOLD)) {
-                    blockProb -= zCfg.TYRANT_BLOCK_REDUCTION;
-                }
-
-                // B-4. Levitator: Paint에서 블락 확률 50% 감소
-                if (preferredZone === 'Paint' &&
-                    actor.attr.closeShot >= zCfg.FLOATER_CLOSESHOT_THRESHOLD &&
-                    actor.attr.agility >= zCfg.FLOATER_AGILITY_THRESHOLD &&
-                    actor.attr.height <= zCfg.FLOATER_MAX_HEIGHT) {
-                    blockProb *= zCfg.FLOATER_BLOCK_MULTIPLIER;
-                }
-
-                // B-6. Ascendant: 가드의 수직 도약으로 Rim 블락 회피
-                if (preferredZone === 'Rim' &&
-                    (actor.position === 'PG' || actor.position === 'SG') &&
-                    actor.attr.vertical >= zCfg.ASCENDANT_VERTICAL_THRESHOLD &&
-                    actor.attr.closeShot >= zCfg.ASCENDANT_CLOSESHOT_THRESHOLD) {
-                    blockProb *= zCfg.ASCENDANT_BLOCK_MULTIPLIER;
-                }
-            }
-
-            // E-0. shotType별 블록 배율
-            const blockMult = SIM_CONFIG.SHOT_DEFENSE.BLOCK_MULT[shotType ?? 'Layup'] ?? 1.0;
-            blockProb *= blockMult;
-            // Dunk 전용: 공격자 strength/vertical 블록 저항
-            if (shotType === 'Dunk') {
-                blockProb -= Math.max(0, (actor.attr.strength - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_STR_RESIST;
-                blockProb -= Math.max(0, (actor.attr.vertical - 70)) * SIM_CONFIG.SHOT_DEFENSE.DUNK_VERT_RESIST;
-            }
-
-            // E. Roll Primary Block
-            if (Math.random() < Math.max(0, blockProb)) {
-                isBlock = true;
-            }
-            // F. Help Defense Block (Inside + Mid-range)
-            else if ((preferredZone === 'Rim' || preferredZone === 'Paint' || preferredZone === 'Mid') && !isBlock) {
-                 const potentialHelpers = defTeam.onCourt.filter(p => p.playerId !== defender.playerId);
-                 potentialHelpers.sort((a, b) => b.attr.blk - a.attr.blk);
-                 const helper = potentialHelpers[0];
-
-                 if (helper) {
-                     let helpChance = blkCfg.HELP_BASE;
-                     if (helper.attr.blk >= blkCfg.HELP_BLK_THRESHOLD) helpChance += blkCfg.HELP_BLK_BONUS;
-                     if (helper.archetypes.rimProtector > blkCfg.HELP_RIM_THRESHOLD) helpChance += blkCfg.HELP_RIM_BONUS;
-
-                     // D-4. Defensive Anchor: 스마트 로테이션 → 헬프 블락 확률 2배
-                     if (blkCfg.ENABLED && helper.attr.helpDefIq >= 92 && helper.attr.blk >= 80) {
-                         helpChance *= blkCfg.ARCHETYPE_ANCHOR_HELP_MULT;
-                     }
-
-                     // Mid-range: 체이스다운 블락은 림보다 희귀
-                     if (preferredZone === 'Mid') helpChance *= blkCfg.HELP_MID_FACTOR;
-
-                     if (Math.random() < helpChance) {
-                         isBlock = true;
-                         finalDefender = helper;
-                     }
-                 }
-            }
-        }
-        // --- BLOCK CALCULATION LOGIC END ---
-
         // Team Rebound Check (dead ball, out-of-bounds → 개인 리바운드 미기록)
         let rebounder: LivePlayer | undefined;
         let reboundType: 'off' | 'def' | undefined;
@@ -785,14 +783,14 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
             type: 'miss',
             offTeam, defTeam,
             actor,
-            defender: finalDefender, // Updated to blocker if help block occurred
+            defender: finalDefender,
             rebounder,
             reboundType,
             points: 0,
             zone: preferredZone,
             playType: selectedPlayType,
             shotType,
-            isBlock, // Calculated Result
+            isBlock,
             isAndOne: false,
             matchupEffect: shotContext.matchupEffect,
             isAceTarget: shotContext.isAceTarget,

@@ -1,6 +1,6 @@
 
 import React, { useMemo } from 'react';
-import { ArrowLeft, CalendarDays, BarChart3, Users, Crown } from 'lucide-react';
+import { CalendarDays, BarChart3, Users, Crown } from 'lucide-react';
 import { Team, PlayoffSeries, Game } from '../types';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
@@ -14,10 +14,9 @@ interface PlayoffReviewViewProps {
   teams: Team[];
   playoffSeries: PlayoffSeries[];
   schedule: Game[];
-  onBack: () => void;
 }
 
-export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, teams, playoffSeries, schedule, onBack }) => {
+export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, teams, playoffSeries, schedule }) => {
   // Use Service to generate all display data
   const report = useMemo(() => generatePlayoffReport(team, teams, playoffSeries, schedule), [team, teams, playoffSeries, schedule]);
 
@@ -44,24 +43,14 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
   }, [team.roster]);
 
   return (
-    <div className="fixed inset-0 bg-slate-950 z-[150] overflow-y-auto animate-in fade-in duration-500 ko-normal pretendard pb-20">
-      
-      {/* Header */}
-      <div className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-8 py-4 flex items-center justify-between shadow-md">
-          <div className="flex items-center gap-4">
-              <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full transition-colors group">
-                  <ArrowLeft size={24} className="text-slate-400 group-hover:text-white" />
-              </button>
-              <div className="h-8 w-[1px] bg-slate-800"></div>
-              <h1 className="text-xl font-black uppercase tracking-widest text-white oswald">2026 Playoff Report</h1>
-          </div>
-          <div className="flex items-center gap-3">
-              <TeamLogo teamId={team.id} size="md" />
-              <span className="font-bold text-slate-400 uppercase text-sm tracking-wider hidden md:block">{team.city} {team.name}</span>
-          </div>
-      </div>
-
+    <div className="overflow-y-auto custom-scrollbar h-full ko-normal pretendard animate-in fade-in duration-500">
       <div className="max-w-6xl mx-auto p-6 md:p-10 space-y-12">
+
+          {/* Page Title */}
+          <div className="flex items-center gap-4">
+              <TeamLogo teamId={team.id} size="md" />
+              <h1 className="text-3xl font-black uppercase tracking-widest text-white oswald">2026 Playoff Report</h1>
+          </div>
           
           {/* Section 1: Compact Playoff Summary */}
           <div className="animate-in slide-in-from-bottom-4 duration-700">
