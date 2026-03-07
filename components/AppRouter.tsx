@@ -224,6 +224,8 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     onForceSave={gameData.forceSave} userId={session?.user?.id} refreshUnreadCount={refreshUnreadCount}
                     tendencySeed={gameData.tendencySeed || undefined}
                     onViewPlayer={handleViewPlayer}
+                    userTactics={gameData.userTactics ?? undefined}
+                    setUserTactics={gameData.setUserTactics}
                 />
             );
         case 'Playoffs':
