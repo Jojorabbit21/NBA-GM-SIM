@@ -24,8 +24,6 @@ interface MainLayoutProps {
         onLogout: () => void;
         onSimulateSeason?: () => void;
         isBatchRunning?: boolean;
-        onShowSeasonReview?: () => void;
-        onShowPlayoffReview?: () => void;
     };
     gameHeaderProps: {
         schedule: Game[];
@@ -110,7 +108,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
     }, [team, teams, schedule]);
 
     const isFullHeightView = sidebarProps.currentView === 'DraftRoom' || sidebarProps.currentView === 'DraftHistory' || sidebarProps.currentView === 'DraftLottery';
-    const isNoPaddingView = sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions' || sidebarProps.currentView === 'PlayerDetail';
+    const isNoPaddingView = sidebarProps.currentView === 'Dashboard' || sidebarProps.currentView === 'Inbox' || sidebarProps.currentView === 'Roster' || sidebarProps.currentView === 'Standings' || sidebarProps.currentView === 'Leaderboard' || sidebarProps.currentView === 'Schedule' || sidebarProps.currentView === 'Transactions' || sidebarProps.currentView === 'PlayerDetail' || sidebarProps.currentView === 'SeasonReview' || sidebarProps.currentView === 'PlayoffReview';
 
     return (
         <div className="flex h-screen bg-slate-950 overflow-hidden text-slate-200 selection:bg-indigo-500/30">

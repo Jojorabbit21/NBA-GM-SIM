@@ -30,8 +30,6 @@ interface SidebarProps {
   isBatchRunning?: boolean;
   showSeasonReview?: boolean;
   showPlayoffReview?: boolean;
-  onShowSeasonReview?: () => void;
-  onShowPlayoffReview?: () => void;
 }
 
 // Team color theme — shared utility (utils/teamTheme.ts)
@@ -99,8 +97,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isBatchRunning,
   showSeasonReview,
   showPlayoffReview,
-  onShowSeasonReview,
-  onShowPlayoffReview,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
@@ -228,16 +224,24 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <div className="px-6 py-3 border-b border-white/10 space-y-2">
           {showSeasonReview && (
             <button
-              onClick={onShowSeasonReview}
-              className="w-full px-4 py-2.5 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold transition-all"
+              onClick={() => onNavigate('SeasonReview')}
+              className={`w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold transition-all ${
+                currentView === 'SeasonReview'
+                  ? 'bg-orange-500 ring-2 ring-orange-400/50'
+                  : 'bg-orange-600 hover:bg-orange-500'
+              }`}
             >
               정규시즌 리뷰
             </button>
           )}
           {showPlayoffReview && (
             <button
-              onClick={onShowPlayoffReview}
-              className="w-full px-4 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-bold transition-all"
+              onClick={() => onNavigate('PlayoffReview')}
+              className={`w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold transition-all ${
+                currentView === 'PlayoffReview'
+                  ? 'bg-indigo-500 ring-2 ring-indigo-400/50'
+                  : 'bg-indigo-600 hover:bg-indigo-500'
+              }`}
             >
               플레이오프 리뷰
             </button>
