@@ -17,7 +17,7 @@ export interface ZoneAttempts {
 export function calculateZoneWeights(player: Player, tendencyFallback: HiddenTendencies) {
     
     // --- Priority 1: Use REAL Tendencies from DB if available ---
-    if (player.tendencies) {
+    if (player.tendencies?.zones) {
         return calculateWeightsFromRealData(player.tendencies);
     }
 
