@@ -61,9 +61,9 @@ function selectZone(
         'Rim':   sliders.shot_rim,
     };
 
-    // [Zone Pref Threshold] 임계값 미만인 존을 후보에서 제거
+    // [Zone Pref Threshold] 3PT만 임계값 적용 — 라인 안쪽(Rim/Paint/Mid)은 가중 랜덤으로 자연 분배
     const threshold = SIM_CONFIG.ZONE_SELECTION.ZONE_PREF_THRESHOLD;
-    let validZones = zones.filter(z => prefMap[z] >= threshold);
+    let validZones = zones.filter(z => z !== '3PT' || prefMap[z] >= threshold);
 
     // 전부 제거되면 → 원래 후보 중 가장 높은 선호도를 가진 존 1개만 유지
     if (validZones.length === 0) {
