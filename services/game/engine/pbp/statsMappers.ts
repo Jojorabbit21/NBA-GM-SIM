@@ -153,10 +153,10 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
                 'PnR_Pop':       0.95, // Handler kicks to popping big
                 'PnR_Roll':      0.90, // Handler feeds rolling big
                 'Handoff':       0.78, // Ball-handler hands off
-                'Transition':    0.55, // Push-ahead / outlet pass on break
-                'PostUp':        0.40, // Entry pass to post (자가 창출 비중 높음)
-                'PnR_Handler':   0.33, // 스크린 후 핸들러 자체 공격 — 어시스트 낮음
-                'Iso':           0.22, // 아이소 — 자가 창출, 어시스트 드묾
+                'Transition':    0.78, // 속공 아웃렛/푸시 패스 — 대부분 어시스트
+                'PostUp':        0.55, // 엔트리 패스 크레딧 반영
+                'PnR_Handler':   0.50, // PnR 진입 전 패스 + 스크린 어시스트 반영
+                'Iso':           0.38, // 엔트리 패스 + 짧은 드리블 후 슛
                 'Putback':       0.10, // Tip-in rarely credited
             };
             const prob = playType ? (assistOdds[playType] ?? 0.60) : 0.60;
