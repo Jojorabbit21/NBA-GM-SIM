@@ -665,8 +665,9 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
 
             const blkBonus = interpolateCurve(defBlk, blkCfg.BLK_CURVE);
             const heightBonus = Math.max(0, (defHeight - 200) * blkCfg.HEIGHT_FACTOR);
+            const vertBonus = Math.max(0, (defVert - 70) * blkCfg.VERT_FACTOR);
 
-            blockProb += blkBonus + heightBonus;
+            blockProb += blkBonus + heightBonus + vertBonus;
 
             // C. ELITE THRESHOLD BONUSES (Blocker Archetypes — 조건부 발동)
             let archetypeBonus = 0;

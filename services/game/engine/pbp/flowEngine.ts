@@ -93,8 +93,9 @@ export function calculateHitRate(
         if (shotType === 'Dunk') zoneOffRating = actor.attr.dunk;
         else                     zoneOffRating = actor.attr.layup; // Layup (default)
     } else {
-        // Paint: Floater는 closeShot 단독, Hook은 포스트 복합
+        // Paint: Floater는 closeShot 단독, Jumper는 closeShot+mid 블렌드, Hook은 포스트 복합
         if (shotType === 'Floater') zoneOffRating = actor.attr.closeShot;
+        else if (shotType === 'Jumper') zoneOffRating = actor.attr.closeShot * 0.6 + actor.attr.mid * 0.4;
         else zoneOffRating = actor.attr.postPlay * 0.45 + actor.attr.closeShot * 0.30 + actor.attr.hands * 0.25;
     }
 

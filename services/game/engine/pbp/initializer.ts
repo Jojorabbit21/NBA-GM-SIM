@@ -8,27 +8,33 @@ import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hi
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
 
 /**
- * Player.tendencies.zones(선수 DNA) → 광역 존 선호도(rim/mid/three) 정규화.
- * 텐던시 데이터가 없으면 능력치(ins/mid/out) 기반 fallback.
+ * Player.tendencies.zones(선수 DNA) → 4존 선호도(ra/itp/mid/three) 정규화.
+ * RA(Restricted Area)와 ITP(In The Paint)를 별도 존으로 분리.
+ * - RA: Dunk, Layup (피지컬 피니시)
+ * - ITP: Floater, Hook, Short Jumper (closeShot 기반 스킬 피니시)
+ * 텐던시 데이터가 없으면 능력치 기반 fallback.
  */
-function buildZonePref(p: Player): { rim: number; mid: number; three: number } {
-    let rawRim: number, rawMid: number, rawThree: number;
+function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three: number } {
+    let rawRa: number, rawItp: number, rawMid: number, rawThree: number;
 
     if (p.tendencies?.zones) {
         const z = p.tendencies.zones;
-        rawRim   = (z.ra || 0) + (z.itp || 0);
+        rawRa    = z.ra || 0;
+        rawItp   = z.itp || 0;
         rawMid   = z.mid || 0;
         rawThree = (z.cnr || 0) + (z.p45 || 0) + (z.atb || 0);
     } else {
-        // fallback: 능력치 기반 (기존 selectZone 방식과 유사)
-        rawRim   = p.ins || 70;
+        // fallback: 능력치 기반
+        rawRa    = p.ins || 70;
+        rawItp   = 35;
         rawMid   = p.midRange || 70;
         rawThree = ((p.threeCorner || 70) + (p.three45 || 70) + (p.threeTop || 70)) / 3;
     }
 
-    const total = rawRim + rawMid + rawThree || 1;
+    const total = rawRa + rawItp + rawMid + rawThree || 1;
     return {
-        rim:   rawRim / total,
+        ra:    rawRa / total,
+        itp:   rawItp / total,
         mid:   rawMid / total,
         three: rawThree / total,
     };

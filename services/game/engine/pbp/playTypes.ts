@@ -43,20 +43,22 @@ export interface PlayContext {
  * @param sliders 공격팀 전술 슬라이더
  */
 function selectZone(
-    zones: ('3PT' | 'Mid' | 'Rim')[],
+    zones: ('3PT' | 'Mid' | 'Paint' | 'Rim')[],
     actor: LivePlayer,
     sliders: TacticalSliders
-): 'Rim' | 'Mid' | '3PT' {
-    // 선수 DNA: tendencies.zones → 광역 존 비율 (초기화 시 정규화 완료)
+): 'Rim' | 'Paint' | 'Mid' | '3PT' {
+    // 선수 DNA: tendencies.zones → 4존 선호도 (RA/ITP/Mid/3PT, 초기화 시 정규화 완료)
     const prefMap: Record<string, number> = {
-        '3PT': actor.zonePref.three,
-        'Mid': actor.zonePref.mid,
-        'Rim': actor.zonePref.rim,
+        '3PT':   actor.zonePref.three,
+        'Mid':   actor.zonePref.mid,
+        'Paint': actor.zonePref.itp,
+        'Rim':   actor.zonePref.ra,
     };
     const sliderMap: Record<string, number> = {
-        '3PT': sliders.shot_3pt,
-        'Mid': sliders.shot_mid,
-        'Rim': sliders.shot_rim,
+        '3PT':   sliders.shot_3pt,
+        'Mid':   sliders.shot_mid,
+        'Paint': sliders.shot_rim,   // 인테리어 공유
+        'Rim':   sliders.shot_rim,
     };
 
     // [Zone Pref Threshold] 임계값 미만인 존을 후보에서 제거
@@ -85,64 +87,85 @@ function selectZone(
 /**
  * 선수 능력치 기반으로 마무리 타입을 확률적으로 선택한다.
  *
- * 컨텍스트별 가능한 옵션:
- *   drive  → Dunk, Layup, Floater, Pullup
- *   post   → Dunk, Layup, Floater, Hook, Jumper, Fadeaway
- *   roll   → Dunk, Layup, Floater, Hook, Jumper
- *   putback→ Dunk, Layup
+ * selectZone()이 존을 결정한 뒤, 해당 존 내에서 shotType을 선택.
+ * zone 파라미터가 지정되면 해당 존의 옵션만 생성 (RA↔ITP 분리).
+ * zone 미지정(Putback 등)이면 Rim+Paint 모두 후보.
  *
- * 각 옵션에 자격 조건(eligibility) + 가중치(weight)를 적용한 뒤
- * 가중 랜덤(roulette wheel)으로 최종 zone + shotType을 결정한다.
+ * 존별 shotType:
+ *   Rim   → Dunk, Layup (피지컬 피니시)
+ *   Paint → Floater, Hook, Jumper (closeShot 기반 스킬 피니시)
+ *   Mid   → Pullup, Jumper, Fadeaway (zone 미지정 시에만)
  */
 type FinishContext = 'drive' | 'post' | 'roll' | 'putback';
 
 function resolveFinish(
     actor: LivePlayer,
     context: FinishContext,
-    sliders: TacticalSliders
+    sliders: TacticalSliders,
+    zone?: 'Rim' | 'Paint'
 ): { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'] } {
     const F = SIM_CONFIG.FINISH;
     const B = F.BASELINE;
     const options: { zone: PlayContext['preferredZone'], shotType: PlayContext['shotType'], weight: number }[] = [];
 
-    // Dunk (Rim) — vertical + strength 충족 시
-    if (actor.attr.vertical >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN) {
-        options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
+    // ── Rim 옵션 (zone 미지정 또는 'Rim') ──
+    if (!zone || zone === 'Rim') {
+        // Dunk (Rim) — vertical + strength 충족 시
+        if (actor.attr.vertical >= F.DUNK_VERT_MIN && actor.attr.strength >= F.DUNK_STR_MIN) {
+            options.push({ zone: 'Rim', shotType: 'Dunk', weight: Math.max(0, actor.attr.dunk - B) * F.DUNK_WEIGHT });
+        }
+        // Layup (Rim) — 항상 가능
+        options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
     }
-    // Layup (Rim) — 항상 가능
-    options.push({ zone: 'Rim', shotType: 'Layup', weight: Math.max(0, actor.attr.layup - B) * F.LAYUP_WEIGHT });
 
-    // Floater (Paint) — closeShot ≥ 80, putback 제외
-    if (context !== 'putback' && actor.attr.closeShot >= F.FLOATER_CLOSESHOT_MIN) {
-        options.push({ zone: 'Paint', shotType: 'Floater', weight: Math.max(0, actor.attr.closeShot - B) * F.FLOATER_WEIGHT });
+    // ── Paint 옵션 (zone 미지정 또는 'Paint') ──
+    if (!zone || zone === 'Paint') {
+        // Floater (Paint) — closeShot ≥ 80, putback 제외
+        if (context !== 'putback' && actor.attr.closeShot >= F.FLOATER_CLOSESHOT_MIN) {
+            options.push({ zone: 'Paint', shotType: 'Floater', weight: Math.max(0, actor.attr.closeShot - B) * F.FLOATER_WEIGHT });
+        }
+        // Hook (Paint) — height ≥ 208, closeShot ≥ 80, post/roll만
+        if ((context === 'post' || context === 'roll') &&
+            actor.attr.height >= F.HOOK_HEIGHT_MIN && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
+            options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT });
+        }
+        // Short Jumper (Paint) — closeShot 기반 페인트존 점퍼
+        if (context !== 'putback' && actor.attr.closeShot >= F.PAINT_JUMPER_CLOSESHOT_MIN) {
+            const w = Math.max(0, actor.attr.closeShot - B) * F.PAINT_JUMPER_WEIGHT * (sliders.shot_mid / 5);
+            options.push({ zone: 'Paint', shotType: 'Jumper', weight: w });
+        }
     }
-    // Hook (Paint) — height ≥ 208, closeShot ≥ 80, post/roll만
-    if ((context === 'post' || context === 'roll') &&
-        actor.attr.height >= F.HOOK_HEIGHT_MIN && actor.attr.closeShot >= F.HOOK_CLOSESHOT_MIN) {
-        options.push({ zone: 'Paint', shotType: 'Hook', weight: Math.max(0, actor.attr.postPlay - B) * F.HOOK_WEIGHT });
-    }
-    // Pullup (Mid) — drive 컨텍스트만
-    if (context === 'drive' && actor.attr.mid >= F.MID_MIN) {
-        const w = Math.max(0, actor.attr.mid - B) * F.MID_DRIVE_WEIGHT * (sliders.shot_mid / 5);
-        options.push({ zone: 'Mid', shotType: 'Pullup', weight: w });
-    }
-    // Jumper (Mid) — post/roll 컨텍스트
-    if ((context === 'post' || context === 'roll') && actor.attr.mid >= F.MID_MIN) {
-        const w = Math.max(0, actor.attr.mid - B) * F.MID_POST_WEIGHT * (sliders.shot_mid / 5);
-        options.push({ zone: 'Mid', shotType: 'Jumper', weight: w });
-    }
-    // Fadeaway (Mid) — post 컨텍스트만, 엘리트 포스트 기술
-    if (context === 'post' &&
-        actor.attr.postPlay >= F.FADEAWAY_POSTPLAY_MIN &&
-        actor.attr.mid >= F.FADEAWAY_MID_MIN &&
-        actor.attr.closeShot >= F.FADEAWAY_CLOSESHOT_MIN) {
-        const w = Math.max(0, actor.attr.mid - B) * F.FADEAWAY_WEIGHT * (sliders.shot_mid / 5);
-        options.push({ zone: 'Mid', shotType: 'Fadeaway', weight: w });
+
+    // ── Mid 옵션 (zone 미지정일 때만 — selectZone에서 이미 존 확정 시 제외) ──
+    if (!zone) {
+        // Pullup (Mid) — drive 컨텍스트만
+        if (context === 'drive' && actor.attr.mid >= F.MID_MIN) {
+            const w = Math.max(0, actor.attr.mid - B) * F.MID_DRIVE_WEIGHT * (sliders.shot_mid / 5);
+            options.push({ zone: 'Mid', shotType: 'Pullup', weight: w });
+        }
+        // Jumper (Mid) — post/roll 컨텍스트
+        if ((context === 'post' || context === 'roll') && actor.attr.mid >= F.MID_MIN) {
+            const w = Math.max(0, actor.attr.mid - B) * F.MID_POST_WEIGHT * (sliders.shot_mid / 5);
+            options.push({ zone: 'Mid', shotType: 'Jumper', weight: w });
+        }
+        // Fadeaway (Mid) — post 컨텍스트만, 엘리트 포스트 기술
+        if (context === 'post' &&
+            actor.attr.postPlay >= F.FADEAWAY_POSTPLAY_MIN &&
+            actor.attr.mid >= F.FADEAWAY_MID_MIN &&
+            actor.attr.closeShot >= F.FADEAWAY_CLOSESHOT_MIN) {
+            const w = Math.max(0, actor.attr.mid - B) * F.FADEAWAY_WEIGHT * (sliders.shot_mid / 5);
+            options.push({ zone: 'Mid', shotType: 'Fadeaway', weight: w });
+        }
     }
 
     // 가중 랜덤 선택
     const total = options.reduce((s, o) => s + o.weight, 0);
-    if (total <= 0) return { zone: 'Rim', shotType: 'Layup' }; // fallback
+    if (total <= 0) {
+        // fallback: 존 제한에 따라 적절한 기본값
+        return zone === 'Paint'
+            ? { zone: 'Paint', shotType: 'Floater' }
+            : { zone: 'Rim', shotType: 'Layup' };
+    }
     let r = Math.random() * total;
     for (const opt of options) {
         r -= opt.weight;
@@ -242,10 +265,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 아이소 진입 패스를 제공한 선수 (어시스트 후보)
             const passer = pickPasser(p => p.archetypes.connector + p.archetypes.handler * 0.3, actor.playerId);
 
-            // [Updated] 3PT · Mid · Rim 모두 후보. Rim이면 resolveFinish로 마무리 결정.
-            const isoZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
-            if (isoZone === 'Rim') {
-                const { zone, shotType } = resolveFinish(actor, 'drive', sliders);
+            // 4존 선택: 3PT · Mid · Paint · Rim. Rim/Paint이면 resolveFinish로 마무리 결정.
+            const isoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            if (isoZone === 'Rim' || isoZone === 'Paint') {
+                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, isoZone);
                 return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.00 };
             }
             return {
@@ -262,10 +285,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.handler);
             const screener = pickWeightedActor(p => p.archetypes.screener + p.archetypes.roller * 0.5, actor.playerId);
 
-            // [Updated] 핸들러 풀업 or 스크린 후 드라이브. Rim 포함 → 존 선호도에 따라 드라이브 가능.
-            const zone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
-            if (zone === 'Rim') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+            // 4존 선택: 핸들러 풀업 or 스크린 후 드라이브.
+            const zone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            if (zone === 'Rim' || zone === 'Paint') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, zone);
                 return { playType, actor, secondaryActor: screener, preferredZone: finishZone, shotType, bonusHitRate: 0.01 };
             }
             return {
@@ -281,14 +304,18 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Handler passes to Roller (Finisher)
             const screener = pickWeightedActor(p => p.archetypes.roller + p.archetypes.screener * 0.5);
             const handler = pickPasser(p => p.archetypes.handler, screener.playerId);
-            const { zone: rollZone, shotType: rollShotType } = resolveFinish(screener, 'roll', sliders);
+            const rollZone = selectZone(['Rim', 'Paint', 'Mid'], screener, sliders);
+            if (rollZone === 'Rim' || rollZone === 'Paint') {
+                const { zone, shotType } = resolveFinish(screener, 'roll', sliders, rollZone);
+                return { playType, actor: screener, secondaryActor: handler, preferredZone: zone, shotType, bonusHitRate: 0.03 };
+            }
             return {
                 playType,
-                actor: screener, // Finisher
-                secondaryActor: handler, // Assister
-                preferredZone: rollZone,
-                shotType: rollShotType,
-                bonusHitRate: 0.03 // PnR_Roll: 롤맨 림 어택 이점
+                actor: screener,
+                secondaryActor: handler,
+                preferredZone: 'Mid',
+                shotType: 'Jumper',
+                bonusHitRate: 0.03
             };
         }
         case 'PnR_Pop': {
@@ -309,14 +336,18 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.postScorer);
             // 엔트리 패스를 제공한 선수 (어시스트 후보)
             const entryPasser = pickPasser(p => p.archetypes.handler + p.archetypes.connector * 0.5, actor.playerId);
-            const { zone: postZone, shotType: postShotType } = resolveFinish(actor, 'post', sliders);
+            const postZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders);
+            if (postZone === 'Rim' || postZone === 'Paint') {
+                const { zone, shotType } = resolveFinish(actor, 'post', sliders, postZone);
+                return { playType, actor, secondaryActor: entryPasser, preferredZone: zone, shotType, bonusHitRate: 0.01 };
+            }
             return {
                 playType,
                 actor,
                 secondaryActor: entryPasser,
-                preferredZone: postZone,
-                shotType: postShotType,
-                bonusHitRate: 0.01 // PostUp: 인사이드 소폭
+                preferredZone: 'Mid',
+                shotType: 'Jumper',
+                bonusHitRate: 0.01
             };
         }
         case 'CatchShoot': {
@@ -325,9 +356,9 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const passer = pickPasser(p => p.archetypes.handler + p.archetypes.connector, actor.playerId);
 
             // [Play Redirect] 존 선호도에 따라 캐치 후 펌프페이크 → 드라이브 전환 가능
-            const catchZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
-            if (catchZone === 'Rim') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+            const catchZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            if (catchZone === 'Rim' || catchZone === 'Paint') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, catchZone);
                 return { playType, actor, secondaryActor: passer, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
             }
             return {
@@ -343,14 +374,18 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // Best Driver/Cutter
             const actor = pickWeightedActor(p => p.archetypes.driver + p.attr.offBallMovement * 0.5);
             const passer = pickPasser(p => p.archetypes.connector, actor.playerId);
-            const { zone: cutZone, shotType: cutShotType } = resolveFinish(actor, 'drive', sliders);
+            const cutZone = selectZone(['Rim', 'Paint', 'Mid'], actor, sliders);
+            if (cutZone === 'Rim' || cutZone === 'Paint') {
+                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, cutZone);
+                return { playType, actor, secondaryActor: passer, preferredZone: zone, shotType, bonusHitRate: 0.03 };
+            }
             return {
                 playType,
                 actor,
                 secondaryActor: passer,
-                preferredZone: cutZone,
-                shotType: cutShotType,
-                bonusHitRate: 0.03 // Cut: 커팅 타이밍 이점 (57+3=60%)
+                preferredZone: 'Mid',
+                shotType: 'Pullup',
+                bonusHitRate: 0.03
             };
         }
         case 'Handoff': {
@@ -358,10 +393,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const actor = pickWeightedActor(p => p.archetypes.spacer + p.archetypes.driver * 0.5);
             const big = pickWeightedActor(p => p.archetypes.screener, actor.playerId);
 
-            // [Updated] 핸드오프 후 캐치 → 3PT/Mid/Rim. 존 선호도에 따라 드라이브 가능.
-            const hoZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
-            if (hoZone === 'Rim') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+            // 핸드오프 후 캐치 → 4존 선택. 존 선호도에 따라 드라이브 가능.
+            const hoZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            if (hoZone === 'Rim' || hoZone === 'Paint') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, hoZone);
                 return { playType, actor, secondaryActor: big, preferredZone: finishZone, shotType, bonusHitRate: 0.02 };
             }
             return {
@@ -379,10 +414,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             // 속공 패스를 제공한 선수 (아웃렛/푸시어헤드 패스)
             const outletPasser = pickPasser(p => p.archetypes.connector + p.attr.passVision * 0.3, actor.playerId);
 
-            // [Updated] 속공 = Rim(resolveFinish) or 트랜지션 3점.
-            const trZone = selectZone(['3PT', 'Rim'], actor, sliders);
-            if (trZone === 'Rim') {
-                const { zone, shotType } = resolveFinish(actor, 'drive', sliders);
+            // 속공 = Rim/Paint(resolveFinish) or 트랜지션 3점.
+            const trZone = selectZone(['3PT', 'Paint', 'Rim'], actor, sliders);
+            if (trZone === 'Rim' || trZone === 'Paint') {
+                const { zone, shotType } = resolveFinish(actor, 'drive', sliders, trZone);
                 return { playType, actor, secondaryActor: outletPasser, preferredZone: zone, shotType, bonusHitRate: 0.04 };
             }
             return {
@@ -424,9 +459,9 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const screenBonus = Math.max(0, (screener.archetypes.screener - 50) / 50 * 0.02);
 
             // [Play Redirect] 존 선호도에 따라 스크린 후 컬 드라이브 가능
-            const obsZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
-            if (obsZone === 'Rim') {
-                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders);
+            const obsZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            if (obsZone === 'Rim' || obsZone === 'Paint') {
+                const { zone: finishZone, shotType } = resolveFinish(actor, 'drive', sliders, obsZone);
                 return { playType, actor, secondaryActor: passer, screener, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + screenBonus };
             }
             return {
@@ -452,10 +487,10 @@ export function resolvePlayAction(team: TeamState, playType: PlayType, sliders: 
             const driveBonus = Math.max(0, (driveQuality - 70) / 30 * 0.02);
 
             // [Play Redirect] 존 선호도에 따라 드라이버가 킥아웃 안 하고 직접 마무리 가능
-            const dkZone = selectZone(['3PT', 'Mid', 'Rim'], actor, sliders);
-            if (dkZone === 'Rim') {
+            const dkZone = selectZone(['3PT', 'Mid', 'Paint', 'Rim'], actor, sliders);
+            if (dkZone === 'Rim' || dkZone === 'Paint') {
                 // 드라이버가 직접 마무리 → actor를 driver로 교체, 어시스트 없음
-                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders);
+                const { zone: finishZone, shotType } = resolveFinish(driver, 'drive', sliders, dkZone);
                 return { playType, actor: driver, preferredZone: finishZone, shotType, bonusHitRate: 0.02 + driveBonus };
             }
             return {
