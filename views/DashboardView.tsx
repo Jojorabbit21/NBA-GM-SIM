@@ -9,6 +9,7 @@ import { computeDefensiveStats } from '../utils/defensiveStats';
 import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
+import { RosterGrid } from '../components/roster/RosterGrid';
 
 interface DashboardViewProps {
   team: Team;
@@ -26,7 +27,7 @@ interface DashboardViewProps {
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
 }
 
-type DashboardTab = 'rotation' | 'tactics' | 'opponent';
+type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
@@ -34,6 +35,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
+  const [recordsSubTab, setRecordsSubTab] = useState<'stats' | 'shooting'>('stats');
 
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
@@ -105,6 +107,18 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <span>전술 관리</span>
                     </button>
                     <button
+                        onClick={() => setActiveTab('roster')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'roster' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        <span>로스터</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('records')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'records' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        <span>기록</span>
+                    </button>
+                    <button
                         onClick={() => setActiveTab('opponent')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
@@ -137,6 +151,36 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         onForceSave={onForceSave}
                         defensiveStats={defensiveStats}
                     />
+                  </div>
+              )}
+
+              {activeTab === 'roster' && (
+                  <div className="animate-in fade-in duration-500 h-full">
+                    <RosterGrid team={team} tab="roster" onPlayerClick={handlePlayerClick} />
+                  </div>
+              )}
+
+              {activeTab === 'records' && (
+                  <div className="animate-in fade-in duration-500 h-full flex flex-col">
+                    <div className="px-8 py-3 flex-shrink-0">
+                      <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800 w-fit shadow-sm">
+                        <button
+                          onClick={() => setRecordsSubTab('stats')}
+                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubTab === 'stats' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                          시즌 기록
+                        </button>
+                        <button
+                          onClick={() => setRecordsSubTab('shooting')}
+                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubTab === 'shooting' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
+                        >
+                          슈팅
+                        </button>
+                      </div>
+                    </div>
+                    <div className="flex-1 min-h-0">
+                      <RosterGrid team={team} tab={recordsSubTab} onPlayerClick={handlePlayerClick} />
+                    </div>
                   </div>
               )}
 
