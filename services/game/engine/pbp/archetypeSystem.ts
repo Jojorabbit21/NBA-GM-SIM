@@ -6,6 +6,9 @@ import { LivePlayer } from './pbpTypes';
 //  Calculates Role Suitability Scores (0-100+) based on attributes & CURRENT CONDITION.
 // ==========================================================================================
 
+// ★ TEMPORARY: 모든 아키타입 효과 비활성화 (true → 모든 선수 균등 아키타입 점수)
+const ARCHETYPES_DISABLED = true;
+
 export interface ArchetypeRatings {
     // Basic
     handler: number;    
@@ -31,8 +34,17 @@ export interface ArchetypeRatings {
  * @param condition - Current stamina condition (0-100). Fatigue reduces effectiveness.
  */
 export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: number = 100): ArchetypeRatings {
-    
-    // Fatigue Multiplier: 
+
+    // ★ TEMPORARY: 모든 아키타입 비활성화 시 균등 점수 반환
+    if (ARCHETYPES_DISABLED) {
+        return {
+            handler: 50, spacer: 50, driver: 50, screener: 50,
+            roller: 50, popper: 50, rebounder: 50, postScorer: 50,
+            isoScorer: 50, connector: 50, perimLock: 50, rimProtector: 50
+        };
+    }
+
+    // Fatigue Multiplier:
     // 100-90 condition = 1.0 (No penalty)
     // 50 condition = 0.8 (20% penalty to ratings)
     // 0 condition = 0.5 (50% penalty)

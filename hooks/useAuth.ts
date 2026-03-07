@@ -45,11 +45,12 @@ export const useAuth = () => {
             if (!mounted) return;
             
             if (event === 'SIGNED_IN' && session) {
-                setSession(session);
+                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
             } else if (event === 'SIGNED_OUT') {
                 setSession(null);
             } else if (event === 'TOKEN_REFRESHED' && session) {
-                setSession(session);
+                // 토큰 갱신은 같은 유저 → 객체 참조만 바뀜 → 기존 참조 유지
+                setSession((prev: any) => prev?.user?.id === session.user.id ? prev : session);
             }
         });
 
