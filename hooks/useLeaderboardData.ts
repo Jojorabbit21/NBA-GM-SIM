@@ -600,9 +600,14 @@ export const useLeaderboardData = (
                          return s[sortConfig.key] || 0;
                     }
 
+                    // Map column keys that differ from stats property names
+                    const statKey = sortConfig.key === 'oreb' ? 'offReb'
+                                  : sortConfig.key === 'dreb' ? 'defReb'
+                                  : sortConfig.key;
+
                     // Direct access for most keys now (including advanced)
-                    if (s[sortConfig.key] !== undefined) {
-                        const val = s[sortConfig.key];
+                    if (s[statKey] !== undefined) {
+                        const val = s[statKey];
                         // Count stats: per-game. pm is already pre-calculated as per-game.
                         if (['pts', 'reb', 'oreb', 'dreb', 'ast', 'stl', 'blk', 'tov', 'pf', 'fgm', 'fga', 'p3m', 'p3a', 'ftm', 'fta'].includes(sortConfig.key)) {
                             return val / g;
