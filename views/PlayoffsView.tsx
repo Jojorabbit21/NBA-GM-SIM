@@ -182,7 +182,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           className="min-w-[900px] h-full px-6 py-5"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(6, 140px)',
+            gridTemplateColumns: 'repeat(6, 1fr)',
             gridTemplateRows: 'repeat(9, minmax(110px, 1fr))',
             gap: '12px 48px',
           }}
