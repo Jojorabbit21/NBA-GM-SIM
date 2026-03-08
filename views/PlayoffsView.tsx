@@ -258,7 +258,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             </div>
           </div>
 
-          <div className="flex-1" />
+          <div className="w-4 md:w-6 flex-shrink-0" />
 
           {/* ── R1 ── */}
           <div className="w-[140px] flex-shrink-0 flex flex-col">
