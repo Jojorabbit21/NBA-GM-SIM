@@ -95,10 +95,17 @@ export function calculateHallOfFameScore(
 
     // --- C. Team Stats Ranking Score (0~100) ---
     const leagueRanks = seasonReport.leagueRanks;
-    const statCategories: (keyof typeof leagueRanks)[] = ['pts', 'reb', 'ast', 'stl', 'blk', 'tsPct'];
+    const statWeights: { cat: keyof typeof leagueRanks; weight: number }[] = [
+        { cat: 'pts',   weight: 0.25 },
+        { cat: 'tsPct', weight: 0.25 },
+        { cat: 'ast',   weight: 0.15 },
+        { cat: 'reb',   weight: 0.15 },
+        { cat: 'stl',   weight: 0.10 },
+        { cat: 'blk',   weight: 0.10 },
+    ];
     const rankToScore = (rank: number) => (30 - rank) / 29;
-    const avgRankScore = statCategories.reduce((sum, cat) => sum + rankToScore(leagueRanks[cat].rank), 0) / statCategories.length;
-    const statScore = Math.round(avgRankScore * 100);
+    const weightedRankScore = statWeights.reduce((sum, { cat, weight }) => sum + rankToScore(leagueRanks[cat].rank) * weight, 0);
+    const statScore = Math.round(weightedRankScore * 100);
 
     // --- D. Playoff Score (0~400) ---
     const playoffReport = generatePlayoffReport(team, allTeams, playoffSeries, schedule);
