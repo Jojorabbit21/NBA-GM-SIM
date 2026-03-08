@@ -184,7 +184,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             display: 'grid',
             gridTemplateColumns: 'repeat(6, 140px)',
             gridTemplateRows: 'repeat(9, minmax(110px, 1fr))',
-            gap: '12px 24px',
+            gap: '12px 48px',
           }}
         >
           {/* ══ East Play-In (rows 1-4) ══ */}
