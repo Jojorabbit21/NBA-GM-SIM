@@ -10,11 +10,13 @@ interface GridSeriesBoxProps {
     seedMap: Record<string, number>;
     isProjected?: boolean;
     label?: string;
+    onClick?: () => void;
+    selected?: boolean;
 }
 
 const CELL_BORDER = "border-b border-r border-slate-800";
 
-export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myTeamId, seedMap, isProjected, label }) => {
+export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myTeamId, seedMap, isProjected, label, onClick, selected }) => {
     const higher = teams.find(t => t.id === series?.higherSeedId);
     const lower = teams.find(t => t.id === series?.lowerSeedId);
     
@@ -79,7 +81,10 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
     };
 
     return (
-      <div className={`flex flex-col w-full ${CELL_BORDER} relative group bg-slate-900`}>
+      <div
+        className={`flex flex-col w-full ${CELL_BORDER} relative group bg-slate-900 ${onClick ? 'cursor-pointer' : ''} ${selected ? 'ring-1 ring-indigo-500/60 bg-slate-800/80' : ''}`}
+        onClick={onClick}
+      >
           <div className={`absolute left-0 top-0 bottom-0 w-0.5 md:w-1 ${series?.conference === 'East' ? 'bg-blue-600/50' : series?.conference === 'West' ? 'bg-red-600/50' : 'bg-transparent'}`}></div>
           <div className="flex justify-between items-center px-2 md:px-3 py-1.5 bg-slate-900/50 border-b border-slate-800/50 min-h-[22px]">
               {statusText === label ? (

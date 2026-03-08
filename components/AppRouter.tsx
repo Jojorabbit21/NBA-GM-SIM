@@ -252,7 +252,16 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'Playoffs':
-            return <PlayoffsView teams={gameData.teams} schedule={gameData.schedule} series={gameData.playoffSeries} setSeries={gameData.setPlayoffSeries} setSchedule={gameData.setSchedule} myTeamId={gameData.myTeamId!} />;
+            return <PlayoffsView
+                teams={gameData.teams} schedule={gameData.schedule} series={gameData.playoffSeries}
+                setSeries={gameData.setPlayoffSeries} setSchedule={gameData.setSchedule} myTeamId={gameData.myTeamId!}
+                userId={session?.user?.id}
+                onViewGameResult={(result) => {
+                    previousViewRef.current = 'Playoffs';
+                    sim.loadSavedGameResult(result);
+                    setView('GameResult');
+                }}
+            />;
         case 'Help':
             return <HelpView onBack={() => setView('Dashboard')} />;
         case 'OvrCalculator':
