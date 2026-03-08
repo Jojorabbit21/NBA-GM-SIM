@@ -323,7 +323,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
               className="px-4 pt-3 pb-4 border-b border-slate-800 flex-shrink-0"
               style={{ background: `linear-gradient(135deg, ${higherColor}, ${lowerColor})` }}
             >
-              <div className="flex items-center mb-3">
+              <div className="flex items-center mb-4">
                 <div className="w-1/3">
                   {confLabel && <span className="text-xs font-black text-white/60 tracking-widest">{confLabel}</span>}
                 </div>
