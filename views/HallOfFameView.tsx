@@ -73,6 +73,11 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                             <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">2025-26 시즌</p>
                             <h1 className="text-3xl font-black text-white ko-tight">명예의 전당</h1>
                         </div>
+                        <div className="ml-auto text-right text-xs text-slate-500 leading-relaxed">
+                            <p className="font-bold text-slate-400 mb-0.5">Score = 시즌 + 득실차 + 팀스탯 + 플레이오프</p>
+                            <p>시즌 (0~400) + 득실차 (0~100) + 팀스탯 (0~100) + 플레이오프 (0~400)</p>
+                            <p className="text-slate-600">팀스탯: PTS 25 / TS% 25 / AST 15 / REB 15 / STL 10 / BLK 10</p>
+                        </div>
                     </div>
 
                     {/* Loading */}
