@@ -5,7 +5,6 @@ import { fetchHallOfFameEntries, HallOfFameEntry } from '../services/hallOfFameS
 import { RosterSnapshotPlayer } from '../utils/hallOfFameScorer';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { OvrBadge } from '../components/common/OvrBadge';
-import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { TEAM_DATA } from '../data/teamData';
 
@@ -14,14 +13,14 @@ interface HallOfFameViewProps {
     onBack: () => void;
 }
 
-// --- Playoff tier → Badge variant mapping ---
-const PLAYOFF_BADGE: Record<string, { label: string; variant: 'warning' | 'neutral' | 'brand' | 'success' | 'info' }> = {
-    'BPL CHAMPIONS':        { label: 'CHAMPIONS', variant: 'warning' },
-    'BPL Finalist':         { label: 'FINALIST', variant: 'neutral' },
-    'Conference Finalist':  { label: 'CONF FINALS', variant: 'brand' },
-    'Semi-Finalist':        { label: 'SEMIS', variant: 'success' },
-    'Playoff Participant':  { label: 'ROUND 1', variant: 'info' },
-    'Playoff Qualification':{ label: 'PLAY-IN', variant: 'info' },
+// --- Playoff tier → 한국어 텍스트 ---
+const PLAYOFF_TEXT: Record<string, string> = {
+    'BPL CHAMPIONS':        '파이널 우승',
+    'BPL Finalist':         '파이널 준우승',
+    'Conference Finalist':  '컨퍼런스 파이널 탈락',
+    'Semi-Finalist':        '세미파이널 탈락',
+    'Playoff Participant':  '1라운드 탈락',
+    'Playoff Qualification':'플레이인 탈락',
 };
 
 // --- Rank decoration ---
@@ -61,19 +60,19 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                 <div className="col-span-3" />
 
                 {/* 중앙 콘텐츠 */}
-                <div className="col-span-6 py-12 space-y-8">
+                <div className="col-span-6 bg-slate-900 py-12 space-y-8">
                     {/* Header */}
-                    <div className="flex items-center mb-2">
+                    <div className="flex items-center gap-4 px-6">
                         <button
                             onClick={onBack}
                             className="p-2.5 rounded-2xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all active:scale-95"
                         >
                             <ArrowLeft size={22} />
                         </button>
-                    </div>
-                    <div className="text-center space-y-1">
-                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">2025-26 시즌</p>
-                        <h1 className="text-3xl font-black text-white ko-tight">명예의 전당</h1>
+                        <div>
+                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">2025-26 시즌</p>
+                            <h1 className="text-3xl font-black text-white ko-tight">명예의 전당</h1>
+                        </div>
                     </div>
 
                     {/* Loading */}
@@ -95,14 +94,14 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                     {!isLoading && entries.length > 0 && (
                         <div className="border-t border-slate-800 overflow-hidden">
                             {/* Table Header */}
-                            <div className="grid grid-cols-[56px_1fr_1fr_100px_100px_120px_60px] px-6 py-3 border-b border-slate-800 bg-slate-950">
+                            <div className="grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-3 border-b border-slate-800 bg-slate-950">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">#</span>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Team</span>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">GM</span>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Score</span>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Record</span>
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Playoffs</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center"></span>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">로스터</span>
                             </div>
 
                             {/* Table Body */}
@@ -113,14 +112,15 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                 const teamStatic = TEAM_DATA[entry.team_id];
                                 const teamName = teamStatic ? `${teamStatic.city} ${teamStatic.name}` : entry.team_id.toUpperCase();
                                 const playoffTier = entry.score_breakdown?.details?.playoff_tier || 'Playoff Qualification';
-                                const badge = PLAYOFF_BADGE[playoffTier] || { label: playoffTier, variant: 'neutral' as const };
+                                const playoffLabel = PLAYOFF_TEXT[playoffTier] || playoffTier;
                                 const wins = entry.score_breakdown?.details?.wins ?? 0;
                                 const losses = entry.score_breakdown?.details?.losses ?? 0;
+                                const leagueRank = entry.score_breakdown?.details?.league_rank ?? 0;
 
                                 return (
                                     <div
                                         key={entry.id}
-                                        className={`grid grid-cols-[56px_1fr_1fr_100px_100px_120px_60px] px-6 py-4 items-center border-b border-slate-800/50 transition-colors ${
+                                        className={`grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-4 items-center border-b border-slate-800/50 transition-colors ${
                                             isMe
                                                 ? 'bg-indigo-500/10'
                                                 : rank === 1
@@ -131,39 +131,39 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                         {/* Rank */}
                                         <div className="flex items-center gap-1.5">
                                             {rankStyle.icon}
-                                            <span className={`text-lg font-black oswald ${rankStyle.color}`}>{rank}</span>
+                                            <span className={`text-base font-black oswald ${rankStyle.color}`}>{rank}</span>
                                         </div>
 
                                         {/* Team */}
                                         <div className="flex items-center gap-3 min-w-0">
                                             <TeamLogo teamId={entry.team_id} size="sm" />
-                                            <span className="text-sm font-bold text-white truncate ko-tight">{teamName}</span>
+                                            <span className="text-base font-bold text-white truncate ko-tight">{teamName}</span>
                                         </div>
 
                                         {/* GM */}
                                         <div className="flex items-center min-w-0">
-                                            <span className={`text-sm truncate ${isMe ? 'font-bold text-indigo-300' : 'text-slate-400'}`}>
+                                            <span className={`text-base truncate ${isMe ? 'font-bold text-indigo-300' : 'text-slate-400'}`}>
                                                 {isMe ? '나' : (entry.user_email || '익명')}
                                             </span>
                                         </div>
 
                                         {/* Score */}
                                         <div className="text-center">
-                                            <span className={`text-xl font-black oswald ${rank <= 3 ? 'text-white' : 'text-slate-200'}`}>
+                                            <span className={`text-base font-black oswald ${rank <= 3 ? 'text-white' : 'text-slate-200'}`}>
                                                 {entry.total_score}
                                             </span>
                                         </div>
 
                                         {/* Record */}
                                         <div className="text-center">
-                                            <span className="text-sm font-bold text-slate-300 font-mono tabular-nums">
-                                                {wins}-{losses}
+                                            <span className="text-base font-bold text-slate-300 tabular-nums">
+                                                #{leagueRank} ({wins}-{losses})
                                             </span>
                                         </div>
 
                                         {/* Playoffs */}
                                         <div className="text-center">
-                                            <Badge variant={badge.variant} size="sm">{badge.label}</Badge>
+                                            <span className="text-base font-bold text-slate-300">{playoffLabel}</span>
                                         </div>
 
                                         {/* Roster */}
