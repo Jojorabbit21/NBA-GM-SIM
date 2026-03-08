@@ -210,6 +210,11 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
           </div>
 
+          {/* c: PI-B→R1 East (crossing X — 7시드→2v7, 8시드→1v8) */}
+          <div style={{ gridColumn: 4, gridRow: '1 / 5' }}>
+            {conn(['M 0,25 H 35 V 88 H 100', 'M 0,75 H 65 V 12 H 100'])}
+          </div>
+
           {/* ══ East R1 (col 5) ══ */}
           {r1_east.map((s, i) => (
             <div key={`e_r1_${i}`} className="flex items-center" style={{ gridColumn: 5, gridRow: i + 1 }}>
@@ -240,15 +245,9 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
           </div>
 
-          {/* c: CF→Finals */}
-          <div style={{ gridColumn: 10, gridRow: '1 / 5' }}>
-            {conn(['M 0,50 H 50 V 100'])}
-          </div>
-          <div style={{ gridColumn: 10, gridRow: 5 }}>
-            {conn(['M 50,0 V 100', 'M 50,50 H 100'])}
-          </div>
-          <div style={{ gridColumn: 10, gridRow: '6 / 10' }}>
-            {conn(['M 0,50 H 50 V 0'])}
+          {/* c: CF→Finals (단일 셀, 9행 span) */}
+          <div style={{ gridColumn: 10, gridRow: '1 / 10' }}>
+            {conn(['M 0,22 H 50 V 78 H 0', 'M 50,50 H 100'])}
           </div>
 
           {/* ══ Finals (row 5, col 11) ══ */}
@@ -269,6 +268,11 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           </div>
           <div className="flex items-center" style={{ gridColumn: 3, gridRow: '8 / 10' }}>
             <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
+          </div>
+
+          {/* c: PI-B→R1 West (crossing X — 7시드→2v7, 8시드→1v8) */}
+          <div style={{ gridColumn: 4, gridRow: '6 / 10' }}>
+            {conn(['M 0,25 H 35 V 88 H 100', 'M 0,75 H 65 V 12 H 100'])}
           </div>
 
           {/* ══ West R1 (col 5) ══ */}
