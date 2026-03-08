@@ -15,7 +15,7 @@ interface GridSeriesBoxProps {
     selected?: boolean;
 }
 
-const CELL_BORDER = "border border-slate-800";
+const CELL_BORDER = "border border-slate-600";
 
 export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myTeamId, seedMap, isProjected, label, onClick, selected }) => {
     const higher = teams.find(t => t.id === series?.higherSeedId);
