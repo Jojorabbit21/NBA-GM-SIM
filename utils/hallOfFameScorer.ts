@@ -28,7 +28,17 @@ export interface RosterSnapshotPlayer {
     name: string;
     position: string;
     ovr: number;
-    stats: { ppg: number; rpg: number; apg: number };
+    stats: {
+        mpg: number;
+        ppg: number;
+        rpg: number;
+        apg: number;
+        spg: number;
+        bpg: number;
+        fgPct: number;
+        threePtPct: number;
+        ftPct: number;
+    };
 }
 
 // --- Helpers ---
@@ -47,15 +57,24 @@ export function maskEmail(email: string): string {
 export function createRosterSnapshot(team: Team): RosterSnapshotPlayer[] {
     return team.roster.map(p => {
         const g = p.stats.g || 1;
+        const fgPct = p.stats.fga > 0 ? (p.stats.fgm / p.stats.fga) * 100 : 0;
+        const threePtPct = p.stats.p3a > 0 ? (p.stats.p3m / p.stats.p3a) * 100 : 0;
+        const ftPct = p.stats.fta > 0 ? (p.stats.ftm / p.stats.fta) * 100 : 0;
         return {
             id: p.id,
             name: p.name,
             position: p.position,
             ovr: calculatePlayerOvr(p),
             stats: {
+                mpg: +(p.stats.mp / g).toFixed(1),
                 ppg: +(p.stats.pts / g).toFixed(1),
                 rpg: +(p.stats.reb / g).toFixed(1),
                 apg: +(p.stats.ast / g).toFixed(1),
+                spg: +(p.stats.stl / g).toFixed(1),
+                bpg: +(p.stats.blk / g).toFixed(1),
+                fgPct: +fgPct.toFixed(1),
+                threePtPct: +threePtPct.toFixed(1),
+                ftPct: +ftPct.toFixed(1),
             },
         };
     }).sort((a, b) => b.ovr - a.ovr);
