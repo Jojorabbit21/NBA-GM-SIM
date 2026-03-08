@@ -191,7 +191,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
     <div className="flex h-full animate-in fade-in duration-700">
       {/* Bracket */}
       <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
-        <div className="flex min-w-[900px] h-full">
+        <div className="flex min-w-[900px] h-full px-2 md:px-3">
 
           {/* ── Play-In ── */}
           <div className="flex-1 min-w-0 flex flex-col">
@@ -210,6 +210,8 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
               </div>
             </div>
           </div>
+
+          <div className="w-1 md:w-2 flex-shrink-0" />
 
           {/* ── R1 ── */}
           <div className="flex-1 min-w-0 flex flex-col">
