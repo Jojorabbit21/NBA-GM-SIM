@@ -196,7 +196,8 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
             <Modal
                 isOpen={!!rosterModal}
                 onClose={() => setRosterModal(null)}
-                size="xl"
+                size="full"
+                className="!rounded-2xl"
                 title={
                     rosterModal && (
                         <div className="flex items-center gap-3">
@@ -214,7 +215,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                     )
                 }
             >
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full border-separate border-spacing-0">
                         <thead className="bg-slate-950 sticky top-0 z-10">
                             <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
@@ -228,9 +229,17 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                 <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">APG</th>
                                 <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">SPG</th>
                                 <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">BPG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">TOV</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FGM</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FGA</th>
                                 <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FG%</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">3PM</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">3PA</th>
                                 <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">3P%</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FTM</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FTA</th>
                                 <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FT%</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">TS%</th>
                             </tr>
                         </thead>
                         <tbody className="bg-slate-900">
@@ -267,13 +276,37 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                         <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.bpg}</span>
                                     </td>
                                     <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.tov}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.fgm}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.fga}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
                                         <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.fgPct}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.p3m}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.p3a}</span>
                                     </td>
                                     <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
                                         <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.threePtPct}</span>
                                     </td>
                                     <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.ftm}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.fta}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
                                         <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.ftPct}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.tsPct}</span>
                                     </td>
                                 </tr>
                             ))}
