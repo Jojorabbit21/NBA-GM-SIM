@@ -90,7 +90,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
     // Hall of Fame — 풀스크린 오버레이
     if (view === 'HallOfFame') {
         return (
-            <div className="fixed inset-0 z-[9999] bg-slate-950">
+            <div className="fixed inset-0 z-[100] bg-slate-950">
                 <HallOfFameView
                     currentUserId={session?.user?.id}
                     onBack={() => setView(previousViewRef.current)}
