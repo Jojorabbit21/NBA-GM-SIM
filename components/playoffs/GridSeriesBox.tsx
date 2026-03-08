@@ -27,13 +27,12 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
     const winnerId = series?.winnerId;
 
     const TeamRow = ({ team, wins, opponentWins, isBottom }: { team?: Team, wins: number, opponentWins: number, isBottom?: boolean }) => {
-        const isUser = team?.id === myTeamId;
         const isWinner = finished && winnerId === team?.id;
         const isEliminated = finished && winnerId !== team?.id;
         const seed = team ? seedMap[team.id] : '-';
         
         const teamColor = team ? TEAM_COLORS[team.id]?.primary : undefined;
-        const scoreColor = (isWinner || (series && wins > opponentWins)) ? 'text-emerald-400' : 'text-slate-600';
+        const scoreColor = (isWinner || (series && wins > opponentWins)) ? 'text-emerald-400' : 'text-white';
 
         return (
             <div
@@ -41,27 +40,27 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
                 flex items-center h-9 px-2 md:px-3 gap-2 md:gap-3
                 ${!isBottom ? 'border-b border-slate-800/50' : ''}
                 hover:bg-white/5 transition-colors
+                ${isEliminated ? 'opacity-40' : ''}
               `}
               style={teamColor ? { backgroundColor: teamColor } : { backgroundColor: 'rgb(2,6,23)' }}
             >
-                <span className={`w-3 md:w-4 text-center font-mono text-[9px] md:text-[10px] ${isUser ? 'text-emerald-400' : 'text-slate-600'}`}>{seed}</span>
-                
+                <span className="w-3 md:w-4 text-center font-mono text-[9px] md:text-[10px] text-white">{seed}</span>
+
                 {team && (
-                    <TeamLogo 
-                      teamId={team.id} 
-                      size="custom" 
-                      className={`w-4 h-4 md:w-5 md:h-5 object-contain flex-shrink-0 ${isEliminated ? 'opacity-40 grayscale' : ''}`}
+                    <TeamLogo
+                      teamId={team.id}
+                      size="custom"
+                      className={`w-4 h-4 md:w-5 md:h-5 object-contain flex-shrink-0 ${isEliminated ? 'grayscale' : ''}`}
                     />
                 )}
-                
+
                 <span className={`
-                    text-[10px] md:text-xs flex-1 truncate min-w-0 
-                    ${isWinner ? 'text-white font-bold' : 'text-slate-400'}
-                    ${isEliminated ? 'line-through decoration-slate-600 opacity-50' : ''}
+                    text-[10px] md:text-xs flex-1 truncate min-w-0 text-white
+                    ${isWinner ? 'font-bold' : ''}
                 `}>
                     {team?.name || 'TBD'}
                 </span>
-                
+
                 <span className={`text-[10px] md:text-xs font-mono font-black ${scoreColor}`}>
                     {wins}
                 </span>
@@ -74,9 +73,8 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
         className={`flex flex-col w-full ${CELL_BORDER} relative group bg-slate-900 ${onClick ? 'cursor-pointer' : ''} ${selected ? 'ring-1 ring-indigo-500/60 bg-slate-800/80' : ''}`}
         onClick={onClick}
       >
-          <div className={`absolute left-0 top-0 bottom-0 w-0.5 md:w-1 ${series?.conference === 'East' ? 'bg-blue-600/50' : series?.conference === 'West' ? 'bg-red-600/50' : 'bg-transparent'}`}></div>
           <div className="flex items-center justify-center px-2 md:px-3 py-1.5 bg-slate-800 border-b border-slate-800/50 min-h-[22px]">
-              <span className="text-[8px] md:text-[9px] font-bold text-slate-500 uppercase tracking-tighter truncate">{label || '-'}</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-tighter truncate">{label || '-'}</span>
           </div>
           <TeamRow team={higher} wins={hWins} opponentWins={lWins} />
           <TeamRow team={lower} wins={lWins} opponentWins={hWins} isBottom />
