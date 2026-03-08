@@ -24,6 +24,8 @@ interface MainLayoutProps {
         onLogout: () => void;
         onSimulateSeason?: () => void;
         isBatchRunning?: boolean;
+        hasSubmittedHof?: boolean;
+        onHofSubmit?: () => void;
     };
     gameHeaderProps: {
         schedule: Game[];
@@ -119,6 +121,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 onToggleCollapse={() => setIsCollapsed(prev => !prev)}
                 showSeasonReview={isRegularSeasonOver}
                 showPlayoffReview={isPostseasonOver}
+                isPostseasonOver={isPostseasonOver}
+                hasSubmittedHof={sidebarProps.hasSubmittedHof}
+                onHofSubmit={sidebarProps.onHofSubmit}
             />
             <main className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
                 {/* Global Game Header — hidden for full-height views only (DraftRoom) */}

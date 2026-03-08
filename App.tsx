@@ -11,6 +11,8 @@ import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
 import { useFullSeasonSim } from './hooks/useFullSeasonSim';
 import { FullSeasonSimModal } from './components/simulation/FullSeasonSimModal';
+import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from './utils/hallOfFameScorer';
+import { submitHallOfFameEntry, checkUserHasSubmitted } from './services/hallOfFameService';
 
 function shuffleArray<T>(arr: T[]): T[] {
     const a = [...arr];
@@ -42,6 +44,7 @@ const App: React.FC = () => {
     const [isResetting, setIsResetting] = useState(false);
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
     const [draftPoolType, setDraftPoolType] = useState<DraftPoolType | null>(null);
+    const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
     const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
     const handleEditorClick = useCallback(() => setIsEditorModalOpen(true), []);
 
@@ -95,6 +98,37 @@ const App: React.FC = () => {
             }
         }
     }, [gameData.myTeamId, gameData.draftPicks]);
+
+    // HOF 제출 여부 확인
+    useEffect(() => {
+        if (session?.user?.id && gameData.myTeamId) {
+            checkUserHasSubmitted(session.user.id, gameData.myTeamId).then(setHasSubmittedHof);
+        }
+    }, [session?.user?.id, gameData.myTeamId]);
+
+    const handleHofSubmit = useCallback(async () => {
+        if (!session?.user?.id || !gameData.myTeamId) return;
+        const myTeam = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
+        if (!myTeam) return;
+
+        const { totalScore, breakdown } = calculateHallOfFameScore(
+            myTeam, gameData.teams, gameData.transactions || [], gameData.schedule, gameData.playoffSeries
+        );
+        const roster = createRosterSnapshot(myTeam);
+        const maskedEmail = session.user.email ? maskEmail(session.user.email) : undefined;
+
+        const result = await submitHallOfFameEntry(
+            session.user.id, gameData.myTeamId, totalScore, breakdown, roster, maskedEmail
+        );
+
+        if (result.success) {
+            setToastMessage('명예의 전당에 등록되었습니다!');
+            setHasSubmittedHof(true);
+        } else if (result.alreadySubmitted) {
+            setToastMessage('이미 제출된 기록입니다.');
+            setHasSubmittedHof(true);
+        }
+    }, [session, gameData]);
 
     useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
     useEffect(() => { if (sim.activeGame) setView('GameSim' as any); }, [sim.activeGame]);
@@ -173,6 +207,8 @@ const App: React.FC = () => {
                     onLogout: handleLogout,
                     onSimulateSeason: handleSimulateSeason,
                     isBatchRunning: batchProgress?.isRunning ?? false,
+                    hasSubmittedHof,
+                    onHofSubmit: handleHofSubmit,
                 }}
                 gameHeaderProps={{
                     schedule: gameData.schedule,
