@@ -132,6 +132,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
     }
     return pairs;
   };
+  const piPairs = [{ leftIndices: [0, 1], rightIndex: 0 }];
   const r1SemisPairs = mergePairs(4);
   const semisCfPairs = mergePairs(2);
 
@@ -194,19 +195,35 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
         <div className="flex min-w-[900px] h-full px-2 md:px-3">
 
           {/* ── Play-In ── */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="flex-[1.5] min-w-0 flex flex-col">
+            {/* East Play-In */}
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around py-1 md:py-2">
-                <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 7 VS 8" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
-                <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
-                <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
+              <div className="h-full flex">
+                <div className="flex-1 min-w-0 flex flex-col justify-around py-2 md:py-3">
+                  <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 7 VS 8" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
+                  <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
+                </div>
+                <div className="flex-shrink-0 py-2 md:py-3" style={{ width: CONNECTOR_W }}>
+                  <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={piPairs} width={CONNECTOR_W} />
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-center py-2 md:py-3">
+                  <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
+                </div>
               </div>
             </div>
+            {/* West Play-In */}
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around py-1 md:py-2">
-                <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 7 VS 8" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
-                <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
-                <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
+              <div className="h-full flex">
+                <div className="flex-1 min-w-0 flex flex-col justify-around py-2 md:py-3">
+                  <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 7 VS 8" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
+                  <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
+                </div>
+                <div className="flex-shrink-0 py-2 md:py-3" style={{ width: CONNECTOR_W }}>
+                  <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={piPairs} width={CONNECTOR_W} />
+                </div>
+                <div className="flex-1 min-w-0 flex flex-col justify-center py-2 md:py-3">
+                  <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
+                </div>
               </div>
             </div>
           </div>
@@ -216,14 +233,14 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           {/* ── R1 ── */}
           <div className="flex-1 min-w-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around py-1 md:py-2">
+              <div className="h-full flex flex-col justify-around py-2 md:py-3">
                 {r1_east.map((s, i) => (
                   <GridSeriesBox key={`e_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
                 ))}
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around py-1 md:py-2">
+              <div className="h-full flex flex-col justify-around py-2 md:py-3">
                 {r1_west.map((s, i) => (
                   <GridSeriesBox key={`w_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
                 ))}
@@ -233,10 +250,10 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
           {/* ── R1 → Semis connector ── */}
           <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-1 md:py-2" style={{ height: SECTION_H }}>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
               <BracketConnector leftCount={4} rightCount={2} sectionHeight={SECTION_H} pairs={r1SemisPairs} width={CONNECTOR_W} />
             </div>
-            <div className="py-1 md:py-2" style={{ height: SECTION_H }}>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
               <BracketConnector leftCount={4} rightCount={2} sectionHeight={SECTION_H} pairs={r1SemisPairs} width={CONNECTOR_W} />
             </div>
           </div>
@@ -244,14 +261,14 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           {/* ── Semis ── */}
           <div className="flex-1 min-w-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around py-1 md:py-2">
+              <div className="h-full flex flex-col justify-around py-2 md:py-3">
                 {r2_east.map((s, i) => (
                   <GridSeriesBox key={`e_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 세미 컨퍼런스 파이널" {...sb(s as any)} />
                 ))}
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around py-1 md:py-2">
+              <div className="h-full flex flex-col justify-around py-2 md:py-3">
                 {r2_west.map((s, i) => (
                   <GridSeriesBox key={`w_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 세미 컨퍼런스 파이널" {...sb(s as any)} />
                 ))}
@@ -261,10 +278,10 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
           {/* ── Semis → CF connector ── */}
           <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-1 md:py-2" style={{ height: SECTION_H }}>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
               <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={semisCfPairs} width={CONNECTOR_W} />
             </div>
-            <div className="py-1 md:py-2" style={{ height: SECTION_H }}>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
               <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={semisCfPairs} width={CONNECTOR_W} />
             </div>
           </div>
@@ -272,12 +289,12 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           {/* ── Conf. Finals ── */}
           <div className="flex-1 min-w-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-center py-1 md:py-2">
+              <div className="h-full flex flex-col justify-center py-2 md:py-3">
                 <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-center py-1 md:py-2">
+              <div className="h-full flex flex-col justify-center py-2 md:py-3">
                 <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 컨퍼런스 파이널" {...sb(cf_west as any)} />
               </div>
             </div>
@@ -285,7 +302,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
           {/* ── CF → Finals connector ── */}
           <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-1 md:py-2" style={{ height: SECTION_H * 2 }}>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H * 2 }}>
               <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H * 2} pairs={[{ leftIndices: [0, 1], rightIndex: 0 }]} width={CONNECTOR_W} />
             </div>
           </div>
