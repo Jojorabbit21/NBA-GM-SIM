@@ -18,7 +18,7 @@ interface PlayoffsViewProps {
   onViewGameResult?: (result: any) => void;
 }
 
-const SECTION_H = 460;
+const SECTION_H = 540;
 const CONNECTOR_W = 28;
 
 const ROUND_NAMES: Record<number, string> = { 0: 'Play-In', 1: 'Round 1', 2: 'Semis', 3: 'Conf. Finals', 4: 'BPL Finals' };
@@ -258,7 +258,39 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             </div>
           </div>
 
-          <div className="w-4 md:w-6 flex-shrink-0" />
+          {/* ── PI → R1 connector ── */}
+          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
+              <svg className="w-full h-full block" viewBox={`0 0 ${CONNECTOR_W} ${SECTION_H}`} preserveAspectRatio="none">
+                {/* 7시드결정전 (H/4) → R1 2vs7 (7H/8) */}
+                <path
+                  d={`M 0,${SECTION_H / 4} H ${CONNECTOR_W * 0.35} V ${SECTION_H * 7 / 8} H ${CONNECTOR_W}`}
+                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+                />
+                {/* 8시드결정전 (3H/4) → R1 1vs8 (H/8) */}
+                <path
+                  d={`M 0,${SECTION_H * 3 / 4} H ${CONNECTOR_W * 0.65} V ${SECTION_H / 8} H ${CONNECTOR_W}`}
+                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
+              <svg className="w-full h-full block" viewBox={`0 0 ${CONNECTOR_W} ${SECTION_H}`} preserveAspectRatio="none">
+                <path
+                  d={`M 0,${SECTION_H / 4} H ${CONNECTOR_W * 0.35} V ${SECTION_H * 7 / 8} H ${CONNECTOR_W}`}
+                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+                />
+                <path
+                  d={`M 0,${SECTION_H * 3 / 4} H ${CONNECTOR_W * 0.65} V ${SECTION_H / 8} H ${CONNECTOR_W}`}
+                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
+                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
+                />
+              </svg>
+            </div>
+          </div>
 
           {/* ── R1 ── */}
           <div className="w-[140px] flex-shrink-0 flex flex-col">
