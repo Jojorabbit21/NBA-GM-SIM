@@ -224,24 +224,16 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         <div className="px-6 py-3 border-b border-white/10 space-y-2">
           {showSeasonReview && (
             <button
-              onClick={() => onNavigate('SeasonReview')}
-              className={`w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold transition-all ${
-                currentView === 'SeasonReview'
-                  ? 'bg-orange-500 ring-2 ring-orange-400/50'
-                  : 'bg-orange-600 hover:bg-orange-500'
-              }`}
+              disabled
+              className="w-full px-4 py-2.5 rounded-2xl text-white/50 text-sm font-bold bg-orange-600/40 cursor-not-allowed"
             >
               정규시즌 리뷰
             </button>
           )}
           {showPlayoffReview && (
             <button
-              onClick={() => onNavigate('PlayoffReview')}
-              className={`w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold transition-all ${
-                currentView === 'PlayoffReview'
-                  ? 'bg-indigo-500 ring-2 ring-indigo-400/50'
-                  : 'bg-indigo-600 hover:bg-indigo-500'
-              }`}
+              disabled
+              className="w-full px-4 py-2.5 rounded-2xl text-white/50 text-sm font-bold bg-indigo-600/40 cursor-not-allowed"
             >
               플레이오프 리뷰
             </button>
