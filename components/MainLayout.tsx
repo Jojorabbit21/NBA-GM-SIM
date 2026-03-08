@@ -66,14 +66,20 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
     }, [schedule]);
 
     const isPostseasonOver = useMemo(() => {
-        if (!team?.id || !playoffSeries || playoffSeries.length === 0) return false;
+        if (!team?.id) return false;
+        // 정규시즌이 끝나지 않았으면 false
+        if (!isRegularSeasonOver) return false;
+        // 플레이오프가 아직 생성되지 않았으면 false
+        if (!playoffSeries || playoffSeries.length === 0) return false;
+        // 내 팀이 플레이오프에 진출하지 못한 경우 → 정규시즌 종료 시점에 제출 가능
         const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
-        if (myPlayoffSeries.length === 0) return false;
+        if (myPlayoffSeries.length === 0) return true;
+        // 플레이오프 진출한 경우 → 시리즈 종료 확인
         const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
         if (!latest.finished) return false;
         if (latest.winnerId !== team.id) return true;
         return latest.round === 4;
-    }, [playoffSeries, team?.id]);
+    }, [playoffSeries, team?.id, isRegularSeasonOver]);
 
     const currentSeries = useMemo(() => {
         if (!nextGame?.isPlayoff || !nextGame.seriesId || !playoffSeries) return undefined;

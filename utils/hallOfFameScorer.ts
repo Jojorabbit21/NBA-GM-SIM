@@ -145,18 +145,30 @@ export function calculateHallOfFameScore(
     const statScore = Math.round(weightedRankScore * 100);
 
     // --- D. Playoff Score (0~400) ---
-    const playoffReport = generatePlayoffReport(team, allTeams, playoffSeries, schedule);
-    const playoffTier = playoffReport.status.title;
-    const playoffWins = playoffReport.totalWins;
-    const playoffLosses = playoffReport.totalLosses;
+    const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
+    const missedPlayoffs = myPlayoffSeries.length === 0;
 
+    let playoffTier: string;
+    let playoffWins = 0;
+    let playoffLosses = 0;
     let tierScore = 0;
-    if (playoffTier === 'BPL CHAMPIONS') tierScore = 400;
-    else if (playoffTier === 'BPL Finalist') tierScore = 320;
-    else if (playoffTier === 'Conference Finalist') tierScore = 220;
-    else if (playoffTier === 'Semi-Finalist') tierScore = 120;
-    else if (playoffTier === 'Playoff Participant') tierScore = 50;
-    else tierScore = 10; // Play-In 탈락 등
+
+    if (missedPlayoffs) {
+        playoffTier = 'Missed Playoffs';
+        tierScore = 0;
+    } else {
+        const playoffReport = generatePlayoffReport(team, allTeams, playoffSeries, schedule);
+        playoffTier = playoffReport.status.title;
+        playoffWins = playoffReport.totalWins;
+        playoffLosses = playoffReport.totalLosses;
+
+        if (playoffTier === 'BPL CHAMPIONS') tierScore = 400;
+        else if (playoffTier === 'BPL Finalist') tierScore = 320;
+        else if (playoffTier === 'Conference Finalist') tierScore = 220;
+        else if (playoffTier === 'Semi-Finalist') tierScore = 120;
+        else if (playoffTier === 'Playoff Participant') tierScore = 50;
+        else tierScore = 10; // Play-In 탈락 등
+    }
 
     const playoffScore = tierScore;
 
