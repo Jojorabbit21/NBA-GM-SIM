@@ -326,12 +326,16 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
               <button onClick={() => setSelectedSeriesId(null)} className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-lg transition-colors">
                 <X size={14} className="text-white/80" />
               </button>
-              <div className="flex items-center justify-between mb-3">
-                {confLabel && <span className="text-xs font-black text-white/60 tracking-widest">{confLabel}</span>}
-                <span className="text-xs font-black text-white tracking-wide flex-1 text-center">
-                  {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
-                </span>
-                <div className="w-8" />
+              <div className="flex items-center mb-3">
+                <div className="w-1/3">
+                  {confLabel && <span className="text-xs font-black text-white/60 tracking-widest">{confLabel}</span>}
+                </div>
+                <div className="w-1/3 text-center">
+                  <span className="text-xs font-black text-white tracking-wide">
+                    {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
+                  </span>
+                </div>
+                <div className="w-1/3" />
               </div>
               <div className="flex items-center gap-3">
                 {higherTeam && <TeamLogo teamId={higherTeam.id} size="custom" className="w-8 h-8" />}
