@@ -179,12 +179,12 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       {/* Bracket — CSS Grid: 9 rows × 6 columns */}
       <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
         <div
-          className="min-w-[900px] h-full px-3 py-2"
+          className="min-w-[900px] h-full px-6 py-5"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(6, 140px)',
-            gridTemplateRows: 'repeat(9, minmax(90px, 1fr))',
-            gap: '4px 6px',
+            gridTemplateRows: 'repeat(9, minmax(110px, 1fr))',
+            gap: '12px 24px',
           }}
         >
           {/* ══ East Play-In (rows 1-4) ══ */}
