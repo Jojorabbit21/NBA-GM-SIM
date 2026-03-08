@@ -84,6 +84,21 @@ export const savePlayoffGameResult = async (result: any) => {
     }
 };
 
+export const fetchPlayoffGameResult = async (gameId: string, userId: string) => {
+    const { data, error } = await supabase
+        .from('user_playoffs_results')
+        .select('*')
+        .eq('game_id', gameId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (error) {
+        console.error("❌ Failed to fetch playoff game details:", error);
+        return null;
+    }
+    return data;
+};
+
 /**
  * Loads all playoff games for the current user/team.
  * Used to replay state on load.
