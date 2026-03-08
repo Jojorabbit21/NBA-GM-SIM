@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../types';
 import { GridSeriesBox } from '../components/playoffs/GridSeriesBox';
-import { BracketConnector } from '../components/playoffs/BracketConnector';
+
 import { TeamLogo } from '../components/common/TeamLogo';
 import { fetchFullGameResult } from '../services/queries';
 
@@ -17,9 +17,6 @@ interface PlayoffsViewProps {
   userId?: string;
   onViewGameResult?: (result: any) => void;
 }
-
-const SECTION_H = 540;
-const CONNECTOR_W = 28;
 
 const ROUND_NAMES: Record<number, string> = { 0: 'Play-In', 1: 'Round 1', 2: 'Semis', 3: 'Conf. Finals', 4: 'BPL Finals' };
 
@@ -125,16 +122,6 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
   const finals = getRoundMatch('BPL', 4, 0);
 
-  const mergePairs = (inputCount: number) => {
-    const pairs = [];
-    for (let i = 0; i < inputCount; i += 2) {
-      pairs.push({ leftIndices: [i, i + 1], rightIndex: i / 2 });
-    }
-    return pairs;
-  };
-  const r1SemisPairs = mergePairs(4);
-  const semisCfPairs = mergePairs(2);
-
   /* --- Side panel data --- */
   const allSeriesFlat = useMemo(() => [
     ...pi_east, ...pi_west,
@@ -189,193 +176,81 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
   return (
     <div className="flex h-full animate-in fade-in duration-700">
-      {/* Bracket */}
+      {/* Bracket — CSS Grid: 9 rows × 6 columns */}
       <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
-        <div className="flex min-w-[1000px] h-full px-2 md:px-3">
-
-          {/* ── Play-In ── */}
-          <div className="flex-shrink-0 flex flex-col">
-            {/* East Play-In */}
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex">
-                {/* Col A: 9v10 */}
-                <div className="w-[140px] flex-shrink-0 flex flex-col justify-center">
-                  <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
-                </div>
-                {/* Conn: 9v10 winner → 8시드 결정전 */}
-                <div className="flex-shrink-0" style={{ width: CONNECTOR_W }}>
-                  <BracketConnector leftCount={1} rightCount={2} sectionHeight={SECTION_H} pairs={[{ leftIndices: [0], rightIndex: 1 }]} width={CONNECTOR_W} />
-                </div>
-                {/* Loser bracket: 7시드 패자 → 8시드 결정전 (왼쪽 "[" 형태) */}
-                <div className="flex-shrink-0" style={{ width: 16 }}>
-                  <svg className="w-full h-full block" viewBox={`0 0 16 ${SECTION_H}`} preserveAspectRatio="none">
-                    <path
-                      d={`M 16,${SECTION_H / 4} H 6 V ${SECTION_H * 3 / 4} H 16`}
-                      fill="none"
-                      stroke="rgb(71,85,105)"
-                      strokeWidth={1.5}
-                      strokeDasharray="4,3"
-                      vectorEffect="non-scaling-stroke"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
-                {/* Col B: 7시드 결정전, 8시드 결정전 */}
-                <div className="w-[140px] flex-shrink-0 flex flex-col justify-around">
-                  <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
-                  <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
-                </div>
-              </div>
-            </div>
-            {/* West Play-In */}
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex">
-                <div className="w-[140px] flex-shrink-0 flex flex-col justify-center">
-                  <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
-                </div>
-                <div className="flex-shrink-0" style={{ width: CONNECTOR_W }}>
-                  <BracketConnector leftCount={1} rightCount={2} sectionHeight={SECTION_H} pairs={[{ leftIndices: [0], rightIndex: 1 }]} width={CONNECTOR_W} />
-                </div>
-                {/* Loser bracket: 7시드 패자 → 8시드 결정전 (왼쪽 "[" 형태) */}
-                <div className="flex-shrink-0" style={{ width: 16 }}>
-                  <svg className="w-full h-full block" viewBox={`0 0 16 ${SECTION_H}`} preserveAspectRatio="none">
-                    <path
-                      d={`M 16,${SECTION_H / 4} H 6 V ${SECTION_H * 3 / 4} H 16`}
-                      fill="none"
-                      stroke="rgb(71,85,105)"
-                      strokeWidth={1.5}
-                      strokeDasharray="4,3"
-                      vectorEffect="non-scaling-stroke"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                </div>
-                <div className="w-[140px] flex-shrink-0 flex flex-col justify-around">
-                  <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
-                  <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
-                </div>
-              </div>
-            </div>
+        <div
+          className="min-w-[900px] h-full px-3 py-2"
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(6, 140px)',
+            gridTemplateRows: 'repeat(9, minmax(90px, 1fr))',
+            gap: '4px 6px',
+          }}
+        >
+          {/* ══ East Play-In (rows 1-4) ══ */}
+          <div className="flex items-center" style={{ gridColumn: 1, gridRow: '1 / 3' }}>
+            <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
+          </div>
+          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '1 / 3' }}>
+            <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
+          </div>
+          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '3 / 5' }}>
+            <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
           </div>
 
-          {/* ── PI → R1 connector ── */}
-          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
-              <svg className="w-full h-full block" viewBox={`0 0 ${CONNECTOR_W} ${SECTION_H}`} preserveAspectRatio="none">
-                {/* 7시드결정전 (H/4) → R1 2vs7 (7H/8) */}
-                <path
-                  d={`M 0,${SECTION_H / 4} H ${CONNECTOR_W * 0.35} V ${SECTION_H * 7 / 8} H ${CONNECTOR_W}`}
-                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
-                />
-                {/* 8시드결정전 (3H/4) → R1 1vs8 (H/8) */}
-                <path
-                  d={`M 0,${SECTION_H * 3 / 4} H ${CONNECTOR_W * 0.65} V ${SECTION_H / 8} H ${CONNECTOR_W}`}
-                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
-                />
-              </svg>
+          {/* ══ East R1 (rows 1-4, col 3) ══ */}
+          {r1_east.map((s, i) => (
+            <div key={`e_r1_${i}`} className="flex items-center" style={{ gridColumn: 3, gridRow: i + 1 }}>
+              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
             </div>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
-              <svg className="w-full h-full block" viewBox={`0 0 ${CONNECTOR_W} ${SECTION_H}`} preserveAspectRatio="none">
-                <path
-                  d={`M 0,${SECTION_H / 4} H ${CONNECTOR_W * 0.35} V ${SECTION_H * 7 / 8} H ${CONNECTOR_W}`}
-                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
-                />
-                <path
-                  d={`M 0,${SECTION_H * 3 / 4} H ${CONNECTOR_W * 0.65} V ${SECTION_H / 8} H ${CONNECTOR_W}`}
-                  fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5}
-                  vectorEffect="non-scaling-stroke" strokeLinejoin="round"
-                />
-              </svg>
+          ))}
+
+          {/* ══ East Semis (rows 1-4, col 4) ══ */}
+          {r2_east.map((s, i) => (
+            <div key={`e_r2_${i}`} className="flex items-center" style={{ gridColumn: 4, gridRow: `${i * 2 + 1} / ${i * 2 + 3}` }}>
+              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 세미파이널" {...sb(s as any)} />
             </div>
+          ))}
+
+          {/* ══ East CF (rows 1-4, col 5) ══ */}
+          <div className="flex items-center" style={{ gridColumn: 5, gridRow: '1 / 5' }}>
+            <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
           </div>
 
-          {/* ── R1 ── */}
-          <div className="w-[140px] flex-shrink-0 flex flex-col">
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around">
-                {r1_east.map((s, i) => (
-                  <GridSeriesBox key={`e_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
-                ))}
-              </div>
-            </div>
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around">
-                {r1_west.map((s, i) => (
-                  <GridSeriesBox key={`w_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
-                ))}
-              </div>
-            </div>
+          {/* ══ Finals (row 5, col 6) ══ */}
+          <div className="flex items-center justify-center" style={{ gridColumn: 6, gridRow: 5 }}>
+            <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="파이널" {...sb(finals as any)} />
           </div>
 
-          {/* ── R1 → Semis connector ── */}
-          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
-              <BracketConnector leftCount={4} rightCount={2} sectionHeight={SECTION_H} pairs={r1SemisPairs} width={CONNECTOR_W} />
-            </div>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
-              <BracketConnector leftCount={4} rightCount={2} sectionHeight={SECTION_H} pairs={r1SemisPairs} width={CONNECTOR_W} />
-            </div>
+          {/* ══ West Play-In (rows 6-9) ══ */}
+          <div className="flex items-center" style={{ gridColumn: 1, gridRow: '6 / 8' }}>
+            <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
+          </div>
+          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '6 / 8' }}>
+            <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
+          </div>
+          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '8 / 10' }}>
+            <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
           </div>
 
-          {/* ── Semis ── */}
-          <div className="w-[140px] flex-shrink-0 flex flex-col">
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around">
-                {r2_east.map((s, i) => (
-                  <GridSeriesBox key={`e_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 세미 컨퍼런스 파이널" {...sb(s as any)} />
-                ))}
-              </div>
+          {/* ══ West R1 (rows 6-9, col 3) ══ */}
+          {r1_west.map((s, i) => (
+            <div key={`w_r1_${i}`} className="flex items-center" style={{ gridColumn: 3, gridRow: i + 6 }}>
+              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
             </div>
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-around">
-                {r2_west.map((s, i) => (
-                  <GridSeriesBox key={`w_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 세미 컨퍼런스 파이널" {...sb(s as any)} />
-                ))}
-              </div>
-            </div>
-          </div>
+          ))}
 
-          {/* ── Semis → CF connector ── */}
-          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
-              <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={semisCfPairs} width={CONNECTOR_W} />
+          {/* ══ West Semis (rows 6-9, col 4) ══ */}
+          {r2_west.map((s, i) => (
+            <div key={`w_r2_${i}`} className="flex items-center" style={{ gridColumn: 4, gridRow: `${i * 2 + 6} / ${i * 2 + 8}` }}>
+              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 세미파이널" {...sb(s as any)} />
             </div>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H }}>
-              <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H} pairs={semisCfPairs} width={CONNECTOR_W} />
-            </div>
-          </div>
+          ))}
 
-          {/* ── Conf. Finals ── */}
-          <div className="w-[140px] flex-shrink-0 flex flex-col">
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-center">
-                <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
-              </div>
-            </div>
-            <div style={{ height: SECTION_H }}>
-              <div className="h-full flex flex-col justify-center">
-                <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 컨퍼런스 파이널" {...sb(cf_west as any)} />
-              </div>
-            </div>
+          {/* ══ West CF (rows 6-9, col 5) ══ */}
+          <div className="flex items-center" style={{ gridColumn: 5, gridRow: '6 / 10' }}>
+            <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 컨퍼런스 파이널" {...sb(cf_west as any)} />
           </div>
-
-          {/* ── CF → Finals connector ── */}
-          <div className="flex-shrink-0 flex flex-col" style={{ width: CONNECTOR_W }}>
-            <div className="py-2 md:py-3" style={{ height: SECTION_H * 2 }}>
-              <BracketConnector leftCount={2} rightCount={1} sectionHeight={SECTION_H * 2} pairs={[{ leftIndices: [0, 1], rightIndex: 0 }]} width={CONNECTOR_W} />
-            </div>
-          </div>
-
-          {/* ── Finals ── */}
-          <div className="w-[140px] flex-shrink-0 flex flex-col">
-            <div className="h-full flex items-center justify-center" style={{ height: SECTION_H * 2 }}>
-              <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="파이널" {...sb(finals as any)} />
-            </div>
-          </div>
-
         </div>
       </div>
 
