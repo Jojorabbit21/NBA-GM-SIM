@@ -321,7 +321,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             {/* Header */}
             <div className={`px-4 py-3 flex items-center justify-between flex-shrink-0 ${headerBg}`}>
               <div className="flex items-center gap-2">
-                {confLabel && <span className="text-[10px] font-black text-white/70 tracking-widest">{confLabel}</span>}
+                {confLabel && <span className="text-xs font-black text-white/70 tracking-widest">{confLabel}</span>}
                 <span className="text-xs font-black text-white tracking-wide">
                   {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
                 </span>
@@ -366,26 +366,26 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
                     return (
                       <div key={g.id} className="flex items-center px-4 py-3 hover:bg-white/5 transition-colors">
                         <div className="flex items-center gap-2 w-16 flex-shrink-0">
-                          <span className="text-[10px] font-bold text-slate-500">{gIdx + 1}차전</span>
+                          <span className="text-xs font-bold text-slate-500">{gIdx + 1}차전</span>
                           {isMyGame && (
-                            <span className={`text-[9px] font-black px-1 py-0.5 rounded ${isWin ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
+                            <span className={`text-xs font-black px-1 py-0.5 rounded ${isWin ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
                               {isWin ? 'W' : 'L'}
                             </span>
                           )}
                         </div>
                         <div className="flex-1 flex items-center justify-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">{g.homeTeamId}</span>
+                          <span className="text-xs font-bold text-slate-400 uppercase">{g.homeTeamId}</span>
                           <span className="text-xs font-mono font-bold text-slate-200 tabular-nums">
                             {g.homeScore} - {g.awayScore}
                           </span>
-                          <span className="text-[10px] font-bold text-slate-400 uppercase">{g.awayTeamId}</span>
+                          <span className="text-xs font-bold text-slate-400 uppercase">{g.awayTeamId}</span>
                         </div>
                         <div className="w-16 flex-shrink-0 flex justify-end">
                           {userId && onViewGameResult && (
                             <button
                               onClick={() => handleViewBoxScore(g.id)}
                               disabled={!!fetchingGameId}
-                              className="flex items-center gap-0.5 text-[9px] font-bold text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                              className="flex items-center gap-0.5 text-xs font-bold text-slate-400 hover:text-white transition-colors disabled:opacity-50"
                             >
                               {fetchingGameId === g.id ? <Loader2 size={10} className="animate-spin" /> : (<>자세히<ChevronRight size={12} /></>)}
                             </button>
