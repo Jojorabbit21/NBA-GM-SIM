@@ -320,12 +320,9 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           <div className="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-900 flex flex-col overflow-hidden">
             {/* Header + Matchup (통합) */}
             <div
-              className="px-4 pt-3 pb-4 border-b border-slate-800 flex-shrink-0 relative"
+              className="px-4 pt-3 pb-4 border-b border-slate-800 flex-shrink-0"
               style={{ background: `linear-gradient(135deg, ${higherColor}, ${lowerColor})` }}
             >
-              <button onClick={() => setSelectedSeriesId(null)} className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-lg transition-colors">
-                <X size={14} className="text-white/80" />
-              </button>
               <div className="flex items-center mb-3">
                 <div className="w-1/3">
                   {confLabel && <span className="text-xs font-black text-white/60 tracking-widest">{confLabel}</span>}
@@ -335,7 +332,11 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
                     {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
                   </span>
                 </div>
-                <div className="w-1/3" />
+                <div className="w-1/3 flex justify-end">
+                  <button onClick={() => setSelectedSeriesId(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                    <X size={14} className="text-white/80" />
+                  </button>
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 {higherTeam && <TeamLogo teamId={higherTeam.id} size="custom" className="w-8 h-8" />}
