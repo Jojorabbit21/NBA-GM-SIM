@@ -7,6 +7,7 @@ import { ChevronRight } from 'lucide-react';
 import { TeamLogo } from '../components/common/TeamLogo';
 import { TEAM_COLORS } from '../data/teamData';
 import { fetchFullGameResult } from '../services/queries';
+import { fetchPlayoffGameResult } from '../services/playoffService';
 
 interface PlayoffsViewProps {
   teams: Team[];
@@ -150,7 +151,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
     if (!userId || !onViewGameResult || fetchingGameId) return;
     setFetchingGameId(gameId);
     try {
-      const raw = await fetchFullGameResult(gameId, userId);
+      const raw = await fetchPlayoffGameResult(gameId, userId) || await fetchFullGameResult(gameId, userId);
       if (raw) {
         const homeTeam = teams.find(t => t.id === raw.home_team_id);
         const awayTeam = teams.find(t => t.id === raw.away_team_id);
