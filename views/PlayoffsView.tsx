@@ -318,7 +318,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
         const lowerColor = lowerTeam ? TEAM_COLORS[lowerTeam.id]?.primary : 'rgb(30,41,59)';
 
         return (
-          <div className="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+          <div className="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-900 flex flex-col overflow-hidden">
             {/* Header */}
             <div className={`px-4 py-3 flex items-center justify-between flex-shrink-0 ${headerBg}`}>
               <div className="flex items-center gap-2">
