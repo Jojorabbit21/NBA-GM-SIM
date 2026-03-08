@@ -35,9 +35,17 @@ export interface RosterSnapshotPlayer {
         apg: number;
         spg: number;
         bpg: number;
+        tov: number;
+        fgm: number;
+        fga: number;
         fgPct: number;
+        p3m: number;
+        p3a: number;
         threePtPct: number;
+        ftm: number;
+        fta: number;
         ftPct: number;
+        tsPct: number;
     };
 }
 
@@ -72,9 +80,19 @@ export function createRosterSnapshot(team: Team): RosterSnapshotPlayer[] {
                 apg: +(p.stats.ast / g).toFixed(1),
                 spg: +(p.stats.stl / g).toFixed(1),
                 bpg: +(p.stats.blk / g).toFixed(1),
+                tov: +(p.stats.tov / g).toFixed(1),
+                fgm: +(p.stats.fgm / g).toFixed(1),
+                fga: +(p.stats.fga / g).toFixed(1),
                 fgPct: +fgPct.toFixed(1),
+                p3m: +(p.stats.p3m / g).toFixed(1),
+                p3a: +(p.stats.p3a / g).toFixed(1),
                 threePtPct: +threePtPct.toFixed(1),
+                ftm: +(p.stats.ftm / g).toFixed(1),
+                fta: +(p.stats.fta / g).toFixed(1),
                 ftPct: +ftPct.toFixed(1),
+                tsPct: +((p.stats.fga + 0.44 * p.stats.fta) > 0
+                    ? (p.stats.pts / (2 * (p.stats.fga + 0.44 * p.stats.fta))) * 100
+                    : 0).toFixed(1),
             },
         };
     }).sort((a, b) => b.ovr - a.ovr);
