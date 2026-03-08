@@ -70,7 +70,7 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
 
     return (
       <div
-        className={`flex flex-col w-full ${CELL_BORDER} relative group bg-slate-900 ${onClick ? 'cursor-pointer' : ''} ${selected ? 'ring-1 ring-indigo-500/60 bg-slate-800/80' : ''}`}
+        className={`flex flex-col w-full ${CELL_BORDER} relative group bg-slate-900 ${onClick ? 'cursor-pointer' : ''} ${selected ? 'ring-1 ring-indigo-500 bg-slate-800/80' : ''}`}
         onClick={onClick}
       >
           <div className="flex items-center justify-center px-2 md:px-3 py-1.5 bg-slate-800 border-b border-slate-800/50 min-h-[22px]">
