@@ -197,16 +197,16 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           <div className="flex-1 min-w-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around p-1 md:p-2">
-                <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="7 vs 8" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
-                <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="9 vs 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
-                <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="8th Decider" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
+                <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 7 VS 8" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
+                <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
+                <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around p-1 md:p-2">
-                <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="7 vs 8" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
-                <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="9 vs 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
-                <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="8th Decider" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
+                <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 7 VS 8" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
+                <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
+                <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
               </div>
             </div>
           </div>
@@ -216,14 +216,14 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around p-1 md:p-2">
                 {r1_east.map((s, i) => (
-                  <GridSeriesBox key={`e_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Match ${i+1}`} isProjected={series.length===0} {...sb(s as any)} />
+                  <GridSeriesBox key={`e_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
                 ))}
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around p-1 md:p-2">
                 {r1_west.map((s, i) => (
-                  <GridSeriesBox key={`w_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Match ${i+1}`} isProjected={series.length===0} {...sb(s as any)} />
+                  <GridSeriesBox key={`w_r1_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
                 ))}
               </div>
             </div>
@@ -244,14 +244,14 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around p-1 md:p-2">
                 {r2_east.map((s, i) => (
-                  <GridSeriesBox key={`e_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Semis ${i+1}`} {...sb(s as any)} />
+                  <GridSeriesBox key={`e_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 세미 컨퍼런스 파이널" {...sb(s as any)} />
                 ))}
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around p-1 md:p-2">
                 {r2_west.map((s, i) => (
-                  <GridSeriesBox key={`w_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label={`Semis ${i+1}`} {...sb(s as any)} />
+                  <GridSeriesBox key={`w_r2_${i}`} series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 세미 컨퍼런스 파이널" {...sb(s as any)} />
                 ))}
               </div>
             </div>
@@ -271,12 +271,12 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           <div className="flex-1 min-w-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-center p-1 md:p-2">
-                <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="East Finals" {...sb(cf_east as any)} />
+                <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
               </div>
             </div>
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-center p-1 md:p-2">
-                <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="West Finals" {...sb(cf_west as any)} />
+                <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 컨퍼런스 파이널" {...sb(cf_west as any)} />
               </div>
             </div>
           </div>
@@ -292,7 +292,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           <div className="flex-1 min-w-0 flex flex-col">
             <div className="h-full flex items-center justify-center p-2 md:p-4" style={{ height: SECTION_H * 2 }}>
               <div className="w-full max-w-[200px]">
-                <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="BPL FINALS" {...sb(finals as any)} />
+                <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="파이널" {...sb(finals as any)} />
               </div>
             </div>
           </div>
