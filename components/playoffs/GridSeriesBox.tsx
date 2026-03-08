@@ -42,7 +42,7 @@ export const GridSeriesBox: React.FC<GridSeriesBoxProps> = ({ series, teams, myT
                 ${!isBottom ? 'border-b border-slate-800/50' : ''}
                 hover:bg-white/5 transition-colors
               `}
-              style={teamColor ? { backgroundColor: `${teamColor}18` } : { backgroundColor: 'rgb(2,6,23)' }}
+              style={teamColor ? { backgroundColor: teamColor } : { backgroundColor: 'rgb(2,6,23)' }}
             >
                 <span className={`w-3 md:w-4 text-center font-mono text-[9px] md:text-[10px] ${isUser ? 'text-emerald-400' : 'text-slate-600'}`}>{seed}</span>
                 
