@@ -3,8 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../types';
 import { GridSeriesBox } from '../components/playoffs/GridSeriesBox';
-
+import { ChevronRight } from 'lucide-react';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { TEAM_COLORS } from '../data/teamData';
 import { fetchFullGameResult } from '../services/queries';
 
 interface PlayoffsViewProps {
@@ -18,7 +19,7 @@ interface PlayoffsViewProps {
   onViewGameResult?: (result: any) => void;
 }
 
-const ROUND_NAMES: Record<number, string> = { 0: 'Play-In', 1: 'Round 1', 2: 'Semis', 3: 'Conf. Finals', 4: 'BPL Finals' };
+const ROUND_NAMES: Record<number, string> = { 0: '플레이인', 1: '1라운드', 2: '세미파이널', 3: '컨퍼런스 파이널', 4: '파이널' };
 
 export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, series, setSeries, setSchedule, myTeamId, userId, onViewGameResult }) => {
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | null>(null);
@@ -308,84 +309,97 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       </div>
 
       {/* ── Side Panel ── */}
-      {selectedSeries && (
-        <div className="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
-          {/* Header */}
-          <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between flex-shrink-0">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-              {ROUND_NAMES[selectedSeries.round] || `Round ${selectedSeries.round}`}
-            </span>
-            <button onClick={() => setSelectedSeriesId(null)} className="p-1 hover:bg-slate-800 rounded-lg transition-colors">
-              <X size={14} className="text-slate-500" />
-            </button>
-          </div>
+      {selectedSeries && (() => {
+        const conf = selectedSeries.conference as 'East' | 'West' | 'BPL';
+        const confLabel = conf === 'East' ? '동부' : conf === 'West' ? '서부' : '';
+        const headerBg = conf === 'East' ? 'bg-blue-600' : conf === 'West' ? 'bg-red-600' : 'bg-indigo-600';
+        const higherColor = higherTeam ? TEAM_COLORS[higherTeam.id]?.primary : 'rgb(30,41,59)';
+        const lowerColor = lowerTeam ? TEAM_COLORS[lowerTeam.id]?.primary : 'rgb(30,41,59)';
 
-          {/* Matchup */}
-          <div className="px-4 py-4 border-b border-slate-800 flex items-center gap-3">
-            {higherTeam && <TeamLogo teamId={higherTeam.id} size="custom" className="w-8 h-8" />}
-            <div className="flex-1 min-w-0 text-center">
-              <div className="text-xs font-bold text-slate-300 truncate">
-                {higherTeam?.name || 'TBD'} vs {lowerTeam?.name || 'TBD'}
+        return (
+          <div className="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-950 flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className={`px-4 py-3 flex items-center justify-between flex-shrink-0 ${headerBg}`}>
+              <div className="flex items-center gap-2">
+                {confLabel && <span className="text-[10px] font-black text-white/70 tracking-widest">{confLabel}</span>}
+                <span className="text-xs font-black text-white tracking-wide">
+                  {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
+                </span>
               </div>
-              <div className="text-lg font-black oswald text-white">
-                {selectedSeries.higherSeedWins} - {selectedSeries.lowerSeedWins}
-              </div>
+              <button onClick={() => setSelectedSeriesId(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                <X size={14} className="text-white/80" />
+              </button>
             </div>
-            {lowerTeam && <TeamLogo teamId={lowerTeam.id} size="custom" className="w-8 h-8" />}
-          </div>
 
-          {/* Game list */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {selectedGames.length === 0 ? (
-              <div className="flex items-center justify-center h-32 text-slate-600 text-xs font-bold uppercase tracking-widest">
-                경기 결과 없음
+            {/* Matchup with gradient */}
+            <div
+              className="px-4 py-4 border-b border-slate-800 flex items-center gap-3"
+              style={{ background: `linear-gradient(to right, ${higherColor}, ${lowerColor})` }}
+            >
+              {higherTeam && <TeamLogo teamId={higherTeam.id} size="custom" className="w-8 h-8" />}
+              <div className="flex-1 min-w-0 text-center">
+                <div className="text-xs font-bold text-white/90 truncate">
+                  {higherTeam?.name || 'TBD'} vs {lowerTeam?.name || 'TBD'}
+                </div>
+                <div className="text-lg font-black oswald text-white">
+                  {selectedSeries.higherSeedWins} - {selectedSeries.lowerSeedWins}
+                </div>
               </div>
-            ) : (
-              <div className="divide-y divide-slate-800/50">
-                {selectedGames.map((g, gIdx) => {
-                  const isHome = g.homeTeamId === myTeamId;
-                  const myScore = isHome ? g.homeScore : g.awayScore;
-                  const oppScore = isHome ? g.awayScore : g.homeScore;
-                  const isWin = (myScore || 0) > (oppScore || 0);
-                  const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
+              {lowerTeam && <TeamLogo teamId={lowerTeam.id} size="custom" className="w-8 h-8" />}
+            </div>
 
-                  return (
-                    <div key={g.id} className="flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] font-bold text-slate-500 w-10 flex-shrink-0">G{gIdx + 1}</span>
-                        {isMyGame && (
-                          <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${isHome ? 'bg-blue-900/40 text-blue-400' : 'bg-amber-900/40 text-amber-400'}`}>
-                            {isHome ? 'HOME' : 'AWAY'}
+            {/* Game list */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              {selectedGames.length === 0 ? (
+                <div className="flex items-center justify-center h-32 text-slate-600 text-xs font-bold tracking-widest">
+                  경기 결과 없음
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-800/50">
+                  {selectedGames.map((g, gIdx) => {
+                    const isHome = g.homeTeamId === myTeamId;
+                    const myScore = isHome ? g.homeScore : g.awayScore;
+                    const oppScore = isHome ? g.awayScore : g.homeScore;
+                    const isWin = (myScore || 0) > (oppScore || 0);
+                    const isMyGame = g.homeTeamId === myTeamId || g.awayTeamId === myTeamId;
+
+                    return (
+                      <div key={g.id} className="flex items-center px-4 py-3 hover:bg-white/5 transition-colors">
+                        <div className="flex items-center gap-2 w-16 flex-shrink-0">
+                          <span className="text-[10px] font-bold text-slate-500">{gIdx + 1}차전</span>
+                          {isMyGame && (
+                            <span className={`text-[9px] font-black px-1 py-0.5 rounded ${isWin ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
+                              {isWin ? 'W' : 'L'}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex-1 flex items-center justify-center gap-2">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">{g.homeTeamId}</span>
+                          <span className="text-xs font-mono font-bold text-slate-200 tabular-nums">
+                            {g.homeScore} - {g.awayScore}
                           </span>
-                        )}
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">{g.awayTeamId}</span>
+                        </div>
+                        <div className="w-16 flex-shrink-0 flex justify-end">
+                          {userId && onViewGameResult && (
+                            <button
+                              onClick={() => handleViewBoxScore(g.id)}
+                              disabled={!!fetchingGameId}
+                              className="flex items-center gap-0.5 text-[9px] font-bold text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+                            >
+                              {fetchingGameId === g.id ? <Loader2 size={10} className="animate-spin" /> : (<>자세히<ChevronRight size={12} /></>)}
+                            </button>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        {isMyGame && (
-                          <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${isWin ? 'bg-emerald-900/40 text-emerald-400' : 'bg-red-900/40 text-red-400'}`}>
-                            {isWin ? 'W' : 'L'}
-                          </span>
-                        )}
-                        <span className="text-xs font-mono font-bold text-slate-200 tabular-nums">
-                          {g.homeScore} - {g.awayScore}
-                        </span>
-                        {userId && onViewGameResult && (
-                          <button
-                            onClick={() => handleViewBoxScore(g.id)}
-                            disabled={!!fetchingGameId}
-                            className="text-[9px] font-bold text-indigo-400 hover:text-indigo-300 uppercase tracking-wider disabled:opacity-50 flex-shrink-0"
-                          >
-                            {fetchingGameId === g.id ? <Loader2 size={10} className="animate-spin" /> : 'BOX'}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
