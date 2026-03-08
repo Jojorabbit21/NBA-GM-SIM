@@ -313,40 +313,38 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       {selectedSeries && (() => {
         const conf = selectedSeries.conference as 'East' | 'West' | 'BPL';
         const confLabel = conf === 'East' ? '동부' : conf === 'West' ? '서부' : '';
-        const headerBg = conf === 'East' ? 'bg-blue-600' : conf === 'West' ? 'bg-red-600' : 'bg-indigo-600';
         const higherColor = higherTeam ? TEAM_COLORS[higherTeam.id]?.primary : 'rgb(30,41,59)';
         const lowerColor = lowerTeam ? TEAM_COLORS[lowerTeam.id]?.primary : 'rgb(30,41,59)';
 
         return (
           <div className="w-80 flex-shrink-0 border-l border-slate-800 bg-slate-900 flex flex-col overflow-hidden">
-            {/* Header */}
-            <div className={`px-4 py-3 flex items-center justify-between flex-shrink-0 ${headerBg}`}>
-              <div className="flex items-center gap-2">
-                {confLabel && <span className="text-xs font-black text-white/70 tracking-widest">{confLabel}</span>}
-                <span className="text-xs font-black text-white tracking-wide">
-                  {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
-                </span>
-              </div>
-              <button onClick={() => setSelectedSeriesId(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+            {/* Header + Matchup (통합) */}
+            <div
+              className="px-4 pt-3 pb-4 border-b border-slate-800 flex-shrink-0 relative"
+              style={{ background: `linear-gradient(135deg, ${higherColor}, ${lowerColor})` }}
+            >
+              <button onClick={() => setSelectedSeriesId(null)} className="absolute top-2 right-2 p-1 hover:bg-white/20 rounded-lg transition-colors">
                 <X size={14} className="text-white/80" />
               </button>
-            </div>
-
-            {/* Matchup with gradient */}
-            <div
-              className="px-4 py-4 border-b border-slate-800 flex items-center gap-3"
-              style={{ background: `linear-gradient(to right, ${higherColor}, ${lowerColor})` }}
-            >
-              {higherTeam && <TeamLogo teamId={higherTeam.id} size="custom" className="w-8 h-8" />}
-              <div className="flex-1 min-w-0 text-center">
-                <div className="text-xs font-bold text-white/90 truncate">
-                  {higherTeam?.name || 'TBD'} vs {lowerTeam?.name || 'TBD'}
-                </div>
-                <div className="text-lg font-black oswald text-white">
-                  {selectedSeries.higherSeedWins} - {selectedSeries.lowerSeedWins}
-                </div>
+              <div className="flex items-center justify-between mb-3">
+                {confLabel && <span className="text-xs font-black text-white/60 tracking-widest">{confLabel}</span>}
+                <span className="text-xs font-black text-white tracking-wide flex-1 text-center">
+                  {ROUND_NAMES[selectedSeries.round] || `${selectedSeries.round}라운드`}
+                </span>
+                <div className="w-8" />
               </div>
-              {lowerTeam && <TeamLogo teamId={lowerTeam.id} size="custom" className="w-8 h-8" />}
+              <div className="flex items-center gap-3">
+                {higherTeam && <TeamLogo teamId={higherTeam.id} size="custom" className="w-8 h-8" />}
+                <div className="flex-1 min-w-0 text-center">
+                  <div className="text-xs font-bold text-white/90 truncate">
+                    {higherTeam?.name || 'TBD'} vs {lowerTeam?.name || 'TBD'}
+                  </div>
+                  <div className="text-lg font-black oswald text-white">
+                    {selectedSeries.higherSeedWins} - {selectedSeries.lowerSeedWins}
+                  </div>
+                </div>
+                {lowerTeam && <TeamLogo teamId={lowerTeam.id} size="custom" className="w-8 h-8" />}
+              </div>
             </div>
 
             {/* Game list */}
