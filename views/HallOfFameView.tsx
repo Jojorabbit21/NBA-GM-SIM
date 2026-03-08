@@ -100,13 +100,13 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                         <div className="border-t border-slate-800 overflow-hidden">
                             {/* Table Header */}
                             <div className="grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-3 border-b border-slate-800 bg-slate-950">
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">#</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Team</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">GM</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Score</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Record</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Playoffs</span>
-                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">로스터</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500">#</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500">팀</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500">단장</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500 text-center">시즌 스코어</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500 text-center">정규시즌 기록</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500 text-center">플레이오프 기록</span>
+                                <span className="text-sm font-black uppercase tracking-widest text-slate-500 text-center">로스터</span>
                             </div>
 
                             {/* Table Body */}
@@ -154,7 +154,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
 
                                         {/* Score */}
                                         <div className="text-center">
-                                            <span className={`text-base font-black oswald ${rank <= 3 ? 'text-white' : 'text-slate-200'}`}>
+                                            <span className={`text-base font-bold font-mono tabular-nums ${rank <= 3 ? 'text-white' : 'text-slate-200'}`}>
                                                 {entry.total_score}
                                             </span>
                                         </div>
@@ -196,7 +196,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
             <Modal
                 isOpen={!!rosterModal}
                 onClose={() => setRosterModal(null)}
-                size="lg"
+                size="xl"
                 title={
                     rosterModal && (
                         <div className="flex items-center gap-3">
@@ -214,38 +214,71 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                     )
                 }
             >
-                <div className="p-6">
-                    {/* Roster Table */}
-                    <div className="space-y-0">
-                        {/* Header */}
-                        <div className="grid grid-cols-[40px_1fr_60px_60px_80px_80px_80px] px-4 py-2 border-b border-slate-800">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">#</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Name</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">Pos</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">OVR</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">PPG</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">RPG</span>
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 text-center">APG</span>
-                        </div>
-
-                        {/* Rows */}
-                        {rosterSnapshot.map((p, idx) => (
-                            <div
-                                key={p.id}
-                                className="grid grid-cols-[40px_1fr_60px_60px_80px_80px_80px] px-4 py-3 items-center border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors"
-                            >
-                                <span className="text-xs font-bold text-slate-600">{idx + 1}</span>
-                                <span className="text-sm font-bold text-white truncate">{p.name}</span>
-                                <span className="text-xs font-bold text-slate-400 text-center uppercase">{p.position}</span>
-                                <div className="flex justify-center">
-                                    <OvrBadge value={p.ovr} size="sm" />
-                                </div>
-                                <span className="text-sm font-bold text-slate-200 text-center font-mono tabular-nums">{p.stats.ppg}</span>
-                                <span className="text-sm font-bold text-slate-200 text-center font-mono tabular-nums">{p.stats.rpg}</span>
-                                <span className="text-sm font-bold text-slate-200 text-center font-mono tabular-nums">{p.stats.apg}</span>
-                            </div>
-                        ))}
-                    </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full border-separate border-spacing-0">
+                        <thead className="bg-slate-950 sticky top-0 z-10">
+                            <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                                <th className="py-3 px-3 whitespace-nowrap border-b border-slate-800 text-left w-10">#</th>
+                                <th className="py-3 px-3 whitespace-nowrap border-b border-slate-800 text-left min-w-[160px]">선수</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-12">POS</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-12">OVR</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">MPG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">PPG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">RPG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">APG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">SPG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">BPG</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FG%</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">3P%</th>
+                                <th className="py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center w-14">FT%</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-slate-900">
+                            {rosterSnapshot.map((p, idx) => (
+                                <tr key={p.id} className="hover:bg-white/5 transition-colors">
+                                    <td className="py-2 px-3 whitespace-nowrap border-b border-slate-800/50">
+                                        <span className={`text-xs font-bold ${idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-300' : idx === 2 ? 'text-amber-600' : 'text-slate-600'}`}>{idx + 1}</span>
+                                    </td>
+                                    <td className="py-2 px-3 whitespace-nowrap border-b border-slate-800/50">
+                                        <span className="text-xs font-semibold text-slate-200">{p.name}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-bold text-slate-400 uppercase">{p.position}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <OvrBadge value={p.ovr} size="sm" />
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.mpg}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.ppg}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.rpg}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.apg}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.spg}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.bpg}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.fgPct}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.threePtPct}</span>
+                                    </td>
+                                    <td className="py-2 px-1.5 whitespace-nowrap border-b border-slate-800/50 text-center">
+                                        <span className="text-xs font-medium text-white font-mono tabular-nums">{p.stats.ftPct}</span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
                 </div>
             </Modal>
         </div>
