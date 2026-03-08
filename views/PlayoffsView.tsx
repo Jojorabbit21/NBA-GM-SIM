@@ -204,11 +204,13 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             {conn(['M 0,25 H 50 V 75 H 100'])}
           </div>
           <div className="flex flex-col" style={{ gridColumn: 3, gridRow: '1 / 5' }}>
-            <div className="flex-1 flex items-center">
+            <div className="flex items-end">
               <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
             </div>
-            <div className="mx-auto w-0 border-l border-dashed border-slate-500" style={{ height: '16px' }} />
-            <div className="flex-1 flex items-center">
+            <div className="flex-1 flex justify-center">
+              <div className="w-0 h-full border-l border-dashed border-slate-500" />
+            </div>
+            <div className="flex items-start">
               <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
             </div>
           </div>
@@ -267,11 +269,13 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
             {conn(['M 0,25 H 50 V 75 H 100'])}
           </div>
           <div className="flex flex-col" style={{ gridColumn: 3, gridRow: '6 / 10' }}>
-            <div className="flex-1 flex items-center">
+            <div className="flex items-end">
               <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
             </div>
-            <div className="mx-auto w-0 border-l border-dashed border-slate-500" style={{ height: '16px' }} />
-            <div className="flex-1 flex items-center">
+            <div className="flex-1 flex justify-center">
+              <div className="w-0 h-full border-l border-dashed border-slate-500" />
+            </div>
+            <div className="flex items-start">
               <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
             </div>
           </div>
