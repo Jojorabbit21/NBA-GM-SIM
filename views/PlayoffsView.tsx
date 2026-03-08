@@ -187,7 +187,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       {/* Bracket — CSS Grid: 9 rows × 6 columns */}
       <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
         <div
-          className="min-w-[1050px] h-full px-6 pt-5 pb-10"
+          className="min-w-[1050px] min-h-full px-6 pt-5 pb-10"
           style={{
             display: 'grid',
             gridTemplateColumns: '1fr 40px 1fr 40px 1fr 40px 1fr 40px 1fr 40px 1fr',
