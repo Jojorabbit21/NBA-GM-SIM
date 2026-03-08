@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { ArrowLeft, Crown, Trophy, Eye, Loader2 } from 'lucide-react';
+import { ArrowLeft, Crown, Eye, Loader2 } from 'lucide-react';
 import { fetchHallOfFameEntries, HallOfFameEntry } from '../services/hallOfFameService';
 import { RosterSnapshotPlayer } from '../utils/hallOfFameScorer';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -63,20 +63,17 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                 {/* 중앙 콘텐츠 */}
                 <div className="col-span-6 py-12 space-y-8">
                     {/* Header */}
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center mb-2">
                         <button
                             onClick={onBack}
                             className="p-2.5 rounded-2xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all active:scale-95"
                         >
                             <ArrowLeft size={22} />
                         </button>
-                        <div className="flex items-center gap-3">
-                            <Trophy size={28} className="text-amber-400" />
-                            <h1 className="text-3xl font-black uppercase tracking-widest text-white oswald">Hall of Fame</h1>
-                        </div>
-                        <span className="ml-auto text-xs font-bold text-slate-500 uppercase tracking-widest">
-                            2025-26 Season
-                        </span>
+                    </div>
+                    <div className="text-center space-y-1">
+                        <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">2025-26 시즌</p>
+                        <h1 className="text-3xl font-black text-white ko-tight">명예의 전당</h1>
                     </div>
 
                     {/* Loading */}
@@ -89,7 +86,6 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                     {/* Empty State */}
                     {!isLoading && entries.length === 0 && (
                         <div className="text-center py-32">
-                            <Trophy size={48} className="text-slate-700 mx-auto mb-4" />
                             <p className="text-lg font-bold text-slate-500 ko-tight">아직 등록된 기록이 없습니다</p>
                             <p className="text-sm text-slate-600 mt-2 ko-normal">시즌과 플레이오프를 완주한 후 기록을 제출해보세요</p>
                         </div>
@@ -97,7 +93,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
 
                     {/* Rankings Table */}
                     {!isLoading && entries.length > 0 && (
-                        <div className="bg-slate-900 rounded-3xl border border-slate-800 overflow-hidden">
+                        <div className="border-t border-slate-800 overflow-hidden">
                             {/* Table Header */}
                             <div className="grid grid-cols-[56px_1fr_1fr_100px_100px_120px_60px] px-6 py-3 border-b border-slate-800 bg-slate-950">
                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">#</span>
@@ -126,7 +122,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                         key={entry.id}
                                         className={`grid grid-cols-[56px_1fr_1fr_100px_100px_120px_60px] px-6 py-4 items-center border-b border-slate-800/50 transition-colors ${
                                             isMe
-                                                ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500'
+                                                ? 'bg-indigo-500/10'
                                                 : rank === 1
                                                     ? 'bg-amber-500/5'
                                                     : 'hover:bg-slate-800/50'
