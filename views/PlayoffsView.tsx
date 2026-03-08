@@ -174,81 +174,130 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
     selected: s?.id === selectedSeriesId,
   });
 
+  const conn = (paths: string[]) => (
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full block">
+      {paths.map((d, i) => (
+        <path key={i} d={d} fill="none" stroke="rgb(71,85,105)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+      ))}
+    </svg>
+  );
+
   return (
     <div className="flex h-full animate-in fade-in duration-700">
       {/* Bracket — CSS Grid: 9 rows × 6 columns */}
       <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
         <div
-          className="min-w-[900px] h-full px-6 py-5"
+          className="min-w-[1050px] h-full px-6 py-5"
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(6, 1fr)',
+            gridTemplateColumns: '1fr 40px 1fr 40px 1fr 40px 1fr 40px 1fr 40px 1fr',
             gridTemplateRows: 'repeat(9, minmax(110px, 1fr))',
-            gap: '12px 48px',
+            gap: '12px 0',
           }}
         >
-          {/* ══ East Play-In (rows 1-4) ══ */}
+          {/* ══ East Play-In ══ */}
           <div className="flex items-center" style={{ gridColumn: 1, gridRow: '1 / 3' }}>
             <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
           </div>
-          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '1 / 3' }}>
+          {/* c: PI-A→PI-B East (9v10 승자 → 8시드 결정전) */}
+          <div style={{ gridColumn: 2, gridRow: '1 / 5' }}>
+            {conn(['M 0,25 H 50 V 75 H 100'])}
+          </div>
+          <div className="flex items-center" style={{ gridColumn: 3, gridRow: '1 / 3' }}>
             <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
           </div>
-          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '3 / 5' }}>
+          <div className="flex items-center" style={{ gridColumn: 3, gridRow: '3 / 5' }}>
             <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
           </div>
 
-          {/* ══ East R1 (rows 1-4, col 3) ══ */}
+          {/* ══ East R1 (col 5) ══ */}
           {r1_east.map((s, i) => (
-            <div key={`e_r1_${i}`} className="flex items-center" style={{ gridColumn: 3, gridRow: i + 1 }}>
+            <div key={`e_r1_${i}`} className="flex items-center" style={{ gridColumn: 5, gridRow: i + 1 }}>
               <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
             </div>
           ))}
+          {/* c: R1→Semis East */}
+          <div style={{ gridColumn: 6, gridRow: '1 / 3' }}>
+            {conn(['M 0,25 H 50 V 75 H 0', 'M 50,50 H 100'])}
+          </div>
+          <div style={{ gridColumn: 6, gridRow: '3 / 5' }}>
+            {conn(['M 0,25 H 50 V 75 H 0', 'M 50,50 H 100'])}
+          </div>
 
-          {/* ══ East Semis (rows 1-4, col 4) ══ */}
+          {/* ══ East Semis (col 7) ══ */}
           {r2_east.map((s, i) => (
-            <div key={`e_r2_${i}`} className="flex items-center" style={{ gridColumn: 4, gridRow: `${i * 2 + 1} / ${i * 2 + 3}` }}>
+            <div key={`e_r2_${i}`} className="flex items-center" style={{ gridColumn: 7, gridRow: `${i * 2 + 1} / ${i * 2 + 3}` }}>
               <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 세미파이널" {...sb(s as any)} />
             </div>
           ))}
+          {/* c: Semis→CF East */}
+          <div style={{ gridColumn: 8, gridRow: '1 / 5' }}>
+            {conn(['M 0,25 H 50 V 75 H 0', 'M 50,50 H 100'])}
+          </div>
 
-          {/* ══ East CF (rows 1-4, col 5) ══ */}
-          <div className="flex items-center" style={{ gridColumn: 5, gridRow: '1 / 5' }}>
+          {/* ══ East CF (col 9) ══ */}
+          <div className="flex items-center" style={{ gridColumn: 9, gridRow: '1 / 5' }}>
             <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
           </div>
 
-          {/* ══ Finals (row 5, col 6) ══ */}
-          <div className="flex items-center justify-center" style={{ gridColumn: 6, gridRow: 5 }}>
+          {/* c: CF→Finals */}
+          <div style={{ gridColumn: 10, gridRow: '1 / 5' }}>
+            {conn(['M 0,50 H 50 V 100'])}
+          </div>
+          <div style={{ gridColumn: 10, gridRow: 5 }}>
+            {conn(['M 50,0 V 100', 'M 50,50 H 100'])}
+          </div>
+          <div style={{ gridColumn: 10, gridRow: '6 / 10' }}>
+            {conn(['M 0,50 H 50 V 0'])}
+          </div>
+
+          {/* ══ Finals (row 5, col 11) ══ */}
+          <div className="flex items-center justify-center" style={{ gridColumn: 11, gridRow: 5 }}>
             <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="파이널" {...sb(finals as any)} />
           </div>
 
-          {/* ══ West Play-In (rows 6-9) ══ */}
+          {/* ══ West Play-In ══ */}
           <div className="flex items-center" style={{ gridColumn: 1, gridRow: '6 / 8' }}>
             <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
           </div>
-          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '6 / 8' }}>
+          {/* c: PI-A→PI-B West */}
+          <div style={{ gridColumn: 2, gridRow: '6 / 10' }}>
+            {conn(['M 0,25 H 50 V 75 H 100'])}
+          </div>
+          <div className="flex items-center" style={{ gridColumn: 3, gridRow: '6 / 8' }}>
             <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
           </div>
-          <div className="flex items-center" style={{ gridColumn: 2, gridRow: '8 / 10' }}>
+          <div className="flex items-center" style={{ gridColumn: 3, gridRow: '8 / 10' }}>
             <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
           </div>
 
-          {/* ══ West R1 (rows 6-9, col 3) ══ */}
+          {/* ══ West R1 (col 5) ══ */}
           {r1_west.map((s, i) => (
-            <div key={`w_r1_${i}`} className="flex items-center" style={{ gridColumn: 3, gridRow: i + 6 }}>
+            <div key={`w_r1_${i}`} className="flex items-center" style={{ gridColumn: 5, gridRow: i + 6 }}>
               <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 1라운드" isProjected={series.length===0} {...sb(s as any)} />
             </div>
           ))}
+          {/* c: R1→Semis West */}
+          <div style={{ gridColumn: 6, gridRow: '6 / 8' }}>
+            {conn(['M 0,25 H 50 V 75 H 0', 'M 50,50 H 100'])}
+          </div>
+          <div style={{ gridColumn: 6, gridRow: '8 / 10' }}>
+            {conn(['M 0,25 H 50 V 75 H 0', 'M 50,50 H 100'])}
+          </div>
 
-          {/* ══ West Semis (rows 6-9, col 4) ══ */}
+          {/* ══ West Semis (col 7) ══ */}
           {r2_west.map((s, i) => (
-            <div key={`w_r2_${i}`} className="flex items-center" style={{ gridColumn: 4, gridRow: `${i * 2 + 6} / ${i * 2 + 8}` }}>
+            <div key={`w_r2_${i}`} className="flex items-center" style={{ gridColumn: 7, gridRow: `${i * 2 + 6} / ${i * 2 + 8}` }}>
               <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 세미파이널" {...sb(s as any)} />
             </div>
           ))}
+          {/* c: Semis→CF West */}
+          <div style={{ gridColumn: 8, gridRow: '6 / 10' }}>
+            {conn(['M 0,25 H 50 V 75 H 0', 'M 50,50 H 100'])}
+          </div>
 
-          {/* ══ West CF (rows 6-9, col 5) ══ */}
-          <div className="flex items-center" style={{ gridColumn: 5, gridRow: '6 / 10' }}>
+          {/* ══ West CF (col 9) ══ */}
+          <div className="flex items-center" style={{ gridColumn: 9, gridRow: '6 / 10' }}>
             <GridSeriesBox series={cf_west as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 컨퍼런스 파이널" {...sb(cf_west as any)} />
           </div>
         </div>
