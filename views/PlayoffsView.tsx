@@ -191,31 +191,26 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
     <div className="flex h-full animate-in fade-in duration-700">
       {/* Bracket */}
       <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
-        <div className="flex min-w-[900px] h-full px-2 md:px-3">
+        <div className="flex min-w-[1000px] h-full px-2 md:px-3">
 
           {/* ── Play-In ── */}
-          <div className="flex-[1.8] min-w-0 flex flex-col">
+          <div className="flex-shrink-0 flex flex-col">
             {/* East Play-In */}
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex">
                 {/* Col A: 9v10 */}
-                <div className="flex-1 min-w-0 flex flex-col justify-center py-2 md:py-3">
+                <div className="w-[140px] flex-shrink-0 flex flex-col justify-center py-2 md:py-3">
                   <GridSeriesBox series={pi_east[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_east[1])} />
                 </div>
                 {/* Conn: 9v10 winner → 8시드 결정전 */}
                 <div className="flex-shrink-0 py-2 md:py-3" style={{ width: CONNECTOR_W }}>
                   <BracketConnector leftCount={1} rightCount={2} sectionHeight={SECTION_H} pairs={[{ leftIndices: [0], rightIndex: 1 }]} width={CONNECTOR_W} />
                 </div>
-                {/* Col B: 7시드 결정전, 8시드 결정전 */}
-                <div className="flex-1 min-w-0 flex flex-col justify-around py-2 md:py-3 gap-5 md:gap-6">
-                  <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
-                  <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
-                </div>
-                {/* Loser bracket: 7시드 패자 → 8시드 결정전 */}
+                {/* Loser bracket: 7시드 패자 → 8시드 결정전 (왼쪽 "[" 형태) */}
                 <div className="flex-shrink-0 py-2 md:py-3" style={{ width: 16 }}>
                   <svg className="w-full h-full block" viewBox={`0 0 16 ${SECTION_H}`} preserveAspectRatio="none">
                     <path
-                      d={`M 0,${SECTION_H / 4} H 10 V ${SECTION_H * 3 / 4} H 0`}
+                      d={`M 16,${SECTION_H / 4} H 6 V ${SECTION_H * 3 / 4} H 16`}
                       fill="none"
                       stroke="rgb(71,85,105)"
                       strokeWidth={1.5}
@@ -224,26 +219,28 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
                       strokeLinejoin="round"
                     />
                   </svg>
+                </div>
+                {/* Col B: 7시드 결정전, 8시드 결정전 */}
+                <div className="w-[140px] flex-shrink-0 flex flex-col justify-around py-2 md:py-3 gap-5 md:gap-6">
+                  <GridSeriesBox series={pi_east[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[0])} />
+                  <GridSeriesBox series={pi_east[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_east[2])} />
                 </div>
               </div>
             </div>
             {/* West Play-In */}
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex">
-                <div className="flex-1 min-w-0 flex flex-col justify-center py-2 md:py-3">
+                <div className="w-[140px] flex-shrink-0 flex flex-col justify-center py-2 md:py-3">
                   <GridSeriesBox series={pi_west[1]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 플레이인 9 VS 10" isProjected={!hasPlayInStarted} {...sb(pi_west[1])} />
                 </div>
                 <div className="flex-shrink-0 py-2 md:py-3" style={{ width: CONNECTOR_W }}>
                   <BracketConnector leftCount={1} rightCount={2} sectionHeight={SECTION_H} pairs={[{ leftIndices: [0], rightIndex: 1 }]} width={CONNECTOR_W} />
                 </div>
-                <div className="flex-1 min-w-0 flex flex-col justify-around py-2 md:py-3 gap-5 md:gap-6">
-                  <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
-                  <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
-                </div>
+                {/* Loser bracket: 7시드 패자 → 8시드 결정전 (왼쪽 "[" 형태) */}
                 <div className="flex-shrink-0 py-2 md:py-3" style={{ width: 16 }}>
                   <svg className="w-full h-full block" viewBox={`0 0 16 ${SECTION_H}`} preserveAspectRatio="none">
                     <path
-                      d={`M 0,${SECTION_H / 4} H 10 V ${SECTION_H * 3 / 4} H 0`}
+                      d={`M 16,${SECTION_H / 4} H 6 V ${SECTION_H * 3 / 4} H 16`}
                       fill="none"
                       stroke="rgb(71,85,105)"
                       strokeWidth={1.5}
@@ -253,14 +250,18 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
                     />
                   </svg>
                 </div>
+                <div className="w-[140px] flex-shrink-0 flex flex-col justify-around py-2 md:py-3 gap-5 md:gap-6">
+                  <GridSeriesBox series={pi_west[0]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 7시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[0])} />
+                  <GridSeriesBox series={pi_west[2]} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 8시드 결정전" isProjected={!hasPlayInStarted} {...sb(pi_west[2])} />
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="w-1 md:w-2 flex-shrink-0" />
+          <div className="flex-1" />
 
           {/* ── R1 ── */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="w-[140px] flex-shrink-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around py-2 md:py-3 gap-5 md:gap-6">
                 {r1_east.map((s, i) => (
@@ -288,7 +289,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           </div>
 
           {/* ── Semis ── */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="w-[140px] flex-shrink-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-around py-2 md:py-3 gap-5 md:gap-6">
                 {r2_east.map((s, i) => (
@@ -316,7 +317,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           </div>
 
           {/* ── Conf. Finals ── */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="w-[140px] flex-shrink-0 flex flex-col">
             <div style={{ height: SECTION_H }}>
               <div className="h-full flex flex-col justify-center py-2 md:py-3">
                 <GridSeriesBox series={cf_east as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 컨퍼런스 파이널" {...sb(cf_east as any)} />
@@ -337,11 +338,9 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           </div>
 
           {/* ── Finals ── */}
-          <div className="flex-1 min-w-0 flex flex-col">
+          <div className="w-[140px] flex-shrink-0 flex flex-col">
             <div className="h-full flex items-center justify-center py-2 md:py-4" style={{ height: SECTION_H * 2 }}>
-              <div className="w-full max-w-[200px]">
-                <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="파이널" {...sb(finals as any)} />
-              </div>
+              <GridSeriesBox series={finals as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="파이널" {...sb(finals as any)} />
             </div>
           </div>
 
