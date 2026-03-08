@@ -21,6 +21,7 @@ import { DraftLotteryView } from '../views/DraftLotteryView';
 import { PlayerDetailView } from '../views/PlayerDetailView';
 import { SeasonReviewView } from '../views/SeasonReviewView';
 import { PlayoffReviewView } from '../views/PlayoffReviewView';
+import { HallOfFameView } from '../views/HallOfFameView';
 import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
 
@@ -81,6 +82,18 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         await sim.finalizeLiveGame(result);
                         setView('GameResult');
                     }}
+                />
+            </div>
+        );
+    }
+
+    // Hall of Fame — 풀스크린 오버레이
+    if (view === 'HallOfFame') {
+        return (
+            <div className="fixed inset-0 z-[9999] bg-slate-950">
+                <HallOfFameView
+                    currentUserId={session?.user?.id}
+                    onBack={() => setView(previousViewRef.current)}
                 />
             </div>
         );

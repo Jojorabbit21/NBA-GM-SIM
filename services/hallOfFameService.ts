@@ -1,0 +1,94 @@
+
+import { supabase } from './supabaseClient';
+import { HallOfFameScoreBreakdown, RosterSnapshotPlayer } from '../utils/hallOfFameScorer';
+
+export interface HallOfFameEntry {
+    id: string;
+    user_id: string;
+    team_id: string;
+    season: string;
+    total_score: number;
+    score_breakdown: HallOfFameScoreBreakdown;
+    roster_snapshot: RosterSnapshotPlayer[];
+    user_email?: string;
+    submitted_at: string;
+}
+
+/**
+ * Fetch all hall of fame entries, ordered by total_score DESC.
+ */
+export const fetchHallOfFameEntries = async (season = '2025-2026'): Promise<HallOfFameEntry[]> => {
+    const { data, error } = await supabase
+        .from('hall_of_fame')
+        .select('*')
+        .eq('season', season)
+        .order('total_score', { ascending: false });
+
+    if (error) {
+        console.error("❌ Failed to fetch hall of fame entries:", error);
+        return [];
+    }
+    return data || [];
+};
+
+/**
+ * Check if the current user has already submitted for this team/season.
+ */
+export const checkUserHasSubmitted = async (
+    userId: string,
+    teamId: string,
+    season = '2025-2026'
+): Promise<boolean> => {
+    const { data, error } = await supabase
+        .from('hall_of_fame')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('team_id', teamId)
+        .eq('season', season)
+        .maybeSingle();
+
+    if (error) {
+        console.error("❌ Failed to check HOF submission:", error);
+        return false;
+    }
+    return !!data;
+};
+
+/**
+ * Submit a hall of fame entry. Returns success/alreadySubmitted status.
+ */
+export const submitHallOfFameEntry = async (
+    userId: string,
+    teamId: string,
+    totalScore: number,
+    breakdown: HallOfFameScoreBreakdown,
+    rosterSnapshot: RosterSnapshotPlayer[],
+    userEmail?: string,
+    season = '2025-2026'
+): Promise<{ success: boolean; alreadySubmitted: boolean }> => {
+    const payload = {
+        user_id: userId,
+        team_id: teamId,
+        season,
+        total_score: totalScore,
+        score_breakdown: breakdown,
+        roster_snapshot: rosterSnapshot,
+        user_email: userEmail || null,
+    };
+
+    const { error } = await supabase
+        .from('hall_of_fame')
+        .insert(payload);
+
+    if (error) {
+        // Unique constraint violation = already submitted
+        if (error.code === '23505') {
+            return { success: false, alreadySubmitted: true };
+        }
+        console.error("❌ Failed to submit hall of fame entry:", error);
+        return { success: false, alreadySubmitted: false };
+    }
+
+    console.log("✅ Hall of Fame entry submitted.");
+    return { success: true, alreadySubmitted: false };
+};

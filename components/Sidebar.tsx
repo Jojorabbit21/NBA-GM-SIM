@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward,
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -30,6 +30,9 @@ interface SidebarProps {
   isBatchRunning?: boolean;
   showSeasonReview?: boolean;
   showPlayoffReview?: boolean;
+  isPostseasonOver?: boolean;
+  hasSubmittedHof?: boolean;
+  onHofSubmit?: () => void;
 }
 
 // Team color theme — shared utility (utils/teamTheme.ts)
@@ -97,6 +100,9 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isBatchRunning,
   showSeasonReview,
   showPlayoffReview,
+  isPostseasonOver,
+  hasSubmittedHof,
+  onHofSubmit,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
@@ -146,6 +152,14 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
             }
           >
             <div className="p-1.5 space-y-0.5">
+              <button
+                onClick={() => { onNavigate('HallOfFame'); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition-all text-left"
+              >
+                <Crown size={15} />
+                <span className="text-xs font-bold">명예의 전당</span>
+              </button>
+              <div className="my-1 border-t border-slate-800" />
               <button
                 onClick={() => { onNavigate('Help'); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
@@ -219,7 +233,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
       </div>
 
-      {/* Season / Playoff Review Buttons */}
+      {/* Season / Playoff Review Buttons + HOF Submit */}
       {!isCollapsed && (showSeasonReview || showPlayoffReview) && (
         <div className="px-6 py-3 border-b border-white/10 space-y-2">
           {showSeasonReview && (
@@ -236,6 +250,25 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               className="w-full px-4 py-2.5 rounded-2xl text-white/50 text-sm font-bold bg-indigo-600/40 cursor-not-allowed"
             >
               플레이오프 리뷰
+            </button>
+          )}
+          {isPostseasonOver && !isGuestMode && !hasSubmittedHof && onHofSubmit && (
+            <button
+              onClick={onHofSubmit}
+              className="w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold bg-amber-600/40 hover:bg-amber-600/60 transition-all active:scale-[0.98]"
+            >
+              <span className="flex items-center justify-center gap-2">
+                <Crown size={14} />
+                명예의 전당 제출
+              </span>
+            </button>
+          )}
+          {isPostseasonOver && !isGuestMode && hasSubmittedHof && (
+            <button
+              disabled
+              className="w-full px-4 py-2.5 rounded-2xl text-amber-400/50 text-sm font-bold bg-amber-600/10 cursor-not-allowed"
+            >
+              제출 완료
             </button>
           )}
         </div>
