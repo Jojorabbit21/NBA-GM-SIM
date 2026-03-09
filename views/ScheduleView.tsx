@@ -23,7 +23,7 @@ interface ScheduleViewProps {
 }
 
 const MIN_MONTH = new Date(2025, 9, 1);  // October 2025
-const MAX_MONTH = new Date(2026, 3, 1);  // April 2026
+const MAX_MONTH = new Date(2026, 5, 1);  // June 2026
 
 interface CalendarCell {
   day: number;
@@ -416,7 +416,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                             </div>
                           ) : isASB ? (
                             <div className="flex-1 flex items-center justify-center">
-                              <span className="text-xs font-black text-yellow-500/60 uppercase">ASB</span>
+                              <span className="text-xs font-black text-yellow-500/60">올스타 기간</span>
                             </div>
                           ) : null}
                         </div>
