@@ -92,4 +92,11 @@ export interface ReplaySnapshot {
         awayScore: number;
         seriesId?: string;
     }>;
+    pending_playoff_games?: Array<{
+        id: string;
+        homeTeamId: string;
+        awayTeamId: string;
+        date: string;
+        seriesId?: string;
+    }>;
 }
