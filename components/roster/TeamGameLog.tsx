@@ -201,7 +201,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 {STAT_COLS.map(c => <col key={c.key} style={{ width: STAT_WIDTH }} />)}
             </colgroup>
 
-            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
+            <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                 {/* Group row */}
                 <tr className="h-6">
                     <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 align-middle">
