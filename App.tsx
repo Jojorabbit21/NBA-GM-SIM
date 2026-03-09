@@ -13,6 +13,8 @@ import { useFullSeasonSim } from './hooks/useFullSeasonSim';
 import { FullSeasonSimModal } from './components/simulation/FullSeasonSimModal';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from './utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from './services/hallOfFameService';
+import { useUpdateChecker } from './hooks/useUpdateChecker';
+import { UpdateToast } from './components/UpdateToast';
 
 function shuffleArray<T>(arr: T[]): T[] {
     const a = [...arr];
@@ -45,6 +47,8 @@ const App: React.FC = () => {
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
     const [draftPoolType, setDraftPoolType] = useState<DraftPoolType | null>(null);
     const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
+    const updateAvailable = useUpdateChecker();
+    const [updateDismissed, setUpdateDismissed] = useState(false);
     const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
     const handleEditorClick = useCallback(() => setIsEditorModalOpen(true), []);
 
@@ -242,6 +246,12 @@ const App: React.FC = () => {
             {/* 시즌 전체 시뮬레이션 프로그레스 모달 — MainLayout 바깥에서 렌더링하여 stacking context 회피 */}
             {batchProgress && (
                 <FullSeasonSimModal progress={batchProgress} onCancel={() => handleCancelBatch()} />
+            )}
+            {updateAvailable && !updateDismissed && (
+                <UpdateToast
+                    onRefresh={() => window.location.reload()}
+                    onDismiss={() => setUpdateDismissed(true)}
+                />
             )}
         </>
     );

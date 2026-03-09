@@ -2,17 +2,33 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 
+const buildVersion = Date.now().toString();
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
   // Set the third parameter to '' to load all env regardless of the `VITE_` prefix.
   const env = loadEnv(mode, (process as any).cwd(), '');
-  
+
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      {
+        name: 'build-version',
+        apply: 'build' as const,
+        generateBundle() {
+          this.emitFile({
+            type: 'asset',
+            fileName: 'version.json',
+            source: JSON.stringify({ v: buildVersion }),
+          });
+        },
+      },
+    ],
     define: {
       // Define process.env to allow existing code using process.env.API_KEY to work
-      'process.env': env
+      'process.env': env,
+      __BUILD_VERSION__: JSON.stringify(buildVersion),
     },
     build: {
       outDir: 'build', // Match CRA output directory for convenience
