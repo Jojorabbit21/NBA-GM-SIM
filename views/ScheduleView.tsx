@@ -263,20 +263,22 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       }
   };
 
-  // 해당 경기 시점의 시리즈 스코어 계산 (이 경기 이전까지의 승수)
+  // 해당 경기 시점의 시리즈 스코어 계산
+  // - 미플레이: 이 경기 이전까지의 승수 (예: 1차전 미플레이 → 0-0)
+  // - 플레이 완료: 이 경기 결과 포함 (예: 1차전 완료 → 1-0 or 0-1)
   const getSeriesScoreAtGame = (game: Game, series: PlayoffSeries): { higher: number; lower: number } => {
-      // 게임 번호 파싱 (po_{seriesId}_g{N})
       const match = game.id.match(/_g(\d+)$/);
       const currentGameNum = match ? parseInt(match[1], 10) : 1;
+      // 완료된 경기는 자기 자신까지 포함, 미완료는 이전까지만
+      const includeUpTo = game.played ? currentGameNum : currentGameNum - 1;
 
       let higher = 0;
       let lower = 0;
-      // 같은 시리즈의 이전 경기들에서 승수 집계
       for (const g of localSchedule) {
           if (g.seriesId !== series.id || !g.played || g.homeScore == null || g.awayScore == null) continue;
           const gMatch = g.id.match(/_g(\d+)$/);
           const gNum = gMatch ? parseInt(gMatch[1], 10) : 0;
-          if (gNum >= currentGameNum) continue;
+          if (gNum > includeUpTo) continue;
 
           const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
           if (winnerId === series.higherSeedId) higher++;
