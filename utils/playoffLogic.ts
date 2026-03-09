@@ -231,6 +231,8 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
  * Generates schedule for active series.
  * - Play-In (round 0): 1경기 생성
  * - Best-of-7 (round 1+): 라운드 시작 시 1~4차전 일괄 생성, 5~7차전은 격일로 1경기씩
+ * - 일정 스태거링: 라운드 내 5개 이상 시리즈 시 2그룹으로 나눠 하루 엇갈림
+ *   (예: R1 8시리즈 → Day1: 동부2+서부2, Day2: 동부2+서부2)
  */
 export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSeries[], currentDate: string): { newGames: Game[], updatedSeries: PlayoffSeries[] } {
     const newGames: Game[] = [];
@@ -239,6 +241,38 @@ export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSe
     if (!seriesList || seriesList.length === 0) return { newGames, updatedSeries };
 
     const simDateObj = new Date(currentDate);
+
+    // 스태거링: 새로 시작하는 시리즈들을 라운드별로 그룹화하여 날짜 오프셋 배정
+    // 5개 이상 시리즈 → 각 컨퍼런스 전반/후반으로 나눠 Day A / Day B
+    const staggerOffset = new Map<string, number>();
+    const newSeriesByRound = new Map<number, PlayoffSeries[]>();
+
+    updatedSeries.forEach(series => {
+        if (series.finished || series.higherSeedId.includes('TBD') || series.lowerSeedId.includes('TBD')) return;
+        if (series.round === 0) return;
+
+        const hasGames = schedule.some(g => g.seriesId === series.id);
+        if (!hasGames) {
+            if (!newSeriesByRound.has(series.round)) newSeriesByRound.set(series.round, []);
+            newSeriesByRound.get(series.round)!.push(series);
+        }
+    });
+
+    newSeriesByRound.forEach((seriesGroup) => {
+        if (seriesGroup.length <= 4) {
+            // 4개 이하: 같은 날 진행
+            seriesGroup.forEach(s => staggerOffset.set(s.id, 0));
+        } else {
+            // 5개 이상: 컨퍼런스별 전반/후반으로 나눠 Day A(0) / Day B(1)
+            const east = seriesGroup.filter(s => s.conference === 'East');
+            const west = seriesGroup.filter(s => s.conference === 'West');
+            const eastHalf = Math.ceil(east.length / 2);
+            const westHalf = Math.ceil(west.length / 2);
+
+            east.forEach((s, i) => staggerOffset.set(s.id, i < eastHalf ? 0 : 1));
+            west.forEach((s, i) => staggerOffset.set(s.id, i < westHalf ? 0 : 1));
+        }
+    });
 
     updatedSeries.forEach(series => {
         if (series.finished || series.higherSeedId.includes('TBD') || series.lowerSeedId.includes('TBD')) return;
@@ -281,6 +315,12 @@ export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSe
         let anchor = seriesGames.length > 0
             ? new Date(seriesGames[seriesGames.length - 1].date)
             : new Date(currentDate);
+
+        // 새 시리즈의 스태거 오프셋 적용 (Group B는 +1일)
+        const dayOffset = staggerOffset.get(series.id);
+        if (dayOffset && dayOffset > 0 && seriesGames.length === 0) {
+            anchor.setDate(anchor.getDate() + dayOffset);
+        }
 
         for (const gameNum of gameNumsToCreate) {
             if (existingGameNums.has(gameNum)) continue;
