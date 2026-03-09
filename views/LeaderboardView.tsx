@@ -103,7 +103,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
   const handleRowClick = (item: any) => {
       if (mode === 'Players') {
           const p = item as Player & { teamName: string, teamId: string };
-          onViewPlayer(p, p.teamId, p.teamName);
+          // 리더보드 훅이 stats를 덮어쓰므로 원본 Player 객체를 찾아서 전달
+          const originalPlayer = teams.flatMap(t => t.roster).find(r => r.id === p.id);
+          onViewPlayer(originalPlayer || p, p.teamId, p.teamName);
       } else if (mode === 'Teams' && onTeamClick) {
           const t = item as Team;
           onTeamClick(t.id);
