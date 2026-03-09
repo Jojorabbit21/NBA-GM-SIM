@@ -4,7 +4,7 @@ import { AppView, Team, Player, GameTactics, DraftPoolType } from '../types';
 import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
-import { DayGamesView } from '../views/DayGamesView';
+
 import { DashboardView } from '../views/DashboardView';
 import { RosterView } from '../views/RosterView';
 import { ScheduleView } from '../views/ScheduleView';
@@ -144,37 +144,20 @@ const AppRouter: React.FC<AppRouterProps> = ({
         );
     }
 
-    // 비경기일 / 플레이오프 탈락 후 CPU 경기 관전
-    if (sim.restDayData) {
+    // AI 경기 참관 오버레이 (리그 일정에서 참관 시 — LiveGameView 재사용)
+    if (sim.spectateTarget) {
         return (
-            <>
-                <DayGamesView
-                    date={sim.restDayData.date}
-                    cpuResults={sim.restDayData.cpuResults}
-                    teams={gameData.teams}
-                    onFinish={() => {
-                        sim.finalizeRestDay();
-                        setView('Dashboard');
-                    }}
-                    onWatchGame={(gameId: string) => {
-                        sim.startSpectating(
-                            gameId,
-                            sim.restDayData!.cpuResults,
-                            gameData.teams
-                        );
+            <div className="fixed inset-0 z-[9999] bg-slate-950">
+                <LiveGameView
+                    homeTeam={sim.spectateTarget.homeTeam}
+                    awayTeam={sim.spectateTarget.awayTeam}
+                    userTeamId={null}
+                    onGameEnd={async (result) => {
+                        await sim.finalizeSpectateGame(result);
+                        setView('Schedule');
                     }}
                 />
-                {sim.spectateTarget && (
-                    <GameSimulatingView
-                        homeTeam={sim.spectateTarget.homeTeam}
-                        awayTeam={sim.spectateTarget.awayTeam}
-                        userTeamId={null}
-                        pbpLogs={sim.spectateTarget.pbpLogs}
-                        pbpShotEvents={sim.spectateTarget.pbpShotEvents}
-                        onSimulationComplete={sim.clearSpectateTarget}
-                    />
-                )}
-            </>
+            </div>
         );
     }
 
@@ -191,6 +174,12 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         onForceSave={gameData.forceSave}
                         tendencySeed={gameData.tendencySeed || undefined}
                         onViewPlayer={handleViewPlayer}
+                        userId={session?.user?.id}
+                        onViewGameResult={(result) => {
+                            previousViewRef.current = 'Dashboard';
+                            sim.loadSavedGameResult(result);
+                            setView('GameResult');
+                        }}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {
@@ -236,6 +225,18 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         sim.loadSavedGameResult(result);
                         setView('GameResult');
                     }}
+                    onSpectateGame={(gameId: string) => {
+                        if (gameData.userTactics) {
+                            sim.handleExecuteSim(gameData.userTactics, false, gameId);
+                        }
+                    }}
+                    onStartUserGame={() => {
+                        if (gameData.userTactics) {
+                            sim.handleStartLiveGame(gameData.userTactics);
+                        }
+                    }}
+                    isSimulating={sim.isSimulating}
+                    playoffSeries={gameData.playoffSeries}
                 />
             );
         case 'Standings':

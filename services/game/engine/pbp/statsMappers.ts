@@ -124,12 +124,6 @@ export function applyPossessionResult(state: GameState, result: PossessionResult
         addLog(state, offTeam.id, `⚡ 미스매치! ${actor.playerName}가 이점을 활용합니다.`, 'info');
     }
 
-    // [New] PnR Coverage Announcement
-    if (pnrCoverage) {
-        const coverageLabel = pnrCoverage === 'drop' ? '드랍' : pnrCoverage === 'hedge' ? '헷지' : '블리츠';
-        addLog(state, defTeam.id, `🛡️ ${coverageLabel} 수비 전개`, 'info');
-    }
-
     // 3. Apply Logic based on Result Type
     if (type === 'score') {
         // Update Actor Stats

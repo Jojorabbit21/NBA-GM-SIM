@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Calendar, Loader2, List, LayoutGrid } from 'lucide-react';
-import { Team, Game } from '../types';
+import { ChevronLeft, ChevronRight, Calendar, Loader2, Play, FileText, Eye } from 'lucide-react';
+import { Team, Game, PlayoffSeries } from '../types';
 import { useMonthlySchedule, fetchFullGameResult } from '../services/queries';
 import { CALENDAR_EVENTS } from '../utils/constants';
 import { TeamLogo } from '../components/common/TeamLogo';
@@ -15,6 +15,11 @@ interface ScheduleViewProps {
   initialMonth?: Date | null;
   onMonthChange?: (d: Date) => void;
   onViewGameResult: (result: any) => void;
+  calendarOnly?: boolean;
+  onSpectateGame?: (gameId: string) => void;
+  onStartUserGame?: () => void;
+  isSimulating?: boolean;
+  playoffSeries?: PlayoffSeries[];
 }
 
 const MIN_MONTH = new Date(2025, 9, 1);  // October 2025
@@ -28,7 +33,7 @@ interface CalendarCell {
   month: number;        // 0-indexed
 }
 
-export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, initialMonth, onMonthChange, onViewGameResult }) => {
+export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSchedule, teamId, teams, currentSimDate, userId, initialMonth, onMonthChange, onViewGameResult, calendarOnly = false, onSpectateGame, onStartUserGame, isSimulating = false, playoffSeries = [] }) => {
   const [currentDate, setCurrentDate] = useState(() => {
     if (initialMonth) return new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1);
     if (currentSimDate) {
@@ -37,8 +42,14 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
     }
     return new Date(2025, 9, 1);
   });
-  const [showLeagueSchedule, setShowLeagueSchedule] = useState(false);
+  const showLeagueSchedule = !calendarOnly;
   const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
+
+  // 유저 팀이 오늘 경기가 있는지 (있으면 참관 불가)
+  const userHasGameToday = useMemo(() =>
+    localSchedule.some(g => !g.played && g.date === currentSimDate && (g.homeTeamId === teamId || g.awayTeamId === teamId)),
+    [localSchedule, currentSimDate, teamId]
+  );
 
   const { data: userResults, isLoading: isDbLoading } = useMonthlySchedule(
       userId,
@@ -135,9 +146,12 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       if (!el) return;
       const update = () => {
           const { width, height } = el.getBoundingClientRect();
+          const cs = getComputedStyle(el);
+          const px = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+          const py = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
           const headerH = 36;
-          const fromH = (height - headerH) / 6;
-          const fromW = width / 7;
+          const fromH = (height - py - headerH) / 6;
+          const fromW = (width - px) / 7;
           setCellSize(Math.floor(Math.min(fromH, fromW)));
       };
       const ro = new ResizeObserver(update);
@@ -190,6 +204,67 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       return map;
   }, [leagueGames]);
 
+  // [Day Carousel] — only for league schedule mode
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const dayCarouselRef = useRef<HTMLDivElement>(null);
+
+  // Unique game days in current month (sorted)
+  const gameDays = useMemo(() => {
+      const days = new Set<number>();
+      leagueGames.forEach(g => days.add(new Date(g.date).getDate()));
+      return Array.from(days).sort((a, b) => a - b);
+  }, [leagueGames]);
+
+  // Auto-select day when month changes or gameDays update
+  useEffect(() => {
+      if (!showLeagueSchedule || gameDays.length === 0) { setSelectedDay(null); return; }
+      const simDate = new Date(currentSimDate);
+      const inSameMonth = simDate.getFullYear() === currentDate.getFullYear() && simDate.getMonth() === currentDate.getMonth();
+      if (inSameMonth) {
+          const today = simDate.getDate();
+          if (gameDays.includes(today)) { setSelectedDay(today); return; }
+          const nextDay = gameDays.find(d => d >= today);
+          setSelectedDay(nextDay ?? gameDays[gameDays.length - 1]);
+      } else {
+          setSelectedDay(gameDays[0]);
+      }
+  }, [gameDays, currentSimDate, currentDate, showLeagueSchedule]);
+
+  // Auto-scroll carousel to selected day
+  useEffect(() => {
+      if (selectedDay === null || !dayCarouselRef.current) return;
+      const btn = dayCarouselRef.current.querySelector(`[data-day="${selectedDay}"]`) as HTMLElement;
+      btn?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+  }, [selectedDay]);
+
+  // Selected day's dateStr and games
+  const selectedDayDateStr = useMemo(() => {
+      if (selectedDay === null) return '';
+      const y = currentDate.getFullYear();
+      const m = currentDate.getMonth();
+      return `${y}-${String(m + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+  }, [selectedDay, currentDate]);
+
+  const selectedDayGames = useMemo(() => {
+      if (!selectedDayDateStr) return [];
+      return gamesByDate.get(selectedDayDateStr) || [];
+  }, [selectedDayDateStr, gamesByDate]);
+
+  const scrollCarousel = (direction: number) => {
+      const el = dayCarouselRef.current;
+      if (el) el.scrollBy({ left: direction * 200, behavior: 'smooth' });
+  };
+
+  const getRoundLabel = (round: number) => {
+      switch (round) {
+          case 1: return '1라운드';
+          case 2: return '컨퍼런스 세미파이널';
+          case 3: return '컨퍼런스 파이널';
+          case 4: return 'NBA 파이널';
+          default: return `라운드 ${round}`;
+      }
+  };
+
   // [Box Score Navigation]
   const handleViewBoxScore = async (gameId: string) => {
       if (fetchingGameId) return;
@@ -217,32 +292,16 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
-      {/* Header Bar */}
+      {/* Header Bar — only shown for league schedule mode */}
+      {!calendarOnly && (
       <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
               <Calendar size={16} className="text-slate-500" />
-              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">시즌 일정</span>
+              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">리그 전체 일정</span>
               {isDbLoading && <Loader2 className="animate-spin text-indigo-500" size={14} />}
           </div>
-          <div className="flex bg-slate-900 p-1 rounded-xl border border-slate-800 shadow-sm">
-              <button
-                  onClick={() => setShowLeagueSchedule(false)}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                      !showLeagueSchedule ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'
-                  }`}
-              >
-                  <LayoutGrid size={12} /> 캘린더
-              </button>
-              <button
-                  onClick={() => setShowLeagueSchedule(true)}
-                  className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                      showLeagueSchedule ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'
-                  }`}
-              >
-                  <List size={12} /> 리그 전체 일정
-              </button>
-          </div>
       </div>
+      )}
 
       {/* Shared Month Navigation */}
       <div className="flex items-center justify-center gap-4 py-2.5 shrink-0 border-b border-slate-700 bg-slate-800">
@@ -362,103 +421,202 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
           </div>
         </div>
       ) : (
-        /* ── League Schedule List View (Flat Table) ── */
-        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
-          <div className="px-6 py-4">
-            {leagueGames.length === 0 ? (
-              <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
-                이번 달에는 경기가 없습니다.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {Array.from(gamesByDate.entries()).map(([dateStr, games]) => {
-                  const d = new Date(dateStr + 'T12:00:00');
-                  const isSimDay = dateStr === currentSimDate;
-                  const dayLabel = d.toLocaleDateString('ko-KR', { month: 'long', day: 'numeric', weekday: 'short' });
+        /* ── League Schedule: Day Carousel + Game Cards ── */
+        <React.Fragment>
+          {/* Day Carousel */}
+          <div className="shrink-0 border-b border-slate-700/50 bg-slate-900 flex items-center">
+            <button
+              onClick={() => scrollCarousel(-1)}
+              className="shrink-0 px-2 py-3 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <div
+              ref={dayCarouselRef}
+              className="flex-1 overflow-x-auto custom-scrollbar-hide flex items-center gap-1.5 py-2"
+            >
+              {gameDays.map(day => {
+                const y = currentDate.getFullYear();
+                const m = currentDate.getMonth();
+                const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const isToday = ds === currentSimDate;
+                const isSelected = selectedDay === day;
+                const dayOfWeek = new Date(y, m, day).toLocaleDateString('ko-KR', { weekday: 'short' });
+                const gameCount = gamesByDate.get(ds)?.length || 0;
 
-                  return (
-                    <div key={dateStr}>
-                      {/* Date Header */}
-                      <div className={`flex items-center gap-3 mb-1.5 ${isSimDay ? 'text-indigo-400' : 'text-slate-500'}`}>
-                        <div className="h-px flex-1 bg-slate-800" />
-                        <span className="text-[11px] font-black uppercase tracking-wider whitespace-nowrap">
-                          {dayLabel}
-                          {isSimDay && <span className="ml-2 px-1.5 py-0.5 bg-indigo-600 text-[8px] font-black text-white rounded">TODAY</span>}
-                        </span>
-                        <div className="h-px flex-1 bg-slate-800" />
-                      </div>
-
-                      {/* Games — Flat rows */}
-                      <div>
-                        {games.map(game => {
-                          const homeTeam = teams.find(t => t.id === game.homeTeamId);
-                          const awayTeam = teams.find(t => t.id === game.awayTeamId);
-                          if (!homeTeam || !awayTeam) return null;
-
-                          const isMyGame = game.homeTeamId === teamId || game.awayTeamId === teamId;
-
-                          return (
-                            <div
-                              key={game.id}
-                              className={`flex items-center justify-center gap-3 py-2.5 px-4 border-b border-slate-800/30 ${
-                                isMyGame ? 'bg-amber-500/10' : ''
-                              }`}
-                            >
-                              {/* Away Team */}
-                              <div className="flex items-center gap-2 min-w-0 flex-1 justify-end">
-                                <span className={`text-xs font-black uppercase truncate ${
-                                  isMyGame && game.awayTeamId === teamId ? 'text-amber-400' : 'text-slate-400'
-                                }`}>
-                                  {awayTeam.city} {awayTeam.name}
-                                </span>
-                                <TeamLogo teamId={awayTeam.id} size="xs" />
-                              </div>
-
-                              {/* Score / @ */}
-                              {game.played ? (
-                                <button
-                                  onClick={() => handleViewBoxScore(game.id)}
-                                  disabled={!!fetchingGameId}
-                                  className="flex items-center gap-2 shrink-0 px-3 py-0.5 transition-all cursor-pointer disabled:opacity-50"
-                                >
-                                  {fetchingGameId === game.id ? (
-                                    <Loader2 size={14} className="animate-spin text-indigo-400" />
-                                  ) : (
-                                    <>
-                                      <span className={`text-xs font-black oswald hover:underline ${game.awayScore! > game.homeScore! ? 'text-white' : 'text-slate-500'}`}>
-                                        {game.awayScore}
-                                      </span>
-                                      <span className="text-[10px] text-slate-600 font-bold">-</span>
-                                      <span className={`text-xs font-black oswald hover:underline ${game.homeScore! > game.awayScore! ? 'text-white' : 'text-slate-500'}`}>
-                                        {game.homeScore}
-                                      </span>
-                                    </>
-                                  )}
-                                </button>
-                              ) : (
-                                <span className="text-[10px] text-slate-600 font-bold shrink-0 px-3">@</span>
-                              )}
-
-                              {/* Home Team */}
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <TeamLogo teamId={homeTeam.id} size="xs" />
-                                <span className={`text-xs font-black uppercase truncate ${
-                                  isMyGame && game.homeTeamId === teamId ? 'text-amber-400' : 'text-slate-400'
-                                }`}>
-                                  {homeTeam.city} {homeTeam.name}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                return (
+                  <button
+                    key={day}
+                    data-day={day}
+                    onClick={() => setSelectedDay(day)}
+                    className={`shrink-0 flex flex-col items-center px-3 py-1.5 rounded-xl transition-all min-w-[52px] ${
+                      isSelected
+                        ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
+                        : isToday
+                        ? 'bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/30'
+                        : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+                    }`}
+                  >
+                    <span className="text-[9px] font-bold">{dayOfWeek}</span>
+                    <span className="text-sm font-black oswald">{day}</span>
+                    <span className={`text-[8px] font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-600'}`}>{gameCount}경기</span>
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              onClick={() => scrollCarousel(1)}
+              className="shrink-0 px-2 py-3 text-slate-500 hover:text-slate-300 transition-colors"
+            >
+              <ChevronRight size={14} />
+            </button>
           </div>
-        </div>
+
+          {/* Game Cards */}
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar bg-slate-900">
+            <div className="p-4">
+              {selectedDay === null || selectedDayGames.length === 0 ? (
+                <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
+                  {gameDays.length === 0 ? '이번 달에는 경기가 없습니다.' : '선택된 날짜에 경기가 없습니다.'}
+                </div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {selectedDayGames.map(game => {
+                    const homeTeam = teams.find(t => t.id === game.homeTeamId);
+                    const awayTeam = teams.find(t => t.id === game.awayTeamId);
+                    if (!homeTeam || !awayTeam) return null;
+
+                    const isMyGame = game.homeTeamId === teamId || game.awayTeamId === teamId;
+                    const isTodayGame = selectedDayDateStr === currentSimDate && !game.played;
+                    const canSpectate = isTodayGame && !isMyGame && !userHasGameToday && !!onSpectateGame;
+                    const canStartUserGame = isTodayGame && isMyGame && !!onStartUserGame;
+
+                    // Playoff info
+                    const series = game.isPlayoff && game.seriesId
+                      ? playoffSeries.find(s => s.id === game.seriesId)
+                      : undefined;
+
+                    const awayIsWinner = game.played && game.awayScore! > game.homeScore!;
+                    const homeIsWinner = game.played && game.homeScore! > game.awayScore!;
+
+                    return (
+                      <div
+                        key={game.id}
+                        className={`rounded-3xl border overflow-hidden transition-all ${
+                          isMyGame
+                            ? 'border-amber-500/30 bg-amber-500/5'
+                            : 'border-slate-700/50 bg-slate-800/40'
+                        }`}
+                      >
+                        {/* Playoff Header */}
+                        {series && (
+                          <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
+                              {getRoundLabel(series.round)}
+                            </span>
+                            <span className="text-[9px] text-amber-500/60">·</span>
+                            <span className="text-[10px] font-bold text-amber-500/80">
+                              시리즈 {series.higherSeedWins}-{series.lowerSeedWins}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Game Content */}
+                        <div className="px-4 py-3 space-y-2">
+                          {/* Away Team Row */}
+                          <div className="flex items-center gap-3">
+                            <TeamLogo teamId={awayTeam.id} size="sm" />
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-xs font-black uppercase truncate ${
+                                isMyGame && game.awayTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
+                              }`}>
+                                {awayTeam.city} {awayTeam.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-bold">{awayTeam.wins}-{awayTeam.losses}</div>
+                            </div>
+                            {game.played ? (
+                              <span className={`text-lg font-black oswald ${awayIsWinner ? 'text-white' : 'text-slate-600'}`}>
+                                {game.awayScore}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 font-bold">AWAY</span>
+                            )}
+                          </div>
+
+                          {/* Divider */}
+                          <div className="border-t border-slate-700/30" />
+
+                          {/* Home Team Row */}
+                          <div className="flex items-center gap-3">
+                            <TeamLogo teamId={homeTeam.id} size="sm" />
+                            <div className="flex-1 min-w-0">
+                              <div className={`text-xs font-black uppercase truncate ${
+                                isMyGame && game.homeTeamId === teamId ? 'text-amber-400' : 'text-slate-300'
+                              }`}>
+                                {homeTeam.city} {homeTeam.name}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-bold">{homeTeam.wins}-{homeTeam.losses}</div>
+                            </div>
+                            {game.played ? (
+                              <span className={`text-lg font-black oswald ${homeIsWinner ? 'text-white' : 'text-slate-600'}`}>
+                                {game.homeScore}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 font-bold">HOME</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Action Button */}
+                        {(game.played || canSpectate || canStartUserGame) && (
+                          <div className="px-4 pb-3">
+                            {game.played ? (
+                              <button
+                                onClick={() => handleViewBoxScore(game.id)}
+                                disabled={!!fetchingGameId}
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all bg-slate-700/50 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
+                              >
+                                {fetchingGameId === game.id ? (
+                                  <Loader2 size={10} className="animate-spin" />
+                                ) : (
+                                  <><FileText size={10} /> 박스스코어</>
+                                )}
+                              </button>
+                            ) : canStartUserGame ? (
+                              <button
+                                onClick={() => onStartUserGame!()}
+                                disabled={isSimulating}
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-50"
+                              >
+                                {isSimulating ? (
+                                  <Loader2 size={10} className="animate-spin" />
+                                ) : (
+                                  <><Play size={10} fill="currentColor" /> 경기 시작</>
+                                )}
+                              </button>
+                            ) : canSpectate ? (
+                              <button
+                                onClick={() => onSpectateGame!(game.id)}
+                                disabled={isSimulating}
+                                className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
+                              >
+                                {isSimulating ? (
+                                  <Loader2 size={10} className="animate-spin" />
+                                ) : (
+                                  <><Eye size={10} /> 경기 보기</>
+                                )}
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </React.Fragment>
       )}
     </div>
   );

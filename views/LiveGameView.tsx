@@ -21,8 +21,8 @@ import { PlayerMarkers } from '../components/game/PlayerMarkers';
 interface LiveGameViewProps {
     homeTeam: Team;
     awayTeam: Team;
-    userTeamId: string;
-    userTactics: GameTactics;
+    userTeamId: string | null;
+    userTactics?: GameTactics | null;
     isHomeB2B?: boolean;
     isAwayB2B?: boolean;
     homeDepthChart?: DepthChart | null;
@@ -856,7 +856,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
     useEffect(() => { resumeRef.current = resume; });
 
-    const isUserHome = homeTeam.id === userTeamId;
+    const isSpectateMode = userTeamId === null;
+    const isUserHome = !isSpectateMode && homeTeam.id === userTeamId;
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
     const userTeam = isUserHome ? homeTeam : awayTeam;
@@ -930,11 +931,13 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         return allLogs.filter(l => l.quarter === pbpQuarterFilter).slice().reverse();
     }, [allLogs, pbpQuarterFilter]);
 
-    const TABS: { key: ActiveTab; label: string }[] = [
-        { key: 'court',    label: '중계' },
-        { key: 'rotation', label: '로테이션' },
-        { key: 'tactics',  label: '전술 설정' },
-    ];
+    const TABS: { key: ActiveTab; label: string }[] = isSpectateMode
+        ? [{ key: 'court', label: '중계' }]
+        : [
+            { key: 'court',    label: '중계' },
+            { key: 'rotation', label: '로테이션' },
+            { key: 'tactics',  label: '전술 설정' },
+          ];
 
     return (
         <div className="flex flex-col h-screen bg-slate-950 text-white overflow-hidden">
@@ -1051,8 +1054,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
             {/* ── 탭 바 (3등분: 유저측 컨트롤 | 탭 | 빈칸 또는 반대) ── */}
             <div className="grid grid-cols-3 items-center px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0">
                 {/* 왼쪽 */}
-                <div className={`flex items-center gap-2 ${isUserHome ? 'justify-start' : 'justify-start'}`}>
-                    {!isUserHome && (
+                <div className="flex items-center gap-2 justify-start">
+                    {(isSpectateMode || !isUserHome) && (
                         <>
                             <div className="flex rounded-lg overflow-hidden border border-slate-700">
                                 {([0.5, 1, 1.5, 3, 6] as GameSpeed[]).map((s, idx) => (
@@ -1070,15 +1073,17 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     </button>
                                 ))}
                             </div>
-                            <button
-                                onClick={callTimeout}
-                                disabled={pauseReason !== null || userTimeoutsLeft <= 0}
-                                className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
-                                           disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-[10px] font-bold transition-colors"
-                            >
-                                타임아웃 ({userTimeoutsLeft})
-                            </button>
+                            {!isSpectateMode && (
+                                <button
+                                    onClick={callTimeout}
+                                    disabled={pauseReason !== null || userTimeoutsLeft <= 0}
+                                    className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
+                                               disabled:opacity-40 disabled:cursor-not-allowed
+                                               text-white text-[10px] font-bold transition-colors"
+                                >
+                                    타임아웃 ({userTimeoutsLeft})
+                                </button>
+                            )}
                             <button
                                 onClick={skipToEnd}
                                 disabled={isGameEnd}
@@ -1108,8 +1113,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     ))}
                 </div>
                 {/* 오른쪽 */}
-                <div className={`flex items-center gap-2 ${isUserHome ? 'justify-end' : 'justify-end'}`}>
-                    {isUserHome && (
+                <div className="flex items-center gap-2 justify-end">
+                    {!isSpectateMode && isUserHome && (
                         <>
                             <button
                                 onClick={skipToEnd}
@@ -1161,7 +1166,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <OnCourtPanel
                                 onCourt={awayOnCourt}
                                 bench={awayBench}
-                                isUser={!isUserHome}
+                                isUser={!isSpectateMode && !isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
                             {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
@@ -1358,7 +1363,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             <OnCourtPanel
                                 onCourt={homeOnCourt}
                                 bench={homeBench}
-                                isUser={isUserHome}
+                                isUser={!isSpectateMode && isUserHome}
                                 onSubstitute={makeSubstitution}
                             />
                             {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}

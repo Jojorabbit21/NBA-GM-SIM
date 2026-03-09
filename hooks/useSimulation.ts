@@ -1,6 +1,6 @@
 
 import { useState, useRef, useCallback } from 'react';
-import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart, PbpLog, ShotEvent } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
@@ -8,6 +8,7 @@ import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
+import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 
 export const useSimulation = (
     teams: Team[],
@@ -36,45 +37,76 @@ export const useSimulation = (
     
     const finalizeSimRef = useRef<(() => void) | undefined>(undefined);
 
-    // ── Spectate Mode (비경기일 / 플레이오프 탈락 후 CPU 경기 관전) ──
-    const [restDayData, setRestDayData] = useState<{
-        cpuResults: CpuGameResult[];
-        date: string;
-        nextDate: string;
-    } | null>(null);
-
+    // ── Spectate Mode (리그 일정에서 AI 경기 참관) ──
     const [spectateTarget, setSpectateTarget] = useState<{
         homeTeam: Team;
         awayTeam: Team;
-        pbpLogs: PbpLog[];
-        pbpShotEvents: ShotEvent[];
+        spectateGame: Game;
+        nextDate: string;
     } | null>(null);
-
-    const startSpectating = useCallback((gameId: string, cpuResults: CpuGameResult[], allTeams: Team[]) => {
-        const game = cpuResults.find(g => g.gameId === gameId);
-        if (!game?.pbpLogs?.length) return;
-        const homeTeam = allTeams.find(t => t.id === game.homeTeamId);
-        const awayTeam = allTeams.find(t => t.id === game.awayTeamId);
-        if (!homeTeam || !awayTeam) return;
-        setSpectateTarget({
-            homeTeam, awayTeam,
-            pbpLogs: game.pbpLogs,
-            pbpShotEvents: game.pbpShotEvents || [],
-        });
-    }, []);
 
     const clearSpectateTarget = useCallback(() => setSpectateTarget(null), []);
 
-    const finalizeRestDay = useCallback(async () => {
-        if (!restDayData) return;
-        advanceDate(restDayData.nextDate, {});
-        if (!isGuestMode) {
-            await forceSave({ currentSimDate: restDayData.nextDate });
-        }
-        setRestDayData(null);
-    }, [restDayData, advanceDate, forceSave, isGuestMode]);
+    // 참관 경기 종료 후 결과 적용 + 날짜 진행
+    const finalizeSpectateGame = useCallback(async (result: SimulationResult) => {
+        if (!spectateTarget) return;
+        try {
+            const { spectateGame, nextDate } = spectateTarget;
+            const newTeams: Team[] = JSON.parse(JSON.stringify(teams));
+            const newSchedule: Game[] = [...schedule];
 
-    const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false) => {
+            // 경기 결과 반영
+            const home = newTeams.find(t => t.id === spectateGame.homeTeamId);
+            const away = newTeams.find(t => t.id === spectateGame.awayTeamId);
+            if (home && away) {
+                updateTeamStats(home, away, result.homeScore, result.awayScore);
+                applyBoxToRoster(home, result.homeBox);
+                applyBoxToRoster(away, result.awayBox);
+            }
+
+            // 스케줄 업데이트
+            const gameIdx = newSchedule.findIndex(g => g.id === spectateGame.id);
+            if (gameIdx >= 0) {
+                newSchedule[gameIdx] = { ...newSchedule[gameIdx], played: true, homeScore: result.homeScore, awayScore: result.awayScore };
+            }
+
+            // DB 저장
+            if (!isGuestMode && session?.user?.id) {
+                await saveGameResults([{
+                    user_id: session.user.id,
+                    game_id: spectateGame.id,
+                    home_team_id: spectateGame.homeTeamId,
+                    away_team_id: spectateGame.awayTeamId,
+                    home_score: result.homeScore,
+                    away_score: result.awayScore,
+                    box_score: { home: result.homeBox, away: result.awayBox },
+                    tactics: { home: result.homeTactics, away: result.awayTactics },
+                    date: spectateGame.date,
+                    pbp_logs: result.pbpLogs,
+                    shot_events: result.pbpShotEvents,
+                    rotation_data: result.rotationData,
+                }]);
+            }
+
+            // 상태 커밋
+            setTeams(newTeams);
+            setSchedule(newSchedule);
+
+            // 날짜 진행
+            advanceDate(nextDate, {});
+            if (!isGuestMode) {
+                await forceSave({ currentSimDate: nextDate });
+            }
+
+            setSpectateTarget(null);
+        } catch (e) {
+            console.error("Spectate Finalization Error:", e);
+            setToastMessage("참관 경기 결과 처리 중 오류가 발생했습니다.");
+            setSpectateTarget(null);
+        }
+    }, [spectateTarget, teams, schedule, isGuestMode, session, advanceDate, forceSave, setTeams, setSchedule, setToastMessage]);
+
+    const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false, spectateGameId?: string) => {
         if (isSimulating || !myTeamId) return;
         setIsSimulating(true);
 
@@ -91,8 +123,9 @@ export const useSimulation = (
             let newSchedule: Game[] = [...schedule];
             let newPlayoffSeries: PlayoffSeries[] = [...playoffSeries];
 
-            // 3. Process CPU Games
-            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, userGame?.id, session?.user?.id);
+            // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
+            const excludeGameId = userGame?.id || spectateGameId;
+            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id);
             
             // [Fix] Save CPU Game Results to DB
             if (!isGuestMode) {
@@ -209,14 +242,18 @@ export const useSimulation = (
                 d.setDate(d.getDate() + 1);
                 const nextDate = d.toISOString().split('T')[0];
 
-                // CPU 경기가 있으면 DayGamesView 표시 (날짜 이동은 유저가 닫을 때)
-                if (cpuData.cpuResults.length > 0) {
-                    setRestDayData({
-                        cpuResults: cpuData.cpuResults,
-                        date: currentSimDate,
-                        nextDate,
-                    });
+                // 리그 일정에서 참관 요청 시 — 날짜 진행 보류, LiveGameView에서 경기 진행
+                if (spectateGameId) {
+                    const spectateGame = newSchedule.find(g => g.id === spectateGameId);
+                    if (spectateGame) {
+                        const home = newTeams.find(t => t.id === spectateGame.homeTeamId);
+                        const away = newTeams.find(t => t.id === spectateGame.awayTeamId);
+                        if (home && away) {
+                            setSpectateTarget({ homeTeam: home, awayTeam: away, spectateGame, nextDate });
+                        }
+                    }
                 } else {
+                    // 일반 휴식일: 즉시 날짜 진행
                     advanceDate(nextDate, {});
                     if (!isGuestMode) {
                         await forceSave({ currentSimDate: nextDate });
@@ -392,10 +429,8 @@ export const useSimulation = (
         clearLastGameResult,
         loadSavedGameResult,
         // Spectate
-        restDayData,
         spectateTarget,
-        startSpectating,
         clearSpectateTarget,
-        finalizeRestDay,
+        finalizeSpectateGame,
     };
 };
