@@ -229,64 +229,85 @@ export function advancePlayoffState(seriesList: PlayoffSeries[], teams: Team[], 
 
 /**
  * Generates schedule for active series.
+ * - Play-In (round 0): 1경기 생성
+ * - Best-of-7 (round 1+): 라운드 시작 시 1~4차전 일괄 생성, 5~7차전은 격일로 1경기씩
  */
 export function generateNextPlayoffGames(schedule: Game[], seriesList: PlayoffSeries[], currentDate: string): { newGames: Game[], updatedSeries: PlayoffSeries[] } {
     const newGames: Game[] = [];
     const updatedSeries = [...seriesList];
-    
+
     if (!seriesList || seriesList.length === 0) return { newGames, updatedSeries };
 
-    // 1. Advance the bracket state first (check for round completions)
-    // Note: We need 'teams' for R1 seeding, but assuming 'advancePlayoffState' handles logic with existing data if teams param is empty/optional in future. 
-    // Ideally, pass teams. For now, rely on existing TBD resolution.
-    // *Correction*: advancePlayoffState needs teams for R1 generation. 
-    // In useSimulation, we pass the teams. Here we assume seriesList is somewhat up to date or we skip R1 gen if teams missing.
-    
-    // Iterate active series to schedule next game
+    const simDateObj = new Date(currentDate);
+
     updatedSeries.forEach(series => {
-        // Skip if finished or teams not ready
         if (series.finished || series.higherSeedId.includes('TBD') || series.lowerSeedId.includes('TBD')) return;
 
-        // Check if active game exists for this series
-        const activeGame = schedule.find(g => g.seriesId === series.id && !g.played);
-        
-        if (!activeGame) {
-            const gameNum = series.higherSeedWins + series.lowerSeedWins + 1;
-            
-            // Format: 2-2-1-1-1 (Home court for Higher Seed: 1,2,5,7)
-            const isHigherHome = [1, 2, 5, 7].includes(gameNum);
-            
-            // Play-In is always Home for Higher Seed
-            const finalHome = series.round === 0 ? series.higherSeedId : (isHigherHome ? series.higherSeedId : series.lowerSeedId);
-            const finalAway = series.round === 0 ? series.lowerSeedId : (isHigherHome ? series.lowerSeedId : series.higherSeedId);
+        // 이 시리즈의 기존 경기(played + unplayed) 수집
+        const seriesGames = schedule
+            .filter(g => g.seriesId === series.id)
+            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-            // Scheduling Logic
-            // Play-In: Day 1 (7v8, 9v10), Day 3 (Decider)
-            // Playoffs: Every 2 days
-            let dateOffset = 2;
-            if (series.round === 0 && series.id.includes('Decider')) dateOffset = 2; 
-            
-            const seriesGames = schedule.filter(g => g.seriesId === series.id).sort((a,b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-            const lastGameDate = seriesGames.length > 0 ? new Date(seriesGames[seriesGames.length - 1].date) : new Date(currentDate);
-            
-            const nextDate = new Date(lastGameDate);
-            nextDate.setDate(nextDate.getDate() + dateOffset);
-            
-            // Sync with current simulation date (ensure we don't schedule in past)
-            const simDateObj = new Date(currentDate);
-            if (nextDate <= simDateObj) nextDate.setDate(simDateObj.getDate() + 1);
+        const existingGameNums = new Set<number>();
+        seriesGames.forEach(g => {
+            const match = g.id.match(/_g(\d+)$/);
+            if (match) existingGameNums.add(parseInt(match[1], 10));
+        });
 
-            const nextDateStr = nextDate.toISOString().split('T')[0];
+        // 생성할 경기 번호 결정
+        let gameNumsToCreate: number[] = [];
+
+        if (series.round === 0) {
+            // Play-In: 1경기만
+            if (!existingGameNums.has(1)) gameNumsToCreate = [1];
+        } else {
+            // Best-of-7
+            if (existingGameNums.size === 0) {
+                // 라운드 시작: 1~4차전 일괄 생성
+                gameNumsToCreate = [1, 2, 3, 4];
+            } else {
+                // 5~7차전: 이전 경기 완료 후 1경기씩 추가
+                const totalPlayed = series.higherSeedWins + series.lowerSeedWins;
+                const nextGameNum = totalPlayed + 1;
+                if (nextGameNum > 4 && nextGameNum <= 7 && !existingGameNums.has(nextGameNum)) {
+                    gameNumsToCreate = [nextGameNum];
+                }
+            }
+        }
+
+        if (gameNumsToCreate.length === 0) return;
+
+        // 날짜 앵커: 마지막 기존 경기 날짜 또는 currentDate
+        let anchor = seriesGames.length > 0
+            ? new Date(seriesGames[seriesGames.length - 1].date)
+            : new Date(currentDate);
+
+        for (const gameNum of gameNumsToCreate) {
+            if (existingGameNums.has(gameNum)) continue;
+
+            const nextDate = new Date(anchor);
+            nextDate.setDate(nextDate.getDate() + 2);
+
+            // 새 시리즈 첫 경기가 과거 날짜가 되지 않도록
+            if (seriesGames.length === 0 && newGames.filter(g => g.seriesId === series.id).length === 0) {
+                if (nextDate <= simDateObj) nextDate.setDate(simDateObj.getDate() + 1);
+            }
+
+            const isHigherHome = series.round === 0 ? true : [1, 2, 5, 7].includes(gameNum);
+            const homeTeamId = isHigherHome ? series.higherSeedId : series.lowerSeedId;
+            const awayTeamId = isHigherHome ? series.lowerSeedId : series.higherSeedId;
 
             newGames.push({
                 id: `po_${series.id}_g${gameNum}`,
-                homeTeamId: finalHome,
-                awayTeamId: finalAway,
-                date: nextDateStr,
+                homeTeamId,
+                awayTeamId,
+                date: nextDate.toISOString().split('T')[0],
                 played: false,
                 isPlayoff: true,
                 seriesId: series.id
             });
+
+            anchor = nextDate;
         }
     });
 
