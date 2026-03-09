@@ -94,7 +94,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                 <img
                     src="/images/hof.png"
                     alt="Hall of Fame"
-                    className="w-[360px] object-contain"
+                    className="w-[160px] object-contain"
                 />
                 <h1 className="mt-4 text-2xl font-bold text-slate-300 tracking-widest uppercase ko-tight">
                     2025-26 시즌 명예의 전당
