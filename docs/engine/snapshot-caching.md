@@ -42,9 +42,15 @@ Supabase의 `select('*')` → 실제 필요한 컬럼만 명시.
 // Before
 supabase.from('user_game_results').select('*')
 
-// After
+// After — stateReplayer가 실제로 읽는 컬럼만
 supabase.from('user_game_results')
   .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, is_playoff, series_id')
+```
+
+`useMonthlySchedule`은 점수 표시 용도이므로 `box_score`, `tactics` 제외:
+```typescript
+supabase.from('user_game_results')
+  .select('game_id, date, home_team_id, away_team_id, home_score, away_score')
 ```
 
 ### 적용 대상
@@ -146,19 +152,35 @@ HEAD 요청은 응답 본문이 없어 데이터 전송량이 0에 가깝다.
 
 ```
 새로고침
+  → useBaseData() — meta_players + meta_schedule (TanStack Query, 병렬)
   → loadCheckpoint() (saves 테이블)
   → replay_snapshot 존재?
     │
-    ├─ YES → countUserData() (HEAD 요청 3개, 본문 없음)
+    ├─ YES → Promise.all([                    ← 3개 병렬 실행
+    │           loadPlayoffState(),
+    │           countUserData(),              ← HEAD 요청 3개
+    │           loadUserTransactions(),
+    │        ])
     │         → version 일치 && 3개 카운트 모두 일치?
     │           ├─ YES → ⚡ hydrateFromSnapshot() — replay 스킵!
-    │           │         (transactions만 로드하여 로스터 구성 복원)
     │           └─ NO  → 🔄 loadUserHistory() → replayGameState()
     │                     → 새 스냅샷 빌드 & 저장
     │
-    └─ NO  → 🔄 loadUserHistory() → replayGameState()
+    └─ NO  → loadPlayoffState()
+              → 🔄 loadUserHistory() → replayGameState()
               → 새 스냅샷 빌드 & 저장
 ```
+
+### 병렬화 최적화
+
+스냅샷 경로에서 `loadPlayoffState`, `countUserData`, `loadUserTransactions` 3개 요청을 `Promise.all`로 병렬 실행한다.
+
+```
+[순차 실행]  loadPlayoffState (~200ms) → countUserData (~214ms) → loadUserTransactions (~210ms) = ~624ms
+[병렬 실행]  Promise.all([...3개...]) = ~214ms (가장 느린 요청 기준)
+```
+
+Fallback 경로에서는 `loadPlayoffState`가 스냅샷 블록에서 이미 로드되었으면 재사용하고, 아니면 그때 로드한다.
 
 ### 트랜잭션은 왜 별도로 로드하나?
 
@@ -201,8 +223,22 @@ HEAD 요청은 응답 본문이 없어 데이터 전송량이 0에 가깝다.
 
 ### 성능 비교
 
-| 항목 | 기존 (full replay) | 스냅샷 |
+| 항목 | 기존 (full replay) | 스냅샷 + 병렬화 |
 |---|---|---|
 | DB 전송량 | 수십~100MB+ (시즌 후반) | ~수백KB (saves 1행) |
 | CPU 계산 | 1,230경기 순회 | 없음 (역직렬화만) |
-| 체감 로딩 | 수 초~10초+ | 즉시 |
+| 네트워크 순차 대기 | ~624ms (3개 순차) | ~214ms (3개 병렬) |
+| 체감 로딩 (시즌 후반) | 수 초~10초+ | **~2초** |
+
+### 실측 요청별 소요 시간 (시즌 후반 기준)
+
+| 요청 | 시간 | 비고 |
+|---|---|---|
+| `meta_players` | ~688ms | TanStack Query (새로고침 시 재요청) |
+| `meta_schedule` | ~443ms | TanStack Query (meta_players와 병렬) |
+| `saves` (replay_snapshot 포함) | ~495ms | useBaseData 완료 후 순차 |
+| `user_game_results` (HEAD count) | ~214ms | 병렬 그룹 |
+| `user_playoffs_results` (HEAD count) | — | 병렬 그룹 |
+| `user_transactions` (HEAD count) | — | 병렬 그룹 |
+| `user_transactions` (실제 데이터) | ~210ms | 병렬 그룹 |
+| `user_playoffs` (bracket) | ~200ms | 병렬 그룹 |

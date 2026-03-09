@@ -10,6 +10,7 @@ import { replayGameState } from '../services/stateReplayer';
 import { buildReplaySnapshot, hydrateFromSnapshot, CURRENT_SNAPSHOT_VERSION } from '../services/snapshotBuilder';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
+import { generateNextPlayoffGames } from '../utils/playoffLogic';
 import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
@@ -290,7 +291,17 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     }
 
                     if (playoffBracketState && playoffBracketState.bracket_data) {
-                        setPlayoffSeries(playoffBracketState.bracket_data.series);
+                        const restoredSeries: PlayoffSeries[] = playoffBracketState.bracket_data.series;
+                        setPlayoffSeries(restoredSeries);
+
+                        // 미진행 플레이오프/플레이인 경기 재생성
+                        // (스냅샷/리플레이 모두 played된 경기만 복원하므로, 아직 안 한 다음 경기가 스케줄에 없음)
+                        const { newGames } = generateNextPlayoffGames(loadedSchedule!, restoredSeries, checkpoint.sim_date);
+                        if (newGames.length > 0) {
+                            loadedSchedule = [...loadedSchedule!, ...newGames];
+                            setSchedule(prev => [...prev, ...newGames]);
+                            console.log(`🏆 Regenerated ${newGames.length} upcoming playoff game(s)`);
+                        }
                     }
 
                     setTransactions(txList.map((tx: any) => ({
