@@ -53,17 +53,17 @@ export const TRADE_CONFIG = {
     },
     CPU_TRADE: {
         // 점진적 확률 곡선
-        BASE_PROBABILITY: 0.05,
+        BASE_PROBABILITY: 0.15,
         MAX_PROBABILITY: 0.40,
         PROBABILITY_EXPONENT: 2.2,
 
         // 매칭 & 가치
-        MIN_VALUE_RATIO: 0.95,
-        MAX_VALUE_RATIO: 1.10,
-        IMPROVEMENT_THRESHOLD: 0.02,
+        MIN_VALUE_RATIO: 0.85,
+        MAX_VALUE_RATIO: 1.20,
+        IMPROVEMENT_THRESHOLD: 0.005,
 
         // 트레이드 가능 선수 기준
-        UNTOUCHABLE_OVR: 88,
+        UNTOUCHABLE_OVR: 97,
         EXCESS_DEPTH_THRESHOLD: 3,
         LOW_VALUE_DUMP_OVR: 72,
         BAD_CONTRACT_SALARY_FLOOR: 12,
