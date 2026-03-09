@@ -30,7 +30,7 @@ export const ReviewStatBox: React.FC<{
         <div className={`bg-slate-900/80 border border-slate-800 p-4 rounded-2xl flex flex-col items-center justify-center relative overflow-hidden group ${hoverBorder} transition-colors`}>
             <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 z-10">{label}</span>
             <div className="flex items-baseline gap-2 z-10">
-                <span className="text-2xl font-black oswald text-white">
+                <span className="text-2xl font-black text-white">
                     {isPercent ? (value * 100).toFixed(1) + '%' : value.toFixed(1)}
                 </span>
             </div>

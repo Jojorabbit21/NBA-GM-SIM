@@ -48,7 +48,7 @@ export const TradeHistoryTable: React.FC<TradeHistoryTableProps> = ({ transactio
             <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-4">
                 <div className="p-6 bg-slate-900 rounded-full border border-slate-800"><History size={48} className="opacity-30" /></div>
                 <div className="text-center">
-                    <p className="font-black text-lg text-slate-500 uppercase oswald tracking-widest">No Transactions</p>
+                    <p className="font-black text-lg text-slate-500 uppercase tracking-widest">No Transactions</p>
                     <p className="text-xs font-bold text-slate-600">{historyFilter === 'mine' ? '내 팀의 트레이드 기록이 없습니다.' : '아직 진행된 트레이드가 없습니다.'}</p>
                 </div>
             </div>

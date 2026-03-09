@@ -134,7 +134,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                     {!blockSearchPerformed ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
-                            <p className="font-black text-sm text-slate-500 uppercase oswald tracking-widest">오퍼 대기</p>
+                            <p className="font-black text-sm text-slate-500 uppercase tracking-widest">오퍼 대기</p>
                             <p className="text-xs font-bold text-slate-600 text-center">
                                 좌측에서 트레이드 블록에 올릴 선수를 선택하고<br/>
                                 오퍼 탐색 버튼을 눌러주세요.
@@ -149,7 +149,7 @@ export const TradeBlockTab: React.FC<TradeBlockTabProps> = ({
                                         <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <TeamLogo teamId={offer.teamId} size="sm" />
-                                                <span className="text-sm font-black uppercase oswald tracking-tight text-white">
+                                                <span className="text-sm font-black uppercase tracking-tight text-white">
                                                     {offer.teamName}
                                                 </span>
                                             </div>

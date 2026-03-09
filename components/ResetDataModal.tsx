@@ -27,7 +27,7 @@ export const ResetDataModal: React.FC<ResetDataModalProps> = ({
             <div className="bg-red-500/10 w-16 h-16 rounded-2xl flex items-center justify-center mb-6 border border-red-500/30">
                 <AlertTriangle className="text-red-500" size={32} />
             </div>
-            <h3 className="text-2xl font-black text-white mb-2 uppercase oswald">데이터 초기화</h3>
+            <h3 className="text-2xl font-black text-white mb-2 uppercase">데이터 초기화</h3>
             <p className="text-slate-400 font-bold text-sm leading-relaxed mb-8">
                 현재 진행 중인 모든 시즌 데이터와 세이브 파일이 영구적으로 삭제됩니다.<br/>
                 이 작업은 되돌릴 수 없습니다. 계속하시겠습니까?

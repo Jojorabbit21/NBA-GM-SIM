@@ -87,13 +87,13 @@ export const SalaryCapDashboard: React.FC<SalaryCapDashboardProps> = ({ currentT
         <div className="flex gap-4">
           <div className="px-6 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-center min-w-[120px]">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">CAP SPACE</div>
-            <div className={`text-xl font-black oswald ${currentTotalSalary < SALARY_CAP ? 'text-emerald-400' : 'text-slate-600'}`}>
+            <div className={`text-xl font-black ${currentTotalSalary < SALARY_CAP ? 'text-emerald-400' : 'text-slate-600'}`}>
               {currentTotalSalary < SALARY_CAP ? `$${(SALARY_CAP - currentTotalSalary).toFixed(1)}M` : '-'}
             </div>
           </div>
           <div className="px-6 py-3 bg-slate-900 border border-slate-800 rounded-2xl text-center min-w-[120px]">
             <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">TAX GAP</div>
-            <div className={`text-xl font-black oswald ${currentTotalSalary < TAX_LEVEL ? 'text-blue-400' : 'text-red-500'}`}>
+            <div className={`text-xl font-black ${currentTotalSalary < TAX_LEVEL ? 'text-blue-400' : 'text-red-500'}`}>
               {currentTotalSalary < TAX_LEVEL ? `$${(TAX_LEVEL - currentTotalSalary).toFixed(1)}M` : `+$${(currentTotalSalary - TAX_LEVEL).toFixed(1)}M`}
             </div>
           </div>

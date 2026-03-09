@@ -21,7 +21,7 @@ export const RosterTabs: React.FC<RosterTabsProps> = ({ activeTab, onTabChange }
                     key={t.id}
                     onClick={() => onTabChange(t.id as any)}
                     className={`
-                        px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all
+                        px-4 py-1.5 rounded-lg text-xs font-black uppercase tracking-widest transition-all
                         ${activeTab === t.id
                             ? 'bg-indigo-600 text-white shadow-md'
                             : 'text-slate-500 hover:text-slate-300'}

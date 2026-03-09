@@ -52,7 +52,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
             <div className="flex items-center gap-4">
               <TeamLogo teamId={team.id} size="xl" className="drop-shadow-md" />
               <div>
-                <h1 className="text-3xl font-black uppercase tracking-tight oswald text-white leading-none">
+                <h1 className="text-3xl font-black uppercase tracking-tight text-white leading-none">
                   {team.city} {team.name}
                 </h1>
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
@@ -62,7 +62,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
             </div>
             <div className="text-right hidden sm:block">
               <div className="text-xs font-bold text-slate-600 uppercase tracking-widest">DATE</div>
-              <div className="text-sm font-black text-slate-300 oswald">OCT 20, 2025</div>
+              <div className="text-sm font-black text-slate-300">OCT 20, 2025</div>
             </div>
           </div>
 
@@ -80,7 +80,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
             <div className="space-y-4 pl-4 border-l-2 border-indigo-500/30">
               <div className={`flex items-start gap-4 transition-all duration-700 delay-100 ${visibleLines >= 2 ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4'}`}>
                 <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="font-black text-indigo-400 oswald text-sm">1</span>
+                  <span className="font-black text-indigo-400 text-sm">1</span>
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-200 text-lg">로스터를 구성하고, 우승에 도전하세요.</h3>
@@ -129,7 +129,7 @@ export const OnboardingView: React.FC<OnboardingViewProps> = ({ team, onComplete
               >
                 <span className="flex flex-col items-start">
                   <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-widest">OFFICIAL SIGNATURE</span>
-                  <span className="text-lg font-black uppercase oswald tracking-wide">임명 수락 및 시즌 시작</span>
+                  <span className="text-lg font-black uppercase tracking-wide">임명 수락 및 시즌 시작</span>
                 </span>
                 <PenTool className="ml-2 group-hover:rotate-12 transition-transform" size={20} />
               </button>

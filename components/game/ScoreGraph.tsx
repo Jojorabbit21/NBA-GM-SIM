@@ -121,7 +121,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 <div className="flex items-center gap-2 mb-2">
                     <img src={awayLogo} className="w-8 h-8 object-contain" alt="Away" />
                     <div>
-                        <div className="text-2xl font-black oswald leading-none text-white">{awayProb}%</div>
+                        <div className="text-2xl font-black leading-none text-white">{awayProb}%</div>
                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{awayTeamCode}</div>
                     </div>
                 </div>
@@ -151,7 +151,7 @@ export const ScoreGraph: React.FC<ScoreGraphProps> = ({
                 {/* Right Side: Home Team (Bottom of Graph) */}
                 <div className="flex items-center gap-2 text-right mb-2">
                     <div>
-                        <div className="text-2xl font-black oswald leading-none text-white">{homeProb}%</div>
+                        <div className="text-2xl font-black leading-none text-white">{homeProb}%</div>
                         <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{homeTeamCode}</div>
                     </div>
                     <img src={homeLogo} className="w-8 h-8 object-contain" alt="Home" />

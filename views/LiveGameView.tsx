@@ -587,11 +587,11 @@ const CompactWPGraph: React.FC<{
             <div className="shrink-0 flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                     <img src={awayLogo} className="w-4 h-4 object-contain" alt="" />
-                    <span className="text-xs font-black oswald text-white">{awayProb}%</span>
+                    <span className="text-xs font-black text-white">{awayProb}%</span>
                 </div>
                 <p className="text-xs text-slate-400 font-semibold uppercase tracking-wider">실시간 승리확률</p>
                 <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-black oswald text-white">{homeProb}%</span>
+                    <span className="text-xs font-black text-white">{homeProb}%</span>
                     <img src={homeLogo} className="w-4 h-4 object-contain" alt="" />
                 </div>
             </div>
@@ -983,7 +983,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 </span>
                             </div>
                         </div>
-                        <span className="text-5xl font-black oswald tabular-nums leading-none text-white w-[4ch] text-right shrink-0">{awayScore}</span>
+                        <span className="text-5xl font-black tabular-nums leading-none text-white w-[4ch] text-right shrink-0">{awayScore}</span>
                     </div>
 
                     {/* Center: 시계 + 런(조건부) — 고정 폭 */}
@@ -992,8 +992,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         <div className="flex items-center justify-center gap-2">
                             {pauseReason && pauseReason !== 'gameEnd' ? (
                                 <>
-                                    <span className="text-2xl font-black oswald tabular-nums text-amber-400 leading-none">{pauseLabel}</span>
-                                    <span className="text-2xl font-black oswald tabular-nums text-amber-400 leading-none w-[2ch] text-center">{pauseCountdown}</span>
+                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-none">{pauseLabel}</span>
+                                    <span className="text-2xl font-black tabular-nums text-amber-400 leading-none w-[2ch] text-center">{pauseCountdown}</span>
                                     <button
                                         onClick={resume}
                                         className="px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
@@ -1003,8 +1003,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 </>
                             ) : (
                                 <>
-                                    <span className="text-2xl font-black oswald tabular-nums text-white leading-none">{quarterLabel}</span>
-                                    <span className="text-2xl font-black oswald tabular-nums text-white leading-none">{formatClock(gameClock)}</span>
+                                    <span className="text-2xl font-black tabular-nums text-white leading-none">{quarterLabel}</span>
+                                    <span className="text-2xl font-black tabular-nums text-white leading-none">{formatClock(gameClock)}</span>
                                 </>
                             )}
                         </div>
@@ -1026,7 +1026,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
                     {/* Home: 점수 | 로고+팀명 + 파울/TO — 왼쪽 정렬 */}
                     <div className="flex items-center justify-start gap-3">
-                        <span className="text-5xl font-black oswald tabular-nums leading-none text-white w-[4ch] text-left shrink-0">{homeScore}</span>
+                        <span className="text-5xl font-black tabular-nums leading-none text-white w-[4ch] text-left shrink-0">{homeScore}</span>
                         <div className="flex flex-col items-start gap-1 min-w-0">
                             <div className="flex items-center gap-2">
                                 <img src={homeTeam.logo} className="w-10 h-10 object-contain shrink-0" alt="" />

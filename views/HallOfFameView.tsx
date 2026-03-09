@@ -162,7 +162,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                         {/* Rank */}
                                         <div className="flex items-center gap-1.5">
                                             {rankStyle.icon}
-                                            <span className={`text-base font-black oswald ${rankStyle.color}`}>{rank}</span>
+                                            <span className={`text-base font-black ${rankStyle.color}`}>{rank}</span>
                                         </div>
 
                                         {/* Team */}
@@ -228,7 +228,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                     rosterModal && (
                         <div className="flex items-center gap-3">
                             <TeamLogo teamId={rosterModal.entry.team_id} size="sm" />
-                            <span className="font-black text-white oswald uppercase tracking-wide">
+                            <span className="font-black text-white uppercase tracking-wide">
                                 {TEAM_DATA[rosterModal.entry.team_id]?.name || rosterModal.entry.team_id} 로스터
                             </span>
                             <span className="ml-3 text-sm font-bold text-slate-400">

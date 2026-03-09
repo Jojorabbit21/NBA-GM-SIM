@@ -30,7 +30,7 @@ export const LegalModal: React.FC<LegalModalProps> = ({ isOpen, onClose }) => {
       <div className="p-2 bg-slate-800 rounded-xl">
         {current.icon}
       </div>
-      <h2 className="text-xl font-black text-white uppercase tracking-tight oswald">{current.title}</h2>
+      <h2 className="text-xl font-black text-white uppercase tracking-tight">{current.title}</h2>
     </div>
   );
 

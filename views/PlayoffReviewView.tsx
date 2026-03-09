@@ -49,7 +49,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
           {/* Page Title */}
           <div className="flex items-center gap-4">
               <TeamLogo teamId={team.id} size="md" />
-              <h1 className="text-3xl font-black uppercase tracking-widest text-white oswald">2026 Playoff Report</h1>
+              <h1 className="text-3xl font-black uppercase tracking-widest text-white">2026 Playoff Report</h1>
           </div>
           
           {/* Section 1: Compact Playoff Summary */}
@@ -62,7 +62,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                           {status.icon}
                       </div>
                       <div className="text-left">
-                          <h2 className={`text-3xl font-black uppercase tracking-tight oswald ${status.color} leading-none mb-1.5`}>
+                          <h2 className={`text-3xl font-black uppercase tracking-tight ${status.color} leading-none mb-1.5`}>
                               {status.title}
                           </h2>
                           <p className="text-sm font-bold text-slate-300 max-w-md leading-snug">
@@ -75,17 +75,17 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                   <div className="flex items-center gap-8 z-10 bg-slate-950/30 px-8 py-3 rounded-2xl border border-white/5">
                       <div className="flex flex-col items-center">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Record</span>
-                          <span className="text-2xl font-black text-white oswald">{totalWins}-{totalLosses}</span>
+                          <span className="text-2xl font-black text-white">{totalWins}-{totalLosses}</span>
                       </div>
                       <div className="w-[1px] h-8 bg-white/10"></div>
                       <div className="flex flex-col items-center">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Win %</span>
-                          <span className="text-2xl font-black text-white oswald font-mono">{winPctStr}</span>
+                          <span className="text-2xl font-black text-white font-mono">{winPctStr}</span>
                       </div>
                       <div className="w-[1px] h-8 bg-white/10"></div>
                       <div className="flex flex-col items-center">
                           <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Games</span>
-                          <span className="text-2xl font-black text-white oswald">{teamStats.games}</span>
+                          <span className="text-2xl font-black text-white">{teamStats.games}</span>
                       </div>
                   </div>
               </div>
@@ -114,7 +114,7 @@ export const PlayoffReviewView: React.FC<PlayoffReviewViewProps> = ({ team, team
                                       <span className={`text-sm font-black uppercase tracking-widest ${log.result === 'WON' ? 'text-emerald-400' : log.result === 'LOST' ? 'text-red-400' : 'text-amber-400'}`}>
                                           {log.result}
                                       </span>
-                                      <span className="text-2xl font-black text-white oswald">{log.score}</span>
+                                      <span className="text-2xl font-black text-white">{log.score}</span>
                                   </div>
                               </div>
                               <div className="divide-y divide-slate-800/50">

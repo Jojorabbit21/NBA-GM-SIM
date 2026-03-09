@@ -25,7 +25,7 @@ export const TradeRosterList: React.FC<TradeRosterListProps> = ({
             <div className="p-8 bg-slate-800/20 rounded-full">
                 {emptyMessage?.icon || <Users size={48} className="opacity-20" />}
             </div>
-            <p className="text-sm font-bold uppercase tracking-widest oswald italic">
+            <p className="text-sm font-bold uppercase tracking-widest italic">
                 {emptyMessage?.desc || "No players available"}
             </p>
         </div>

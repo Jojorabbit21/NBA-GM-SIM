@@ -226,7 +226,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           <div className={`min-w-0 whitespace-nowrap overflow-hidden transition-all duration-500 ${
             isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
           }`}>
-            <h2 className="font-black text-2xl leading-none uppercase oswald truncate drop-shadow-md">
+            <h2 className="font-black text-2xl leading-none uppercase truncate drop-shadow-md">
               {team?.name || APP_NAME}
             </h2>
             <span className="text-xs font-black uppercase tracking-widest mt-1.5 inline-block drop-shadow-sm opacity-80">
@@ -328,7 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
     {showBatchConfirm && (
       <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center z-[2000]">
         <div className="bg-slate-900 border border-slate-700/50 rounded-3xl p-8 max-w-sm w-full mx-4 shadow-2xl">
-          <h3 className="text-lg font-black text-slate-100 oswald uppercase tracking-wide mb-4">시즌 전체 진행</h3>
+          <h3 className="text-lg font-black text-slate-100 uppercase tracking-wide mb-4">시즌 전체 진행</h3>
           <p className="text-sm text-slate-400 leading-relaxed mb-6">
             현재 전술로 남은 정규시즌을 자동 시뮬레이션합니다.<br />
             경기 중 전술 변경은 불가능합니다. 계속하시겠습니까?

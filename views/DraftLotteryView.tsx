@@ -101,7 +101,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
                 }}
             >
                 {/* Pick Number */}
-                <span className={`text-xs font-black oswald shrink-0 w-5 text-center ${
+                <span className={`text-xs font-black shrink-0 w-5 text-center ${
                     isRevealed ? 'text-white' : 'text-slate-700'
                 }`}>
                     {pickNum}
@@ -138,7 +138,7 @@ export const DraftLotteryView: React.FC<DraftLotteryViewProps> = ({
 
             {/* Title */}
             <div className="relative z-10 text-center mb-6">
-                <h1 className="text-3xl font-black text-white uppercase oswald tracking-wider mb-2">
+                <h1 className="text-3xl font-black text-white uppercase tracking-wider mb-2">
                     드래프트 로터리 결과
                 </h1>
                 {!isAllRevealed && (

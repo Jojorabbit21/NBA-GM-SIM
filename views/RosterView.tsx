@@ -40,7 +40,7 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center justify-between" style={{ backgroundColor: theme.bg }}>
           <div className="flex items-center gap-3">
               <TeamLogo teamId={selectedTeam.id} size="sm" />
-              <span className="text-sm font-black uppercase oswald tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
+              <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
               <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
           </div>
           <RosterTabs activeTab={tab} onTabChange={setTab} />

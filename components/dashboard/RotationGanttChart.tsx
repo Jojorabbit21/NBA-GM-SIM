@@ -417,7 +417,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
         <div className="flex flex-col h-full overflow-hidden">
             {/* ── Toolbar ── */}
             <div className="px-6 py-3 bg-slate-800 border-t border-slate-700 border-b border-slate-700 flex items-center justify-between flex-shrink-0 gap-4">
-                <span className="text-base font-black text-white uppercase tracking-widest oswald">
+                <span className="text-base font-black text-white uppercase tracking-widest">
                     {liveMode ? '라이브 로테이션' : '로테이션 차트'}
                 </span>
 

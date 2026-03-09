@@ -135,7 +135,7 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
           <div className="flex items-center gap-3 border-l-4 border-orange-500 pl-4">
             <Target size={24} className="text-orange-400" />
             <div>
-              <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider oswald">Offensive Systems Efficiency</h4>
+              <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider">Offensive Systems Efficiency</h4>
               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Team Performance by Strategy</p>
             </div>
           </div>
@@ -148,7 +148,7 @@ export const TacticsHistory: React.FC<{ team: Team }> = ({ team }) => {
         <div className="flex items-center gap-3 border-l-4 border-blue-500 pl-4">
           <Shield size={24} className="text-blue-400" />
           <div>
-            <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider oswald">Defensive Systems Efficiency</h4>
+            <h4 className="text-xl font-black uppercase text-slate-100 tracking-wider">Defensive Systems Efficiency</h4>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Overall Team Defensive Impact</p>
           </div>
         </div>

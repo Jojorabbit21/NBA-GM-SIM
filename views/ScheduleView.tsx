@@ -328,7 +328,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
         >
           <ChevronLeft size={18} />
         </button>
-        <h3 className="text-sm font-black text-white oswald uppercase tracking-wide min-w-[160px] text-center">
+        <h3 className="text-sm font-black text-white uppercase tracking-wide min-w-[160px] text-center">
           {currentDate.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long' })}
         </h3>
         <button
@@ -397,7 +397,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                           style={{ width: cellSize, height: cellSize }}
                           className={`border border-slate-700/40 relative p-1 flex flex-col ${bgStyle}`}
                         >
-                          <span className={`text-xs font-black oswald leading-none ${
+                          <span className={`text-xs font-black leading-none ${
                             isOverflow ? 'text-slate-700' : isToday ? 'text-indigo-400' : 'text-slate-500'
                           }`}>{day}</span>
 
@@ -408,7 +408,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleViewBoxScore(game.id); }}
                                   disabled={!!fetchingGameId}
-                                  className={`text-sm font-black oswald leading-none hover:underline cursor-pointer disabled:opacity-50 ${isWon ? 'text-emerald-300' : 'text-red-300'}`}
+                                  className={`text-sm font-black leading-none hover:underline cursor-pointer disabled:opacity-50 ${isWon ? 'text-emerald-300' : 'text-red-300'}`}
                                 >
                                   {fetchingGameId === game.id ? (
                                     <Loader2 size={12} className="animate-spin" />
@@ -474,7 +474,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                     }`}
                   >
                     <span className="text-[9px] font-bold">{dayOfWeek}</span>
-                    <span className="text-sm font-black oswald">{day}</span>
+                    <span className="text-sm font-black">{day}</span>
                     <span className={`text-[8px] font-bold ${isSelected ? 'text-indigo-200' : 'text-slate-600'}`}>{gameCount}경기</span>
                   </button>
                 );
@@ -551,7 +551,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               <div className="text-[10px] text-slate-500 font-bold">{awayTeam.wins}-{awayTeam.losses}</div>
                             </div>
                             {game.played ? (
-                              <span className={`text-lg font-black oswald ${awayIsWinner ? 'text-white' : 'text-slate-600'}`}>
+                              <span className={`text-lg font-black ${awayIsWinner ? 'text-white' : 'text-slate-600'}`}>
                                 {game.awayScore}
                               </span>
                             ) : (
@@ -574,7 +574,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                               <div className="text-[10px] text-slate-500 font-bold">{homeTeam.wins}-{homeTeam.losses}</div>
                             </div>
                             {game.played ? (
-                              <span className={`text-lg font-black oswald ${homeIsWinner ? 'text-white' : 'text-slate-600'}`}>
+                              <span className={`text-lg font-black ${homeIsWinner ? 'text-white' : 'text-slate-600'}`}>
                                 {game.homeScore}
                               </span>
                             ) : (

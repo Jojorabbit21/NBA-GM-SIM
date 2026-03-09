@@ -5,7 +5,7 @@ import { Team } from '../types';
 import { TeamLogo } from './common/TeamLogo';
 
 export const getOvrBadgeStyle = (ovr: number) => {
-  const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black oswald text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
+  const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
   
   // 95+ - Pink Diamond (Bright Magenta + Outline + Glow)
   if (ovr >= 95) return baseClass + 'bg-gradient-to-b from-fuchsia-300 via-fuchsia-500 to-fuchsia-700 text-white shadow-[0_0_25px_rgba(232,121,249,0.9)] border-2 border-white/80 ring-2 ring-fuchsia-500/50';

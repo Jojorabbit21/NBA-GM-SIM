@@ -112,7 +112,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
   }, [currentTotalCap, userAssets, targetAssets, userSalaryIn, userSalaryOut]);
 
   const header = (
-      <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3 oswald tracking-tight">
+      <h3 className="text-2xl font-black uppercase text-white flex items-center gap-3 tracking-tight">
         <Briefcase className="text-indigo-400" size={28} /> 최종 결정 전 확인
       </h3>
   );
@@ -244,7 +244,7 @@ export const TradeConfirmModal: React.FC<TradeConfirmModalProps> = ({
                     </div>
                     <div className="bg-slate-950/60 border border-slate-800 p-5 rounded-3xl flex flex-col justify-center items-center text-center">
                         <div className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-0.5">최종 샐러리 합계</div>
-                        <div className="text-3xl font-black text-white oswald leading-none">${postTradeTotalCap.toFixed(1)}<span className="text-sm text-slate-500 ml-0.5">M</span></div>
+                        <div className="text-3xl font-black text-white leading-none">${postTradeTotalCap.toFixed(1)}<span className="text-sm text-slate-500 ml-0.5">M</span></div>
                     </div>
                 </div>
             </div>

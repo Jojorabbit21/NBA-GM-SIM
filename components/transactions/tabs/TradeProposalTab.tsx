@@ -207,7 +207,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-900">
                     {!proposalSearchPerformed ? (
                         <div className="h-full flex flex-col items-center justify-center text-slate-600 space-y-3">
-                            <p className="font-black text-sm text-slate-500 uppercase oswald tracking-widest">협상 대기</p>
+                            <p className="font-black text-sm text-slate-500 uppercase tracking-widest">협상 대기</p>
                             <p className="text-xs font-bold text-slate-600 text-center">
                                 영입하고 싶은 선수를 선택 후<br/>
                                 협상을 시도하세요.
@@ -220,7 +220,7 @@ export const TradeProposalTab: React.FC<TradeProposalTabProps> = ({
                                     <div key={idx} className="rounded-xl border border-slate-700/50 bg-slate-900 overflow-hidden">
                                         {/* Card Header */}
                                         <div className="px-5 py-3 bg-slate-950/60 flex items-center justify-between">
-                                            <span className="text-xs font-black uppercase oswald tracking-tight text-slate-300">
+                                            <span className="text-xs font-black uppercase tracking-tight text-slate-300">
                                                 요구 자산 ({req.players.length}인)
                                             </span>
                                             <button
