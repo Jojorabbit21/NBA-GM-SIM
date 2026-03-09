@@ -23,11 +23,17 @@ function getLastTeamTheme() {
     if (!teamId) return null;
     const teamStatic = TEAM_DATA[teamId];
     if (!teamStatic) return null;
-    return getTeamTheme(teamId, teamStatic.colors);
+    return { theme: getTeamTheme(teamId, teamStatic.colors), accent: teamStatic.colors?.primary ?? '#6366f1' };
 }
 
-const SkeletonLoader: React.FC = () => {
-    const theme = getLastTeamTheme();
+interface SkeletonLoaderProps {
+    progress?: number; // 0~100
+}
+
+const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
+    const teamData = getLastTeamTheme();
+    const theme = teamData?.theme ?? null;
+    const accentColor = teamData?.accent ?? '#6366f1';
 
     return (
         <>
@@ -70,7 +76,7 @@ const SkeletonLoader: React.FC = () => {
                 </aside>
 
                 {/* Main Content */}
-                <main className="flex-1 flex flex-col overflow-hidden">
+                <main className="flex-1 flex flex-col overflow-hidden relative">
                     {/* Header */}
                     <div
                         className="w-full border-b border-white/5 px-8 py-3 flex items-center gap-8 h-20 relative overflow-hidden"
@@ -121,6 +127,29 @@ const SkeletonLoader: React.FC = () => {
                         <div className="grid grid-cols-2 gap-6">
                             <Bone className="h-36 !rounded-3xl" />
                             <Bone className="h-36 !rounded-3xl" />
+                        </div>
+                    </div>
+
+                    {/* Progress Modal — centered on content area */}
+                    <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+                        <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/50 rounded-3xl px-10 py-8 w-80 shadow-2xl pointer-events-auto">
+                            <p className="text-sm font-bold text-slate-300 text-center mb-5 tracking-tight">
+                                시뮬레이션 데이터 로딩 중 ...
+                            </p>
+                            {/* Progress Bar */}
+                            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                <div
+                                    className="h-full rounded-full transition-all duration-500 ease-out"
+                                    style={{
+                                        width: `${progress}%`,
+                                        backgroundColor: accentColor,
+                                        boxShadow: `0 0 12px ${accentColor}60`,
+                                    }}
+                                />
+                            </div>
+                            <p className="text-xs font-bold text-slate-500 text-center mt-3">
+                                {progress}%
+                            </p>
                         </div>
                     </div>
                 </main>
