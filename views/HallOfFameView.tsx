@@ -54,32 +54,60 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
         return (rosterModal.entry.roster_snapshot as RosterSnapshotPlayer[]).sort((a, b) => b.ovr - a.ovr);
     }, [rosterModal]);
 
+    const teamAvg = useMemo(() => {
+        if (rosterSnapshot.length === 0) return null;
+        const n = rosterSnapshot.length;
+        const sum = (fn: (p: RosterSnapshotPlayer) => number) => +(rosterSnapshot.reduce((s, p) => s + fn(p), 0) / n).toFixed(1);
+        return {
+            ovr: Math.round(rosterSnapshot.reduce((s, p) => s + p.ovr, 0) / n),
+            ppg: sum(p => p.stats.ppg ?? 0),
+            rpg: sum(p => p.stats.rpg ?? 0),
+            apg: sum(p => p.stats.apg ?? 0),
+            spg: sum(p => p.stats.spg ?? 0),
+            bpg: sum(p => p.stats.bpg ?? 0),
+            tov: sum(p => p.stats.tov ?? 0),
+            fgm: sum(p => p.stats.fgm ?? 0),
+            fga: sum(p => p.stats.fga ?? 0),
+            fgPct: sum(p => p.stats.fgPct ?? 0),
+            p3m: sum(p => p.stats.p3m ?? 0),
+            p3a: sum(p => p.stats.p3a ?? 0),
+            threePtPct: sum(p => p.stats.threePtPct ?? 0),
+            ftm: sum(p => p.stats.ftm ?? 0),
+            fta: sum(p => p.stats.fta ?? 0),
+            ftPct: sum(p => p.stats.ftPct ?? 0),
+            tsPct: sum(p => p.stats.tsPct ?? 0),
+        };
+    }, [rosterSnapshot]);
+
     return (
-        <div className="h-screen overflow-y-auto bg-slate-950 custom-scrollbar animate-in fade-in duration-500">
-            <div className="grid grid-cols-12 min-h-full">
+        <div className="h-screen overflow-y-auto bg-black custom-scrollbar animate-in fade-in duration-500">
+            {/* Back Button — 이미지 위 고정 */}
+            <button
+                onClick={onBack}
+                className="fixed top-6 left-6 z-50 p-2.5 rounded-2xl bg-black/50 hover:bg-black/80 text-slate-400 hover:text-white transition-all active:scale-95 backdrop-blur-sm"
+            >
+                <ArrowLeft size={22} />
+            </button>
+
+            {/* Hero Banner */}
+            <div className="relative w-full">
+                <img
+                    src="/images/hof.png"
+                    alt="Hall of Fame"
+                    className="w-full object-cover"
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent h-32" />
+                <h1 className="absolute bottom-8 left-0 right-0 text-center text-2xl font-bold text-slate-300 tracking-widest uppercase ko-tight">
+                    2025-26 시즌 명예의 전당
+                </h1>
+            </div>
+
+            <div className="grid grid-cols-12">
                 {/* 좌측 빈 영역 */}
                 <div className="col-span-3" />
 
                 {/* 중앙 콘텐츠 */}
-                <div className="col-span-6 bg-slate-900 py-12 space-y-8">
-                    {/* Header */}
-                    <div className="flex items-center gap-4 px-6">
-                        <button
-                            onClick={onBack}
-                            className="p-2.5 rounded-2xl hover:bg-slate-800 text-slate-400 hover:text-white transition-all active:scale-95"
-                        >
-                            <ArrowLeft size={22} />
-                        </button>
-                        <div>
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">2025-26 시즌</p>
-                            <h1 className="text-3xl font-black text-white ko-tight">명예의 전당</h1>
-                        </div>
-                        <div className="ml-auto text-right text-xs text-slate-500 leading-relaxed">
-                            <p className="font-bold text-slate-400 mb-0.5">Score = 시즌 + 득실차 + 팀스탯 + 플레이오프</p>
-                            <p>시즌 (0~400) + 득실차 (0~100) + 팀스탯 (0~100) + 플레이오프 (0~400)</p>
-                            <p className="text-slate-600">팀스탯: PTS 25 / TS% 25 / AST 15 / REB 15 / STL 10 / BLK 10</p>
-                        </div>
-                    </div>
+                <div className="col-span-6 bg-black py-8 space-y-8">
 
                     {/* Loading */}
                     {isLoading && (
@@ -98,9 +126,9 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
 
                     {/* Rankings Table */}
                     {!isLoading && entries.length > 0 && (
-                        <div className="border-t border-slate-800 overflow-hidden">
+                        <div className="border-t border-slate-800/50 overflow-hidden">
                             {/* Table Header */}
-                            <div className="grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-3 border-b border-slate-800 bg-slate-950">
+                            <div className="grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-3 border-b border-slate-800/50 bg-black">
                                 <span className="text-sm font-black uppercase tracking-widest text-slate-500">#</span>
                                 <span className="text-sm font-black uppercase tracking-widest text-slate-500">팀</span>
                                 <span className="text-sm font-black uppercase tracking-widest text-slate-500">단장</span>
@@ -126,12 +154,10 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                 return (
                                     <div
                                         key={entry.id}
-                                        className={`grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-4 items-center border-b border-slate-800/50 transition-colors ${
+                                        className={`grid grid-cols-[56px_1fr_1fr_100px_140px_160px_80px] px-6 py-4 items-center border-b border-slate-800/30 transition-colors ${
                                             isMe
                                                 ? 'bg-indigo-500/10'
-                                                : rank === 1
-                                                    ? 'bg-amber-500/5'
-                                                    : 'hover:bg-slate-800/50'
+                                                : 'hover:bg-white/5'
                                         }`}
                                     >
                                         {/* Rank */}
@@ -312,6 +338,69 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                                 </tr>
                             ))}
                         </tbody>
+                        {teamAvg && (
+                            <tfoot className="bg-slate-950 sticky bottom-0 z-10">
+                                <tr className="border-t border-slate-700">
+                                    <td className="py-3 px-3 whitespace-nowrap" />
+                                    <td className="py-3 px-3 whitespace-nowrap">
+                                        <span className="text-xs font-black text-slate-300 uppercase tracking-wider">팀 평균</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap" />
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <OvrBadge value={teamAvg.ovr} size="sm" />
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap" />
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.ppg}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.rpg}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.apg}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.spg}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.bpg}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.tov}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.fgm}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.fga}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.fgPct}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.p3m}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.p3a}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.threePtPct}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.ftm}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.fta}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.ftPct}</span>
+                                    </td>
+                                    <td className="py-3 px-1.5 whitespace-nowrap text-center">
+                                        <span className="text-xs font-bold text-indigo-300 font-mono tabular-nums">{teamAvg.tsPct}</span>
+                                    </td>
+                                </tr>
+                            </tfoot>
+                        )}
                     </table>
                 </div>
             </Modal>
