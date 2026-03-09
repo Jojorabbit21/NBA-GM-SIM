@@ -1,5 +1,6 @@
 
 import { useState, useRef, useCallback } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult } from '../services/simulation/userGameService';
@@ -30,11 +31,12 @@ export const useSimulation = (
     depthChart?: DepthChart | null,
     tendencySeed?: string
 ) => {
+    const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
     const [activeGame, setActiveGame] = useState<Game | null>(null);
     const [lastGameResult, setLastGameResult] = useState<any | null>(null);
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
-    
+
     const finalizeSimRef = useRef<(() => void) | undefined>(undefined);
 
     // ── Spectate Mode (리그 일정에서 AI 경기 참관) ──
@@ -91,6 +93,9 @@ export const useSimulation = (
             // 상태 커밋
             setTeams(newTeams);
             setSchedule(newSchedule);
+
+            // Invalidate player game log cache
+            queryClient.invalidateQueries({ queryKey: ['playerGameLog'] });
 
             // 날짜 진행
             advanceDate(nextDate, {});
@@ -181,6 +186,9 @@ export const useSimulation = (
                     setTeams(newTeams);
                     setSchedule(newSchedule);
                     setPlayoffSeries(newPlayoffSeries);
+
+                    // Invalidate player game log cache
+                    queryClient.invalidateQueries({ queryKey: ['playerGameLog'] });
 
                     // Set View Data
                     setLastGameResult({
@@ -383,6 +391,9 @@ export const useSimulation = (
             setTeams(newTeams);
             setSchedule(newSchedule);
             setPlayoffSeries(newPlayoffSeries);
+
+            // Invalidate player game log cache
+            queryClient.invalidateQueries({ queryKey: ['playerGameLog'] });
 
             // GameResultView용 데이터 세팅
             setLastGameResult({
