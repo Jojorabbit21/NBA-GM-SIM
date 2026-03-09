@@ -122,7 +122,7 @@ export const useScoutingReport = (player: Player | null) => {
     });
 };
 
-// --- Player Game Log (최근 경기 기록) ---
+// --- Player Game Log (최근 경기 기록 — 정규시즌 + 플레이오프) ---
 export const usePlayerGameLog = (playerId: string, teamId?: string) => {
     return useQuery({
         queryKey: ['playerGameLog', playerId, teamId],
@@ -131,14 +131,27 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
             const userId = session?.user?.id;
             if (!userId || !teamId) return [];
 
-            const { data } = await supabase
-                .from('user_game_results')
-                .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
-                .eq('user_id', userId)
-                .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
-                .order('date', { ascending: false });
+            const [regularRes, playoffRes] = await Promise.all([
+                supabase
+                    .from('user_game_results')
+                    .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
+                    .eq('user_id', userId)
+                    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+                    .order('date', { ascending: false }),
+                supabase
+                    .from('user_playoffs_results')
+                    .select('date, home_team_id, away_team_id, home_score, away_score, box_score')
+                    .eq('user_id', userId)
+                    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+                    .order('date', { ascending: false }),
+            ]);
 
-            return (data || [])
+            const allGames = [
+                ...(regularRes.data || []).map(g => ({ ...g, isPlayoff: false })),
+                ...(playoffRes.data || []).map(g => ({ ...g, isPlayoff: true })),
+            ].sort((a, b) => b.date.localeCompare(a.date));
+
+            return allGames
                 .map(game => {
                     const isHome = game.home_team_id === teamId;
                     const box = isHome ? game.box_score?.home : game.box_score?.away;
@@ -150,6 +163,7 @@ export const usePlayerGameLog = (playerId: string, teamId?: string) => {
                         isHome,
                         teamScore: isHome ? game.home_score : game.away_score,
                         opponentScore: isHome ? game.away_score : game.home_score,
+                        isPlayoff: game.isPlayoff,
                         ...playerBox,
                     };
                 })
