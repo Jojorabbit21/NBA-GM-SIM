@@ -263,6 +263,28 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       }
   };
 
+  // 해당 경기 시점의 시리즈 스코어 계산 (이 경기 이전까지의 승수)
+  const getSeriesScoreAtGame = (game: Game, series: PlayoffSeries): { higher: number; lower: number } => {
+      // 게임 번호 파싱 (po_{seriesId}_g{N})
+      const match = game.id.match(/_g(\d+)$/);
+      const currentGameNum = match ? parseInt(match[1], 10) : 1;
+
+      let higher = 0;
+      let lower = 0;
+      // 같은 시리즈의 이전 경기들에서 승수 집계
+      for (const g of localSchedule) {
+          if (g.seriesId !== series.id || !g.played || g.homeScore == null || g.awayScore == null) continue;
+          const gMatch = g.id.match(/_g(\d+)$/);
+          const gNum = gMatch ? parseInt(gMatch[1], 10) : 0;
+          if (gNum >= currentGameNum) continue;
+
+          const winnerId = g.homeScore > g.awayScore ? g.homeTeamId : g.awayTeamId;
+          if (winnerId === series.higherSeedId) higher++;
+          else lower++;
+      }
+      return { higher, lower };
+  };
+
   // [Box Score Navigation]
   const handleViewBoxScore = async (gameId: string) => {
       if (fetchingGameId || !userId) {
@@ -524,7 +546,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                             </span>
                             <span className="text-[9px] text-amber-500/60">·</span>
                             <span className="text-[10px] font-bold text-amber-500/80">
-                              시리즈 {series.higherSeedWins}-{series.lowerSeedWins}
+                              {(() => { const s = getSeriesScoreAtGame(game, series); return `시리즈 ${s.higher}-${s.lower}`; })()}
                             </span>
                           </div>
                         )}
