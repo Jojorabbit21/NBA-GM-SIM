@@ -75,14 +75,14 @@ export const GameBoxScoreTab: React.FC<GameBoxScoreTabProps> = ({
                                             <img src={a.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
                                             <span className={`text-xs font-bold uppercase group-hover:text-white transition-colors ${!hWin ? 'text-white' : 'text-slate-500'}`}>{a.name}</span>
                                         </div>
-                                        <span className={`text-sm font-black oswald ${!hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{aScore}</span>
+                                        <span className={`text-sm font-black ${!hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{aScore}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <div className="flex items-center gap-2">
                                             <img src={h.logo} className="w-5 h-5 object-contain opacity-80" alt="" />
                                             <span className={`text-xs font-bold uppercase group-hover:text-white transition-colors ${hWin ? 'text-white' : 'text-slate-500'}`}>{h.name}</span>
                                         </div>
-                                        <span className={`text-sm font-black oswald ${hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{hScore}</span>
+                                        <span className={`text-sm font-black ${hWin ? 'text-emerald-400' : 'text-slate-600'}`}>{hScore}</span>
                                     </div>
                                 </button>
                             );

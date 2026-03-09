@@ -65,8 +65,8 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={awayTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
-                    <div className="text-lg md:text-xl font-black text-white oswald uppercase tracking-tight text-shadow-lg truncate w-full">{awayTeam.name}</div>
-                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{displayScore.a}</div>
+                    <div className="text-lg md:text-xl font-black text-white uppercase tracking-tight text-shadow-lg truncate w-full">{awayTeam.name}</div>
+                    <div className="text-4xl md:text-5xl font-black text-slate-200 tabular-nums mt-1 drop-shadow-xl">{displayScore.a}</div>
                 </div>
             </div>
 
@@ -96,8 +96,8 @@ export const LiveScoreboard: React.FC<LiveScoreboardProps> = ({
             <div className="flex flex-col items-center gap-3 w-32 md:w-40">
                 <img src={homeTeam.logo} className="w-16 h-16 md:w-20 md:h-20 object-contain drop-shadow-2xl animate-in zoom-in duration-500" alt="" />
                 <div className="text-center w-full">
-                    <div className="text-lg md:text-xl font-black text-white oswald uppercase tracking-tight text-shadow-lg truncate w-full">{homeTeam.name}</div>
-                    <div className="text-4xl md:text-5xl font-black text-slate-200 oswald tabular-nums mt-1 drop-shadow-xl">{displayScore.h}</div>
+                    <div className="text-lg md:text-xl font-black text-white uppercase tracking-tight text-shadow-lg truncate w-full">{homeTeam.name}</div>
+                    <div className="text-4xl md:text-5xl font-black text-slate-200 tabular-nums mt-1 drop-shadow-xl">{displayScore.h}</div>
                 </div>
             </div>
         </div>

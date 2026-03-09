@@ -344,7 +344,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
                   <div className="text-xs font-bold text-white/90 truncate">
                     {higherTeam?.name || 'TBD'} vs {lowerTeam?.name || 'TBD'}
                   </div>
-                  <div className="text-lg font-black oswald text-white">
+                  <div className="text-lg font-black text-white">
                     {selectedSeries.higherSeedWins} - {selectedSeries.lowerSeedWins}
                   </div>
                 </div>

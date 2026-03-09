@@ -41,7 +41,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
           {/* Page Title */}
           <div className="flex items-center gap-4">
               <TeamLogo teamId={team.id} size="md" />
-              <h1 className="text-3xl font-black uppercase tracking-widest text-white oswald drop-shadow-md">2025-26 Season Report</h1>
+              <h1 className="text-3xl font-black uppercase tracking-widest text-white drop-shadow-md">2025-26 Season Report</h1>
           </div>
           
           {/* Section 1: Merged Summary (Record, Rank, Status) */}
@@ -58,7 +58,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                       {/* 1. Record */}
                       <div className="p-8 flex flex-col items-center justify-center gap-2">
                           <span className="text-xs font-black text-orange-400 uppercase tracking-[0.2em]">Record</span>
-                          <div className="text-6xl font-black text-white oswald tracking-tighter">
+                          <div className="text-6xl font-black text-white tracking-tighter">
                               {team.wins}<span className="text-slate-600 text-4xl">/</span>{team.losses}
                           </div>
                           <span className="px-3 py-1 bg-orange-500/20 rounded-full text-[10px] font-black text-orange-300 uppercase tracking-wider">
@@ -72,7 +72,7 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                                <Hash size={14} /> League Rank
                            </span>
                            <div className="flex items-baseline gap-2">
-                               <span className="text-5xl font-black text-white oswald">#{leagueRank}</span>
+                               <span className="text-5xl font-black text-white">#{leagueRank}</span>
                                <span className="text-sm font-bold text-slate-500 uppercase">/ 30 Teams</span>
                            </div>
                            <div className="text-xs font-medium text-slate-400">
@@ -87,12 +87,12 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                            </span>
                            {winPct >= 0.5 ? (
                                <div className="text-center">
-                                   <div className="text-3xl font-black text-emerald-400 uppercase tracking-tight oswald mb-1">Playoff Bound</div>
+                                   <div className="text-3xl font-black text-emerald-400 uppercase tracking-tight mb-1">Playoff Bound</div>
                                    <p className="text-[10px] font-medium text-emerald-500/70">플레이오프 진출 확정</p>
                                </div>
                            ) : (
                                <div className="text-center">
-                                    <div className="text-3xl font-black text-slate-400 uppercase tracking-tight oswald mb-1">Lottery Bound</div>
+                                    <div className="text-3xl font-black text-slate-400 uppercase tracking-tight mb-1">Lottery Bound</div>
                                     <p className="text-[10px] font-medium text-slate-600">드래프트 로터리 참가</p>
                                </div>
                            )}
@@ -158,17 +158,17 @@ export const SeasonReviewView: React.FC<SeasonReviewViewProps> = ({ team, teams,
                           
                           <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-6">
                               <div className="text-center">
-                                  <div className="text-2xl font-black text-white oswald">{(mvp.stats.pts / (mvp.stats.g || 1)).toFixed(1)}</div>
+                                  <div className="text-2xl font-black text-white">{(mvp.stats.pts / (mvp.stats.g || 1)).toFixed(1)}</div>
                                   <div className="text-[10px] font-bold text-slate-500 uppercase">PTS</div>
                               </div>
                               <div className="w-[1px] h-8 bg-slate-800 self-center"></div>
                               <div className="text-center">
-                                  <div className="text-2xl font-black text-white oswald">{(mvp.stats.reb / (mvp.stats.g || 1)).toFixed(1)}</div>
+                                  <div className="text-2xl font-black text-white">{(mvp.stats.reb / (mvp.stats.g || 1)).toFixed(1)}</div>
                                   <div className="text-[10px] font-bold text-slate-500 uppercase">REB</div>
                               </div>
                               <div className="w-[1px] h-8 bg-slate-800 self-center"></div>
                               <div className="text-center">
-                                  <div className="text-2xl font-black text-white oswald">{(mvp.stats.ast / (mvp.stats.g || 1)).toFixed(1)}</div>
+                                  <div className="text-2xl font-black text-white">{(mvp.stats.ast / (mvp.stats.g || 1)).toFixed(1)}</div>
                                   <div className="text-[10px] font-bold text-slate-500 uppercase">AST</div>
                               </div>
                           </div>

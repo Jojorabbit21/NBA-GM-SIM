@@ -104,7 +104,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                 <div className="flex items-center gap-6">
                   <OvrBadge value={calculatePlayerOvr(selectedProspect)} size="xl" className="!w-16 !h-16 !text-3xl !rounded-2xl" />
                   <div>
-                    <h3 className="text-3xl font-black text-white oswald uppercase tracking-tight leading-none">{selectedProspect.name}</h3>
+                    <h3 className="text-3xl font-black text-white uppercase tracking-tight leading-none">{selectedProspect.name}</h3>
                     <div className="mt-2 flex gap-3">
                       <span className="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[10px] font-black uppercase">{selectedProspect.position}</span>
                       <span className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">{selectedProspect.height}cm / {selectedProspect.weight}kg</span>
@@ -215,7 +215,7 @@ export const DraftView: React.FC<DraftViewProps> = ({ prospects, onDraft, team }
                     <Trophy size={64} className="opacity-10" />
                 </div>
                 <div className="text-center">
-                    <p className="font-black text-xl uppercase oswald tracking-widest text-slate-500">Pick Your Future</p>
+                    <p className="font-black text-xl uppercase tracking-widest text-slate-500">Pick Your Future</p>
                     <p className="text-sm font-bold mt-2">좌측 목록에서 분석할 유망주를 선택하십시오.</p>
                 </div>
             </div>

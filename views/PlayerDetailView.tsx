@@ -415,7 +415,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* Player name + OVR */}
                     <div className="px-6 pt-1 pb-4 relative z-10 flex items-center gap-4">
                         <OvrBadge value={calculatedOvr} size="md" />
-                        <h2 className="text-3xl font-black uppercase tracking-tight oswald" style={{ color: theme.text }}>{player.name}</h2>
+                        <h2 className="text-3xl font-black uppercase tracking-tight" style={{ color: theme.text }}>{player.name}</h2>
                         {player.health && player.health !== 'Healthy' && (
                             <span className="text-xs font-black text-red-400 bg-red-950/50 px-2 py-1 rounded-md">
                                 {player.injuryType || player.health}

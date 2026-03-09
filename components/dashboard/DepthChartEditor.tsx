@@ -202,7 +202,7 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
         <div className="flex flex-col w-full bg-slate-950/30 border-t border-white/5">
             <div className="px-6 py-4 bg-slate-800 border-b border-slate-700 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <span className="text-base font-black text-white uppercase tracking-widest oswald">뎁스 차트</span>
+                    <span className="text-base font-black text-white uppercase tracking-widest">뎁스 차트</span>
                 </div>
                 <div className="flex gap-2">
                     <div className="relative flex shadow-md group" ref={dropdownRef}>

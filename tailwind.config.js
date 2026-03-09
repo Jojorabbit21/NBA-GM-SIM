@@ -78,7 +78,7 @@ export default {
       },
       // === 폰트 패밀리 ===
       fontFamily: {
-        'sport': ['Oswald', 'sans-serif'],
+        'sport': ['Pretendard Variable', 'Pretendard', 'sans-serif'],
         'digital': ['"Seven Segment"', 'monospace'],
       },
       // === 글로우 섀도 ===

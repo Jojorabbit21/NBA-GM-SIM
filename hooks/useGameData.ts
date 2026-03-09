@@ -137,6 +137,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     const playoffState = await loadPlayoffState(userId, checkpoint.team_id);
                     const rawPlayoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
                     setLoadingProgress(65);
+                    await new Promise(r => setTimeout(r, 0)); // 렌더링 기회 부여
                     // user_playoffs_results 테이블에 is_playoff 컬럼이 없으므로 로드 시 태그
                     const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
                     const allGameResults = [...history.games, ...playoffResults];
@@ -162,6 +163,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     }
 
                     setLoadingProgress(70);
+                    await new Promise(r => setTimeout(r, 0)); // replayGameState 전 렌더링 기회 부여
                     const replayedState = replayGameState(
                         teamsForReplay,
                         baseData.schedule,
@@ -170,6 +172,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         checkpoint.sim_date
                     );
                     setLoadingProgress(90);
+                    await new Promise(r => setTimeout(r, 0)); // 렌더링 기회 부여
 
                     // [NEW] Apply Saved Roster Condition & Injury State
                     let loadedTeams = replayedState.teams;

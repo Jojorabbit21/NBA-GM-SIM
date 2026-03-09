@@ -246,7 +246,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
         <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
              <div className="px-6 py-4 bg-slate-800 border-t border-slate-700 border-b border-slate-700 flex items-center justify-between flex-shrink-0">
                  <div className="flex items-center gap-3">
-                    <span className="text-base font-black text-white uppercase tracking-widest oswald">로테이션 차트</span>
+                    <span className="text-base font-black text-white uppercase tracking-widest">로테이션 차트</span>
                  </div>
                  
                  <div className="flex gap-2">

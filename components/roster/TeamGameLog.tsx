@@ -252,7 +252,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         <tr key={`section-${label}`} className="h-8">
             <td colSpan={TOTAL_COLS} className="bg-slate-800 border-b border-slate-800/50 h-8">
                 <div className="flex items-center h-full pl-4">
-                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+                    <span className="text-xs font-black text-slate-500 tracking-widest">{label}</span>
                 </div>
             </td>
         </tr>
@@ -278,17 +278,17 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 <tr className="h-8">
                     <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 h-8">
                         <div className="flex items-center justify-center h-full">
-                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Game Info</span>
+                            <span className="text-xs font-black text-slate-500 tracking-widest">경기 정보</span>
                         </div>
                     </th>
                     <th colSpan={STAT_COLS.length} className="bg-slate-950 border-b border-slate-800 h-8">
                         <div className="flex items-center justify-center h-full">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Team Stats</span>
+                            <span className="text-xs font-black text-slate-400 tracking-widest">팀 스탯</span>
                         </div>
                     </th>
                 </tr>
                 {/* Column headers */}
-                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-8">
+                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-8">
                     {GAME_INFO_COLS.map(c => (
                         <TableHeaderCell
                             key={c.key}
@@ -334,7 +334,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         <TableCell colSpan={GAME_INFO_COLS.length} className="pl-4 text-left bg-slate-950 border-r border-slate-800">
-                            <span className="font-black text-indigo-400 text-[10px] uppercase tracking-widest">시즌 평균 ({gameRows.length}경기)</span>
+                            <span className="font-black text-indigo-400 text-xs tracking-widest">시즌 평균 ({gameRows.length}경기)</span>
                         </TableCell>
                         {STAT_COLS.map(c => (
                             <TableCell key={c.key} className="border-r border-slate-800/30 text-center">

@@ -99,31 +99,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 <div className="flex items-center gap-8 h-full">
                     <button
                         onClick={() => setActiveTab('rotation')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'rotation' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>뎁스차트 & 로테이션</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('tactics')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'tactics' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>전술 관리</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('roster')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'roster' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'roster' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>로스터</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('opponent')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>상대 전력 분석</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('schedule')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'schedule' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'schedule' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>팀 일정</span>
                     </button>

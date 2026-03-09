@@ -40,7 +40,7 @@ export const RequirementCard: React.FC<RequirementCardProps> = ({ requirement, t
                  </div>
                  <div className="min-w-0">
                     <h4 
-                        className="text-lg font-black uppercase text-slate-100 oswald tracking-tight leading-none truncate"
+                        className="text-lg font-black uppercase text-slate-100 tracking-tight leading-none truncate"
                         style={{ color: teamColor !== '#000000' ? teamColor : '#ffffff' }}
                     >
                         {requirement.teamName}
