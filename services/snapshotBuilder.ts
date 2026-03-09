@@ -1,7 +1,7 @@
 
 import { Team, Game, ReplaySnapshot, PlayerStats } from '../types';
 
-export const CURRENT_SNAPSHOT_VERSION = 1;
+export const CURRENT_SNAPSHOT_VERSION = 2;
 
 /**
  * Build a replay snapshot from the current in-memory state.
@@ -35,7 +35,21 @@ export const buildReplaySnapshot = (
     const schedule_results: ReplaySnapshot['schedule_results'] = {};
     const playoff_schedule: ReplaySnapshot['playoff_schedule'] = [];
 
+    const pending_playoff_games: ReplaySnapshot['pending_playoff_games'] = [];
+
     for (const game of schedule) {
+        // 미진행 플레이오프 경기 저장 (날짜 보존)
+        if (game.isPlayoff && !game.played) {
+            pending_playoff_games!.push({
+                id: game.id,
+                homeTeamId: game.homeTeamId,
+                awayTeamId: game.awayTeamId,
+                date: game.date,
+                seriesId: game.seriesId,
+            });
+            continue;
+        }
+
         if (!game.played) continue;
 
         if (game.isPlayoff) {
@@ -67,6 +81,7 @@ export const buildReplaySnapshot = (
         teams_data,
         schedule_results,
         playoff_schedule,
+        pending_playoff_games,
     };
 };
 
@@ -128,9 +143,8 @@ export const hydrateFromSnapshot = (
         }
     }
 
-    // 4. Append playoff games to schedule
+    // 4. Append played playoff games to schedule
     for (const pg of snapshot.playoff_schedule) {
-        // Only add if not already in schedule (avoid duplicates)
         if (!schedule.some(g => g.id === pg.id)) {
             schedule.push({
                 id: pg.id,
@@ -143,6 +157,23 @@ export const hydrateFromSnapshot = (
                 isPlayoff: true,
                 seriesId: pg.seriesId,
             });
+        }
+    }
+
+    // 5. Append pending (unplayed) playoff games — 원래 날짜 그대로 복원
+    if (snapshot.pending_playoff_games) {
+        for (const pg of snapshot.pending_playoff_games) {
+            if (!schedule.some(g => g.id === pg.id)) {
+                schedule.push({
+                    id: pg.id,
+                    homeTeamId: pg.homeTeamId,
+                    awayTeamId: pg.awayTeamId,
+                    date: pg.date,
+                    played: false,
+                    isPlayoff: true,
+                    seriesId: pg.seriesId,
+                });
+            }
         }
     }
 

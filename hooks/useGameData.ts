@@ -294,13 +294,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const restoredSeries: PlayoffSeries[] = playoffBracketState.bracket_data.series;
                         setPlayoffSeries(restoredSeries);
 
-                        // 미진행 플레이오프/플레이인 경기 재생성
-                        // (스냅샷/리플레이 모두 played된 경기만 복원하므로, 아직 안 한 다음 경기가 스케줄에 없음)
-                        const { newGames } = generateNextPlayoffGames(loadedSchedule!, restoredSeries, checkpoint.sim_date);
-                        if (newGames.length > 0) {
-                            loadedSchedule = [...loadedSchedule!, ...newGames];
-                            setSchedule(prev => [...prev, ...newGames]);
-                            console.log(`🏆 Regenerated ${newGames.length} upcoming playoff game(s)`);
+                        // Fallback: 스냅샷에 pending_playoff_games가 없는 경우에만 재생성
+                        // (스냅샷 경로에서는 hydrateFromSnapshot이 이미 미진행 경기를 복원함)
+                        const hasUnplayedPlayoff = loadedSchedule!.some(g => g.isPlayoff && !g.played);
+                        if (!hasUnplayedPlayoff) {
+                            const { newGames } = generateNextPlayoffGames(loadedSchedule!, restoredSeries, checkpoint.sim_date);
+                            if (newGames.length > 0) {
+                                loadedSchedule = [...loadedSchedule!, ...newGames];
+                                setSchedule(prev => [...prev, ...newGames]);
+                                console.log(`🏆 Regenerated ${newGames.length} upcoming playoff game(s)`);
+                            }
                         }
                     }
 
