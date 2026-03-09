@@ -111,6 +111,8 @@ export const useFullSeasonSim = (
                 await forceSave({
                     currentSimDate: result.finalDate,
                     teams: result.finalTeams,
+                    schedule: result.finalSchedule,
+                    withSnapshot: true,
                 });
             }
 

@@ -106,7 +106,7 @@ export const fetchPlayoffGameResult = async (gameId: string, userId: string) => 
 export const loadPlayoffGameResults = async (userId: string) => {
     const { data, error } = await supabase
         .from('user_playoffs_results')
-        .select('*')
+        .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, series_id, round_number, game_number')
         .eq('user_id', userId)
         .order('date', { ascending: true });
 

@@ -100,7 +100,7 @@ export const useSimulation = (
             // 날짜 진행
             advanceDate(nextDate, {});
             if (!isGuestMode) {
-                await forceSave({ currentSimDate: nextDate });
+                await forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
             }
 
             setSpectateTarget(null);
@@ -264,7 +264,7 @@ export const useSimulation = (
                     // 일반 휴식일: 즉시 날짜 진행
                     advanceDate(nextDate, {});
                     if (!isGuestMode) {
-                        await forceSave({ currentSimDate: nextDate });
+                        await forceSave({ currentSimDate: nextDate, teams: newTeams, schedule: newSchedule, withSnapshot: true });
                     }
                 }
 
