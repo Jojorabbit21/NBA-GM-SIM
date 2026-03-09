@@ -1,10 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Users } from 'lucide-react';
 import { Team, Player, Game } from '../types';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
+import { TeamLogo } from '../components/common/TeamLogo';
 
 interface RosterViewProps {
   allTeams: Team[];
@@ -34,8 +34,9 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       {/* Header Bar */}
       <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
-              <Users size={16} className="text-slate-500" />
-              <span className="text-xs font-black text-slate-300 uppercase tracking-widest">선수단</span>
+              <TeamLogo teamId={selectedTeam.id} size="sm" />
+              <span className="text-sm font-black text-white uppercase oswald tracking-wide">{selectedTeam.city} {selectedTeam.name}</span>
+              <span className="text-xs font-bold text-slate-500">{selectedTeam.wins}-{selectedTeam.losses}</span>
           </div>
           <RosterTabs activeTab={tab} onTabChange={setTab} />
       </div>
