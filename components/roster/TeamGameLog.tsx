@@ -201,12 +201,12 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         return (
             <TableRow key={row.gameId} onClick={() => handleGameClick(row.gameId)} className="group cursor-pointer h-10">
                 {/* 날짜 */}
-                <TableCell className="border-r border-slate-800/30 text-center">
+                <TableCell className="border-r border-slate-800/30 text-center align-middle">
                     <span className="text-xs font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
                 </TableCell>
                 {/* 구분 */}
-                <TableCell className="border-r border-slate-800/30 text-center">
-                    <span className={`text-xs font-black ${row.isHome ? 'text-indigo-400' : 'text-slate-500'}`}>
+                <TableCell className="border-r border-slate-800/30 text-center align-middle">
+                    <span className="text-xs font-medium text-slate-400">
                         {row.isHome ? 'vs' : '@'}
                     </span>
                 </TableCell>
@@ -220,13 +220,13 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     </div>
                 </TableCell>
                 {/* 결과 */}
-                <TableCell className="border-r border-slate-800/30 text-center">
+                <TableCell className="border-r border-slate-800/30 text-center align-middle">
                     <span className={`text-xs font-black ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
                         {row.isWin ? 'W' : 'L'}
                     </span>
                 </TableCell>
                 {/* 스코어 */}
-                <TableCell className="border-r border-slate-800/30 text-center">
+                <TableCell className="border-r border-slate-800/30 text-center align-middle">
                     {isFetching ? (
                         <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
                     ) : (
@@ -247,7 +247,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
     const renderSectionHeader = (label: string) => (
         <tr key={`section-${label}`} className="h-8">
-            <td colSpan={TOTAL_COLS} className="bg-slate-950/80 border-b border-slate-800 pl-4 align-middle">
+            <td colSpan={TOTAL_COLS} className="bg-slate-900 border-b border-slate-800/50 pl-4 align-middle">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
             </td>
         </tr>
@@ -270,7 +270,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
             <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                 {/* Group row */}
-                <tr className="h-7">
+                <tr className="h-8">
                     <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 text-center align-middle">
                         <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Game Info</span>
                     </th>
@@ -325,7 +325,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         <TableCell colSpan={GAME_INFO_COLS.length} className="pl-4 text-left bg-slate-950 border-r border-slate-800">
-                            <span className="font-black text-indigo-400 text-[10px] uppercase tracking-widest">SEASON AVG ({gameRows.length}G)</span>
+                            <span className="font-black text-indigo-400 text-[10px] uppercase tracking-widest">시즌 평균 ({gameRows.length}경기)</span>
                         </TableCell>
                         {STAT_COLS.map(c => (
                             <TableCell key={c.key} className="border-r border-slate-800/30 text-center">

@@ -53,9 +53,9 @@ const AppRouter: React.FC<AppRouterProps> = ({
         setView('PlayerDetail');
     }, [view, setView]);
 
-    // Reset selected team when leaving Roster view (unless navigating from Standings)
+    // Reset selected team when leaving Roster view (preserve when navigating to GameResult/PlayerDetail so back works)
     useEffect(() => {
-        if (view !== 'Roster') {
+        if (view !== 'Roster' && view !== 'GameResult' && view !== 'PlayerDetail') {
             setSelectedTeamId(null);
         }
     }, [view]);
