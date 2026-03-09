@@ -523,8 +523,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             )}
                         </div>
                         <div className="overflow-x-auto custom-scrollbar">
-                            <StatsSubTable cols={TRAD_COLS} stats={displayStats} />
-                            <StatsSubTable cols={ADVANCED_COLS} stats={displayStats} />
+                            <StatsSubTable key={showPlayoffStats ? 'trad-p' : 'trad-r'} cols={TRAD_COLS} stats={displayStats} />
+                            <StatsSubTable key={showPlayoffStats ? 'adv-p' : 'adv-r'} cols={ADVANCED_COLS} stats={displayStats} />
                         </div>
                     </div>
 
