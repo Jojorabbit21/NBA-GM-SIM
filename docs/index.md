@@ -49,6 +49,9 @@ docs/
 │   ├── user-guide.md         사용자 조작 가이드
 │   └── url-routing-plan.md   URL 라우팅 설계
 │
+├── infra/               ← 인프라/배포 (1개)
+│   └── version-update.md    버전 업데이트 알림 시스템
+│
 └── plan/                 ← 개발 계획 (3개)
     ├── plan-index.md         인덱스
     ├── live-pbp.md           실시간 PBP 스트리밍 설계
@@ -88,6 +91,11 @@ NBA 현실 규칙, 전술 이론, 스탯 공식 등 시뮬레이션의 근거가
 디자인 시스템, 컴포넌트 규칙, 라우팅 설계.
 
 **필수 참조**: UI 수정 전 [design-system.md](ui/design-system.md) 확인 (다크 테마, 컬러, 라운딩 규칙).
+
+### [infra/](infra/) — 인프라/배포
+Vercel 배포, 캐시 전략, 버전 관리 등 서비스 운영 관련 문서.
+
+- [version-update.md](infra/version-update.md) — 버전 업데이트 알림 시스템 (폴링, 캐시 전략, Service Worker 미사용 근거)
 
 ### [plan/](plan/plan-index.md) — 개발 계획
 멀티플레이어, 드래프트 등 미래 기능 설계 문서.
