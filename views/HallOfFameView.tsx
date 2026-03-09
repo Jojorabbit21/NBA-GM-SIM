@@ -90,14 +90,13 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
             </button>
 
             {/* Hero Banner */}
-            <div className="relative w-full">
+            <div className="flex flex-col items-center pt-12 pb-6">
                 <img
                     src="/images/hof.png"
                     alt="Hall of Fame"
-                    className="w-full object-cover"
+                    className="w-[360px] object-contain"
                 />
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black to-transparent h-32" />
-                <h1 className="absolute bottom-8 left-0 right-0 text-center text-2xl font-bold text-slate-300 tracking-widest uppercase ko-tight">
+                <h1 className="mt-4 text-2xl font-bold text-slate-300 tracking-widest uppercase ko-tight">
                     2025-26 시즌 명예의 전당
                 </h1>
             </div>
