@@ -307,12 +307,6 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     // These are normally computed only in the leaderboard hook, not on the original stats objects.
     const displayStats = useMemo(() => {
         const rawStats = showPlayoffStats ? player.playoffStats! : s;
-        // DEBUG: 정규시즌 vs 플레이오프 원시 데이터 비교
-        console.log('[DEBUG] showPlayoffStats:', showPlayoffStats);
-        console.log('[DEBUG] stats === playoffStats?', player.stats === player.playoffStats);
-        console.log('[DEBUG] stats.g:', player.stats?.g, 'pts:', player.stats?.pts, 'fgm:', player.stats?.fgm);
-        console.log('[DEBUG] playoffStats.g:', player.playoffStats?.g, 'pts:', player.playoffStats?.pts, 'fgm:', player.playoffStats?.fgm);
-        console.log('[DEBUG] rawStats.g:', rawStats?.g, 'pts:', rawStats?.pts, 'fgm:', rawStats?.fgm);
         if (!rawStats || !allTeams || !teamId) return rawStats;
 
         const team = allTeams.find(t => t.id === teamId);
@@ -430,8 +424,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         )}
                     </div>
 
-                    {/* Divider */}
-                    <div className="mx-6 border-t border-slate-700/50" />
+                    {/* Spacer */}
+                    <div className="mx-6" />
 
                     {/* Player info table */}
                     <div className="px-6 py-3 relative z-10">
@@ -472,8 +466,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </table>
                     </div>
 
-                    {/* Divider */}
-                    <div className="mx-6 border-t border-slate-700/50" />
+                    {/* Spacer */}
+                    <div className="mx-6" />
 
                     {/* Scout Report */}
                     {(archetypes.length > 0 || scoutReport.length > 0) && (
@@ -684,7 +678,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                         {/* Col 2: 최근 경기 (full Traditional stats) */}
                         <div className="flex flex-col min-h-0">
-                            <div className="px-6 py-3 bg-slate-700 flex items-center">
+                            <div className="px-6 bg-slate-700 flex items-center" style={{ minHeight: 52 }}>
                                 <span className="text-sm font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
                             </div>
                             {gameLogLoading && teamId && (
@@ -698,7 +692,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false} style={{ maxHeight: 520 }}>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent flex-1 min-h-0" fullHeight={false}>
                                     <TableHead>
                                         {GAME_LOG_COLS.map((c, i) => (
                                             <TableHeaderCell
