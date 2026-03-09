@@ -128,8 +128,8 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
                         </div>
                     </div>
 
-                    {/* Progress Modal — centered on content area */}
-                    <div className="absolute inset-0 flex items-center justify-center z-50 pointer-events-none">
+                    {/* Progress Modal — centered on viewport */}
+                    <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
                         <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/50 rounded-3xl px-10 py-8 w-80 shadow-2xl pointer-events-auto">
                             <p className="text-sm font-bold text-slate-300 text-center mb-5 tracking-tight">
                                 시뮬레이션 데이터 로딩 중 ...
