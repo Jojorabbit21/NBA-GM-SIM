@@ -10,6 +10,7 @@ import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
 import { RosterGrid } from '../components/roster/RosterGrid';
+import { ScheduleView } from './ScheduleView';
 
 interface DashboardViewProps {
   team: Team;
@@ -25,14 +26,17 @@ interface DashboardViewProps {
   onForceSave?: () => void;
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
+  userId?: string;
+  onViewGameResult?: (result: any) => void;
 }
 
-type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent';
+type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating,
-  depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer
+  depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer,
+  userId, onViewGameResult
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
   const [recordsSubTab, setRecordsSubTab] = useState<'stats' | 'shooting'>('stats');
@@ -118,6 +122,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                     >
                         <span>상대 전력 분석</span>
                     </button>
+                    <button
+                        onClick={() => setActiveTab('schedule')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'schedule' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        <span>팀 일정</span>
+                    </button>
                 </div>
           </div>
 
@@ -184,6 +194,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       oppHealthySorted={oppHealthySorted}
                       onViewPlayer={handlePlayerClick}
                   />
+              )}
+
+              {activeTab === 'schedule' && userId && onViewGameResult && (
+                  <div className="animate-in fade-in duration-500 h-full">
+                    <ScheduleView
+                        schedule={schedule}
+                        teamId={team.id}
+                        teams={teams}
+                        currentSimDate={currentSimDate || ''}
+                        userId={userId}
+                        onViewGameResult={onViewGameResult}
+                        calendarOnly
+                    />
+                  </div>
               )}
           </div>
       </div>

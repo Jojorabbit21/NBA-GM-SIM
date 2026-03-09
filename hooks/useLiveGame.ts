@@ -80,8 +80,8 @@ export interface UseLiveGameReturn {
 export function useLiveGame(
     homeTeam: Team,
     awayTeam: Team,
-    userTeamId: string,
-    userTactics: GameTactics,
+    userTeamId: string | null,
+    userTactics: GameTactics | null | undefined,
     isHomeB2B: boolean = false,
     isAwayB2B: boolean = false,
     homeDepthChart?: DepthChart | null,
@@ -171,6 +171,7 @@ export function useLiveGame(
     // ────────────────────────────────────────────────────────
 
     const callTimeout = useCallback(() => {
+        if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         if (userTeam.timeouts <= 0) return;
@@ -187,6 +188,7 @@ export function useLiveGame(
     }, [userTeamId, syncDisplay]);
 
     const applyTactics = useCallback((newSliders: GameTactics['sliders']) => {
+        if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         // sliders만 교체 — rotationMap 보존 필수
@@ -195,6 +197,7 @@ export function useLiveGame(
     }, [userTeamId, syncDisplay]);
 
     const applyRotationMap = useCallback((newMap: Record<string, boolean[]>) => {
+        if (!userTeamId) return; // spectate mode
         const state = gameStateRef.current;
         const userTeam = state.home.id === userTeamId ? state.home : state.away;
         userTeam.tactics.rotationMap = { ...newMap };
@@ -213,6 +216,7 @@ export function useLiveGame(
     }, [userTeamId, syncDisplay]);
 
     const makeSubstitution = useCallback((outId: string, inId: string) => {
+        if (!userTeamId) return; // spectate mode
         applyManualSubstitution(gameStateRef.current, userTeamId, outId, inId);
         syncDisplay();
     }, [userTeamId, syncDisplay]);
@@ -300,7 +304,7 @@ function _buildDisplay(
     pauseReason: PauseReason | null,
     isGameEnd: boolean,
     speed: GameSpeed,
-    userTeamId: string
+    userTeamId: string | null
 ): LiveDisplayState {
     const m = state.momentum;
     const currentTotalSec = ((state.quarter - 1) * 720) + (720 - state.gameClock);
