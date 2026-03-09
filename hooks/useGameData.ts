@@ -2,11 +2,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '../services/supabaseClient';
-import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode } from '../types';
+import { Team, Game, PlayoffSeries, Transaction, Player, GameTactics, DepthChart, SavedPlayerState, RosterMode, ReplaySnapshot } from '../types';
 import { useBaseData } from '../services/queries';
 import { loadPlayoffState, loadPlayoffGameResults } from '../services/playoffService';
-import { loadCheckpoint, loadUserHistory, saveCheckpoint } from '../services/persistence';
+import { loadCheckpoint, loadUserHistory, loadUserTransactions, saveCheckpoint, countUserData } from '../services/persistence';
 import { replayGameState } from '../services/stateReplayer';
+import { buildReplaySnapshot, hydrateFromSnapshot, CURRENT_SNAPSHOT_VERSION } from '../services/snapshotBuilder';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
 import { calculateOvr } from '../utils/ovrUtils';
@@ -45,10 +46,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, tendencySeed });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, tendencySeed };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, tendencySeed]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -132,27 +133,16 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 if (checkpoint && checkpoint.team_id) {
                     console.log(`📂 Found Save: ${checkpoint.team_id} @ ${checkpoint.sim_date}`);
                     setLoadingProgress(20);
-                    const history = await loadUserHistory(userId);
-                    setLoadingProgress(50);
-                    const playoffState = await loadPlayoffState(userId, checkpoint.team_id);
-                    const rawPlayoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
-                    setLoadingProgress(65);
-                    await new Promise(r => setTimeout(r, 0)); // 렌더링 기회 부여
-                    // user_playoffs_results 테이블에 is_playoff 컬럼이 없으므로 로드 시 태그
-                    const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
-                    const allGameResults = [...history.games, ...playoffResults];
 
-                    // 드래프트 결과가 저장되어 있으면 로스터를 드래프트 결과로 재구성
+                    // 드래프트 결과 복원 (스냅샷/리플레이 공통)
                     let teamsForReplay = baseData.teams;
                     const savedDraftPicks = checkpoint.draft_picks as { order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null;
                     if (savedDraftPicks) {
                         draftPicksRef.current = savedDraftPicks;
-                        // teams가 있을 때만 로스터 재구성 (order만 있으면 추첨만 완료된 상태)
                         if (savedDraftPicks.teams) {
                             const playerMap = new Map<string, Player>();
                             baseData.teams.forEach((t: Team) => t.roster.forEach((p: Player) => playerMap.set(p.id, p)));
                             (baseData.freeAgents || []).forEach((p: Player) => playerMap.set(p.id, p));
-
                             teamsForReplay = baseData.teams.map((team: Team) => {
                                 const pickedIds = savedDraftPicks.teams![team.id];
                                 if (!pickedIds) return team;
@@ -162,34 +152,89 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         }
                     }
 
-                    setLoadingProgress(70);
-                    await new Promise(r => setTimeout(r, 0)); // replayGameState 전 렌더링 기회 부여
-                    const replayedState = replayGameState(
-                        teamsForReplay,
-                        baseData.schedule,
-                        history.transactions,
-                        allGameResults,
-                        checkpoint.sim_date
-                    );
-                    setLoadingProgress(90);
-                    await new Promise(r => setTimeout(r, 0)); // 렌더링 기회 부여
+                    // Playoff bracket (single row, cheap — needed for both paths)
+                    const playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id);
 
-                    // [NEW] Apply Saved Roster Condition & Injury State
-                    let loadedTeams = replayedState.teams;
+                    // --- Snapshot Fast Path ---
+                    const snapshot = checkpoint.replay_snapshot as ReplaySnapshot | null;
+                    let snapshotUsed = false;
+                    let loadedTeams: Team[];
+                    let loadedSchedule: Game[];
+                    let txList: any[] = [];
+
+                    if (snapshot && snapshot.version === CURRENT_SNAPSHOT_VERSION) {
+                        setLoadingProgress(30);
+                        const counts = await countUserData(userId);
+                        const isValid =
+                            snapshot.game_count === counts.games &&
+                            snapshot.playoff_game_count === counts.playoffs &&
+                            snapshot.transaction_count === counts.transactions;
+
+                        if (isValid) {
+                            console.log("⚡ Snapshot valid — skipping full replay");
+                            setLoadingProgress(50);
+                            txList = await loadUserTransactions(userId);
+                            setLoadingProgress(70);
+                            await new Promise(r => setTimeout(r, 0));
+                            const hydrated = hydrateFromSnapshot(teamsForReplay, baseData.schedule, snapshot, txList);
+                            loadedTeams = hydrated.teams;
+                            loadedSchedule = hydrated.schedule;
+                            snapshotUsed = true;
+                            setLoadingProgress(90);
+                        }
+                    }
+
+                    // --- Full Replay Fallback ---
+                    if (!snapshotUsed) {
+                        console.log("🔄 Full replay — snapshot not available or invalid");
+                        setLoadingProgress(40);
+                        const history = await loadUserHistory(userId);
+                        txList = history.transactions;
+                        setLoadingProgress(50);
+                        const rawPlayoffResults = playoffBracketState ? await loadPlayoffGameResults(userId) : [];
+                        setLoadingProgress(65);
+                        await new Promise(r => setTimeout(r, 0));
+                        const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
+                        const allGameResults = [...history.games, ...playoffResults];
+
+                        setLoadingProgress(70);
+                        await new Promise(r => setTimeout(r, 0));
+                        const replayedState = replayGameState(
+                            teamsForReplay,
+                            baseData.schedule,
+                            txList,
+                            allGameResults,
+                            checkpoint.sim_date
+                        );
+                        loadedTeams = replayedState.teams;
+                        loadedSchedule = replayedState.schedule;
+                        setLoadingProgress(90);
+                        await new Promise(r => setTimeout(r, 0));
+
+                        // Build & save snapshot for next load
+                        try {
+                            const counts = await countUserData(userId);
+                            const newSnapshot = buildReplaySnapshot(loadedTeams, loadedSchedule, counts);
+                            saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                                undefined, undefined, undefined, undefined, undefined, newSnapshot);
+                            console.log("💾 Snapshot saved for next load");
+                        } catch (e) {
+                            console.warn("⚠️ Failed to save snapshot (non-critical):", e);
+                        }
+                    }
+
+                    // --- 공통 후처리 ---
+                    // Apply Saved Roster Condition & Injury State
                     if (checkpoint.roster_state) {
                         const stateMap = checkpoint.roster_state;
-                        loadedTeams = loadedTeams.map(t => ({
+                        loadedTeams = loadedTeams!.map(t => ({
                             ...t,
                             roster: t.roster.map(p => {
                                 const savedState = stateMap[p.id];
                                 if (!savedState) return p;
-
-                                // Handle Legacy Format (number only for condition)
                                 if (typeof savedState === 'number') {
                                     return { ...p, condition: savedState };
                                 }
-
-                                // Handle New Object Format
                                 return {
                                     ...p,
                                     condition: savedState.condition ?? 100,
@@ -202,18 +247,15 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     }
 
                     setMyTeamId(checkpoint.team_id);
-                    setTeams(loadedTeams);
-                    setSchedule(replayedState.schedule);
-                    setCurrentSimDate(replayedState.currentSimDate);
-                    
+                    setTeams(loadedTeams!);
+                    setSchedule(loadedSchedule!);
+                    setCurrentSimDate(checkpoint.sim_date || INITIAL_DATE);
+
                     if (checkpoint.tactics) {
-                        // [Migration Fix] Ensure rotationMap exists for legacy saves
                         const tactics = { ...checkpoint.tactics };
                         if (!tactics.rotationMap) {
                             tactics.rotationMap = {};
                         }
-
-                        // [Migration] 옛 play_* 슬라이더 → 새 코칭 철학 슬라이더
                         if (tactics.sliders && 'play_pnr' in tactics.sliders && !('playStyle' in tactics.sliders)) {
                             const { play_pnr = 5, play_iso = 5, play_post = 5, play_cns = 5, play_drive = 5, ...rest } = tactics.sliders as any;
                             const heroInd = (play_iso + play_post) / 2;
@@ -225,31 +267,27 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 pnrFreq: play_pnr,
                             };
                         }
-
                         setUserTactics(tactics);
                     }
 
-                    // [New] Load Depth Chart
                     if (checkpoint.depth_chart) {
                         setDepthChart(checkpoint.depth_chart);
                     }
 
-                    // [New] Load or Generate Tendency Seed
                     if (checkpoint.tendency_seed) {
                         setTendencySeed(checkpoint.tendency_seed);
                     } else {
-                        // Legacy save: auto-generate seed and persist immediately
                         const newSeed = crypto.randomUUID();
                         setTendencySeed(newSeed);
                         saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
                     }
-                    
-                    if (playoffState && playoffState.bracket_data) {
-                        setPlayoffSeries(playoffState.bracket_data.series);
+
+                    if (playoffBracketState && playoffBracketState.bracket_data) {
+                        setPlayoffSeries(playoffBracketState.bracket_data.series);
                     }
 
-                    setTransactions(history.transactions.map((tx: any) => ({
-                        id: tx.id || tx.Id || tx.transaction_id || `tx_${Math.random()}`, 
+                    setTransactions(txList.map((tx: any) => ({
+                        id: tx.id || tx.Id || tx.transaction_id || `tx_${Math.random()}`,
                         date: tx.date,
                         type: tx.type,
                         teamId: tx.team_id,
@@ -322,8 +360,20 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             // tendencySeed: override에서 전달되면 우선 사용, 아니면 ref에서 가져옴
             const seed = overrides?.tendencySeed || gameStateRef.current.tendencySeed;
 
+            // Build snapshot if requested (after game results)
+            let snapshot: ReplaySnapshot | undefined;
+            if (overrides?.withSnapshot && teamId) {
+                try {
+                    const currentSchedule = overrides?.schedule || gameStateRef.current.schedule;
+                    const counts = await countUserData(session.user.id);
+                    snapshot = buildReplaySnapshot(currentTeams, currentSchedule, counts);
+                } catch (e) {
+                    console.warn("⚠️ Snapshot build failed (non-critical):", e);
+                }
+            }
+
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed);
+                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot);
             }
         } catch (e: any) {
             console.error("Save Failed:", e);

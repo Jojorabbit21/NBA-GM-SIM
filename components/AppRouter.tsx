@@ -137,7 +137,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         sim.clearLastGameResult();
                         sim.setIsSimulating(false);
                         setView('Dashboard');
-                        gameData.forceSave({ currentSimDate: nextDate });
+                        gameData.forceSave({ currentSimDate: nextDate, withSnapshot: true });
                     }
                 }}
             />
