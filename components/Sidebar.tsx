@@ -263,14 +263,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               </span>
             </button>
           )}
-          {isPostseasonOver && !isGuestMode && hasSubmittedHof && (
-            <button
-              disabled
-              className="w-full px-4 py-2.5 rounded-2xl text-amber-400/50 text-sm font-bold bg-amber-600/10 cursor-not-allowed"
-            >
-              제출 완료
-            </button>
-          )}
         </div>
       )}
 

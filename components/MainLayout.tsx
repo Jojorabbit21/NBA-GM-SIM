@@ -3,7 +3,7 @@ import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Footer } from './Footer';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
-import FullScreenLoader from './FullScreenLoader';
+import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
 import { calculatePlayerOvr } from '../utils/constants';
 import { computeStandingsStats } from '../utils/standingsStats';
@@ -154,7 +154,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                 )}
 
                 <div className={`flex-1 ${isFullHeightView || isNoPaddingView ? 'min-h-0' : 'p-8 lg:p-12'}`}>
-                    <Suspense fallback={<FullScreenLoader />}>
+                    <Suspense fallback={<ContentSkeleton />}>
                         {children}
                     </Suspense>
                 </div>
