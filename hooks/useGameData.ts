@@ -152,19 +152,23 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         }
                     }
 
-                    // Playoff bracket (single row, cheap — needed for both paths)
-                    const playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id);
-
                     // --- Snapshot Fast Path ---
                     const snapshot = checkpoint.replay_snapshot as ReplaySnapshot | null;
                     let snapshotUsed = false;
                     let loadedTeams: Team[];
                     let loadedSchedule: Game[];
                     let txList: any[] = [];
+                    let playoffBracketState: any = null;
 
+                    // Playoff bracket + snapshot validation + transactions 병렬 로드
                     if (snapshot && snapshot.version === CURRENT_SNAPSHOT_VERSION) {
                         setLoadingProgress(30);
-                        const counts = await countUserData(userId);
+                        const [pbState, counts, txData] = await Promise.all([
+                            loadPlayoffState(userId, checkpoint.team_id),
+                            countUserData(userId),
+                            loadUserTransactions(userId),
+                        ]);
+                        playoffBracketState = pbState;
                         const isValid =
                             snapshot.game_count === counts.games &&
                             snapshot.playoff_game_count === counts.playoffs &&
@@ -173,7 +177,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         if (isValid) {
                             console.log("⚡ Snapshot valid — skipping full replay");
                             setLoadingProgress(50);
-                            txList = await loadUserTransactions(userId);
+                            txList = txData;
                             setLoadingProgress(70);
                             await new Promise(r => setTimeout(r, 0));
                             const hydrated = hydrateFromSnapshot(teamsForReplay, baseData.schedule, snapshot, txList);
@@ -187,6 +191,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     // --- Full Replay Fallback ---
                     if (!snapshotUsed) {
                         console.log("🔄 Full replay — snapshot not available or invalid");
+                        if (!playoffBracketState) {
+                            playoffBracketState = await loadPlayoffState(userId, checkpoint.team_id);
+                        }
                         setLoadingProgress(40);
                         const history = await loadUserHistory(userId);
                         txList = history.transactions;
