@@ -76,7 +76,7 @@ export const useMonthlySchedule = (userId?: string, year?: number, month?: numbe
 
             const { data, error } = await supabase
                 .from('user_game_results')
-                .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics')
+                .select('game_id, date, home_team_id, away_team_id, home_score, away_score')
                 .eq('user_id', userId)
                 .gte('date', startStr)
                 .lte('date', endStr);
