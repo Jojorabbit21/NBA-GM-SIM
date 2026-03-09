@@ -19,7 +19,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const queryClient = useQueryClient();
 
     // --- State ---
-    const [myTeamId, setMyTeamId] = useState<string | null>(null);
+    const [myTeamId, _setMyTeamId] = useState<string | null>(null);
+    const setMyTeamId = useCallback((id: string | null) => {
+        _setMyTeamId(id);
+        if (id) localStorage.setItem('lastTeamId', id);
+        else localStorage.removeItem('lastTeamId');
+    }, []);
     const [teams, setTeams] = useState<Team[]>([]);
     const [schedule, setSchedule] = useState<Game[]>([]);
     const [playoffSeries, setPlayoffSeries] = useState<PlayoffSeries[]>([]);
