@@ -16,11 +16,11 @@ interface TeamGameLogProps {
 
 // Column definitions for game log table
 const GAME_INFO_COLS = [
-    { key: 'date', label: 'DATE', width: 80 },
-    { key: 'ha', label: '', width: 36 },
-    { key: 'opp', label: 'OPP', width: 160 },
-    { key: 'result', label: '', width: 36 },
-    { key: 'score', label: 'SCORE', width: 80 },
+    { key: 'date', label: '날짜', width: 80 },
+    { key: 'ha', label: '구분', width: 36 },
+    { key: 'opp', label: '상대', width: 160 },
+    { key: 'result', label: '결과', width: 36 },
+    { key: 'score', label: '스코어', width: 80 },
 ];
 
 const STAT_COLS = [
@@ -46,6 +46,7 @@ const STAT_COLS = [
 ];
 
 const STAT_WIDTH = 56;
+const TOTAL_COLS = GAME_INFO_COLS.length + STAT_COLS.length;
 
 type GameRow = {
     gameId: string;
@@ -55,6 +56,7 @@ type GameRow = {
     isWin: boolean;
     myScore: number;
     oppScore: number;
+    isPlayoff: boolean;
     stats: Record<string, number>;
 };
 
@@ -90,6 +92,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     isWin: myScore > oppScore,
                     myScore,
                     oppScore,
+                    isPlayoff: g.isPlayoff || false,
                     stats: {
                         pts: myScore,
                         oreb: s.offReb || 0,
@@ -127,6 +130,12 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         });
     }, [gameRows, sortConfig]);
 
+    // Split into regular season / playoff
+    const { regularRows, playoffRows } = useMemo(() => ({
+        regularRows: sortedRows.filter(r => !r.isPlayoff),
+        playoffRows: sortedRows.filter(r => r.isPlayoff),
+    }), [sortedRows]);
+
     // Season averages
     const seasonAvg = useMemo(() => {
         const n = gameRows.length;
@@ -134,7 +143,6 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         const avg: Record<string, number> = {};
         STAT_COLS.forEach(c => {
             if (c.key.includes('%')) {
-                // Aggregate ratios
                 let num = 0, den = 0;
                 gameRows.forEach(r => {
                     if (c.key === 'fg%') { num += r.stats.fgm; den += r.stats.fga; }
@@ -184,7 +192,66 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         return val.toFixed(1);
     };
 
-    const contentTextClass = "text-xs font-medium text-white font-mono tabular-nums";
+    const statCellClass = "text-xs font-medium text-white font-mono tabular-nums";
+
+    const renderGameRow = (row: GameRow) => {
+        const oppTeam = allTeams.find(t => t.id === row.oppId);
+        const isFetching = fetchingGameId === row.gameId;
+
+        return (
+            <TableRow key={row.gameId} onClick={() => handleGameClick(row.gameId)} className="group cursor-pointer h-10">
+                {/* 날짜 */}
+                <TableCell className="border-r border-slate-800/30 text-center">
+                    <span className="text-xs font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
+                </TableCell>
+                {/* 구분 */}
+                <TableCell className="border-r border-slate-800/30 text-center">
+                    <span className={`text-xs font-black ${row.isHome ? 'text-indigo-400' : 'text-slate-500'}`}>
+                        {row.isHome ? 'vs' : '@'}
+                    </span>
+                </TableCell>
+                {/* 상대 */}
+                <TableCell className="border-r border-slate-800/30 pl-4">
+                    <div className="flex items-center gap-2">
+                        <TeamLogo teamId={row.oppId} size="sm" />
+                        <span className="text-xs font-semibold text-slate-300 uppercase truncate group-hover:text-white transition-colors">
+                            {oppTeam?.name || row.oppId}
+                        </span>
+                    </div>
+                </TableCell>
+                {/* 결과 */}
+                <TableCell className="border-r border-slate-800/30 text-center">
+                    <span className={`text-xs font-black ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {row.isWin ? 'W' : 'L'}
+                    </span>
+                </TableCell>
+                {/* 스코어 */}
+                <TableCell className="border-r border-slate-800/30 text-center">
+                    {isFetching ? (
+                        <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
+                    ) : (
+                        <span className={`text-xs font-black font-mono tabular-nums ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}>
+                            {row.myScore}-{row.oppScore}
+                        </span>
+                    )}
+                </TableCell>
+                {/* STAT COLS */}
+                {STAT_COLS.map(c => (
+                    <TableCell key={c.key} className={`border-r border-slate-800/30 text-center ${statCellClass}`}>
+                        {formatStat(c.key, row.stats[c.key])}
+                    </TableCell>
+                ))}
+            </TableRow>
+        );
+    };
+
+    const renderSectionHeader = (label: string) => (
+        <tr key={`section-${label}`} className="h-8">
+            <td colSpan={TOTAL_COLS} className="bg-slate-950/80 border-b border-slate-800 pl-4 align-middle">
+                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+            </td>
+        </tr>
+    );
 
     if (gameRows.length === 0) {
         return (
@@ -203,11 +270,11 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
             <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                 {/* Group row */}
-                <tr className="h-6">
-                    <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 align-middle">
+                <tr className="h-7">
+                    <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 text-center align-middle">
                         <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Game Info</span>
                     </th>
-                    <th colSpan={STAT_COLS.length} className="bg-slate-950 border-b border-slate-800 align-middle">
+                    <th colSpan={STAT_COLS.length} className="bg-slate-950 border-b border-slate-800 text-center align-middle">
                         <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Team Stats</span>
                     </th>
                 </tr>
@@ -240,56 +307,18 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
             </TableHead>
 
             <TableBody>
-                {sortedRows.map(row => {
-                    const oppTeam = allTeams.find(t => t.id === row.oppId);
-                    const isFetching = fetchingGameId === row.gameId;
-
-                    return (
-                        <TableRow key={row.gameId} onClick={() => handleGameClick(row.gameId)} className="group cursor-pointer h-10">
-                            {/* DATE */}
-                            <TableCell className="border-r border-slate-800/30 text-center">
-                                <span className="text-xs font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
-                            </TableCell>
-                            {/* H/A */}
-                            <TableCell className="border-r border-slate-800/30 text-center">
-                                <span className={`text-[10px] font-black ${row.isHome ? 'text-indigo-400' : 'text-slate-500'}`}>
-                                    {row.isHome ? 'vs' : '@'}
-                                </span>
-                            </TableCell>
-                            {/* OPP */}
-                            <TableCell className="border-r border-slate-800/30 pl-4">
-                                <div className="flex items-center gap-2">
-                                    <TeamLogo teamId={row.oppId} size="sm" />
-                                    <span className="text-xs font-semibold text-slate-300 uppercase truncate group-hover:text-white transition-colors">
-                                        {oppTeam?.name || row.oppId}
-                                    </span>
-                                </div>
-                            </TableCell>
-                            {/* RESULT */}
-                            <TableCell className="border-r border-slate-800/30 text-center">
-                                <span className={`text-xs font-black ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {row.isWin ? 'W' : 'L'}
-                                </span>
-                            </TableCell>
-                            {/* SCORE */}
-                            <TableCell className="border-r border-slate-800/30 text-center">
-                                {isFetching ? (
-                                    <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
-                                ) : (
-                                    <span className={`text-xs font-black oswald tabular-nums ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}>
-                                        {row.myScore}-{row.oppScore}
-                                    </span>
-                                )}
-                            </TableCell>
-                            {/* STAT COLS */}
-                            {STAT_COLS.map(c => (
-                                <TableCell key={c.key} className={`border-r border-slate-800/30 text-center ${contentTextClass}`}>
-                                    {formatStat(c.key, row.stats[c.key])}
-                                </TableCell>
-                            ))}
-                        </TableRow>
-                    );
-                })}
+                {regularRows.length > 0 && (
+                    <>
+                        {renderSectionHeader('정규 시즌')}
+                        {regularRows.map(renderGameRow)}
+                    </>
+                )}
+                {playoffRows.length > 0 && (
+                    <>
+                        {renderSectionHeader('플레이오프')}
+                        {playoffRows.map(renderGameRow)}
+                    </>
+                )}
             </TableBody>
 
             {seasonAvg && (
