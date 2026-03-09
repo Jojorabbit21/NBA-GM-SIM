@@ -99,13 +99,14 @@ export const fetchFullGameResult = async (gameId: string, userId: string) => {
         .select('*')
         .eq('game_id', gameId)
         .eq('user_id', userId)
-        .maybeSingle();
+        .order('date', { ascending: false })
+        .limit(1);
 
     if (error) {
         console.error("❌ Failed to fetch game details:", error);
         return null;
     }
-    return data;
+    return data?.[0] ?? null;
 };
 
 // --- Scouting ---

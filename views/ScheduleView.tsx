@@ -267,24 +267,34 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
 
   // [Box Score Navigation]
   const handleViewBoxScore = async (gameId: string) => {
-      if (fetchingGameId) return;
+      if (fetchingGameId || !userId) {
+          console.warn('[BoxScore] blocked:', { fetchingGameId, userId });
+          return;
+      }
       setFetchingGameId(gameId);
       try {
           const raw = await fetchFullGameResult(gameId, userId);
-          if (raw) {
-              const homeTeam = teams.find(t => t.id === raw.home_team_id);
-              const awayTeam = teams.find(t => t.id === raw.away_team_id);
-              const mappedResult = {
-                  home: homeTeam, away: awayTeam,
-                  homeScore: raw.home_score, awayScore: raw.away_score,
-                  homeBox: raw.box_score?.home || [], awayBox: raw.box_score?.away || [],
-                  homeTactics: raw.tactics?.home, awayTactics: raw.tactics?.away,
-                  pbpLogs: raw.pbp_logs || [], pbpShotEvents: raw.shot_events || [],
-                  rotationData: raw.rotation_data,
-                  otherGames: [], date: raw.date, recap: []
-              };
-              if (homeTeam && awayTeam) onViewGameResult(mappedResult);
+          if (!raw) {
+              console.warn('[BoxScore] DB에서 결과를 찾을 수 없습니다:', { gameId, userId });
+              return;
           }
+          const homeTeam = teams.find(t => t.id === raw.home_team_id);
+          const awayTeam = teams.find(t => t.id === raw.away_team_id);
+          if (!homeTeam || !awayTeam) {
+              console.warn('[BoxScore] 팀을 찾을 수 없습니다:', { home_team_id: raw.home_team_id, away_team_id: raw.away_team_id });
+              return;
+          }
+          onViewGameResult({
+              home: homeTeam, away: awayTeam,
+              homeScore: raw.home_score, awayScore: raw.away_score,
+              homeBox: raw.box_score?.home || [], awayBox: raw.box_score?.away || [],
+              homeTactics: raw.tactics?.home, awayTactics: raw.tactics?.away,
+              pbpLogs: raw.pbp_logs || [], pbpShotEvents: raw.shot_events || [],
+              rotationData: raw.rotation_data,
+              otherGames: [], date: raw.date, recap: []
+          });
+      } catch (err) {
+          console.error('[BoxScore] 에러 발생:', err);
       } finally {
           setFetchingGameId(null);
       }
@@ -433,7 +443,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
             </button>
             <div
               ref={dayCarouselRef}
-              className="flex-1 overflow-x-auto custom-scrollbar-hide flex items-center gap-1.5 py-2"
+              className="flex-1 overflow-x-auto custom-scrollbar-hide flex items-center justify-center gap-1.5 py-2"
             >
               {gameDays.map(day => {
                 const y = currentDate.getFullYear();
@@ -502,7 +512,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                     return (
                       <div
                         key={game.id}
-                        className={`rounded-3xl border overflow-hidden transition-all ${
+                        className={`rounded-2xl border overflow-hidden transition-all ${
                           isMyGame
                             ? 'border-amber-500/30 bg-amber-500/5'
                             : 'border-slate-700/50 bg-slate-800/40'
