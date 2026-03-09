@@ -11,3 +11,4 @@
 | [live-pbp.md](live-pbp.md) | 실시간 PBP 스트리밍 (멀티플레이어) 설계 | 계획 |
 | [fantasy-draft-plan.md](fantasy-draft-plan.md) | 판타지 드래프트 시스템 설계 | 계획 |
 | [draft-agent.md](draft-agent.md) | 드래프트 AI 에이전트 설계 | 계획 |
+| [player-instructions.md](player-instructions.md) | 선수별 개인 전술 지침 (Coachability + Rebellion) | 설계 완료 |

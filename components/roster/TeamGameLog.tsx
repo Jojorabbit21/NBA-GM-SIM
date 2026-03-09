@@ -199,7 +199,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         const isFetching = fetchingGameId === row.gameId;
 
         return (
-            <TableRow key={row.gameId} onClick={() => handleGameClick(row.gameId)} className="group cursor-pointer h-10">
+            <TableRow key={row.gameId} className="h-10">
                 {/* 날짜 */}
                 <TableCell className="border-r border-slate-800/30 text-center align-middle">
                     <span className="text-xs font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
@@ -221,7 +221,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                 </TableCell>
                 {/* 결과 */}
                 <TableCell className="border-r border-slate-800/30 text-center align-middle">
-                    <span className={`text-xs font-black ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                    <span className={`text-xs font-medium ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
                         {row.isWin ? 'W' : 'L'}
                     </span>
                 </TableCell>
@@ -230,7 +230,10 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     {isFetching ? (
                         <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
                     ) : (
-                        <span className={`text-xs font-black font-mono tabular-nums ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}>
+                        <span
+                            className={`text-xs font-medium font-mono tabular-nums cursor-pointer hover:underline ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}
+                            onClick={() => handleGameClick(row.gameId)}
+                        >
                             {row.myScore}-{row.oppScore}
                         </span>
                     )}
@@ -247,7 +250,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
     const renderSectionHeader = (label: string) => (
         <tr key={`section-${label}`} className="h-8">
-            <td colSpan={TOTAL_COLS} className="bg-slate-900 border-b border-slate-800/50 pl-4 align-middle">
+            <td colSpan={TOTAL_COLS} className="bg-slate-800 border-b border-slate-800/50 pl-4 align-middle">
                 <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
             </td>
         </tr>
@@ -271,11 +274,15 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
             <TableHead className="bg-slate-950 sticky top-0 z-40 shadow-sm" noRow>
                 {/* Group row */}
                 <tr className="h-8">
-                    <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 text-center align-middle">
-                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Game Info</span>
+                    <th colSpan={GAME_INFO_COLS.length} className="bg-slate-950 border-b border-r border-slate-800 h-8">
+                        <div className="flex items-center justify-center h-full">
+                            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Game Info</span>
+                        </div>
                     </th>
-                    <th colSpan={STAT_COLS.length} className="bg-slate-950 border-b border-slate-800 text-center align-middle">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Team Stats</span>
+                    <th colSpan={STAT_COLS.length} className="bg-slate-950 border-b border-slate-800 h-8">
+                        <div className="flex items-center justify-center h-full">
+                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Team Stats</span>
+                        </div>
                     </th>
                 </tr>
                 {/* Column headers */}
