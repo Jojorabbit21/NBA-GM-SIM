@@ -569,50 +569,56 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         })()}
                     </div>
 
-                    {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율 ═══ */}
-                    <div className="grid items-stretch" style={{ gridTemplateColumns: '4fr 6fr' }}>
+                    {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율, 헤더 행 공유 ═══ */}
+                    <div className="grid" style={{ gridTemplateColumns: '4fr 6fr', gridTemplateRows: 'auto 1fr' }}>
 
-                        {/* Col 1: 샷 차트 */}
-                        <div className="border-r border-slate-800">
-                            <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
-                                <div className="flex items-center gap-3">
-                                    <div className="flex rounded-lg overflow-hidden border border-slate-600">
-                                        <button
-                                            onClick={() => setShotChartMode('efficiency')}
-                                            className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'efficiency' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
-                                        >
-                                            성공률
-                                        </button>
-                                        <button
-                                            onClick={() => setShotChartMode('volume')}
-                                            className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'volume' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
-                                        >
-                                            시도수
-                                        </button>
+                        {/* Row 1, Col 1: 샷 차트 헤더 */}
+                        <div className="px-6 py-3 bg-slate-700 flex items-center justify-between border-r border-slate-800">
+                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
+                            <div className="flex items-center gap-3">
+                                <div className="flex rounded-lg overflow-hidden border border-slate-600">
+                                    <button
+                                        onClick={() => setShotChartMode('efficiency')}
+                                        className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'efficiency' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                                    >
+                                        성공률
+                                    </button>
+                                    <button
+                                        onClick={() => setShotChartMode('volume')}
+                                        className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'volume' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
+                                    >
+                                        시도수
+                                    </button>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
+                                    <span>LOW</span>
+                                    <div className="flex gap-0.5">
+                                        {shotChartMode === 'efficiency' ? (
+                                            <>
+                                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
+                                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
+                                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="w-3 h-2.5 rounded-sm bg-indigo-500/10" />
+                                                <div className="w-3 h-2.5 rounded-sm bg-indigo-500/25" />
+                                                <div className="w-3 h-2.5 rounded-sm bg-indigo-500/50" />
+                                            </>
+                                        )}
                                     </div>
-                                    <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
-                                        <span>LOW</span>
-                                        <div className="flex gap-0.5">
-                                            {shotChartMode === 'efficiency' ? (
-                                                <>
-                                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
-                                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
-                                                    <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
-                                                </>
-                                            ) : (
-                                                <>
-                                                    <div className="w-3 h-2.5 rounded-sm bg-indigo-500/10" />
-                                                    <div className="w-3 h-2.5 rounded-sm bg-indigo-500/25" />
-                                                    <div className="w-3 h-2.5 rounded-sm bg-indigo-500/50" />
-                                                </>
-                                            )}
-                                        </div>
-                                        <span>HIGH</span>
-                                    </div>
+                                    <span>HIGH</span>
                                 </div>
                             </div>
-                            <div className="p-4">
+                        </div>
+
+                        {/* Row 1, Col 2: 최근 경기 헤더 */}
+                        <div className="px-6 py-3 bg-slate-700 flex items-center">
+                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
+                        </div>
+
+                        {/* Row 2, Col 1: 샷 차트 본문 */}
+                        <div className="border-r border-slate-800 p-4">
                             <div className="relative w-full aspect-[435/403] bg-slate-950 rounded-lg overflow-hidden border-[1.5px] border-green-900">
                                 <svg viewBox="0 0 435 403" className="w-full h-full">
                                     <rect x="0" y="0" width="435" height="403" fill="#020617" />
@@ -673,14 +679,10 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     </g>
                                 </svg>
                             </div>
-                            </div>
                         </div>
 
-                        {/* Col 2: 최근 경기 (full Traditional stats) */}
-                        <div className="flex flex-col min-h-0">
-                            <div className="px-6 bg-slate-700 flex items-center" style={{ minHeight: 52 }}>
-                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">최근 경기</span>
-                            </div>
+                        {/* Row 2, Col 2: 최근 경기 본문 */}
+                        <div className="flex flex-col min-h-0 overflow-hidden">
                             {gameLogLoading && teamId && (
                                 <div className="flex items-center justify-center py-8">
                                     <Loader2 size={16} className="text-slate-500 animate-spin" />
