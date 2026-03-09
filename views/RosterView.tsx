@@ -5,6 +5,8 @@ import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { getTeamTheme } from '../utils/teamTheme';
+import { TEAM_DATA } from '../data/teamData';
 
 interface RosterViewProps {
   allTeams: Team[];
@@ -27,16 +29,19 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
       allTeams.find(t => t.id === selectedTeamId) || allTeams[0]
   , [allTeams, selectedTeamId]);
 
+  const teamColors = TEAM_DATA[selectedTeam?.id]?.colors || null;
+  const theme = getTeamTheme(selectedTeam?.id, teamColors);
+
   if (!selectedTeam) return null;
 
   return (
     <div className="flex flex-col h-full animate-in fade-in duration-500 overflow-hidden">
       {/* Header Bar */}
-      <div className="flex-shrink-0 px-6 py-3 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+      <div className="flex-shrink-0 px-6 py-3 border-b border-white/10 flex items-center justify-between" style={{ backgroundColor: theme.bg }}>
           <div className="flex items-center gap-3">
               <TeamLogo teamId={selectedTeam.id} size="sm" />
-              <span className="text-sm font-black text-white uppercase oswald tracking-wide">{selectedTeam.city} {selectedTeam.name}</span>
-              <span className="text-xs font-bold text-slate-500">{selectedTeam.wins}-{selectedTeam.losses}</span>
+              <span className="text-sm font-black uppercase oswald tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
+              <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
           </div>
           <RosterTabs activeTab={tab} onTabChange={setTab} />
       </div>
