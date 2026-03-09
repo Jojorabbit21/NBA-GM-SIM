@@ -5,6 +5,10 @@ import { TEAM_DATA, TeamStaticData } from '../data/teamData';
 import { TEAM_ID_MAP } from '../data/mappings';
 import { editorLogoUrls } from './editorManager';
 
+export const APP_NAME = 'Basketball GM Simulator';
+export const APP_YEAR = '2026';
+export const APP_FULL_NAME = `${APP_NAME} ${APP_YEAR}`;
+
 export const SEASON_START_DATE = '2025-10-20';
 export const TRADE_DEADLINE = '2026-02-06';
 

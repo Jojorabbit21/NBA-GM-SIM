@@ -2,6 +2,7 @@
 import React from 'react';
 import { ArrowLeft } from 'lucide-react';
 import { DraftPoolType } from '../types';
+import { APP_FULL_NAME } from '../utils/constants';
 
 interface DraftPoolSelectViewProps {
     onSelectPool: (pool: DraftPoolType) => void;
@@ -22,7 +23,7 @@ export const DraftPoolSelectView: React.FC<DraftPoolSelectViewProps> = ({ onSele
             {/* Header */}
             <div className="text-center space-y-4">
                 <h2 className="text-sm font-bold text-slate-500 uppercase tracking-[0.3em]">
-                    Basketball GM Simulator 2025-26
+                    {APP_FULL_NAME}
                 </h2>
                 <h1 className="text-4xl font-black bebas text-white tracking-widest">
                     DRAFT <span className="text-amber-500">POOL</span>
@@ -71,7 +72,7 @@ export const DraftPoolSelectView: React.FC<DraftPoolSelectViewProps> = ({ onSele
 
             {/* Copyright */}
             <div className="absolute bottom-6 text-[10px] text-slate-600 tracking-wider">
-                &copy; 2025 BPL GM SIM. All rights reserved.
+                &copy; 2025 {APP_FULL_NAME}. All rights reserved.
             </div>
         </div>
     );

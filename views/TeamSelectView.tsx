@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { Loader2, Wifi, WifiOff } from 'lucide-react';
 import { Team } from '../types';
+import { APP_NAME, APP_YEAR } from '../utils/constants';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import { logEvent } from '../services/analytics'; // Analytics Import
 import { LOADING_MESSAGES } from '../data/uiConstants';
@@ -87,7 +88,7 @@ export const TeamSelectView: React.FC<TeamSelectViewProps> = ({ teams, isInitial
           <div className="h-12 w-[2px] bg-slate-700/50"></div>
           <div>
             <h1 className="text-5xl font-black bebas text-white tracking-widest leading-none drop-shadow-lg">
-              BPL GM SIM <span className="text-indigo-500">2026</span>
+              {APP_NAME} <span className="text-indigo-500">{APP_YEAR}</span>
             </h1>
             <p className="text-sm font-bold text-slate-400 uppercase tracking-[0.3em] leading-none mt-2 text-shadow-sm">
               Select Your Franchise
