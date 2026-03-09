@@ -209,7 +209,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
             setView('Dashboard');
             return null;
         case 'Roster':
-            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} />;
+            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} schedule={gameData.schedule} userId={session?.user?.id} onViewGameResult={(result) => { previousViewRef.current = 'Roster'; sim.loadSavedGameResult(result); setView('GameResult'); }} />;
         case 'Schedule':
             return (
                 <ScheduleView
@@ -251,7 +251,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'Leaderboard':
-            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} />;
+            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} onTeamClick={(id) => { setSelectedTeamId(id); setView('Roster'); }} />;
         case 'Transactions':
             return (
                 <TransactionsView

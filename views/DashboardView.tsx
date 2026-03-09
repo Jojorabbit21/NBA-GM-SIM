@@ -39,7 +39,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   userId, onViewGameResult
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
-  const [recordsSubTab, setRecordsSubTab] = useState<'stats' | 'shooting'>('stats');
 
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
@@ -166,24 +165,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               {activeTab === 'records' && (
                   <div className="animate-in fade-in duration-500 h-full flex flex-col">
-                    <div className="px-8 py-3 flex-shrink-0">
-                      <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800 w-fit shadow-sm">
-                        <button
-                          onClick={() => setRecordsSubTab('stats')}
-                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubTab === 'stats' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-                        >
-                          시즌 기록
-                        </button>
-                        <button
-                          onClick={() => setRecordsSubTab('shooting')}
-                          className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${recordsSubTab === 'shooting' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-300'}`}
-                        >
-                          슈팅
-                        </button>
-                      </div>
-                    </div>
                     <div className="flex-1 min-h-0">
-                      <RosterGrid team={team} tab={recordsSubTab} onPlayerClick={handlePlayerClick} />
+                      <RosterGrid team={team} tab="stats" onPlayerClick={handlePlayerClick} />
                     </div>
                   </div>
               )}

@@ -12,9 +12,10 @@ interface LeaderboardViewProps {
   schedule?: Game[];
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
+  onTeamClick?: (teamId: string) => void;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer }) => {
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick }) => {
   const [mode, setMode] = useState<ViewMode>('Players');
   const [statCategory, setStatCategory] = useState<StatCategory>('Traditional');
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
@@ -103,6 +104,9 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
       if (mode === 'Players') {
           const p = item as Player & { teamName: string, teamId: string };
           onViewPlayer(p, p.teamId, p.teamName);
+      } else if (mode === 'Teams' && onTeamClick) {
+          const t = item as Team;
+          onTeamClick(t.id);
       }
   };
 

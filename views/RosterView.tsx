@@ -1,9 +1,10 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Users } from 'lucide-react';
-import { Team, Player } from '../types';
+import { Team, Player, Game } from '../types';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs } from '../components/roster/RosterTabs';
+import { TeamGameLog } from '../components/roster/TeamGameLog';
 
 interface RosterViewProps {
   allTeams: Team[];
@@ -11,11 +12,14 @@ interface RosterViewProps {
   initialTeamId?: string | null;
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
+  schedule?: Game[];
+  onViewGameResult?: (result: any) => void;
+  userId?: string;
 }
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
-  const [tab, setTab] = useState<'roster' | 'stats' | 'shooting'>('roster');
+  const [tab, setTab] = useState<'roster' | 'records'>('roster');
 
   useEffect(() => { if (initialTeamId) setSelectedTeamId(initialTeamId); }, [initialTeamId]);
 
@@ -36,13 +40,24 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
           <RosterTabs activeTab={tab} onTabChange={setTab} />
       </div>
 
-      {/* Grid — fills remaining space */}
+      {/* Content */}
       <div className="flex-1 min-h-0 overflow-hidden">
-          <RosterGrid
-              team={selectedTeam}
-              tab={tab}
-              onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
-          />
+          {tab === 'roster' && (
+              <RosterGrid
+                  team={selectedTeam}
+                  tab="roster"
+                  onPlayerClick={(p) => onViewPlayer(p, selectedTeam.id, selectedTeam.name)}
+              />
+          )}
+          {tab === 'records' && onViewGameResult && (
+              <TeamGameLog
+                  team={selectedTeam}
+                  schedule={schedule}
+                  allTeams={allTeams}
+                  onViewGameResult={onViewGameResult}
+                  userId={userId}
+              />
+          )}
       </div>
     </div>
   );

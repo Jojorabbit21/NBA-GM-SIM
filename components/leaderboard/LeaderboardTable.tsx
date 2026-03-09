@@ -244,7 +244,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                     const stickyCellClass = "bg-slate-900 group-hover:bg-slate-800 transition-colors z-30";
 
                     return (
-                        <TableRow key={mode === 'Players' ? item.id : item.id} onClick={() => onRowClick(item)} className="group h-10">
+                        <TableRow key={mode === 'Players' ? item.id : item.id} className="group h-10">
                             {visibleColumns.map((col, idx) => {
                                 const isLastSticky = (visibleColumns[idx+1] && visibleColumns[idx+1].stickyLeft === undefined) || !visibleColumns[idx+1];
                                 const style = getStickyStyle(col, isLastSticky);
@@ -263,7 +263,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                         cellContent = (
                                             <div className="flex items-center gap-3">
                                                 <TeamLogo teamId={p.teamId} size="sm" />
-                                                <span className="text-xs font-semibold text-slate-200 truncate group-hover:text-indigo-300 block">{p.name}</span>
+                                                <span onClick={() => onRowClick(item)} className="text-xs font-semibold text-slate-200 truncate hover:text-indigo-300 cursor-pointer block">{p.name}</span>
                                             </div>
                                         );
                                     }
@@ -347,7 +347,7 @@ export const LeaderboardTable: React.FC<LeaderboardTableProps> = ({
                                         cellContent = (
                                             <div className="flex items-center gap-3">
                                                 <TeamLogo teamId={t.id} size="sm" />
-                                                <span className="text-xs font-semibold text-slate-200 uppercase truncate">{t.name}</span>
+                                                <span onClick={() => onRowClick(item)} className="text-xs font-semibold text-slate-200 uppercase truncate hover:text-indigo-300 cursor-pointer">{t.name}</span>
                                             </div>
                                         );
                                     }
