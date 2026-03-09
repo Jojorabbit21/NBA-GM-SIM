@@ -38,6 +38,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     // --- Flags & Loading ---
     const [isSaveLoading, setIsSaveLoading] = useState(true);
+    const [loadingProgress, setLoadingProgress] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
     const hasInitialLoadRef = useRef(false);
     const isResettingRef = useRef(false);
@@ -107,8 +108,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
         const initializeGame = async () => {
             setIsSaveLoading(true);
+            setLoadingProgress(0);
             try {
                 if (isGuestMode) {
+                    setLoadingProgress(100);
                     setTeams(JSON.parse(JSON.stringify(baseData.teams)));
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
                     setIsSaveLoading(false);
@@ -123,13 +126,17 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 }
 
                 // Load Data
+                setLoadingProgress(10);
                 const checkpoint = await loadCheckpoint(userId);
 
                 if (checkpoint && checkpoint.team_id) {
                     console.log(`📂 Found Save: ${checkpoint.team_id} @ ${checkpoint.sim_date}`);
+                    setLoadingProgress(20);
                     const history = await loadUserHistory(userId);
+                    setLoadingProgress(50);
                     const playoffState = await loadPlayoffState(userId, checkpoint.team_id);
                     const rawPlayoffResults = playoffState ? await loadPlayoffGameResults(userId) : [];
+                    setLoadingProgress(65);
                     // user_playoffs_results 테이블에 is_playoff 컬럼이 없으므로 로드 시 태그
                     const playoffResults = rawPlayoffResults.map((r: any) => ({ ...r, is_playoff: true }));
                     const allGameResults = [...history.games, ...playoffResults];
@@ -154,6 +161,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         }
                     }
 
+                    setLoadingProgress(70);
                     const replayedState = replayGameState(
                         teamsForReplay,
                         baseData.schedule,
@@ -161,6 +169,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         allGameResults,
                         checkpoint.sim_date
                     );
+                    setLoadingProgress(90);
 
                     // [NEW] Apply Saved Roster Condition & Injury State
                     let loadedTeams = replayedState.teams;
@@ -245,9 +254,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         details: tx.details
                     })).reverse());
 
+                    setLoadingProgress(100);
                     hasInitialLoadRef.current = true;
                 } else {
                     console.log("🆕 New Game Started");
+                    setLoadingProgress(100);
                     setTeams(JSON.parse(JSON.stringify(baseData.teams)));
                     setSchedule(JSON.parse(JSON.stringify(baseData.schedule)));
                     hasInitialLoadRef.current = true; // 재진입 방지 (baseData 재조회 시 중복 실행 차단)
@@ -503,6 +514,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         
         isBaseDataLoading,
         isSaveLoading,
+        loadingProgress,
         isSaving,
         
         handleSelectTeam,

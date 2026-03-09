@@ -172,8 +172,8 @@ const App: React.FC = () => {
     if (authLoading) return <FullScreenLoader message="잠시만 기다려주세요..." />;
     // 2. 미로그인: 인증 화면 (랜덤 메세지가 뜨지 않도록 isSaveLoading보다 먼저)
     if (!session && !isGuestMode) return <AuthView onGuestLogin={() => setIsGuestMode(true)} />;
-    // 3. 로그인 후 게임 데이터 로딩: 스켈레톤 UI
-    if (gameData.isSaveLoading) return <SkeletonLoader />;
+    // 3. 로그인 후 게임 데이터 로딩: 스켈레톤 UI + 프로그레스
+    if (gameData.isSaveLoading) return <SkeletonLoader progress={gameData.loadingProgress} />;
     if (!gameData.myTeamId) {
         // 팀 선택 처리 중(await 대기)이면 로더
         if ((view as string) === 'Onboarding' || (view as string) === 'DraftRoom' || (view as string) === 'DraftLottery') return <FullScreenLoader message="잠시만 기다려주세요..." />;
