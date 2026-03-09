@@ -113,12 +113,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         <span>로스터</span>
                     </button>
                     <button
-                        onClick={() => setActiveTab('records')}
-                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'records' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
-                    >
-                        <span>기록</span>
-                    </button>
-                    <button
                         onClick={() => setActiveTab('opponent')}
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black oswald tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
