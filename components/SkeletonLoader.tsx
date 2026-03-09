@@ -23,7 +23,7 @@ function getLastTeamTheme() {
     if (!teamId) return null;
     const teamStatic = TEAM_DATA[teamId];
     if (!teamStatic) return null;
-    return { theme: getTeamTheme(teamId, teamStatic.colors), accent: teamStatic.colors?.primary ?? '#6366f1' };
+    return getTeamTheme(teamId, teamStatic.colors);
 }
 
 interface SkeletonLoaderProps {
@@ -31,9 +31,7 @@ interface SkeletonLoaderProps {
 }
 
 const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
-    const teamData = getLastTeamTheme();
-    const theme = teamData?.theme ?? null;
-    const accentColor = teamData?.accent ?? '#6366f1';
+    const theme = getLastTeamTheme();
 
     return (
         <>
@@ -139,11 +137,10 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
                             {/* Progress Bar */}
                             <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full rounded-full transition-all duration-500 ease-out"
+                                    className="h-full rounded-full transition-all duration-500 ease-out bg-emerald-500"
                                     style={{
                                         width: `${progress}%`,
-                                        backgroundColor: accentColor,
-                                        boxShadow: `0 0 12px ${accentColor}60`,
+                                        boxShadow: '0 0 12px rgba(16,185,129,0.4)',
                                     }}
                                 />
                             </div>
