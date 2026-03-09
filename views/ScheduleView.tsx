@@ -255,13 +255,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
       if (el) el.scrollBy({ left: direction * 200, behavior: 'smooth' });
   };
 
-  const getRoundLabel = (round: number) => {
-      switch (round) {
-          case 1: return '1라운드';
-          case 2: return '컨퍼런스 세미파이널';
-          case 3: return '컨퍼런스 파이널';
-          case 4: return 'NBA 파이널';
-          default: return `라운드 ${round}`;
+  const getSeriesLabel = (series: PlayoffSeries) => {
+      const conf = series.conference === 'East' ? '동부' : series.conference === 'West' ? '서부' : '';
+      switch (series.round) {
+          case 0:
+              if (series.id.includes('PI_7v8')) return `${conf} 컨퍼런스 플레이-인 7시드 결정전`;
+              if (series.id.includes('PI_9v10')) return `${conf} 컨퍼런스 플레이-인 1라운드`;
+              if (series.id.includes('PI_8th')) return `${conf} 컨퍼런스 플레이-인 8시드 결정전`;
+              return `${conf} 컨퍼런스 플레이-인`;
+          case 1: return `${conf} 컨퍼런스 1라운드`;
+          case 2: return `${conf} 컨퍼런스 2라운드`;
+          case 3: return `${conf} 컨퍼런스 파이널`;
+          case 4: return '파이널';
+          default: return `라운드 ${series.round}`;
       }
   };
 
@@ -522,7 +528,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
                         {series && (
                           <div className="px-4 py-2 bg-amber-500/10 border-b border-amber-500/20 flex items-center gap-2">
                             <span className="text-[10px] font-black uppercase tracking-wider text-amber-400">
-                              {getRoundLabel(series.round)}
+                              {getSeriesLabel(series)}
                             </span>
                             <span className="text-[9px] text-amber-500/60">·</span>
                             <span className="text-[10px] font-bold text-amber-500/80">

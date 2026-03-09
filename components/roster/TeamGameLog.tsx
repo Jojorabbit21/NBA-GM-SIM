@@ -62,7 +62,7 @@ type GameRow = {
 
 export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTeams, onViewGameResult, userId }) => {
     const [fetchingGameId, setFetchingGameId] = useState<string | null>(null);
-    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'desc' });
+    const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'date', direction: 'asc' });
 
     const handleSort = (key: string) => {
         setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'desc' ? 'asc' : 'desc' }));
@@ -148,7 +148,7 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     if (c.key === 'fg%') { num += r.stats.fgm; den += r.stats.fga; }
                     else if (c.key === '3p%') { num += r.stats['3pm']; den += r.stats['3pa']; }
                     else if (c.key === 'ft%') { num += r.stats.ftm; den += r.stats.fta; }
-                    else if (c.key === 'ts%') { num += r.stats.pts; den += 2 * (r.stats.fga + 0.44 * r.stats.fta); }
+                    else if (c.key === 'ts%') { if (r.stats.fga > 0) { num += r.stats.pts; den += 2 * (r.stats.fga + 0.44 * r.stats.fta); } }
                 });
                 avg[c.key] = den > 0 ? num / den : 0;
             } else {
@@ -201,12 +201,12 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
         return (
             <TableRow key={row.gameId} className="h-10">
                 {/* 날짜 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle">
-                    <span className="text-xs font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
+                <TableCell className="border-r border-slate-800/30 text-center align-middle text-xs">
+                    <span className="font-medium text-slate-400 tabular-nums">{row.date.slice(5).replace('-', '/')}</span>
                 </TableCell>
                 {/* 구분 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle">
-                    <span className="text-xs font-medium text-slate-400">
+                <TableCell className="border-r border-slate-800/30 text-center align-middle text-xs">
+                    <span className="font-medium text-slate-400">
                         {row.isHome ? 'vs' : '@'}
                     </span>
                 </TableCell>
@@ -220,18 +220,18 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
                     </div>
                 </TableCell>
                 {/* 결과 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle">
-                    <span className={`text-xs font-medium ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                <TableCell className="border-r border-slate-800/30 text-center align-middle text-xs">
+                    <span className={`font-medium ${row.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
                         {row.isWin ? 'W' : 'L'}
                     </span>
                 </TableCell>
                 {/* 스코어 */}
-                <TableCell className="border-r border-slate-800/30 text-center align-middle">
+                <TableCell className="border-r border-slate-800/30 text-center align-middle text-xs">
                     {isFetching ? (
                         <Loader2 size={14} className="animate-spin text-indigo-400 mx-auto" />
                     ) : (
                         <span
-                            className={`text-xs font-medium font-mono tabular-nums cursor-pointer hover:underline ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}
+                            className={`font-medium font-mono tabular-nums cursor-pointer hover:underline ${row.isWin ? 'text-emerald-300' : 'text-red-300'}`}
                             onClick={() => handleGameClick(row.gameId)}
                         >
                             {row.myScore}-{row.oppScore}
@@ -250,8 +250,10 @@ export const TeamGameLog: React.FC<TeamGameLogProps> = ({ team, schedule, allTea
 
     const renderSectionHeader = (label: string) => (
         <tr key={`section-${label}`} className="h-8">
-            <td colSpan={TOTAL_COLS} className="bg-slate-800 border-b border-slate-800/50 pl-4 align-middle">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+            <td colSpan={TOTAL_COLS} className="bg-slate-800 border-b border-slate-800/50 h-8">
+                <div className="flex items-center h-full pl-4">
+                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{label}</span>
+                </div>
             </td>
         </tr>
     );
