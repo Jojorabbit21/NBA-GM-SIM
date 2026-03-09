@@ -160,7 +160,13 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     // 개인 창조력(iso/post) vs 팀 시스템(spacing/driving) 비교
     const heroInd = (maxOf(isoScore) + maxOf(postScore)) / 2;
     const sysInd = (avgOf(spacerScore) + avgOf(driverScore)) / 2;
-    const playStyle = clamp(Math.round(5 + (sysInd - heroInd) * 0.15));
+    let playStyle = clamp(Math.round(5 + (sysInd - heroInd) * 0.15));
+
+    // Elite Playmaker Boost: 엘리트 패서 보유 팀은 시스템 플레이 방향으로 보정
+    // 현실 NBA에서 엘리트 PG(트레이 영, 할리버튼) 보유 팀은 PG 중심 패싱 오펜스 운영
+    const topPassVision = maxOf(p => p.passVision);
+    if (topPassVision >= 88) playStyle = clamp(playStyle + 2);
+    else if (topPassVision >= 82) playStyle = clamp(playStyle + 1);
 
     // insideOut: 인사이드(2) ↔ 아웃사이드(9)
     // 포스트/롤/드라이브 vs 스페이싱/슈팅 비교
