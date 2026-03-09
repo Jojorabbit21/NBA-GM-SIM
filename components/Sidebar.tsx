@@ -10,6 +10,7 @@ import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from './common/TeamLogo';
 import { Dropdown } from './common/Dropdown';
+import { LegalModal } from './LegalModal';
 import { getTeamTheme } from '../utils/teamTheme';
 
 interface SidebarProps {
@@ -106,6 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const teamStatic = team ? TEAM_DATA[team.id] : null;
   const theme = getTeamTheme(team?.id ?? null, teamStatic?.colors ?? null);
 
@@ -168,13 +170,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 <span className="text-xs font-bold">초보자 가이드</span>
               </button>
               <button
-                onClick={() => setIsMenuOpen(false)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <FileText size={15} />
-                <span className="text-xs font-bold">이용약관</span>
-              </button>
-              <button
                 onClick={() => { onNavigate('DraftHistory'); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
               >
@@ -195,6 +190,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               >
                 <RotateCcw size={15} />
                 <span className="text-xs font-bold">데이터 초기화</span>
+              </button>
+              <button
+                onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+              >
+                <FileText size={15} />
+                <span className="text-xs font-bold">이용약관</span>
               </button>
               <button
                 onClick={() => { onLogout(); setIsMenuOpen(false); }}
@@ -347,6 +349,10 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
       </div>
     )}
+    <LegalModal
+      isOpen={showTermsModal}
+      onClose={() => setShowTermsModal(false)}
+    />
     </>
   );
 });

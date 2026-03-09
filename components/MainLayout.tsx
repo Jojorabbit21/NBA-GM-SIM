@@ -1,7 +1,6 @@
 
 import React, { Suspense, useMemo, useState } from 'react';
 import { Sidebar } from './Sidebar';
-import { Footer } from './Footer';
 import { AppView, Team, Game, PlayoffSeries, GameTactics } from '../types';
 import { ContentSkeleton } from './SkeletonLoader';
 import { DashboardHeader } from './dashboard/DashboardHeader';
@@ -158,7 +157,6 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         {children}
                     </Suspense>
                 </div>
-                {!isFullHeightView && !isNoPaddingView && sidebarProps.currentView !== 'Help' && <Footer onNavigate={sidebarProps.onNavigate} />}
             </main>
         </div>
     );
