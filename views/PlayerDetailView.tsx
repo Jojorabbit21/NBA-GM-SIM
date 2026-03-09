@@ -570,7 +570,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     </div>
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율, 헤더 행 공유 ═══ */}
-                    <div className="grid" style={{ gridTemplateColumns: '4fr 6fr', gridTemplateRows: 'auto 1fr' }}>
+                    <div className="grid" style={{ gridTemplateColumns: '3fr 7fr', gridTemplateRows: 'auto 1fr' }}>
 
                         {/* Row 1, Col 1: 샷 차트 헤더 */}
                         <div className="px-6 py-3 bg-slate-700 flex items-center justify-between border-r border-slate-800">
@@ -681,8 +681,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </div>
                         </div>
 
-                        {/* Row 2, Col 2: 최근 경기 본문 */}
-                        <div className="flex flex-col min-h-0 overflow-hidden">
+                        {/* Row 2, Col 2: 최근 경기 본문 — 샷 차트 높이에 맞춰 스크롤 */}
+                        <div className="relative overflow-hidden">
+                            <div className="absolute inset-0 overflow-y-auto">
                             {gameLogLoading && teamId && (
                                 <div className="flex items-center justify-center py-8">
                                     <Loader2 size={16} className="text-slate-500 animate-spin" />
@@ -694,7 +695,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent flex-1 min-h-0" fullHeight={false}>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false}>
                                     <TableHead>
                                         {GAME_LOG_COLS.map((c, i) => (
                                             <TableHeaderCell
@@ -728,6 +729,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                     </TableBody>
                                 </Table>
                             )}
+                            </div>
                         </div>
 
                     </div>
