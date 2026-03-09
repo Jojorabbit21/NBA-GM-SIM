@@ -208,27 +208,19 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const dayCarouselRef = useRef<HTMLDivElement>(null);
 
-  // Unique game days in current month (sorted)
-  const gameDays = useMemo(() => {
-      const days = new Set<number>();
-      leagueGames.forEach(g => days.add(new Date(g.date).getDate()));
-      return Array.from(days).sort((a, b) => a - b);
-  }, [leagueGames]);
+  // All days in current month (1 ~ lastDay)
+  const allDays = useMemo(() => {
+      const totalDays = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+      return Array.from({ length: totalDays }, (_, i) => i + 1);
+  }, [currentDate]);
 
-  // Auto-select day when month changes or gameDays update
+  // Auto-select day when month changes
   useEffect(() => {
-      if (!showLeagueSchedule || gameDays.length === 0) { setSelectedDay(null); return; }
+      if (!showLeagueSchedule || allDays.length === 0) { setSelectedDay(null); return; }
       const simDate = new Date(currentSimDate);
       const inSameMonth = simDate.getFullYear() === currentDate.getFullYear() && simDate.getMonth() === currentDate.getMonth();
-      if (inSameMonth) {
-          const today = simDate.getDate();
-          if (gameDays.includes(today)) { setSelectedDay(today); return; }
-          const nextDay = gameDays.find(d => d >= today);
-          setSelectedDay(nextDay ?? gameDays[gameDays.length - 1]);
-      } else {
-          setSelectedDay(gameDays[0]);
-      }
-  }, [gameDays, currentSimDate, currentDate, showLeagueSchedule]);
+      setSelectedDay(inSameMonth ? simDate.getDate() : 1);
+  }, [allDays, currentSimDate, currentDate, showLeagueSchedule]);
 
   // Auto-scroll carousel to selected day
   useEffect(() => {
@@ -451,7 +443,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
               ref={dayCarouselRef}
               className="flex-1 overflow-x-auto custom-scrollbar-hide flex items-center justify-center gap-1.5 py-2"
             >
-              {gameDays.map(day => {
+              {allDays.map(day => {
                 const y = currentDate.getFullYear();
                 const m = currentDate.getMonth();
                 const ds = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -493,7 +485,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
             <div className="p-4">
               {selectedDay === null || selectedDayGames.length === 0 ? (
                 <div className="flex items-center justify-center py-16 text-slate-500 text-sm font-bold">
-                  {gameDays.length === 0 ? '이번 달에는 경기가 없습니다.' : '선택된 날짜에 경기가 없습니다.'}
+                  오늘은 예정된 경기가 없습니다.
                 </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

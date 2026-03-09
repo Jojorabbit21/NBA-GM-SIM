@@ -307,6 +307,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
     // These are normally computed only in the leaderboard hook, not on the original stats objects.
     const displayStats = useMemo(() => {
         const rawStats = showPlayoffStats ? player.playoffStats! : s;
+        // DEBUG: 정규시즌 vs 플레이오프 원시 데이터 비교
+        console.log('[DEBUG] showPlayoffStats:', showPlayoffStats);
+        console.log('[DEBUG] stats === playoffStats?', player.stats === player.playoffStats);
+        console.log('[DEBUG] stats.g:', player.stats?.g, 'pts:', player.stats?.pts, 'fgm:', player.stats?.fgm);
+        console.log('[DEBUG] playoffStats.g:', player.playoffStats?.g, 'pts:', player.playoffStats?.pts, 'fgm:', player.playoffStats?.fgm);
+        console.log('[DEBUG] rawStats.g:', rawStats?.g, 'pts:', rawStats?.pts, 'fgm:', rawStats?.fgm);
         if (!rawStats || !allTeams || !teamId) return rawStats;
 
         const team = allTeams.find(t => t.id === teamId);
