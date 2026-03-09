@@ -83,7 +83,7 @@ export const loadUserHistory = async (userId: string) => {
             .select('game_id, date, home_team_id, away_team_id, home_score, away_score, box_score, tactics, is_playoff, series_id')
             .eq('user_id', userId).order('date', { ascending: true }),
         supabase.from('user_transactions')
-            .select('id, transaction_id, date, type, team_id, description, details')
+            .select('id, date, type, team_id, description, details')
             .eq('user_id', userId).order('date', { ascending: true })
     ]);
 
@@ -111,7 +111,7 @@ export const countUserData = async (userId: string) => {
 export const loadUserTransactions = async (userId: string) => {
     const { data, error } = await supabase
         .from('user_transactions')
-        .select('id, transaction_id, date, type, team_id, description, details')
+        .select('id, date, type, team_id, description, details')
         .eq('user_id', userId)
         .order('date', { ascending: true });
     if (error) throw error;
@@ -126,8 +126,8 @@ export const writeGameResult = async (result: any) => {
 
 export const writeTransaction = async (userId: string, tx: Transaction) => {
     await supabase.from('user_transactions').insert({
+        id: tx.id,
         user_id: userId,
-        transaction_id: tx.id,
         date: tx.date,
         type: tx.type,
         team_id: tx.teamId,
