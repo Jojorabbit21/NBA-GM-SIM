@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { LogIn, UserPlus, Loader2, AlertCircle } from 'lucide-react';
 import { AuthInput } from '../components/AuthInput';
+import { APP_NAME, APP_YEAR } from '../utils/constants';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 const PASSWORD_REGEX = /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])[A-Za-z\d!@#$%^&*]{6,12}$/;
@@ -92,7 +93,7 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10">
         <div className="text-center mb-10">
           <h1 className="text-2xl font-black text-white leading-tight tracking-tighter uppercase pretendard">
-            Basketball GM<br />Simulator 2025-26
+            {APP_NAME}<br />{APP_YEAR}
           </h1>
         </div>
 

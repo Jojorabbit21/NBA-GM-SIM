@@ -1,6 +1,8 @@
-export const USER_GUIDE_MD = `# BPL GM Simulator 2025-26 운영 매뉴얼
+import { APP_FULL_NAME } from '../../utils/constants';
 
-**BPL GM Simulator 2025-26**에 오신 것을 환영합니다.
+export const USER_GUIDE_MD = `# ${APP_FULL_NAME} 운영 매뉴얼
+
+**${APP_FULL_NAME}**에 오신 것을 환영합니다.
 당신은 프로 농구팀의 전권을 위임받은 **단장(General Manager)**으로 취임했습니다.
 
 시즌 동안 로스터를 구성하고, 전술을 설계하고, 경기를 운영하여 **파이널 우승**을 목표로 팀을 이끌어 주세요.

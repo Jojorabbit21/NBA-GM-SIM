@@ -1,14 +1,16 @@
 
+import { APP_FULL_NAME, APP_NAME } from './constants';
+
 export const TERMS_OF_SERVICE_TITLE = "서비스 이용약관";
 export const PRIVACY_POLICY_TITLE = "개인정보 처리방침";
 export const UPDATE_NOTES_TITLE = "업데이트 노트";
 
 export const TERMS_OF_SERVICE_CONTENT = `
 제1조 (목적)
-본 약관은 BPL GM Simulator 2026(이하 "서비스")이 제공하는 시뮬레이션 게임 서비스의 이용조건 및 절차, 이용자와 서비스 제공자의 권리, 의무 및 책임사항 등을 규정함을 목적으로 합니다.
+본 약관은 ${APP_FULL_NAME}(이하 "서비스")이 제공하는 시뮬레이션 게임 서비스의 이용조건 및 절차, 이용자와 서비스 제공자의 권리, 의무 및 책임사항 등을 규정함을 목적으로 합니다.
 
 제2조 (용어의 정의)
-1. "서비스"란 단말기(PC, 모바일 등)와 상관없이 회원이 이용할 수 있는 BPL GM Simulator 서비스를 의미합니다.
+1. "서비스"란 단말기(PC, 모바일 등)와 상관없이 회원이 이용할 수 있는 ${APP_NAME} 서비스를 의미합니다.
 2. "이용자"란 본 서비스에 접속하여 이 약관에 따라 서비스를 이용하는 회원 및 비회원을 말합니다.
 
 제3조 (저작권 및 면책 조항)
@@ -31,7 +33,7 @@ export const TERMS_OF_SERVICE_CONTENT = `
 
 export const PRIVACY_POLICY_CONTENT = `
 1. 개인정보의 처리 목적
-BPL GM Simulator 2026(이하 "서비스")은 다음의 목적을 위하여 개인정보를 처리합니다. 처리하고 있는 개인정보는 다음의 목적 이외의 용도로는 이용되지 않으며 이용 목적이 변경되는 경우에는 별도의 동의를 받는 등 필요한 조치를 이행할 예정입니다.
+${APP_FULL_NAME}(이하 "서비스")은 다음의 목적을 위하여 개인정보를 처리합니다. 처리하고 있는 개인정보는 다음의 목적 이외의 용도로는 이용되지 않으며 이용 목적이 변경되는 경우에는 별도의 동의를 받는 등 필요한 조치를 이행할 예정입니다.
    - 서비스 제공: 게임 진행 상황 저장(Save), 로스터 관리, 사용자 식별
    - 서비스 개선: 구글 애널리틱스(GA4)를 통한 사용성 분석 및 에러 로그 수집
 
@@ -93,6 +95,6 @@ export const UPDATE_NOTES_CONTENT = `
 - 로스터 UI 업데이트: 샐러리 현황(사치세, 에이프런 구간) 시각화 그래프 추가
 
 [v1.0.0] - 2025.02.01
-- BPL GM Simulator 2026 정식 베타 런칭
+- ${APP_FULL_NAME} 정식 베타 런칭
 - 30개 구단 최신 로스터 및 2025-26 시즌 스케줄 탑재
 `;
