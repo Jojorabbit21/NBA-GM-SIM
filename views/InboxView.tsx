@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight, Crown, Trophy } from 'lucide-react';
-import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, Team, Player, PlayerBoxScore } from '../types';
+import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
@@ -1184,6 +1184,115 @@ const MessageContentRenderer: React.FC<{
                             명예의 전당 보기
                         </button>
                     </div>
+                </div>
+            );
+        }
+
+        case 'FINALS_MVP': {
+            const fm = content as FinalsMvpContent;
+            const gp = fm.stats.gp || 1;
+            const avg = (v: number) => (v / gp).toFixed(1);
+            const pct = (m: number, a: number) => a > 0 ? (m / a * 100).toFixed(1) + '%' : '-';
+
+            return (
+                <div className="space-y-8 max-w-3xl mx-auto">
+                    {/* Header Badge */}
+                    <div className="text-center space-y-2">
+                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30">
+                            <Trophy size={14} className="text-amber-400" />
+                            <span className="text-[11px] font-black text-amber-400 uppercase tracking-[0.2em]">Finals MVP</span>
+                        </div>
+                    </div>
+
+                    {/* Hero Section */}
+                    <div className="relative bg-gradient-to-b from-amber-950/30 via-slate-900/80 to-slate-900 border border-amber-500/20 rounded-3xl p-8 text-center overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.08),transparent_70%)]" />
+                        <div className="relative space-y-5">
+                            <div className="flex justify-center">
+                                <TeamLogo teamId={fm.mvpTeamId} size="lg" />
+                            </div>
+                            <div>
+                                <h2 className="text-3xl font-black text-white tracking-tight">{fm.mvpPlayerName}</h2>
+                                <p className="text-sm font-bold text-amber-400/80 mt-1">{fm.mvpTeamName}</p>
+                            </div>
+
+                            {/* Core Stats Grid */}
+                            <div className="grid grid-cols-5 gap-3 pt-4">
+                                {[
+                                    { label: 'PPG', value: avg(fm.stats.pts) },
+                                    { label: 'RPG', value: avg(fm.stats.reb) },
+                                    { label: 'APG', value: avg(fm.stats.ast) },
+                                    { label: 'FG%', value: pct(fm.stats.fgm, fm.stats.fga) },
+                                    { label: '+/-', value: (fm.stats.plusMinus >= 0 ? '+' : '') + avg(fm.stats.plusMinus) },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-4">
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">{label}</span>
+                                        <span className="text-lg font-black text-white tabular-nums">{value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* News Article Body */}
+                    <div className="space-y-4 px-2">
+                        <p className="text-slate-300 leading-relaxed text-sm">
+                            <span className="font-black text-white">{fm.mvpPlayerName}</span>이(가)&nbsp;
+                            <span className="font-black text-white">{fm.mvpTeamName}</span>을(를) 시리즈 전적&nbsp;
+                            <span className="font-black text-amber-400">{fm.seriesScore}</span>의 우승으로 이끌며&nbsp;
+                            <span className="font-black text-amber-400">2025-26 시즌 파이널 MVP</span>로 선정되었다.
+                        </p>
+                        <p className="text-slate-400 leading-relaxed text-sm">
+                            {fm.mvpPlayerName}은(는) 파이널 {gp}경기 동안 평균 {avg(fm.stats.pts)}득점 {avg(fm.stats.reb)}리바운드 {avg(fm.stats.ast)}어시스트를 기록하며
+                            {' '}{fm.opponentTeamName}을(를) 상대로 압도적인 활약을 펼쳤다.
+                            {fm.stats.p3a > 0 && ` 3점슛 성공률 ${pct(fm.stats.p3m, fm.stats.p3a)}의 효율적인 슈팅도 눈에 띄었다.`}
+                        </p>
+                    </div>
+
+                    {/* Detailed Stats Table */}
+                    <div className="space-y-3">
+                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2">파이널 시리즈 상세 기록</h4>
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <div className="grid grid-cols-4 gap-px bg-slate-800">
+                                {[
+                                    { label: 'GP', value: `${gp}` },
+                                    { label: 'MPG', value: avg(fm.stats.mp) },
+                                    { label: 'PTS', value: avg(fm.stats.pts) },
+                                    { label: 'REB', value: avg(fm.stats.reb) },
+                                    { label: 'AST', value: avg(fm.stats.ast) },
+                                    { label: 'STL', value: avg(fm.stats.stl) },
+                                    { label: 'BLK', value: avg(fm.stats.blk) },
+                                    { label: 'TOV', value: avg(fm.stats.tov) },
+                                    { label: 'FG%', value: pct(fm.stats.fgm, fm.stats.fga) },
+                                    { label: '3P%', value: pct(fm.stats.p3m, fm.stats.p3a) },
+                                    { label: 'FT%', value: pct(fm.stats.ftm, fm.stats.fta) },
+                                    { label: '+/-', value: (fm.stats.plusMinus >= 0 ? '+' : '') + avg(fm.stats.plusMinus) },
+                                ].map(({ label, value }) => (
+                                    <div key={label} className="bg-slate-900 p-3 text-center">
+                                        <span className="text-[9px] font-black text-slate-600 uppercase block">{label}</span>
+                                        <span className="text-xs font-bold text-slate-300 tabular-nums">{value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Runner-up */}
+                    {fm.runnerUp && (() => {
+                        const ruGp = fm.runnerUp.stats.gp || 1;
+                        const ruAvg = (v: number) => (v / ruGp).toFixed(1);
+                        return (
+                            <div className="bg-slate-800/30 border border-slate-700/40 rounded-2xl p-5">
+                                <span className="text-[10px] font-black text-slate-600 uppercase tracking-widest block mb-3">2nd Place</span>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-bold text-slate-400">{fm.runnerUp.playerName}</span>
+                                    <span className="text-xs text-slate-500 tabular-nums">
+                                        {ruAvg(fm.runnerUp.stats.pts)} PPG · {ruAvg(fm.runnerUp.stats.reb)} RPG · {ruAvg(fm.runnerUp.stats.ast)} APG
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             );
         }

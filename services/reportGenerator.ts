@@ -862,3 +862,33 @@ export const aggregateSeriesBoxScores = (
 
     return Array.from(map.values()).sort((a, b) => b.pts - a.pts);
 };
+
+/**
+ * Finals MVP 선정: 우승 팀 선수 중 시리즈 스코어 최고 선수를 반환.
+ * 스코어: PPG×2.5 + RPG×1.2 + APG×1.8 + SPG + BPG×0.8 - TOV×0.8 + TS%×15 + ±/game×0.5
+ */
+export const selectFinalsMvp = (
+    gameResults: { home_team_id: string; away_team_id: string; box_score: any }[],
+    winnerTeamId: string
+): { mvp: SeriesPlayerStat & { score: number }; runnerUp?: SeriesPlayerStat & { score: number } } | null => {
+    const winnerStats = aggregateSeriesBoxScores(gameResults, winnerTeamId);
+    if (winnerStats.length === 0) return null;
+
+    const score = (p: SeriesPlayerStat): number => {
+        const gp = p.gp || 1;
+        const ppg = p.pts / gp, rpg = p.reb / gp, apg = p.ast / gp;
+        const spg = p.stl / gp, bpg = p.blk / gp, tovpg = p.tov / gp;
+        const tsa = 2 * (p.fga + 0.44 * p.fta);
+        const tsPct = tsa > 0 ? p.pts / tsa : 0;
+        const pmPerGame = p.plusMinus / gp;
+        return ppg * 2.5 + rpg * 1.2 + apg * 1.8 + spg + bpg * 0.8 - tovpg * 0.8 + tsPct * 15 + pmPerGame * 0.5;
+    };
+
+    const scored = winnerStats.map(p => ({ ...p, score: score(p) }));
+    scored.sort((a, b) => b.score - a.score);
+
+    return {
+        mvp: scored[0],
+        runnerUp: scored.length > 1 ? scored[1] : undefined,
+    };
+};
