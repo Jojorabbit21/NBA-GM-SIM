@@ -7,29 +7,29 @@ import { TeamLogo } from './common/TeamLogo';
 export const getOvrBadgeStyle = (ovr: number) => {
   const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
 
-  // 97+ - Generational (White-Gold Plasma + Dual Glow)
-  if (ovr >= 97) return baseClass + 'bg-gradient-to-br from-white via-amber-200 to-yellow-500 text-yellow-900 shadow-[0_0_20px_rgba(253,224,71,0.8),0_0_40px_rgba(253,224,71,0.4)] border border-white/70 ring-1 ring-yellow-300/60';
+  // 97+ - Generational (White-Violet Plasma + Dual Glow)
+  if (ovr >= 97) return baseClass + 'bg-gradient-to-br from-white via-fuchsia-300 to-violet-600 text-purple-950 shadow-[0_0_20px_rgba(192,132,252,0.7),0_0_40px_rgba(232,121,249,0.4)] border border-white/70 ring-1 ring-fuchsia-300/60';
 
-  // 94-96 - Superstar (Molten Gold)
-  if (ovr >= 94) return baseClass + 'bg-gradient-to-br from-amber-300 via-amber-500 to-orange-600 text-white shadow-[0_0_14px_rgba(251,191,36,0.7)] border border-amber-200/50';
+  // 94-96 - Superstar (Deep Violet)
+  if (ovr >= 94) return baseClass + 'bg-gradient-to-br from-violet-400 via-purple-600 to-purple-900 text-white shadow-[0_0_14px_rgba(139,92,246,0.6)] border border-violet-400/50';
 
-  // 91-93 - All-NBA (Volcanic)
-  if (ovr >= 91) return baseClass + 'bg-gradient-to-br from-orange-400 via-red-500 to-rose-600 text-white shadow-[0_0_12px_rgba(249,115,22,0.5)] border border-orange-400/50';
+  // 91-93 - All-NBA (Fuchsia/Magenta)
+  if (ovr >= 91) return baseClass + 'bg-gradient-to-br from-fuchsia-400 via-fuchsia-600 to-fuchsia-800 text-white shadow-[0_0_10px_rgba(232,121,249,0.5)] border border-fuchsia-400/40';
 
-  // 88-90 - All-Star (Electric Violet)
-  if (ovr >= 88) return baseClass + 'bg-gradient-to-br from-violet-400 via-purple-600 to-fuchsia-700 text-white shadow-[0_0_10px_rgba(139,92,246,0.5)] border border-violet-400/40';
+  // 88-90 - All-Star (Pink)
+  if (ovr >= 88) return baseClass + 'bg-gradient-to-br from-pink-400 via-pink-600 to-pink-800 text-white shadow-[0_0_10px_rgba(244,114,182,0.4)] border border-pink-400/40';
 
-  // 85-87 - Starter+ (Electric Cyan)
-  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-cyan-400 via-cyan-600 to-sky-700 text-white shadow-[0_0_10px_rgba(34,211,238,0.4)] border border-cyan-400/40';
+  // 85-87 - Starter+ (Rose)
+  if (ovr >= 85) return baseClass + 'bg-gradient-to-br from-rose-400 via-rose-600 to-rose-800 text-white shadow-rose-500/30 border border-rose-400/40';
 
-  // 82-84 - Starter (Deep Teal)
-  if (ovr >= 82) return baseClass + 'bg-gradient-to-br from-teal-400 via-teal-600 to-emerald-800 text-white shadow-teal-500/30 border border-teal-400/40';
+  // 82-84 - Starter (Red)
+  if (ovr >= 82) return baseClass + 'bg-gradient-to-br from-red-400 via-red-600 to-red-800 text-white shadow-red-500/30 border border-red-400/40';
 
-  // 79-81 - Rotation (Indigo - Brand Color)
-  if (ovr >= 79) return baseClass + 'bg-gradient-to-br from-indigo-400 via-indigo-600 to-blue-800 text-white shadow-indigo-500/30 border border-indigo-400/30';
+  // 79-81 - Rotation (Orange)
+  if (ovr >= 79) return baseClass + 'bg-gradient-to-br from-orange-400 via-orange-600 to-orange-800 text-white shadow-orange-600/30 border border-orange-400/30';
 
-  // 76-78 - Bench (Steel Grey)
-  if (ovr >= 76) return baseClass + 'bg-gradient-to-br from-slate-400 via-slate-500 to-slate-700 text-white shadow-slate-600/20 border border-slate-400/30';
+  // 76-78 - Bench (Amber)
+  if (ovr >= 76) return baseClass + 'bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-900 text-white shadow-amber-700/20 border border-amber-400/30';
 
   // 73-75 - Depth (Warm Stone)
   if (ovr >= 73) return baseClass + 'bg-gradient-to-br from-stone-400 via-stone-600 to-zinc-700 text-stone-100 shadow-stone-700/20 border border-stone-400/30';

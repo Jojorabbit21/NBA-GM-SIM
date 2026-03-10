@@ -107,14 +107,14 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams, fre
       sortConfig.key === key ? (sortConfig.dir === 'desc' ? ' ▼' : ' ▲') : '';
 
   const ovrColor = (v: number) => {
-      if (v >= 97) return 'text-yellow-300';
-      if (v >= 94) return 'text-amber-400';
-      if (v >= 91) return 'text-orange-400';
-      if (v >= 88) return 'text-violet-400';
-      if (v >= 85) return 'text-cyan-400';
-      if (v >= 82) return 'text-teal-400';
-      if (v >= 79) return 'text-indigo-400';
-      if (v >= 76) return 'text-slate-300';
+      if (v >= 97) return 'text-fuchsia-300';
+      if (v >= 94) return 'text-violet-400';
+      if (v >= 91) return 'text-fuchsia-400';
+      if (v >= 88) return 'text-pink-400';
+      if (v >= 85) return 'text-rose-400';
+      if (v >= 82) return 'text-red-400';
+      if (v >= 79) return 'text-orange-400';
+      if (v >= 76) return 'text-amber-400';
       if (v >= 73) return 'text-stone-400';
       return 'text-slate-500';
   };
