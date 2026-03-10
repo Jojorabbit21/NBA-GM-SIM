@@ -615,7 +615,7 @@ export const buildOwnerLetterContent = (
 };
 
 const ROUND_NAMES: Record<number, string> = {
-    0: 'Play-In', 1: 'Round 1', 2: 'Semis', 3: 'Conf. Finals', 4: 'BPL Finals'
+    0: '플레이인', 1: '1라운드', 2: '세미파이널', 3: '컨퍼런스 파이널', 4: '파이널'
 };
 
 const getOwnerMessageForStage = (result: 'WON' | 'LOST', round: number, isFinalStage: boolean): string => {
@@ -654,7 +654,10 @@ export const buildPlayoffStageContent = (
 ): PlayoffStageReviewContent => {
     const opponentId = series.higherSeedId === team.id ? series.lowerSeedId : series.higherSeedId;
     const opponent = allTeams.find(t => t.id === opponentId);
-    const roundName = ROUND_NAMES[series.round] || `Round ${series.round}`;
+    const confPrefix = series.round < 4 && series.conference !== 'BPL'
+        ? (series.conference === 'East' ? '동부 ' : '서부 ')
+        : '';
+    const roundName = confPrefix + (ROUND_NAMES[series.round] || `${series.round}라운드`);
 
     const isWinner = series.winnerId === team.id;
     const result: 'WON' | 'LOST' = isWinner ? 'WON' : 'LOST';
