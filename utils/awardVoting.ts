@@ -224,7 +224,7 @@ function simulateVoterBallot(
 
     // DPOY: 상위 3명
     const dpoyScored = candidates
-        .map(c => ({ id: c.playerId, score: scoreDPOY(c, voterNoise(seed, voterId, `dpoy_${c.playerId}`)) }))
+        .map(c => ({ id: c.playerId, score: scoreDPOY(c, voterNoise(seed, voterId, `alldef_${c.playerId}`)) }))
         .sort((a, b) => b.score - a.score);
     const dpoyPicks = dpoyScored.slice(0, 3).map(s => s.id);
 

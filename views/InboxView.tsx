@@ -938,81 +938,130 @@ const MessageContentRenderer: React.FC<{
         case 'PLAYOFF_STAGE_REVIEW': {
             const ps = content as PlayoffStageReviewContent;
             const isWin = ps.result === 'WON';
-            const thClass = "py-2.5 px-3 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
-            const tdClass = "py-2.5 px-3 text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60";
+            const myName = ps.myTeamName || '내 팀';
+            const myId = ps.myTeamId || myTeamId;
+            const sps = ps.seriesPlayerStats || [];
 
             return (
                 <div className="space-y-8 max-w-5xl mx-auto">
-                    {/* Series Summary */}
-                    <div className="border border-slate-600 rounded-lg overflow-hidden">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr>
-                                    <th className={`${thClass} text-center w-12`}></th>
-                                    <th className={`${thClass} text-left pl-3`}>상대</th>
-                                    <th className={`${thClass} text-center`}>결과</th>
-                                    <th className={`${thClass} text-center`}>시리즈</th>
-                                    <th className={`${thClass} text-center`}>승</th>
-                                    <th className={`${thClass} text-center`}>패</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr className={isWin ? 'bg-emerald-500/5' : 'bg-red-500/5'}>
-                                    <td className={`${tdClass} text-center`}><TeamLogo teamId={ps.opponentId} size="sm" /></td>
-                                    <td className={`${tdClass} pl-3 font-bold text-slate-200`}>{ps.opponentName}</td>
-                                    <td className={`${tdClass} text-center font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{isWin ? '승리' : '패배'}</td>
-                                    <td className={`${tdClass} text-center font-bold text-white`}>{ps.seriesScore}</td>
-                                    <td className={`${tdClass} text-center text-emerald-400`}>{ps.myWins}</td>
-                                    <td className={`${tdClass} text-center text-red-400`}>{ps.myLosses}</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-
-                    {/* Game Results Table */}
-                    <div>
-                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">경기 결과</h3>
-                        <div className="border border-slate-600 rounded-lg overflow-hidden">
-                            <table className="w-full text-left border-collapse">
-                                <thead>
-                                    <tr>
-                                        <th className={`${thClass} text-center w-14`}>#</th>
-                                        <th className={`${thClass} text-center`}>홈/원정</th>
-                                        <th className={`${thClass} text-center`}>득점</th>
-                                        <th className={`${thClass} text-center`}>실점</th>
-                                        <th className={`${thClass} text-center`}>결과</th>
-                                        <th className={`${thClass} text-center`}>상세</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {ps.games.map((g) => (
-                                        <tr key={g.gameNum} className={`hover:bg-white/5 ${g.gameNum % 2 === 0 ? 'bg-slate-800/30' : ''}`}>
-                                            <td className={`${tdClass} text-center font-bold text-slate-400`}>G{g.gameNum}</td>
-                                            <td className={`${tdClass} text-center`}>{g.isHome ? 'HOME' : 'AWAY'}</td>
-                                            <td className={`${tdClass} text-center font-bold text-white`}>{g.myScore}</td>
-                                            <td className={`${tdClass} text-center text-slate-400`}>{g.oppScore}</td>
-                                            <td className={`${tdClass} text-center font-bold ${g.isWin ? 'text-emerald-400' : 'text-red-400'}`}>{g.isWin ? 'W' : 'L'}</td>
-                                            <td className={`${tdClass} text-center`}>
-                                                {g.gameId ? (
-                                                    <button
-                                                        onClick={() => handleViewDetails(g.gameId!)}
-                                                        disabled={isFetchingResult}
-                                                        className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
-                                                    >
-                                                        {isFetchingResult ? '...' : '박스스코어'}
-                                                    </button>
-                                                ) : (
-                                                    <span className="text-slate-600 text-[10px]">-</span>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                    {/* 1. GameRecap-style Header: Logo | Name | Score – Score | Name | Logo */}
+                    <div className="space-y-2">
+                        <div className="flex items-center gap-3 flex-wrap">
+                            <TeamLogo teamId={myId} size="sm" />
+                            <span className="text-sm font-black uppercase tracking-tight text-slate-300">{myName}</span>
+                            <span className={`text-sm font-black tabular-nums ${isWin ? 'text-white' : 'text-slate-500'}`}>{ps.myWins}</span>
+                            <span className="text-slate-600 font-bold text-lg">–</span>
+                            <span className={`text-sm font-black tabular-nums ${!isWin ? 'text-white' : 'text-slate-500'}`}>{ps.myLosses}</span>
+                            <span className="text-sm font-black uppercase tracking-tight text-slate-300">{ps.opponentName}</span>
+                            <TeamLogo teamId={ps.opponentId} size="sm" />
+                            <span className={`ml-1 text-[11px] font-black uppercase tracking-[0.15em] ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {isWin ? '▲ SERIES WIN' : '▼ SERIES LOSS'}
+                            </span>
                         </div>
+                        <div className="border-t border-slate-700" />
                     </div>
 
-                    {/* Final Status */}
+                    {/* 2. Game Results — one row per game */}
+                    <div className="space-y-2">
+                        {ps.games.map((g) => (
+                            <div key={g.gameNum} className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white/5">
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider w-8">G{g.gameNum}</span>
+                                <span className="text-xs font-bold text-slate-300 min-w-[80px] text-right">{g.isHome ? myName : ps.opponentName}</span>
+                                <span className={`text-xs font-black tabular-nums ${(g.isHome ? g.myScore > g.oppScore : g.oppScore > g.myScore) ? 'text-white' : 'text-slate-500'}`}>
+                                    {g.isHome ? g.myScore : g.oppScore}
+                                </span>
+                                <span className="text-slate-600 font-bold text-xs">–</span>
+                                <span className={`text-xs font-black tabular-nums ${(g.isHome ? g.oppScore > g.myScore : g.myScore > g.oppScore) ? 'text-white' : 'text-slate-500'}`}>
+                                    {g.isHome ? g.oppScore : g.myScore}
+                                </span>
+                                <span className="text-xs font-bold text-slate-300 min-w-[80px]">{g.isHome ? ps.opponentName : myName}</span>
+                                <span className={`text-[10px] font-black ${g.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {g.isWin ? 'W' : 'L'}
+                                </span>
+                                {g.gameId ? (
+                                    <button
+                                        onClick={() => handleViewDetails(g.gameId!)}
+                                        disabled={isFetchingResult}
+                                        className="ml-auto text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50 px-2 py-1 rounded border border-indigo-500/30 hover:border-indigo-400/50"
+                                    >
+                                        {isFetchingResult ? '...' : '기록 보기'}
+                                    </button>
+                                ) : (
+                                    <span className="ml-auto text-slate-600 text-[10px]">-</span>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* 3. Aggregated Series Box Score */}
+                    {sps.length > 0 && (
+                        <div className="space-y-3">
+                            <h4 className="text-sm font-black text-slate-400 px-2 uppercase tracking-widest">시리즈 통합 스탯</h4>
+                            <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                                <Table className="!rounded-none !border-0 !shadow-none">
+                                    <TableHead className="bg-slate-950">
+                                        <TableHeaderCell align="left" className="pl-6 w-40 sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">PLAYER</TableHeaderCell>
+                                        <TableHeaderCell align="center">GP</TableHeaderCell>
+                                        <TableHeaderCell align="center">MIN</TableHeaderCell>
+                                        <TableHeaderCell align="center">PTS</TableHeaderCell>
+                                        <TableHeaderCell align="center">REB</TableHeaderCell>
+                                        <TableHeaderCell align="center">AST</TableHeaderCell>
+                                        <TableHeaderCell align="center">STL</TableHeaderCell>
+                                        <TableHeaderCell align="center">BLK</TableHeaderCell>
+                                        <TableHeaderCell align="center">TOV</TableHeaderCell>
+                                        <TableHeaderCell align="center">FGM</TableHeaderCell>
+                                        <TableHeaderCell align="center">FGA</TableHeaderCell>
+                                        <TableHeaderCell align="center">FG%</TableHeaderCell>
+                                        <TableHeaderCell align="center">3PM</TableHeaderCell>
+                                        <TableHeaderCell align="center">3PA</TableHeaderCell>
+                                        <TableHeaderCell align="center">3P%</TableHeaderCell>
+                                        <TableHeaderCell align="center">FTM</TableHeaderCell>
+                                        <TableHeaderCell align="center">FTA</TableHeaderCell>
+                                        <TableHeaderCell align="center">FT%</TableHeaderCell>
+                                        <TableHeaderCell align="center">PF</TableHeaderCell>
+                                        <TableHeaderCell align="center">+/-</TableHeaderCell>
+                                    </TableHead>
+                                    <TableBody>
+                                        {sps.map((p) => {
+                                            const gp = p.gp || 1;
+                                            const avg = (v: number) => (v / gp).toFixed(1);
+                                            const pct = (m: number, a: number) => a > 0 ? (m / a * 100).toFixed(1) : '-';
+                                            return (
+                                                <TableRow key={p.playerId} className="hover:bg-white/5">
+                                                    <TableCell className="pl-6 sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
+                                                        <span className="text-xs font-bold text-slate-200">{p.playerName}</span>
+                                                    </TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{p.gp}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.mp)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.pts)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.reb)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.ast)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.stl)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.blk)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.tov)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.fgm)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.fga)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{pct(p.fgm, p.fga)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.p3m)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.p3a)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{pct(p.p3m, p.p3a)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.ftm)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.fta)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{pct(p.ftm, p.fta)}</TableCell>
+                                                    <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{avg(p.pf)}</TableCell>
+                                                    <TableCell align="center" className={`text-xs font-mono tabular-nums ${p.plusMinus >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                        {p.plusMinus > 0 ? '+' : ''}{(p.plusMinus / gp).toFixed(1)}
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
+                                    </TableBody>
+                                </Table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* 4. Final Status */}
                     {ps.isFinalStage && ps.finalStatus && (
                         <div className={`text-center py-6 rounded-lg border ${
                             ps.result === 'WON' && ps.round === 4

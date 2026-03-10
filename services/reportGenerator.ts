@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent } from '../types';
+import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
@@ -678,6 +678,8 @@ export const buildPlayoffStageContent = (
     return {
         round: series.round,
         roundName,
+        myTeamId: team.id,
+        myTeamName: team.name,
         opponentId,
         opponentName: opponent?.name || 'Unknown',
         result,
@@ -690,4 +692,67 @@ export const buildPlayoffStageContent = (
         ownerName: TEAM_DATA[team.id]?.owner || "The Ownership Group",
         ownerMessage: getOwnerMessageForStage(result, series.round, isFinalStage),
     };
+};
+
+/**
+ * Aggregate box scores from multiple playoff games into per-player series totals.
+ * gameResults: rows from user_playoffs_results with box_score: { home: PlayerBoxScore[], away: PlayerBoxScore[] }
+ */
+export const aggregateSeriesBoxScores = (
+    gameResults: { home_team_id: string; away_team_id: string; box_score: any }[],
+    myTeamId: string
+): SeriesPlayerStat[] => {
+    const map = new Map<string, SeriesPlayerStat>();
+
+    for (const g of gameResults) {
+        const bs = g.box_score;
+        if (!bs) continue;
+        const isHome = g.home_team_id === myTeamId;
+        const myBox: any[] = isHome ? (bs.home || []) : (bs.away || []);
+
+        for (const p of myBox) {
+            const existing = map.get(p.playerId);
+            if (existing) {
+                existing.gp += 1;
+                existing.mp += p.mp || 0;
+                existing.pts += p.pts || 0;
+                existing.reb += p.reb || 0;
+                existing.ast += p.ast || 0;
+                existing.stl += p.stl || 0;
+                existing.blk += p.blk || 0;
+                existing.tov += p.tov || 0;
+                existing.fgm += p.fgm || 0;
+                existing.fga += p.fga || 0;
+                existing.p3m += p.p3m || 0;
+                existing.p3a += p.p3a || 0;
+                existing.ftm += p.ftm || 0;
+                existing.fta += p.fta || 0;
+                existing.pf += p.pf || 0;
+                existing.plusMinus += p.plusMinus || 0;
+            } else {
+                map.set(p.playerId, {
+                    playerId: p.playerId,
+                    playerName: p.playerName,
+                    gp: 1,
+                    mp: p.mp || 0,
+                    pts: p.pts || 0,
+                    reb: p.reb || 0,
+                    ast: p.ast || 0,
+                    stl: p.stl || 0,
+                    blk: p.blk || 0,
+                    tov: p.tov || 0,
+                    fgm: p.fgm || 0,
+                    fga: p.fga || 0,
+                    p3m: p.p3m || 0,
+                    p3a: p.p3a || 0,
+                    ftm: p.ftm || 0,
+                    fta: p.fta || 0,
+                    pf: p.pf || 0,
+                    plusMinus: p.plusMinus || 0,
+                });
+            }
+        }
+    }
+
+    return Array.from(map.values()).sort((a, b) => b.pts - a.pts);
 };

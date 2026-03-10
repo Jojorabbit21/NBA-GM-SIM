@@ -99,6 +99,21 @@ export const fetchPlayoffGameResult = async (gameId: string, userId: string) => 
     return data;
 };
 
+export const fetchPlayoffSeriesResults = async (seriesId: string, userId: string) => {
+    const { data, error } = await supabase
+        .from('user_playoffs_results')
+        .select('game_id, home_team_id, away_team_id, home_score, away_score, box_score')
+        .eq('series_id', seriesId)
+        .eq('user_id', userId)
+        .order('game_number', { ascending: true });
+
+    if (error) {
+        console.error("❌ Failed to fetch playoff series results:", error);
+        return [];
+    }
+    return data || [];
+};
+
 /**
  * Loads all playoff games for the current user/team.
  * Used to replay state on load.
