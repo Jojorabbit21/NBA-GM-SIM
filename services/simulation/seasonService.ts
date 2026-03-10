@@ -4,6 +4,8 @@ import { simulateCPUTrades } from '../../services/tradeEngine';
 import { runCPUTradeRound } from '../../services/tradeEngine/cpuTradeSimulator';
 import { generateCPUTradeNews } from '../../services/geminiService';
 import { savePlayoffState } from '../../services/playoffService';
+import { runAwardVoting, SeasonAwardsContent } from '../../utils/awardVoting';
+import { sendMessage } from '../../services/messageService';
 
 export const handleSeasonEvents = async (
     teams: Team[],
@@ -12,7 +14,8 @@ export const handleSeasonEvents = async (
     currentSimDate: string,
     myTeamId: string,
     userId: string | undefined,
-    isGuestMode: boolean
+    isGuestMode: boolean,
+    tendencySeed?: string
 ) => {
     let newTransactions: Transaction[] = [];
     let newsItems: string[] = [];
@@ -43,6 +46,13 @@ export const handleSeasonEvents = async (
             const { newGames, updatedSeries: nextSeries } = generateNextPlayoffGames(schedule, updatedSeries, currentSimDate);
             schedule.push(...newGames);
             updatedSeries = nextSeries;
+
+            // ★ 정규시즌 어워드 투표 발송
+            if (!isGuestMode && userId) {
+                const awardResult = runAwardVoting(teams, tendencySeed);
+                await sendMessage(userId, myTeamId, currentSimDate, 'SEASON_AWARDS',
+                    '[공식] 2025-26 정규시즌 어워드 투표 결과', awardResult);
+            }
         }
     }
 
@@ -92,10 +102,12 @@ export const handleSeasonEventsSync = (
     schedule: Game[],
     playoffSeries: PlayoffSeries[],
     currentSimDate: string,
-    myTeamId: string
+    myTeamId: string,
+    tendencySeed?: string
 ) => {
     let newTransactions: Transaction[] = [];
     let updatedSeries = [...playoffSeries];
+    let awardContent: SeasonAwardsContent | null = null;
 
     // 1. Playoffs
     if (updatedSeries.length > 0) {
@@ -115,6 +127,9 @@ export const handleSeasonEventsSync = (
             const { newGames, updatedSeries: nextSeries } = generateNextPlayoffGames(schedule, updatedSeries, currentSimDate);
             schedule.push(...newGames);
             updatedSeries = nextSeries;
+
+            // ★ 정규시즌 어워드 투표 (배치 — sendMessage 생략, 반환)
+            awardContent = runAwardVoting(teams, tendencySeed);
         }
     }
 
@@ -132,5 +147,5 @@ export const handleSeasonEventsSync = (
     playoffSeries.length = 0;
     playoffSeries.push(...updatedSeries);
 
-    return { newTransactions };
+    return { newTransactions, awardContent };
 };

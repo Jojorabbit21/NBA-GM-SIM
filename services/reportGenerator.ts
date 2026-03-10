@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Team, Player, Transaction, PlayoffSeries, Game } from '../types';
+import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
@@ -340,5 +340,125 @@ export const generatePlayoffReport = (team: Team, allTeams: Team[], playoffSerie
         mvp,
         seriesLogs,
         ownerName: TEAM_DATA[team.id]?.owner || "The Ownership Group"
+    };
+};
+
+// --- Inbox Message Content Builders (JSON-serializable) ---
+
+export const buildSeasonReviewContent = (
+    team: Team, allTeams: Team[], transactions: Transaction[], schedule?: Game[]
+): SeasonReviewContent => {
+    const report = generateSeasonReport(team, allTeams, transactions, schedule);
+    const mvpPlayer = report.mvp;
+    const g = mvpPlayer && mvpPlayer.stats.g > 0 ? mvpPlayer.stats.g : 1;
+
+    return {
+        wins: team.wins,
+        losses: team.losses,
+        winPct: report.winPct,
+        winPctStr: report.winPctStr,
+        leagueRank: report.leagueRank,
+        confRank: report.confRank,
+        conference: team.conference || '',
+        isPlayoffBound: report.winPct >= 0.5,
+        teamStats: report.teamStats,
+        leagueRanks: report.leagueRanks,
+        mvp: mvpPlayer ? {
+            id: mvpPlayer.id,
+            name: mvpPlayer.name,
+            position: mvpPlayer.position,
+            age: mvpPlayer.age,
+            ppg: +(mvpPlayer.stats.pts / g).toFixed(1),
+            rpg: +(mvpPlayer.stats.reb / g).toFixed(1),
+            apg: +(mvpPlayer.stats.ast / g).toFixed(1),
+            ovr: calculatePlayerOvr(mvpPlayer),
+        } : null,
+        trades: report.seasonTrades.map(t => ({
+            date: t.date,
+            partnerId: t.details?.partnerTeamId || '',
+            partnerName: t.details?.partnerTeamName || 'Unknown',
+            acquired: (t.details?.acquired || []).map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(allTeams.flatMap(tm => tm.roster).find(r => r.id === p.id) as Player) || 0 })),
+            departed: (t.details?.traded || []).map(p => ({ id: p.id, name: p.name, ovr: calculatePlayerOvr(allTeams.flatMap(tm => tm.roster).find(r => r.id === p.id) as Player) || 0 })),
+        })),
+        ownerMood: report.ownerMood,
+        ownerName: report.ownerName,
+    };
+};
+
+const ROUND_NAMES: Record<number, string> = {
+    0: 'Play-In', 1: 'Round 1', 2: 'Semis', 3: 'Conf. Finals', 4: 'BPL Finals'
+};
+
+const getOwnerMessageForStage = (result: 'WON' | 'LOST', round: number, isFinalStage: boolean): string => {
+    if (result === 'WON' && round === 4) {
+        return "우리가 해냈습니다! 리그 정상에 올랐습니다. 이 기쁨을 온 도시와 함께 나누겠습니다. 역사적인 순간입니다!";
+    }
+    if (result === 'WON') {
+        return "훌륭한 승리입니다. 다음 라운드도 반드시 돌파하겠다는 각오로 준비해주세요. 우리는 아직 끝나지 않았습니다.";
+    }
+    if (round === 4) {
+        return "아쉬운 준우승입니다. 하지만 여기까지 온 것만으로도 대단한 성과입니다. 다음 시즌에는 반드시 우승컵을 들어올립시다.";
+    }
+    if (round >= 3) {
+        return "컨퍼런스 결승까지 왔지만 아쉽게 멈췄습니다. 우승 문턱에서의 경험을 발판으로 삼아야 합니다.";
+    }
+    return "시리즈에서 패배했습니다. 결과를 겸허히 받아들이고, 다음 시즌을 위한 전략을 재정비합시다.";
+};
+
+const getFinalStatus = (result: 'WON' | 'LOST', round: number): { title: string; desc: string } | undefined => {
+    if (result === 'WON' && round === 4) return { title: 'BPL CHAMPIONS', desc: '세계 최고의 자리에 올랐습니다!' };
+    if (result === 'LOST') {
+        if (round === 4) return { title: 'BPL Finalist', desc: '아쉬운 준우승이지만, 위대한 여정이었습니다.' };
+        if (round === 3) return { title: 'Conference Finalist', desc: '컨퍼런스 결승 진출. 우승 문턱에서 멈췄습니다.' };
+        if (round === 2) return { title: 'Semi-Finalist', desc: '컨퍼런스 4강 진출. 다음 시즌이 기대됩니다.' };
+        if (round === 1) return { title: 'Playoff Participant', desc: '플레이오프 1라운드 진출. 소중한 경험을 쌓았습니다.' };
+    }
+    return undefined;
+};
+
+export const buildPlayoffStageContent = (
+    team: Team,
+    allTeams: Team[],
+    series: PlayoffSeries,
+    schedule: Game[],
+    allPlayoffSeries: PlayoffSeries[]
+): PlayoffStageReviewContent => {
+    const opponentId = series.higherSeedId === team.id ? series.lowerSeedId : series.higherSeedId;
+    const opponent = allTeams.find(t => t.id === opponentId);
+    const roundName = ROUND_NAMES[series.round] || `Round ${series.round}`;
+
+    const isWinner = series.winnerId === team.id;
+    const result: 'WON' | 'LOST' = isWinner ? 'WON' : 'LOST';
+    const myWins = series.higherSeedId === team.id ? series.higherSeedWins : series.lowerSeedWins;
+    const myLosses = series.higherSeedId === team.id ? series.lowerSeedWins : series.higherSeedWins;
+
+    const seriesGames = schedule
+        .filter(g => g.seriesId === series.id && g.played)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    const games = seriesGames.map((g, idx) => {
+        const isHome = g.homeTeamId === team.id;
+        const myScore = isHome ? (g.homeScore || 0) : (g.awayScore || 0);
+        const oppScore = isHome ? (g.awayScore || 0) : (g.homeScore || 0);
+        return { gameNum: idx + 1, isHome, myScore, oppScore, isWin: myScore > oppScore };
+    });
+
+    // Is this the final stage? (lost, or won round 4)
+    const isFinalStage = result === 'LOST' || (result === 'WON' && series.round === 4);
+
+    return {
+        round: series.round,
+        roundName,
+        opponentId,
+        opponentName: opponent?.name || 'Unknown',
+        result,
+        seriesScore: `${myWins}-${myLosses}`,
+        myWins,
+        myLosses,
+        games,
+        isFinalStage,
+        finalStatus: isFinalStage ? getFinalStatus(result, series.round) : undefined,
+        ownerName: TEAM_DATA[team.id]?.owner || "The Ownership Group",
+        ownerMessage: getOwnerMessageForStage(result, series.round, isFinalStage),
     };
 };

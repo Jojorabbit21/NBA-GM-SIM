@@ -19,8 +19,6 @@ import { FantasyDraftView } from '../views/FantasyDraftView';
 import { DraftHistoryView } from '../views/DraftHistoryView';
 import { DraftLotteryView } from '../views/DraftLotteryView';
 import { PlayerDetailView } from '../views/PlayerDetailView';
-import { SeasonReviewView } from '../views/SeasonReviewView';
-import { PlayoffReviewView } from '../views/PlayoffReviewView';
 import { HallOfFameView } from '../views/HallOfFameView';
 import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
@@ -331,29 +329,6 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     draftPicks={gameData.draftPicks}
                 />
             );
-        case 'SeasonReview':
-            if (myTeam) {
-                return (
-                    <SeasonReviewView
-                        team={myTeam}
-                        teams={gameData.teams}
-                        transactions={gameData.transactions}
-                    />
-                );
-            }
-            return null;
-        case 'PlayoffReview':
-            if (myTeam) {
-                return (
-                    <PlayoffReviewView
-                        team={myTeam}
-                        teams={gameData.teams}
-                        playoffSeries={gameData.playoffSeries}
-                        schedule={gameData.schedule}
-                    />
-                );
-            }
-            return null;
         default:
             return null;
     }
