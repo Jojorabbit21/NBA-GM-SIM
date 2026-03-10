@@ -11,10 +11,10 @@ import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
-import { HofQualificationContent } from '../types/message';
+import { HofQualificationContent, FinalsMvpContent } from '../types/message';
 
 export const useSimulation = (
     teams: Team[],
@@ -195,6 +195,32 @@ export const useSimulation = (
                         };
                         const hofTitle = content.result === 'WON' ? '[명예의 전당] 챔피언십 우승' : '[명예의 전당] 파이널 준우승';
                         await sendMessage(userId, myTeamId, date, 'HOF_QUALIFICATION', hofTitle, hofContent);
+                    }
+                }
+            }
+            // 파이널 MVP 뉴스 기사 발송
+            if (series.round === 4 && series.winnerId && userId && userId !== 'guest') {
+                const seriesResultsForMvp = await fetchPlayoffSeriesResults(series.id, userId);
+                if (seriesResultsForMvp.length > 0) {
+                    const mvpResult = selectFinalsMvp(seriesResultsForMvp, series.winnerId);
+                    if (mvpResult) {
+                        const winnerTeam = newTeams.find(t => t.id === series.winnerId);
+                        const loserId = series.winnerId === series.higherSeedId ? series.lowerSeedId : series.higherSeedId;
+                        const loserTeam = newTeams.find(t => t.id === loserId);
+                        const winnerWins = series.winnerId === series.higherSeedId ? series.higherSeedWins : series.lowerSeedWins;
+                        const loserWins = series.winnerId === series.higherSeedId ? series.lowerSeedWins : series.higherSeedWins;
+                        const fmvpContent: FinalsMvpContent = {
+                            mvpPlayerId: mvpResult.mvp.playerId,
+                            mvpPlayerName: mvpResult.mvp.playerName,
+                            mvpTeamId: series.winnerId,
+                            mvpTeamName: winnerTeam?.name || 'Unknown',
+                            opponentTeamId: loserId,
+                            opponentTeamName: loserTeam?.name || 'Unknown',
+                            seriesScore: `${winnerWins}-${loserWins}`,
+                            stats: mvpResult.mvp,
+                            runnerUp: mvpResult.runnerUp ? { playerId: mvpResult.runnerUp.playerId, playerName: mvpResult.runnerUp.playerName, stats: mvpResult.runnerUp } : undefined,
+                        };
+                        await sendMessage(userId, myTeamId, date, 'FINALS_MVP', `[속보] 파이널 MVP 발표`, fmvpContent);
                     }
                 }
             }
