@@ -137,7 +137,7 @@ const SkeletonLoader: React.FC<SkeletonLoaderProps> = ({ progress = 0 }) => {
                             {/* Progress Bar */}
                             <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
                                 <div
-                                    className="h-full rounded-full transition-all duration-500 ease-out bg-emerald-500"
+                                    className="h-full rounded-full bg-emerald-500"
                                     style={{
                                         width: `${progress}%`,
                                         boxShadow: '0 0 12px rgba(16,185,129,0.4)',
