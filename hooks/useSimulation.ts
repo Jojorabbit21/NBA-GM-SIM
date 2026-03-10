@@ -11,7 +11,7 @@ import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent, FinalsMvpContent } from '../types/message';
@@ -189,9 +189,18 @@ export const useSimulation = (
                     const hofResult = await submitHallOfFameEntry(userId, myTeamId, hofId, totalScore, breakdown, roster, email);
                     if (hofResult.success || hofResult.alreadySubmitted) {
                         onHofSubmitted?.();
+                        const totalGames = myTeam.wins + myTeam.losses || 82;
                         const hofContent: HofQualificationContent = {
-                            result: content.result, round: 4, teamName: myTeam.name, totalScore,
+                            result: content.result, round: 4,
+                            teamId: myTeamId,
+                            teamName: myTeam.name, totalScore,
                             breakdown: { season_score: breakdown.season_score, ptDiff_score: breakdown.ptDiff_score, stat_score: breakdown.stat_score, playoff_score: breakdown.playoff_score },
+                            conference: myTeam.conference || '',
+                            wins: myTeam.wins,
+                            losses: myTeam.losses,
+                            pct: (myTeam.wins / totalGames).toFixed(3).replace(/^0/, ''),
+                            allTeamsStats: computeAllTeamsStats(newTeams, newSchedule),
+                            rosterStats: buildRosterStats(myTeam),
                         };
                         const hofTitle = content.result === 'WON' ? '[명예의 전당] 챔피언십 우승' : '[명예의 전당] 파이널 준우승';
                         await sendMessage(userId, myTeamId, date, 'HOF_QUALIFICATION', hofTitle, hofContent);
