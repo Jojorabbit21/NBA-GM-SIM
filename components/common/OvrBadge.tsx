@@ -18,7 +18,7 @@ export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', classNam
     };
 
     let colorStyles = "";
-    if (value >= 97)      colorStyles = 'bg-gradient-to-br from-white via-fuchsia-300 to-violet-600 text-purple-950 shadow-[0_0_20px_rgba(192,132,252,0.7),0_0_40px_rgba(232,121,249,0.4)] border border-white/70 ring-1 ring-fuchsia-300/60';
+    if (value >= 97)      colorStyles = 'bg-gradient-to-br from-fuchsia-200 via-fuchsia-400 to-violet-700 text-white shadow-[0_0_20px_rgba(192,132,252,0.7),0_0_40px_rgba(232,121,249,0.4)] border border-fuchsia-200/70 ring-1 ring-fuchsia-300/60';
     else if (value >= 94)  colorStyles = 'bg-gradient-to-br from-violet-400 via-purple-600 to-purple-900 text-white shadow-[0_0_14px_rgba(139,92,246,0.6)] border border-violet-400/50';
     else if (value >= 91)  colorStyles = 'bg-gradient-to-br from-fuchsia-400 via-fuchsia-600 to-fuchsia-800 text-white shadow-[0_0_10px_rgba(232,121,249,0.5)] border border-fuchsia-400/40';
     else if (value >= 88)  colorStyles = 'bg-gradient-to-br from-pink-400 via-pink-600 to-pink-800 text-white shadow-[0_0_10px_rgba(244,114,182,0.4)] border border-pink-400/40';
