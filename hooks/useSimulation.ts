@@ -6,12 +6,12 @@ import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
 import { saveGameResults } from '../services/queries';
-import { savePlayoffGameResult } from '../services/playoffService';
+import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, aggregateSeriesBoxScores } from '../services/reportGenerator';
 
 export const useSimulation = (
     teams: Team[],
@@ -158,6 +158,13 @@ export const useSimulation = (
 
         for (const series of newlyFinished) {
             const content = buildPlayoffStageContent(myTeam, newTeams, series, newSchedule, newPlayoffSeries);
+            // Fetch series game results and aggregate box scores
+            if (userId && userId !== 'guest') {
+                const seriesResults = await fetchPlayoffSeriesResults(series.id, userId);
+                if (seriesResults.length > 0) {
+                    content.seriesPlayerStats = aggregateSeriesBoxScores(seriesResults, myTeamId);
+                }
+            }
             const roundName = content.roundName;
             await sendMessage(userId, myTeamId, date, 'PLAYOFF_STAGE_REVIEW', `[플레이오프 보고서] ${roundName}`, content);
             refreshUnreadCount();

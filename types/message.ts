@@ -130,9 +130,32 @@ export interface OwnerLetterContent {
     losses: number;
 }
 
+export interface SeriesPlayerStat {
+    playerId: string;
+    playerName: string;
+    gp: number;
+    mp: number;
+    pts: number;
+    reb: number;
+    ast: number;
+    stl: number;
+    blk: number;
+    tov: number;
+    fgm: number;
+    fga: number;
+    p3m: number;
+    p3a: number;
+    ftm: number;
+    fta: number;
+    pf: number;
+    plusMinus: number;
+}
+
 export interface PlayoffStageReviewContent {
     round: number;
     roundName: string;
+    myTeamId: string;
+    myTeamName: string;
     opponentId: string;
     opponentName: string;
     result: 'WON' | 'LOST';
@@ -144,4 +167,5 @@ export interface PlayoffStageReviewContent {
     finalStatus?: { title: string; desc: string };
     ownerName: string;
     ownerMessage: string;
+    seriesPlayerStats?: SeriesPlayerStat[];
 }
