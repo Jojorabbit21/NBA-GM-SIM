@@ -975,7 +975,7 @@ const PlayoffChampionRenderer: React.FC<{
         <div className="space-y-10 max-w-5xl mx-auto">
             {/* Trophy Header */}
             <div className="text-center space-y-4">
-                <img src="/images/fmvp.png" alt="Playoff Champion" className="mx-auto h-40 object-contain" />
+                <img src="/images/final.png" alt="Playoff Champion" className="mx-auto h-40 object-contain" />
                 <h2 className="text-3xl font-black text-white tracking-tight">
                     {TEAM_DATA[championTeamId]?.city ?? ''} {pc.championTeamName}
                 </h2>
