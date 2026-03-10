@@ -106,3 +106,36 @@ export const sendMessage = async (
     }
     return true;
 };
+
+/**
+ * Bulk insert messages (for batch season simulation)
+ * Inserts in chunks of 50 to avoid payload size limits.
+ */
+export const bulkSendMessages = async (
+    messages: { user_id: string; team_id: string; date: string; type: MessageType; title: string; content: any }[]
+): Promise<boolean> => {
+    if (messages.length === 0) return true;
+
+    const CHUNK = 50;
+    for (let i = 0; i < messages.length; i += CHUNK) {
+        const chunk = messages.slice(i, i + CHUNK).map(m => ({
+            user_id: m.user_id,
+            team_id: m.team_id,
+            date: m.date,
+            type: m.type,
+            title: m.title,
+            content: m.content,
+            is_read: false,
+        }));
+
+        const { error } = await supabase
+            .from('user_messages')
+            .insert(chunk);
+
+        if (error) {
+            console.error("Error bulk inserting messages:", error);
+            return false;
+        }
+    }
+    return true;
+};
