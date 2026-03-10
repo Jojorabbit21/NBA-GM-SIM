@@ -91,6 +91,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
             <div className="fixed inset-0 z-[100] bg-slate-950">
                 <HallOfFameView
                     currentUserId={session?.user?.id}
+                    currentHofId={gameData.hofId}
                     onBack={() => setView(previousViewRef.current)}
                 />
             </div>
