@@ -1380,33 +1380,28 @@ const MessageContentRenderer: React.FC<{
             return (
                 <div className="space-y-8 max-w-5xl mx-auto">
                     {/* Hero Section */}
-                    <div className="relative bg-gradient-to-b from-amber-950/30 via-slate-900/80 to-slate-900 border border-amber-500/20 rounded-3xl p-8 text-center overflow-hidden">
-                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.08),transparent_70%)]" />
-                        <div className="relative space-y-5">
-                            <div className="flex justify-center">
-                                <TeamLogo teamId={fm.mvpTeamId} size="lg" />
-                            </div>
-                            <div>
-                                <h2 className="text-3xl font-black text-white tracking-tight">{fm.mvpPlayerName}</h2>
-                                <p className="text-sm font-bold text-amber-400/80 mt-1">{fm.mvpTeamName}</p>
-                            </div>
+                    <div className="text-center space-y-4">
+                        <img src="/images/fmvp.png" alt="Finals MVP Trophy" className="mx-auto h-40 object-contain" />
+                        <h2 className="text-3xl font-black text-white tracking-tight">{fm.mvpPlayerName}</h2>
+                        <p className="text-sm font-bold text-slate-400">
+                            {TEAM_DATA[fm.mvpTeamId]?.city ?? ''} {fm.mvpTeamName}&nbsp;&nbsp;|&nbsp;&nbsp;시리즈 {fm.seriesScore}
+                        </p>
+                    </div>
 
-                            {/* Core Stats Grid */}
-                            <div className="grid grid-cols-5 gap-3 pt-4">
-                                {[
-                                    { label: 'PPG', value: mvpAvg(fm.stats.pts) },
-                                    { label: 'RPG', value: mvpAvg(fm.stats.reb) },
-                                    { label: 'APG', value: mvpAvg(fm.stats.ast) },
-                                    { label: 'FG%', value: mvpPct(fm.stats.fgm, fm.stats.fga) },
-                                    { label: '+/-', value: (fm.stats.plusMinus >= 0 ? '+' : '') + mvpAvg(fm.stats.plusMinus) },
-                                ].map(({ label, value }) => (
-                                    <div key={label} className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-4">
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">{label}</span>
-                                        <span className="text-lg font-black text-white tabular-nums">{value}</span>
-                                    </div>
-                                ))}
+                    {/* Core Stats Grid */}
+                    <div className="grid grid-cols-5 gap-3">
+                        {[
+                            { label: 'PPG', value: mvpAvg(fm.stats.pts) },
+                            { label: 'RPG', value: mvpAvg(fm.stats.reb) },
+                            { label: 'APG', value: mvpAvg(fm.stats.ast) },
+                            { label: 'FG%', value: mvpPct(fm.stats.fgm, fm.stats.fga) },
+                            { label: '+/-', value: (fm.stats.plusMinus >= 0 ? '+' : '') + mvpAvg(fm.stats.plusMinus) },
+                        ].map(({ label, value }) => (
+                            <div key={label} className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-4 text-center">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">{label}</span>
+                                <span className="text-lg font-black text-white tabular-nums">{value}</span>
                             </div>
-                        </div>
+                        ))}
                     </div>
 
                     {/* News Article Body */}
@@ -1566,8 +1561,47 @@ const AwardsReportViewer: React.FC<{
     const thClass = "py-2.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
     const tdClass = "py-2 px-2 text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60";
 
+    const mvpWinner = content.mvpRanking[0] ?? null;
+    const dpoyWinner = content.dpoyRanking[0] ?? null;
+
     return (
         <div className="space-y-10 max-w-6xl mx-auto">
+            {/* ── Award Winner Heroes ── */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {mvpWinner && (
+                    <div className="text-center space-y-3">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">MVP 2025-26</p>
+                        <img src="/images/mvp.png" alt="MVP Trophy" className="mx-auto h-32 object-contain" />
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="text-lg font-black text-white">{mvpWinner.playerName}</span>
+                            <OvrBadge value={mvpWinner.ovr} size="sm" />
+                        </div>
+                        <div className="flex items-center justify-center gap-2">
+                            <TeamLogo teamId={mvpWinner.teamId} size="xs" />
+                            <span className="text-xs font-bold text-slate-400">
+                                {TEAM_DATA[mvpWinner.teamId]?.city ?? ''} {TEAM_DATA[mvpWinner.teamId]?.name ?? ''}
+                            </span>
+                        </div>
+                    </div>
+                )}
+                {dpoyWinner && (
+                    <div className="text-center space-y-3">
+                        <p className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">DPOY 2025-26</p>
+                        <img src="/images/dpoy.png" alt="DPOY Trophy" className="mx-auto h-32 object-contain" />
+                        <div className="flex items-center justify-center gap-2">
+                            <span className="text-lg font-black text-white">{dpoyWinner.playerName}</span>
+                            <OvrBadge value={dpoyWinner.ovr} size="sm" />
+                        </div>
+                        <div className="flex items-center justify-center gap-2">
+                            <TeamLogo teamId={dpoyWinner.teamId} size="xs" />
+                            <span className="text-xs font-bold text-slate-400">
+                                {TEAM_DATA[dpoyWinner.teamId]?.city ?? ''} {TEAM_DATA[dpoyWinner.teamId]?.name ?? ''}
+                            </span>
+                        </div>
+                    </div>
+                )}
+            </div>
+
             {/* ── MVP 투표 결과 ── */}
             {content.mvpRanking.length > 0 && (
                 <div>
