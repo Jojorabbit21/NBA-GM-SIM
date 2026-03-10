@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
-import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, Team, Player, PlayerBoxScore } from '../types';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight, Crown, Trophy } from 'lucide-react';
+import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessages, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
@@ -20,10 +20,11 @@ interface InboxViewProps {
   onUpdateUnreadCount: () => void;
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
-  onViewGameResult: (result: any) => void; // [New] Prop to trigger view switch
+  onViewGameResult: (result: any) => void;
+  onNavigateToHof: () => void;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
@@ -196,6 +197,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                                 onPlayerClick={handlePlayerClick}
                                 onViewGameResult={onViewGameResult}
                                 userId={userId}
+                                onNavigateToHof={onNavigateToHof}
                             />
                        </div>
                    </div>
@@ -756,8 +758,9 @@ const MessageContentRenderer: React.FC<{
     myTeamId: string,
     onPlayerClick: (id: string) => void,
     onViewGameResult: (result: any) => void,
-    userId: string
-}> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId }) => {
+    userId: string,
+    onNavigateToHof: () => void,
+}> = ({ type, content, teams, myTeamId, onPlayerClick, onViewGameResult, userId, onNavigateToHof }) => {
     
     const [isFetchingResult, setIsFetchingResult] = useState(false);
 
@@ -1104,6 +1107,64 @@ const MessageContentRenderer: React.FC<{
                         <p className="text-slate-400 text-sm">Best regards,</p>
                         <p className="text-white font-bold mt-1">{ol.ownerName}</p>
                         <p className="text-slate-500 text-xs mt-0.5">Owner</p>
+                    </div>
+                </div>
+            );
+        }
+
+        case 'HOF_QUALIFICATION': {
+            const hof = content as HofQualificationContent;
+            const isChampion = hof.result === 'WON';
+            const scoreLabels = [
+                { key: '정규시즌', value: hof.breakdown.season_score },
+                { key: '득실차', value: hof.breakdown.ptDiff_score },
+                { key: '팀 스탯', value: hof.breakdown.stat_score },
+                { key: '플레이오프', value: hof.breakdown.playoff_score },
+            ];
+            return (
+                <div className="space-y-8 max-w-2xl mx-auto">
+                    {/* Status Banner */}
+                    <div className={`p-8 rounded-3xl border relative overflow-hidden ${isChampion ? 'bg-amber-950/20 border-amber-500/30' : 'bg-slate-800/40 border-slate-700/50'}`}>
+                        <div className="flex items-center gap-5">
+                            <div className={`p-4 rounded-2xl ${isChampion ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700/50 text-slate-400'}`}>
+                                {isChampion ? <Crown size={32} /> : <Trophy size={32} />}
+                            </div>
+                            <div>
+                                <h3 className={`text-xl font-black uppercase tracking-tight ${isChampion ? 'text-amber-300' : 'text-slate-200'}`}>
+                                    {isChampion ? '챔피언십 우승' : '파이널 준우승'}
+                                </h3>
+                                <p className="text-sm text-slate-400 mt-1">{hof.teamName}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Total Score */}
+                    <div className="text-center py-4">
+                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">명예의 전당 점수</span>
+                        <span className={`text-5xl font-black tabular-nums ${isChampion ? 'text-amber-400' : 'text-white'}`}>
+                            {hof.totalScore.toFixed(1)}
+                        </span>
+                    </div>
+
+                    {/* Breakdown Grid */}
+                    <div className="grid grid-cols-2 gap-3">
+                        {scoreLabels.map(({ key, value }) => (
+                            <div key={key} className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-5 text-center">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">{key}</span>
+                                <span className="text-xl font-black text-white tabular-nums">{value.toFixed(1)}</span>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Navigate Button */}
+                    <div className="pt-4">
+                        <button
+                            onClick={onNavigateToHof}
+                            className="w-full py-4 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-3"
+                        >
+                            <Crown size={18} />
+                            명예의 전당 보기
+                        </button>
                     </div>
                 </div>
             );

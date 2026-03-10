@@ -23,8 +23,7 @@ interface MainLayoutProps {
         onLogout: () => void;
         onSimulateSeason?: () => void;
         isBatchRunning?: boolean;
-        hasSubmittedHof?: boolean;
-        onHofSubmit?: () => void;
+        onEndSeasonClick?: () => void;
     };
     gameHeaderProps: {
         schedule: Game[];
@@ -65,16 +64,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
     }, [schedule]);
 
     const isPostseasonOver = useMemo(() => {
-        if (!team?.id) return false;
         if (!isRegularSeasonOver) return false;
-        if (!playoffSeries || playoffSeries.length === 0) return false;
-        const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
-        if (myPlayoffSeries.length === 0) return true;
-        const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
-        if (!latest.finished) return false;
-        if (latest.winnerId !== team.id) return true;
-        return latest.round === 4;
-    }, [playoffSeries, team?.id, isRegularSeasonOver]);
+        if (playoffSeries.length === 0) return false;
+        return playoffSeries.some(s => s.round === 4 && s.finished);
+    }, [isRegularSeasonOver, playoffSeries]);
 
     const currentSeries = useMemo(() => {
         if (!nextGame?.isPlayoff || !nextGame.seriesId || !playoffSeries) return undefined;
@@ -118,11 +111,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
             <Sidebar
                 {...sidebarProps}
                 isRegularSeasonOver={isRegularSeasonOver}
+                isPostseasonOver={isPostseasonOver}
                 isCollapsed={isCollapsed}
                 onToggleCollapse={() => setIsCollapsed(prev => !prev)}
-                isPostseasonOver={isPostseasonOver}
-                hasSubmittedHof={sidebarProps.hasSubmittedHof}
-                onHofSubmit={sidebarProps.onHofSubmit}
             />
             <main className={`flex-1 relative flex flex-col transition-all duration-500 ${isFullHeightView || isNoPaddingView ? 'overflow-hidden' : 'overflow-y-auto custom-scrollbar'}`}>
                 {/* Global Game Header — hidden for full-height views only (DraftRoom) */}
@@ -143,6 +134,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
                         conferenceRank={conferenceRank}
                         streak={streak}
                         conferenceName={conferenceName}
+                        isSeasonOver={isPostseasonOver}
                     />
                 )}
 

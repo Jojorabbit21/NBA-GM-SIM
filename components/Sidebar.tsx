@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown,
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown, Flag,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -21,6 +21,7 @@ interface SidebarProps {
   isGuestMode: boolean;
   unreadMessagesCount: number;
   isRegularSeasonOver: boolean;
+  isPostseasonOver: boolean;
   userEmail?: string;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
@@ -30,9 +31,7 @@ interface SidebarProps {
   onLogout: () => void;
   onSimulateSeason?: () => void;
   isBatchRunning?: boolean;
-  isPostseasonOver?: boolean;
-  hasSubmittedHof?: boolean;
-  onHofSubmit?: () => void;
+  onEndSeasonClick?: () => void;
 }
 
 // Team color theme — shared utility (utils/teamTheme.ts)
@@ -89,6 +88,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   isGuestMode,
   unreadMessagesCount,
   isRegularSeasonOver,
+  isPostseasonOver,
   userEmail,
   isCollapsed,
   onToggleCollapse,
@@ -98,9 +98,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onLogout,
   onSimulateSeason,
   isBatchRunning,
-  isPostseasonOver,
-  hasSubmittedHof,
-  onHofSubmit,
+  onEndSeasonClick,
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showBatchConfirm, setShowBatchConfirm] = useState(false);
@@ -233,20 +231,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
       </div>
 
       {/* HOF Submit */}
-      {!isCollapsed && isPostseasonOver && !isGuestMode && !hasSubmittedHof && onHofSubmit && (
-        <div className="px-6 py-3 border-b border-white/10">
-          <button
-            onClick={onHofSubmit}
-            className="w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold bg-amber-600/40 hover:bg-amber-600/60 transition-all active:scale-[0.98]"
-          >
-            <span className="flex items-center justify-center gap-2">
-              <Crown size={14} />
-              명예의 전당 제출
-            </span>
-          </button>
-        </div>
-      )}
-
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
@@ -276,6 +260,26 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
                 isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
               }`}>
                 시즌 전체 진행
+              </span>
+            </div>
+          </button>
+        )}
+
+        {/* 시즌 종료 */}
+        {isPostseasonOver && onEndSeasonClick && (
+          <button
+            onClick={onEndSeasonClick}
+            className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
+              isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
+            } text-amber-400 opacity-80 hover:opacity-100 hover:bg-amber-500/10`}
+            title={isCollapsed ? '시즌 종료' : undefined}
+          >
+            <div className={`flex items-center relative z-10 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-4'}`}>
+              <span className="shrink-0"><Flag size={20} /></span>
+              <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
+                isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
+              }`}>
+                시즌 종료
               </span>
             </div>
           </button>

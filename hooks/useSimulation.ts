@@ -12,6 +12,9 @@ import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores } from '../services/reportGenerator';
+import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
+import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
+import { HofQualificationContent } from '../types/message';
 
 export const useSimulation = (
     teams: Team[],
@@ -32,7 +35,9 @@ export const useSimulation = (
     isGuestMode: boolean,
     refreshUnreadCount: () => void,
     depthChart?: DepthChart | null,
-    tendencySeed?: string
+    tendencySeed?: string,
+    hofId?: string | null,
+    onHofSubmitted?: () => void
 ) => {
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
@@ -171,6 +176,27 @@ export const useSimulation = (
             if (content.isFinalStage) {
                 const ownerLetter = buildPlayoffOwnerLetterContent(myTeam, content.result, series.round);
                 await sendMessage(userId, myTeamId, date, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
+            }
+            // 파이널(round 4) 우승/준우승 시 명예의 전당 자동 등록
+            if (content.isFinalStage && series.round === 4 && !isGuestMode && hofId) {
+                const alreadySubmitted = await checkUserHasSubmitted(hofId);
+                if (!alreadySubmitted) {
+                    const { totalScore, breakdown } = calculateHallOfFameScore(
+                        myTeam, newTeams, allTransactions, newSchedule, newPlayoffSeries
+                    );
+                    const roster = createRosterSnapshot(myTeam);
+                    const email = session?.user?.email ? maskEmail(session.user.email) : undefined;
+                    const hofResult = await submitHallOfFameEntry(userId, myTeamId, hofId, totalScore, breakdown, roster, email);
+                    if (hofResult.success || hofResult.alreadySubmitted) {
+                        onHofSubmitted?.();
+                        const hofContent: HofQualificationContent = {
+                            result: content.result, round: 4, teamName: myTeam.name, totalScore,
+                            breakdown: { season_score: breakdown.season_score, ptDiff_score: breakdown.ptDiff_score, stat_score: breakdown.stat_score, playoff_score: breakdown.playoff_score },
+                        };
+                        const hofTitle = content.result === 'WON' ? '[명예의 전당] 챔피언십 우승' : '[명예의 전당] 파이널 준우승';
+                        await sendMessage(userId, myTeamId, date, 'HOF_QUALIFICATION', hofTitle, hofContent);
+                    }
+                }
             }
             refreshUnreadCount();
         }
