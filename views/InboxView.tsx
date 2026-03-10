@@ -961,36 +961,57 @@ const MessageContentRenderer: React.FC<{
                         <div className="border-t border-slate-700" />
                     </div>
 
-                    {/* 2. Game Results — one row per game */}
-                    <div className="space-y-2">
-                        {ps.games.map((g) => (
-                            <div key={g.gameNum} className="flex items-center gap-3 px-2 py-1.5 rounded-lg hover:bg-white/5">
-                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider w-8">G{g.gameNum}</span>
-                                <span className="text-xs font-bold text-slate-300 min-w-[80px] text-right">{g.isHome ? myName : ps.opponentName}</span>
-                                <span className={`text-xs font-black tabular-nums ${(g.isHome ? g.myScore > g.oppScore : g.oppScore > g.myScore) ? 'text-white' : 'text-slate-500'}`}>
-                                    {g.isHome ? g.myScore : g.oppScore}
-                                </span>
-                                <span className="text-slate-600 font-bold text-xs">–</span>
-                                <span className={`text-xs font-black tabular-nums ${(g.isHome ? g.oppScore > g.myScore : g.myScore > g.oppScore) ? 'text-white' : 'text-slate-500'}`}>
-                                    {g.isHome ? g.oppScore : g.myScore}
-                                </span>
-                                <span className="text-xs font-bold text-slate-300 min-w-[80px]">{g.isHome ? ps.opponentName : myName}</span>
-                                <span className={`text-[10px] font-black ${g.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {g.isWin ? 'W' : 'L'}
-                                </span>
-                                {g.gameId ? (
-                                    <button
-                                        onClick={() => handleViewDetails(g.gameId!)}
-                                        disabled={isFetchingResult}
-                                        className="ml-auto text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50 px-2 py-1 rounded border border-indigo-500/30 hover:border-indigo-400/50"
-                                    >
-                                        {isFetchingResult ? '...' : '기록 보기'}
-                                    </button>
-                                ) : (
-                                    <span className="ml-auto text-slate-600 text-[10px]">-</span>
-                                )}
-                            </div>
-                        ))}
+                    {/* 2. Game Results Table */}
+                    <div className="space-y-3">
+                        <h4 className="text-sm font-black text-slate-400 px-2 uppercase tracking-widest">경기 결과</h4>
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+                            <Table className="!rounded-none !border-0 !shadow-none">
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="center" className="w-20">경기</TableHeaderCell>
+                                    <TableHeaderCell align="right">홈</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-24">스코어</TableHeaderCell>
+                                    <TableHeaderCell align="left">원정</TableHeaderCell>
+                                    <TableHeaderCell align="center">결과</TableHeaderCell>
+                                    <TableHeaderCell align="center">상세</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {ps.games.map((g) => {
+                                        const homeName = g.isHome ? myName : ps.opponentName;
+                                        const awayName = g.isHome ? ps.opponentName : myName;
+                                        const homeScore = g.isHome ? g.myScore : g.oppScore;
+                                        const awayScore = g.isHome ? g.oppScore : g.myScore;
+                                        return (
+                                            <TableRow key={g.gameNum} className="hover:bg-white/5">
+                                                <TableCell align="center" className="text-xs font-bold text-slate-400">{g.gameNum}차전</TableCell>
+                                                <TableCell align="right" className="text-xs font-bold text-slate-300">{homeName}</TableCell>
+                                                <TableCell align="center" className="text-xs font-mono tabular-nums">
+                                                    <span className={homeScore > awayScore ? 'text-white font-black' : 'text-slate-500'}>{homeScore}</span>
+                                                    <span className="text-slate-600 mx-1">–</span>
+                                                    <span className={awayScore > homeScore ? 'text-white font-black' : 'text-slate-500'}>{awayScore}</span>
+                                                </TableCell>
+                                                <TableCell align="left" className="text-xs font-bold text-slate-300">{awayName}</TableCell>
+                                                <TableCell align="center" className={`text-xs font-bold ${g.isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                                                    {g.isWin ? '승리' : '패배'}
+                                                </TableCell>
+                                                <TableCell align="center">
+                                                    {g.gameId ? (
+                                                        <button
+                                                            onClick={() => handleViewDetails(g.gameId!)}
+                                                            disabled={isFetchingResult}
+                                                            className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50 px-2 py-1 rounded border border-indigo-500/30 hover:border-indigo-400/50"
+                                                        >
+                                                            {isFetchingResult ? '...' : '기록 보기'}
+                                                        </button>
+                                                    ) : (
+                                                        <span className="text-slate-600 text-[10px]">-</span>
+                                                    )}
+                                                </TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
                     </div>
 
                     {/* 3. Aggregated Series Box Score */}
@@ -1092,7 +1113,7 @@ const MessageContentRenderer: React.FC<{
         case 'OWNER_LETTER': {
             const ol = content as OwnerLetterContent;
             return (
-                <div className="max-w-2xl space-y-8 text-slate-300 leading-relaxed">
+                <div className="space-y-8 text-slate-300 leading-relaxed">
                     <p>{ol.msg}</p>
                     <div className="pt-4">
                         <p className="text-slate-400 text-sm">Best regards,</p>
