@@ -114,19 +114,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
 
   const navProps = { activeColor: theme.accent, isCollapsed };
 
-  // HOF 진단 로그
-  console.log('[HOF-Sidebar]', {
-    isCollapsed,
-    showSeasonReview,
-    showPlayoffReview,
-    outerCondition: !isCollapsed && (showSeasonReview || showPlayoffReview),
-    isPostseasonOver,
-    isGuestMode,
-    hasSubmittedHof,
-    onHofSubmitExists: !!onHofSubmit,
-    allConditionsMet: !!(isPostseasonOver && !isGuestMode && !hasSubmittedHof && onHofSubmit),
-  });
-
   return (
     <>
     <aside

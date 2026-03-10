@@ -32,19 +32,16 @@ export const fetchHallOfFameEntries = async (season = '2025-2026'): Promise<Hall
 };
 
 /**
- * Check if the current user has already submitted for this team/season.
+ * Check if the current save (hof_id) has already submitted.
  */
 export const checkUserHasSubmitted = async (
-    userId: string,
-    teamId: string,
-    season = '2025-2026'
+    hofId: string | null
 ): Promise<boolean> => {
+    if (!hofId) return false;
     const { data, error } = await supabase
         .from('hall_of_fame')
         .select('id')
-        .eq('user_id', userId)
-        .eq('team_id', teamId)
-        .eq('season', season)
+        .eq('hof_id', hofId)
         .maybeSingle();
 
     if (error) {
@@ -60,6 +57,7 @@ export const checkUserHasSubmitted = async (
 export const submitHallOfFameEntry = async (
     userId: string,
     teamId: string,
+    hofId: string,
     totalScore: number,
     breakdown: HallOfFameScoreBreakdown,
     rosterSnapshot: RosterSnapshotPlayer[],
@@ -69,6 +67,7 @@ export const submitHallOfFameEntry = async (
     const payload = {
         user_id: userId,
         team_id: teamId,
+        hof_id: hofId,
         season,
         total_score: totalScore,
         score_breakdown: breakdown,
