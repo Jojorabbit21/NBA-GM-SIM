@@ -784,6 +784,28 @@ export const buildPlayoffStageContent = (
  * Aggregate box scores from multiple playoff games into per-player series totals.
  * gameResults: rows from user_playoffs_results with box_score: { home: PlayerBoxScore[], away: PlayerBoxScore[] }
  */
+// --- Season Start Owner Welcome Letter ---
+
+const SEASON_START_LETTER_TEMPLATES = [
+    "새 시즌이 시작됩니다. 우리 팀의 새로운 단장으로 당신을 맞이하게 되어 기쁩니다. 선수단 운영과 전술 구성을 전적으로 맡기겠습니다. 좋은 시즌이 되길 기대합니다.",
+    "새 시즌을 앞두고 이렇게 인사드립니다. 앞으로 팀의 모든 결정은 당신의 손에 달려 있습니다. 로스터 구성, 전술 운영, 트레이드까지 — 당신의 판단을 믿겠습니다. 좋은 결과를 기대하고 있습니다.",
+    "환영합니다. 우리 구단의 새로운 단장으로 함께하게 되어 영광입니다. 팬들과 구단 모두 새 시즌에 대한 기대가 큽니다. 최고의 시즌을 만들어 주세요.",
+    "새 시즌, 새로운 시작입니다. 이 팀을 이끌어줄 적임자로 당신을 선택했습니다. 선수단을 점검하고, 전술을 세우고, 승리를 향해 나아가 주세요. 행운을 빕니다.",
+];
+
+export const buildSeasonStartOwnerLetter = (teamId: string): OwnerLetterContent => {
+    const msg = SEASON_START_LETTER_TEMPLATES[Math.floor(Math.random() * SEASON_START_LETTER_TEMPLATES.length)];
+    return {
+        ownerName: TEAM_DATA[teamId]?.owner || "The Ownership Group",
+        title: "새 시즌을 시작합니다",
+        msg,
+        mood: { color: "text-indigo-400", borderColor: "border-indigo-500/50", bg: "bg-indigo-500/5" },
+        confRank: 0,
+        wins: 0,
+        losses: 0,
+    };
+};
+
 export const aggregateSeriesBoxScores = (
     gameResults: { home_team_id: string; away_team_id: string; box_score: any }[],
     myTeamId: string
