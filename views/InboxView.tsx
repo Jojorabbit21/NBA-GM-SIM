@@ -949,6 +949,217 @@ const RegSeasonChampionRenderer: React.FC<{
     );
 };
 
+// --- Sub-Component: Hall of Fame Qualification Renderer ---
+
+const HOF_SCORE_COLS = [
+    { key: 'total', label: '총점' },
+    { key: 'season', label: '정규시즌' },
+    { key: 'ptDiff', label: '득실차' },
+    { key: 'stat', label: '팀 스탯' },
+    { key: 'playoff', label: '플레이오프' },
+];
+
+const HofQualificationRenderer: React.FC<{
+    hof: HofQualificationContent;
+    onNavigateToHof: () => void;
+}> = ({ hof, onNavigateToHof }) => {
+    const [teamStatTab, setTeamStatTab] = useState<ChampStatTab>('Traditional');
+    const teamId = hof.teamId;
+
+    const myTeamStats = useMemo(() => {
+        return hof.allTeamsStats?.find(t => t.teamId === teamId) ?? null;
+    }, [hof.allTeamsStats, teamId]);
+
+    const computeRank = useCallback((key: string, inverse?: boolean) => {
+        if (!hof.allTeamsStats) return 0;
+        const sorted = [...hof.allTeamsStats].sort((a, b) =>
+            inverse ? (a.stats[key] ?? 0) - (b.stats[key] ?? 0) : (b.stats[key] ?? 0) - (a.stats[key] ?? 0)
+        );
+        return sorted.findIndex(t => t.teamId === teamId) + 1;
+    }, [hof.allTeamsStats, teamId]);
+
+    const cols = CHAMP_TEAM_COLS[teamStatTab];
+
+    const scoreData: Record<string, number> = {
+        total: hof.totalScore,
+        season: hof.breakdown.season_score,
+        ptDiff: hof.breakdown.ptDiff_score,
+        stat: hof.breakdown.stat_score,
+        playoff: hof.breakdown.playoff_score,
+    };
+
+    return (
+        <div className="space-y-10 max-w-5xl mx-auto">
+            {/* Trophy Header */}
+            <div className="text-center space-y-4">
+                <img src="/images/hof.png" alt="Hall of Fame" className="mx-auto h-40 object-contain" />
+                <h2 className="text-3xl font-black text-white tracking-tight">
+                    {TEAM_DATA[teamId]?.city ?? ''} {hof.teamName}
+                </h2>
+                <p className="text-sm font-bold text-slate-400">
+                    {hof.conference === 'East' ? '동부' : '서부'} 컨퍼런스&nbsp;&nbsp;|&nbsp;&nbsp;{hof.wins}승 {hof.losses}패 ({hof.pct})
+                </p>
+            </div>
+
+            {/* HOF Score Table */}
+            <div>
+                <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">명예의 전당 점수</h3>
+                <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                    <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                        <TableHead className="bg-slate-950">
+                            {HOF_SCORE_COLS.map(c => (
+                                <TableHeaderCell key={c.key} align="center" className="w-20">{c.label}</TableHeaderCell>
+                            ))}
+                        </TableHead>
+                        <TableBody>
+                            <TableRow>
+                                {HOF_SCORE_COLS.map(c => (
+                                    <TableCell key={c.key} align="center" className={`text-sm font-black font-mono tabular-nums ${c.key === 'total' ? 'text-amber-400' : 'text-white'}`}>
+                                        {scoreData[c.key].toFixed(1)}
+                                    </TableCell>
+                                ))}
+                            </TableRow>
+                        </TableBody>
+                    </Table>
+                </div>
+            </div>
+
+            {/* Team Stats (with league ranks) */}
+            {myTeamStats && (
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">팀 스탯</h3>
+                        <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-800">
+                            {(['Traditional', 'Advanced'] as ChampStatTab[]).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setTeamStatTab(tab)}
+                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                        teamStatTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'
+                                    }`}
+                                >
+                                    {CHAMP_TAB_LABELS[tab]}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                            <TableHead className="bg-slate-950">
+                                {cols.map(c => (
+                                    <TableHeaderCell key={c.key} align="center" className="w-14">{c.label}</TableHeaderCell>
+                                ))}
+                            </TableHead>
+                            <TableBody>
+                                <TableRow>
+                                    {cols.map(c => (
+                                        <TableCell key={c.key} align="center" className={`text-xs font-mono tabular-nums ${
+                                            c.fmt === 'diff'
+                                                ? (myTeamStats.stats[c.key] > 0 ? 'text-emerald-400' : myTeamStats.stats[c.key] < 0 ? 'text-red-400' : 'text-slate-500')
+                                                : 'text-white'
+                                        }`}>
+                                            {fmtStatVal(myTeamStats.stats[c.key], c.fmt)}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                                <tr>
+                                    {cols.map(c => {
+                                        const rank = computeRank(c.key, c.inv);
+                                        const rankColor = rank <= 10 ? 'text-emerald-400' : rank >= 21 ? 'text-red-400' : 'text-slate-500';
+                                        return (
+                                            <td key={c.key} className={`text-center text-[10px] font-bold py-1.5 bg-slate-950/50 border-t border-slate-800/50 ${rankColor}`}>
+                                                {rank}위
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
+            )}
+
+            {/* Roster Stats */}
+            {hof.rosterStats && hof.rosterStats.length > 0 && (
+                <div>
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">로스터 스탯</h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="left" className="pl-4 min-w-[140px] sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">선수</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">POS</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">G</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">MIN</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">PTS</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">REB</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">AST</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">STL</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">BLK</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">TOV</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FGM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FGA</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FG%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3PM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3PA</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3P%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FTM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FTA</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FT%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">+/-</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {hof.rosterStats.map(p => (
+                                        <TableRow key={p.id} className="hover:bg-white/5">
+                                            <TableCell className="pl-4 sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
+                                                <span className="text-xs font-bold text-slate-300">{p.name}</span>
+                                            </TableCell>
+                                            <TableCell align="center" className="text-xs text-slate-500">{p.position}</TableCell>
+                                            <TableCell align="center"><OvrBadge value={p.ovr} size="sm" /></TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.g}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.mpg}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.pts}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.reb}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.ast}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.stl}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.blk}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.tov}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fgm}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fga}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.fgPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.p3m}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.p3a}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.p3Pct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.ftm}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fta}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.ftPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className={`text-xs font-mono ${p.pm > 0 ? 'text-emerald-400' : p.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                                {p.pm > 0 ? '+' : ''}{p.pm}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Navigate Button */}
+            <div className="pt-2">
+                <button
+                    onClick={onNavigateToHof}
+                    className="w-full py-4 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-3"
+                >
+                    <Crown size={18} />
+                    명예의 전당 보기
+                </button>
+            </div>
+        </div>
+    );
+};
+
 // --- Sub-Component: Playoff Champion Renderer ---
 
 const PlayoffChampionRenderer: React.FC<{
@@ -1474,59 +1685,8 @@ const MessageContentRenderer: React.FC<{
 
         case 'HOF_QUALIFICATION': {
             const hof = content as HofQualificationContent;
-            const isChampion = hof.result === 'WON';
-            const scoreLabels = [
-                { key: '정규시즌', value: hof.breakdown.season_score },
-                { key: '득실차', value: hof.breakdown.ptDiff_score },
-                { key: '팀 스탯', value: hof.breakdown.stat_score },
-                { key: '플레이오프', value: hof.breakdown.playoff_score },
-            ];
             return (
-                <div className="space-y-8 max-w-2xl mx-auto">
-                    {/* Status Banner */}
-                    <div className={`p-8 rounded-3xl border relative overflow-hidden ${isChampion ? 'bg-amber-950/20 border-amber-500/30' : 'bg-slate-800/40 border-slate-700/50'}`}>
-                        <div className="flex items-center gap-5">
-                            <div className={`p-4 rounded-2xl ${isChampion ? 'bg-amber-500/20 text-amber-400' : 'bg-slate-700/50 text-slate-400'}`}>
-                                {isChampion ? <Crown size={32} /> : <Trophy size={32} />}
-                            </div>
-                            <div>
-                                <h3 className={`text-xl font-black uppercase tracking-tight ${isChampion ? 'text-amber-300' : 'text-slate-200'}`}>
-                                    {isChampion ? '챔피언십 우승' : '파이널 준우승'}
-                                </h3>
-                                <p className="text-sm text-slate-400 mt-1">{hof.teamName}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Total Score */}
-                    <div className="text-center py-4">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">명예의 전당 점수</span>
-                        <span className={`text-5xl font-black tabular-nums ${isChampion ? 'text-amber-400' : 'text-white'}`}>
-                            {hof.totalScore.toFixed(1)}
-                        </span>
-                    </div>
-
-                    {/* Breakdown Grid */}
-                    <div className="grid grid-cols-2 gap-3">
-                        {scoreLabels.map(({ key, value }) => (
-                            <div key={key} className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-5 text-center">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-2">{key}</span>
-                                <span className="text-xl font-black text-white tabular-nums">{value.toFixed(1)}</span>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Navigate Button */}
-                    <div className="pt-4">
-                        <button
-                            onClick={onNavigateToHof}
-                            className="w-full py-4 rounded-2xl bg-amber-600 hover:bg-amber-500 text-white font-black text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-3"
-                        >
-                            <Crown size={18} />
-                            명예의 전당 보기
-                        </button>
-                    </div>
-                </div>
+                <HofQualificationRenderer hof={hof} onNavigateToHof={onNavigateToHof} />
             );
         }
 

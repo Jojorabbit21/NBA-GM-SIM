@@ -348,7 +348,7 @@ export const generatePlayoffReport = (team: Team, allTeams: Team[], playoffSerie
 // --- Inbox Message Content Builders (JSON-serializable) ---
 
 /** 전 팀 스탯 계산 (useLeaderboardData 팀 모드 로직 추출) */
-function computeAllTeamsStats(teams: Team[], schedule: Game[]) {
+export function computeAllTeamsStats(teams: Team[], schedule: Game[]) {
     const filteredSchedule = schedule.filter(g => g.played && !g.isPlayoff);
 
     // Pass 1: raw totals
@@ -463,7 +463,7 @@ function buildStandingsContext(team: Team, allTeams: Team[], schedule: Game[]) {
 }
 
 /** 로스터 선수 Traditional 스탯 */
-function buildRosterStats(team: Team) {
+export function buildRosterStats(team: Team) {
     return team.roster
         .filter(p => p.stats.g > 0)
         .map(p => {

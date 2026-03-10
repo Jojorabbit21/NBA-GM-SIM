@@ -188,6 +188,7 @@ export interface FinalsMvpContent {
 export interface HofQualificationContent {
     result: 'WON' | 'LOST';
     round: number;
+    teamId: string;
     teamName: string;
     totalScore: number;
     breakdown: {
@@ -196,6 +197,46 @@ export interface HofQualificationContent {
         stat_score: number;
         playoff_score: number;
     };
+    conference: string;
+    wins: number;
+    losses: number;
+    pct: string;
+    // All 30 teams stats
+    allTeamsStats: {
+        teamId: string;
+        teamName: string;
+        wins: number;
+        losses: number;
+        stats: Record<string, number>;
+    }[];
+    // Roster player traditional stats
+    rosterStats: {
+        id: string;
+        name: string;
+        position: string;
+        ovr: number;
+        g: number;
+        mpg: number;
+        pts: number;
+        oreb: number;
+        dreb: number;
+        reb: number;
+        ast: number;
+        stl: number;
+        blk: number;
+        tov: number;
+        pf: number;
+        fgm: number;
+        fga: number;
+        fgPct: number;
+        p3m: number;
+        p3a: number;
+        p3Pct: number;
+        ftm: number;
+        fta: number;
+        ftPct: number;
+        pm: number;
+    }[];
 }
 
 export interface RegSeasonChampionContent {
