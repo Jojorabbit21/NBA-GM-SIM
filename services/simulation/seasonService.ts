@@ -1,4 +1,4 @@
-import { Team, Game, PlayoffSeries, Transaction } from '../../types';
+import { Team, Game, PlayoffSeries, Transaction, RegSeasonChampionContent } from '../../types';
 import { advancePlayoffState, generateNextPlayoffGames, checkAndInitPlayoffs } from '../../utils/playoffLogic';
 import { simulateCPUTrades } from '../../services/tradeEngine';
 import { runCPUTradeRound } from '../../services/tradeEngine/cpuTradeSimulator';
@@ -6,6 +6,7 @@ import { generateCPUTradeNews } from '../../services/geminiService';
 import { savePlayoffState } from '../../services/playoffService';
 import { runAwardVoting, SeasonAwardsContent } from '../../utils/awardVoting';
 import { sendMessage } from '../../services/messageService';
+import { buildRegSeasonChampionContent } from '../../services/reportGenerator';
 
 export const handleSeasonEvents = async (
     teams: Team[],
@@ -52,6 +53,10 @@ export const handleSeasonEvents = async (
                 const awardResult = runAwardVoting(teams, tendencySeed);
                 await sendMessage(userId, myTeamId, currentSimDate, 'SEASON_AWARDS',
                     '[공식] 2025-26 정규시즌 어워드 투표 결과', awardResult);
+                // ★ 정규시즌 우승팀 보고서 발송
+                const championContent = buildRegSeasonChampionContent(teams, schedule);
+                await sendMessage(userId, myTeamId, currentSimDate, 'REG_SEASON_CHAMPION',
+                    `[속보] 2025-26 정규시즌 우승: ${championContent.championTeamName}`, championContent);
             }
         }
     }
@@ -108,6 +113,7 @@ export const handleSeasonEventsSync = (
     let newTransactions: Transaction[] = [];
     let updatedSeries = [...playoffSeries];
     let awardContent: SeasonAwardsContent | null = null;
+    let championContent: RegSeasonChampionContent | null = null;
 
     // 1. Playoffs
     if (updatedSeries.length > 0) {
@@ -130,6 +136,8 @@ export const handleSeasonEventsSync = (
 
             // ★ 정규시즌 어워드 투표 (배치 — sendMessage 생략, 반환)
             awardContent = runAwardVoting(teams, tendencySeed);
+            // ★ 정규시즌 우승팀 보고서 (배치 — 반환)
+            championContent = buildRegSeasonChampionContent(teams, schedule);
         }
     }
 
@@ -147,5 +155,5 @@ export const handleSeasonEventsSync = (
     playoffSeries.length = 0;
     playoffSeries.push(...updatedSeries);
 
-    return { newTransactions, awardContent };
+    return { newTransactions, awardContent, championContent };
 };

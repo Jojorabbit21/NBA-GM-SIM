@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight, Crown, Trophy } from 'lucide-react';
-import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, Team, Player, PlayerBoxScore } from '../types';
+import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
@@ -1313,6 +1313,81 @@ const MessageContentRenderer: React.FC<{
                             </div>
                         </div>
                     )}
+                </div>
+            );
+        }
+
+        case 'REG_SEASON_CHAMPION': {
+            const rc = content as RegSeasonChampionContent;
+            return (
+                <div className="space-y-8 max-w-3xl mx-auto">
+                    {/* Champion Hero */}
+                    <div className="relative bg-gradient-to-b from-amber-950/30 via-slate-900/80 to-slate-900 border border-amber-500/20 rounded-3xl p-8 text-center overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(245,158,11,0.08),transparent_70%)]" />
+                        <div className="relative space-y-5">
+                            <div className="flex justify-center">
+                                <TeamLogo teamId={rc.championTeamId} size="lg" />
+                            </div>
+                            <div>
+                                <p className="text-[10px] font-black text-amber-500/80 uppercase tracking-[0.2em] mb-2">2025-26 REGULAR SEASON CHAMPION</p>
+                                <h2 className="text-3xl font-black text-white tracking-tight">{rc.championTeamName}</h2>
+                            </div>
+                            <div className="flex justify-center gap-6 pt-2">
+                                <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl px-6 py-3">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">RECORD</span>
+                                    <span className="text-xl font-black text-white tabular-nums">{rc.wins}-{rc.losses}</span>
+                                </div>
+                                <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl px-6 py-3">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">WIN%</span>
+                                    <span className="text-xl font-black text-white tabular-nums">{rc.pct}</span>
+                                </div>
+                                <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl px-6 py-3">
+                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">CONF</span>
+                                    <span className="text-xl font-black text-white tabular-nums">{rc.conference}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* League Top 10 Standings */}
+                    <div className="space-y-3">
+                        <h4 className="text-xs font-black text-slate-400 px-2 uppercase tracking-widest">리그 순위 TOP 10</h4>
+                        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                            <Table className="!rounded-none !border-0 !shadow-none">
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="center" className="w-10">#</TableHeaderCell>
+                                    <TableHeaderCell align="left" className="pl-3">TEAM</TableHeaderCell>
+                                    <TableHeaderCell align="center">CONF</TableHeaderCell>
+                                    <TableHeaderCell align="center">SEED</TableHeaderCell>
+                                    <TableHeaderCell align="center">W</TableHeaderCell>
+                                    <TableHeaderCell align="center">L</TableHeaderCell>
+                                    <TableHeaderCell align="center">PCT</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {rc.topTeams.map((t) => {
+                                        const isChamp = t.rank === 1;
+                                        const isMyTeam = t.teamId === myTeamId;
+                                        return (
+                                            <TableRow key={t.teamId} className={isChamp ? 'bg-amber-500/5' : isMyTeam ? 'bg-indigo-500/5' : 'hover:bg-white/5'}>
+                                                <TableCell align="center" className={`text-xs font-black tabular-nums ${isChamp ? 'text-amber-400' : 'text-slate-400'}`}>{t.rank}</TableCell>
+                                                <TableCell className="pl-3">
+                                                    <div className="flex items-center gap-2">
+                                                        <TeamLogo teamId={t.teamId} size="xs" />
+                                                        <span className={`text-xs font-bold ${isChamp ? 'text-amber-300' : isMyTeam ? 'text-indigo-300' : 'text-slate-200'}`}>{t.teamName}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell align="center" className="text-xs font-mono text-slate-400">{t.conference}</TableCell>
+                                                <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{t.confSeed}</TableCell>
+                                                <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{t.wins}</TableCell>
+                                                <TableCell align="center" className="text-xs font-mono tabular-nums text-slate-300">{t.losses}</TableCell>
+                                                <TableCell align="center" className={`text-xs font-mono tabular-nums ${isChamp ? 'text-amber-400 font-bold' : 'text-slate-300'}`}>{t.pct}</TableCell>
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
                 </div>
             );
         }

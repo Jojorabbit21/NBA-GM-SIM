@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat } from '../types';
+import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat, RegSeasonChampionContent } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
@@ -891,4 +891,47 @@ export const selectFinalsMvp = (
     const leaderboard: SeriesPlayerStat[] = scored.map(({ _score, ...rest }) => rest);
 
     return { mvp: leaderboard[0], leaderboard };
+};
+
+// --- Regular Season Champion Report ---
+export const buildRegSeasonChampionContent = (
+    teams: Team[],
+    schedule: Game[]
+): RegSeasonChampionContent => {
+    const comparator = createTiebreakerComparator(teams, schedule);
+    const sorted = [...teams].sort(comparator);
+    const champion = sorted[0];
+    const totalGames = champion.wins + champion.losses || 82;
+    const pct = (champion.wins / totalGames).toFixed(3).replace(/^0/, '');
+
+    // Conference seeds
+    const eastTeams = sorted.filter(t => t.conference === 'East');
+    const westTeams = sorted.filter(t => t.conference === 'West');
+
+    const topTeams = sorted.slice(0, 10).map((t, idx) => {
+        const tg = t.wins + t.losses || 82;
+        const conf = t.conference;
+        const confList = conf === 'East' ? eastTeams : westTeams;
+        const confSeed = confList.findIndex(ct => ct.id === t.id) + 1;
+        return {
+            rank: idx + 1,
+            teamId: t.id,
+            teamName: t.name,
+            wins: t.wins,
+            losses: t.losses,
+            pct: (t.wins / tg).toFixed(3).replace(/^0/, ''),
+            conference: conf,
+            confSeed,
+        };
+    });
+
+    return {
+        championTeamId: champion.id,
+        championTeamName: champion.name,
+        wins: champion.wins,
+        losses: champion.losses,
+        pct,
+        conference: champion.conference,
+        topTeams,
+    };
 };
