@@ -52,28 +52,60 @@ export const StandingsView: React.FC<StandingsViewProps> = ({ teams, schedule, o
             const confTeams = teams.filter(t => t.conference === conf);
             const sorted = [...confTeams].sort(tiebreakerComparator);
 
-            const rank7 = sorted[6];
-            const rank10 = sorted[9];
-            const rank11 = sorted[10];
+            const getRemaining = (t: Team) => 82 - (t.wins + t.losses);
 
-            sorted.forEach(t => {
-                const remaining = 82 - (t.wins + t.losses);
+            // Max possible wins from teams ranked 7+ and 11+
+            const maxWinsFrom7Plus = sorted.length > 6
+                ? Math.max(...sorted.slice(6).map(s => s.wins + getRemaining(s)))
+                : 0;
+            const maxWinsFrom11Plus = sorted.length > 10
+                ? Math.max(...sorted.slice(10).map(s => s.wins + getRemaining(s)))
+                : 0;
+
+            const rank10 = sorted[9];
+
+            sorted.forEach((t, idx) => {
+                const remaining = getRemaining(t);
                 const maxWins = t.wins + remaining;
 
+                // ELIMINATED: can't reach rank10's current wins
                 if (rank10 && maxWins < rank10.wins) {
                     map[t.id] = 'eliminated';
                     return;
                 }
-                if (rank7) {
-                    const rank7Max = rank7.wins + (82 - (rank7.wins + rank7.losses));
-                    if (t.wins > rank7Max) {
+                // Eliminated by tiebreaker: tied with rank10 but both finished, sort decides
+                if (rank10 && remaining === 0 && maxWins === rank10.wins
+                    && getRemaining(rank10) === 0 && idx >= 10) {
+                    map[t.id] = 'eliminated';
+                    return;
+                }
+
+                // CLINCHED PLAYOFF (top-6): current wins exceed max possible from rank 7+
+                if (t.wins > maxWinsFrom7Plus) {
+                    map[t.id] = 'clinched_playoff';
+                    return;
+                }
+                // Tiebreaker resolved: tied but all threatening teams have finished
+                if (remaining === 0 && t.wins >= maxWinsFrom7Plus && idx < 6) {
+                    const hasUnresolvedThreat = sorted.slice(6).some(s =>
+                        s.wins + getRemaining(s) >= t.wins && getRemaining(s) > 0
+                    );
+                    if (!hasUnresolvedThreat) {
                         map[t.id] = 'clinched_playoff';
                         return;
                     }
                 }
-                if (rank11) {
-                    const rank11Max = rank11.wins + (82 - (rank11.wins + rank11.losses));
-                    if (t.wins > rank11Max) {
+
+                // CLINCHED PLAY-IN (top-10): current wins exceed max possible from rank 11+
+                if (t.wins > maxWinsFrom11Plus) {
+                    map[t.id] = 'clinched_playin';
+                    return;
+                }
+                if (remaining === 0 && t.wins >= maxWinsFrom11Plus && idx < 10) {
+                    const hasUnresolvedThreat = sorted.slice(10).some(s =>
+                        s.wins + getRemaining(s) >= t.wins && getRemaining(s) > 0
+                    );
+                    if (!hasUnresolvedThreat) {
                         map[t.id] = 'clinched_playin';
                         return;
                     }
