@@ -8,6 +8,7 @@ import { TeamLogo } from '../components/common/TeamLogo';
 import { TEAM_COLORS } from '../data/teamData';
 import { fetchFullGameResult } from '../services/queries';
 import { fetchPlayoffGameResult } from '../services/playoffService';
+import { createTiebreakerComparator } from '../utils/tiebreaker';
 
 interface PlayoffsViewProps {
   teams: Team[];
@@ -29,46 +30,31 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
   const playInSeries = useMemo(() => series.filter(s => s.round === 0), [series]);
   const hasPlayInStarted = playInSeries.length > 0;
 
-  const isPlayInFinished = useMemo(() => {
-      const mainStarted = series.some(s => s.round === 1);
-      if (mainStarted) return true;
-      const eastPI = playInSeries.filter(s => s.conference === 'East');
-      const westPI = playInSeries.filter(s => s.conference === 'West');
-      return eastPI.length === 3 && westPI.length === 3 && eastPI.every(s => s.finished) && westPI.every(s => s.finished);
-  }, [series, playInSeries]);
-
   const regularStandingsSeeds = useMemo(() => {
+      const comparator = createTiebreakerComparator(teams, schedule);
       const getSeeds = (conf: 'East' | 'West') => {
         return [...teams]
           .filter(t => t.conference === conf)
-          .sort((a, b) => {
-              const aPct = (a.wins / (a.wins + a.losses || 1));
-              const bPct = (b.wins / (b.wins + b.losses || 1));
-              return bPct - aPct || b.wins - a.wins;
-          });
+          .sort(comparator);
       };
       return { East: getSeeds('East'), West: getSeeds('West') };
-  }, [teams]);
+  }, [teams, schedule]);
 
   const seedMap = useMemo(() => {
       const map: Record<string, number> = {};
       regularStandingsSeeds.East.forEach((t, i) => map[t.id] = i + 1);
       regularStandingsSeeds.West.forEach((t, i) => map[t.id] = i + 1);
 
-      if (isPlayInFinished || series.some(s => s.round === 1)) {
-          ['East', 'West'].forEach(conf => {
-              const piGames = playInSeries.filter(s => s.conference === conf);
-              const g1 = piGames.find(s => {
-                  const hSeed = regularStandingsSeeds[conf as 'East'|'West'].findIndex(t => t.id === s.higherSeedId) + 1;
-                  return hSeed === 7;
-              });
-              const g3 = piGames.find(s => s.id.includes('8th'));
-              if (g1 && g1.winnerId) map[g1.winnerId] = 7;
-              if (g3 && g3.winnerId) map[g3.winnerId] = 8;
-          });
-      }
+      // 플레이인 결과가 나오는 즉시 시드 오버라이드 (시리즈 ID로 검색)
+      (['East', 'West'] as const).forEach(conf => {
+          const piGames = playInSeries.filter(s => s.conference === conf);
+          const pi7v8 = piGames.find(s => s.id.includes('7v8'));
+          const piDecider = piGames.find(s => s.id.includes('8th'));
+          if (pi7v8?.winnerId) map[pi7v8.winnerId] = 7;
+          if (piDecider?.winnerId) map[piDecider.winnerId] = 8;
+      });
       return map;
-  }, [teams, regularStandingsSeeds, isPlayInFinished, series, playInSeries]);
+  }, [teams, regularStandingsSeeds, series, playInSeries]);
 
   const getPISeries = (conf: 'East'|'West', type: '7v8'|'9v10'|'8th') => {
       const existing = playInSeries.find(s => s.conference === conf && s.id.includes(type));
@@ -95,14 +81,49 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
       return undefined;
   };
 
-  const getR1Match = (conf: 'East' | 'West', rankH: number, rankL: number) => {
-      const existing = series.find(s => s.conference === conf && s.round === 1 &&
-          ((s.higherSeedId === (conf==='East'?regularStandingsSeeds.East:regularStandingsSeeds.West)[rankH-1].id) ||
-           (s.lowerSeedId === (conf==='East'?regularStandingsSeeds.East:regularStandingsSeeds.West)[rankH-1].id))
-      );
+  // 플레이인 결과를 반영한 R1 프로젝션용 시드 배열
+  const projectedR1Seeds = useMemo(() => {
+      const getSeeds = (conf: 'East' | 'West'): (Team | undefined)[] => {
+          const ranked = regularStandingsSeeds[conf];
+          const piGames = playInSeries.filter(s => s.conference === conf);
+
+          if (piGames.length === 0) return ranked.slice(0, 8);
+
+          // 플레이인 참가팀 ID 수집 → 상위 6팀에서 제외
+          const playInTeamIds = new Set<string>();
+          piGames.forEach(s => {
+              if (s.higherSeedId && !s.higherSeedId.includes('TBD')) playInTeamIds.add(s.higherSeedId);
+              if (s.lowerSeedId && !s.lowerSeedId.includes('TBD')) playInTeamIds.add(s.lowerSeedId);
+          });
+          const topSix = ranked.filter(t => !playInTeamIds.has(t.id)).slice(0, 6);
+
+          const pi7v8 = piGames.find(s => s.id.includes('7v8'));
+          const piDecider = piGames.find(s => s.id.includes('8th'));
+
+          const seed7 = pi7v8?.winnerId
+              ? teams.find(t => t.id === pi7v8.winnerId)
+              : ranked[6]; // 미결정 시 정규시즌 7위
+          const seed8 = piDecider?.winnerId
+              ? teams.find(t => t.id === piDecider.winnerId)
+              : ranked[7]; // 미결정 시 정규시즌 8위
+
+          return [...topSix, seed7, seed8];
+      };
+      return { East: getSeeds('East'), West: getSeeds('West') };
+  }, [teams, regularStandingsSeeds, playInSeries]);
+
+  const getR1Match = (conf: 'East' | 'West', matchId: string, hSeed: number, lSeed: number) => {
+      // 실제 생성된 시리즈는 ID로 정확히 검색
+      const existing = series.find(s => s.id === `${conf}_R1_${matchId}`);
       if (existing) return existing;
-      const seeds = conf === 'East' ? regularStandingsSeeds.East : regularStandingsSeeds.West;
-      return { higherSeedId: seeds[rankH-1]?.id, lowerSeedId: seeds[rankL-1]?.id, conference: conf };
+
+      // 프로젝션: 플레이인 결과 반영된 시드 배열 사용
+      const seeds = projectedR1Seeds[conf];
+      return {
+          higherSeedId: seeds[hSeed - 1]?.id || '',
+          lowerSeedId: seeds[lSeed - 1]?.id || '',
+          conference: conf,
+      };
   };
 
   const getRoundMatch = (conf: 'East' | 'West' | 'BPL', round: number, index: number) => {
@@ -113,8 +134,8 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
   const pi_east = [getPISeries('East', '7v8'), getPISeries('East', '9v10'), getPISeries('East', '8th')];
   const pi_west = [getPISeries('West', '7v8'), getPISeries('West', '9v10'), getPISeries('West', '8th')];
 
-  const r1_east = [getR1Match('East', 1, 8), getR1Match('East', 4, 5), getR1Match('East', 3, 6), getR1Match('East', 2, 7)];
-  const r1_west = [getR1Match('West', 1, 8), getR1Match('West', 4, 5), getR1Match('West', 3, 6), getR1Match('West', 2, 7)];
+  const r1_east = [getR1Match('East', 'M1', 1, 8), getR1Match('East', 'M2', 4, 5), getR1Match('East', 'M3', 3, 6), getR1Match('East', 'M4', 2, 7)];
+  const r1_west = [getR1Match('West', 'M1', 1, 8), getR1Match('West', 'M2', 4, 5), getR1Match('West', 'M3', 3, 6), getR1Match('West', 'M4', 2, 7)];
 
   const r2_east = [getRoundMatch('East', 2, 0), getRoundMatch('East', 2, 1)];
   const r2_west = [getRoundMatch('West', 2, 0), getRoundMatch('West', 2, 1)];

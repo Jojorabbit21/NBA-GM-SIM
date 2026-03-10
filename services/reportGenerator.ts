@@ -669,7 +669,7 @@ export const buildPlayoffStageContent = (
         const isHome = g.homeTeamId === team.id;
         const myScore = isHome ? (g.homeScore || 0) : (g.awayScore || 0);
         const oppScore = isHome ? (g.awayScore || 0) : (g.homeScore || 0);
-        return { gameNum: idx + 1, isHome, myScore, oppScore, isWin: myScore > oppScore };
+        return { gameNum: idx + 1, isHome, myScore, oppScore, isWin: myScore > oppScore, gameId: g.id };
     });
 
     // Is this the final stage? (lost, or won round 4)
