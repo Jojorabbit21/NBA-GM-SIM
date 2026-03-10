@@ -6,6 +6,7 @@ import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
 import { TEAM_DATA } from '../../data/teamData';
 import { getTeamTheme, getButtonTheme } from '../../utils/teamTheme';
+import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 
 interface DashboardHeaderProps {
   team: Team;
@@ -72,13 +73,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       onMouseLeave: () => setPressedBtn(null),
   });
 
-  const playoffRoundName = currentSeries ? (
-      currentSeries.round === 0 ? "플레이-인 토너먼트" : 
-      currentSeries.round === 4 ? "BPL 파이널" :
-      currentSeries.round === 3 ? `${currentSeries.conference} 컨퍼런스 파이널` :
-      currentSeries.round === 2 ? `${currentSeries.conference} 컨퍼런스 2라운드` :
-      `${currentSeries.conference} 컨퍼런스 1라운드`
-  ) : null;
+  const playoffRoundName = currentSeries
+      ? (currentSeries.round === 4 ? '' : `${CONF_NAMES[currentSeries.conference] || currentSeries.conference} `) + (ROUND_NAMES[currentSeries.round] || `${currentSeries.round}라운드`)
+      : null;
 
   return (
     <div className="w-full border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
@@ -124,7 +121,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     {currentSeries ? (
                         <div className="flex flex-col items-center">
                             <span className="text-xs font-semibold" style={{ color: theme.text }}>{playoffRoundName}</span>
-                            <span className="text-sm font-semibold" style={{ color: theme.text }}>Series: {currentSeries.higherSeedWins} - {currentSeries.lowerSeedWins}</span>
+                            <span className="text-sm font-semibold" style={{ color: theme.text }}>
+                                {awayTeam?.name}{' '}
+                                {awayTeam?.id === currentSeries.higherSeedId ? currentSeries.higherSeedWins : currentSeries.lowerSeedWins}
+                                {' - '}
+                                {awayTeam?.id === currentSeries.higherSeedId ? currentSeries.lowerSeedWins : currentSeries.higherSeedWins}
+                                {' '}{homeTeam?.name}
+                            </span>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center">

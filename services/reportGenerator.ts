@@ -5,6 +5,7 @@ import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
 import { computeStandingsStats } from '../utils/standingsStats';
+import { ROUND_NAMES } from '../utils/playoffLogic';
 import { Trophy, Crown, Medal, Star, Activity } from 'lucide-react';
 
 // --- Types ---
@@ -697,9 +698,6 @@ export const buildPlayoffOwnerLetterContent = (
     };
 };
 
-const ROUND_NAMES: Record<number, string> = {
-    0: '플레이인', 1: '1라운드', 2: '2라운드', 3: '컨퍼런스 파이널', 4: '파이널'
-};
 
 const getOwnerMessageForStage = (result: 'WON' | 'LOST', round: number, isFinalStage: boolean): string => {
     if (result === 'WON' && round === 4) {
