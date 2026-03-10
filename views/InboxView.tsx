@@ -9,7 +9,7 @@ import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { ReviewOwnerMessage } from '../components/review/ReviewComponents';
+
 
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
 
@@ -938,76 +938,95 @@ const MessageContentRenderer: React.FC<{
         case 'PLAYOFF_STAGE_REVIEW': {
             const ps = content as PlayoffStageReviewContent;
             const isWin = ps.result === 'WON';
-            const statusColor = isWin ? 'emerald' : 'red';
-            const borderColor = isWin ? 'border-emerald-500/20' : 'border-red-500/20';
-            const bgGradient = isWin ? 'from-emerald-950/20' : 'from-red-950/10';
+            const thClass = "py-2.5 px-3 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
+            const tdClass = "py-2.5 px-3 text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60";
 
             return (
                 <div className="space-y-8 max-w-5xl mx-auto">
-                    {/* Series Result Banner */}
-                    <div className={`bg-gradient-to-r ${bgGradient} to-slate-950 border ${borderColor} rounded-2xl p-6 flex items-center justify-between`}>
-                        <div className="flex items-center gap-5">
-                            <TeamLogo teamId={ps.opponentId} size="md" />
-                            <div>
-                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] mb-0.5">vs</p>
-                                <h3 className="text-lg font-black text-white uppercase">{ps.opponentName}</h3>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-6">
-                            <span className={`text-sm font-black uppercase tracking-widest ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
-                                {ps.result}
-                            </span>
-                            <span className="text-3xl font-black text-white font-mono">{ps.seriesScore}</span>
+                    {/* Series Summary */}
+                    <div className="border border-slate-600 rounded-lg overflow-hidden">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr>
+                                    <th className={`${thClass} text-center w-12`}></th>
+                                    <th className={`${thClass} text-left pl-3`}>상대</th>
+                                    <th className={`${thClass} text-center`}>결과</th>
+                                    <th className={`${thClass} text-center`}>시리즈</th>
+                                    <th className={`${thClass} text-center`}>승</th>
+                                    <th className={`${thClass} text-center`}>패</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr className={isWin ? 'bg-emerald-500/5' : 'bg-red-500/5'}>
+                                    <td className={`${tdClass} text-center`}><TeamLogo teamId={ps.opponentId} size="sm" /></td>
+                                    <td className={`${tdClass} pl-3 font-bold text-slate-200`}>{ps.opponentName}</td>
+                                    <td className={`${tdClass} text-center font-bold ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>{isWin ? '승리' : '패배'}</td>
+                                    <td className={`${tdClass} text-center font-bold text-white`}>{ps.seriesScore}</td>
+                                    <td className={`${tdClass} text-center text-emerald-400`}>{ps.myWins}</td>
+                                    <td className={`${tdClass} text-center text-red-400`}>{ps.myLosses}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {/* Game Results Table */}
+                    <div>
+                        <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400 mb-3">경기 결과</h3>
+                        <div className="border border-slate-600 rounded-lg overflow-hidden">
+                            <table className="w-full text-left border-collapse">
+                                <thead>
+                                    <tr>
+                                        <th className={`${thClass} text-center w-14`}>#</th>
+                                        <th className={`${thClass} text-center`}>홈/원정</th>
+                                        <th className={`${thClass} text-center`}>득점</th>
+                                        <th className={`${thClass} text-center`}>실점</th>
+                                        <th className={`${thClass} text-center`}>결과</th>
+                                        <th className={`${thClass} text-center`}>상세</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {ps.games.map((g) => (
+                                        <tr key={g.gameNum} className={`hover:bg-white/5 ${g.gameNum % 2 === 0 ? 'bg-slate-800/30' : ''}`}>
+                                            <td className={`${tdClass} text-center font-bold text-slate-400`}>G{g.gameNum}</td>
+                                            <td className={`${tdClass} text-center`}>{g.isHome ? 'HOME' : 'AWAY'}</td>
+                                            <td className={`${tdClass} text-center font-bold text-white`}>{g.myScore}</td>
+                                            <td className={`${tdClass} text-center text-slate-400`}>{g.oppScore}</td>
+                                            <td className={`${tdClass} text-center font-bold ${g.isWin ? 'text-emerald-400' : 'text-red-400'}`}>{g.isWin ? 'W' : 'L'}</td>
+                                            <td className={`${tdClass} text-center`}>
+                                                {g.gameId ? (
+                                                    <button
+                                                        onClick={() => handleViewDetails(g.gameId!)}
+                                                        disabled={isFetchingResult}
+                                                        className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 transition-colors disabled:opacity-50"
+                                                    >
+                                                        {isFetchingResult ? '...' : '박스스코어'}
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-slate-600 text-[10px]">-</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
 
-                    {/* Game Results */}
-                    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden">
-                        {ps.games.map((g) => (
-                            <div key={g.gameNum} className="flex justify-between items-center px-6 py-3 border-b border-slate-800/50 last:border-b-0 hover:bg-white/5 transition-colors">
-                                <div className="flex items-center gap-4">
-                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest w-16">Game {g.gameNum}</span>
-                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${g.isHome ? 'bg-slate-800 text-slate-300' : 'bg-slate-800 text-slate-400'}`}>
-                                        {g.isHome ? 'HOME' : 'AWAY'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-5">
-                                    <span className={`text-xs font-black uppercase ${g.isWin ? 'text-emerald-500' : 'text-red-500'}`}>{g.isWin ? 'WIN' : 'LOSS'}</span>
-                                    <span className={`text-base font-mono font-black ${g.isWin ? 'text-white' : 'text-slate-400'}`}>
-                                        {g.myScore} - {g.oppScore}
-                                    </span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-
-                    {/* Final Status Banner (if final stage) */}
+                    {/* Final Status */}
                     {ps.isFinalStage && ps.finalStatus && (
-                        <div className={`text-center py-8 rounded-2xl border ${
+                        <div className={`text-center py-6 rounded-lg border ${
                             ps.result === 'WON' && ps.round === 4
-                                ? 'bg-gradient-to-r from-yellow-900/30 to-slate-900 border-yellow-500/40'
-                                : 'bg-slate-900 border-slate-800'
+                                ? 'bg-amber-500/5 border-amber-500/30'
+                                : 'bg-slate-800/30 border-slate-700'
                         }`}>
-                            <h3 className={`text-2xl font-black uppercase tracking-tight ${
-                                ps.result === 'WON' && ps.round === 4 ? 'text-yellow-400' : 'text-slate-300'
+                            <h3 className={`text-xl font-black uppercase tracking-tight ${
+                                ps.result === 'WON' && ps.round === 4 ? 'text-amber-400' : 'text-slate-300'
                             }`}>
                                 {ps.finalStatus.title}
                             </h3>
                             <p className="text-sm font-bold text-slate-400 mt-1">{ps.finalStatus.desc}</p>
                         </div>
                     )}
-
-                    {/* Owner's Message */}
-                    <ReviewOwnerMessage
-                        ownerName={ps.ownerName}
-                        title={ps.isFinalStage ? 'Season Debrief' : ps.roundName + ' Complete'}
-                        msg={ps.ownerMessage}
-                        mood={{
-                            color: isWin ? 'text-emerald-400' : 'text-slate-400',
-                            borderColor: isWin ? 'border-emerald-500/50' : 'border-slate-700',
-                            bg: isWin ? 'bg-emerald-500/5' : 'bg-slate-900'
-                        }}
-                    />
                 </div>
             );
         }
@@ -1024,16 +1043,13 @@ const MessageContentRenderer: React.FC<{
         case 'OWNER_LETTER': {
             const ol = content as OwnerLetterContent;
             return (
-                <div className="max-w-3xl mx-auto space-y-6">
-                    <div className="text-center text-xs font-bold text-slate-500 uppercase tracking-widest">
-                        컨퍼런스 {ol.confRank}위 · {ol.wins}승 {ol.losses}패
+                <div className="max-w-2xl space-y-8 text-slate-300 leading-relaxed">
+                    <p>{ol.msg}</p>
+                    <div className="pt-4">
+                        <p className="text-slate-400 text-sm">Best regards,</p>
+                        <p className="text-white font-bold mt-1">{ol.ownerName}</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Owner</p>
                     </div>
-                    <ReviewOwnerMessage
-                        ownerName={ol.ownerName}
-                        title={ol.title}
-                        msg={ol.msg}
-                        mood={ol.mood}
-                    />
                 </div>
             );
         }

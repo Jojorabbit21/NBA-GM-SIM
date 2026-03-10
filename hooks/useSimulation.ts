@@ -10,7 +10,7 @@ import { savePlayoffGameResult } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
-import { sendMessage } from '../services/messageService';
+import { sendMessage, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent } from '../services/reportGenerator';
 
 export const useSimulation = (
@@ -136,14 +136,17 @@ export const useSimulation = (
         const isMySeasonDone = myRegGames(newSchedule).length > 0 && myRegGames(newSchedule).every(g => g.played);
 
         if (!wasMySeasonDone && isMySeasonDone) {
-            const nextDay = new Date(date);
-            nextDay.setDate(nextDay.getDate() + 1);
-            const reviewDate = nextDay.toISOString().split('T')[0];
-            const content = buildSeasonReviewContent(myTeam, newTeams, allTransactions, newSchedule);
-            await sendMessage(userId, myTeamId, reviewDate, 'SEASON_REVIEW', '[시즌 보고서] 2025-26 정규시즌 리뷰', content);
-            const ownerLetter = buildOwnerLetterContent(myTeam, newTeams, newSchedule);
-            await sendMessage(userId, myTeamId, reviewDate, 'OWNER_LETTER', `[구단주 서한] ${ownerLetter.title}`, ownerLetter);
-            refreshUnreadCount();
+            const alreadySent = await hasMessageOfType(userId, myTeamId, 'SEASON_REVIEW');
+            if (!alreadySent) {
+                const nextDay = new Date(date);
+                nextDay.setDate(nextDay.getDate() + 1);
+                const reviewDate = nextDay.toISOString().split('T')[0];
+                const content = buildSeasonReviewContent(myTeam, newTeams, allTransactions, newSchedule);
+                await sendMessage(userId, myTeamId, reviewDate, 'SEASON_REVIEW', '[시즌 보고서] 2025-26 정규시즌 리뷰', content);
+                const ownerLetter = buildOwnerLetterContent(myTeam, newTeams, newSchedule);
+                await sendMessage(userId, myTeamId, reviewDate, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
+                refreshUnreadCount();
+            }
         }
 
         // 플레이오프 스테이지 종료 감지
@@ -174,7 +177,7 @@ export const useSimulation = (
             );
 
             // Capture "before" state for review message detection
-            const prevScheduleSnapshot = schedule.map(g => ({ id: g.id, played: g.played, isPlayoff: g.isPlayoff }));
+            const prevScheduleSnapshot = schedule.map(g => ({ id: g.id, played: g.played, isPlayoff: g.isPlayoff, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId }));
             const prevFinishedSeriesIds = new Set(
                 playoffSeries.filter(s => s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)).map(s => s.id)
             );
@@ -428,7 +431,7 @@ export const useSimulation = (
 
         try {
             // Capture "before" state for review message detection
-            const prevScheduleSnapshot = schedule.map(g => ({ id: g.id, played: g.played, isPlayoff: g.isPlayoff }));
+            const prevScheduleSnapshot = schedule.map(g => ({ id: g.id, played: g.played, isPlayoff: g.isPlayoff, homeTeamId: g.homeTeamId, awayTeamId: g.awayTeamId }));
             const prevFinishedSeriesIds = new Set(
                 playoffSeries.filter(s => s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)).map(s => s.id)
             );

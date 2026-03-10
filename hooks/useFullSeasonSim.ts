@@ -8,7 +8,7 @@ import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from 
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState } from '../services/playoffService';
-import { bulkSendMessages } from '../services/messageService';
+import { bulkSendMessages, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildOwnerLetterContent } from '../services/reportGenerator';
 
 export interface BatchProgress {
@@ -90,27 +90,30 @@ export const useFullSeasonSim = (
                 const myRegGames = result.finalSchedule.filter(g => !g.isPlayoff && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
                 const isMySeasonDone = myRegGames.length > 0 && myRegGames.every(g => g.played);
                 if (isMySeasonDone) {
-                    const myTeam = result.finalTeams.find(t => t.id === myTeamId);
-                    if (myTeam) {
-                        const allTx = [...result.transactions, ...transactions];
-                        const content = buildSeasonReviewContent(myTeam, result.finalTeams, allTx, result.finalSchedule);
-                        result.allMessages.push({
-                            user_id: session.user.id,
-                            team_id: myTeamId,
-                            date: result.finalDate,
-                            type: 'SEASON_REVIEW' as any,
-                            title: '[시즌 보고서] 2025-26 정규시즌 리뷰',
-                            content,
-                        });
-                        const ownerLetter = buildOwnerLetterContent(myTeam, result.finalTeams, result.finalSchedule);
-                        result.allMessages.push({
-                            user_id: session.user.id,
-                            team_id: myTeamId,
-                            date: result.finalDate,
-                            type: 'OWNER_LETTER' as any,
-                            title: `[구단주 서한] ${ownerLetter.title}`,
-                            content: ownerLetter,
-                        });
+                    const alreadySent = await hasMessageOfType(session.user.id, myTeamId, 'SEASON_REVIEW');
+                    if (!alreadySent) {
+                        const myTeam = result.finalTeams.find(t => t.id === myTeamId);
+                        if (myTeam) {
+                            const allTx = [...result.transactions, ...transactions];
+                            const content = buildSeasonReviewContent(myTeam, result.finalTeams, allTx, result.finalSchedule);
+                            result.allMessages.push({
+                                user_id: session.user.id,
+                                team_id: myTeamId,
+                                date: result.finalDate,
+                                type: 'SEASON_REVIEW' as any,
+                                title: '[시즌 보고서] 2025-26 정규시즌 리뷰',
+                                content,
+                            });
+                            const ownerLetter = buildOwnerLetterContent(myTeam, result.finalTeams, result.finalSchedule);
+                            result.allMessages.push({
+                                user_id: session.user.id,
+                                team_id: myTeamId,
+                                date: result.finalDate,
+                                type: 'OWNER_LETTER' as any,
+                                title: `[서신] ${ownerLetter.title}`,
+                                content: ownerLetter,
+                            });
+                        }
                     }
                 }
 

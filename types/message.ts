@@ -139,7 +139,7 @@ export interface PlayoffStageReviewContent {
     seriesScore: string;
     myWins: number;
     myLosses: number;
-    games: { gameNum: number; isHome: boolean; myScore: number; oppScore: number; isWin: boolean }[];
+    games: { gameNum: number; isHome: boolean; myScore: number; oppScore: number; isWin: boolean; gameId?: string }[];
     isFinalStage: boolean;
     finalStatus?: { title: string; desc: string };
     ownerName: string;
