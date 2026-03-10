@@ -182,7 +182,7 @@ export interface FinalsMvpContent {
     opponentTeamName: string;
     seriesScore: string;
     stats: SeriesPlayerStat;
-    runnerUp?: { playerId: string; playerName: string; stats: SeriesPlayerStat };
+    leaderboard: SeriesPlayerStat[];
 }
 
 export interface HofQualificationContent {

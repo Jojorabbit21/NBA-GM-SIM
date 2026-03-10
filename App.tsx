@@ -194,7 +194,11 @@ const App: React.FC = () => {
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,
-                    onLogout: handleLogout,
+                    onLogout: () => handleLogout(() => {
+                        gameData.cleanupData();
+                        setRosterMode(null);
+                        setDraftPoolType(null);
+                    }),
                     onSimulateSeason: handleSimulateSeason,
                     isBatchRunning: batchProgress?.isRunning ?? false,
                     onEndSeasonClick: () => setIsEndSeasonModalOpen(true),

@@ -216,7 +216,7 @@ export const useFullSeasonSim = (
         teams, schedule, playoffSeries, myTeamId, currentSimDate,
         userTactics, depthChart, tendencySeed, session, isGuestMode,
         setTeams, setSchedule, setPlayoffSeries, setCurrentSimDate,
-        setTransactions, forceSave,
+        setTransactions, forceSave, hofId, onHofSubmitted,
     ]);
 
     const handleCancelBatch = useCallback(() => {
