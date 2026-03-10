@@ -236,7 +236,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           <button
             onClick={onEndSeasonClick}
             className={`w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest transition-all ${
-              isCollapsed ? 'px-2 py-2.5 text-[10px]' : 'px-4 py-3 text-xs'
+              isCollapsed ? 'px-2 py-2.5 text-[10px]' : 'px-4 py-3 text-base'
             }`}
             title={isCollapsed ? '시즌 종료' : undefined}
           >
