@@ -401,7 +401,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             }
 
             if (teamId && date) {
-                await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot);
+                const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot);
+                // hofId를 DB 응답에서 동기화 (최초 세이브 시 DB가 gen_random_uuid()로 생성)
+                if (result?.[0]?.hof_id) {
+                    setHofId(result[0].hof_id);
+                }
             }
         } catch (e: any) {
             console.error("Save Failed:", e);
@@ -583,8 +587,23 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
     const cleanupData = () => {
          setMyTeamId(null);
+         setTeams([]);
+         setSchedule([]);
+         setPlayoffSeries([]);
+         setTransactions([]);
+         setCurrentSimDate(INITIAL_DATE);
+         setUserTactics(null);
+         setDepthChart(null);
+         setTendencySeed(null);
+         setHofId(null);
+         setNews([]);
+         draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;
          hasInitialLoadRef.current = false;
+         queryClient.removeQueries({ predicate: q => q.queryKey[0] !== 'baseData' });
+         Object.keys(localStorage).forEach((key) => {
+             if (key.startsWith('trade_ops_')) localStorage.removeItem(key);
+         });
     };
 
     return {

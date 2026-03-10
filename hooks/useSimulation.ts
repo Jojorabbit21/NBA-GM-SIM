@@ -218,7 +218,7 @@ export const useSimulation = (
                             opponentTeamName: loserTeam?.name || 'Unknown',
                             seriesScore: `${winnerWins}-${loserWins}`,
                             stats: mvpResult.mvp,
-                            runnerUp: mvpResult.runnerUp ? { playerId: mvpResult.runnerUp.playerId, playerName: mvpResult.runnerUp.playerName, stats: mvpResult.runnerUp } : undefined,
+                            leaderboard: mvpResult.leaderboard,
                         };
                         await sendMessage(userId, myTeamId, date, 'FINALS_MVP', `[속보] 파이널 MVP 발표`, fmvpContent);
                     }
@@ -226,7 +226,7 @@ export const useSimulation = (
             }
             refreshUnreadCount();
         }
-    }, [session, myTeamId, refreshUnreadCount]);
+    }, [session, myTeamId, refreshUnreadCount, hofId, isGuestMode, onHofSubmitted]);
 
     const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false, spectateGameId?: string) => {
         if (isSimulating || !myTeamId) return;
