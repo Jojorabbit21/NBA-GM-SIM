@@ -816,9 +816,11 @@ const RegSeasonChampionRenderer: React.FC<{
             {/* Trophy Header */}
             <div className="text-center space-y-4">
                 <img src="/images/reg.png" alt="Regular Season Champion" className="mx-auto h-40 object-contain" />
-                <h2 className="text-3xl font-black text-white tracking-tight">{rc.championTeamName}</h2>
+                <h2 className="text-3xl font-black text-white tracking-tight">
+                    {TEAM_DATA[championTeamId]?.city ?? ''} {rc.championTeamName}
+                </h2>
                 <p className="text-sm font-bold text-slate-400">
-                    {rc.conference} Conference&nbsp;&nbsp;|&nbsp;&nbsp;{rc.wins}W - {rc.losses}L ({rc.pct})
+                    {rc.conference === 'East' ? '동부' : '서부'} 컨퍼런스&nbsp;&nbsp;|&nbsp;&nbsp;{rc.wins}승 {rc.losses}패 ({rc.pct})
                 </p>
             </div>
 
