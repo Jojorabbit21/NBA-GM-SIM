@@ -102,10 +102,10 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
 
           const seed7 = pi7v8?.winnerId
               ? teams.find(t => t.id === pi7v8.winnerId)
-              : ranked[6]; // 미결정 시 정규시즌 7위
+              : undefined; // 미결정 시 TBD
           const seed8 = piDecider?.winnerId
               ? teams.find(t => t.id === piDecider.winnerId)
-              : ranked[7]; // 미결정 시 정규시즌 8위
+              : undefined; // 미결정 시 TBD
 
           return [...topSix, seed7, seed8];
       };
