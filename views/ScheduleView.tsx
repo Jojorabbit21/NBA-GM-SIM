@@ -465,7 +465,7 @@ export const ScheduleView: React.FC<ScheduleViewProps> = ({ schedule: localSched
             </button>
             <div
               ref={dayCarouselRef}
-              className="flex-1 overflow-x-auto custom-scrollbar-hide flex items-center justify-center gap-1.5 py-2"
+              className="flex-1 overflow-x-auto custom-scrollbar-hide flex items-center gap-1.5 py-2"
             >
               {allDays.map(day => {
                 const y = currentDate.getFullYear();
