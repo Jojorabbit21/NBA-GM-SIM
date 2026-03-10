@@ -11,7 +11,7 @@ import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent } from '../services/reportGenerator';
 
 export const useSimulation = (
     teams: Team[],
@@ -141,6 +141,8 @@ export const useSimulation = (
             const reviewDate = nextDay.toISOString().split('T')[0];
             const content = buildSeasonReviewContent(myTeam, newTeams, allTransactions, newSchedule);
             await sendMessage(userId, myTeamId, reviewDate, 'SEASON_REVIEW', '[시즌 보고서] 2025-26 정규시즌 리뷰', content);
+            const ownerLetter = buildOwnerLetterContent(myTeam, newTeams, newSchedule);
+            await sendMessage(userId, myTeamId, reviewDate, 'OWNER_LETTER', `[구단주 서한] ${ownerLetter.title}`, ownerLetter);
             refreshUnreadCount();
         }
 

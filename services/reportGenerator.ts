@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent } from '../types';
+import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
@@ -534,6 +534,84 @@ export const buildSeasonReviewContent = (
     }
 
     return base;
+};
+
+// --- Owner Letter Generator ---
+
+const OWNER_LETTER_TEMPLATES: { title: string; msgs: string[]; color: string; borderColor: string; bg: string }[] = [
+    // Tier 0: confRank 1-3 (최상위 컨텐더)
+    {
+        title: "놀라운 시즌이었습니다",
+        msgs: [
+            "컨퍼런스 정상에 우리 팀이 서 있습니다. 당신이 이뤄낸 성과에 진심으로 감사드립니다. 이제 플레이오프에서 우승컵을 들어올릴 차례입니다. 온 도시가 당신을 응원하고 있습니다.",
+            "이 정도 성적이라면 누가 봐도 리그 최정상급입니다. 선수단 운영, 전술, 모든 면에서 탁월했습니다. 포스트시즌에서도 이 기세를 이어가 주세요. 우승만이 남았습니다.",
+            "솔직히 시즌 초에는 이 정도까지 기대하지 않았습니다. 하지만 당신은 해냈습니다. 팬들의 열기가 최고조입니다. 플레이오프에서 역사를 써 주세요.",
+            "완벽에 가까운 시즌을 보내주셨습니다. 보드진 전원이 만족하고 있습니다. 남은 건 우승뿐입니다. 마지막까지 집중해 주십시오.",
+        ],
+        color: "text-amber-400", borderColor: "border-amber-500/50", bg: "bg-amber-500/5"
+    },
+    // Tier 1: confRank 4-8 (플레이오프 팀)
+    {
+        title: "좋은 시즌이었습니다",
+        msgs: [
+            "플레이오프 진출을 확정지었군요. 정규시즌 내내 안정적인 경쟁력을 보여줬습니다. 하지만 진정한 컨텐더가 되려면 한 단계 더 올라가야 합니다. 포스트시즌에서의 성과를 기대하겠습니다.",
+            "준수한 성적입니다. 플레이오프 자체가 목표는 아니었겠지만, 이 팀이 성장하고 있다는 건 분명합니다. 오프시즌에 핵심 보강이 이뤄진다면 내년엔 더 높은 곳을 바라볼 수 있을 겁니다.",
+            "플레이오프 티켓을 손에 넣었습니다. 나쁘지 않은 시즌이지만, 솔직히 우리 팬들은 더 많은 것을 원하고 있습니다. 포스트시즌에서 깜짝 선전을 기대합니다.",
+        ],
+        color: "text-blue-400", borderColor: "border-blue-500/50", bg: "bg-blue-500/5"
+    },
+    // Tier 2: confRank 9-11 (버블/로터리)
+    {
+        title: "아쉬운 시즌이었습니다",
+        msgs: [
+            "플레이오프 문턱에서 멈춘 건 정말 뼈아픕니다. 가능성은 보였지만 결과가 따라주지 않았습니다. 오프시즌 동안 무엇이 부족했는지 냉정하게 분석해 주세요.",
+            "기대에 못 미치는 시즌이었습니다. 팬들의 실망감이 느껴집니다. 리빌딩이 필요한 건지, 아니면 한두 명의 보강으로 해결될 문제인지 판단을 내려야 할 때입니다.",
+            "솔직히 말해 올 시즌은 실패입니다. 플레이오프에 가지 못하는 팀에 이 구단의 이름을 걸 수 없습니다. 큰 그림을 다시 그려주세요. 아직 기회는 있습니다.",
+        ],
+        color: "text-orange-400", borderColor: "border-orange-500/50", bg: "bg-orange-500/5"
+    },
+    // Tier 3: confRank 12-15 (최하위)
+    {
+        title: "받아들이기 힘든 시즌입니다",
+        msgs: [
+            "이런 성적을 보고 가만히 있을 수 없습니다. 팬들은 떠나고 있고, 스폰서들은 문의를 줄이고 있습니다. 드래프트와 오프시즌을 통해 반드시 팀을 재건해야 합니다. 각오하고 임해 주십시오.",
+            "최악의 시즌입니다. 리빌딩 과정이라 해도 이 정도 성적은 용납하기 어렵습니다. 당장 획기적인 변화가 필요합니다. 내년에도 이런 결과라면 저도 결단을 내릴 수밖에 없습니다.",
+            "한 시즌을 통째로 날렸습니다. 선수단 구성부터 전술까지 모든 것을 재점검해야 합니다. 드래프트 픽이라도 좋은 걸 확보했길 바랍니다. 더 이상의 변명은 듣고 싶지 않습니다.",
+            "구단 역사상 최악의 시즌 중 하나입니다. 팬들에게 면목이 없습니다. 오프시즌에 팀을 완전히 뜯어고쳐 주세요. 이게 마지막 기회라고 생각하십시오.",
+        ],
+        color: "text-red-500", borderColor: "border-red-500/50", bg: "bg-red-500/5"
+    },
+];
+
+function getOwnerLetterTier(confRank: number): number {
+    if (confRank <= 3) return 0;
+    if (confRank <= 8) return 1;
+    if (confRank <= 11) return 2;
+    return 3;
+}
+
+export const buildOwnerLetterContent = (
+    team: Team, allTeams: Team[], schedule?: Game[]
+): OwnerLetterContent => {
+    const comparator = schedule
+        ? createTiebreakerComparator(allTeams, schedule)
+        : (a: Team, b: Team) => b.wins - a.wins;
+    const confTeams = allTeams.filter(t => t.conference === team.conference).sort(comparator);
+    const confRank = confTeams.findIndex(t => t.id === team.id) + 1;
+
+    const tier = getOwnerLetterTier(confRank);
+    const template = OWNER_LETTER_TEMPLATES[tier];
+    const msg = template.msgs[Math.floor(Math.random() * template.msgs.length)];
+
+    return {
+        ownerName: TEAM_DATA[team.id]?.owner || "The Ownership Group",
+        title: template.title,
+        msg,
+        mood: { color: template.color, borderColor: template.borderColor, bg: template.bg },
+        confRank,
+        wins: team.wins,
+        losses: team.losses,
+    };
 };
 
 const ROUND_NAMES: Record<number, string> = {

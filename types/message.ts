@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'SYSTEM';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'SYSTEM';
 
 export interface Message {
     id: string;
@@ -118,6 +118,16 @@ export interface SeasonReviewContent {
         ftPct: number;
         pm: number;
     }[];
+}
+
+export interface OwnerLetterContent {
+    ownerName: string;
+    title: string;
+    msg: string;
+    mood: { color: string; borderColor: string; bg: string };
+    confRank: number;
+    wins: number;
+    losses: number;
 }
 
 export interface PlayoffStageReviewContent {

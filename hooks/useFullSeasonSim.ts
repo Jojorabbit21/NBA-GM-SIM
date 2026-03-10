@@ -9,7 +9,7 @@ import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchS
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState } from '../services/playoffService';
 import { bulkSendMessages } from '../services/messageService';
-import { buildSeasonReviewContent } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildOwnerLetterContent } from '../services/reportGenerator';
 
 export interface BatchProgress {
     isRunning: boolean;
@@ -101,6 +101,15 @@ export const useFullSeasonSim = (
                             type: 'SEASON_REVIEW' as any,
                             title: '[시즌 보고서] 2025-26 정규시즌 리뷰',
                             content,
+                        });
+                        const ownerLetter = buildOwnerLetterContent(myTeam, result.finalTeams, result.finalSchedule);
+                        result.allMessages.push({
+                            user_id: session.user.id,
+                            team_id: myTeamId,
+                            date: result.finalDate,
+                            type: 'OWNER_LETTER' as any,
+                            title: `[구단주 서한] ${ownerLetter.title}`,
+                            content: ownerLetter,
                         });
                     }
                 }

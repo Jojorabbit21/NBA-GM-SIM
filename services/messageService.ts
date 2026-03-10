@@ -23,6 +23,25 @@ export const fetchUnreadMessageCount = async (userId: string, teamId: string): P
 };
 
 /**
+ * Fetch total message count
+ */
+export const fetchTotalMessageCount = async (userId: string, teamId: string): Promise<number> => {
+    if (!userId || !teamId) return 0;
+
+    const { count, error } = await supabase
+        .from('user_messages')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('team_id', teamId);
+
+    if (error) {
+        console.error("Error fetching total message count:", error);
+        return 0;
+    }
+    return count || 0;
+};
+
+/**
  * Fetch messages with pagination
  */
 export const fetchMessages = async (userId: string, teamId: string, page: number = 0, limit: number = 20): Promise<Message[]> => {
