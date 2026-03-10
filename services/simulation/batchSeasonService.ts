@@ -122,7 +122,7 @@ export async function runBatchSeason(
                     team_id: myTeamId,
                     date,
                     type: 'GAME_RECAP',
-                    title: `[경기 결과] ${homeTeam?.name ?? ''} vs ${awayTeam?.name ?? ''}`,
+                    title: `[경기 결과] vs ${isHome ? (awayTeam?.name ?? '') : (homeTeam?.name ?? '')}`,
                     content: {
                         gameId: userGame.id,
                         homeTeamId: userGame.homeTeamId,

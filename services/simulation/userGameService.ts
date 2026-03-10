@@ -138,7 +138,7 @@ export const applyUserGameResult = async (
             myTeamId,
             currentSimDate,
             'GAME_RECAP',
-            `[경기 결과] ${homeTeam.name} vs ${awayTeam.name}`,
+            `[경기 결과] vs ${isHome ? awayTeam.name : homeTeam.name}`,
             {
                 gameId: userGame.id,
                 homeTeamId: homeTeam.id,

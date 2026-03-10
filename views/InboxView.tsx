@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
-import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, Team, Player, PlayerBoxScore } from '../types';
+import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
-import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
+import { fetchMessages, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
@@ -28,20 +28,25 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
     // Always sorting by date desc, created_at desc from DB
-    const data = await fetchMessages(userId, myTeamId, page);
-    
+    const [data, count] = await Promise.all([
+      fetchMessages(userId, myTeamId, page),
+      page === 0 ? fetchTotalMessageCount(userId, myTeamId) : Promise.resolve(totalCount),
+    ]);
+
+    if (page === 0) setTotalCount(count);
     const newMessages = page === 0 ? data : [...messages, ...data];
     setMessages(newMessages);
-    
+
     // Auto-select the first message (Latest) if none selected
     if (page === 0 && data.length > 0 && !selectedMessage) {
         handleSelectMessage(data[0]);
     }
-    
+
     setLoading(false);
   }, [userId, myTeamId, page]);
 
@@ -128,7 +133,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                </div>
                {/* Message Count */}
                <div className="px-4 py-2 border-b border-slate-800/50">
-                   <span className="text-[10px] font-bold text-slate-600">총 {messages.length}개</span>
+                   <span className="text-[10px] font-bold text-slate-600">총 {totalCount}개</span>
                </div>
 
                <div className="flex-1 overflow-y-auto custom-scrollbar">
@@ -506,12 +511,6 @@ const SeasonReviewRenderer: React.FC<{
 
     return (
         <div className="space-y-10 max-w-5xl mx-auto">
-            {/* Header */}
-            <div className="space-y-1">
-                <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 정규시즌 리뷰</h2>
-                <div className="border-t border-orange-500/20 mt-2" />
-            </div>
-
             {/* Standings Context */}
             {sr.standingsContext && sr.standingsContext.length > 0 && (
                 <div>
@@ -589,22 +588,38 @@ const SeasonReviewRenderer: React.FC<{
                             ))}
                         </div>
                     </div>
-                    <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-                        {cols.map(c => {
-                            const rank = computeRank(c.key, c.inv);
-                            const rankColor = rank <= 10 ? 'text-emerald-400' : rank >= 21 ? 'text-red-400' : 'text-slate-400';
-                            return (
-                                <div key={c.key} className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
-                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">{c.label}</span>
-                                    <div className="text-xl font-black text-white mt-1 font-mono tabular-nums">
-                                        {fmtStatVal(myTeamStats.stats[c.key], c.fmt)}
-                                    </div>
-                                    <span className={`text-xs font-bold ${rankColor}`}>
-                                        리그 {rank}위
-                                    </span>
-                                </div>
-                            );
-                        })}
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                            <TableHead className="bg-slate-950">
+                                {cols.map(c => (
+                                    <TableHeaderCell key={c.key} align="center" className="w-14">{c.label}</TableHeaderCell>
+                                ))}
+                            </TableHead>
+                            <TableBody>
+                                <TableRow>
+                                    {cols.map(c => (
+                                        <TableCell key={c.key} align="center" className={`text-xs font-mono tabular-nums ${
+                                            c.fmt === 'diff'
+                                                ? (myTeamStats.stats[c.key] > 0 ? 'text-emerald-400' : myTeamStats.stats[c.key] < 0 ? 'text-red-400' : 'text-slate-500')
+                                                : 'text-white'
+                                        }`}>
+                                            {fmtStatVal(myTeamStats.stats[c.key], c.fmt)}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                                <tr>
+                                    {cols.map(c => {
+                                        const rank = computeRank(c.key, c.inv);
+                                        const rankColor = rank <= 10 ? 'text-emerald-400' : rank >= 21 ? 'text-red-400' : 'text-slate-500';
+                                        return (
+                                            <td key={c.key} className={`text-center text-[10px] font-bold py-1.5 bg-slate-950/50 border-t border-slate-800/50 ${rankColor}`}>
+                                                {rank}위
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            </TableBody>
+                        </Table>
                     </div>
                 </div>
             )}
@@ -929,13 +944,6 @@ const MessageContentRenderer: React.FC<{
 
             return (
                 <div className="space-y-8 max-w-5xl mx-auto">
-                    {/* Header */}
-                    <div className="space-y-1">
-                        <p className="text-[10px] font-mono text-indigo-400/60 uppercase tracking-[0.2em]">Playoff Report</p>
-                        <h2 className="text-xl font-black text-white uppercase tracking-tight">{ps.roundName}</h2>
-                        <div className="border-t border-indigo-500/20 mt-2" />
-                    </div>
-
                     {/* Series Result Banner */}
                     <div className={`bg-gradient-to-r ${bgGradient} to-slate-950 border ${borderColor} rounded-2xl p-6 flex items-center justify-between`}>
                         <div className="flex items-center gap-5">
@@ -1012,6 +1020,23 @@ const MessageContentRenderer: React.FC<{
                     onPlayerClick={onPlayerClick}
                 />
             );
+
+        case 'OWNER_LETTER': {
+            const ol = content as OwnerLetterContent;
+            return (
+                <div className="max-w-3xl mx-auto space-y-6">
+                    <div className="text-center text-xs font-bold text-slate-500 uppercase tracking-widest">
+                        컨퍼런스 {ol.confRank}위 · {ol.wins}승 {ol.losses}패
+                    </div>
+                    <ReviewOwnerMessage
+                        ownerName={ol.ownerName}
+                        title={ol.title}
+                        msg={ol.msg}
+                        mood={ol.mood}
+                    />
+                </div>
+            );
+        }
 
         default:
             return <div className="text-slate-400 text-sm">표시할 내용이 없습니다.</div>;
@@ -1169,20 +1194,20 @@ const AwardsReportViewer: React.FC<{
                                     return (
                                         <tr
                                             key={r.playerId}
-                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-indigo-500/10' : idx % 2 === 0 ? 'bg-slate-800/30' : ''}`}
+                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-amber-500/10' : idx % 2 === 0 ? 'bg-slate-800/30' : ''}`}
                                             onClick={() => onPlayerClick(r.playerId)}
                                         >
-                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-indigo-400' : 'text-slate-400'}`}>{idx + 1}</td>
+                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}`}>{idx + 1}</td>
                                             <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
-                                            <td className={`${tdClass} pl-3 ${idx === 0 ? 'text-indigo-300' : 'text-slate-200'} hover:text-white`}>
+                                            <td className={`${tdClass} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-200'} hover:text-white`}>
                                                 <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={r.teamId} size="xs" />
                                                     <span className="font-bold">{r.playerName}</span>
-                                                    {idx === 0 && <span className="text-indigo-400">★</span>}
+                                                    {idx === 0 && <span className="text-amber-400">★</span>}
                                                 </div>
                                             </td>
                                             <td className={`${tdClass} text-center text-slate-400`}>{r.position}</td>
-                                            <td className={`${tdClass} text-center ${votes[0] > 0 ? 'text-indigo-300 font-bold' : 'text-slate-500'}`}>{votes[0]}</td>
+                                            <td className={`${tdClass} text-center ${votes[0] > 0 ? 'text-amber-300 font-bold' : 'text-slate-500'}`}>{votes[0]}</td>
                                             <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{votes[1]}</td>
                                             <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{votes[2]}</td>
                                             <td className={`${tdClass} text-center text-white`}>{r.points}</td>
@@ -1230,6 +1255,8 @@ const AwardsReportViewer: React.FC<{
                                     team.players.map((p, pIdx) => {
                                         const tv = p.tierVotes || [];
                                         const tp = p.totalPoints ?? p.votes;
+                                        const isLastInGroup = pIdx === team.players.length - 1 && team.tier < 3;
+                                        const rowTd = isLastInGroup ? tdClass.replace('border-slate-700/60', 'border-slate-600') : tdClass;
                                         return (
                                             <tr
                                                 key={`nba-${team.tier}-${p.playerId}`}
@@ -1246,26 +1273,26 @@ const AwardsReportViewer: React.FC<{
                                                         {team.tier === 1 ? '1ST' : team.tier === 2 ? '2ND' : '3RD'}
                                                     </td>
                                                 )}
-                                                <td className={`${tdClass} text-center text-slate-400`}>{p.pos}</td>
-                                                <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
-                                                <td className={`${tdClass} pl-3 text-slate-200 hover:text-white`}>
+                                                <td className={`${rowTd} text-center text-slate-400`}>{p.pos}</td>
+                                                <td className={`${rowTd} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                                <td className={`${rowTd} pl-3 text-slate-200 hover:text-white`}>
                                                     <div className="flex items-center gap-1.5">
                                                         <TeamLogo teamId={p.teamId} size="xs" />
                                                         <span className="font-bold">{p.playerName}</span>
                                                     </div>
                                                 </td>
-                                                <td className={`${tdClass} text-center ${(tv[0] || 0) > 0 ? 'text-amber-300' : 'text-slate-500'}`}>{tv[0] || 0}</td>
-                                                <td className={`${tdClass} text-center ${(tv[1] || 0) > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{tv[1] || 0}</td>
-                                                <td className={`${tdClass} text-center ${(tv[2] || 0) > 0 ? 'text-slate-300' : 'text-slate-500'}`}>{tv[2] || 0}</td>
-                                                <td className={`${tdClass} text-center text-white`}>{tp}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.ppg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.rpg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.apg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatPct(p.statLine.fgPct)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatPct(p.statLine.p3Pct)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatPct(p.statLine.tsPct)}</td>
+                                                <td className={`${rowTd} text-center ${(tv[0] || 0) > 0 ? 'text-amber-300' : 'text-slate-500'}`}>{tv[0] || 0}</td>
+                                                <td className={`${rowTd} text-center ${(tv[1] || 0) > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{tv[1] || 0}</td>
+                                                <td className={`${rowTd} text-center ${(tv[2] || 0) > 0 ? 'text-slate-300' : 'text-slate-500'}`}>{tv[2] || 0}</td>
+                                                <td className={`${rowTd} text-center text-white`}>{tp}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.ppg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.rpg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.apg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.spg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.bpg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatPct(p.statLine.fgPct)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatPct(p.statLine.p3Pct)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatPct(p.statLine.tsPct)}</td>
                                             </tr>
                                         );
                                     })
@@ -1302,6 +1329,8 @@ const AwardsReportViewer: React.FC<{
                                     team.players.map((p, pIdx) => {
                                         const tv = p.tierVotes || [];
                                         const tp = p.totalPoints ?? p.votes;
+                                        const isLastInGroup = pIdx === team.players.length - 1 && team.tier < 2;
+                                        const rowTd = isLastInGroup ? tdClass.replace('border-slate-700/60', 'border-slate-600') : tdClass;
                                         return (
                                             <tr
                                                 key={`def-${team.tier}-${p.playerId}`}
@@ -1318,21 +1347,21 @@ const AwardsReportViewer: React.FC<{
                                                         {team.tier === 1 ? '1ST' : '2ND'}
                                                     </td>
                                                 )}
-                                                <td className={`${tdClass} text-center text-slate-400`}>{p.pos}</td>
-                                                <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
-                                                <td className={`${tdClass} pl-3 text-slate-200 hover:text-white`}>
+                                                <td className={`${rowTd} text-center text-slate-400`}>{p.pos}</td>
+                                                <td className={`${rowTd} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                                <td className={`${rowTd} pl-3 text-slate-200 hover:text-white`}>
                                                     <div className="flex items-center gap-1.5">
                                                         <TeamLogo teamId={p.teamId} size="xs" />
                                                         <span className="font-bold">{p.playerName}</span>
                                                     </div>
                                                 </td>
-                                                <td className={`${tdClass} text-center ${(tv[0] || 0) > 0 ? 'text-indigo-300' : 'text-slate-500'}`}>{tv[0] || 0}</td>
-                                                <td className={`${tdClass} text-center ${(tv[1] || 0) > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{tv[1] || 0}</td>
-                                                <td className={`${tdClass} text-center text-white`}>{tp}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.orebpg)}</td>
-                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.drebpg)}</td>
+                                                <td className={`${rowTd} text-center ${(tv[0] || 0) > 0 ? 'text-indigo-300' : 'text-slate-500'}`}>{tv[0] || 0}</td>
+                                                <td className={`${rowTd} text-center ${(tv[1] || 0) > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{tv[1] || 0}</td>
+                                                <td className={`${rowTd} text-center text-white`}>{tp}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.spg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.bpg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.orebpg)}</td>
+                                                <td className={`${rowTd} text-center`}>{formatStat(p.statLine.drebpg)}</td>
                                             </tr>
                                         );
                                     })
