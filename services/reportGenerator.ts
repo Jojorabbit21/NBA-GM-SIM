@@ -4,6 +4,7 @@ import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, Pl
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
+import { computeStandingsStats } from '../utils/standingsStats';
 import { Trophy, Crown, Medal, Star, Activity } from 'lucide-react';
 
 // --- Types ---
@@ -345,6 +346,147 @@ export const generatePlayoffReport = (team: Team, allTeams: Team[], playoffSerie
 
 // --- Inbox Message Content Builders (JSON-serializable) ---
 
+/** 전 팀 스탯 계산 (useLeaderboardData 팀 모드 로직 추출) */
+function computeAllTeamsStats(teams: Team[], schedule: Game[]) {
+    const filteredSchedule = schedule.filter(g => g.played && !g.isPlayoff);
+
+    // Pass 1: raw totals
+    const allRawTotals = new Map<string, any>();
+    const allGameCounts = new Map<string, number>();
+    teams.forEach(t => {
+        const gp = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id).length || 1;
+        allGameCounts.set(t.id, gp);
+        const tot = t.roster.reduce((a: any, p) => {
+            const s = p.stats;
+            a.reb += s.reb; a.offReb += (s.offReb || 0); a.defReb += (s.defReb || 0);
+            a.ast += s.ast; a.stl += s.stl; a.blk += s.blk; a.tov += s.tov; a.pf += (s.pf || 0);
+            a.fgm += s.fgm; a.fga += s.fga; a.p3m += s.p3m; a.p3a += s.p3a; a.ftm += s.ftm; a.fta += s.fta;
+            return a;
+        }, { reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+        allRawTotals.set(t.id, tot);
+    });
+
+    // Pass 2: per-team stats with opponent approximation
+    return teams.map(t => {
+        const teamGames = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id);
+        const gp = teamGames.length || 1;
+        const tot = allRawTotals.get(t.id)!;
+        let totalPts = 0, totalPa = 0;
+        let oppFgm = 0, oppFga = 0, opp3pm = 0, opp3pa = 0, oppFtm = 0, oppFta = 0;
+        let oppReb = 0, oppOreb = 0, oppDreb = 0, oppAst = 0, oppStl = 0, oppBlk = 0, oppTov = 0, oppPf = 0;
+        const oppAccum = new Map<string, number>();
+        teamGames.forEach(g => {
+            const isH = g.homeTeamId === t.id;
+            totalPts += isH ? g.homeScore : g.awayScore;
+            totalPa += isH ? g.awayScore : g.homeScore;
+            const oppBox = isH ? (g as any).awayStats : (g as any).homeStats;
+            if (oppBox) {
+                oppFgm += oppBox.fgm || 0; oppFga += oppBox.fga || 0; opp3pm += oppBox.p3m || 0; opp3pa += oppBox.p3a || 0;
+                oppFtm += oppBox.ftm || 0; oppFta += oppBox.fta || 0; oppReb += oppBox.reb || 0; oppOreb += oppBox.offReb || 0;
+                oppDreb += oppBox.defReb || 0; oppAst += oppBox.ast || 0; oppStl += oppBox.stl || 0; oppBlk += oppBox.blk || 0;
+                oppTov += oppBox.tov || 0; oppPf += oppBox.pf || 0;
+            } else {
+                const oppId = isH ? g.awayTeamId : g.homeTeamId;
+                oppAccum.set(oppId, (oppAccum.get(oppId) || 0) + 1);
+            }
+        });
+        oppAccum.forEach((cnt, oppId) => {
+            const oT = allRawTotals.get(oppId); const oG = allGameCounts.get(oppId) || 1;
+            if (oT) {
+                const s = cnt / oG;
+                oppFgm += oT.fgm * s; oppFga += oT.fga * s; opp3pm += oT.p3m * s; opp3pa += oT.p3a * s;
+                oppFtm += oT.ftm * s; oppFta += oT.fta * s; oppReb += oT.reb * s; oppOreb += oT.offReb * s;
+                oppDreb += oT.defReb * s; oppAst += oT.ast * s; oppStl += oT.stl * s; oppBlk += oT.blk * s;
+                oppTov += oT.tov * s; oppPf += oT.pf * s;
+            }
+        });
+        const tsa = tot.fga + 0.44 * tot.fta;
+        const tPoss = tot.fga + 0.44 * tot.fta + tot.tov - tot.offReb;
+        const oPoss = oppFga + 0.44 * oppFta + oppTov - oppOreb;
+        const o2pa = oppFga - opp3pa;
+        const stats: Record<string, number> = {
+            pts: totalPts / gp, pa: totalPa / gp, oreb: tot.offReb / gp, dreb: tot.defReb / gp,
+            reb: tot.reb / gp, ast: tot.ast / gp, stl: tot.stl / gp, blk: tot.blk / gp, tov: tot.tov / gp,
+            fgm: tot.fgm / gp, fga: tot.fga / gp, 'fg%': tot.fga > 0 ? tot.fgm / tot.fga : 0,
+            p3m: tot.p3m / gp, p3a: tot.p3a / gp, '3p%': tot.p3a > 0 ? tot.p3m / tot.p3a : 0,
+            ftm: tot.ftm / gp, fta: tot.fta / gp, 'ft%': tot.fta > 0 ? tot.ftm / tot.fta : 0,
+            'ts%': tsa > 0 ? totalPts / (2 * tsa) : 0, pm: (totalPts - totalPa) / gp,
+            'efg%': tot.fga > 0 ? (tot.fgm + 0.5 * tot.p3m) / tot.fga : 0,
+            'tov%': tPoss > 0 ? tot.tov / tPoss : 0,
+            'ast%': tot.fgm > 0 ? tot.ast / tot.fgm : 0,
+            'stl%': oPoss > 0 ? tot.stl / oPoss : 0,
+            'blk%': o2pa > 0 ? tot.blk / o2pa : 0,
+            '3par': tot.fga > 0 ? tot.p3a / tot.fga : 0,
+            ftr: tot.fga > 0 ? tot.fta / tot.fga : 0,
+            ortg: tPoss > 0 ? (totalPts / tPoss) * 100 : 0,
+            drtg: oPoss > 0 ? (totalPa / oPoss) * 100 : 0,
+            nrtg: (tPoss > 0 && oPoss > 0) ? ((totalPts / tPoss) - (totalPa / oPoss)) * 100 : 0,
+            poss: tPoss / gp,
+            pace: oPoss > 0 ? (tPoss + oPoss) / (2 * gp) : tPoss / gp,
+            opp_pts: totalPa / gp, 'opp_fg%': oppFga > 0 ? oppFgm / oppFga : 0,
+            'opp_3p%': opp3pa > 0 ? opp3pm / opp3pa : 0,
+            opp_ast: oppAst / gp, opp_reb: oppReb / gp, opp_oreb: oppOreb / gp,
+            opp_stl: oppStl / gp, opp_blk: oppBlk / gp, opp_tov: oppTov / gp, opp_pf: oppPf / gp,
+        };
+        return { teamId: t.id, teamName: t.name, wins: t.wins, losses: t.losses, stats };
+    });
+}
+
+/** 스탠딩 컨텍스트 (유저 팀 ± 2팀) */
+function buildStandingsContext(team: Team, allTeams: Team[], schedule: Game[]) {
+    const statsMap = computeStandingsStats(allTeams, schedule);
+    const comparator = createTiebreakerComparator(allTeams, schedule);
+    const sorted = [...allTeams].sort(comparator);
+    const myIdx = sorted.findIndex(t => t.id === team.id);
+    const leader = sorted[0];
+    const leaderRec = statsMap[leader?.id];
+    const fmtRec = (r: { w: number; l: number }) => `${r.w}-${r.l}`;
+    const start = Math.max(0, myIdx - 2);
+    const end = Math.min(sorted.length, myIdx + 3);
+    return sorted.slice(start, end).map((t, i) => {
+        const rec = statsMap[t.id];
+        const rank = start + i + 1;
+        let gb = '-';
+        if (leaderRec && t.id !== leader.id) {
+            gb = (((leaderRec.wins - leaderRec.losses) - (rec.wins - rec.losses)) / 2).toFixed(1);
+        }
+        return {
+            teamId: t.id, teamName: `${t.city} ${t.name}`, rank, wins: rec.wins, losses: rec.losses,
+            pct: rec.pct.toFixed(3).replace(/^0/, ''), gb,
+            home: fmtRec(rec.home), away: fmtRec(rec.away), conf: fmtRec(rec.conf),
+            ppg: rec.ppg > 0 ? rec.ppg.toFixed(1) : '-', oppg: rec.oppg > 0 ? rec.oppg.toFixed(1) : '-',
+            diff: rec.diff === 0 ? '0.0' : (rec.diff > 0 ? '+' : '') + rec.diff.toFixed(1),
+            streak: rec.streak, l10: fmtRec(rec.l10), isUserTeam: t.id === team.id,
+        };
+    });
+}
+
+/** 로스터 선수 Traditional 스탯 */
+function buildRosterStats(team: Team) {
+    return team.roster
+        .filter(p => p.stats.g > 0)
+        .map(p => {
+            const s = p.stats; const g = s.g;
+            return {
+                id: p.id, name: p.name, position: p.position, ovr: calculatePlayerOvr(p),
+                g, mpg: +(s.mp / g).toFixed(1),
+                pts: +(s.pts / g).toFixed(1), oreb: +((s.offReb || 0) / g).toFixed(1),
+                dreb: +((s.defReb || 0) / g).toFixed(1), reb: +(s.reb / g).toFixed(1),
+                ast: +(s.ast / g).toFixed(1), stl: +(s.stl / g).toFixed(1),
+                blk: +(s.blk / g).toFixed(1), tov: +(s.tov / g).toFixed(1),
+                pf: +((s.pf || 0) / g).toFixed(1),
+                fgm: +(s.fgm / g).toFixed(1), fga: +(s.fga / g).toFixed(1),
+                fgPct: s.fga > 0 ? +(s.fgm / s.fga).toFixed(3) : 0,
+                p3m: +(s.p3m / g).toFixed(1), p3a: +(s.p3a / g).toFixed(1),
+                p3Pct: s.p3a > 0 ? +(s.p3m / s.p3a).toFixed(3) : 0,
+                ftm: +(s.ftm / g).toFixed(1), fta: +(s.fta / g).toFixed(1),
+                ftPct: s.fta > 0 ? +(s.ftm / s.fta).toFixed(3) : 0,
+                pm: +((s.plusMinus || 0) / g).toFixed(1),
+            };
+        })
+        .sort((a, b) => b.pts - a.pts);
+}
+
 export const buildSeasonReviewContent = (
     team: Team, allTeams: Team[], transactions: Transaction[], schedule?: Game[]
 ): SeasonReviewContent => {
@@ -352,7 +494,7 @@ export const buildSeasonReviewContent = (
     const mvpPlayer = report.mvp;
     const g = mvpPlayer && mvpPlayer.stats.g > 0 ? mvpPlayer.stats.g : 1;
 
-    return {
+    const base: SeasonReviewContent = {
         wins: team.wins,
         losses: team.losses,
         winPct: report.winPct,
@@ -383,6 +525,15 @@ export const buildSeasonReviewContent = (
         ownerMood: report.ownerMood,
         ownerName: report.ownerName,
     };
+
+    // 추가 데이터: standings, allTeamsStats, rosterStats
+    if (schedule && schedule.length > 0) {
+        base.standingsContext = buildStandingsContext(team, allTeams, schedule);
+        base.allTeamsStats = computeAllTeamsStats(allTeams, schedule);
+        base.rosterStats = buildRosterStats(team);
+    }
+
+    return base;
 };
 
 const ROUND_NAMES: Record<number, string> = {

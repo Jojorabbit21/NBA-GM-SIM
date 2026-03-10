@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, Hash, TrendingUp, Crown, AlertTriangle, ChevronDown, ChevronRight, Trophy, Shield } from 'lucide-react';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, Crown, AlertTriangle, ChevronDown, ChevronRight, Trophy, Shield } from 'lucide-react';
 import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
@@ -9,7 +9,7 @@ import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
-import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
+import { ReviewOwnerMessage } from '../components/review/ReviewComponents';
 
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
 
@@ -439,6 +439,332 @@ const GameRecapViewer: React.FC<{
     );
 };
 
+// --- Sub-Component: Season Review Renderer ---
+type TeamStatTab = 'Traditional' | 'Advanced' | 'Opponent';
+
+const SR_TAB_LABELS: Record<TeamStatTab, string> = {
+    Traditional: '기본',
+    Advanced: '어드밴스드',
+    Opponent: '상대팀',
+};
+
+const SR_TEAM_COLS: Record<TeamStatTab, { key: string; label: string; fmt: 'num' | 'pct' | 'diff' }[]> = {
+    Traditional: [
+        { key: 'pts', label: 'PTS', fmt: 'num' }, { key: 'pa', label: 'PA', fmt: 'num' },
+        { key: 'reb', label: 'REB', fmt: 'num' }, { key: 'ast', label: 'AST', fmt: 'num' },
+        { key: 'stl', label: 'STL', fmt: 'num' }, { key: 'blk', label: 'BLK', fmt: 'num' },
+        { key: 'tov', label: 'TOV', fmt: 'num' },
+        { key: 'fg%', label: 'FG%', fmt: 'pct' }, { key: '3p%', label: '3P%', fmt: 'pct' },
+        { key: 'ft%', label: 'FT%', fmt: 'pct' }, { key: 'pm', label: '+/-', fmt: 'diff' },
+    ],
+    Advanced: [
+        { key: 'ts%', label: 'TS%', fmt: 'pct' }, { key: 'efg%', label: 'eFG%', fmt: 'pct' },
+        { key: 'tov%', label: 'TOV%', fmt: 'pct' }, { key: 'ast%', label: 'AST%', fmt: 'pct' },
+        { key: 'stl%', label: 'STL%', fmt: 'pct' }, { key: 'blk%', label: 'BLK%', fmt: 'pct' },
+        { key: '3par', label: '3PAr', fmt: 'pct' }, { key: 'ftr', label: 'FTr', fmt: 'pct' },
+        { key: 'ortg', label: 'ORTG', fmt: 'num' }, { key: 'drtg', label: 'DRTG', fmt: 'num' },
+        { key: 'nrtg', label: 'NRTG', fmt: 'diff' },
+        { key: 'poss', label: 'POSS', fmt: 'num' }, { key: 'pace', label: 'PACE', fmt: 'num' },
+    ],
+    Opponent: [
+        { key: 'opp_pts', label: 'PTS', fmt: 'num' }, { key: 'opp_fg%', label: 'FG%', fmt: 'pct' },
+        { key: 'opp_3p%', label: '3P%', fmt: 'pct' }, { key: 'opp_ast', label: 'AST', fmt: 'num' },
+        { key: 'opp_reb', label: 'REB', fmt: 'num' }, { key: 'opp_oreb', label: 'OREB', fmt: 'num' },
+        { key: 'opp_stl', label: 'STL', fmt: 'num' }, { key: 'opp_blk', label: 'BLK', fmt: 'num' },
+        { key: 'opp_tov', label: 'TOV', fmt: 'num' }, { key: 'opp_pf', label: 'PF', fmt: 'num' },
+    ],
+};
+
+const fmtStatVal = (v: number | undefined, fmt: 'num' | 'pct' | 'diff'): string => {
+    if (v == null) return '-';
+    if (fmt === 'pct') return v > 0 ? '.' + (v * 1000).toFixed(0).padStart(3, '0') : '-';
+    if (fmt === 'diff') return v === 0 ? '0.0' : (v > 0 ? '+' : '') + v.toFixed(1);
+    return v.toFixed(1);
+};
+
+const SeasonReviewRenderer: React.FC<{
+    sr: SeasonReviewContent;
+    myTeamId: string;
+    onPlayerClick: (id: string) => void;
+}> = ({ sr, myTeamId, onPlayerClick }) => {
+    const [teamStatTab, setTeamStatTab] = useState<TeamStatTab>('Traditional');
+
+    const sortedTeams = useMemo(() => {
+        if (!sr.allTeamsStats) return [];
+        return [...sr.allTeamsStats].sort((a, b) => {
+            if (b.wins !== a.wins) return b.wins - a.wins;
+            return a.losses - b.losses;
+        });
+    }, [sr.allTeamsStats]);
+
+    const cols = SR_TEAM_COLS[teamStatTab];
+
+    return (
+        <div className="space-y-10 max-w-5xl mx-auto">
+            {/* Header */}
+            <div className="space-y-1">
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 정규시즌 리뷰</h2>
+                <div className="border-t border-orange-500/20 mt-2" />
+            </div>
+
+            {/* Standings Context */}
+            {sr.standingsContext && sr.standingsContext.length > 0 && (
+                <div>
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">시즌 순위</h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="center" className="w-10">#</TableHeaderCell>
+                                    <TableHeaderCell align="left" className="pl-4 min-w-[160px]">팀</TableHeaderCell>
+                                    <TableHeaderCell align="center">W</TableHeaderCell>
+                                    <TableHeaderCell align="center">L</TableHeaderCell>
+                                    <TableHeaderCell align="center">PCT</TableHeaderCell>
+                                    <TableHeaderCell align="center">GB</TableHeaderCell>
+                                    <TableHeaderCell align="center">HOME</TableHeaderCell>
+                                    <TableHeaderCell align="center">AWAY</TableHeaderCell>
+                                    <TableHeaderCell align="center">CONF</TableHeaderCell>
+                                    <TableHeaderCell align="center">PPG</TableHeaderCell>
+                                    <TableHeaderCell align="center">OPPG</TableHeaderCell>
+                                    <TableHeaderCell align="center">DIFF</TableHeaderCell>
+                                    <TableHeaderCell align="center">STRK</TableHeaderCell>
+                                    <TableHeaderCell align="center">L10</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {sr.standingsContext.map(row => (
+                                        <TableRow key={row.teamId} className={row.isUserTeam ? 'bg-indigo-900/20' : ''}>
+                                            <TableCell align="center" className="text-xs font-mono text-white">{row.rank}</TableCell>
+                                            <TableCell className="pl-4">
+                                                <div className="flex items-center gap-2">
+                                                    <TeamLogo teamId={row.teamId} size="sm" />
+                                                    <span className={`text-xs font-bold truncate ${row.isUserTeam ? 'text-indigo-300' : 'text-slate-300'}`}>{row.teamName}</span>
+                                                </div>
+                                            </TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-white">{row.wins}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-white">{row.losses}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-white">{row.pct}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.gb}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.home}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.away}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.conf}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.ppg}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.oppg}</TableCell>
+                                            <TableCell align="center" className={`text-xs font-mono ${
+                                                parseFloat(row.diff) > 0 ? 'text-emerald-400' : parseFloat(row.diff) < 0 ? 'text-red-400' : 'text-slate-500'
+                                            }`}>{row.diff}</TableCell>
+                                            <TableCell align="center" className={`text-xs font-mono ${
+                                                row.streak.startsWith('W') ? 'text-emerald-400' : row.streak.startsWith('L') ? 'text-red-400' : 'text-slate-500'
+                                            }`}>{row.streak}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{row.l10}</TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Team Stats (30 teams, 3 tabs) */}
+            {sortedTeams.length > 0 && (
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">팀 스탯 리더보드</h3>
+                        <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-800">
+                            {(['Traditional', 'Advanced', 'Opponent'] as TeamStatTab[]).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setTeamStatTab(tab)}
+                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                        teamStatTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'
+                                    }`}
+                                >
+                                    {SR_TAB_LABELS[tab]}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="center" className="w-10">#</TableHeaderCell>
+                                    <TableHeaderCell align="left" className="pl-4 min-w-[160px]">팀</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">W</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">L</TableHeaderCell>
+                                    {cols.map(c => (
+                                        <TableHeaderCell key={c.key} align="center" className="w-14">{c.label}</TableHeaderCell>
+                                    ))}
+                                </TableHead>
+                                <TableBody>
+                                    {sortedTeams.map((t, idx) => {
+                                        const isUser = t.teamId === myTeamId;
+                                        return (
+                                            <TableRow key={t.teamId} className={isUser ? 'bg-indigo-900/20' : ''}>
+                                                <TableCell align="center" className="text-xs font-mono text-slate-500">{idx + 1}</TableCell>
+                                                <TableCell className="pl-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <TeamLogo teamId={t.teamId} size="sm" />
+                                                        <span className={`text-xs font-bold truncate ${isUser ? 'text-indigo-300' : 'text-slate-300'}`}>{t.teamName}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell align="center" className="text-xs font-mono text-white">{t.wins}</TableCell>
+                                                <TableCell align="center" className="text-xs font-mono text-white">{t.losses}</TableCell>
+                                                {cols.map(c => (
+                                                    <TableCell key={c.key} align="center" className={`text-xs font-mono tabular-nums ${
+                                                        c.fmt === 'diff'
+                                                            ? (t.stats[c.key] > 0 ? 'text-emerald-400' : t.stats[c.key] < 0 ? 'text-red-400' : 'text-slate-500')
+                                                            : 'text-slate-300'
+                                                    }`}>
+                                                        {fmtStatVal(t.stats[c.key], c.fmt)}
+                                                    </TableCell>
+                                                ))}
+                                            </TableRow>
+                                        );
+                                    })}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Roster Stats */}
+            {sr.rosterStats && sr.rosterStats.length > 0 && (
+                <div>
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">로스터 스탯</h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="left" className="pl-4 min-w-[140px]">선수</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">POS</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">G</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">MIN</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">PTS</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">REB</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">AST</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">STL</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">BLK</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">TOV</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FG%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3P%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FT%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">+/-</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {sr.rosterStats.map(p => (
+                                        <TableRow key={p.id} onClick={() => onPlayerClick(p.id)} className="cursor-pointer">
+                                            <TableCell className="pl-4">
+                                                <span className="text-xs font-bold text-slate-300 group-hover:text-white transition-colors">{p.name}</span>
+                                            </TableCell>
+                                            <TableCell align="center" className="text-xs text-slate-500">{p.position}</TableCell>
+                                            <TableCell align="center"><OvrBadge value={p.ovr} size="sm" /></TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.g}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.mpg}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono font-bold text-white">{p.pts}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.reb}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.ast}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.stl}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.blk}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.tov}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.fgPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.p3Pct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.ftPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className={`text-xs font-mono ${p.pm > 0 ? 'text-emerald-400' : p.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                                {p.pm > 0 ? '+' : ''}{p.pm}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Team MVP */}
+            {sr.mvp && (
+                <div>
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">팀 MVP</h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-6 cursor-pointer hover:border-orange-500/30 transition-colors" onClick={() => onPlayerClick(sr.mvp!.id)}>
+                        <div className="flex flex-col items-center gap-1">
+                            <OvrBadge value={sr.mvp.ovr} size="lg" className="!w-12 !h-12 !text-xl" />
+                            <div className="flex items-center gap-1 mt-1">
+                                <Crown size={10} className="text-amber-400 fill-amber-400" />
+                                <span className="text-[9px] font-black text-amber-300 uppercase tracking-wider">MVP</span>
+                            </div>
+                        </div>
+                        <div className="flex-1">
+                            <h4 className="text-lg font-black text-white">{sr.mvp.name}</h4>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{sr.mvp.position} | {sr.mvp.age}세</p>
+                            <div className="flex gap-4 mt-2">
+                                <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.ppg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">PTS</span></div>
+                                <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.rpg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">REB</span></div>
+                                <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.apg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">AST</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Trade History */}
+            {sr.trades.length > 0 && (
+                <div>
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                        <ArrowRightLeft size={14} className="text-indigo-400" /> 트레이드 내역
+                    </h3>
+                    <div className="space-y-3">
+                        {sr.trades.map((t, idx) => (
+                            <div key={idx} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                                <span className="text-[10px] font-bold text-slate-500 w-24 flex-shrink-0">{t.date}</span>
+                                <div className="flex items-center gap-2 flex-shrink-0">
+                                    <TeamLogo teamId={t.partnerId} size="sm" />
+                                    <span className="text-xs font-black text-white uppercase">{t.partnerName}</span>
+                                </div>
+                                <div className="flex-1 grid grid-cols-2 gap-3 ml-4">
+                                    <div>
+                                        <span className="text-[9px] font-black text-emerald-500 uppercase">영입</span>
+                                        {t.acquired.map((p, i) => (
+                                            <div key={i} className="flex items-center gap-2 mt-0.5">
+                                                <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0" />
+                                                <span className="text-xs font-bold text-emerald-300">{p.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div>
+                                        <span className="text-[9px] font-black text-red-500 uppercase">방출</span>
+                                        {t.departed.map((p, i) => (
+                                            <div key={i} className="flex items-center gap-2 mt-0.5">
+                                                <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0 grayscale opacity-50" />
+                                                <span className="text-xs font-bold text-slate-400">{p.name}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Performance Alert */}
+            {sr.winPct < 0.4 && (
+                <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl flex items-start gap-3">
+                    <AlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+                    <div>
+                        <h4 className="text-xs font-bold text-red-400 uppercase tracking-wide mb-1">성적 경고</h4>
+                        <p className="text-xs text-red-300/70 leading-relaxed">
+                            팀 성적이 저조합니다. 오프시즌 동안 드래프트와 FA 영입을 통해 로스터를 재정비해야 합니다.
+                        </p>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- Sub-Component: Content Renderer ---
 
 const MessageContentRenderer: React.FC<{
@@ -624,143 +950,7 @@ const MessageContentRenderer: React.FC<{
 
         case 'SEASON_REVIEW': {
             const sr = content as SeasonReviewContent;
-            return (
-                <div className="space-y-10 max-w-5xl mx-auto">
-                    {/* Header */}
-                    <div className="space-y-1">
-                        <p className="text-[10px] font-mono text-orange-400/60 uppercase tracking-[0.2em]">Front Office Report</p>
-                        <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 Regular Season Review</h2>
-                        <div className="border-t border-orange-500/20 mt-2" />
-                    </div>
-
-                    {/* Final Standings */}
-                    <div className="bg-gradient-to-br from-orange-950/20 to-slate-950 border border-orange-500/20 rounded-2xl overflow-hidden">
-                        <div className="grid grid-cols-3 divide-x divide-orange-500/15">
-                            <div className="p-6 flex flex-col items-center gap-1">
-                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-[0.2em]">Record</span>
-                                <span className="text-4xl font-black text-white">{sr.wins}<span className="text-slate-600 text-2xl">/</span>{sr.losses}</span>
-                                <span className="text-[10px] font-bold text-orange-300/60">Win Pct: {sr.winPctStr}</span>
-                            </div>
-                            <div className="p-6 flex flex-col items-center gap-1">
-                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1"><Hash size={10} /> League Rank</span>
-                                <span className="text-4xl font-black text-white">#{sr.leagueRank}</span>
-                                <span className="text-[10px] font-bold text-slate-400">{sr.conference} Conf: #{sr.confRank}</span>
-                            </div>
-                            <div className="p-6 flex flex-col items-center gap-1">
-                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1"><TrendingUp size={10} /> Status</span>
-                                {sr.isPlayoffBound ? (
-                                    <span className="text-2xl font-black text-emerald-400 uppercase">Playoff Bound</span>
-                                ) : (
-                                    <span className="text-2xl font-black text-slate-400 uppercase">Lottery Bound</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Owner's Message */}
-                    <ReviewOwnerMessage
-                        ownerName={sr.ownerName}
-                        title={sr.ownerMood.title}
-                        msg={sr.ownerMood.msg}
-                        mood={sr.ownerMood}
-                    />
-
-                    {/* Season Stats */}
-                    <div>
-                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Season Stats</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                            <ReviewStatBox label="Points" value={sr.leagueRanks.pts.value} rank={sr.leagueRanks.pts.rank} />
-                            <ReviewStatBox label="Rebounds" value={sr.leagueRanks.reb.value} rank={sr.leagueRanks.reb.rank} />
-                            <ReviewStatBox label="Assists" value={sr.leagueRanks.ast.value} rank={sr.leagueRanks.ast.rank} />
-                            <ReviewStatBox label="Steals" value={sr.leagueRanks.stl.value} rank={sr.leagueRanks.stl.rank} />
-                            <ReviewStatBox label="Blocks" value={sr.leagueRanks.blk.value} rank={sr.leagueRanks.blk.rank} />
-                            <ReviewStatBox label="Turnovers" value={sr.leagueRanks.tov.value} rank={sr.leagueRanks.tov.rank} inverse />
-                            <ReviewStatBox label="FG%" value={sr.leagueRanks.fgPct.value} rank={sr.leagueRanks.fgPct.rank} isPercent />
-                            <ReviewStatBox label="3P%" value={sr.leagueRanks.p3Pct.value} rank={sr.leagueRanks.p3Pct.rank} isPercent />
-                            <ReviewStatBox label="FT%" value={sr.leagueRanks.ftPct.value} rank={sr.leagueRanks.ftPct.rank} isPercent />
-                            <ReviewStatBox label="True Shooting" value={sr.leagueRanks.tsPct.value} rank={sr.leagueRanks.tsPct.rank} isPercent />
-                        </div>
-                    </div>
-
-                    {/* Team MVP */}
-                    {sr.mvp && (
-                        <div>
-                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Team MVP</h3>
-                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-6 cursor-pointer hover:border-orange-500/30 transition-colors" onClick={() => onPlayerClick(sr.mvp!.id)}>
-                                <div className="flex flex-col items-center gap-1">
-                                    <OvrBadge value={sr.mvp.ovr} size="lg" className="!w-12 !h-12 !text-xl" />
-                                    <div className="flex items-center gap-1 mt-1">
-                                        <Crown size={10} className="text-amber-400 fill-amber-400" />
-                                        <span className="text-[9px] font-black text-amber-300 uppercase tracking-wider">MVP</span>
-                                    </div>
-                                </div>
-                                <div className="flex-1">
-                                    <h4 className="text-lg font-black text-white">{sr.mvp.name}</h4>
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{sr.mvp.position} | {sr.mvp.age} years old</p>
-                                    <div className="flex gap-4 mt-2">
-                                        <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.ppg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">PTS</span></div>
-                                        <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.rpg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">REB</span></div>
-                                        <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.apg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">AST</span></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Trade History */}
-                    {sr.trades.length > 0 && (
-                        <div>
-                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                                <ArrowRightLeft size={14} className="text-indigo-400" /> Trade History
-                            </h3>
-                            <div className="space-y-3">
-                                {sr.trades.map((t, idx) => (
-                                    <div key={idx} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
-                                        <span className="text-[10px] font-bold text-slate-500 w-24 flex-shrink-0">{t.date}</span>
-                                        <div className="flex items-center gap-2 flex-shrink-0">
-                                            <TeamLogo teamId={t.partnerId} size="sm" />
-                                            <span className="text-xs font-black text-white uppercase">{t.partnerName}</span>
-                                        </div>
-                                        <div className="flex-1 grid grid-cols-2 gap-3 ml-4">
-                                            <div>
-                                                <span className="text-[9px] font-black text-emerald-500 uppercase">IN</span>
-                                                {t.acquired.map((p, i) => (
-                                                    <div key={i} className="flex items-center gap-2 mt-0.5">
-                                                        <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0" />
-                                                        <span className="text-xs font-bold text-emerald-300">{p.name}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                            <div>
-                                                <span className="text-[9px] font-black text-red-500 uppercase">OUT</span>
-                                                {t.departed.map((p, i) => (
-                                                    <div key={i} className="flex items-center gap-2 mt-0.5">
-                                                        <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0 grayscale opacity-50" />
-                                                        <span className="text-xs font-bold text-slate-400">{p.name}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Performance Alert */}
-                    {sr.winPct < 0.4 && (
-                        <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl flex items-start gap-3">
-                            <AlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
-                            <div>
-                                <h4 className="text-xs font-bold text-red-400 uppercase tracking-wide mb-1">Performance Alert</h4>
-                                <p className="text-xs text-red-300/70 leading-relaxed">
-                                    팀 성적이 저조합니다. 오프시즌 동안 드래프트와 FA 영입을 통해 로스터를 재정비해야 합니다.
-                                </p>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
+            return <SeasonReviewRenderer sr={sr} myTeamId={myTeamId} onPlayerClick={onPlayerClick} />;
         }
 
         case 'PLAYOFF_STAGE_REVIEW': {
