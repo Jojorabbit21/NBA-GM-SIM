@@ -36,6 +36,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [userTactics, setUserTactics] = useState<GameTactics | null>(null);
     const [depthChart, setDepthChart] = useState<DepthChart | null>(null); // [New] Depth Chart
     const [tendencySeed, setTendencySeed] = useState<string | null>(null); // [New] Save-seeded hidden tendencies
+    const [hofId, setHofId] = useState<string | null>(null); // HoF 제출용 세이브 식별자
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -290,6 +291,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
                     }
 
+                    if (checkpoint.hof_id) {
+                        setHofId(checkpoint.hof_id);
+                    }
+
                     if (playoffBracketState && playoffBracketState.bracket_data) {
                         const restoredSeries: PlayoffSeries[] = playoffBracketState.bracket_data.series;
                         setPlayoffSeries(restoredSeries);
@@ -469,8 +474,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             draftPicksRef.current = null;
             setPlayoffSeries([]);
             setUserTactics(null);
-            setDepthChart(null); // [New]
-            setTendencySeed(null); // [New]
+            setDepthChart(null);
+            setTendencySeed(null);
+            setHofId(null);
             hasInitialLoadRef.current = false;
 
             return { success: true };
@@ -583,7 +589,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         currentSimDate, setCurrentSimDate,
         userTactics, setUserTactics,
         depthChart, setDepthChart, // [New]
-        tendencySeed, // [New] Save-seeded hidden tendencies
+        tendencySeed,
+        hofId,
         news, setNews,
         
         isBaseDataLoading,

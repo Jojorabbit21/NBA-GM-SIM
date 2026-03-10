@@ -104,15 +104,17 @@ const App: React.FC = () => {
         }
     }, [gameData.myTeamId, gameData.draftPicks]);
 
-    // HOF 제출 여부 확인
+    // HOF 제출 여부 확인 (hof_id 기반)
     useEffect(() => {
-        if (session?.user?.id && gameData.myTeamId) {
-            checkUserHasSubmitted(session.user.id, gameData.myTeamId).then(setHasSubmittedHof);
+        if (gameData.hofId) {
+            checkUserHasSubmitted(gameData.hofId).then(setHasSubmittedHof);
+        } else {
+            setHasSubmittedHof(false);
         }
-    }, [session?.user?.id, gameData.myTeamId]);
+    }, [gameData.hofId]);
 
     const handleHofSubmit = useCallback(async () => {
-        if (!session?.user?.id || !gameData.myTeamId) return;
+        if (!session?.user?.id || !gameData.myTeamId || !gameData.hofId) return;
         const myTeam = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
         if (!myTeam) return;
 
@@ -123,7 +125,7 @@ const App: React.FC = () => {
         const maskedEmail = session.user.email ? maskEmail(session.user.email) : undefined;
 
         const result = await submitHallOfFameEntry(
-            session.user.id, gameData.myTeamId, totalScore, breakdown, roster, maskedEmail
+            session.user.id, gameData.myTeamId, gameData.hofId, totalScore, breakdown, roster, maskedEmail
         );
 
         if (result.success) {

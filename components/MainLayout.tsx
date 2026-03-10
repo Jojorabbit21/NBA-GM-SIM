@@ -66,12 +66,11 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children, sidebarProps, gameHea
 
     const isPostseasonOver = useMemo(() => {
         if (!team?.id) return false;
-        if (!isRegularSeasonOver) { console.log('[HOF] blocked: regularSeason not over'); return false; }
-        if (!playoffSeries || playoffSeries.length === 0) { console.log('[HOF] blocked: no playoffSeries'); return false; }
+        if (!isRegularSeasonOver) return false;
+        if (!playoffSeries || playoffSeries.length === 0) return false;
         const myPlayoffSeries = playoffSeries.filter(s => s.higherSeedId === team.id || s.lowerSeedId === team.id);
         if (myPlayoffSeries.length === 0) return true;
         const latest = [...myPlayoffSeries].sort((a, b) => b.round - a.round)[0];
-        console.log('[HOF] latest series:', latest.id, 'round:', latest.round, 'finished:', latest.finished, 'winnerId:', latest.winnerId, 'myTeam:', team.id);
         if (!latest.finished) return false;
         if (latest.winnerId !== team.id) return true;
         return latest.round === 4;
