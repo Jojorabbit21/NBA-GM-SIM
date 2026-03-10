@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'SYSTEM';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'SYSTEM';
 
 export interface Message {
     id: string;
@@ -196,4 +196,23 @@ export interface HofQualificationContent {
         stat_score: number;
         playoff_score: number;
     };
+}
+
+export interface RegSeasonChampionContent {
+    championTeamId: string;
+    championTeamName: string;
+    wins: number;
+    losses: number;
+    pct: string;
+    conference: string;
+    topTeams: {
+        rank: number;
+        teamId: string;
+        teamName: string;
+        wins: number;
+        losses: number;
+        pct: string;
+        conference: string;
+        confSeed: number;
+    }[];
 }

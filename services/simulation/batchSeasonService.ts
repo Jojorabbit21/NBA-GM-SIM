@@ -152,6 +152,16 @@ export async function runBatchSeason(
                 content: events.awardContent,
             });
         }
+        if (events.championContent && userId) {
+            allMessages.push({
+                user_id: userId,
+                team_id: myTeamId,
+                date,
+                type: 'REG_SEASON_CHAMPION',
+                title: `[속보] 2025-26 정규시즌 우승: ${events.championContent.championTeamName}`,
+                content: events.championContent,
+            });
+        }
 
         // 4. 진행 상황 보고 + UI yield
         current++;
