@@ -9,6 +9,7 @@ import { TEAM_COLORS } from '../data/teamData';
 import { fetchFullGameResult } from '../services/queries';
 import { fetchPlayoffGameResult } from '../services/playoffService';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
+import { ROUND_NAMES } from '../utils/playoffLogic';
 
 interface PlayoffsViewProps {
   teams: Team[];
@@ -21,7 +22,7 @@ interface PlayoffsViewProps {
   onViewGameResult?: (result: any) => void;
 }
 
-const ROUND_NAMES: Record<number, string> = { 0: '플레이인', 1: '1라운드', 2: '2라운드', 3: '컨퍼런스 파이널', 4: '파이널' };
+
 
 export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, series, setSeries, setSchedule, myTeamId, userId, onViewGameResult }) => {
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | null>(null);
