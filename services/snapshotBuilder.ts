@@ -1,7 +1,7 @@
 
 import { Team, Game, ReplaySnapshot, PlayerStats } from '../types';
 
-export const CURRENT_SNAPSHOT_VERSION = 2;
+export const CURRENT_SNAPSHOT_VERSION = 3;
 
 /**
  * Build a replay snapshot from the current in-memory state.
@@ -15,12 +15,24 @@ export const buildReplaySnapshot = (
     // teams_data: per-team wins/losses, tacticHistory, per-player stats
     const teams_data: ReplaySnapshot['teams_data'] = {};
     for (const team of teams) {
-        const roster_stats: Record<string, { stats?: PlayerStats; playoffStats?: PlayerStats }> = {};
+        const roster_stats: Record<string, { stats?: PlayerStats; playoffStats?: PlayerStats; growthState?: any }> = {};
         for (const player of team.roster) {
-            if (player.stats || player.playoffStats) {
-                roster_stats[player.id] = {};
-                if (player.stats) roster_stats[player.id].stats = player.stats;
-                if (player.playoffStats) roster_stats[player.id].playoffStats = player.playoffStats;
+            const hasStats = player.stats || player.playoffStats;
+            const hasGrowth = player.fractionalGrowth && Object.keys(player.fractionalGrowth).length > 0;
+            const hasChangeLog = player.changeLog && player.changeLog.length > 0;
+
+            if (hasStats || hasGrowth || hasChangeLog) {
+                const entry: any = {};
+                if (player.stats) entry.stats = player.stats;
+                if (player.playoffStats) entry.playoffStats = player.playoffStats;
+                if (hasGrowth || hasChangeLog) {
+                    entry.growthState = {
+                        ...(player.fractionalGrowth && { fractionalGrowth: player.fractionalGrowth }),
+                        ...(player.changeLog && { changeLog: player.changeLog }),
+                        ...(player.seasonStartAttributes && { seasonStartAttributes: player.seasonStartAttributes }),
+                    };
+                }
+                roster_stats[player.id] = entry;
             }
         }
         teams_data[team.id] = {
@@ -122,12 +134,18 @@ export const hydrateFromSnapshot = (
         team.losses = data.losses;
         if (data.tacticHistory) team.tacticHistory = data.tacticHistory;
 
-        // Apply per-player stats
+        // Apply per-player stats + growth state
         for (const [playerId, pData] of Object.entries(data.roster_stats)) {
             const player = team.roster.find(p => p.id === playerId);
             if (!player) continue;
             if (pData.stats) player.stats = pData.stats;
             if (pData.playoffStats) player.playoffStats = pData.playoffStats;
+            if ((pData as any).growthState) {
+                const gs = (pData as any).growthState;
+                if (gs.fractionalGrowth) player.fractionalGrowth = gs.fractionalGrowth;
+                if (gs.changeLog) player.changeLog = gs.changeLog;
+                if (gs.seasonStartAttributes) player.seasonStartAttributes = gs.seasonStartAttributes;
+            }
         }
     }
 

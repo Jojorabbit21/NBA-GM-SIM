@@ -2,7 +2,7 @@
 import { PlayerBoxScore } from './engine';
 import { TacticalSnapshot } from './tactics';
 import { ShotEvent } from './engine'; // Added ShotEvent
-import { PlayerStats } from './player';
+import { PlayerStats, AttributeChangeEvent } from './player';
 import { TacticStatRecord } from './team';
 
 export interface Game {
@@ -75,6 +75,13 @@ export interface ReplaySnapshot {
         roster_stats: Record<string, {
             stats?: PlayerStats;
             playoffStats?: PlayerStats;
+            // 성장/퇴화 상태 (v3+)
+            growthState?: {
+                fractionalGrowth?: Record<string, number>;
+                attrDeltas?: Record<string, number>;
+                changeLog?: AttributeChangeEvent[];
+                seasonStartAttributes?: Record<string, number>;
+            };
         }>;
     }>;
     schedule_results: Record<string, {

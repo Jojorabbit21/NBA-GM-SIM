@@ -1,7 +1,8 @@
 
-import { Team, Game, PlayoffSeries, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent } from '../../types';
+import { Team, Game, PlayoffSeries } from '../../types';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster } from '../../utils/simulationUtils';
+import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 
 export interface ProcessedCpuResults {
     gameResultsToSave: any[];
@@ -16,7 +17,9 @@ export const processCpuGames = (
     playoffSeries: PlayoffSeries[],
     currentSimDate: string,
     userGameId: string | undefined,
-    userId: string | undefined
+    userId: string | undefined,
+    tendencySeed?: string,
+    tcr: number = 1.0,
 ): ProcessedCpuResults => {
     // These results are already in CpuGameResult (camelCase) format
     const results = simulateCpuGames(schedule, teams, currentSimDate, userGameId);
@@ -35,6 +38,16 @@ export const processCpuGames = (
             updateTeamStats(home, away, res.homeScore, res.awayScore, isPlayoff);
             if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home, isPlayoff);
             if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away, isPlayoff);
+
+            // 선수 성장/퇴화 (정규시즌만)
+            if (tendencySeed && !isPlayoff && res.boxScore?.home && res.boxScore?.away) {
+                const leagueAvg = computeLeagueAverages(teams);
+                processGameDevelopment(
+                    home.roster, away.roster,
+                    res.boxScore.home, res.boxScore.away,
+                    tendencySeed, tcr, leagueAvg, currentSimDate,
+                );
+            }
 
             // Update Schedule (Mutates schedule)
             const gameIdx = schedule.findIndex(g => g.id === res.gameId);

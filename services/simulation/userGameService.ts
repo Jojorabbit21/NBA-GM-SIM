@@ -6,6 +6,7 @@ import { saveGameResults } from '../queries';
 import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
 import { sendMessage } from '../messageService';
+import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 
 export const runUserSimulation = (
     userGame: Game,
@@ -59,7 +60,8 @@ export const applyUserGameResult = async (
     myTeamId: string,
     userTactics: GameTactics,
     isGuestMode: boolean,
-    refreshUnreadCount: () => void
+    refreshUnreadCount: () => void,
+    tendencySeed?: string,
 ) => {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -70,6 +72,17 @@ export const applyUserGameResult = async (
     updateTeamStats(homeTeam, awayTeam, result.homeScore, result.awayScore, isPlayoff);
     applyBoxToRoster(homeTeam, result.homeBox, isPlayoff);
     applyBoxToRoster(awayTeam, result.awayBox, isPlayoff);
+
+    // 1.5. 선수 성장/퇴화 (정규시즌만)
+    if (tendencySeed && !isPlayoff) {
+        const tcr = userTactics.tcr ?? 1.0;
+        const leagueAvg = computeLeagueAverages(teams);
+        processGameDevelopment(
+            homeTeam.roster, awayTeam.roster,
+            result.homeBox, result.awayBox,
+            tendencySeed, tcr, leagueAvg, currentSimDate,
+        );
+    }
 
     // 2. Update Roster (Fatigue/Injury)
     if (result.rosterUpdates) {

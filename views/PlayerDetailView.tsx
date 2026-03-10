@@ -545,10 +545,17 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 {/* Attribute rows */}
                                                 {attrKeys.map((k) => {
                                                     const val = (player as any)[k] || 0;
+                                                    const seasonDelta = player.seasonStartAttributes
+                                                        ? val - (player.seasonStartAttributes[k] ?? val)
+                                                        : 0;
                                                     return (
                                                         <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
                                                             <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
-                                                            <span className={`font-mono font-black text-xs tabular-nums shrink-0 ${getAttrColor(val)}`}>{val}</span>
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                {seasonDelta > 0 && <span className="text-[10px] text-emerald-400">▲{seasonDelta}</span>}
+                                                                {seasonDelta < 0 && <span className="text-[10px] text-rose-400">▼{Math.abs(seasonDelta)}</span>}
+                                                                <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(val)}`}>{val}</span>
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -568,6 +575,27 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             );
                         })()}
                     </div>
+
+                    {/* ═══ 시즌 성장 기록 ═══ */}
+                    {player.changeLog && player.changeLog.length > 0 && (
+                        <div className="border-t border-slate-800">
+                            <div className="px-6 py-3 bg-slate-700">
+                                <span className="text-sm font-black text-slate-300 uppercase tracking-widest">시즌 성장 기록</span>
+                            </div>
+                            <div className="grid grid-cols-5 gap-x-4 gap-y-0 px-6 py-3 bg-slate-800/50">
+                                {[...player.changeLog].reverse().map((evt, i) => (
+                                    <div key={i} className="flex items-center gap-2 h-7 text-xs">
+                                        <span className="text-slate-500 font-mono w-12 shrink-0">{evt.date.slice(5)}</span>
+                                        <span className="text-white truncate">{ATTR_KR_LABEL[evt.attribute] || evt.attribute}</span>
+                                        <span className={evt.delta > 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                                            {evt.delta > 0 ? '▲' : '▼'}
+                                        </span>
+                                        <span className="text-slate-400 font-mono">{evt.oldValue}→{evt.newValue}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* ═══ SECTION 3: 샷차트 | 최근경기 — 4:6 비율, 헤더 행 공유 ═══ */}
                     <div className="grid" style={{ gridTemplateColumns: '3fr 7fr', gridTemplateRows: 'auto 1fr' }}>

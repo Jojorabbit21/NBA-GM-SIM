@@ -269,8 +269,8 @@ export const useSimulation = (
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
             const excludeGameId = userGame?.id || spectateGameId;
-            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id);
-            
+            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, userTactics.tcr ?? 1.0);
+
             // [Fix] Save CPU Game Results to DB
             if (!isGuestMode) {
                 if (cpuData.gameResultsToSave.length > 0) {
@@ -299,8 +299,9 @@ export const useSimulation = (
                 finalizeSimRef.current = async () => {
                     // Apply Results (Mutates newTeams/Schedule/Playoffs)
                     await applyUserGameResult(
-                        result, userGame, newTeams, newSchedule, newPlayoffSeries, 
-                        currentSimDate, session?.user?.id, myTeamId, userTactics, isGuestMode, refreshUnreadCount
+                        result, userGame, newTeams, newSchedule, newPlayoffSeries,
+                        currentSimDate, session?.user?.id, myTeamId, userTactics, isGuestMode, refreshUnreadCount,
+                        tendencySeed,
                     );
 
                     // 5. Handle Season Events (Playoffs, Trades) - Post Game
@@ -463,7 +464,8 @@ export const useSimulation = (
             let newPlayoffSeries: PlayoffSeries[] = [...playoffSeries];
 
             const cpuData = processCpuGames(
-                newTeams, newSchedule, newPlayoffSeries, currentSimDate, userGame.id, session?.user?.id
+                newTeams, newSchedule, newPlayoffSeries, currentSimDate, userGame.id, session?.user?.id,
+                tendencySeed, userTactics.tcr ?? 1.0,
             );
 
             if (!isGuestMode) {
@@ -523,7 +525,8 @@ export const useSimulation = (
             // 경기 결과 적용 (스탯 누적, DB 저장, 메시지 전송)
             await applyUserGameResult(
                 result, userGame, newTeams, newSchedule, newPlayoffSeries,
-                currentSimDate, session?.user?.id, myTeamId, liveUserTactics, isGuestMode, refreshUnreadCount
+                currentSimDate, session?.user?.id, myTeamId, liveUserTactics, isGuestMode, refreshUnreadCount,
+                tendencySeed,
             );
 
             // 시즌 이벤트 처리 (트레이드, 플레이오프 등)
