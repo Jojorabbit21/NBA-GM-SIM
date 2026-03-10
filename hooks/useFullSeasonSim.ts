@@ -8,6 +8,7 @@ import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from 
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState } from '../services/playoffService';
+import { bulkSendMessages } from '../services/messageService';
 
 export interface BatchProgress {
     isRunning: boolean;
@@ -82,6 +83,10 @@ export const useFullSeasonSim = (
                 }
                 if (result.allPlayoffResultsToSave.length > 0) {
                     await bulkSaveGameResults(result.allPlayoffResultsToSave);
+                }
+                // 경기 보고서 메시지 bulk insert
+                if (result.allMessages.length > 0) {
+                    await bulkSendMessages(result.allMessages);
                 }
                 // 플레이오프 상태 저장
                 if (result.finalPlayoffSeries.length > 0) {

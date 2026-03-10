@@ -10,6 +10,15 @@ import { handleSeasonEventsSync } from './seasonService';
 import { updateTeamStats, applyBoxToRoster, updateSeriesState } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 
+export interface BatchMessagePayload {
+    user_id: string;
+    team_id: string;
+    date: string;
+    type: 'GAME_RECAP';
+    title: string;
+    content: any;
+}
+
 export interface BatchSeasonResult {
     finalTeams: Team[];
     finalSchedule: Game[];
@@ -17,6 +26,7 @@ export interface BatchSeasonResult {
     finalDate: string;
     allGameResultsToSave: any[];
     allPlayoffResultsToSave: any[];
+    allMessages: BatchMessagePayload[];
     transactions: Transaction[];
     userGameCount: number;
     userWins: number;
@@ -40,6 +50,7 @@ export async function runBatchSeason(
 ): Promise<BatchSeasonResult> {
     const allGameResultsToSave: any[] = [];
     const allPlayoffResultsToSave: any[] = [];
+    const allMessages: BatchMessagePayload[] = [];
     const allTransactions: Transaction[] = [];
     let userGameCount = 0;
     let userWins = 0;
@@ -101,6 +112,27 @@ export async function runBatchSeason(
             if (isHome ? result.homeScore > result.awayScore : result.awayScore > result.homeScore) {
                 userWins++;
             }
+
+            // 메시지 페이로드 누적
+            if (userId) {
+                const homeTeam = teams.find(t => t.id === userGame.homeTeamId);
+                const awayTeam = teams.find(t => t.id === userGame.awayTeamId);
+                allMessages.push({
+                    user_id: userId,
+                    team_id: myTeamId,
+                    date,
+                    type: 'GAME_RECAP',
+                    title: `[경기 결과] ${homeTeam?.name ?? ''} vs ${awayTeam?.name ?? ''}`,
+                    content: {
+                        gameId: userGame.id,
+                        homeTeamId: userGame.homeTeamId,
+                        awayTeamId: userGame.awayTeamId,
+                        homeScore: result.homeScore,
+                        awayScore: result.awayScore,
+                        userBoxScore: isHome ? result.homeBox : result.awayBox,
+                    },
+                });
+            }
         } else {
             applyRestDayRecovery(teams);
         }
@@ -130,6 +162,7 @@ export async function runBatchSeason(
         finalDate,
         allGameResultsToSave,
         allPlayoffResultsToSave,
+        allMessages,
         transactions: allTransactions,
         userGameCount,
         userWins,
