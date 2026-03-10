@@ -8,7 +8,7 @@ export const getOvrBadgeStyle = (ovr: number) => {
   const baseClass = "w-8 h-8 flex items-center justify-center rounded-md font-black text-base shadow-lg text-shadow-ovr mx-auto transition-all ";
 
   // 97+ - Generational (White-Violet Plasma + Dual Glow)
-  if (ovr >= 97) return baseClass + 'bg-gradient-to-br from-white via-fuchsia-300 to-violet-600 text-purple-950 shadow-[0_0_20px_rgba(192,132,252,0.7),0_0_40px_rgba(232,121,249,0.4)] border border-white/70 ring-1 ring-fuchsia-300/60';
+  if (ovr >= 97) return baseClass + 'bg-gradient-to-br from-fuchsia-200 via-fuchsia-400 to-violet-700 text-white shadow-[0_0_20px_rgba(192,132,252,0.7),0_0_40px_rgba(232,121,249,0.4)] border border-fuchsia-200/70 ring-1 ring-fuchsia-300/60';
 
   // 94-96 - Superstar (Deep Violet)
   if (ovr >= 94) return baseClass + 'bg-gradient-to-br from-violet-400 via-purple-600 to-purple-900 text-white shadow-[0_0_14px_rgba(139,92,246,0.6)] border border-violet-400/50';
