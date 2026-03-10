@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, Crown, AlertTriangle, ChevronDown, ChevronRight, Trophy, Shield } from 'lucide-react';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
@@ -448,29 +448,29 @@ const SR_TAB_LABELS: Record<TeamStatTab, string> = {
     Opponent: '상대팀',
 };
 
-const SR_TEAM_COLS: Record<TeamStatTab, { key: string; label: string; fmt: 'num' | 'pct' | 'diff' }[]> = {
+const SR_TEAM_COLS: Record<TeamStatTab, { key: string; label: string; fmt: 'num' | 'pct' | 'diff'; inv?: boolean }[]> = {
     Traditional: [
-        { key: 'pts', label: 'PTS', fmt: 'num' }, { key: 'pa', label: 'PA', fmt: 'num' },
+        { key: 'pts', label: 'PTS', fmt: 'num' }, { key: 'pa', label: 'PA', fmt: 'num', inv: true },
         { key: 'reb', label: 'REB', fmt: 'num' }, { key: 'ast', label: 'AST', fmt: 'num' },
         { key: 'stl', label: 'STL', fmt: 'num' }, { key: 'blk', label: 'BLK', fmt: 'num' },
-        { key: 'tov', label: 'TOV', fmt: 'num' },
+        { key: 'tov', label: 'TOV', fmt: 'num', inv: true },
         { key: 'fg%', label: 'FG%', fmt: 'pct' }, { key: '3p%', label: '3P%', fmt: 'pct' },
         { key: 'ft%', label: 'FT%', fmt: 'pct' }, { key: 'pm', label: '+/-', fmt: 'diff' },
     ],
     Advanced: [
         { key: 'ts%', label: 'TS%', fmt: 'pct' }, { key: 'efg%', label: 'eFG%', fmt: 'pct' },
-        { key: 'tov%', label: 'TOV%', fmt: 'pct' }, { key: 'ast%', label: 'AST%', fmt: 'pct' },
+        { key: 'tov%', label: 'TOV%', fmt: 'pct', inv: true }, { key: 'ast%', label: 'AST%', fmt: 'pct' },
         { key: 'stl%', label: 'STL%', fmt: 'pct' }, { key: 'blk%', label: 'BLK%', fmt: 'pct' },
         { key: '3par', label: '3PAr', fmt: 'pct' }, { key: 'ftr', label: 'FTr', fmt: 'pct' },
-        { key: 'ortg', label: 'ORTG', fmt: 'num' }, { key: 'drtg', label: 'DRTG', fmt: 'num' },
+        { key: 'ortg', label: 'ORTG', fmt: 'num' }, { key: 'drtg', label: 'DRTG', fmt: 'num', inv: true },
         { key: 'nrtg', label: 'NRTG', fmt: 'diff' },
         { key: 'poss', label: 'POSS', fmt: 'num' }, { key: 'pace', label: 'PACE', fmt: 'num' },
     ],
     Opponent: [
-        { key: 'opp_pts', label: 'PTS', fmt: 'num' }, { key: 'opp_fg%', label: 'FG%', fmt: 'pct' },
-        { key: 'opp_3p%', label: '3P%', fmt: 'pct' }, { key: 'opp_ast', label: 'AST', fmt: 'num' },
-        { key: 'opp_reb', label: 'REB', fmt: 'num' }, { key: 'opp_oreb', label: 'OREB', fmt: 'num' },
-        { key: 'opp_stl', label: 'STL', fmt: 'num' }, { key: 'opp_blk', label: 'BLK', fmt: 'num' },
+        { key: 'opp_pts', label: 'PTS', fmt: 'num', inv: true }, { key: 'opp_fg%', label: 'FG%', fmt: 'pct', inv: true },
+        { key: 'opp_3p%', label: '3P%', fmt: 'pct', inv: true }, { key: 'opp_ast', label: 'AST', fmt: 'num', inv: true },
+        { key: 'opp_reb', label: 'REB', fmt: 'num', inv: true }, { key: 'opp_oreb', label: 'OREB', fmt: 'num', inv: true },
+        { key: 'opp_stl', label: 'STL', fmt: 'num', inv: true }, { key: 'opp_blk', label: 'BLK', fmt: 'num', inv: true },
         { key: 'opp_tov', label: 'TOV', fmt: 'num' }, { key: 'opp_pf', label: 'PF', fmt: 'num' },
     ],
 };
@@ -489,13 +489,18 @@ const SeasonReviewRenderer: React.FC<{
 }> = ({ sr, myTeamId, onPlayerClick }) => {
     const [teamStatTab, setTeamStatTab] = useState<TeamStatTab>('Traditional');
 
-    const sortedTeams = useMemo(() => {
-        if (!sr.allTeamsStats) return [];
-        return [...sr.allTeamsStats].sort((a, b) => {
-            if (b.wins !== a.wins) return b.wins - a.wins;
-            return a.losses - b.losses;
-        });
-    }, [sr.allTeamsStats]);
+    const myTeamStats = useMemo(() => {
+        if (!sr.allTeamsStats) return null;
+        return sr.allTeamsStats.find(t => t.teamId === myTeamId) ?? null;
+    }, [sr.allTeamsStats, myTeamId]);
+
+    const computeRank = useCallback((key: string, inverse?: boolean) => {
+        if (!sr.allTeamsStats) return 0;
+        const sorted = [...sr.allTeamsStats].sort((a, b) =>
+            inverse ? (a.stats[key] ?? 0) - (b.stats[key] ?? 0) : (b.stats[key] ?? 0) - (a.stats[key] ?? 0)
+        );
+        return sorted.findIndex(t => t.teamId === myTeamId) + 1;
+    }, [sr.allTeamsStats, myTeamId]);
 
     const cols = SR_TEAM_COLS[teamStatTab];
 
@@ -565,11 +570,11 @@ const SeasonReviewRenderer: React.FC<{
                 </div>
             )}
 
-            {/* Team Stats (30 teams, 3 tabs) */}
-            {sortedTeams.length > 0 && (
+            {/* Team Stats (user team with league ranks) */}
+            {myTeamStats && (
                 <div>
                     <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">팀 스탯 리더보드</h3>
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">팀 스탯</h3>
                         <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-800">
                             {(['Traditional', 'Advanced', 'Opponent'] as TeamStatTab[]).map(tab => (
                                 <button
@@ -584,47 +589,22 @@ const SeasonReviewRenderer: React.FC<{
                             ))}
                         </div>
                     </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
-                                <TableHead className="bg-slate-950">
-                                    <TableHeaderCell align="center" className="w-10">#</TableHeaderCell>
-                                    <TableHeaderCell align="left" className="pl-4 min-w-[160px]">팀</TableHeaderCell>
-                                    <TableHeaderCell align="center" className="w-10">W</TableHeaderCell>
-                                    <TableHeaderCell align="center" className="w-10">L</TableHeaderCell>
-                                    {cols.map(c => (
-                                        <TableHeaderCell key={c.key} align="center" className="w-14">{c.label}</TableHeaderCell>
-                                    ))}
-                                </TableHead>
-                                <TableBody>
-                                    {sortedTeams.map((t, idx) => {
-                                        const isUser = t.teamId === myTeamId;
-                                        return (
-                                            <TableRow key={t.teamId} className={isUser ? 'bg-indigo-900/20' : ''}>
-                                                <TableCell align="center" className="text-xs font-mono text-slate-500">{idx + 1}</TableCell>
-                                                <TableCell className="pl-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <TeamLogo teamId={t.teamId} size="sm" />
-                                                        <span className={`text-xs font-bold truncate ${isUser ? 'text-indigo-300' : 'text-slate-300'}`}>{t.teamName}</span>
-                                                    </div>
-                                                </TableCell>
-                                                <TableCell align="center" className="text-xs font-mono text-white">{t.wins}</TableCell>
-                                                <TableCell align="center" className="text-xs font-mono text-white">{t.losses}</TableCell>
-                                                {cols.map(c => (
-                                                    <TableCell key={c.key} align="center" className={`text-xs font-mono tabular-nums ${
-                                                        c.fmt === 'diff'
-                                                            ? (t.stats[c.key] > 0 ? 'text-emerald-400' : t.stats[c.key] < 0 ? 'text-red-400' : 'text-slate-500')
-                                                            : 'text-slate-300'
-                                                    }`}>
-                                                        {fmtStatVal(t.stats[c.key], c.fmt)}
-                                                    </TableCell>
-                                                ))}
-                                            </TableRow>
-                                        );
-                                    })}
-                                </TableBody>
-                            </Table>
-                        </div>
+                    <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                        {cols.map(c => {
+                            const rank = computeRank(c.key, c.inv);
+                            const rankColor = rank <= 10 ? 'text-emerald-400' : rank >= 21 ? 'text-red-400' : 'text-slate-400';
+                            return (
+                                <div key={c.key} className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+                                    <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">{c.label}</span>
+                                    <div className="text-xl font-black text-white mt-1 font-mono tabular-nums">
+                                        {fmtStatVal(myTeamStats.stats[c.key], c.fmt)}
+                                    </div>
+                                    <span className={`text-xs font-bold ${rankColor}`}>
+                                        리그 {rank}위
+                                    </span>
+                                </div>
+                            );
+                        })}
                     </div>
                 </div>
             )}
@@ -648,8 +628,14 @@ const SeasonReviewRenderer: React.FC<{
                                     <TableHeaderCell align="center" className="w-12">STL</TableHeaderCell>
                                     <TableHeaderCell align="center" className="w-12">BLK</TableHeaderCell>
                                     <TableHeaderCell align="center" className="w-12">TOV</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FGM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FGA</TableHeaderCell>
                                     <TableHeaderCell align="center" className="w-12">FG%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3PM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3PA</TableHeaderCell>
                                     <TableHeaderCell align="center" className="w-12">3P%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FTM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FTA</TableHeaderCell>
                                     <TableHeaderCell align="center" className="w-12">FT%</TableHeaderCell>
                                     <TableHeaderCell align="center" className="w-12">+/-</TableHeaderCell>
                                 </TableHead>
@@ -663,14 +649,20 @@ const SeasonReviewRenderer: React.FC<{
                                             <TableCell align="center"><OvrBadge value={p.ovr} size="sm" /></TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-400">{p.g}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-400">{p.mpg}</TableCell>
-                                            <TableCell align="center" className="text-xs font-mono font-bold text-white">{p.pts}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.pts}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-300">{p.reb}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-300">{p.ast}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-300">{p.stl}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-300">{p.blk}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-300">{p.tov}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fgm}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fga}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.fgPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.p3m}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.p3a}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.p3Pct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.ftm}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fta}</TableCell>
                                             <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.ftPct, 'pct')}</TableCell>
                                             <TableCell align="center" className={`text-xs font-mono ${p.pm > 0 ? 'text-emerald-400' : p.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
                                                 {p.pm > 0 ? '+' : ''}{p.pm}
@@ -679,31 +671,6 @@ const SeasonReviewRenderer: React.FC<{
                                     ))}
                                 </TableBody>
                             </Table>
-                        </div>
-                    </div>
-                </div>
-            )}
-
-            {/* Team MVP */}
-            {sr.mvp && (
-                <div>
-                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">팀 MVP</h3>
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-6 cursor-pointer hover:border-orange-500/30 transition-colors" onClick={() => onPlayerClick(sr.mvp!.id)}>
-                        <div className="flex flex-col items-center gap-1">
-                            <OvrBadge value={sr.mvp.ovr} size="lg" className="!w-12 !h-12 !text-xl" />
-                            <div className="flex items-center gap-1 mt-1">
-                                <Crown size={10} className="text-amber-400 fill-amber-400" />
-                                <span className="text-[9px] font-black text-amber-300 uppercase tracking-wider">MVP</span>
-                            </div>
-                        </div>
-                        <div className="flex-1">
-                            <h4 className="text-lg font-black text-white">{sr.mvp.name}</h4>
-                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{sr.mvp.position} | {sr.mvp.age}세</p>
-                            <div className="flex gap-4 mt-2">
-                                <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.ppg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">PTS</span></div>
-                                <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.rpg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">REB</span></div>
-                                <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.apg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">AST</span></div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -1051,7 +1018,7 @@ const MessageContentRenderer: React.FC<{
     }
 };
 
-// --- Sub-Component: Awards Report Viewer (WinForms 스타일 테이블) ---
+// --- Sub-Component: Awards Report Viewer ---
 
 const AwardsReportViewer: React.FC<{
     content: SeasonAwardsContent;
@@ -1061,7 +1028,7 @@ const AwardsReportViewer: React.FC<{
     const [showBallots, setShowBallots] = useState(false);
 
     const formatStat = (v: number | undefined, decimals = 1) => (v ?? 0).toFixed(decimals);
-    const formatPct = (v: number | undefined) => (v != null && v > 0) ? '.' + (v * 1000).toFixed(0).padStart(3, '0') : '-';
+    const formatPct = (v: number | undefined) => (v != null && v > 0) ? ((v * 100).toFixed(1) + '%') : '-';
 
     // playerId → 이름 맵 (ballot 표시용)
     const nameMap = useMemo(() => {
@@ -1102,34 +1069,24 @@ const AwardsReportViewer: React.FC<{
 
     const getPlayerName = (pid: string) => nameMap.get(pid) || pid;
 
-    const sectionLabel = "text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3 flex items-center gap-2";
-    const thClass = "py-2 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap border-b border-slate-700";
-    const tdClass = "py-1.5 px-2 text-xs font-mono tabular-nums text-slate-400 whitespace-nowrap border-b border-slate-800/50";
-    const tdBold = "py-1.5 px-2 text-xs font-bold text-slate-300 whitespace-nowrap border-b border-slate-800/50";
+    const sectionLabel = "text-xs font-black uppercase tracking-widest text-slate-300 mb-3";
+    const thClass = "py-2.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
+    const tdClass = "py-2 px-2 text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60";
 
     return (
         <div className="space-y-10 max-w-6xl mx-auto">
-            {/* Header */}
-            <div className="space-y-1">
-                <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 정규시즌 어워드 투표 결과</h2>
-                <div className="border-t border-amber-500/20 mt-2" />
-            </div>
-
             {/* ── MVP 투표 결과 ── */}
             {content.mvpRanking.length > 0 && (
                 <div>
-                    <h3 className={sectionLabel}>
-                        <Trophy size={12} className="text-amber-400" />
-                        <span>MVP 투표 결과</span>
-                    </h3>
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
-                        <table className="w-full text-left border-separate border-spacing-0">
+                    <h3 className={sectionLabel}>MVP 투표 결과</h3>
+                    <div className="border border-slate-600 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr>
                                     <th className={`${thClass} text-center w-8`}>#</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
                                     <th className={`${thClass} text-left pl-3 min-w-[160px]`}>선수</th>
-                                    <th className={`${thClass} text-center`}>POS</th>
+                                    <th className={`${thClass} text-center`}>포지션</th>
                                     <th className={`${thClass} text-center`}>1위</th>
                                     <th className={`${thClass} text-center`}>2위</th>
                                     <th className={`${thClass} text-center`}>3위</th>
@@ -1150,25 +1107,25 @@ const AwardsReportViewer: React.FC<{
                                     return (
                                         <tr
                                             key={r.playerId}
-                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : ''}`}
+                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-amber-500/10' : idx % 2 === 0 ? 'bg-slate-800/30' : ''}`}
                                             onClick={() => onPlayerClick(r.playerId)}
                                         >
-                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-500'}`}>{idx + 1}</td>
-                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                            <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-300'} hover:text-white`}>
+                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-400'}`}>{idx + 1}</td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                            <td className={`${tdClass} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-200'} hover:text-white`}>
                                                 <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={r.teamId} size="xs" />
-                                                    <span>{r.playerName}</span>
+                                                    <span className="font-bold">{r.playerName}</span>
                                                     {idx === 0 && <span className="text-amber-400">★</span>}
                                                 </div>
                                             </td>
-                                            <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
-                                            <td className={`${tdClass} text-center font-bold ${votes[0] > 0 ? 'text-amber-300' : 'text-slate-600'}`}>{votes[0]}</td>
-                                            <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[1]}</td>
-                                            <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[2]}</td>
-                                            <td className={`${tdClass} text-center ${votes[3] > 0 ? 'text-slate-400' : 'text-slate-600'}`}>{votes[3]}</td>
-                                            <td className={`${tdClass} text-center ${votes[4] > 0 ? 'text-slate-400' : 'text-slate-600'}`}>{votes[4]}</td>
-                                            <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
+                                            <td className={`${tdClass} text-center text-slate-400`}>{r.position}</td>
+                                            <td className={`${tdClass} text-center ${votes[0] > 0 ? 'text-amber-300 font-bold' : 'text-slate-500'}`}>{votes[0]}</td>
+                                            <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{votes[1]}</td>
+                                            <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{votes[2]}</td>
+                                            <td className={`${tdClass} text-center ${votes[3] > 0 ? 'text-slate-300' : 'text-slate-500'}`}>{votes[3]}</td>
+                                            <td className={`${tdClass} text-center ${votes[4] > 0 ? 'text-slate-300' : 'text-slate-500'}`}>{votes[4]}</td>
+                                            <td className={`${tdClass} text-center text-white`}>{r.points}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(r.statLine.ppg)}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(r.statLine.rpg)}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(r.statLine.apg)}</td>
@@ -1187,18 +1144,15 @@ const AwardsReportViewer: React.FC<{
             {/* ── DPOY 투표 결과 ── */}
             {content.dpoyRanking.length > 0 && (
                 <div>
-                    <h3 className={sectionLabel}>
-                        <Shield size={12} className="text-indigo-400" />
-                        <span>DPOY 투표 결과</span>
-                    </h3>
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
-                        <table className="w-full text-left border-separate border-spacing-0">
+                    <h3 className={sectionLabel}>DPOY 투표 결과</h3>
+                    <div className="border border-slate-600 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr>
                                     <th className={`${thClass} text-center w-8`}>#</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
-                                    <th className={`${thClass} text-left pl-3 min-w-[160px]`}>선수</th>
-                                    <th className={`${thClass} text-center`}>POS</th>
+                                    <th className={`${thClass} text-left pl-3`}>선수</th>
+                                    <th className={`${thClass} text-center`}>포지션</th>
                                     <th className={`${thClass} text-center`}>1위</th>
                                     <th className={`${thClass} text-center`}>2위</th>
                                     <th className={`${thClass} text-center`}>3위</th>
@@ -1215,23 +1169,23 @@ const AwardsReportViewer: React.FC<{
                                     return (
                                         <tr
                                             key={r.playerId}
-                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500' : ''}`}
+                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-indigo-500/10' : idx % 2 === 0 ? 'bg-slate-800/30' : ''}`}
                                             onClick={() => onPlayerClick(r.playerId)}
                                         >
-                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-indigo-400' : 'text-slate-500'}`}>{idx + 1}</td>
-                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                            <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-indigo-300' : 'text-slate-300'} hover:text-white`}>
+                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-indigo-400' : 'text-slate-400'}`}>{idx + 1}</td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                            <td className={`${tdClass} pl-3 ${idx === 0 ? 'text-indigo-300' : 'text-slate-200'} hover:text-white`}>
                                                 <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={r.teamId} size="xs" />
-                                                    <span>{r.playerName}</span>
+                                                    <span className="font-bold">{r.playerName}</span>
                                                     {idx === 0 && <span className="text-indigo-400">★</span>}
                                                 </div>
                                             </td>
-                                            <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
-                                            <td className={`${tdClass} text-center font-bold ${votes[0] > 0 ? 'text-indigo-300' : 'text-slate-600'}`}>{votes[0]}</td>
-                                            <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[1]}</td>
-                                            <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[2]}</td>
-                                            <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
+                                            <td className={`${tdClass} text-center text-slate-400`}>{r.position}</td>
+                                            <td className={`${tdClass} text-center ${votes[0] > 0 ? 'text-indigo-300 font-bold' : 'text-slate-500'}`}>{votes[0]}</td>
+                                            <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{votes[1]}</td>
+                                            <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{votes[2]}</td>
+                                            <td className={`${tdClass} text-center text-white`}>{r.points}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(r.statLine.orebpg)}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(r.statLine.drebpg)}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(r.statLine.spg)}</td>
@@ -1248,58 +1202,73 @@ const AwardsReportViewer: React.FC<{
             {/* ── 올-NBA 팀 ── */}
             {content.allNbaTeams.length > 0 && (
                 <div>
-                    <h3 className={sectionLabel}>
-                        <Crown size={12} className="text-amber-400" />
-                        <span>올-NBA 팀</span>
-                    </h3>
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
-                        <table className="w-full text-left border-separate border-spacing-0">
+                    <h3 className={sectionLabel}>올-NBA 팀</h3>
+                    <div className="border border-slate-600 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr>
-                                    <th className={`${thClass} text-center w-14`}>팀</th>
-                                    <th className={`${thClass} text-center w-8`}>POS</th>
+                                    <th className={`${thClass} text-center w-14 border-r border-slate-600`}>팀</th>
+                                    <th className={`${thClass} text-center`}>포지션</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
                                     <th className={`${thClass} text-left pl-3`}>선수</th>
-                                    <th className={`${thClass} text-center`}>득표</th>
+                                    <th className={`${thClass} text-center`}>1st</th>
+                                    <th className={`${thClass} text-center`}>2nd</th>
+                                    <th className={`${thClass} text-center`}>3rd</th>
+                                    <th className={`${thClass} text-center`}>PTS</th>
                                     <th className={`${thClass} text-center`}>PPG</th>
                                     <th className={`${thClass} text-center`}>RPG</th>
                                     <th className={`${thClass} text-center`}>APG</th>
+                                    <th className={`${thClass} text-center`}>STL</th>
+                                    <th className={`${thClass} text-center`}>BLK</th>
+                                    <th className={`${thClass} text-center`}>FG%</th>
+                                    <th className={`${thClass} text-center`}>3P%</th>
                                     <th className={`${thClass} text-center`}>TS%</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {content.allNbaTeams.map((team) =>
-                                    team.players.map((p, pIdx) => (
-                                        <tr
-                                            key={`nba-${team.tier}-${p.playerId}`}
-                                            className="hover:bg-white/5 cursor-pointer"
-                                            onClick={() => onPlayerClick(p.playerId)}
-                                        >
-                                            {pIdx === 0 && (
-                                                <td
-                                                    rowSpan={team.players.length}
-                                                    className={`py-1.5 px-2 text-center align-middle border-b border-slate-700 font-black text-sm ${
-                                                        team.tier === 1 ? 'text-amber-400' : team.tier === 2 ? 'text-slate-300' : 'text-slate-500'
-                                                    }`}
-                                                >
-                                                    {team.tier === 1 ? '1ST' : team.tier === 2 ? '2ND' : '3RD'}
+                                    team.players.map((p, pIdx) => {
+                                        const tv = p.tierVotes || [];
+                                        const tp = p.totalPoints ?? p.votes;
+                                        return (
+                                            <tr
+                                                key={`nba-${team.tier}-${p.playerId}`}
+                                                className={`hover:bg-white/5 cursor-pointer ${pIdx % 2 === 0 ? 'bg-slate-800/30' : ''}`}
+                                                onClick={() => onPlayerClick(p.playerId)}
+                                            >
+                                                {pIdx === 0 && (
+                                                    <td
+                                                        rowSpan={team.players.length}
+                                                        className={`py-2 px-2 text-center align-middle border-b border-slate-600 border-r border-r-slate-600 font-black text-sm ${
+                                                            team.tier === 1 ? 'text-amber-400' : team.tier === 2 ? 'text-slate-200' : 'text-slate-400'
+                                                        }`}
+                                                    >
+                                                        {team.tier === 1 ? '1ST' : team.tier === 2 ? '2ND' : '3RD'}
+                                                    </td>
+                                                )}
+                                                <td className={`${tdClass} text-center text-slate-400`}>{p.pos}</td>
+                                                <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                                <td className={`${tdClass} pl-3 text-slate-200 hover:text-white`}>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <TeamLogo teamId={p.teamId} size="xs" />
+                                                        <span className="font-bold">{p.playerName}</span>
+                                                    </div>
                                                 </td>
-                                            )}
-                                            <td className={`${tdClass} text-center text-[10px] font-black text-slate-500`}>{p.pos}</td>
-                                            <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                            <td className={`${tdBold} pl-3 hover:text-white`}>
-                                                <div className="flex items-center gap-1.5">
-                                                    <TeamLogo teamId={p.teamId} size="xs" />
-                                                    <span>{p.playerName}</span>
-                                                </div>
-                                            </td>
-                                            <td className={`${tdClass} text-center font-bold text-slate-300`}>{p.votes}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.ppg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.rpg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.apg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatPct(p.statLine.tsPct)}</td>
-                                        </tr>
-                                    ))
+                                                <td className={`${tdClass} text-center ${(tv[0] || 0) > 0 ? 'text-amber-300' : 'text-slate-500'}`}>{tv[0] || 0}</td>
+                                                <td className={`${tdClass} text-center ${(tv[1] || 0) > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{tv[1] || 0}</td>
+                                                <td className={`${tdClass} text-center ${(tv[2] || 0) > 0 ? 'text-slate-300' : 'text-slate-500'}`}>{tv[2] || 0}</td>
+                                                <td className={`${tdClass} text-center text-white`}>{tp}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.ppg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.rpg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.apg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatPct(p.statLine.fgPct)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatPct(p.statLine.p3Pct)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatPct(p.statLine.tsPct)}</td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -1310,19 +1279,18 @@ const AwardsReportViewer: React.FC<{
             {/* ── 올-디펜시브 팀 ── */}
             {content.allDefTeams.length > 0 && (
                 <div>
-                    <h3 className={sectionLabel}>
-                        <Shield size={12} className="text-indigo-400" />
-                        <span>올-디펜시브 팀</span>
-                    </h3>
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
-                        <table className="w-full text-left border-separate border-spacing-0">
+                    <h3 className={sectionLabel}>올-디펜시브 팀</h3>
+                    <div className="border border-slate-600 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr>
-                                    <th className={`${thClass} text-center w-14`}>팀</th>
-                                    <th className={`${thClass} text-center w-8`}>POS</th>
+                                    <th className={`${thClass} text-center w-14 border-r border-slate-600`}>팀</th>
+                                    <th className={`${thClass} text-center`}>포지션</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
                                     <th className={`${thClass} text-left pl-3`}>선수</th>
-                                    <th className={`${thClass} text-center`}>득표</th>
+                                    <th className={`${thClass} text-center`}>1st</th>
+                                    <th className={`${thClass} text-center`}>2nd</th>
+                                    <th className={`${thClass} text-center`}>PTS</th>
                                     <th className={`${thClass} text-center`}>SPG</th>
                                     <th className={`${thClass} text-center`}>BPG</th>
                                     <th className={`${thClass} text-center`}>OREB</th>
@@ -1331,37 +1299,43 @@ const AwardsReportViewer: React.FC<{
                             </thead>
                             <tbody>
                                 {content.allDefTeams.map((team) =>
-                                    team.players.map((p, pIdx) => (
-                                        <tr
-                                            key={`def-${team.tier}-${p.playerId}`}
-                                            className="hover:bg-white/5 cursor-pointer"
-                                            onClick={() => onPlayerClick(p.playerId)}
-                                        >
-                                            {pIdx === 0 && (
-                                                <td
-                                                    rowSpan={team.players.length}
-                                                    className={`py-1.5 px-2 text-center align-middle border-b border-slate-700 font-black text-sm ${
-                                                        team.tier === 1 ? 'text-indigo-400' : 'text-slate-400'
-                                                    }`}
-                                                >
-                                                    {team.tier === 1 ? '1ST' : '2ND'}
+                                    team.players.map((p, pIdx) => {
+                                        const tv = p.tierVotes || [];
+                                        const tp = p.totalPoints ?? p.votes;
+                                        return (
+                                            <tr
+                                                key={`def-${team.tier}-${p.playerId}`}
+                                                className={`hover:bg-white/5 cursor-pointer ${pIdx % 2 === 0 ? 'bg-slate-800/30' : ''}`}
+                                                onClick={() => onPlayerClick(p.playerId)}
+                                            >
+                                                {pIdx === 0 && (
+                                                    <td
+                                                        rowSpan={team.players.length}
+                                                        className={`py-2 px-2 text-center align-middle border-b border-slate-600 border-r border-r-slate-600 font-black text-sm ${
+                                                            team.tier === 1 ? 'text-indigo-400' : 'text-slate-300'
+                                                        }`}
+                                                    >
+                                                        {team.tier === 1 ? '1ST' : '2ND'}
+                                                    </td>
+                                                )}
+                                                <td className={`${tdClass} text-center text-slate-400`}>{p.pos}</td>
+                                                <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-xs !mx-auto" /></td>
+                                                <td className={`${tdClass} pl-3 text-slate-200 hover:text-white`}>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <TeamLogo teamId={p.teamId} size="xs" />
+                                                        <span className="font-bold">{p.playerName}</span>
+                                                    </div>
                                                 </td>
-                                            )}
-                                            <td className={`${tdClass} text-center text-[10px] font-black text-slate-500`}>{p.pos}</td>
-                                            <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                            <td className={`${tdBold} pl-3 hover:text-white`}>
-                                                <div className="flex items-center gap-1.5">
-                                                    <TeamLogo teamId={p.teamId} size="xs" />
-                                                    <span>{p.playerName}</span>
-                                                </div>
-                                            </td>
-                                            <td className={`${tdClass} text-center font-bold text-slate-300`}>{p.votes}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.orebpg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.drebpg)}</td>
-                                        </tr>
-                                    ))
+                                                <td className={`${tdClass} text-center ${(tv[0] || 0) > 0 ? 'text-indigo-300' : 'text-slate-500'}`}>{tv[0] || 0}</td>
+                                                <td className={`${tdClass} text-center ${(tv[1] || 0) > 0 ? 'text-slate-200' : 'text-slate-500'}`}>{tv[1] || 0}</td>
+                                                <td className={`${tdClass} text-center text-white`}>{tp}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.orebpg)}</td>
+                                                <td className={`${tdClass} text-center`}>{formatStat(p.statLine.drebpg)}</td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>
@@ -1374,15 +1348,15 @@ const AwardsReportViewer: React.FC<{
                 <div>
                     <button
                         onClick={() => setShowBallots(!showBallots)}
-                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors mb-3"
+                        className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-300 hover:text-white transition-colors mb-3"
                     >
-                        {showBallots ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        {showBallots ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                         <span>MVP 전체 투표 내역 ({content.ballots.length}명)</span>
                     </button>
                     {showBallots && (
-                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
-                            <table className="w-full text-left border-separate border-spacing-0">
-                                <thead className="sticky top-0 z-10 bg-slate-950">
+                        <div className="border border-slate-600 rounded-lg overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
+                            <table className="w-full text-left border-collapse">
+                                <thead className="sticky top-0 z-10">
                                     <tr>
                                         <th className={`${thClass} text-center w-14`}>투표인</th>
                                         <th className={`${thClass} text-center`}>1위 (10pt)</th>
@@ -1394,19 +1368,19 @@ const AwardsReportViewer: React.FC<{
                                 </thead>
                                 <tbody>
                                     {content.ballots.map((b) => (
-                                        <tr key={b.voterId} className="hover:bg-white/5">
-                                            <td className={`${tdClass} text-center font-bold text-slate-500`}>#{String(b.voterId + 1).padStart(2, '0')}</td>
+                                        <tr key={b.voterId} className={`hover:bg-white/5 ${b.voterId % 2 === 0 ? 'bg-slate-800/30' : ''}`}>
+                                            <td className={`${tdClass} text-center font-bold text-slate-400`}>#{String(b.voterId + 1).padStart(2, '0')}</td>
                                             {b.mvp.map((pid, i) => (
                                                 <td
                                                     key={i}
-                                                    className={`${tdClass} text-center cursor-pointer hover:text-white ${i === 0 ? 'text-amber-300 font-bold' : 'text-slate-400'}`}
+                                                    className={`${tdClass} text-center cursor-pointer hover:text-white ${i === 0 ? 'text-amber-300 font-bold' : 'text-slate-300'}`}
                                                     onClick={() => onPlayerClick(pid)}
                                                 >
                                                     {getPlayerName(pid).split(' ').pop()}
                                                 </td>
                                             ))}
                                             {Array.from({ length: Math.max(0, 5 - b.mvp.length) }).map((_, i) => (
-                                                <td key={`empty-${i}`} className={`${tdClass} text-center text-slate-700`}>-</td>
+                                                <td key={`empty-${i}`} className={`${tdClass} text-center text-slate-500`}>-</td>
                                             ))}
                                         </tr>
                                     ))}
