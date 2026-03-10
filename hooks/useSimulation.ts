@@ -11,7 +11,7 @@ import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent, FinalsMvpContent } from '../types/message';
@@ -198,7 +198,7 @@ export const useSimulation = (
                     }
                 }
             }
-            // 파이널 MVP 뉴스 기사 발송
+            // 파이널 MVP 뉴스 기사 발송 + 플레이오프 우승 보고서
             if (series.round === 4 && series.winnerId && userId && userId !== 'guest') {
                 const seriesResultsForMvp = await fetchPlayoffSeriesResults(series.id, userId);
                 if (seriesResultsForMvp.length > 0) {
@@ -222,6 +222,13 @@ export const useSimulation = (
                         };
                         await sendMessage(userId, myTeamId, date, 'FINALS_MVP', `[속보] 파이널 MVP 발표`, fmvpContent);
                     }
+                }
+                // 플레이오프 우승 보고서
+                const champTeam = newTeams.find(t => t.id === series.winnerId);
+                if (champTeam) {
+                    const champContent = buildPlayoffChampionContent(champTeam, newTeams, newSchedule, newPlayoffSeries);
+                    await sendMessage(userId, myTeamId, date, 'PLAYOFF_CHAMPION',
+                        `[속보] 2025-26 플레이오프 우승: ${champTeam.name}`, champContent);
                 }
             }
             refreshUnreadCount();
