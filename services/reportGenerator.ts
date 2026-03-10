@@ -904,27 +904,6 @@ export const buildRegSeasonChampionContent = (
     const totalGames = champion.wins + champion.losses || 82;
     const pct = (champion.wins / totalGames).toFixed(3).replace(/^0/, '');
 
-    // Conference seeds
-    const eastTeams = sorted.filter(t => t.conference === 'East');
-    const westTeams = sorted.filter(t => t.conference === 'West');
-
-    const topTeams = sorted.slice(0, 10).map((t, idx) => {
-        const tg = t.wins + t.losses || 82;
-        const conf = t.conference;
-        const confList = conf === 'East' ? eastTeams : westTeams;
-        const confSeed = confList.findIndex(ct => ct.id === t.id) + 1;
-        return {
-            rank: idx + 1,
-            teamId: t.id,
-            teamName: t.name,
-            wins: t.wins,
-            losses: t.losses,
-            pct: (t.wins / tg).toFixed(3).replace(/^0/, ''),
-            conference: conf,
-            confSeed,
-        };
-    });
-
     return {
         championTeamId: champion.id,
         championTeamName: champion.name,
@@ -932,6 +911,7 @@ export const buildRegSeasonChampionContent = (
         losses: champion.losses,
         pct,
         conference: champion.conference,
-        topTeams,
+        allTeamsStats: computeAllTeamsStats(teams, schedule),
+        rosterStats: buildRosterStats(champion),
     };
 };

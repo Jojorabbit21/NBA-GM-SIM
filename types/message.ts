@@ -205,14 +205,40 @@ export interface RegSeasonChampionContent {
     losses: number;
     pct: string;
     conference: string;
-    topTeams: {
-        rank: number;
+    // All 30 teams stats (for team stat tables with league ranks)
+    allTeamsStats: {
         teamId: string;
         teamName: string;
         wins: number;
         losses: number;
-        pct: string;
-        conference: string;
-        confSeed: number;
+        stats: Record<string, number>;
+    }[];
+    // Champion roster player traditional stats
+    rosterStats: {
+        id: string;
+        name: string;
+        position: string;
+        ovr: number;
+        g: number;
+        mpg: number;
+        pts: number;
+        oreb: number;
+        dreb: number;
+        reb: number;
+        ast: number;
+        stl: number;
+        blk: number;
+        tov: number;
+        pf: number;
+        fgm: number;
+        fga: number;
+        fgPct: number;
+        p3m: number;
+        p3a: number;
+        p3Pct: number;
+        ftm: number;
+        fta: number;
+        ftPct: number;
+        pm: number;
     }[];
 }
