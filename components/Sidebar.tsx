@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown, Flag,
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -230,7 +230,25 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
       </div>
 
-      {/* HOF Submit */}
+      {/* 시즌 종료 버튼 — 팀 정보 하단 */}
+      {isPostseasonOver && onEndSeasonClick && (
+        <div className={`border-b border-white/10 transition-all duration-500 ${isCollapsed ? 'px-4 py-3' : 'px-6 py-4'}`}>
+          <button
+            onClick={onEndSeasonClick}
+            className={`w-full flex items-center justify-center gap-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-black uppercase tracking-widest transition-all ${
+              isCollapsed ? 'px-2 py-2.5 text-[10px]' : 'px-4 py-3 text-xs'
+            }`}
+            title={isCollapsed ? '시즌 종료' : undefined}
+          >
+            <span className={`whitespace-nowrap overflow-hidden transition-all duration-500 ${
+              isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px]'
+            }`}>
+              시즌 종료
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Main Navigation */}
       <nav className={`flex-1 space-y-1.5 overflow-y-auto custom-scrollbar transition-all duration-500 ${isCollapsed ? 'p-4' : 'p-6'}`}>
         <NavItem active={currentView === 'Dashboard'} icon={<LayoutDashboard size={20}/>} label="라커룸" onClick={() => onNavigate('Dashboard')} {...navProps} />
@@ -265,25 +283,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
           </button>
         )}
 
-        {/* 시즌 종료 */}
-        {isPostseasonOver && onEndSeasonClick && (
-          <button
-            onClick={onEndSeasonClick}
-            className={`w-full flex items-center transition-all duration-500 group relative overflow-visible ${
-              isCollapsed ? 'px-3.5 py-2.5 rounded-xl' : 'px-5 py-4 rounded-2xl'
-            } text-amber-400 opacity-80 hover:opacity-100 hover:bg-amber-500/10`}
-            title={isCollapsed ? '시즌 종료' : undefined}
-          >
-            <div className={`flex items-center relative z-10 transition-all duration-500 ${isCollapsed ? 'gap-0' : 'gap-4'}`}>
-              <span className="shrink-0"><Flag size={20} /></span>
-              <span className={`text-sm font-bold ko-tight tracking-tight whitespace-nowrap overflow-hidden transition-all duration-500 ${
-                isCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[200px] delay-150'
-              }`}>
-                시즌 종료
-              </span>
-            </div>
-          </button>
-        )}
         <div className="mt-auto" />
       </nav>
 
