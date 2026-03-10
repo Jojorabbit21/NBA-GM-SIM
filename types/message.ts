@@ -63,6 +63,61 @@ export interface SeasonReviewContent {
     trades: { date: string; partnerId: string; partnerName: string; acquired: { id: string; name: string; ovr: number }[]; departed: { id: string; name: string; ovr: number }[] }[];
     ownerMood: { title: string; msg: string; color: string; borderColor: string; bg: string };
     ownerName: string;
+    // Standings context: user team ± 2 teams
+    standingsContext?: {
+        teamId: string;
+        teamName: string;
+        rank: number;
+        wins: number;
+        losses: number;
+        pct: string;
+        gb: string;
+        home: string;
+        away: string;
+        conf: string;
+        ppg: string;
+        oppg: string;
+        diff: string;
+        streak: string;
+        l10: string;
+        isUserTeam: boolean;
+    }[];
+    // All 30 teams stats (for 3-tab table)
+    allTeamsStats?: {
+        teamId: string;
+        teamName: string;
+        wins: number;
+        losses: number;
+        stats: Record<string, number>;
+    }[];
+    // Roster player traditional stats
+    rosterStats?: {
+        id: string;
+        name: string;
+        position: string;
+        ovr: number;
+        g: number;
+        mpg: number;
+        pts: number;
+        oreb: number;
+        dreb: number;
+        reb: number;
+        ast: number;
+        stl: number;
+        blk: number;
+        tov: number;
+        pf: number;
+        fgm: number;
+        fga: number;
+        fgPct: number;
+        p3m: number;
+        p3a: number;
+        p3Pct: number;
+        ftm: number;
+        fta: number;
+        ftPct: number;
+        pm: number;
+    }[];
 }
 
 export interface PlayoffStageReviewContent {

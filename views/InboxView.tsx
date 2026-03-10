@@ -870,8 +870,8 @@ const AwardsReportViewer: React.FC<{
 }> = ({ content, teams, onPlayerClick }) => {
     const [showBallots, setShowBallots] = useState(false);
 
-    const formatStat = (v: number, decimals = 1) => v.toFixed(decimals);
-    const formatPct = (v: number) => v > 0 ? '.' + (v * 1000).toFixed(0).padStart(3, '0') : '-';
+    const formatStat = (v: number | undefined, decimals = 1) => (v ?? 0).toFixed(decimals);
+    const formatPct = (v: number | undefined) => (v != null && v > 0) ? '.' + (v * 1000).toFixed(0).padStart(3, '0') : '-';
 
     // playerId → 이름 맵 (ballot 표시용)
     const nameMap = useMemo(() => {
