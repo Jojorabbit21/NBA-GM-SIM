@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'SYSTEM';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM';
 
 export interface Message {
     id: string;
@@ -214,6 +214,50 @@ export interface RegSeasonChampionContent {
         stats: Record<string, number>;
     }[];
     // Champion roster player traditional stats
+    rosterStats: {
+        id: string;
+        name: string;
+        position: string;
+        ovr: number;
+        g: number;
+        mpg: number;
+        pts: number;
+        oreb: number;
+        dreb: number;
+        reb: number;
+        ast: number;
+        stl: number;
+        blk: number;
+        tov: number;
+        pf: number;
+        fgm: number;
+        fga: number;
+        fgPct: number;
+        p3m: number;
+        p3a: number;
+        p3Pct: number;
+        ftm: number;
+        fta: number;
+        ftPct: number;
+        pm: number;
+    }[];
+}
+
+export interface PlayoffChampionContent {
+    championTeamId: string;
+    championTeamName: string;
+    playoffWins: number;
+    playoffLosses: number;
+    conference: string;
+    // All 30 teams playoff stats
+    allTeamsStats: {
+        teamId: string;
+        teamName: string;
+        wins: number;
+        losses: number;
+        stats: Record<string, number>;
+    }[];
+    // Champion roster playoff stats
     rosterStats: {
         id: string;
         name: string;

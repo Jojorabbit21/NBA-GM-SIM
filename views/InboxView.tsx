@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight, Crown, Trophy } from 'lucide-react';
-import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, Team, Player, PlayerBoxScore } from '../types';
+import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
@@ -949,6 +949,166 @@ const RegSeasonChampionRenderer: React.FC<{
     );
 };
 
+// --- Sub-Component: Playoff Champion Renderer ---
+
+const PlayoffChampionRenderer: React.FC<{
+    pc: PlayoffChampionContent;
+    championTeamId: string;
+}> = ({ pc, championTeamId }) => {
+    const [teamStatTab, setTeamStatTab] = useState<ChampStatTab>('Traditional');
+
+    const champTeamStats = useMemo(() => {
+        return pc.allTeamsStats?.find(t => t.teamId === championTeamId) ?? null;
+    }, [pc.allTeamsStats, championTeamId]);
+
+    const computeRank = useCallback((key: string, inverse?: boolean) => {
+        if (!pc.allTeamsStats) return 0;
+        const sorted = [...pc.allTeamsStats].sort((a, b) =>
+            inverse ? (a.stats[key] ?? 0) - (b.stats[key] ?? 0) : (b.stats[key] ?? 0) - (a.stats[key] ?? 0)
+        );
+        return sorted.findIndex(t => t.teamId === championTeamId) + 1;
+    }, [pc.allTeamsStats, championTeamId]);
+
+    const cols = CHAMP_TEAM_COLS[teamStatTab];
+
+    return (
+        <div className="space-y-10 max-w-5xl mx-auto">
+            {/* Trophy Header */}
+            <div className="text-center space-y-4">
+                <img src="/images/fmvp.png" alt="Playoff Champion" className="mx-auto h-40 object-contain" />
+                <h2 className="text-3xl font-black text-white tracking-tight">
+                    {TEAM_DATA[championTeamId]?.city ?? ''} {pc.championTeamName}
+                </h2>
+                <p className="text-sm font-bold text-slate-400">
+                    {pc.conference === 'East' ? '동부' : '서부'} 컨퍼런스&nbsp;&nbsp;|&nbsp;&nbsp;플레이오프 {pc.playoffWins}승 {pc.playoffLosses}패
+                </p>
+            </div>
+
+            {/* Team Stats (champion team with league ranks) */}
+            {champTeamStats && (
+                <div>
+                    <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">플레이오프 팀 스탯</h3>
+                        <div className="flex p-1 bg-slate-900 rounded-xl border border-slate-800">
+                            {(['Traditional', 'Advanced'] as ChampStatTab[]).map(tab => (
+                                <button
+                                    key={tab}
+                                    onClick={() => setTeamStatTab(tab)}
+                                    className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                        teamStatTab === tab ? 'bg-indigo-600 text-white' : 'text-slate-500 hover:text-slate-300'
+                                    }`}
+                                >
+                                    {CHAMP_TAB_LABELS[tab]}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                            <TableHead className="bg-slate-950">
+                                {cols.map(c => (
+                                    <TableHeaderCell key={c.key} align="center" className="w-14">{c.label}</TableHeaderCell>
+                                ))}
+                            </TableHead>
+                            <TableBody>
+                                <TableRow>
+                                    {cols.map(c => (
+                                        <TableCell key={c.key} align="center" className={`text-xs font-mono tabular-nums ${
+                                            c.fmt === 'diff'
+                                                ? (champTeamStats.stats[c.key] > 0 ? 'text-emerald-400' : champTeamStats.stats[c.key] < 0 ? 'text-red-400' : 'text-slate-500')
+                                                : 'text-white'
+                                        }`}>
+                                            {fmtStatVal(champTeamStats.stats[c.key], c.fmt)}
+                                        </TableCell>
+                                    ))}
+                                </TableRow>
+                                <tr>
+                                    {cols.map(c => {
+                                        const rank = computeRank(c.key, c.inv);
+                                        const rankColor = rank <= 3 ? 'text-emerald-400' : rank >= Math.ceil((pc.allTeamsStats?.length ?? 16) * 0.7) ? 'text-red-400' : 'text-slate-500';
+                                        return (
+                                            <td key={c.key} className={`text-center text-[10px] font-bold py-1.5 bg-slate-950/50 border-t border-slate-800/50 ${rankColor}`}>
+                                                {rank}위
+                                            </td>
+                                        );
+                                    })}
+                                </tr>
+                            </TableBody>
+                        </Table>
+                    </div>
+                </div>
+            )}
+
+            {/* Roster Stats */}
+            {pc.rosterStats && pc.rosterStats.length > 0 && (
+                <div>
+                    <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">플레이오프 로스터 스탯</h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <Table className="!rounded-none !border-0 !shadow-none" style={{ minWidth: '100%' }}>
+                                <TableHead className="bg-slate-950">
+                                    <TableHeaderCell align="left" className="pl-4 min-w-[140px] sticky left-0 bg-slate-950 z-20 shadow-[2px_0_5px_rgba(0,0,0,0.5)]">선수</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">POS</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">OVR</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-10">G</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">MIN</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">PTS</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">REB</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">AST</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">STL</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">BLK</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">TOV</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FGM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FGA</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FG%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3PM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3PA</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">3P%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FTM</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FTA</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">FT%</TableHeaderCell>
+                                    <TableHeaderCell align="center" className="w-12">+/-</TableHeaderCell>
+                                </TableHead>
+                                <TableBody>
+                                    {pc.rosterStats.map(p => (
+                                        <TableRow key={p.id} className="hover:bg-white/5">
+                                            <TableCell className="pl-4 sticky left-0 bg-slate-900 z-10 shadow-[2px_0_5px_rgba(0,0,0,0.3)]">
+                                                <span className="text-xs font-bold text-slate-300">{p.name}</span>
+                                            </TableCell>
+                                            <TableCell align="center" className="text-xs text-slate-500">{p.position}</TableCell>
+                                            <TableCell align="center"><OvrBadge value={p.ovr} size="sm" /></TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.g}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.mpg}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.pts}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.reb}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.ast}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.stl}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.blk}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-300">{p.tov}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fgm}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fga}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.fgPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.p3m}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.p3a}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.p3Pct, 'pct')}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.ftm}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fta}</TableCell>
+                                            <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.ftPct, 'pct')}</TableCell>
+                                            <TableCell align="center" className={`text-xs font-mono ${p.pm > 0 ? 'text-emerald-400' : p.pm < 0 ? 'text-red-400' : 'text-slate-500'}`}>
+                                                {p.pm > 0 ? '+' : ''}{p.pm}
+                                            </TableCell>
+                                        </TableRow>
+                                    ))}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- Sub-Component: Content Renderer ---
 
 const MessageContentRenderer: React.FC<{
@@ -1498,6 +1658,13 @@ const MessageContentRenderer: React.FC<{
             const rc = content as RegSeasonChampionContent;
             return (
                 <RegSeasonChampionRenderer rc={rc} championTeamId={rc.championTeamId} />
+            );
+        }
+
+        case 'PLAYOFF_CHAMPION': {
+            const pc = content as PlayoffChampionContent;
+            return (
+                <PlayoffChampionRenderer pc={pc} championTeamId={pc.championTeamId} />
             );
         }
 

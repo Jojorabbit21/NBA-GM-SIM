@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat, RegSeasonChampionContent } from '../types';
+import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat, RegSeasonChampionContent, PlayoffChampionContent } from '../types';
 import { TEAM_DATA } from '../data/teamData';
 import { calculatePlayerOvr } from '../utils/constants';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
@@ -915,3 +915,116 @@ export const buildRegSeasonChampionContent = (
         rosterStats: buildRosterStats(champion),
     };
 };
+
+/** 플레이오프 우승팀 보고서 콘텐츠 (playoffStats 기반) */
+export const buildPlayoffChampionContent = (
+    championTeam: Team,
+    teams: Team[],
+    schedule: Game[],
+    playoffSeries: PlayoffSeries[]
+): PlayoffChampionContent => {
+    // 플레이오프 승패 집계
+    let pWins = 0, pLosses = 0;
+    for (const s of playoffSeries) {
+        if (s.higherSeedId === championTeam.id) {
+            pWins += s.higherSeedWins;
+            pLosses += s.lowerSeedWins;
+        } else if (s.lowerSeedId === championTeam.id) {
+            pWins += s.lowerSeedWins;
+            pLosses += s.higherSeedWins;
+        }
+    }
+
+    return {
+        championTeamId: championTeam.id,
+        championTeamName: championTeam.name,
+        playoffWins: pWins,
+        playoffLosses: pLosses,
+        conference: championTeam.conference,
+        allTeamsStats: computePlayoffTeamsStats(teams, schedule),
+        rosterStats: buildPlayoffRosterStats(championTeam),
+    };
+};
+
+/** 플레이오프 참여 팀 스탯 (playoffStats 기반) */
+function computePlayoffTeamsStats(teams: Team[], schedule: Game[]) {
+    const playoffSchedule = schedule.filter(g => g.played && g.isPlayoff);
+    const playoffTeamIds = new Set<string>();
+    playoffSchedule.forEach(g => { playoffTeamIds.add(g.homeTeamId); playoffTeamIds.add(g.awayTeamId); });
+
+    const playoffTeams = teams.filter(t => playoffTeamIds.has(t.id));
+
+    return playoffTeams.map(t => {
+        const teamGames = playoffSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id);
+        const gp = teamGames.length || 1;
+
+        const tot = t.roster.reduce((a: any, p) => {
+            const s = p.playoffStats;
+            if (!s) return a;
+            a.reb += s.reb; a.offReb += (s.offReb || 0); a.defReb += (s.defReb || 0);
+            a.ast += s.ast; a.stl += s.stl; a.blk += s.blk; a.tov += s.tov; a.pf += (s.pf || 0);
+            a.fgm += s.fgm; a.fga += s.fga; a.p3m += s.p3m; a.p3a += s.p3a; a.ftm += s.ftm; a.fta += s.fta;
+            return a;
+        }, { reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0 });
+
+        let totalPts = 0, totalPa = 0;
+        teamGames.forEach(g => {
+            const isH = g.homeTeamId === t.id;
+            totalPts += isH ? (g.homeScore ?? 0) : (g.awayScore ?? 0);
+            totalPa += isH ? (g.awayScore ?? 0) : (g.homeScore ?? 0);
+        });
+
+        const wins = teamGames.filter(g => {
+            const isH = g.homeTeamId === t.id;
+            return isH ? (g.homeScore ?? 0) > (g.awayScore ?? 0) : (g.awayScore ?? 0) > (g.homeScore ?? 0);
+        }).length;
+        const losses = gp - wins;
+
+        const tsa = tot.fga + 0.44 * tot.fta;
+        const tPoss = tot.fga + 0.44 * tot.fta + tot.tov - tot.offReb;
+        const stats: Record<string, number> = {
+            pts: totalPts / gp, pa: totalPa / gp, oreb: tot.offReb / gp, dreb: tot.defReb / gp,
+            reb: tot.reb / gp, ast: tot.ast / gp, stl: tot.stl / gp, blk: tot.blk / gp, tov: tot.tov / gp,
+            fgm: tot.fgm / gp, fga: tot.fga / gp, 'fg%': tot.fga > 0 ? tot.fgm / tot.fga : 0,
+            p3m: tot.p3m / gp, p3a: tot.p3a / gp, '3p%': tot.p3a > 0 ? tot.p3m / tot.p3a : 0,
+            ftm: tot.ftm / gp, fta: tot.fta / gp, 'ft%': tot.fta > 0 ? tot.ftm / tot.fta : 0,
+            'ts%': tsa > 0 ? totalPts / (2 * tsa) : 0, pm: (totalPts - totalPa) / gp,
+            'efg%': tot.fga > 0 ? (tot.fgm + 0.5 * tot.p3m) / tot.fga : 0,
+            'tov%': tPoss > 0 ? tot.tov / tPoss : 0,
+            'ast%': tot.fgm > 0 ? tot.ast / tot.fgm : 0,
+            'stl%': tPoss > 0 ? tot.stl / tPoss : 0,
+            ortg: tPoss > 0 ? (totalPts / tPoss) * 100 : 0,
+            drtg: tPoss > 0 ? (totalPa / tPoss) * 100 : 0,
+            nrtg: tPoss > 0 ? ((totalPts - totalPa) / tPoss) * 100 : 0,
+            poss: tPoss / gp,
+            pace: tPoss / gp,
+        };
+        return { teamId: t.id, teamName: t.name, wins, losses, stats };
+    });
+}
+
+/** 우승팀 로스터 플레이오프 Traditional 스탯 */
+function buildPlayoffRosterStats(team: Team) {
+    return team.roster
+        .filter(p => p.playoffStats && p.playoffStats.g > 0)
+        .map(p => {
+            const s = p.playoffStats!; const g = s.g;
+            return {
+                id: p.id, name: p.name, position: p.position, ovr: calculatePlayerOvr(p),
+                g, mpg: +(s.mp / g).toFixed(1),
+                pts: +(s.pts / g).toFixed(1), oreb: +((s.offReb || 0) / g).toFixed(1),
+                dreb: +((s.defReb || 0) / g).toFixed(1), reb: +(s.reb / g).toFixed(1),
+                ast: +(s.ast / g).toFixed(1), stl: +(s.stl / g).toFixed(1),
+                blk: +(s.blk / g).toFixed(1), tov: +(s.tov / g).toFixed(1),
+                pf: +((s.pf || 0) / g).toFixed(1),
+                fgm: +(s.fgm / g).toFixed(1), fga: +(s.fga / g).toFixed(1),
+                fgPct: s.fga > 0 ? +(s.fgm / s.fga).toFixed(3) : 0,
+                p3m: +(s.p3m / g).toFixed(1), p3a: +(s.p3a / g).toFixed(1),
+                p3Pct: s.p3a > 0 ? +(s.p3m / s.p3a).toFixed(3) : 0,
+                ftm: +(s.ftm / g).toFixed(1), fta: +(s.fta / g).toFixed(1),
+                ftPct: s.fta > 0 ? +(s.ftm / s.fta).toFixed(3) : 0,
+                pm: +((s.plusMinus || 0) / g).toFixed(1),
+            };
+        })
+        .sort((a, b) => b.pts - a.pts);
+}
