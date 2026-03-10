@@ -21,7 +21,7 @@ interface PlayoffsViewProps {
   onViewGameResult?: (result: any) => void;
 }
 
-const ROUND_NAMES: Record<number, string> = { 0: '플레이인', 1: '1라운드', 2: '세미파이널', 3: '컨퍼런스 파이널', 4: '파이널' };
+const ROUND_NAMES: Record<number, string> = { 0: '플레이인', 1: '1라운드', 2: '2라운드', 3: '컨퍼런스 파이널', 4: '파이널' };
 
 export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, series, setSeries, setSchedule, myTeamId, userId, onViewGameResult }) => {
   const [selectedSeriesId, setSelectedSeriesId] = useState<string | null>(null);
@@ -255,7 +255,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           {/* ══ East Semis (col 7) ══ */}
           {r2_east.map((s, i) => (
             <div key={`e_r2_${i}`} className="flex items-center" style={{ gridColumn: 7, gridRow: `${i * 2 + 1} / ${i * 2 + 3}` }}>
-              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 세미파이널" {...sb(s as any)} />
+              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="동부 2라운드" {...sb(s as any)} />
             </div>
           ))}
           {/* c: Semis→CF East */}
@@ -315,7 +315,7 @@ export const PlayoffsView: React.FC<PlayoffsViewProps> = ({ teams, schedule, ser
           {/* ══ West Semis (col 7) ══ */}
           {r2_west.map((s, i) => (
             <div key={`w_r2_${i}`} className="flex items-center" style={{ gridColumn: 7, gridRow: `${i * 2 + 6} / ${i * 2 + 8}` }}>
-              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 세미파이널" {...sb(s as any)} />
+              <GridSeriesBox series={s as any} teams={teams} myTeamId={myTeamId} seedMap={seedMap} label="서부 2라운드" {...sb(s as any)} />
             </div>
           ))}
           {/* c: Semis→CF West */}
