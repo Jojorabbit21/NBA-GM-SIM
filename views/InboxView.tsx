@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight, Crown, Trophy } from 'lucide-react';
-import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, Team, Player, PlayerBoxScore } from '../types';
+import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
-import { fetchMessages, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
+import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
@@ -25,17 +25,42 @@ interface InboxViewProps {
 }
 
 export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [messages, setMessages] = useState<MessageListItem[]>([]);
+  const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
+  const [selectedContent, setSelectedContent] = useState<any>(null);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
+  const contentCache = useRef<Map<string, any>>(new Map());
+
+  const handleSelectMessage = useCallback(async (msg: MessageListItem) => {
+      setSelectedMessage(msg);
+      setSelectedContent(null);
+
+      // Check cache first
+      const cached = contentCache.current.get(msg.id);
+      if (cached !== undefined) {
+          setSelectedContent(cached);
+      } else {
+          setIsLoadingContent(true);
+          const content = await fetchMessageContent(msg.id);
+          contentCache.current.set(msg.id, content);
+          setSelectedContent(content);
+          setIsLoadingContent(false);
+      }
+
+      if (!msg.is_read) {
+          markMessageAsRead(msg.id);
+          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
+          onUpdateUnreadCount();
+      }
+  }, [onUpdateUnreadCount]);
 
   const loadMessages = useCallback(async () => {
     setLoading(true);
-    // Always sorting by date desc, created_at desc from DB
     const [data, count] = await Promise.all([
-      fetchMessages(userId, myTeamId, page),
+      fetchMessageList(userId, myTeamId, page),
       page === 0 ? fetchTotalMessageCount(userId, myTeamId) : Promise.resolve(totalCount),
     ]);
 
@@ -49,21 +74,11 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
     }
 
     setLoading(false);
-  }, [userId, myTeamId, page]);
+  }, [userId, myTeamId, page, handleSelectMessage]);
 
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
-
-  const handleSelectMessage = async (msg: Message) => {
-      setSelectedMessage(msg);
-      if (!msg.is_read) {
-          await markMessageAsRead(msg.id);
-          // Optimistic update
-          setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
-          onUpdateUnreadCount();
-      }
-  };
 
   const handleMarkAllRead = async () => {
       await markAllMessagesAsRead(userId, myTeamId);
@@ -81,17 +96,12 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       }
   };
   
-  const getDisplayDate = (msg: Message) => {
+  const getDisplayDate = (msg: MessageListItem, content: any) => {
       if (msg.type === 'GAME_RECAP' && msg.date === 'PLAYOFF') {
-          // Attempt to fallback to date from title or content
           const dateMatch = msg.title.match(/\d{4}-\d{2}-\d{2}/);
           if (dateMatch) return dateMatch[0];
-          // Or extract from gameId inside content if available
-          const content = msg.content as GameRecapContent;
           if (content && content.gameId) {
              const parts = content.gameId.split('_');
-             // Typical gameId: g_YYYY-MM-DD
-             // Sometimes: po_series_id_gNum -> might not have date easily
              if (parts.length > 1 && parts[1].match(/^\d{4}-\d{2}-\d{2}$/)) {
                  return parts[1];
              }
@@ -124,7 +134,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                            <CheckCircle2 size={14} />
                        </button>
                        <button
-                           onClick={() => { setPage(0); setSelectedMessage(null); loadMessages(); }}
+                           onClick={() => { setPage(0); setSelectedMessage(null); setSelectedContent(null); contentCache.current.clear(); loadMessages(); }}
                            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
                            title="새로고침"
                        >
@@ -184,21 +194,29 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
                        <div className="flex justify-between items-start border-b border-slate-800 pb-6 mb-8">
                            <h1 className="text-2xl font-black text-white leading-tight flex-1 mr-8">{selectedMessage.title}</h1>
                            <div className="flex flex-col items-end">
-                               <span className="text-sm font-bold text-slate-400">{getDisplayDate(selectedMessage)}</span>
+                               <span className="text-sm font-bold text-slate-400">{getDisplayDate(selectedMessage, selectedContent)}</span>
                            </div>
                        </div>
-                       
+
                        <div className="prose prose-invert max-w-none">
-                           <MessageContentRenderer
-                                type={selectedMessage.type}
-                                content={selectedMessage.content}
-                                teams={teams}
-                                myTeamId={myTeamId}
-                                onPlayerClick={handlePlayerClick}
-                                onViewGameResult={onViewGameResult}
-                                userId={userId}
-                                onNavigateToHof={onNavigateToHof}
-                            />
+                           {isLoadingContent ? (
+                               <div className="flex items-center justify-center py-20">
+                                   <Loader2 className="animate-spin text-slate-500" size={24} />
+                               </div>
+                           ) : selectedContent ? (
+                               <MessageContentRenderer
+                                    type={selectedMessage.type}
+                                    content={selectedContent}
+                                    teams={teams}
+                                    myTeamId={myTeamId}
+                                    onPlayerClick={handlePlayerClick}
+                                    onViewGameResult={onViewGameResult}
+                                    userId={userId}
+                                    onNavigateToHof={onNavigateToHof}
+                                />
+                           ) : (
+                               <div className="text-slate-600 text-sm">내용을 불러올 수 없습니다.</div>
+                           )}
                        </div>
                    </div>
                ) : (

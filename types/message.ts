@@ -18,6 +18,9 @@ export interface Message {
     created_at: string;
 }
 
+/** Message metadata without the heavy content JSONB — used for list rendering */
+export type MessageListItem = Omit<Message, 'content'>;
+
 export interface GameRecapContent {
     gameId: string;
     homeTeamId: string;

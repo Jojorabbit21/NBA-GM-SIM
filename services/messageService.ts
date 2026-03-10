@@ -1,6 +1,6 @@
 
 import { supabase } from './supabaseClient';
-import { Message, MessageType } from '../types';
+import { Message, MessageListItem, MessageType } from '../types';
 
 /**
  * Fetch unread message count for the sidebar badge
@@ -62,6 +62,48 @@ export const fetchMessages = async (userId: string, teamId: string, page: number
         return [];
     }
     return data as Message[];
+};
+
+/**
+ * Fetch message metadata (no content JSONB) with pagination.
+ * Used for the sidebar list where only title/type/date/is_read are needed.
+ */
+export const fetchMessageList = async (userId: string, teamId: string, page: number = 0, limit: number = 20): Promise<MessageListItem[]> => {
+    const from = page * limit;
+    const to = from + limit - 1;
+
+    const { data, error } = await supabase
+        .from('user_messages')
+        .select('id, user_id, team_id, date, type, title, is_read, created_at')
+        .eq('user_id', userId)
+        .eq('team_id', teamId)
+        .order('date', { ascending: false })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+    if (error) {
+        console.error("Error fetching message list:", error);
+        return [];
+    }
+    return data as MessageListItem[];
+};
+
+/**
+ * Fetch the content JSONB for a single message by ID.
+ * Called on-demand when a message is selected in InboxView.
+ */
+export const fetchMessageContent = async (messageId: string): Promise<any | null> => {
+    const { data, error } = await supabase
+        .from('user_messages')
+        .select('content')
+        .eq('id', messageId)
+        .single();
+
+    if (error) {
+        console.error("Error fetching message content:", error);
+        return null;
+    }
+    return data?.content ?? null;
 };
 
 /**
