@@ -1,7 +1,10 @@
 
 import { PlayerBoxScore } from './engine';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SYSTEM';
+// SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
+export type { SeasonAwardsContent } from '../utils/awardVoting';
+
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'SYSTEM';
 
 export interface Message {
     id: string;
@@ -43,4 +46,37 @@ export interface InjuryReportContent {
     severity: 'Minor' | 'Major';
     duration: string;
     returnDate: string;
+}
+
+export interface SeasonReviewContent {
+    wins: number;
+    losses: number;
+    winPct: number;
+    winPctStr: string;
+    leagueRank: number;
+    confRank: number;
+    conference: string;
+    isPlayoffBound: boolean;
+    teamStats: Record<string, number>;
+    leagueRanks: Record<string, { value: number; rank: number }>;
+    mvp: { id: string; name: string; position: string; age: number; ppg: number; rpg: number; apg: number; ovr: number } | null;
+    trades: { date: string; partnerId: string; partnerName: string; acquired: { id: string; name: string; ovr: number }[]; departed: { id: string; name: string; ovr: number }[] }[];
+    ownerMood: { title: string; msg: string; color: string; borderColor: string; bg: string };
+    ownerName: string;
+}
+
+export interface PlayoffStageReviewContent {
+    round: number;
+    roundName: string;
+    opponentId: string;
+    opponentName: string;
+    result: 'WON' | 'LOST';
+    seriesScore: string;
+    myWins: number;
+    myLosses: number;
+    games: { gameNum: number; isHome: boolean; myScore: number; oppScore: number; isWin: boolean }[];
+    isFinalStage: boolean;
+    finalStatus?: { title: string; desc: string };
+    ownerName: string;
+    ownerMessage: string;
 }

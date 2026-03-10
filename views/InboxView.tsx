@@ -1,13 +1,15 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown } from 'lucide-react';
-import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, Team, Player, PlayerBoxScore } from '../types';
+import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, Hash, TrendingUp, Crown, AlertTriangle, ChevronDown, ChevronRight, Trophy, Shield } from 'lucide-react';
+import { Message, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, Team, Player, PlayerBoxScore } from '../types';
+import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessages, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
-import { fetchFullGameResult } from '../services/queries'; // [New]
+import { fetchFullGameResult } from '../services/queries';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
 import { OvrBadge } from '../components/common/OvrBadge';
 import { TEAM_DATA } from '../data/teamData';
 import { TeamLogo } from '../components/common/TeamLogo';
+import { ReviewStatBox, ReviewOwnerMessage } from '../components/review/ReviewComponents';
 
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell, TableFoot } from '../components/common/Table';
 
@@ -620,7 +622,578 @@ const MessageContentRenderer: React.FC<{
                 </div>
             );
 
+        case 'SEASON_REVIEW': {
+            const sr = content as SeasonReviewContent;
+            return (
+                <div className="space-y-10 max-w-5xl mx-auto">
+                    {/* Header */}
+                    <div className="space-y-1">
+                        <p className="text-[10px] font-mono text-orange-400/60 uppercase tracking-[0.2em]">Front Office Report</p>
+                        <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 Regular Season Review</h2>
+                        <div className="border-t border-orange-500/20 mt-2" />
+                    </div>
+
+                    {/* Final Standings */}
+                    <div className="bg-gradient-to-br from-orange-950/20 to-slate-950 border border-orange-500/20 rounded-2xl overflow-hidden">
+                        <div className="grid grid-cols-3 divide-x divide-orange-500/15">
+                            <div className="p-6 flex flex-col items-center gap-1">
+                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-[0.2em]">Record</span>
+                                <span className="text-4xl font-black text-white">{sr.wins}<span className="text-slate-600 text-2xl">/</span>{sr.losses}</span>
+                                <span className="text-[10px] font-bold text-orange-300/60">Win Pct: {sr.winPctStr}</span>
+                            </div>
+                            <div className="p-6 flex flex-col items-center gap-1">
+                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1"><Hash size={10} /> League Rank</span>
+                                <span className="text-4xl font-black text-white">#{sr.leagueRank}</span>
+                                <span className="text-[10px] font-bold text-slate-400">{sr.conference} Conf: #{sr.confRank}</span>
+                            </div>
+                            <div className="p-6 flex flex-col items-center gap-1">
+                                <span className="text-[9px] font-black text-orange-400 uppercase tracking-[0.2em] flex items-center gap-1"><TrendingUp size={10} /> Status</span>
+                                {sr.isPlayoffBound ? (
+                                    <span className="text-2xl font-black text-emerald-400 uppercase">Playoff Bound</span>
+                                ) : (
+                                    <span className="text-2xl font-black text-slate-400 uppercase">Lottery Bound</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Owner's Message */}
+                    <ReviewOwnerMessage
+                        ownerName={sr.ownerName}
+                        title={sr.ownerMood.title}
+                        msg={sr.ownerMood.msg}
+                        mood={sr.ownerMood}
+                    />
+
+                    {/* Season Stats */}
+                    <div>
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Season Stats</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                            <ReviewStatBox label="Points" value={sr.leagueRanks.pts.value} rank={sr.leagueRanks.pts.rank} />
+                            <ReviewStatBox label="Rebounds" value={sr.leagueRanks.reb.value} rank={sr.leagueRanks.reb.rank} />
+                            <ReviewStatBox label="Assists" value={sr.leagueRanks.ast.value} rank={sr.leagueRanks.ast.rank} />
+                            <ReviewStatBox label="Steals" value={sr.leagueRanks.stl.value} rank={sr.leagueRanks.stl.rank} />
+                            <ReviewStatBox label="Blocks" value={sr.leagueRanks.blk.value} rank={sr.leagueRanks.blk.rank} />
+                            <ReviewStatBox label="Turnovers" value={sr.leagueRanks.tov.value} rank={sr.leagueRanks.tov.rank} inverse />
+                            <ReviewStatBox label="FG%" value={sr.leagueRanks.fgPct.value} rank={sr.leagueRanks.fgPct.rank} isPercent />
+                            <ReviewStatBox label="3P%" value={sr.leagueRanks.p3Pct.value} rank={sr.leagueRanks.p3Pct.rank} isPercent />
+                            <ReviewStatBox label="FT%" value={sr.leagueRanks.ftPct.value} rank={sr.leagueRanks.ftPct.rank} isPercent />
+                            <ReviewStatBox label="True Shooting" value={sr.leagueRanks.tsPct.value} rank={sr.leagueRanks.tsPct.rank} isPercent />
+                        </div>
+                    </div>
+
+                    {/* Team MVP */}
+                    {sr.mvp && (
+                        <div>
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4">Team MVP</h3>
+                            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 flex items-center gap-6 cursor-pointer hover:border-orange-500/30 transition-colors" onClick={() => onPlayerClick(sr.mvp!.id)}>
+                                <div className="flex flex-col items-center gap-1">
+                                    <OvrBadge value={sr.mvp.ovr} size="lg" className="!w-12 !h-12 !text-xl" />
+                                    <div className="flex items-center gap-1 mt-1">
+                                        <Crown size={10} className="text-amber-400 fill-amber-400" />
+                                        <span className="text-[9px] font-black text-amber-300 uppercase tracking-wider">MVP</span>
+                                    </div>
+                                </div>
+                                <div className="flex-1">
+                                    <h4 className="text-lg font-black text-white">{sr.mvp.name}</h4>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{sr.mvp.position} | {sr.mvp.age} years old</p>
+                                    <div className="flex gap-4 mt-2">
+                                        <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.ppg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">PTS</span></div>
+                                        <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.rpg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">REB</span></div>
+                                        <div className="text-center"><span className="text-lg font-black text-white">{sr.mvp.apg}</span><span className="text-[9px] font-bold text-slate-500 ml-1">AST</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Trade History */}
+                    {sr.trades.length > 0 && (
+                        <div>
+                            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                <ArrowRightLeft size={14} className="text-indigo-400" /> Trade History
+                            </h3>
+                            <div className="space-y-3">
+                                {sr.trades.map((t, idx) => (
+                                    <div key={idx} className="bg-slate-900/50 border border-slate-800 rounded-xl p-4 flex items-center gap-4">
+                                        <span className="text-[10px] font-bold text-slate-500 w-24 flex-shrink-0">{t.date}</span>
+                                        <div className="flex items-center gap-2 flex-shrink-0">
+                                            <TeamLogo teamId={t.partnerId} size="sm" />
+                                            <span className="text-xs font-black text-white uppercase">{t.partnerName}</span>
+                                        </div>
+                                        <div className="flex-1 grid grid-cols-2 gap-3 ml-4">
+                                            <div>
+                                                <span className="text-[9px] font-black text-emerald-500 uppercase">IN</span>
+                                                {t.acquired.map((p, i) => (
+                                                    <div key={i} className="flex items-center gap-2 mt-0.5">
+                                                        <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0" />
+                                                        <span className="text-xs font-bold text-emerald-300">{p.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div>
+                                                <span className="text-[9px] font-black text-red-500 uppercase">OUT</span>
+                                                {t.departed.map((p, i) => (
+                                                    <div key={i} className="flex items-center gap-2 mt-0.5">
+                                                        <OvrBadge value={p.ovr} size="sm" className="!w-5 !h-5 !text-[9px] !mx-0 grayscale opacity-50" />
+                                                        <span className="text-xs font-bold text-slate-400">{p.name}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Performance Alert */}
+                    {sr.winPct < 0.4 && (
+                        <div className="p-4 bg-red-950/20 border border-red-900/30 rounded-xl flex items-start gap-3">
+                            <AlertTriangle className="text-red-500 flex-shrink-0 mt-0.5" size={16} />
+                            <div>
+                                <h4 className="text-xs font-bold text-red-400 uppercase tracking-wide mb-1">Performance Alert</h4>
+                                <p className="text-xs text-red-300/70 leading-relaxed">
+                                    팀 성적이 저조합니다. 오프시즌 동안 드래프트와 FA 영입을 통해 로스터를 재정비해야 합니다.
+                                </p>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        case 'PLAYOFF_STAGE_REVIEW': {
+            const ps = content as PlayoffStageReviewContent;
+            const isWin = ps.result === 'WON';
+            const statusColor = isWin ? 'emerald' : 'red';
+            const borderColor = isWin ? 'border-emerald-500/20' : 'border-red-500/20';
+            const bgGradient = isWin ? 'from-emerald-950/20' : 'from-red-950/10';
+
+            return (
+                <div className="space-y-8 max-w-5xl mx-auto">
+                    {/* Header */}
+                    <div className="space-y-1">
+                        <p className="text-[10px] font-mono text-indigo-400/60 uppercase tracking-[0.2em]">Playoff Report</p>
+                        <h2 className="text-xl font-black text-white uppercase tracking-tight">{ps.roundName}</h2>
+                        <div className="border-t border-indigo-500/20 mt-2" />
+                    </div>
+
+                    {/* Series Result Banner */}
+                    <div className={`bg-gradient-to-r ${bgGradient} to-slate-950 border ${borderColor} rounded-2xl p-6 flex items-center justify-between`}>
+                        <div className="flex items-center gap-5">
+                            <TeamLogo teamId={ps.opponentId} size="md" />
+                            <div>
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-[0.15em] mb-0.5">vs</p>
+                                <h3 className="text-lg font-black text-white uppercase">{ps.opponentName}</h3>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-6">
+                            <span className={`text-sm font-black uppercase tracking-widest ${isWin ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {ps.result}
+                            </span>
+                            <span className="text-3xl font-black text-white font-mono">{ps.seriesScore}</span>
+                        </div>
+                    </div>
+
+                    {/* Game Results */}
+                    <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden">
+                        {ps.games.map((g) => (
+                            <div key={g.gameNum} className="flex justify-between items-center px-6 py-3 border-b border-slate-800/50 last:border-b-0 hover:bg-white/5 transition-colors">
+                                <div className="flex items-center gap-4">
+                                    <span className="text-xs font-black text-slate-500 uppercase tracking-widest w-16">Game {g.gameNum}</span>
+                                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${g.isHome ? 'bg-slate-800 text-slate-300' : 'bg-slate-800 text-slate-400'}`}>
+                                        {g.isHome ? 'HOME' : 'AWAY'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-5">
+                                    <span className={`text-xs font-black uppercase ${g.isWin ? 'text-emerald-500' : 'text-red-500'}`}>{g.isWin ? 'WIN' : 'LOSS'}</span>
+                                    <span className={`text-base font-mono font-black ${g.isWin ? 'text-white' : 'text-slate-400'}`}>
+                                        {g.myScore} - {g.oppScore}
+                                    </span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Final Status Banner (if final stage) */}
+                    {ps.isFinalStage && ps.finalStatus && (
+                        <div className={`text-center py-8 rounded-2xl border ${
+                            ps.result === 'WON' && ps.round === 4
+                                ? 'bg-gradient-to-r from-yellow-900/30 to-slate-900 border-yellow-500/40'
+                                : 'bg-slate-900 border-slate-800'
+                        }`}>
+                            <h3 className={`text-2xl font-black uppercase tracking-tight ${
+                                ps.result === 'WON' && ps.round === 4 ? 'text-yellow-400' : 'text-slate-300'
+                            }`}>
+                                {ps.finalStatus.title}
+                            </h3>
+                            <p className="text-sm font-bold text-slate-400 mt-1">{ps.finalStatus.desc}</p>
+                        </div>
+                    )}
+
+                    {/* Owner's Message */}
+                    <ReviewOwnerMessage
+                        ownerName={ps.ownerName}
+                        title={ps.isFinalStage ? 'Season Debrief' : ps.roundName + ' Complete'}
+                        msg={ps.ownerMessage}
+                        mood={{
+                            color: isWin ? 'text-emerald-400' : 'text-slate-400',
+                            borderColor: isWin ? 'border-emerald-500/50' : 'border-slate-700',
+                            bg: isWin ? 'bg-emerald-500/5' : 'bg-slate-900'
+                        }}
+                    />
+                </div>
+            );
+        }
+
+        case 'SEASON_AWARDS':
+            return (
+                <AwardsReportViewer
+                    content={content as SeasonAwardsContent}
+                    teams={teams}
+                    onPlayerClick={onPlayerClick}
+                />
+            );
+
         default:
             return <div className="text-slate-400 text-sm">표시할 내용이 없습니다.</div>;
     }
+};
+
+// --- Sub-Component: Awards Report Viewer (WinForms 스타일 테이블) ---
+
+const AwardsReportViewer: React.FC<{
+    content: SeasonAwardsContent;
+    teams: Team[];
+    onPlayerClick: (id: string) => void;
+}> = ({ content, teams, onPlayerClick }) => {
+    const [showBallots, setShowBallots] = useState(false);
+
+    const getTeamAbbr = (teamId: string) => TEAM_DATA[teamId]?.abbreviation || '???';
+
+    const formatStat = (v: number, decimals = 1) => v.toFixed(decimals);
+    const formatPct = (v: number) => v > 0 ? '.' + (v * 1000).toFixed(0).padStart(3, '0') : '-';
+
+    // 이름 → playerId 맵 (ballot 표시용)
+    const nameMap = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const r of content.mvpRanking) map.set(r.playerId, r.playerName);
+        for (const r of content.dpoyRanking) map.set(r.playerId, r.playerName);
+        for (const t of content.allNbaTeams) for (const p of t.players) map.set(p.playerId, p.playerName);
+        for (const t of content.allDefTeams) for (const p of t.players) map.set(p.playerId, p.playerName);
+        // 모든 팀 로스터에서도
+        for (const t of teams) for (const p of t.roster) map.set(p.id, p.name);
+        return map;
+    }, [content, teams]);
+
+    const getPlayerName = (pid: string) => nameMap.get(pid) || pid;
+
+    const sectionLabel = "text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 mb-3 flex items-center gap-2";
+    const thClass = "py-2 px-2 text-[10px] font-black uppercase tracking-widest text-slate-500 whitespace-nowrap border-b border-slate-700";
+    const tdClass = "py-1.5 px-2 text-xs font-mono tabular-nums text-slate-400 whitespace-nowrap border-b border-slate-800/50";
+    const tdBold = "py-1.5 px-2 text-xs font-bold text-slate-300 whitespace-nowrap border-b border-slate-800/50";
+
+    return (
+        <div className="space-y-10 max-w-5xl mx-auto">
+            {/* Header */}
+            <div className="space-y-1">
+                <p className="text-[10px] font-mono text-amber-400/60 uppercase tracking-[0.2em]">Official Release</p>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 Regular Season Awards</h2>
+                <p className="text-[10px] font-bold text-slate-500">투표인단: {content.ballots.length}명 미디어 패널</p>
+                <div className="border-t border-amber-500/20 mt-2" />
+            </div>
+
+            {/* ── MVP VOTING RESULTS ── */}
+            {content.mvpRanking.length > 0 && (
+                <div>
+                    <h3 className={sectionLabel}>
+                        <Trophy size={12} className="text-amber-400" />
+                        <span>MVP Voting Results</span>
+                    </h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-separate border-spacing-0">
+                            <thead>
+                                <tr>
+                                    <th className={`${thClass} text-center w-8`}>#</th>
+                                    <th className={`${thClass} text-center w-10`}>OVR</th>
+                                    <th className={`${thClass} text-left pl-3`}>Player</th>
+                                    <th className={`${thClass} text-center`}>Team</th>
+                                    <th className={`${thClass} text-center`}>Pos</th>
+                                    <th className={`${thClass} text-center`}>1st</th>
+                                    <th className={`${thClass} text-center`}>Pts</th>
+                                    <th className={`${thClass} text-center`}>PPG</th>
+                                    <th className={`${thClass} text-center`}>RPG</th>
+                                    <th className={`${thClass} text-center`}>APG</th>
+                                    <th className={`${thClass} text-center`}>TS%</th>
+                                    <th className={`${thClass} text-center`}>Record</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {content.mvpRanking.map((r, idx) => (
+                                    <tr
+                                        key={r.playerId}
+                                        className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : ''}`}
+                                        onClick={() => onPlayerClick(r.playerId)}
+                                    >
+                                        <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-500'}`}>{idx + 1}</td>
+                                        <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
+                                        <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-300'} hover:text-white`}>
+                                            {r.playerName} {idx === 0 && <span className="text-amber-400 ml-1">★</span>}
+                                        </td>
+                                        <td className={`${tdClass} text-center`}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                <TeamLogo teamId={r.teamId} size="xs" />
+                                                <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(r.teamId)}</span>
+                                            </div>
+                                        </td>
+                                        <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
+                                        <td className={`${tdClass} text-center font-bold ${r.firstPlaceVotes > 0 ? 'text-amber-300' : 'text-slate-600'}`}>{r.firstPlaceVotes}</td>
+                                        <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
+                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.ppg)}</td>
+                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.rpg)}</td>
+                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.apg)}</td>
+                                        <td className={`${tdClass} text-center`}>{formatPct(r.statLine.tsPct)}</td>
+                                        <td className={`${tdClass} text-center text-slate-500`}>{r.teamWins}-{r.teamLosses}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ── DPOY VOTING RESULTS ── */}
+            {content.dpoyRanking.length > 0 && (
+                <div>
+                    <h3 className={sectionLabel}>
+                        <Shield size={12} className="text-indigo-400" />
+                        <span>Defensive Player of the Year</span>
+                    </h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-separate border-spacing-0">
+                            <thead>
+                                <tr>
+                                    <th className={`${thClass} text-center w-8`}>#</th>
+                                    <th className={`${thClass} text-center w-10`}>OVR</th>
+                                    <th className={`${thClass} text-left pl-3`}>Player</th>
+                                    <th className={`${thClass} text-center`}>Team</th>
+                                    <th className={`${thClass} text-center`}>Pos</th>
+                                    <th className={`${thClass} text-center`}>1st</th>
+                                    <th className={`${thClass} text-center`}>Pts</th>
+                                    <th className={`${thClass} text-center`}>SPG</th>
+                                    <th className={`${thClass} text-center`}>BPG</th>
+                                    <th className={`${thClass} text-center`}>RPG</th>
+                                    <th className={`${thClass} text-center`}>Record</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {content.dpoyRanking.map((r, idx) => (
+                                    <tr
+                                        key={r.playerId}
+                                        className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500' : ''}`}
+                                        onClick={() => onPlayerClick(r.playerId)}
+                                    >
+                                        <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-indigo-400' : 'text-slate-500'}`}>{idx + 1}</td>
+                                        <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
+                                        <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-indigo-300' : 'text-slate-300'} hover:text-white`}>
+                                            {r.playerName} {idx === 0 && <span className="text-indigo-400 ml-1">★</span>}
+                                        </td>
+                                        <td className={`${tdClass} text-center`}>
+                                            <div className="flex items-center justify-center gap-1">
+                                                <TeamLogo teamId={r.teamId} size="xs" />
+                                                <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(r.teamId)}</span>
+                                            </div>
+                                        </td>
+                                        <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
+                                        <td className={`${tdClass} text-center font-bold ${r.firstPlaceVotes > 0 ? 'text-indigo-300' : 'text-slate-600'}`}>{r.firstPlaceVotes}</td>
+                                        <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
+                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.spg)}</td>
+                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.bpg)}</td>
+                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.rpg)}</td>
+                                        <td className={`${tdClass} text-center text-slate-500`}>{r.teamWins}-{r.teamLosses}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ── ALL-NBA TEAMS ── */}
+            {content.allNbaTeams.length > 0 && (
+                <div>
+                    <h3 className={sectionLabel}>
+                        <Crown size={12} className="text-amber-400" />
+                        <span>All-NBA Teams</span>
+                    </h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-separate border-spacing-0">
+                            <thead>
+                                <tr>
+                                    <th className={`${thClass} text-center w-14`}>Team</th>
+                                    <th className={`${thClass} text-center w-8`}>Pos</th>
+                                    <th className={`${thClass} text-center w-10`}>OVR</th>
+                                    <th className={`${thClass} text-left pl-3`}>Player</th>
+                                    <th className={`${thClass} text-center`}>Team</th>
+                                    <th className={`${thClass} text-center`}>Votes</th>
+                                    <th className={`${thClass} text-center`}>PPG</th>
+                                    <th className={`${thClass} text-center`}>RPG</th>
+                                    <th className={`${thClass} text-center`}>APG</th>
+                                    <th className={`${thClass} text-center`}>TS%</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {content.allNbaTeams.map((team) =>
+                                    team.players.map((p, pIdx) => (
+                                        <tr
+                                            key={`nba-${team.tier}-${p.playerId}`}
+                                            className="hover:bg-white/5 cursor-pointer"
+                                            onClick={() => onPlayerClick(p.playerId)}
+                                        >
+                                            {pIdx === 0 && (
+                                                <td
+                                                    rowSpan={team.players.length}
+                                                    className={`py-1.5 px-2 text-center align-middle border-b border-slate-700 font-black text-sm ${
+                                                        team.tier === 1 ? 'text-amber-400' : team.tier === 2 ? 'text-slate-300' : 'text-slate-500'
+                                                    }`}
+                                                >
+                                                    {team.tier === 1 ? '1ST' : team.tier === 2 ? '2ND' : '3RD'}
+                                                </td>
+                                            )}
+                                            <td className={`${tdClass} text-center text-[10px] font-black text-slate-500`}>{p.pos}</td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
+                                            <td className={`${tdBold} pl-3 hover:text-white`}>{p.playerName}</td>
+                                            <td className={`${tdClass} text-center`}>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <TeamLogo teamId={p.teamId} size="xs" />
+                                                    <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(p.teamId)}</span>
+                                                </div>
+                                            </td>
+                                            <td className={`${tdClass} text-center font-bold text-slate-300`}>{p.votes}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.ppg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.rpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.apg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatPct(p.statLine.tsPct)}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ── ALL-DEFENSIVE TEAMS ── */}
+            {content.allDefTeams.length > 0 && (
+                <div>
+                    <h3 className={sectionLabel}>
+                        <Shield size={12} className="text-indigo-400" />
+                        <span>All-Defensive Teams</span>
+                    </h3>
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
+                        <table className="w-full text-left border-separate border-spacing-0">
+                            <thead>
+                                <tr>
+                                    <th className={`${thClass} text-center w-14`}>Team</th>
+                                    <th className={`${thClass} text-center w-8`}>Pos</th>
+                                    <th className={`${thClass} text-center w-10`}>OVR</th>
+                                    <th className={`${thClass} text-left pl-3`}>Player</th>
+                                    <th className={`${thClass} text-center`}>Team</th>
+                                    <th className={`${thClass} text-center`}>Votes</th>
+                                    <th className={`${thClass} text-center`}>SPG</th>
+                                    <th className={`${thClass} text-center`}>BPG</th>
+                                    <th className={`${thClass} text-center`}>RPG</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {content.allDefTeams.map((team) =>
+                                    team.players.map((p, pIdx) => (
+                                        <tr
+                                            key={`def-${team.tier}-${p.playerId}`}
+                                            className="hover:bg-white/5 cursor-pointer"
+                                            onClick={() => onPlayerClick(p.playerId)}
+                                        >
+                                            {pIdx === 0 && (
+                                                <td
+                                                    rowSpan={team.players.length}
+                                                    className={`py-1.5 px-2 text-center align-middle border-b border-slate-700 font-black text-sm ${
+                                                        team.tier === 1 ? 'text-indigo-400' : 'text-slate-400'
+                                                    }`}
+                                                >
+                                                    {team.tier === 1 ? '1ST' : '2ND'}
+                                                </td>
+                                            )}
+                                            <td className={`${tdClass} text-center text-[10px] font-black text-slate-500`}>{p.pos}</td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
+                                            <td className={`${tdBold} pl-3 hover:text-white`}>{p.playerName}</td>
+                                            <td className={`${tdClass} text-center`}>
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <TeamLogo teamId={p.teamId} size="xs" />
+                                                    <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(p.teamId)}</span>
+                                                </div>
+                                            </td>
+                                            <td className={`${tdClass} text-center font-bold text-slate-300`}>{p.votes}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.rpg)}</td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
+
+            {/* ── FULL BALLOT LOG (접기/펼치기) ── */}
+            {content.ballots.length > 0 && (
+                <div>
+                    <button
+                        onClick={() => setShowBallots(!showBallots)}
+                        className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors mb-3"
+                    >
+                        {showBallots ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                        <span>Full MVP Ballot Log ({content.ballots.length} voters)</span>
+                    </button>
+                    {showBallots && (
+                        <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
+                            <table className="w-full text-left border-separate border-spacing-0">
+                                <thead className="sticky top-0 z-10 bg-slate-950">
+                                    <tr>
+                                        <th className={`${thClass} text-center w-14`}>Voter</th>
+                                        <th className={`${thClass} text-center`}>1st (10pt)</th>
+                                        <th className={`${thClass} text-center`}>2nd (7pt)</th>
+                                        <th className={`${thClass} text-center`}>3rd (5pt)</th>
+                                        <th className={`${thClass} text-center`}>4th (3pt)</th>
+                                        <th className={`${thClass} text-center`}>5th (1pt)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {content.ballots.map((b) => (
+                                        <tr key={b.voterId} className="hover:bg-white/5">
+                                            <td className={`${tdClass} text-center font-bold text-slate-500`}>#{String(b.voterId + 1).padStart(2, '0')}</td>
+                                            {b.mvp.map((pid, i) => (
+                                                <td
+                                                    key={i}
+                                                    className={`${tdClass} text-center cursor-pointer hover:text-white ${i === 0 ? 'text-amber-300 font-bold' : 'text-slate-400'}`}
+                                                    onClick={() => onPlayerClick(pid)}
+                                                >
+                                                    {getPlayerName(pid).split(' ').pop()}
+                                                </td>
+                                            ))}
+                                            {/* 부족한 셀 채우기 */}
+                                            {Array.from({ length: Math.max(0, 5 - b.mvp.length) }).map((_, i) => (
+                                                <td key={`empty-${i}`} className={`${tdClass} text-center text-slate-700`}>-</td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
 };

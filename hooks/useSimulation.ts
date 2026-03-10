@@ -10,6 +10,8 @@ import { savePlayoffGameResult } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
+import { sendMessage } from '../services/messageService';
+import { buildSeasonReviewContent, buildPlayoffStageContent } from '../services/reportGenerator';
 
 export const useSimulation = (
     teams: Team[],
@@ -21,6 +23,7 @@ export const useSimulation = (
     advanceDate: (date: string, overrides: any) => void,
     playoffSeries: PlayoffSeries[],
     setPlayoffSeries: React.Dispatch<React.SetStateAction<PlayoffSeries[]>>,
+    transactions: Transaction[],
     setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>,
     setNews: React.Dispatch<React.SetStateAction<any[]>>,
     setToastMessage: (msg: string) => void,
@@ -111,16 +114,67 @@ export const useSimulation = (
         }
     }, [spectateTarget, teams, schedule, isGuestMode, session, advanceDate, forceSave, setTeams, setSchedule, setToastMessage]);
 
+    // Helper: 시즌 리뷰 / 플레이오프 스테이지 리뷰 메시지 자동 발송
+    const sendReviewMessages = useCallback(async (
+        prevSchedule: Game[],
+        newSchedule: Game[],
+        prevFinishedSeriesIds: Set<string>,
+        newPlayoffSeries: PlayoffSeries[],
+        newTeams: Team[],
+        date: string,
+        allTransactions: Transaction[]
+    ) => {
+        const userId = session?.user?.id;
+        if (!userId || !myTeamId) return;
+
+        const myTeam = newTeams.find(t => t.id === myTeamId);
+        if (!myTeam) return;
+
+        // 유저 팀 82경기 완료 감지
+        const myRegGames = (sched: typeof newSchedule) => sched.filter(g => !g.isPlayoff && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
+        const wasMySeasonDone = myRegGames(prevSchedule).length > 0 && myRegGames(prevSchedule).every(g => g.played);
+        const isMySeasonDone = myRegGames(newSchedule).length > 0 && myRegGames(newSchedule).every(g => g.played);
+
+        if (!wasMySeasonDone && isMySeasonDone) {
+            const nextDay = new Date(date);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const reviewDate = nextDay.toISOString().split('T')[0];
+            const content = buildSeasonReviewContent(myTeam, newTeams, allTransactions, newSchedule);
+            await sendMessage(userId, myTeamId, reviewDate, 'SEASON_REVIEW', '[시즌 보고서] 2025-26 정규시즌 리뷰', content);
+            refreshUnreadCount();
+        }
+
+        // 플레이오프 스테이지 종료 감지
+        const newlyFinished = newPlayoffSeries.filter(s =>
+            s.finished &&
+            (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId) &&
+            !prevFinishedSeriesIds.has(s.id)
+        );
+
+        for (const series of newlyFinished) {
+            const content = buildPlayoffStageContent(myTeam, newTeams, series, newSchedule, newPlayoffSeries);
+            const roundName = content.roundName;
+            await sendMessage(userId, myTeamId, date, 'PLAYOFF_STAGE_REVIEW', `[플레이오프 보고서] ${roundName}`, content);
+            refreshUnreadCount();
+        }
+    }, [session, myTeamId, refreshUnreadCount]);
+
     const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false, spectateGameId?: string) => {
         if (isSimulating || !myTeamId) return;
         setIsSimulating(true);
 
         try {
             // 1. Identify User's Game
-            const userGame = schedule.find(g => 
-                !g.played && 
-                g.date === currentSimDate && 
+            const userGame = schedule.find(g =>
+                !g.played &&
+                g.date === currentSimDate &&
                 (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId)
+            );
+
+            // Capture "before" state for review message detection
+            const prevScheduleSnapshot = schedule.map(g => ({ id: g.id, played: g.played, isPlayoff: g.isPlayoff }));
+            const prevFinishedSeriesIds = new Set(
+                playoffSeries.filter(s => s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)).map(s => s.id)
             );
 
             // 2. Prepare mutable clones for the pipeline
@@ -165,12 +219,12 @@ export const useSimulation = (
                     );
 
                     // 5. Handle Season Events (Playoffs, Trades) - Post Game
-                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode);
-                    
+                    const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
+
                     if (seasonEvents.updatedPlayoffSeries) {
                         newPlayoffSeries = seasonEvents.updatedPlayoffSeries;
                     }
-                    
+
                     // Add Trades
                     if (seasonEvents.newTransactions.length > 0) {
                         setTransactions(prev => [...seasonEvents.newTransactions, ...prev]);
@@ -181,6 +235,12 @@ export const useSimulation = (
                     if (seasonEvents.tradeToast) {
                         setToastMessage(seasonEvents.tradeToast);
                     }
+
+                    // 시즌/플레이오프 리뷰 메시지 자동 발송
+                    await sendReviewMessages(
+                        prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
+                        newPlayoffSeries, newTeams, currentSimDate, transactions
+                    );
 
                     // Commit State Updates
                     setTeams(newTeams);
@@ -200,7 +260,7 @@ export const useSimulation = (
                         awayBox: result.awayBox,
                         recap: [],
                         otherGames: cpuData.viewData,
-                        cpuResults: cpuData.cpuResults, // [Fix] Use View-Ready camelCase results
+                        cpuResults: cpuData.cpuResults,
                         homeTactics: result.homeTactics,
                         awayTactics: result.awayTactics,
                         pbpLogs: result.pbpLogs,
@@ -224,12 +284,12 @@ export const useSimulation = (
                 applyRestDayRecovery(newTeams);
 
                 // Handle Season Events
-                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode);
-                
+                const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
+
                 if (seasonEvents.updatedPlayoffSeries) {
                     newPlayoffSeries = seasonEvents.updatedPlayoffSeries;
                 }
-                
+
                 if (seasonEvents.newTransactions.length > 0) {
                     setTransactions(prev => [...seasonEvents.newTransactions, ...prev]);
                 }
@@ -239,6 +299,12 @@ export const useSimulation = (
                 if (seasonEvents.tradeToast) {
                     setToastMessage(seasonEvents.tradeToast);
                 }
+
+                // 시즌/플레이오프 리뷰 메시지 자동 발송
+                await sendReviewMessages(
+                    prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
+                    newPlayoffSeries, newTeams, currentSimDate, transactions
+                );
 
                 // Commit Updates
                 setTeams(newTeams);
@@ -276,7 +342,7 @@ export const useSimulation = (
             setIsSimulating(false);
             setToastMessage("시뮬레이션 중 오류가 발생했습니다.");
         }
-    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed]);
+    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed, transactions, sendReviewMessages]);
 
     const clearLastGameResult = () => setLastGameResult(null);
     const loadSavedGameResult = (result: any) => setLastGameResult(result);
@@ -359,6 +425,12 @@ export const useSimulation = (
         const { userGame, cpuViewData, cpuResults, userTactics: liveUserTactics } = liveGameTarget;
 
         try {
+            // Capture "before" state for review message detection
+            const prevScheduleSnapshot = schedule.map(g => ({ id: g.id, played: g.played, isPlayoff: g.isPlayoff }));
+            const prevFinishedSeriesIds = new Set(
+                playoffSeries.filter(s => s.finished && (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)).map(s => s.id)
+            );
+
             let newTeams: Team[] = JSON.parse(JSON.stringify(teams));
             let newSchedule: Game[] = [...schedule];
             let newPlayoffSeries: PlayoffSeries[] = [...playoffSeries];
@@ -371,7 +443,7 @@ export const useSimulation = (
 
             // 시즌 이벤트 처리 (트레이드, 플레이오프 등)
             const seasonEvents = await handleSeasonEvents(
-                newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode
+                newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed
             );
 
             if (seasonEvents.updatedPlayoffSeries) {
@@ -386,6 +458,12 @@ export const useSimulation = (
             if (seasonEvents.tradeToast) {
                 setToastMessage(seasonEvents.tradeToast);
             }
+
+            // 시즌/플레이오프 리뷰 메시지 자동 발송
+            await sendReviewMessages(
+                prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
+                newPlayoffSeries, newTeams, currentSimDate, transactions
+            );
 
             // 상태 반영
             setTeams(newTeams);
@@ -423,7 +501,7 @@ export const useSimulation = (
             setToastMessage("경기 결과 처리 중 오류가 발생했습니다.");
         }
     }, [liveGameTarget, myTeamId, teams, schedule, playoffSeries, currentSimDate, session, isGuestMode,
-        refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage]);
+        refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage, transactions, sendReviewMessages]);
 
     return {
         handleExecuteSim,

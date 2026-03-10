@@ -30,8 +30,6 @@ interface SidebarProps {
   onLogout: () => void;
   onSimulateSeason?: () => void;
   isBatchRunning?: boolean;
-  showSeasonReview?: boolean;
-  showPlayoffReview?: boolean;
   isPostseasonOver?: boolean;
   hasSubmittedHof?: boolean;
   onHofSubmit?: () => void;
@@ -100,8 +98,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onLogout,
   onSimulateSeason,
   isBatchRunning,
-  showSeasonReview,
-  showPlayoffReview,
   isPostseasonOver,
   hasSubmittedHof,
   onHofSubmit,
@@ -236,36 +232,18 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
         </div>
       </div>
 
-      {/* Season / Playoff Review Buttons + HOF Submit */}
-      {!isCollapsed && (showSeasonReview || showPlayoffReview) && (
-        <div className="px-6 py-3 border-b border-white/10 space-y-2">
-          {showSeasonReview && (
-            <button
-              onClick={() => onNavigate('SeasonReview')}
-              className="w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold bg-orange-600/40 hover:bg-orange-600/60 transition-all active:scale-[0.98]"
-            >
-              정규시즌 리뷰
-            </button>
-          )}
-          {showPlayoffReview && (
-            <button
-              onClick={() => onNavigate('PlayoffReview')}
-              className="w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold bg-indigo-600/40 hover:bg-indigo-600/60 transition-all active:scale-[0.98]"
-            >
-              플레이오프 리뷰
-            </button>
-          )}
-          {isPostseasonOver && !isGuestMode && !hasSubmittedHof && onHofSubmit && (
-            <button
-              onClick={onHofSubmit}
-              className="w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold bg-amber-600/40 hover:bg-amber-600/60 transition-all active:scale-[0.98]"
-            >
-              <span className="flex items-center justify-center gap-2">
-                <Crown size={14} />
-                명예의 전당 제출
-              </span>
-            </button>
-          )}
+      {/* HOF Submit */}
+      {!isCollapsed && isPostseasonOver && !isGuestMode && !hasSubmittedHof && onHofSubmit && (
+        <div className="px-6 py-3 border-b border-white/10">
+          <button
+            onClick={onHofSubmit}
+            className="w-full px-4 py-2.5 rounded-2xl text-white text-sm font-bold bg-amber-600/40 hover:bg-amber-600/60 transition-all active:scale-[0.98]"
+          >
+            <span className="flex items-center justify-center gap-2">
+              <Crown size={14} />
+              명예의 전당 제출
+            </span>
+          </button>
         </div>
       )}
 

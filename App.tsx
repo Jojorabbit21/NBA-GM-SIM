@@ -69,7 +69,8 @@ const App: React.FC = () => {
     const sim = useSimulation(
         gameData.teams, gameData.setTeams, gameData.schedule, gameData.setSchedule,
         gameData.myTeamId, gameData.currentSimDate, advanceDate,
-        gameData.playoffSeries, gameData.setPlayoffSeries, gameData.setTransactions,
+        gameData.playoffSeries, gameData.setPlayoffSeries,
+        gameData.transactions, gameData.setTransactions,
         gameData.setNews, setToastMessage, gameData.forceSave,
         session, isGuestMode, refreshUnreadCount, gameData.depthChart,
         gameData.tendencySeed || undefined
@@ -78,7 +79,8 @@ const App: React.FC = () => {
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
         gameData.teams, gameData.setTeams, gameData.schedule, gameData.setSchedule,
         gameData.myTeamId, gameData.currentSimDate, gameData.setCurrentSimDate,
-        gameData.playoffSeries, gameData.setPlayoffSeries, gameData.setTransactions,
+        gameData.playoffSeries, gameData.setPlayoffSeries,
+        gameData.transactions, gameData.setTransactions,
         gameData.forceSave, session, isGuestMode,
         gameData.userTactics, gameData.depthChart,
         gameData.tendencySeed || undefined

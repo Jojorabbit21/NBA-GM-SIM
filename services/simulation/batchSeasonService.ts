@@ -14,7 +14,7 @@ export interface BatchMessagePayload {
     user_id: string;
     team_id: string;
     date: string;
-    type: 'GAME_RECAP';
+    type: string;
     title: string;
     content: any;
 }
@@ -138,9 +138,19 @@ export async function runBatchSeason(
         }
 
         // 3. 시즌 이벤트 (동기)
-        const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId);
+        const events = handleSeasonEventsSync(teams, schedule, playoffSeries, date, myTeamId, tendencySeed);
         if (events.newTransactions.length > 0) {
             allTransactions.push(...events.newTransactions);
+        }
+        if (events.awardContent && userId) {
+            allMessages.push({
+                user_id: userId,
+                team_id: myTeamId,
+                date,
+                type: 'SEASON_AWARDS',
+                title: '[공식] 2025-26 정규시즌 어워드 투표 결과',
+                content: events.awardContent,
+            });
         }
 
         // 4. 진행 상황 보고 + UI yield

@@ -9,6 +9,7 @@ import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchS
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState } from '../services/playoffService';
 import { bulkSendMessages } from '../services/messageService';
+import { buildSeasonReviewContent } from '../services/reportGenerator';
 
 export interface BatchProgress {
     isRunning: boolean;
@@ -28,6 +29,7 @@ export const useFullSeasonSim = (
     setCurrentSimDate: (date: string) => void,
     playoffSeries: PlayoffSeries[],
     setPlayoffSeries: React.Dispatch<React.SetStateAction<PlayoffSeries[]>>,
+    transactions: Transaction[],
     setTransactions: React.Dispatch<React.SetStateAction<Transaction[]>>,
     forceSave: (overrides?: any) => Promise<void>,
     session: any,
@@ -84,6 +86,25 @@ export const useFullSeasonSim = (
                 if (result.allPlayoffResultsToSave.length > 0) {
                     await bulkSaveGameResults(result.allPlayoffResultsToSave);
                 }
+                // 유저 팀 82경기 완료 시 시즌 리뷰 메시지 추가
+                const myRegGames = result.finalSchedule.filter(g => !g.isPlayoff && (g.homeTeamId === myTeamId || g.awayTeamId === myTeamId));
+                const isMySeasonDone = myRegGames.length > 0 && myRegGames.every(g => g.played);
+                if (isMySeasonDone) {
+                    const myTeam = result.finalTeams.find(t => t.id === myTeamId);
+                    if (myTeam) {
+                        const allTx = [...result.transactions, ...transactions];
+                        const content = buildSeasonReviewContent(myTeam, result.finalTeams, allTx, result.finalSchedule);
+                        result.allMessages.push({
+                            user_id: session.user.id,
+                            team_id: myTeamId,
+                            date: result.finalDate,
+                            type: 'SEASON_REVIEW' as any,
+                            title: '[시즌 보고서] 2025-26 정규시즌 리뷰',
+                            content,
+                        });
+                    }
+                }
+
                 // 경기 보고서 메시지 bulk insert
                 if (result.allMessages.length > 0) {
                     await bulkSendMessages(result.allMessages);
