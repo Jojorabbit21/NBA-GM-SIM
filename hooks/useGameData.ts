@@ -10,6 +10,8 @@ import { replayGameState } from '../services/stateReplayer';
 import { buildReplaySnapshot, hydrateFromSnapshot, CURRENT_SNAPSHOT_VERSION } from '../services/snapshotBuilder';
 import { generateOwnerWelcome } from '../services/geminiService';
 import { generateAutoTactics } from '../services/gameEngine';
+import { sendMessage } from '../services/messageService';
+import { buildSeasonStartOwnerLetter } from '../services/reportGenerator';
 import { generateNextPlayoffGames } from '../utils/playoffLogic';
 import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
@@ -437,9 +439,15 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             tendencySeed: newSeed
         });
 
+        // 시즌 시작 구단주 환영 서신 발송
+        if (session?.user?.id) {
+            const ownerLetter = buildSeasonStartOwnerLetter(teamId);
+            await sendMessage(session.user.id, teamId, INITIAL_DATE, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
+        }
+
         hasInitialLoadRef.current = true;
         return true;
-    }, [teams, forceSave]);
+    }, [teams, forceSave, session]);
 
     const handleResetData = async () => {
         if (!session?.user) return { success: false };

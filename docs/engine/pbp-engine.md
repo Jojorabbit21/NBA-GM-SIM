@@ -633,7 +633,7 @@ resolveRebound(homeTeam, awayTeam, shooterId)
     범위: 0.12 ~ 0.38
     ※ 포지션 가중치(posBonus) 제거됨 — 순수 능력치 기반
 
-  Step 2: 리바운더 선택
+  Step 2: 리바운더 선택 (Weighted Random — 점수 비례 확률)
     score = (rebAttr×0.5 + vertical×0.2 + strength×0.15 + boxOut×0.15)
             × shooterPenalty × archetypeBonus × random(0.7 + motorIntensity×0.6)
 
@@ -641,6 +641,11 @@ resolveRebound(homeTeam, awayTeam, shooterId)
 
     Harvester (offReb≥95 or defReb≥95): score ×1.3
     Raider (height≤200 && offReb≥90 && vert≥90): 공격 리바 score ×1.4
+
+    선택 방식: score 비례 확률 추첨 (winner-take-all 아님)
+      P(선수) = score(선수) / Σ scores
+      예) 엘리트 빅맨(118) vs 평균 4명(74×4) → 118/414 ≈ 28.5%
+      → 경기당 9~12 리바운드 (기존 winner-take-all: 18~19)
 ```
 
 ### 8단계: 자유투 (statsMappers.ts)
