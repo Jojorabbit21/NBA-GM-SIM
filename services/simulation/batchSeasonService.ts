@@ -9,6 +9,7 @@ import { runUserSimulation } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
 import { updateTeamStats, applyBoxToRoster, updateSeriesState } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
+import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 
 export interface BatchMessagePayload {
     user_id: string;
@@ -75,7 +76,8 @@ export async function runBatchSeason(
 
         // 1. CPU 경기 처리 (in-place)
         const cpuPayloads = processCpuGamesInPlace(
-            teams, schedule, playoffSeries, date, userGame?.id, userId
+            teams, schedule, playoffSeries, date, userGame?.id, userId,
+            tendencySeed, userTactics.tcr ?? 1.0
         );
         allGameResultsToSave.push(...cpuPayloads.regular);
         allPlayoffResultsToSave.push(...cpuPayloads.playoff);
@@ -88,6 +90,21 @@ export async function runBatchSeason(
 
             // 결과 적용 (in-place, DB/메시지 생략)
             applyGameResultInPlace(result, userGame, teams, schedule, playoffSeries);
+
+            // 선수 성장/퇴화
+            if (tendencySeed) {
+                const homeT = teams.find(t => t.id === userGame.homeTeamId);
+                const awayT = teams.find(t => t.id === userGame.awayTeamId);
+                if (homeT && awayT) {
+                    const tcr = userTactics.tcr ?? 1.0;
+                    const leagueAvg = computeLeagueAverages(teams);
+                    processGameDevelopment(
+                        homeT.roster, awayT.roster,
+                        result.homeBox, result.awayBox,
+                        tendencySeed, tcr, leagueAvg, date,
+                    );
+                }
+            }
 
             // DB 페이로드 누적 (PBP 로그 포함)
             const payload: any = {
@@ -235,7 +252,9 @@ function processCpuGamesInPlace(
     playoffSeries: PlayoffSeries[],
     date: string,
     userGameId: string | undefined,
-    userId: string | undefined
+    userId: string | undefined,
+    tendencySeed?: string,
+    tcr: number = 1.0
 ): { regular: any[]; playoff: any[] } {
     const results = simulateCpuGames(schedule, teams, date, userGameId);
     const regular: any[] = [];
@@ -250,6 +269,16 @@ function processCpuGamesInPlace(
         updateTeamStats(home, away, res.homeScore, res.awayScore, isPlayoff);
         if (res.boxScore?.home) applyBoxToRoster(home, res.boxScore.home, isPlayoff);
         if (res.boxScore?.away) applyBoxToRoster(away, res.boxScore.away, isPlayoff);
+
+        // 선수 성장/퇴화 (정규시즌만)
+        if (tendencySeed && !isPlayoff && res.boxScore?.home && res.boxScore?.away) {
+            const leagueAvg = computeLeagueAverages(teams);
+            processGameDevelopment(
+                home.roster, away.roster,
+                res.boxScore.home, res.boxScore.away,
+                tendencySeed, tcr, leagueAvg, date,
+            );
+        }
 
         const gameIdx = schedule.findIndex(g => g.id === res.gameId);
         if (gameIdx !== -1) {

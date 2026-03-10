@@ -16,6 +16,7 @@ import { generateNextPlayoffGames } from '../utils/playoffLogic';
 import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
+import { initializeSeasonGrowth } from '../services/playerDevelopment/playerAging';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -251,7 +252,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     condition: savedState.condition ?? 100,
                                     health: savedState.health || 'Healthy',
                                     injuryType: savedState.injuryType,
-                                    returnDate: savedState.returnDate
+                                    returnDate: savedState.returnDate,
+                                    ...(savedState.fractionalGrowth && { fractionalGrowth: savedState.fractionalGrowth }),
+                                    ...(savedState.changeLog && { changeLog: savedState.changeLog }),
                                 };
                             })
                         }));
@@ -364,17 +367,21 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             if (currentTeams) {
                 currentTeams.forEach((t: Team) => {
                     t.roster.forEach((p: Player) => {
-                        // Save if condition changed OR if player is injured
                         const isInjured = p.health !== 'Healthy';
                         const isFatigued = p.condition !== undefined && p.condition < 100;
+                        const hasGrowth = p.fractionalGrowth && Object.keys(p.fractionalGrowth).length > 0;
+                        const hasChangeLog = p.changeLog && p.changeLog.length > 0;
 
-                        if (isInjured || isFatigued) {
-                            rosterState[p.id] = {
+                        if (isInjured || isFatigued || hasGrowth || hasChangeLog) {
+                            const state: SavedPlayerState = {
                                 condition: p.condition || 100,
                                 health: p.health,
                                 injuryType: p.injuryType,
-                                returnDate: p.returnDate
+                                returnDate: p.returnDate,
                             };
+                            if (hasGrowth) state.fractionalGrowth = p.fractionalGrowth;
+                            if (hasChangeLog) state.changeLog = p.changeLog;
+                            rosterState[p.id] = state;
                         }
                     });
                 });
@@ -432,6 +439,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         // [New] Generate unique tendency seed for this save
         const newSeed = crypto.randomUUID();
         setTendencySeed(newSeed);
+
+        // 시즌 시작: 모든 선수 성장 초기화 (catPot, seasonStartAttributes, fractionalGrowth)
+        teams.forEach(t => initializeSeasonGrowth(t.roster));
 
         setMyTeamId(teamId);
         setCurrentSimDate(INITIAL_DATE);
