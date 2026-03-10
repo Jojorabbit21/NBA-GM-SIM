@@ -292,6 +292,10 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         sim.loadSavedGameResult(result);
                         setView('GameResult');
                     }}
+                    onNavigateToHof={() => {
+                        previousViewRef.current = 'Inbox';
+                        setView('HallOfFame');
+                    }}
                 />
             );
         case 'DraftLottery':

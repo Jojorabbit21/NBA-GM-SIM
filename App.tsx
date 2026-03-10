@@ -11,8 +11,7 @@ import { TEAM_DATA } from './data/teamData';
 import { fetchUnreadMessageCount } from './services/messageService';
 import { useFullSeasonSim } from './hooks/useFullSeasonSim';
 import { FullSeasonSimModal } from './components/simulation/FullSeasonSimModal';
-import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from './utils/hallOfFameScorer';
-import { submitHallOfFameEntry, checkUserHasSubmitted } from './services/hallOfFameService';
+import { checkUserHasSubmitted } from './services/hallOfFameService';
 import { useUpdateChecker } from './hooks/useUpdateChecker';
 import { UpdateToast } from './components/UpdateToast';
 
@@ -32,6 +31,7 @@ import MainLayout from './components/MainLayout';
 import AppRouter from './components/AppRouter';
 import { ResetDataModal } from './components/ResetDataModal';
 import { EditorModal } from './components/EditorModal';
+import { EndSeasonModal } from './components/EndSeasonModal';
 import { OnboardingView } from './views/OnboardingView';
 import { ModeSelectView } from './views/ModeSelectView';
 import { DraftPoolSelectView } from './views/DraftPoolSelectView';
@@ -46,6 +46,7 @@ const App: React.FC = () => {
     const [isResetModalOpen, setIsResetModalOpen] = useState(false);
     const [isResetting, setIsResetting] = useState(false);
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
+    const [isEndSeasonModalOpen, setIsEndSeasonModalOpen] = useState(false);
     const [draftPoolType, setDraftPoolType] = useState<DraftPoolType | null>(null);
     const [hasSubmittedHof, setHasSubmittedHof] = useState(false);
     const updateAvailable = useUpdateChecker();
@@ -73,7 +74,9 @@ const App: React.FC = () => {
         gameData.transactions, gameData.setTransactions,
         gameData.setNews, setToastMessage, gameData.forceSave,
         session, isGuestMode, refreshUnreadCount, gameData.depthChart,
-        gameData.tendencySeed || undefined
+        gameData.tendencySeed || undefined,
+        gameData.hofId,
+        () => setHasSubmittedHof(true)
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -83,7 +86,9 @@ const App: React.FC = () => {
         gameData.transactions, gameData.setTransactions,
         gameData.forceSave, session, isGuestMode,
         gameData.userTactics, gameData.depthChart,
-        gameData.tendencySeed || undefined
+        gameData.tendencySeed || undefined,
+        gameData.hofId,
+        () => setHasSubmittedHof(true)
     );
 
     // 인증 및 라우팅 상태 감시
@@ -114,30 +119,6 @@ const App: React.FC = () => {
             setHasSubmittedHof(false);
         }
     }, [gameData.hofId]);
-
-    const handleHofSubmit = useCallback(async () => {
-        if (!session?.user?.id || !gameData.myTeamId || !gameData.hofId) return;
-        const myTeam = gameData.teams.find((t: any) => t.id === gameData.myTeamId);
-        if (!myTeam) return;
-
-        const { totalScore, breakdown } = calculateHallOfFameScore(
-            myTeam, gameData.teams, gameData.transactions || [], gameData.schedule, gameData.playoffSeries
-        );
-        const roster = createRosterSnapshot(myTeam);
-        const maskedEmail = session.user.email ? maskEmail(session.user.email) : undefined;
-
-        const result = await submitHallOfFameEntry(
-            session.user.id, gameData.myTeamId, gameData.hofId, totalScore, breakdown, roster, maskedEmail
-        );
-
-        if (result.success) {
-            setToastMessage('명예의 전당에 등록되었습니다!');
-            setHasSubmittedHof(true);
-        } else if (result.alreadySubmitted) {
-            setToastMessage('이미 제출된 기록입니다.');
-            setHasSubmittedHof(true);
-        }
-    }, [session, gameData]);
 
     useEffect(() => { refreshUnreadCount(); }, [refreshUnreadCount, gameData.currentSimDate]);
     useEffect(() => { if (sim.activeGame) setView('GameSim' as any); }, [sim.activeGame]);
@@ -216,8 +197,7 @@ const App: React.FC = () => {
                     onLogout: handleLogout,
                     onSimulateSeason: handleSimulateSeason,
                     isBatchRunning: batchProgress?.isRunning ?? false,
-                    hasSubmittedHof,
-                    onHofSubmit: handleHofSubmit,
+                    onEndSeasonClick: () => setIsEndSeasonModalOpen(true),
                 }}
                 gameHeaderProps={{
                     schedule: gameData.schedule,
@@ -246,6 +226,19 @@ const App: React.FC = () => {
                 <EditorModal
                     isOpen={isEditorModalOpen}
                     onClose={() => setIsEditorModalOpen(false)}
+                />
+                <EndSeasonModal
+                    isOpen={isEndSeasonModalOpen}
+                    isLoading={isResetting}
+                    onClose={() => setIsEndSeasonModalOpen(false)}
+                    onReset={async () => {
+                        setIsResetting(true);
+                        await gameData.handleResetData();
+                        setRosterMode(null);
+                        setDraftPoolType(null);
+                        setIsResetting(false);
+                        setIsEndSeasonModalOpen(false);
+                    }}
                 />
             </MainLayout>
             {/* 시즌 전체 시뮬레이션 프로그레스 모달 — MainLayout 바깥에서 렌더링하여 stacking context 회피 */}

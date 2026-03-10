@@ -10,6 +10,9 @@ import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState } from '../services/playoffService';
 import { bulkSendMessages, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildOwnerLetterContent } from '../services/reportGenerator';
+import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
+import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
+import { HofQualificationContent } from '../types/message';
 
 export interface BatchProgress {
     isRunning: boolean;
@@ -37,6 +40,8 @@ export const useFullSeasonSim = (
     userTactics: GameTactics | null,
     depthChart: DepthChart | null | undefined,
     tendencySeed: string | undefined,
+    hofId?: string | null,
+    onHofSubmitted?: () => void,
 ) => {
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
     const cancelTokenRef = useRef({ cancelled: false });
@@ -113,6 +118,43 @@ export const useFullSeasonSim = (
                                 title: `[서신] ${ownerLetter.title}`,
                                 content: ownerLetter,
                             });
+                        }
+                    }
+                }
+
+                // 파이널(round 4) 우승/준우승 시 명예의 전당 자동 등록
+                if (hofId) {
+                    const round4Series = result.finalPlayoffSeries.find(s =>
+                        s.round === 4 && s.finished &&
+                        (s.higherSeedId === myTeamId || s.lowerSeedId === myTeamId)
+                    );
+                    if (round4Series) {
+                        const myTeamForHof = result.finalTeams.find(t => t.id === myTeamId);
+                        if (myTeamForHof) {
+                            const alreadyHof = await checkUserHasSubmitted(hofId);
+                            if (!alreadyHof) {
+                                const allTx = [...result.transactions, ...transactions];
+                                const { totalScore, breakdown } = calculateHallOfFameScore(
+                                    myTeamForHof, result.finalTeams, allTx, result.finalSchedule, result.finalPlayoffSeries
+                                );
+                                const roster = createRosterSnapshot(myTeamForHof);
+                                const email = session?.user?.email ? maskEmail(session.user.email) : undefined;
+                                const hofResult = await submitHallOfFameEntry(session.user.id, myTeamId, hofId, totalScore, breakdown, roster, email);
+                                if (hofResult.success || hofResult.alreadySubmitted) {
+                                    onHofSubmitted?.();
+                                    const seriesResult: 'WON' | 'LOST' = round4Series.winnerId === myTeamId ? 'WON' : 'LOST';
+                                    const hofContent: HofQualificationContent = {
+                                        result: seriesResult, round: 4, teamName: myTeamForHof.name, totalScore,
+                                        breakdown: { season_score: breakdown.season_score, ptDiff_score: breakdown.ptDiff_score, stat_score: breakdown.stat_score, playoff_score: breakdown.playoff_score },
+                                    };
+                                    result.allMessages.push({
+                                        user_id: session.user.id, team_id: myTeamId, date: result.finalDate,
+                                        type: 'HOF_QUALIFICATION' as any,
+                                        title: seriesResult === 'WON' ? '[명예의 전당] 챔피언십 우승' : '[명예의 전당] 파이널 준우승',
+                                        content: hofContent,
+                                    });
+                                }
+                            }
                         }
                     }
                 }

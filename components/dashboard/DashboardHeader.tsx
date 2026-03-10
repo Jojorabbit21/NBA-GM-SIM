@@ -23,11 +23,12 @@ interface DashboardHeaderProps {
   conferenceRank?: number;
   streak?: string;
   conferenceName?: string;
+  isSeasonOver?: boolean;
 }
 
 export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   team, nextGame, opponent, isHome, myOvr, opponentOvrValue, isGameToday, isSimulating, onSimClick, onAutoSimClick,
-  currentSeries, currentSimDate, conferenceRank, streak, conferenceName
+  currentSeries, currentSimDate, conferenceRank, streak, conferenceName, isSeasonOver
 }) => {
   const homeTeam = isHome ? team : opponent;
   const awayTeam = isHome ? opponent : team;
@@ -158,6 +159,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             )}
 
             {/* Right: Simulation Action */}
+            {!isSeasonOver && (
             <div className="flex-1 flex items-center justify-end gap-3">
                 {isGameToday && onAutoSimClick && (
                     <button
@@ -183,6 +185,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     )}
                 </button>
             </div>
+            )}
         </div>
     </div>
   );
