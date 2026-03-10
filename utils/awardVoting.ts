@@ -12,6 +12,7 @@ import { calculatePlayerOvr } from './constants';
 export interface AwardStatLine {
     ppg: number; rpg: number; apg: number; spg: number; bpg: number;
     mpg: number; tsPct: number; gamesPlayed: number;
+    fgPct: number; p3Pct: number; orebpg: number; drebpg: number;
 }
 
 export interface AwardCandidate {
@@ -139,6 +140,10 @@ function buildCandidates(teams: Team[]): { candidates: AwardCandidate[]; playerM
                     mpg: p.stats.mp / g,
                     tsPct: tsa > 0 ? p.stats.pts / (2 * tsa) : 0,
                     gamesPlayed: g,
+                    fgPct: fga > 0 ? p.stats.fgm / fga : 0,
+                    p3Pct: p.stats.p3a > 0 ? p.stats.p3m / p.stats.p3a : 0,
+                    orebpg: p.stats.offReb / g,
+                    drebpg: p.stats.defReb / g,
                 },
                 teamWins: team.wins,
                 teamLosses: team.losses,

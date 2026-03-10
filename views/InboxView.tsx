@@ -870,22 +870,45 @@ const AwardsReportViewer: React.FC<{
 }> = ({ content, teams, onPlayerClick }) => {
     const [showBallots, setShowBallots] = useState(false);
 
-    const getTeamAbbr = (teamId: string) => TEAM_DATA[teamId]?.abbreviation || '???';
-
     const formatStat = (v: number, decimals = 1) => v.toFixed(decimals);
     const formatPct = (v: number) => v > 0 ? '.' + (v * 1000).toFixed(0).padStart(3, '0') : '-';
 
-    // 이름 → playerId 맵 (ballot 표시용)
+    // playerId → 이름 맵 (ballot 표시용)
     const nameMap = useMemo(() => {
         const map = new Map<string, string>();
         for (const r of content.mvpRanking) map.set(r.playerId, r.playerName);
         for (const r of content.dpoyRanking) map.set(r.playerId, r.playerName);
         for (const t of content.allNbaTeams) for (const p of t.players) map.set(p.playerId, p.playerName);
         for (const t of content.allDefTeams) for (const p of t.players) map.set(p.playerId, p.playerName);
-        // 모든 팀 로스터에서도
         for (const t of teams) for (const p of t.roster) map.set(p.id, p.name);
         return map;
     }, [content, teams]);
+
+    // MVP 순위별 득표수 집계: playerId → [1위표, 2위표, 3위표, 4위표, 5위표]
+    const mvpVoteBreakdown = useMemo(() => {
+        const map = new Map<string, number[]>();
+        for (const b of content.ballots) {
+            for (let i = 0; i < b.mvp.length && i < 5; i++) {
+                const pid = b.mvp[i];
+                if (!map.has(pid)) map.set(pid, [0, 0, 0, 0, 0]);
+                map.get(pid)![i]++;
+            }
+        }
+        return map;
+    }, [content.ballots]);
+
+    // DPOY 순위별 득표수 집계: playerId → [1위표, 2위표, 3위표]
+    const dpoyVoteBreakdown = useMemo(() => {
+        const map = new Map<string, number[]>();
+        for (const b of content.ballots) {
+            for (let i = 0; i < b.dpoy.length && i < 3; i++) {
+                const pid = b.dpoy[i];
+                if (!map.has(pid)) map.set(pid, [0, 0, 0]);
+                map.get(pid)![i]++;
+            }
+        }
+        return map;
+    }, [content.ballots]);
 
     const getPlayerName = (pid: string) => nameMap.get(pid) || pid;
 
@@ -895,21 +918,19 @@ const AwardsReportViewer: React.FC<{
     const tdBold = "py-1.5 px-2 text-xs font-bold text-slate-300 whitespace-nowrap border-b border-slate-800/50";
 
     return (
-        <div className="space-y-10 max-w-5xl mx-auto">
+        <div className="space-y-10 max-w-6xl mx-auto">
             {/* Header */}
             <div className="space-y-1">
-                <p className="text-[10px] font-mono text-amber-400/60 uppercase tracking-[0.2em]">Official Release</p>
-                <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 Regular Season Awards</h2>
-                <p className="text-[10px] font-bold text-slate-500">투표인단: {content.ballots.length}명 미디어 패널</p>
+                <h2 className="text-xl font-black text-white uppercase tracking-tight">2025-26 정규시즌 어워드 투표 결과</h2>
                 <div className="border-t border-amber-500/20 mt-2" />
             </div>
 
-            {/* ── MVP VOTING RESULTS ── */}
+            {/* ── MVP 투표 결과 ── */}
             {content.mvpRanking.length > 0 && (
                 <div>
                     <h3 className={sectionLabel}>
                         <Trophy size={12} className="text-amber-400" />
-                        <span>MVP Voting Results</span>
+                        <span>MVP 투표 결과</span>
                     </h3>
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
                         <table className="w-full text-left border-separate border-spacing-0">
@@ -917,58 +938,68 @@ const AwardsReportViewer: React.FC<{
                                 <tr>
                                     <th className={`${thClass} text-center w-8`}>#</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
-                                    <th className={`${thClass} text-left pl-3`}>Player</th>
-                                    <th className={`${thClass} text-center`}>Team</th>
-                                    <th className={`${thClass} text-center`}>Pos</th>
-                                    <th className={`${thClass} text-center`}>1st</th>
-                                    <th className={`${thClass} text-center`}>Pts</th>
+                                    <th className={`${thClass} text-left pl-3 min-w-[160px]`}>선수</th>
+                                    <th className={`${thClass} text-center`}>POS</th>
+                                    <th className={`${thClass} text-center`}>1위</th>
+                                    <th className={`${thClass} text-center`}>2위</th>
+                                    <th className={`${thClass} text-center`}>3위</th>
+                                    <th className={`${thClass} text-center`}>4위</th>
+                                    <th className={`${thClass} text-center`}>5위</th>
+                                    <th className={`${thClass} text-center`}>PTS</th>
                                     <th className={`${thClass} text-center`}>PPG</th>
                                     <th className={`${thClass} text-center`}>RPG</th>
                                     <th className={`${thClass} text-center`}>APG</th>
+                                    <th className={`${thClass} text-center`}>FG%</th>
+                                    <th className={`${thClass} text-center`}>3P%</th>
                                     <th className={`${thClass} text-center`}>TS%</th>
-                                    <th className={`${thClass} text-center`}>Record</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {content.mvpRanking.map((r, idx) => (
-                                    <tr
-                                        key={r.playerId}
-                                        className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : ''}`}
-                                        onClick={() => onPlayerClick(r.playerId)}
-                                    >
-                                        <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-500'}`}>{idx + 1}</td>
-                                        <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                        <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-300'} hover:text-white`}>
-                                            {r.playerName} {idx === 0 && <span className="text-amber-400 ml-1">★</span>}
-                                        </td>
-                                        <td className={`${tdClass} text-center`}>
-                                            <div className="flex items-center justify-center gap-1">
-                                                <TeamLogo teamId={r.teamId} size="xs" />
-                                                <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(r.teamId)}</span>
-                                            </div>
-                                        </td>
-                                        <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
-                                        <td className={`${tdClass} text-center font-bold ${r.firstPlaceVotes > 0 ? 'text-amber-300' : 'text-slate-600'}`}>{r.firstPlaceVotes}</td>
-                                        <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
-                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.ppg)}</td>
-                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.rpg)}</td>
-                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.apg)}</td>
-                                        <td className={`${tdClass} text-center`}>{formatPct(r.statLine.tsPct)}</td>
-                                        <td className={`${tdClass} text-center text-slate-500`}>{r.teamWins}-{r.teamLosses}</td>
-                                    </tr>
-                                ))}
+                                {content.mvpRanking.map((r, idx) => {
+                                    const votes = mvpVoteBreakdown.get(r.playerId) || [0, 0, 0, 0, 0];
+                                    return (
+                                        <tr
+                                            key={r.playerId}
+                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-amber-500/10 border-l-2 border-l-amber-500' : ''}`}
+                                            onClick={() => onPlayerClick(r.playerId)}
+                                        >
+                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-amber-400' : 'text-slate-500'}`}>{idx + 1}</td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
+                                            <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-amber-300' : 'text-slate-300'} hover:text-white`}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <TeamLogo teamId={r.teamId} size="xs" />
+                                                    <span>{r.playerName}</span>
+                                                    {idx === 0 && <span className="text-amber-400">★</span>}
+                                                </div>
+                                            </td>
+                                            <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
+                                            <td className={`${tdClass} text-center font-bold ${votes[0] > 0 ? 'text-amber-300' : 'text-slate-600'}`}>{votes[0]}</td>
+                                            <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[1]}</td>
+                                            <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[2]}</td>
+                                            <td className={`${tdClass} text-center ${votes[3] > 0 ? 'text-slate-400' : 'text-slate-600'}`}>{votes[3]}</td>
+                                            <td className={`${tdClass} text-center ${votes[4] > 0 ? 'text-slate-400' : 'text-slate-600'}`}>{votes[4]}</td>
+                                            <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.ppg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.rpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.apg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatPct(r.statLine.fgPct)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatPct(r.statLine.p3Pct)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatPct(r.statLine.tsPct)}</td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
                 </div>
             )}
 
-            {/* ── DPOY VOTING RESULTS ── */}
+            {/* ── DPOY 투표 결과 ── */}
             {content.dpoyRanking.length > 0 && (
                 <div>
                     <h3 className={sectionLabel}>
                         <Shield size={12} className="text-indigo-400" />
-                        <span>Defensive Player of the Year</span>
+                        <span>DPOY 투표 결과</span>
                     </h3>
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
                         <table className="w-full text-left border-separate border-spacing-0">
@@ -976,67 +1007,70 @@ const AwardsReportViewer: React.FC<{
                                 <tr>
                                     <th className={`${thClass} text-center w-8`}>#</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
-                                    <th className={`${thClass} text-left pl-3`}>Player</th>
-                                    <th className={`${thClass} text-center`}>Team</th>
-                                    <th className={`${thClass} text-center`}>Pos</th>
-                                    <th className={`${thClass} text-center`}>1st</th>
-                                    <th className={`${thClass} text-center`}>Pts</th>
-                                    <th className={`${thClass} text-center`}>SPG</th>
-                                    <th className={`${thClass} text-center`}>BPG</th>
-                                    <th className={`${thClass} text-center`}>RPG</th>
-                                    <th className={`${thClass} text-center`}>Record</th>
+                                    <th className={`${thClass} text-left pl-3 min-w-[160px]`}>선수</th>
+                                    <th className={`${thClass} text-center`}>POS</th>
+                                    <th className={`${thClass} text-center`}>1위</th>
+                                    <th className={`${thClass} text-center`}>2위</th>
+                                    <th className={`${thClass} text-center`}>3위</th>
+                                    <th className={`${thClass} text-center`}>PTS</th>
+                                    <th className={`${thClass} text-center`}>OREB</th>
+                                    <th className={`${thClass} text-center`}>DREB</th>
+                                    <th className={`${thClass} text-center`}>STL</th>
+                                    <th className={`${thClass} text-center`}>BLK</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {content.dpoyRanking.map((r, idx) => (
-                                    <tr
-                                        key={r.playerId}
-                                        className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500' : ''}`}
-                                        onClick={() => onPlayerClick(r.playerId)}
-                                    >
-                                        <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-indigo-400' : 'text-slate-500'}`}>{idx + 1}</td>
-                                        <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                        <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-indigo-300' : 'text-slate-300'} hover:text-white`}>
-                                            {r.playerName} {idx === 0 && <span className="text-indigo-400 ml-1">★</span>}
-                                        </td>
-                                        <td className={`${tdClass} text-center`}>
-                                            <div className="flex items-center justify-center gap-1">
-                                                <TeamLogo teamId={r.teamId} size="xs" />
-                                                <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(r.teamId)}</span>
-                                            </div>
-                                        </td>
-                                        <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
-                                        <td className={`${tdClass} text-center font-bold ${r.firstPlaceVotes > 0 ? 'text-indigo-300' : 'text-slate-600'}`}>{r.firstPlaceVotes}</td>
-                                        <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
-                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.spg)}</td>
-                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.bpg)}</td>
-                                        <td className={`${tdClass} text-center`}>{formatStat(r.statLine.rpg)}</td>
-                                        <td className={`${tdClass} text-center text-slate-500`}>{r.teamWins}-{r.teamLosses}</td>
-                                    </tr>
-                                ))}
+                                {content.dpoyRanking.map((r, idx) => {
+                                    const votes = dpoyVoteBreakdown.get(r.playerId) || [0, 0, 0];
+                                    return (
+                                        <tr
+                                            key={r.playerId}
+                                            className={`hover:bg-white/5 cursor-pointer ${idx === 0 ? 'bg-indigo-500/10 border-l-2 border-l-indigo-500' : ''}`}
+                                            onClick={() => onPlayerClick(r.playerId)}
+                                        >
+                                            <td className={`${tdClass} text-center font-bold ${idx === 0 ? 'text-indigo-400' : 'text-slate-500'}`}>{idx + 1}</td>
+                                            <td className={`${tdClass} text-center`}><OvrBadge value={r.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
+                                            <td className={`${tdBold} pl-3 ${idx === 0 ? 'text-indigo-300' : 'text-slate-300'} hover:text-white`}>
+                                                <div className="flex items-center gap-1.5">
+                                                    <TeamLogo teamId={r.teamId} size="xs" />
+                                                    <span>{r.playerName}</span>
+                                                    {idx === 0 && <span className="text-indigo-400">★</span>}
+                                                </div>
+                                            </td>
+                                            <td className={`${tdClass} text-center text-slate-500 font-bold`}>{r.position}</td>
+                                            <td className={`${tdClass} text-center font-bold ${votes[0] > 0 ? 'text-indigo-300' : 'text-slate-600'}`}>{votes[0]}</td>
+                                            <td className={`${tdClass} text-center ${votes[1] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[1]}</td>
+                                            <td className={`${tdClass} text-center ${votes[2] > 0 ? 'text-slate-300' : 'text-slate-600'}`}>{votes[2]}</td>
+                                            <td className={`${tdClass} text-center font-bold text-white`}>{r.points}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.orebpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.drebpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.spg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(r.statLine.bpg)}</td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
                 </div>
             )}
 
-            {/* ── ALL-NBA TEAMS ── */}
+            {/* ── 올-NBA 팀 ── */}
             {content.allNbaTeams.length > 0 && (
                 <div>
                     <h3 className={sectionLabel}>
                         <Crown size={12} className="text-amber-400" />
-                        <span>All-NBA Teams</span>
+                        <span>올-NBA 팀</span>
                     </h3>
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
                         <table className="w-full text-left border-separate border-spacing-0">
                             <thead>
                                 <tr>
-                                    <th className={`${thClass} text-center w-14`}>Team</th>
-                                    <th className={`${thClass} text-center w-8`}>Pos</th>
+                                    <th className={`${thClass} text-center w-14`}>팀</th>
+                                    <th className={`${thClass} text-center w-8`}>POS</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
-                                    <th className={`${thClass} text-left pl-3`}>Player</th>
-                                    <th className={`${thClass} text-center`}>Team</th>
-                                    <th className={`${thClass} text-center`}>Votes</th>
+                                    <th className={`${thClass} text-left pl-3`}>선수</th>
+                                    <th className={`${thClass} text-center`}>득표</th>
                                     <th className={`${thClass} text-center`}>PPG</th>
                                     <th className={`${thClass} text-center`}>RPG</th>
                                     <th className={`${thClass} text-center`}>APG</th>
@@ -1063,11 +1097,10 @@ const AwardsReportViewer: React.FC<{
                                             )}
                                             <td className={`${tdClass} text-center text-[10px] font-black text-slate-500`}>{p.pos}</td>
                                             <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                            <td className={`${tdBold} pl-3 hover:text-white`}>{p.playerName}</td>
-                                            <td className={`${tdClass} text-center`}>
-                                                <div className="flex items-center justify-center gap-1">
+                                            <td className={`${tdBold} pl-3 hover:text-white`}>
+                                                <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={p.teamId} size="xs" />
-                                                    <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(p.teamId)}</span>
+                                                    <span>{p.playerName}</span>
                                                 </div>
                                             </td>
                                             <td className={`${tdClass} text-center font-bold text-slate-300`}>{p.votes}</td>
@@ -1084,26 +1117,26 @@ const AwardsReportViewer: React.FC<{
                 </div>
             )}
 
-            {/* ── ALL-DEFENSIVE TEAMS ── */}
+            {/* ── 올-디펜시브 팀 ── */}
             {content.allDefTeams.length > 0 && (
                 <div>
                     <h3 className={sectionLabel}>
                         <Shield size={12} className="text-indigo-400" />
-                        <span>All-Defensive Teams</span>
+                        <span>올-디펜시브 팀</span>
                     </h3>
                     <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto">
                         <table className="w-full text-left border-separate border-spacing-0">
                             <thead>
                                 <tr>
-                                    <th className={`${thClass} text-center w-14`}>Team</th>
-                                    <th className={`${thClass} text-center w-8`}>Pos</th>
+                                    <th className={`${thClass} text-center w-14`}>팀</th>
+                                    <th className={`${thClass} text-center w-8`}>POS</th>
                                     <th className={`${thClass} text-center w-10`}>OVR</th>
-                                    <th className={`${thClass} text-left pl-3`}>Player</th>
-                                    <th className={`${thClass} text-center`}>Team</th>
-                                    <th className={`${thClass} text-center`}>Votes</th>
+                                    <th className={`${thClass} text-left pl-3`}>선수</th>
+                                    <th className={`${thClass} text-center`}>득표</th>
                                     <th className={`${thClass} text-center`}>SPG</th>
                                     <th className={`${thClass} text-center`}>BPG</th>
-                                    <th className={`${thClass} text-center`}>RPG</th>
+                                    <th className={`${thClass} text-center`}>OREB</th>
+                                    <th className={`${thClass} text-center`}>DREB</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1126,17 +1159,17 @@ const AwardsReportViewer: React.FC<{
                                             )}
                                             <td className={`${tdClass} text-center text-[10px] font-black text-slate-500`}>{p.pos}</td>
                                             <td className={`${tdClass} text-center`}><OvrBadge value={p.ovr} size="sm" className="!w-6 !h-6 !text-[10px] !mx-auto" /></td>
-                                            <td className={`${tdBold} pl-3 hover:text-white`}>{p.playerName}</td>
-                                            <td className={`${tdClass} text-center`}>
-                                                <div className="flex items-center justify-center gap-1">
+                                            <td className={`${tdBold} pl-3 hover:text-white`}>
+                                                <div className="flex items-center gap-1.5">
                                                     <TeamLogo teamId={p.teamId} size="xs" />
-                                                    <span className="text-[10px] font-bold text-slate-500">{getTeamAbbr(p.teamId)}</span>
+                                                    <span>{p.playerName}</span>
                                                 </div>
                                             </td>
                                             <td className={`${tdClass} text-center font-bold text-slate-300`}>{p.votes}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(p.statLine.spg)}</td>
                                             <td className={`${tdClass} text-center`}>{formatStat(p.statLine.bpg)}</td>
-                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.rpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.orebpg)}</td>
+                                            <td className={`${tdClass} text-center`}>{formatStat(p.statLine.drebpg)}</td>
                                         </tr>
                                     ))
                                 )}
@@ -1146,7 +1179,7 @@ const AwardsReportViewer: React.FC<{
                 </div>
             )}
 
-            {/* ── FULL BALLOT LOG (접기/펼치기) ── */}
+            {/* ── MVP 전체 투표 내역 (접기/펼치기) ── */}
             {content.ballots.length > 0 && (
                 <div>
                     <button
@@ -1154,19 +1187,19 @@ const AwardsReportViewer: React.FC<{
                         className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 hover:text-slate-300 transition-colors mb-3"
                     >
                         {showBallots ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                        <span>Full MVP Ballot Log ({content.ballots.length} voters)</span>
+                        <span>MVP 전체 투표 내역 ({content.ballots.length}명)</span>
                     </button>
                     {showBallots && (
                         <div className="bg-slate-900 border border-slate-800 rounded-lg overflow-x-auto max-h-[500px] overflow-y-auto custom-scrollbar">
                             <table className="w-full text-left border-separate border-spacing-0">
                                 <thead className="sticky top-0 z-10 bg-slate-950">
                                     <tr>
-                                        <th className={`${thClass} text-center w-14`}>Voter</th>
-                                        <th className={`${thClass} text-center`}>1st (10pt)</th>
-                                        <th className={`${thClass} text-center`}>2nd (7pt)</th>
-                                        <th className={`${thClass} text-center`}>3rd (5pt)</th>
-                                        <th className={`${thClass} text-center`}>4th (3pt)</th>
-                                        <th className={`${thClass} text-center`}>5th (1pt)</th>
+                                        <th className={`${thClass} text-center w-14`}>투표인</th>
+                                        <th className={`${thClass} text-center`}>1위 (10pt)</th>
+                                        <th className={`${thClass} text-center`}>2위 (7pt)</th>
+                                        <th className={`${thClass} text-center`}>3위 (5pt)</th>
+                                        <th className={`${thClass} text-center`}>4위 (3pt)</th>
+                                        <th className={`${thClass} text-center`}>5위 (1pt)</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1182,7 +1215,6 @@ const AwardsReportViewer: React.FC<{
                                                     {getPlayerName(pid).split(' ').pop()}
                                                 </td>
                                             ))}
-                                            {/* 부족한 셀 채우기 */}
                                             {Array.from({ length: Math.max(0, 5 - b.mvp.length) }).map((_, i) => (
                                                 <td key={`empty-${i}`} className={`${tdClass} text-center text-slate-700`}>-</td>
                                             ))}
