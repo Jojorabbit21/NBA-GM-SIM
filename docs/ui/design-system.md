@@ -169,15 +169,18 @@
 
 **Base:** `flex items-center justify-center font-black oswald shadow-lg text-shadow-ovr transition-all leading-none`
 
-| 등급 | 색상 | 배경 그라디언트 |
-|------|------|----------------|
-| 95+ | 마젠타 (Fuchsia) | `from-fuchsia-300 via-fuchsia-500 to-fuchsia-700` + 글로우 |
-| 90–94 | 빨강 (Red) | `from-red-500 via-red-600 to-rose-700` |
-| 85–89 | 파랑 (Blue) | `from-blue-500 via-blue-600 to-indigo-700` |
-| 80–84 | 에메랄드 | `from-emerald-500 via-emerald-600 to-teal-700` |
-| 75–79 | 황금 (Amber) | `from-yellow-400 via-amber-500 to-orange-600` |
-| 70–74 | 은색 (Slate) | `from-slate-300 via-slate-400 to-zinc-600` |
-| 70 미만 | 동색 (Bronze) | `from-amber-700 via-amber-800 to-stone-900` |
+| 등급 | OVR | 이름 | 색상 테마 | 배경 그라디언트 |
+|------|-----|------|-----------|----------------|
+| 1 | 97+ | GENERATIONAL | 플라즈마 화이트골드 | `from-white via-amber-200 to-yellow-500` + 이중 글로우 |
+| 2 | 94–96 | SUPERSTAR | 용융 골드 | `from-amber-300 via-amber-500 to-orange-600` + 골드 글로우 |
+| 3 | 91–93 | ALL-NBA | 화산 오렌지 | `from-orange-400 via-red-500 to-rose-600` + 오렌지 글로우 |
+| 4 | 88–90 | ALL-STAR | 전기 바이올렛 | `from-violet-400 via-purple-600 to-fuchsia-700` + 바이올렛 글로우 |
+| 5 | 85–87 | STARTER+ | 전기 시안 | `from-cyan-400 via-cyan-600 to-sky-700` + 시안 글로우 |
+| 6 | 82–84 | STARTER | 심해 틸 | `from-teal-400 via-teal-600 to-emerald-800` |
+| 7 | 79–81 | ROTATION | 브랜드 인디고 | `from-indigo-400 via-indigo-600 to-blue-800` |
+| 8 | 76–78 | BENCH | 강철 회색 | `from-slate-400 via-slate-500 to-slate-700` |
+| 9 | 73–75 | DEPTH | 따뜻한 석재 | `from-stone-400 via-stone-600 to-zinc-700` |
+| 10 | 73 미만 | TWO-WAY | 다크 클레이 | `from-orange-800 via-stone-800 to-neutral-900` |
 
 | size | 크기/텍스트 |
 |------|------------|

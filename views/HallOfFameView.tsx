@@ -18,7 +18,7 @@ const PLAYOFF_TEXT: Record<string, string> = {
     'BPL CHAMPIONS':        '파이널 우승',
     'BPL Finalist':         '파이널 준우승',
     'Conference Finalist':  '컨퍼런스 파이널 탈락',
-    'Semi-Finalist':        '세미파이널 탈락',
+    'Semi-Finalist':        '2라운드 탈락',
     'Playoff Participant':  '1라운드 탈락',
     'Playoff Qualification':'플레이인 탈락',
     'Missed Playoffs':      '플레이오프 미진출',

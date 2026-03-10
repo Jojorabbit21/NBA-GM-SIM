@@ -11,7 +11,7 @@ import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, aggregateSeriesBoxScores } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores } from '../services/reportGenerator';
 
 export const useSimulation = (
     teams: Team[],
@@ -167,6 +167,11 @@ export const useSimulation = (
             }
             const roundName = content.roundName;
             await sendMessage(userId, myTeamId, date, 'PLAYOFF_STAGE_REVIEW', `[플레이오프 보고서] ${roundName}`, content);
+            // 탈락 또는 우승 시 구단주 서신 발송
+            if (content.isFinalStage) {
+                const ownerLetter = buildPlayoffOwnerLetterContent(myTeam, content.result, series.round);
+                await sendMessage(userId, myTeamId, date, 'OWNER_LETTER', `[서신] ${ownerLetter.title}`, ownerLetter);
+            }
             refreshUnreadCount();
         }
     }, [session, myTeamId, refreshUnreadCount]);

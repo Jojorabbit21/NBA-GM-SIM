@@ -106,8 +106,18 @@ export const OvrCalculatorView: React.FC<OvrCalculatorViewProps> = ({ teams, fre
   const sortArrow = (key: 'newOvr' | 'oldOvr' | 'delta') =>
       sortConfig.key === key ? (sortConfig.dir === 'desc' ? ' ▼' : ' ▲') : '';
 
-  const ovrColor = (v: number) =>
-      v >= 85 ? 'text-amber-400' : v >= 75 ? 'text-emerald-400' : v >= 65 ? 'text-sky-400' : 'text-slate-400';
+  const ovrColor = (v: number) => {
+      if (v >= 97) return 'text-yellow-300';
+      if (v >= 94) return 'text-amber-400';
+      if (v >= 91) return 'text-orange-400';
+      if (v >= 88) return 'text-violet-400';
+      if (v >= 85) return 'text-cyan-400';
+      if (v >= 82) return 'text-teal-400';
+      if (v >= 79) return 'text-indigo-400';
+      if (v >= 76) return 'text-slate-300';
+      if (v >= 73) return 'text-stone-400';
+      return 'text-slate-500';
+  };
 
   const deltaColor = (d: number) =>
       d > 0 ? 'text-emerald-400' : d < 0 ? 'text-red-400' : 'text-slate-600';

@@ -1082,21 +1082,6 @@ const MessageContentRenderer: React.FC<{
                         </div>
                     )}
 
-                    {/* 4. Final Status */}
-                    {ps.isFinalStage && ps.finalStatus && (
-                        <div className={`text-center py-6 rounded-lg border ${
-                            ps.result === 'WON' && ps.round === 4
-                                ? 'bg-amber-500/5 border-amber-500/30'
-                                : 'bg-slate-800/30 border-slate-700'
-                        }`}>
-                            <h3 className={`text-xl font-black uppercase tracking-tight ${
-                                ps.result === 'WON' && ps.round === 4 ? 'text-amber-400' : 'text-slate-300'
-                            }`}>
-                                {ps.finalStatus.title}
-                            </h3>
-                            <p className="text-sm font-bold text-slate-400 mt-1">{ps.finalStatus.desc}</p>
-                        </div>
-                    )}
                 </div>
             );
         }
