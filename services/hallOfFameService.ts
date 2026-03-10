@@ -5,6 +5,7 @@ import { HallOfFameScoreBreakdown, RosterSnapshotPlayer } from '../utils/hallOfF
 export interface HallOfFameEntry {
     id: string;
     user_id: string;
+    hof_id: string;
     team_id: string;
     season: string;
     total_score: number;

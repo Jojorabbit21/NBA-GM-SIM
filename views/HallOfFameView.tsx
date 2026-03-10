@@ -10,6 +10,7 @@ import { TEAM_DATA } from '../data/teamData';
 
 interface HallOfFameViewProps {
     currentUserId?: string;
+    currentHofId?: string | null;
     onBack: () => void;
 }
 
@@ -32,7 +33,7 @@ function getRankStyle(rank: number): { color: string; icon?: React.ReactNode } {
     return { color: 'text-slate-500' };
 }
 
-export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, onBack }) => {
+export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, currentHofId, onBack }) => {
     const [entries, setEntries] = useState<HallOfFameEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [rosterModal, setRosterModal] = useState<{ entry: HallOfFameEntry } | null>(null);
@@ -141,7 +142,7 @@ export const HallOfFameView: React.FC<HallOfFameViewProps> = ({ currentUserId, o
                             {entries.map((entry, idx) => {
                                 const rank = idx + 1;
                                 const rankStyle = getRankStyle(rank);
-                                const isMe = entry.user_id === currentUserId;
+                                const isMe = !!(currentHofId && entry.hof_id === currentHofId);
                                 const teamStatic = TEAM_DATA[entry.team_id];
                                 const teamName = teamStatic ? `${teamStatic.city} ${teamStatic.name}` : entry.team_id.toUpperCase();
                                 const playoffTier = entry.score_breakdown?.details?.playoff_tier || 'Playoff Qualification';
