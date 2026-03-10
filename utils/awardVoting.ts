@@ -53,6 +53,8 @@ export interface AwardRankEntry {
 export interface AllTeamPlayer {
     playerId: string; playerName: string; teamId: string; position: string; ovr: number;
     votes: number; pos: 'G' | 'F' | 'C';
+    tierVotes: number[];   // [1st팀 득표, 2nd팀 득표, (3rd팀 득표)]
+    totalPoints: number;   // 가중 합계 (1st×3 + 2nd×2 + 3rd×1 등)
     statLine: AwardStatLine;
 }
 
@@ -366,6 +368,7 @@ function tallyAllTeams(
                 playerId: c.playerId, playerName: c.playerName, teamId: c.teamId,
                 position: c.position, ovr: c.ovr,
                 votes: g.votes[tier] || 0, pos: 'G',
+                tierVotes: [...g.votes], totalPoints: g.score,
                 statLine: { ...c.statLine },
             });
             gCount++;
@@ -383,6 +386,7 @@ function tallyAllTeams(
                 playerId: c.playerId, playerName: c.playerName, teamId: c.teamId,
                 position: c.position, ovr: c.ovr,
                 votes: f.votes[tier] || 0, pos: 'F',
+                tierVotes: [...f.votes], totalPoints: f.score,
                 statLine: { ...c.statLine },
             });
             fCount++;
@@ -398,6 +402,7 @@ function tallyAllTeams(
                 playerId: c.playerId, playerName: c.playerName, teamId: c.teamId,
                 position: c.position, ovr: c.ovr,
                 votes: ct.votes[tier] || 0, pos: 'C',
+                tierVotes: [...ct.votes], totalPoints: ct.score,
                 statLine: { ...c.statLine },
             });
             break;
