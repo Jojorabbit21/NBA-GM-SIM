@@ -181,7 +181,7 @@ function scoreMVP(c: AwardCandidate, noise: number): number {
 
 function scoreDPOY(c: AwardCandidate, noise: number): number {
     const base =
-        c.statLine.spg * 3.0 + c.statLine.bpg * 3.0 + c._drebpg * 0.8
+        c.statLine.spg * 3.0 + c.statLine.bpg * 3.0 + c._drebpg * 0.4
         + c._defAttr * 0.15
         + c._intDef * 0.08 + c._perDef * 0.08
         + c._stealAttr * 0.05 + c._blkAttr * 0.05
