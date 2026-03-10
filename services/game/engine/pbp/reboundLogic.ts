@@ -78,8 +78,14 @@ function selectRebounder(team: TeamState, shooterId: string, isOffensive: boolea
         return { p, score };
     });
 
-    candidates.sort((a, b) => b.score - a.score);
-    return candidates[0].p;
+    // Weighted random: 점수 비례 확률 선택 (winner-take-all 방지)
+    const totalScore = candidates.reduce((sum, c) => sum + c.score, 0);
+    let r = Math.random() * totalScore;
+    for (const c of candidates) {
+        r -= c.score;
+        if (r <= 0) return c.p;
+    }
+    return candidates[candidates.length - 1].p;
 }
 
 /**
