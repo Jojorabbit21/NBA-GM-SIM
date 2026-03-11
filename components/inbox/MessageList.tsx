@@ -1,0 +1,95 @@
+import React from 'react';
+import { Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { MessageListItem } from '../../types';
+
+interface MessageListProps {
+    messages: MessageListItem[];
+    selectedMessageId: string | null;
+    loading: boolean;
+    totalCount: number;
+    onSelectMessage: (msg: MessageListItem) => void;
+    onMarkAllRead: () => void;
+    onRefresh: () => void;
+    onLoadMore: () => void;
+}
+
+export const MessageList: React.FC<MessageListProps> = ({
+    messages,
+    selectedMessageId,
+    loading,
+    totalCount,
+    onSelectMessage,
+    onMarkAllRead,
+    onRefresh,
+    onLoadMore,
+}) => {
+    return (
+        <div className="w-[280px] flex flex-col border-r border-slate-800 bg-slate-950/30 flex-shrink-0">
+            {/* Header with title & actions */}
+            <div className="px-4 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                    <Mail size={16} className="text-slate-500" />
+                    <span className="text-xs font-black text-slate-300 uppercase tracking-widest">받은 메세지</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <button
+                        onClick={onMarkAllRead}
+                        className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+                        title="모두 읽음 처리"
+                    >
+                        <CheckCircle2 size={14} />
+                    </button>
+                    <button
+                        onClick={onRefresh}
+                        className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-500 hover:text-slate-300 transition-colors"
+                        title="새로고침"
+                    >
+                        <RefreshCw size={14} />
+                    </button>
+                </div>
+            </div>
+            {/* Message Count */}
+            <div className="px-4 py-2 border-b border-slate-800/50">
+                <span className="text-[10px] font-bold text-slate-600">총 {totalCount}개</span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+                {messages.map((msg) => (
+                    <div
+                       key={msg.id}
+                       onClick={() => onSelectMessage(msg)}
+                       className={`
+                           relative p-4 cursor-pointer transition-all border-b border-slate-800/50 group
+                           ${selectedMessageId === msg.id ? 'bg-indigo-900/20 border-l-2 border-l-indigo-500' : 'hover:bg-slate-900'}
+                       `}
+                    >
+                        <div className="flex justify-between items-start gap-2">
+                            <h4 className={`font-bold text-sm leading-snug line-clamp-2 ${msg.is_read ? 'text-slate-500' : 'text-slate-200'}`}>
+                                {msg.title}
+                            </h4>
+                            {!msg.is_read && (
+                                <div className="w-1.5 h-1.5 bg-red-500 rounded-full flex-shrink-0 mt-1.5" />
+                            )}
+                        </div>
+                    </div>
+                ))}
+
+                {messages.length > 0 && messages.length % 20 === 0 && (
+                    <button
+                        onClick={onLoadMore}
+                        className="w-full py-4 text-xs font-bold text-slate-500 hover:text-indigo-400 transition-colors border-t border-slate-800"
+                    >
+                        {loading ? '로딩 중...' : '더 보기'}
+                    </button>
+                )}
+
+                {messages.length === 0 && !loading && (
+                    <div className="flex flex-col items-center justify-center py-20 text-slate-600 space-y-4">
+                        <Mail size={32} className="opacity-20" />
+                        <p className="text-xs font-bold">메세지함이 비어있습니다.</p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};

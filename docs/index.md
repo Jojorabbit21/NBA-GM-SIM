@@ -43,11 +43,13 @@ docs/
 ├── data/                 ← 데이터 (비어있음)
 │   └── data-index.md         인덱스 (평가 문서는 evaluation/로 이동)
 │
-├── ui/                   ← UI/UX (3개)
+├── ui/                   ← UI/UX (4개 + 하위 1개)
 │   ├── ui-index.md           인덱스
 │   ├── design-system.md      디자인 시스템 (다크 스포츠 테마)
 │   ├── user-guide.md         사용자 조작 가이드
-│   └── url-routing-plan.md   URL 라우팅 설계
+│   ├── url-routing-plan.md   URL 라우팅 설계
+│   └── inbox/
+│       └── inbox-index.md    Inbox 시스템 구조 (13종 메시지 타입, 15개 파일)
 │
 ├── infra/               ← 인프라/배포 (1개)
 │   └── version-update.md    버전 업데이트 알림 시스템
@@ -91,6 +93,8 @@ NBA 현실 규칙, 전술 이론, 스탯 공식 등 시뮬레이션의 근거가
 디자인 시스템, 컴포넌트 규칙, 라우팅 설계.
 
 **필수 참조**: UI 수정 전 [design-system.md](ui/design-system.md) 확인 (다크 테마, 컬러, 라운딩 규칙).
+
+**Inbox 시스템**: [inbox/inbox-index.md](ui/inbox/inbox-index.md) — 13종 메시지 타입, 공유 컴포넌트, 확장 가이드.
 
 ### [infra/](infra/) — 인프라/배포
 Vercel 배포, 캐시 전략, 버전 관리 등 서비스 운영 관련 문서.
