@@ -26,6 +26,11 @@ const WIDTHS = {
 
 // ATTR_GROUPS, ATTR_LABEL, ATTR_NAME_MAP → data/attributeConfig.ts에서 import
 
+const GROUP_LABEL_KR: Record<string, string> = {
+    INSIDE: '인사이드 스코어링', OUTSIDE: '아웃사이드 스코어링', PLAYMAKING: '플레이메이킹',
+    DEFENSE: '수비능력', REBOUND: '리바운드', ATHLETIC: '운동능력',
+};
+
 const STATS_COLS = [
     { key: 'g', label: 'G' }, { key: 'gs', label: 'GS' }, { key: 'mp', label: 'MIN' },
     { key: 'pts', label: 'PTS' }, { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, 
@@ -153,13 +158,13 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <tr className="h-10">
                         <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
                             <div className="h-full flex items-center justify-center">
-                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Basic Information</span>
+                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
                             </div>
                         </th>
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
                             <th key={g.id} colSpan={g.keys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{g.label}</span>
+                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
                                 </div>
                             </th>
                         ))}
@@ -178,17 +183,17 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                             style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} 
                             align="left" className="pl-4 bg-slate-950" 
                             sortable onSort={() => handleSort('name')} sortDirection={sortConfig.key === 'name' ? sortConfig.direction : null}
-                        >PLAYER NAME</TableHeaderCell>
+                        >이름</TableHeaderCell>
                         <TableHeaderCell 
                             style={{ ...getStickyStyle(LEFT_POS, WIDTHS.POS), zIndex: 50 }} 
                             className="bg-slate-950" 
                             sortable onSort={() => handleSort('position')} sortDirection={sortConfig.key === 'position' ? sortConfig.direction : null}
-                        >POS</TableHeaderCell>
+                        >포지션</TableHeaderCell>
                         <TableHeaderCell 
                             style={{ ...getStickyStyle(LEFT_AGE, WIDTHS.AGE), zIndex: 50 }} 
                             className="bg-slate-950" 
                             sortable onSort={() => handleSort('age')} sortDirection={sortConfig.key === 'age' ? sortConfig.direction : null}
-                        >AGE</TableHeaderCell>
+                        >나이</TableHeaderCell>
                         <TableHeaderCell 
                             style={{ ...getStickyStyle(LEFT_OVR, WIDTHS.OVR, true), zIndex: 50}} 
                             className="bg-slate-950 border-r border-slate-800" 
@@ -281,7 +286,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         {/* Use inline styles to force border removal and width locking */}
-                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-[10px] uppercase tracking-widest">TEAM AVERAGE</TableCell>
+                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-[10px] uppercase tracking-widest">팀 평균</TableCell>
                         <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
                         <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-xs">{averages.attr.age}</TableCell>
                         <TableCell 

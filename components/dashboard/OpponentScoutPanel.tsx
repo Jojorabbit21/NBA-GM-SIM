@@ -125,7 +125,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                      <TeamLogo teamId={opponent.id} size="md" />
                      <div>
                          <h4 className="text-sm font-black text-white uppercase tracking-tight">{opponent.city} {opponent.name}</h4>
-                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">OPPONENT SCOUTING</span>
+                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ko-normal">상대 전력 분석</span>
                      </div>
                  </div>
             </div>
@@ -145,18 +145,18 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                     </colgroup>
 
                     <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
-                        <tr className="border-b border-slate-800 bg-slate-950 h-8">
-                            <th colSpan={3} className="py-1 px-4 border-r border-slate-800/50"></th>
-                            <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-800/50">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">KEY ATTRIBUTES</span>
+                        <tr className="bg-slate-950 h-8">
+                            <th colSpan={3} className="py-1 px-4 border-b-2 border-slate-700 border-r border-slate-800/50"></th>
+                            <th colSpan={6} className="py-1 px-2 text-center border-b-2 border-slate-700 border-r border-slate-800/50">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ko-normal">주요 능력치</span>
                             </th>
-                            <th colSpan={9} className="py-1 px-2 text-center">
-                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">SEASON STATS (AVG)</span>
+                            <th colSpan={9} className="py-1 px-2 text-center border-b-2 border-slate-700">
+                                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ko-normal">시즌 스탯</span>
                             </th>
                         </tr>
-                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-t border-slate-800 border-b border-slate-800 h-10">
-                            <TableHeaderCell align="center" className="border-r border-slate-800/50">POS</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-4 border-r border-slate-800/50">PLAYER</TableHeaderCell>
+                        <tr className="text-[10px] font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 h-10">
+                            <TableHeaderCell align="center" className="border-r border-slate-800/50 ko-normal">포지션</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-4 border-r border-slate-800/50 ko-normal">이름</TableHeaderCell>
                             <TableHeaderCell align="center" className="border-r border-slate-800/50">OVR</TableHeaderCell>
                             
                             {ATTR_COLS.map(col => (
@@ -231,7 +231,7 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                             <tr>
                                 <td className="border-r border-slate-800/50"></td>
                                 <td className="px-4 text-left border-r border-slate-800/50">
-                                    <span className="text-xs font-black text-indigo-400 uppercase tracking-widest">TEAM AVERAGE</span>
+                                    <span className="text-xs font-black text-indigo-400 uppercase tracking-widest ko-normal">팀 평균</span>
                                 </td>
                                 <td className="text-center border-r border-slate-800/50">
                                     <div className="flex justify-center">
