@@ -551,9 +551,9 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                     return (
                                                         <div key={k} className={`flex items-center justify-between px-3 h-9 border-b border-slate-800/50 transition-colors hover:bg-white/5 ${getAttrBg(val)}`}>
                                                             <span className="text-xs text-white truncate mr-2">{ATTR_KR_LABEL[k] || k}</span>
-                                                            <div className="flex items-center gap-1 shrink-0">
-                                                                {seasonDelta > 0 && <span className="text-[10px] text-emerald-400">▲{seasonDelta}</span>}
-                                                                {seasonDelta < 0 && <span className="text-[10px] text-rose-400">▼{Math.abs(seasonDelta)}</span>}
+                                                            <div className="flex items-center gap-2 shrink-0">
+                                                                {seasonDelta > 0 && <span className="font-mono font-black text-xs tabular-nums text-emerald-400">▲{seasonDelta}</span>}
+                                                                {seasonDelta < 0 && <span className="font-mono font-black text-xs tabular-nums text-rose-400">▼{Math.abs(seasonDelta)}</span>}
                                                                 <span className={`font-mono font-black text-xs tabular-nums ${getAttrColor(val)}`}>{val}</span>
                                                             </div>
                                                         </div>

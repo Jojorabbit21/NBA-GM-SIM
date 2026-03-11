@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Team, Player, Game } from '../types';
 import { BarChart2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useLeaderboardData, SeasonType } from '../hooks/useLeaderboardData';
@@ -7,19 +7,35 @@ import { LeaderboardToolbar } from '../components/leaderboard/LeaderboardToolbar
 import { LeaderboardTable } from '../components/leaderboard/LeaderboardTable';
 import { ViewMode, StatCategory, FilterItem } from '../data/leaderboardConfig';
 
+export interface LeaderboardFilterState {
+  mode: ViewMode;
+  statCategory: StatCategory;
+  sortConfig: { key: string; direction: 'asc' | 'desc' };
+  activeFilters: FilterItem[];
+  selectedTeams: string[];
+  selectedPositions: string[];
+  searchQuery: string;
+  seasonType: SeasonType;
+  showHeatmap: boolean;
+  currentPage: number;
+  itemsPerPage: number;
+}
+
 interface LeaderboardViewProps {
   teams: Team[];
   schedule?: Game[];
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   onTeamClick?: (teamId: string) => void;
+  savedState?: LeaderboardFilterState | null;
+  onStateChange?: (state: LeaderboardFilterState) => void;
 }
 
-export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick }) => {
-  const [mode, setMode] = useState<ViewMode>('Players');
-  const [statCategory, setStatCategory] = useState<StatCategory>('Traditional');
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>({ key: 'pts', direction: 'desc' });
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedule = [], tendencySeed, onViewPlayer, onTeamClick, savedState, onStateChange }) => {
+  const [mode, setMode] = useState<ViewMode>(savedState?.mode ?? 'Players');
+  const [statCategory, setStatCategory] = useState<StatCategory>(savedState?.statCategory ?? 'Traditional');
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' }>(savedState?.sortConfig ?? { key: 'pts', direction: 'desc' });
+  const [itemsPerPage, setItemsPerPage] = useState(savedState?.itemsPerPage ?? 50);
 
   // Reset sort key when category changes to Attributes
   const handleStatCategoryChange = (cat: StatCategory) => {
@@ -29,16 +45,21 @@ export const LeaderboardView: React.FC<LeaderboardViewProps> = ({ teams, schedul
           setSortConfig({ key: 'ovr', direction: 'desc' });
       }
   };
-  const [currentPage, setCurrentPage] = useState(1);
-  const [showHeatmap, setShowHeatmap] = useState(true);
-  const [activeFilters, setActiveFilters] = useState<FilterItem[]>([]);
-  
+  const [currentPage, setCurrentPage] = useState(savedState?.currentPage ?? 1);
+  const [showHeatmap, setShowHeatmap] = useState(savedState?.showHeatmap ?? true);
+  const [activeFilters, setActiveFilters] = useState<FilterItem[]>(savedState?.activeFilters ?? []);
+
   // New Filter States
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
-  const [selectedPositions, setSelectedPositions] = useState<string[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [seasonType, setSeasonType] = useState<SeasonType>('regular');
+  const [selectedTeams, setSelectedTeams] = useState<string[]>(savedState?.selectedTeams ?? []);
+  const [selectedPositions, setSelectedPositions] = useState<string[]>(savedState?.selectedPositions ?? []);
+  const [searchQuery, setSearchQuery] = useState(savedState?.searchQuery ?? '');
+  const [seasonType, setSeasonType] = useState<SeasonType>(savedState?.seasonType ?? 'regular');
   const pageBeforeSearchRef = useRef<number | null>(null);
+
+  // Sync filter state to parent ref for persistence across navigations
+  useEffect(() => {
+      onStateChange?.({ mode, statCategory, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, seasonType, showHeatmap, currentPage, itemsPerPage });
+  }, [mode, statCategory, sortConfig, activeFilters, selectedTeams, selectedPositions, searchQuery, seasonType, showHeatmap, currentPage, itemsPerPage]);
 
   // --- Filter Handlers ---
   const addFilter = (item: FilterItem) => {
