@@ -1123,8 +1123,6 @@ export async function maybeSendScoutReport(
         periodStart, periodEnd, monthLabel,
     );
 
-    if (!content.hasAnyChanges) return;
-
     await sendMessage(
         userId, myTeamId, closingDate,
         'SCOUT_REPORT',
