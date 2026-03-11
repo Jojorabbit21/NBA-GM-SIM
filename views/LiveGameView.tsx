@@ -83,7 +83,7 @@ interface PlayerRowProps {
     dimmed?: boolean;
     draggable?: boolean;
     isDropTarget?: boolean;
-    highlightedStats?: Set<HighlightKey>;
+    highlightedStats?: Map<HighlightKey, 'positive' | 'negative'>;
     onDragStart?: () => void;
     onDragEnd?: () => void;
     onDragOver?: (e: React.DragEvent) => void;
@@ -91,7 +91,8 @@ interface PlayerRowProps {
     onDrop?: (e: React.DragEvent) => void;
 }
 
-const hlBg = 'bg-amber-400/25';
+const hlPositive = 'bg-emerald-400/25';
+const hlNegative = 'bg-red-400/25';
 
 const PlayerRow: React.FC<PlayerRowProps> = ({
     player, dimmed = false, draggable = false, isDropTarget = false,
@@ -101,7 +102,11 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
     const stamina = Math.round(player.currentCondition ?? 100);
     const staminaColor = stamina > 60 ? 'text-emerald-400' : stamina > 30 ? 'text-amber-400' : 'text-red-400';
     const mp = Math.round(player.mp ?? 0);
-    const hl = (stat: StatKey) => highlightedStats?.has(`${player.playerId}:${stat}`) ? hlBg : '';
+    const hl = (stat: StatKey) => {
+        const type = highlightedStats?.get(`${player.playerId}:${stat}`);
+        if (!type) return '';
+        return type === 'positive' ? hlPositive : hlNegative;
+    };
 
     return (
         <div
@@ -142,7 +147,7 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
 
 const PlayerRowHeader: React.FC<{ label?: string }> = ({ label = '선수' }) => (
     <div
-        className="grid gap-x-0.5 px-2 py-1 text-[10px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-800 shrink-0"
+        className="grid gap-x-0.5 px-2 py-1 text-xs font-bold text-slate-600 uppercase tracking-wider border-b border-slate-800 shrink-0"
         style={{ gridTemplateColumns: PLAYER_GRID }}
     >
         <span>{label}</span>
@@ -177,7 +182,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
 }) => {
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
-    const [highlightedStats, setHighlightedStats] = useState<Set<HighlightKey>>(new Set());
+    const [highlightedStats, setHighlightedStats] = useState<Map<HighlightKey, 'positive' | 'negative'>>(new Map());
     const prevStatsRef = useRef<Record<string, Record<StatKey, number>>>({});
     const hlTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
@@ -185,10 +190,12 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
     const sortedBench   = useMemo(() => sortByPosition(bench),   [bench]);
 
     // 스탯 변화 감지 → 하이라이트 (각 키별 독립 타이머)
+    // positive: PTS, REB, AST, STL, BLK, FGM, P3M (긍정적 스탯)
+    // negative: TOV, PF, FGA(미스), P3A(미스)
     useEffect(() => {
         const allPlayers = [...onCourt, ...bench];
         const prev = prevStatsRef.current;
-        const newHighlights: HighlightKey[] = [];
+        const newHighlights: { key: HighlightKey; type: 'positive' | 'negative' }[] = [];
 
         for (const p of allPlayers) {
             const snap = getStatSnapshot(p);
@@ -196,7 +203,8 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
             if (old) {
                 for (const k of TRACKED_STATS) {
                     if (snap[k] !== old[k]) {
-                        newHighlights.push(`${p.playerId}:${k}`);
+                        const isPositive = k === 'pts' || k === 'reb' || k === 'ast' || k === 'stl' || k === 'blk' || k === 'fgm' || k === 'p3m';
+                        newHighlights.push({ key: `${p.playerId}:${k}`, type: isPositive ? 'positive' : 'negative' });
                     }
                 }
             }
@@ -205,20 +213,20 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
 
         if (newHighlights.length > 0) {
             setHighlightedStats(s => {
-                const next = new Set(s);
-                for (const h of newHighlights) next.add(h);
+                const next = new Map(s);
+                for (const h of newHighlights) next.set(h.key, h.type);
                 return next;
             });
 
             for (const h of newHighlights) {
-                if (hlTimersRef.current[h]) clearTimeout(hlTimersRef.current[h]);
-                hlTimersRef.current[h] = setTimeout(() => {
+                if (hlTimersRef.current[h.key]) clearTimeout(hlTimersRef.current[h.key]);
+                hlTimersRef.current[h.key] = setTimeout(() => {
                     setHighlightedStats(s => {
-                        const next = new Set(s);
-                        next.delete(h);
+                        const next = new Map(s);
+                        next.delete(h.key);
                         return next;
                     });
-                    delete hlTimersRef.current[h];
+                    delete hlTimersRef.current[h.key];
                 }, 500);
             }
         }
@@ -281,9 +289,9 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                 <div className="border-t-2 border-slate-700/80 mt-1" />
                 {/* 휴식 중 헤더 */}
                 <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700/60">
-                    <span className="text-[10px] text-slate-500 font-bold tracking-wider">휴식 중</span>
+                    <span className="text-xs text-slate-500 font-bold tracking-wider">휴식 중</span>
                     {isUser && (
-                        <span className="text-[9px] text-slate-600 font-normal">← 드래그로 교체</span>
+                        <span className="text-xs text-slate-600 font-normal">← 드래그로 교체</span>
                     )}
                 </div>
                 {/* 벤치 선수 */}
@@ -379,7 +387,7 @@ const TeamStatsCompare: React.FC<{
 
     return (
         <div className="shrink-0 px-2 py-2">
-            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">팀 스탯</p>
+            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">팀 스탯</p>
             <div className="flex flex-col gap-1">
                 {COMPARE_STATS.map(({ key, label, fmt }) => {
                     const { h, a } = stats[key as keyof typeof stats];
@@ -402,13 +410,13 @@ const TeamStatsCompare: React.FC<{
                                 )}
                             </div>
                             {/* Away value */}
-                            <span className={`text-[10px] font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
+                            <span className={`text-xs font-mono text-right text-white ${aWins ? 'font-bold' : ''}`}>
                                 {fmt(a)}
                             </span>
                             {/* Label */}
-                            <span className="text-[9px] font-bold text-slate-400 text-center uppercase">{label}</span>
+                            <span className="text-xs font-bold text-slate-400 text-center uppercase">{label}</span>
                             {/* Home value */}
-                            <span className={`text-[10px] font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
+                            <span className={`text-xs font-mono text-left text-white ${hWins ? 'font-bold' : ''}`}>
                                 {fmt(h)}
                             </span>
                             {/* Home bar (grows left-to-right) */}
@@ -465,11 +473,10 @@ const QuarterScores: React.FC<{
 
     return (
         <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
-            <p className="text-[9px] text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">쿼터별 득점</p>
-            <table className="w-full text-[10px] font-mono border border-slate-700/60 rounded overflow-hidden">
+            <table className="w-full text-xs font-mono border border-slate-700/60 rounded overflow-hidden">
                 <thead>
-                    <tr className="text-[9px] text-slate-600 uppercase bg-slate-900/60">
-                        <th className="text-left px-1.5 py-1 font-semibold w-12 border-r border-slate-700/60"></th>
+                    <tr className="text-xs text-slate-600 uppercase bg-slate-900/60">
+                        <th className="text-left px-1.5 py-1 font-semibold w-12 border-r border-slate-700/60 text-slate-500 tracking-wider">쿼터별 득점</th>
                         {[1, 2, 3, 4].map(q => (
                             <th key={q} className="text-center px-1.5 py-1 font-semibold w-8 border-r border-slate-700/60">{q}</th>
                         ))}
@@ -625,7 +632,7 @@ const CompactWPGraph: React.FC<{
                 )}
             </div>
             {/* X-Axis */}
-            <div className="shrink-0 flex mt-1 text-[8px] font-bold text-slate-600 uppercase tracking-wider relative h-3">
+            <div className="shrink-0 flex mt-1 text-xs font-bold text-slate-600 uppercase tracking-wider relative h-3">
                 <span className="absolute left-[12.5%] -translate-x-1/2">1Q</span>
                 <span className="absolute left-[37.5%] -translate-x-1/2">2Q</span>
                 <span className="absolute left-[62.5%] -translate-x-1/2">3Q</span>
@@ -1219,7 +1226,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 {/* 헤더 + 필터 */}
                                 <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-900 border-b border-slate-800">
                                     <div className="flex items-center gap-3">
-                                        <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
+                                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">
                                             플레이-바이-플레이
                                         </p>
                                         <div className="flex gap-1">
@@ -1228,7 +1235,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     key={q}
                                                     onClick={() => setPbpQuarterFilter(q)}
                                                     disabled={q > maxSelectableQ}
-                                                    className={`px-2 py-0.5 rounded text-[9px] font-bold transition-colors
+                                                    className={`px-2 py-0.5 rounded text-xs font-bold transition-colors
                                                         disabled:opacity-30 disabled:cursor-not-allowed
                                                         ${pbpQuarterFilter === q
                                                             ? 'bg-indigo-600 text-white'
@@ -1260,7 +1267,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             if (isFlowEvent) {
                                                 return (
                                                     <div key={i} className={`flex items-center justify-center py-2.5 border-y border-slate-800 ${i % 2 === 0 ? 'bg-slate-800/40' : 'bg-slate-800/20'}`}>
-                                                        <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-[10px] uppercase tracking-widest">
+                                                        <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-xs uppercase tracking-widest">
                                                             <Clock size={12} />
                                                             <span>{log.text}</span>
                                                         </div>
@@ -1277,13 +1284,13 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     const outPlayers = outMatch[1].split(',').map(s => s.trim());
                                                     return (
                                                         <div key={i} className={`flex items-start py-2 px-3 gap-3 ${i % 2 === 0 ? 'bg-slate-800/30' : ''}`}>
-                                                            <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-[10px] text-center pt-0.5">
+                                                            <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-xs text-center pt-0.5">
                                                                 {log.quarter}Q
                                                             </div>
-                                                            <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-[10px] text-center pt-0.5">
+                                                            <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-xs text-center pt-0.5">
                                                                 {log.timeRemaining || '-'}
                                                             </div>
-                                                            <div className="flex-1 flex flex-col gap-0.5 text-[10px]">
+                                                            <div className="flex-1 flex flex-col gap-0.5 text-xs">
                                                                 <div className="flex items-center gap-1.5 text-emerald-400">
                                                                     <UserPlus size={11} />
                                                                     <span>IN:</span>
@@ -1317,11 +1324,11 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             return (
                                                 <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>
                                                     {/* 쿼터 */}
-                                                    <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-[10px] text-center">
+                                                    <div className="flex-shrink-0 w-5 text-slate-600 font-bold text-xs text-center">
                                                         {log.quarter}Q
                                                     </div>
                                                     {/* 시간 */}
-                                                    <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-[10px] text-center">
+                                                    <div className="flex-shrink-0 w-10 text-slate-500 font-bold text-xs text-center">
                                                         {log.timeRemaining || '-'}
                                                     </div>
                                                     {/* 원정 로고 */}
@@ -1331,7 +1338,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                     {/* 스코어 */}
                                                     <div className="flex-shrink-0 w-12 text-center">
                                                         {log.awayScore !== undefined && (
-                                                            <div className="font-black text-slate-500 text-[10px] tracking-tight">
+                                                            <div className="font-black text-slate-500 text-xs tracking-tight">
                                                                 <span className={!isHome && (isScore || isFT) ? 'text-white' : ''}>{log.awayScore}</span>
                                                                 <span className="mx-0.5 text-slate-700">:</span>
                                                                 <span className={isHome && (isScore || isFT) ? 'text-white' : ''}>{log.homeScore}</span>
@@ -1343,7 +1350,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                                         <img src={homeTeam.logo} className={`w-4 h-4 object-contain ${isHome ? 'opacity-100' : 'opacity-30 grayscale'}`} alt="" />
                                                     </div>
                                                     {/* 메시지 */}
-                                                    <div className={`flex-1 break-words leading-relaxed text-[10px] ${textColor}`}>
+                                                    <div className={`flex-1 break-words leading-relaxed text-xs ${textColor}`}>
                                                         {log.text}
                                                     </div>
                                                 </div>

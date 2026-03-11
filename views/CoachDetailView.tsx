@@ -12,35 +12,108 @@ interface CoachDetailViewProps {
     onBack: () => void;
 }
 
-// ── 선호 축 정의 ──
-const PREF_AXES: {
-    key: keyof HeadCoach['preferences'];
-    lowLabel: string;
-    highLabel: string;
+// ── 선호 축별 전술 용어 매핑 (값 → 짧은 자연어) ──
+type PrefKey = keyof HeadCoach['preferences'];
+
+interface PrefAxis {
+    label: string;
     group: 'offense' | 'defense';
-}[] = [
-    { key: 'offenseIdentity', lowLabel: '히어로볼',        highLabel: '시스템농구',      group: 'offense' },
-    { key: 'tempo',           lowLabel: '하프코트',        highLabel: '런앤건',          group: 'offense' },
-    { key: 'scoringFocus',    lowLabel: '페인트존',        highLabel: '3점라인',         group: 'offense' },
-    { key: 'pnrEmphasis',     lowLabel: 'ISO/포스트',      highLabel: 'PnR 헤비',       group: 'offense' },
-    { key: 'defenseStyle',    lowLabel: '보수적 대인',     highLabel: '공격적 프레셔',   group: 'defense' },
-    { key: 'helpScheme',      lowLabel: '1:1 고수',        highLabel: '적극 로테이션',   group: 'defense' },
-    { key: 'zonePreference',  lowLabel: '대인 전용',       highLabel: '존 위주',         group: 'defense' },
+    /** 값 범위별 [태그, 한 줄 설명] */
+    tiers: [number, string, string][];  // [최대값, 태그, 설명]
+}
+
+const PREF_AXES: Record<PrefKey, PrefAxis> = {
+    offenseIdentity: {
+        label: '공격 체계',
+        group: 'offense',
+        tiers: [
+            [2,  '프리랜스',         '에이스의 즉흥 플레이에 의존하는 히어로볼 성향'],
+            [4,  '스타 중심',        '에이스에게 높은 자유도를 주되 최소한의 세트 플레이 병행'],
+            [6,  '하이브리드',       '개인기와 팀 플레이를 상황에 따라 혼용'],
+            [8,  '모션 오펜스',      '볼 무브먼트 기반의 체계적인 팀 오펜스 운영'],
+            [10, '시스템 농구',      '누가 뛰든 동일한 원칙이 적용되는 전원 참여형 오펜스'],
+        ],
+    },
+    tempo: {
+        label: '경기 템포',
+        group: 'offense',
+        tiers: [
+            [2,  '그라인드',         '포제션을 끝까지 활용하는 하프코트 중심의 느린 페이스'],
+            [4,  '슬로우 페이스',    '급하지 않게 좋은 슛 기회를 만들어내는 데 집중'],
+            [6,  '밸런스 템포',      '흐름에 따라 유연하게 속도를 조절'],
+            [8,  '업템포',           '빠른 전환 공격과 얼리 오펜스를 적극 활용'],
+            [10, '런앤건',           '세컨더리 브레이크까지 쉬지 않고 달리는 초고속 농구'],
+        ],
+    },
+    scoringFocus: {
+        label: '득점 방식',
+        group: 'offense',
+        tiers: [
+            [2,  '인사이드 헤비',    '림 어택과 포스트업이 주 무기, 외곽은 보조 수단'],
+            [4,  '페인트 존 중심',   '안쪽 공략에 무게를 두되 오픈 3점은 허용'],
+            [6,  '밸런스',           '인사이드·미드레인지·3점을 고루 분배'],
+            [8,  '스페이싱 중시',    '플로어를 넓히고 3점 기회를 만드는 현대 농구 지향'],
+            [10, '3점 헤비',         '극단적인 3점 볼륨, 코너·윙 슈터 확보가 최우선'],
+        ],
+    },
+    pnrEmphasis: {
+        label: '주요 플레이 타입',
+        group: 'offense',
+        tiers: [
+            [2,  'ISO / 포스트업',   '스크린 없이 개인 돌파와 로우포스트로 승부'],
+            [4,  '개인기 중심',      '1:1 무브를 앞세우되 간헐적으로 스크린 활용'],
+            [6,  '혼합형',           '아이솔레이션·픽앤롤·핸드오프 등 다양한 액션 혼용'],
+            [8,  '픽앤롤 중심',      '볼 핸들러-빅맨 투맨 게임을 핵심 무기로 운용'],
+            [10, 'PnR 헤비',         '거의 모든 플레이가 스크린에서 시작되는 PnR 의존형'],
+        ],
+    },
+    defenseStyle: {
+        label: '수비 압박',
+        group: 'defense',
+        tiers: [
+            [2,  '드롭 커버리지',    '포지션을 유지하며 실수를 줄이는 보수적 셸 디펜스'],
+            [4,  '컨서버티브',       '무리하지 않는 안정적 수비, 파울 관리 우선'],
+            [6,  '상황 대응형',      '상대 스타일에 따라 압박 강도를 유연하게 조절'],
+            [8,  '하이 프레셔',      '볼 핸들러에 강한 압박, 패싱 레인 차단 적극 시도'],
+            [10, '블리츠 / 트래핑',  '풀코트까지 압박하며 턴오버를 강제하는 공격적 수비'],
+        ],
+    },
+    helpScheme: {
+        label: '헬프 스킴',
+        group: 'defense',
+        tiers: [
+            [2,  '스위치 올',        '맡은 선수를 끝까지 따라가며 개인 수비 책임 강조'],
+            [4,  '제한적 헬프',      '1:1 수비 기본, 페인트 침투 시에만 최소한 헬프'],
+            [6,  '밸런스 스킴',      '개인 수비와 팀 로테이션을 상황에 맞게 혼용'],
+            [8,  '팀 로테이션',      '약한 쪽 헬프를 적극적으로 보내는 조직적 수비'],
+            [10, '풀 로테이션',      '팀 전체가 유기체처럼 움직이는 시스템 수비'],
+        ],
+    },
+    zonePreference: {
+        label: '존 디펜스',
+        group: 'defense',
+        tiers: [
+            [2,  '순수 대인',        '존 디펜스를 거의 사용하지 않는 대인 수비 고집'],
+            [4,  '대인 기본',        '대인 수비 중심, 극히 드물게 변칙 존 활용'],
+            [6,  '대인-존 혼용',     '상대 라인업에 따라 대인과 존을 유연하게 전환'],
+            [8,  '존 다용',          '매치업 불리를 숨기거나 페이스 조절용으로 존을 자주 활용'],
+            [10, '존 중심',          '존을 기본 세팅으로 가져가는 드문 스타일'],
+        ],
+    },
+};
+
+function getAxisResult(axis: PrefAxis, val: number): { tag: string; desc: string } {
+    for (const [max, tag, desc] of axis.tiers) {
+        if (val <= max) return { tag, desc };
+    }
+    const last = axis.tiers[axis.tiers.length - 1];
+    return { tag: last[1], desc: last[2] };
+}
+
+const PREF_ORDER: PrefKey[] = [
+    'offenseIdentity', 'tempo', 'scoringFocus', 'pnrEmphasis',
+    'defenseStyle', 'helpScheme', 'zonePreference',
 ];
-
-const getPrefColor = (val: number): string => {
-    if (val >= 9) return '#d946ef';  // fuchsia-500
-    if (val >= 7) return '#34d399';  // emerald-400
-    if (val >= 4) return '#fbbf24';  // amber-400
-    return '#64748b';                // slate-500
-};
-
-const getPrefBgColor = (val: number): string => {
-    if (val >= 9) return 'rgba(217,70,239,0.15)';
-    if (val >= 7) return 'rgba(52,211,153,0.15)';
-    if (val >= 4) return 'rgba(251,191,36,0.15)';
-    return 'rgba(100,116,139,0.1)';
-};
 
 export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId, onBack }) => {
     const teamInfo = TEAM_DATA[teamId];
@@ -53,8 +126,8 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
         return () => window.removeEventListener('keydown', handleKey);
     }, [onBack]);
 
-    const offenseAxes = PREF_AXES.filter(a => a.group === 'offense');
-    const defenseAxes = PREF_AXES.filter(a => a.group === 'defense');
+    const offenseKeys = PREF_ORDER.filter(k => PREF_TEXTS[k].group === 'offense');
+    const defenseKeys = PREF_ORDER.filter(k => PREF_TEXTS[k].group === 'defense');
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">
@@ -121,16 +194,17 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                 {/* ═══ BODY ═══ */}
                 <div className="text-xs bg-slate-950">
 
-                    {/* ═══ SECTION: 전술 성향 ═══ */}
+                    {/* ═══ SECTION: 전술 성향 — 스카우팅 리포트 ═══ */}
                     <div>
                         {/* Offense */}
                         <div className="px-6 py-3 bg-slate-700 flex items-center">
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">Offense Philosophy</span>
                         </div>
                         <div className="divide-y divide-slate-800/50">
-                            {offenseAxes.map(axis => {
-                                const val = coach.preferences[axis.key];
-                                return <PreferenceBar key={axis.key} val={val} lowLabel={axis.lowLabel} highLabel={axis.highLabel} />;
+                            {offenseKeys.map(key => {
+                                const axis = PREF_AXES[key];
+                                const { tag, desc } = getAxisResult(axis, coach.preferences[key]);
+                                return <PreferenceRow key={key} label={axis.label} tag={tag} desc={desc} />;
                             })}
                         </div>
 
@@ -139,9 +213,10 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">Defense Philosophy</span>
                         </div>
                         <div className="divide-y divide-slate-800/50">
-                            {defenseAxes.map(axis => {
-                                const val = coach.preferences[axis.key];
-                                return <PreferenceBar key={axis.key} val={val} lowLabel={axis.lowLabel} highLabel={axis.highLabel} />;
+                            {defenseKeys.map(key => {
+                                const axis = PREF_AXES[key];
+                                const { tag, desc } = getAxisResult(axis, coach.preferences[key]);
+                                return <PreferenceRow key={key} label={axis.label} tag={tag} desc={desc} />;
                             })}
                         </div>
                     </div>
@@ -152,41 +227,13 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
     );
 };
 
-// ── Preference Bar Component ──
-const PreferenceBar: React.FC<{ val: number; lowLabel: string; highLabel: string }> = ({ val, lowLabel, highLabel }) => {
-    const pct = ((val - 1) / 9) * 100; // 1→0%, 10→100%
-    const color = getPrefColor(val);
-    const bgColor = getPrefBgColor(val);
-
-    return (
-        <div className="px-6 py-4 hover:bg-white/5 transition-colors">
-            {/* Labels row */}
-            <div className="flex items-center justify-between mb-2">
-                <span className="text-xs text-slate-500 font-bold ko-normal">{lowLabel}</span>
-                <span className="font-mono font-black text-sm tabular-nums" style={{ color }}>{val}</span>
-                <span className="text-xs text-slate-500 font-bold ko-normal">{highLabel}</span>
-            </div>
-            {/* Bar */}
-            <div className="relative h-2.5 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                    className="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
-                    style={{
-                        width: `${pct}%`,
-                        backgroundColor: color,
-                        opacity: 0.7,
-                        boxShadow: `0 0 8px ${bgColor}`,
-                    }}
-                />
-                {/* Marker dot */}
-                <div
-                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-slate-900 shadow-lg transition-all duration-500"
-                    style={{
-                        left: `${pct}%`,
-                        transform: `translate(-50%, -50%)`,
-                        backgroundColor: color,
-                    }}
-                />
-            </div>
+// ── Preference Row Component ──
+const PreferenceRow: React.FC<{ label: string; tag: string; desc: string }> = ({ label, tag, desc }) => (
+    <div className="px-6 py-3.5 hover:bg-white/5 transition-colors flex items-baseline gap-3">
+        <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest w-28 shrink-0 ko-normal">{label}</span>
+        <div className="flex items-baseline gap-2 min-w-0">
+            <span className="text-sm font-black text-slate-200 shrink-0">{tag}</span>
+            <span className="text-xs text-slate-500 ko-normal truncate">{desc}</span>
         </div>
-    );
-};
+    </div>
+);
