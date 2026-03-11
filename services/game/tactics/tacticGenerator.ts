@@ -1,5 +1,6 @@
 
 import { Team, GameTactics, DepthChart, Player } from '../../../types';
+import { HeadCoachPreferences } from '../../../types/coaching';
 import { calculatePlayerOvr } from '../../../utils/constants';
 import { DEFAULT_SLIDERS } from '../config/tacticPresets';
 import { SLIDER_STEPS, valueToStep, stepToValue } from '../config/sliderSteps';
@@ -43,7 +44,47 @@ const perimLockScore = (p: Player) => p.perDef * 0.50 + p.agility * 0.25 + p.ste
  * - ISO/포스트업 = 비효율 기본, 엘리트만 높게
  * - 풀코트 프레스 = 극도 체력 소모 → 보수적
  */
-export const generateAutoTactics = (team: Team): GameTactics => {
+// ── 코치 블렌딩 ──
+const COACH_INFLUENCE = 0.4; // 코치 40% : 로스터 60%
+
+const lerp = (roster: number, coach: number, w: number): number =>
+    Math.round(roster * (1 - w) + coach * w);
+
+function blendWithCoach(
+    sliders: GameTactics['sliders'],
+    prefs: HeadCoachPreferences
+): GameTactics['sliders'] {
+    const W = COACH_INFLUENCE;
+    return {
+        ...sliders,
+        // 공격: offenseIdentity
+        playStyle:    snap('playStyle',    lerp(sliders.playStyle,    prefs.offenseIdentity, W)),
+        ballMovement: snap('ballMovement', lerp(sliders.ballMovement, prefs.offenseIdentity, W)),
+        // 공격: tempo
+        pace:   snap('pace',   lerp(sliders.pace,   prefs.tempo, W)),
+        offReb: snap('offReb', lerp(sliders.offReb, 11 - prefs.tempo, W)),
+        // 공격: scoringFocus
+        insideOut: snap('insideOut', lerp(sliders.insideOut, prefs.scoringFocus, W)),
+        shot_3pt:  snap('shot_3pt',  lerp(sliders.shot_3pt,  prefs.scoringFocus, W)),
+        shot_rim:  snap('shot_rim',  lerp(sliders.shot_rim,  11 - prefs.scoringFocus, W)),
+        // shot_mid: 코치 선호 무관 (순수 로스터 기반 유지)
+        // 공격: pnrEmphasis
+        pnrFreq: snap('pnrFreq', lerp(sliders.pnrFreq, prefs.pnrEmphasis, W)),
+        // 수비: defenseStyle
+        defIntensity:   snap('defIntensity',   lerp(sliders.defIntensity,   prefs.defenseStyle, W)),
+        fullCourtPress: snap('fullCourtPress', lerp(sliders.fullCourtPress, prefs.defenseStyle, W)),
+        // 수비: helpScheme
+        helpDef:    snap('helpDef',    lerp(sliders.helpDef,    prefs.helpScheme, W)),
+        switchFreq: snap('switchFreq', lerp(sliders.switchFreq, prefs.helpScheme, W)),
+        // 수비: zonePreference
+        zoneFreq:  lerp(sliders.zoneFreq,  prefs.zonePreference, W),
+        zoneUsage: lerp(sliders.zoneUsage, prefs.zonePreference, W),
+        // 코치 선호 무관
+        // defReb, pnrDefense, shot_mid: 기존 값 유지 (spread로 커버)
+    };
+}
+
+export const generateAutoTactics = (team: Team, coachPrefs?: HeadCoachPreferences): GameTactics => {
     const healthy = team.roster.filter(p => p.health !== 'Injured');
     const sortedRoster = [...healthy].sort((a, b) => calculatePlayerOvr(b) - calculatePlayerOvr(a));
 
@@ -206,26 +247,28 @@ export const generateAutoTactics = (team: Team): GameTactics => {
     const powerDiff = intDefPower - perimPower;
     const zoneFreq = powerDiff >= 15 ? 9 : powerDiff <= -10 ? 1 : 5;
 
+    const rosterSliders = {
+        pace: snap('pace', pace),
+        ballMovement: snap('ballMovement', ballMovement),
+        offReb: snap('offReb', offReb),
+        playStyle: snap('playStyle', playStyle),
+        insideOut: snap('insideOut', insideOut),
+        pnrFreq: snap('pnrFreq', pnrFreq),
+        shot_3pt: snap('shot_3pt', shot_3pt),
+        shot_mid,
+        shot_rim: snap('shot_rim', shot_rim),
+        defIntensity: snap('defIntensity', defIntensity),
+        helpDef: snap('helpDef', helpDef),
+        switchFreq: snap('switchFreq', switchFreq),
+        defReb: DEFAULT_SLIDERS.defReb,
+        zoneFreq,
+        fullCourtPress,
+        zoneUsage: zoneFreq,
+        pnrDefense: DEFAULT_SLIDERS.pnrDefense,
+    };
+
     return {
-        sliders: {
-            pace: snap('pace', pace),
-            ballMovement: snap('ballMovement', ballMovement),
-            offReb: snap('offReb', offReb),
-            playStyle: snap('playStyle', playStyle),
-            insideOut: snap('insideOut', insideOut),
-            pnrFreq: snap('pnrFreq', pnrFreq),
-            shot_3pt: snap('shot_3pt', shot_3pt),
-            shot_mid,
-            shot_rim: snap('shot_rim', shot_rim),
-            defIntensity: snap('defIntensity', defIntensity),
-            helpDef: snap('helpDef', helpDef),
-            switchFreq: snap('switchFreq', switchFreq),
-            defReb: DEFAULT_SLIDERS.defReb,
-            zoneFreq,
-            fullCourtPress,
-            zoneUsage: zoneFreq,
-            pnrDefense: DEFAULT_SLIDERS.pnrDefense,
-        },
+        sliders: coachPrefs ? blendWithCoach(rosterSliders, coachPrefs) : rosterSliders,
         starters: startersMap,
         minutesLimits: {},
         rotationMap,

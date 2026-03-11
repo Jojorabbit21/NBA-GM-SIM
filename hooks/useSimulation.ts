@@ -2,6 +2,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
@@ -40,7 +41,8 @@ export const useSimulation = (
     tendencySeed?: string,
     hofId?: string | null,
     onHofSubmitted?: () => void,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ) => {
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
@@ -277,7 +279,7 @@ export const useSimulation = (
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
             const excludeGameId = userGame?.id || spectateGameId;
-            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings);
+            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings, coachingData);
 
             // [Fix] Save CPU Game Results to DB
             if (!isGuestMode) {
@@ -294,7 +296,7 @@ export const useSimulation = (
             // 4. Handle User Game
             if (userGame) {
                 // Run Simulation (Pure Logic)
-                const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed, simSettings);
+                const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed, simSettings, coachingData);
                 
                 setTempSimulationResult(result);
 

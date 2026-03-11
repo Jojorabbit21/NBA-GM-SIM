@@ -18,6 +18,8 @@ import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
 import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDevelopment/playerAging';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
+import { LeagueCoachingData } from '../types/coaching';
+import { generateLeagueCoaches, getCoachPreferences } from '../services/coachingStaff/coachGenerator';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -42,6 +44,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [tendencySeed, setTendencySeed] = useState<string | null>(null); // [New] Save-seeded hidden tendencies
     const [hofId, setHofId] = useState<string | null>(null); // HoF 제출용 세이브 식별자
     const [simSettings, setSimSettings] = useState<SimSettings>(DEFAULT_SIM_SETTINGS);
+    const [coachingData, setCoachingData] = useState<LeagueCoachingData | null>(null);
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -53,10 +56,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings, coachingData]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -312,6 +315,18 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         setSimSettings({ ...DEFAULT_SIM_SETTINGS, tcr: legacyTcr, growthRate: legacyTcr, declineRate: legacyTcr });
                     }
 
+                    // 코칭 스태프 로드 (저장된 값 우선, 없으면 생성)
+                    if (checkpoint.coaching_staff) {
+                        setCoachingData(checkpoint.coaching_staff);
+                    } else if (checkpoint.tendency_seed) {
+                        const teamIds = loadedTeams!.map(t => t.id);
+                        const generated = generateLeagueCoaches(teamIds, checkpoint.tendency_seed);
+                        setCoachingData(generated);
+                        // 비동기 저장 (non-blocking)
+                        saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date,
+                            undefined, undefined, undefined, undefined, undefined, undefined, undefined, generated);
+                    }
+
                     if (checkpoint.hof_id) {
                         setHofId(checkpoint.hof_id);
                     }
@@ -429,7 +444,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
             if (teamId && date) {
                 const currentSimSettings = overrides?.simSettings || gameStateRef.current.simSettings;
-                const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot, currentSimSettings);
+                const coaching = overrides?.coachingData || gameStateRef.current.coachingData;
+                const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching);
                 // hofId를 DB 응답에서 동기화 (최초 세이브 시 DB가 gen_random_uuid()로 생성)
                 if (result?.[0]?.hof_id) {
                     setHofId(result[0].hof_id);
@@ -461,6 +477,20 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         const newSeed = crypto.randomUUID();
         setTendencySeed(newSeed);
 
+        // 30팀 코칭 스태프 생성 (tendencySeed 기반 결정론적)
+        const teamIds = teams.map(t => t.id);
+        const newCoachingData = generateLeagueCoaches(teamIds, newSeed);
+        setCoachingData(newCoachingData);
+
+        // 코치 선호도를 자동전술에 반영
+        if (teamData && newTactics) {
+            const coachPrefs = getCoachPreferences(newCoachingData, teamId);
+            if (coachPrefs) {
+                newTactics = generateAutoTactics(teamData, coachPrefs);
+                setUserTactics(newTactics);
+            }
+        }
+
         // 시즌 시작: 모든 선수 성장 초기화 (catPot, seasonStartAttributes, fractionalGrowth)
         teams.forEach(t => initializeSeasonGrowth(t.roster));
 
@@ -472,6 +502,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             currentSimDate: INITIAL_DATE,
             userTactics: newTactics,
             tendencySeed: newSeed,
+            coachingData: newCoachingData,
             teams,
         });
 
@@ -520,6 +551,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             setUserTactics(null);
             setDepthChart(null);
             setTendencySeed(null);
+            setCoachingData(null);
             setHofId(null);
             hasInitialLoadRef.current = false;
 
@@ -566,11 +598,12 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
 
         setTeams(newTeams);
 
-        // 4. 유저 팀 전술 재생성 (새 로스터 기반)
+        // 4. 유저 팀 전술 재생성 (새 로스터 기반 + 코치 선호 반영)
         const myTeam = newTeams.find(t => t.id === myTeamId);
         let newTactics: GameTactics | null = null;
         if (myTeam) {
-            newTactics = generateAutoTactics(myTeam);
+            const coachPrefs = getCoachPreferences(gameStateRef.current.coachingData, myTeam.id);
+            newTactics = generateAutoTactics(myTeam, coachPrefs);
             setUserTactics(newTactics);
         }
 
@@ -650,6 +683,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setTendencySeed(null);
          setHofId(null);
          setSimSettings(DEFAULT_SIM_SETTINGS);
+         setCoachingData(null);
          setNews([]);
          draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;
@@ -674,6 +708,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         tendencySeed,
         hofId,
         simSettings, setSimSettings,
+        coachingData, setCoachingData,
         news, setNews,
         
         isBaseDataLoading,

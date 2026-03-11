@@ -182,6 +182,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             sim.loadSavedGameResult(result);
                             setView('GameResult');
                         }}
+                        coachingData={gameData.coachingData}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {

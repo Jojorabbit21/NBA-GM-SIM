@@ -80,7 +80,8 @@ const App: React.FC = () => {
         gameData.tendencySeed || undefined,
         gameData.hofId,
         () => setHasSubmittedHof(true),
-        gameData.simSettings
+        gameData.simSettings,
+        gameData.coachingData
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -93,7 +94,8 @@ const App: React.FC = () => {
         gameData.tendencySeed || undefined,
         gameData.hofId,
         () => setHasSubmittedHof(true),
-        gameData.simSettings
+        gameData.simSettings,
+        gameData.coachingData
     );
 
     // 인증 및 라우팅 상태 감시
