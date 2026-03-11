@@ -65,10 +65,38 @@ export async function runBatchSeason(
     let current = 0;
     let lastDate = unplayedDates[unplayedDates.length - 1] ?? '';
 
+    // 월간 스카우트 보고서 트래킹
+    let prevMonthKey = unplayedDates.length > 0
+        ? new Date(unplayedDates[0]).getFullYear() * 100 + new Date(unplayedDates[0]).getMonth()
+        : -1;
+
     for (const date of unplayedDates) {
         if (cancelToken.cancelled) {
             lastDate = date;
             break;
+        }
+
+        // 월 경계 감지 → 스카우트 보고서 생성
+        const currentMonthKey = new Date(date).getFullYear() * 100 + new Date(date).getMonth();
+        if (currentMonthKey !== prevMonthKey && userId) {
+            const myTeam = teams.find(t => t.id === myTeamId);
+            if (myTeam) {
+                const prevDate = new Date(date);
+                prevDate.setDate(0); // 직전 달 마지막 날
+                const periodEnd = prevDate.toISOString().split('T')[0];
+                const periodStart = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}-01`;
+                const monthLabel = `${prevDate.getFullYear()}년 ${prevDate.getMonth() + 1}월`;
+                const scoutContent = buildScoutReportContent(myTeam.roster, myTeamId, myTeam.name, periodStart, periodEnd, monthLabel);
+                if (scoutContent.hasAnyChanges) {
+                    allMessages.push({
+                        user_id: userId, team_id: myTeamId, date,
+                        type: 'SCOUT_REPORT',
+                        title: `[스카우트 보고서] ${monthLabel}`,
+                        content: scoutContent,
+                    });
+                }
+            }
+            prevMonthKey = currentMonthKey;
         }
 
         // 유저 경기 찾기
