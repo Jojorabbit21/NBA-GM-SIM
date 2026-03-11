@@ -11,6 +11,7 @@ interface DepthChartEditorProps {
     depthChart: DepthChart | null;
     onUpdateDepthChart: (dc: DepthChart) => void;
     onUpdateTactics: (t: GameTactics) => void;
+    coachName?: string;
 }
 
 type AutoFillMode = 'Ability' | 'Stamina';
@@ -20,7 +21,8 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
     tactics,
     depthChart,
     onUpdateDepthChart,
-    onUpdateTactics
+    onUpdateTactics,
+    coachName
 }) => {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -210,7 +212,7 @@ const DepthChartEditorInner: React.FC<DepthChartEditorProps> = ({
                             onClick={() => handleAutoFill('Ability')}
                             className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
                         >
-                            <span>코치에게 위임</span>
+                            <span>{coachName ? `${coachName}에게 위임` : '코치에게 위임'}</span>
                         </button>
                         <button 
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}

@@ -919,9 +919,12 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         };
     }, [pauseReason, isGameEnd]);
 
-    // 경기 종료 처리
+    // 경기 종료 처리 (onGameEnd 이중 호출 방지: onGameEnd이 인라인 함수라 매 렌더마다
+    // 새 레퍼런스 → deps 변경 → effect 재실행 → finalizeLiveGame 이중 호출 위험)
+    const hasCalledGameEndRef = useRef(false);
     useEffect(() => {
-        if (isGameEnd) {
+        if (isGameEnd && !hasCalledGameEndRef.current) {
+            hasCalledGameEndRef.current = true;
             const result = getResult();
             if (result) onGameEnd(result);
         }
@@ -1004,7 +1007,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     <span className="text-2xl font-black tabular-nums text-amber-400 leading-none w-[2ch] text-center">{pauseCountdown}</span>
                                     <button
                                         onClick={resume}
-                                        className="px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-bold transition-colors"
+                                        className="px-2.5 py-0.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-colors"
                                     >
                                         종료
                                     </button>
@@ -1070,7 +1073,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     <button
                                         key={s}
                                         onClick={() => setSpeed(s)}
-                                        className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors
+                                        className={`px-2.5 py-0.5 text-xs font-bold transition-colors
                                             ${idx > 0 ? 'border-l border-slate-700' : ''}
                                             ${speed === s
                                                 ? 'bg-indigo-600 text-white'
@@ -1087,7 +1090,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     disabled={pauseReason !== null || userTimeoutsLeft <= 0}
                                     className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
                                                disabled:opacity-40 disabled:cursor-not-allowed
-                                               text-white text-[10px] font-bold transition-colors"
+                                               text-white text-xs font-bold transition-colors"
                                 >
                                     타임아웃 ({userTimeoutsLeft})
                                 </button>
@@ -1097,7 +1100,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 disabled={isGameEnd}
                                 className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
                                            disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-[10px] font-bold transition-colors"
+                                           text-white text-xs font-bold transition-colors"
                             >
                                 경기 종료까지 ▶▶
                             </button>
@@ -1110,7 +1113,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                         <button
                             key={key}
                             onClick={() => setActiveTab(key)}
-                            className={`px-3 py-1 rounded-lg text-[11px] font-bold transition-colors ${
+                            className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
                                 activeTab === key
                                     ? 'bg-indigo-600 text-white'
                                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
@@ -1129,7 +1132,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 disabled={isGameEnd}
                                 className="px-3 py-0.5 rounded-lg bg-slate-600 hover:bg-slate-500
                                            disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-[10px] font-bold transition-colors"
+                                           text-white text-xs font-bold transition-colors"
                             >
                                 경기 종료까지 ▶▶
                             </button>
@@ -1138,7 +1141,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 disabled={pauseReason !== null || userTimeoutsLeft <= 0}
                                 className="px-3 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-500
                                            disabled:opacity-40 disabled:cursor-not-allowed
-                                           text-white text-[10px] font-bold transition-colors"
+                                           text-white text-xs font-bold transition-colors"
                             >
                                 타임아웃 ({userTimeoutsLeft})
                             </button>
@@ -1147,7 +1150,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                     <button
                                         key={s}
                                         onClick={() => setSpeed(s)}
-                                        className={`px-2.5 py-0.5 text-[10px] font-bold transition-colors
+                                        className={`px-2.5 py-0.5 text-xs font-bold transition-colors
                                             ${idx > 0 ? 'border-l border-slate-700' : ''}
                                             ${speed === s
                                                 ? 'bg-indigo-600 text-white'

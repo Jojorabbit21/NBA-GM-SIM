@@ -13,6 +13,7 @@ interface RotationMatrixProps {
     healthySorted: Player[];
     onUpdateTactics: (t: GameTactics) => void;
     onViewPlayer: (p: Player) => void;
+    coachName?: string;
 }
 
 type AllocationMode = 'Overwork' | 'Balanced' | 'Socialist';
@@ -23,7 +24,8 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
     depthChart,
     healthySorted,
     onUpdateTactics,
-    onViewPlayer
+    onViewPlayer,
+    coachName
 }) => {
     const [lastSelected, setLastSelected] = useState<{pid: string, min: number} | null>(null);
     const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
@@ -255,7 +257,7 @@ export const RotationMatrix: React.FC<RotationMatrixProps> = ({
                             onClick={() => handleAllocation('Overwork')}
                             className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
                         >
-                            <span>코치에게 위임</span>
+                            <span>{coachName ? `${coachName}에게 위임` : '코치에게 위임'}</span>
                         </button>
                         <button 
                             onClick={() => setIsAiDropdownOpen(!isAiDropdownOpen)}

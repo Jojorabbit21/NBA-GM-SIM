@@ -181,6 +181,7 @@ interface RotationGanttChartProps {
     healthySorted: Player[];
     onUpdateTactics: (t: GameTactics) => void;
     onViewPlayer: (p: Player) => void;
+    coachName?: string;
     // Live mode
     liveMode?: boolean;
     currentMinute?: number;
@@ -189,7 +190,7 @@ interface RotationGanttChartProps {
 }
 
 const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
-    team, tactics, depthChart, healthySorted, onUpdateTactics, onViewPlayer,
+    team, tactics, depthChart, healthySorted, onUpdateTactics, onViewPlayer, coachName,
     liveMode = false, currentMinute: liveCurrentMinute, lockedBefore, readOnly = false,
 }) => {
     const [dragging, setDragging] = useState<DragState | null>(null);
@@ -428,7 +429,7 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                 onClick={() => handleAllocation('Overwork')}
                                 className="flex items-center gap-2 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-l-lg transition-all text-xs font-bold uppercase tracking-wider active:scale-95 border-r border-indigo-700/50"
                             >
-                                코치에게 위임
+                                {coachName ? `${coachName}에게 위임` : '코치에게 위임'}
                             </button>
                             <button
                                 onClick={() => setIsAiDropdownOpen(v => !v)}

@@ -51,6 +51,7 @@ export const useSimulation = (
     const [tempSimulationResult, setTempSimulationResult] = useState<SimulationResult | null>(null);
 
     const finalizeSimRef = useRef<(() => void) | undefined>(undefined);
+    const isFinalizingRef = useRef(false); // 재진입 방지 가드
 
     // ── Spectate Mode (리그 일정에서 AI 경기 참관) ──
     const [spectateTarget, setSpectateTarget] = useState<{
@@ -307,6 +308,9 @@ export const useSimulation = (
 
                 // Finalize Function (Called after animation or immediately)
                 finalizeSimRef.current = async () => {
+                    if (isFinalizingRef.current) return;
+                    isFinalizingRef.current = true;
+                    try {
                     // Apply Results (Mutates newTeams/Schedule/Playoffs)
                     await applyUserGameResult(
                         result, userGame, newTeams, newSchedule, newPlayoffSeries,
@@ -376,6 +380,9 @@ export const useSimulation = (
                     });
 
                     setActiveGame(null);
+                    } finally {
+                        isFinalizingRef.current = false;
+                    }
                 };
 
                 if (skipAnimation) {
@@ -537,7 +544,8 @@ export const useSimulation = (
 
     // 라이브 경기 종료 후 전체 파이프라인 실행 (applyUserGameResult + seasonEvents + state commit)
     const finalizeLiveGame = useCallback(async (result: SimulationResult) => {
-        if (!liveGameTarget || !myTeamId) return;
+        if (!liveGameTarget || !myTeamId || isFinalizingRef.current) return;
+        isFinalizingRef.current = true;
         const { userGame, cpuViewData, cpuResults, userTactics: liveUserTactics } = liveGameTarget;
 
         try {
@@ -626,6 +634,8 @@ export const useSimulation = (
             console.error("Live Game Finalization Error:", e);
             setIsSimulating(false);
             setToastMessage("경기 결과 처리 중 오류가 발생했습니다.");
+        } finally {
+            isFinalizingRef.current = false;
         }
     }, [liveGameTarget, myTeamId, teams, schedule, playoffSeries, currentSimDate, session, isGuestMode,
         refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage, transactions, sendReviewMessages, simSettings]);
