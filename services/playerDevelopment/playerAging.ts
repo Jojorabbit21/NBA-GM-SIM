@@ -277,7 +277,7 @@ function computeCatPerfMultipliers(
         const scores = catPerfScores[cat];
         if (scores.length > 0) {
             const avgZ = scores.reduce((s, v) => s + v, 0) / scores.length;
-            perfMultipliers[cat] = Math.max(-0.5, Math.min(2.0, 1.0 + avgZ * 0.3));
+            perfMultipliers[cat] = Math.max(0, Math.min(2.5, 1.0 + avgZ * 0.5));
         }
     }
     // ath는 출전시간 비례
@@ -318,16 +318,9 @@ function calculatePerGameGrowth(
     // 카테고리별 퍼포먼스 배율
     const perfMultipliers = computeCatPerfMultipliers(gameBoxScore, leagueAverages, mpRatio);
 
-    // 선수 전체 평균 (성장 가능한 속성만)
-    let playerAttrSum = 0;
-    let playerAttrCount = 0;
-    for (const attr of ALL_ATTRIBUTES) {
-        if (ATTR_CONFIG[attr].growable) {
-            playerAttrSum += getAttr(player, attr);
-            playerAttrCount++;
-        }
-    }
-    const playerAvg = playerAttrCount > 0 ? playerAttrSum / playerAttrCount : 70;
+    // 고정 시즌 예산 (potGap에 비례하지 않음)
+    const seasonBudget = BASE_GROWTH_RATE * ageFactor * tcr;
+    const perGameBase = seasonBudget / 82;
 
     const deltas: Partial<Record<SkillAttribute, number>> = {};
 
@@ -337,51 +330,39 @@ function calculatePerGameGrowth(
 
         const currentVal = getAttr(player, attr);
 
-        // 속성별 잠재력 천장
-        const attrPotCeiling = player.potential + (currentVal - playerAvg) * 0.5;
-        const potGap = Math.max(0, attrPotCeiling - currentVal);
-
-        // POT 소프트 캡
-        let growthMult: number;
-        if (currentVal <= attrPotCeiling - 5) {
-            growthMult = 1.0;
-        } else if (currentVal <= attrPotCeiling) {
-            growthMult = 0.2 + 0.8 * ((attrPotCeiling - currentVal) / 5);
-        } else {
-            const overshoot = currentVal - attrPotCeiling;
-            growthMult = 0.15 * Math.exp(-overshoot * 0.3);
-        }
-
         // 퍼포먼스 배율 (perfStats의 카테고리 평균)
-        let perfMult = 1.0;
+        // perfMult = 0 이면 해당 활동 안 함 → 성장 없음
+        let perfMult: number;
         if (cfg.perfStats.length > 0) {
-            const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 1.0), 0);
+            const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 0), 0);
             perfMult = perfSum / cfg.perfStats.length;
+        } else {
+            // perfStats 없는 속성 (strength, stamina, hustle): 출전시간 비례만
+            perfMult = mpRatio;
         }
 
-        // 시즌 예산 → 1경기당
-        const effectiveGap = currentVal <= attrPotCeiling ? potGap : 5;
-        const seasonBudget = effectiveGap * BASE_GROWTH_RATE * ageFactor * growthMult * tcr;
-        const attrEnergy = (seasonBudget / 82) * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0);
+        if (perfMult <= 0) continue; // 리그 평균 이하 → 성장 없음
 
-        if (Math.abs(attrEnergy) < 0.0001) continue;
-
-        if (attrEnergy > 0) {
-            // 성장: maxPerGameGrowth로 캡
-            const room = Math.max(0, 99 - currentVal);
-            if (room <= 0) continue;
-            const delta = Math.min(cfg.maxPerGameGrowth, attrEnergy);
-            if (delta > 0.001) {
-                deltas[attr] = (deltas[attr] ?? 0) + delta;
-            }
+        // 천장 소프트캡: potential 근처에서 감속 → 정지
+        const ceiling = player.potential + 3; // potential보다 약간 높은 천장
+        let growthMult: number;
+        if (currentVal <= ceiling - 8) {
+            growthMult = 1.0;
+        } else if (currentVal <= ceiling) {
+            growthMult = 0.1 + 0.9 * ((ceiling - currentVal) / 8);
         } else {
-            // 부진 퇴화 (perfMult < 0 → 끔찍한 경기)
-            if (currentVal > cfg.floor) {
-                const delta = Math.max(-0.3, attrEnergy);
-                if (delta < -0.001) {
-                    deltas[attr] = (deltas[attr] ?? 0) + delta;
-                }
-            }
+            growthMult = 0.05 * Math.exp(-(currentVal - ceiling) * 0.3);
+        }
+
+        const attrEnergy = perGameBase * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0) * growthMult;
+        if (attrEnergy < 0.0001) continue;
+
+        // 성장: maxPerGameGrowth로 캡
+        const room = Math.max(0, 99 - currentVal);
+        if (room <= 0) continue;
+        const delta = Math.min(cfg.maxPerGameGrowth, attrEnergy);
+        if (delta > 0.001) {
+            deltas[attr] = (deltas[attr] ?? 0) + delta;
         }
     }
 
