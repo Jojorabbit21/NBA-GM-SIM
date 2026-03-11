@@ -14,9 +14,9 @@ interface CoachDetailViewProps {
 }
 
 // ── 선호 축별 전술 용어 매핑 (값 → 짧은 자연어) ──
-type PrefKey = keyof HeadCoach['preferences'];
+export type PrefKey = keyof HeadCoach['preferences'];
 
-interface PrefAxis {
+export interface PrefAxis {
     label: string;
     group: 'offense' | 'defense';
     color: string;
@@ -24,7 +24,7 @@ interface PrefAxis {
     tiers: [number, string, string][];  // [최대값, 태그, 설명]
 }
 
-const PREF_AXES: Record<PrefKey, PrefAxis> = {
+export const PREF_AXES: Record<PrefKey, PrefAxis> = {
     offenseIdentity: {
         label: '공격 체계',
         group: 'offense',
@@ -111,7 +111,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     },
 };
 
-function getAxisResult(axis: PrefAxis, val: number): { tag: string; desc: string } {
+export function getAxisResult(axis: PrefAxis, val: number): { tag: string; desc: string } {
     for (const [max, tag, desc] of axis.tiers) {
         if (val <= max) return { tag, desc };
     }
@@ -119,7 +119,7 @@ function getAxisResult(axis: PrefAxis, val: number): { tag: string; desc: string
     return { tag: last[1], desc: last[2] };
 }
 
-const PREF_ORDER: PrefKey[] = [
+export const PREF_ORDER: PrefKey[] = [
     'offenseIdentity', 'tempo', 'scoringFocus', 'pnrEmphasis',
     'defenseStyle', 'helpScheme', 'zonePreference',
 ];
