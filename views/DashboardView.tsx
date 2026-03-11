@@ -33,6 +33,7 @@ interface DashboardViewProps {
   onViewGameResult?: (result: any) => void;
   coachingData?: LeagueCoachingData | null;
   initialTab?: DashboardTab;
+  onCoachClick?: (teamId: string) => void;
 }
 
 export type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule' | 'coaching';
@@ -41,7 +42,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating,
   depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer,
-  userId, onViewGameResult, coachingData, initialTab
+  userId, onViewGameResult, coachingData, initialTab, onCoachClick
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'rotation');
 
@@ -197,7 +198,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
               {activeTab === 'coaching' && (
                   <div className="animate-in fade-in duration-500 h-full">
-                    <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} />
+                    <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} onCoachClick={() => onCoachClick?.(team.id)} />
                   </div>
               )}
 

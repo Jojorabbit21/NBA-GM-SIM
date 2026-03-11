@@ -199,6 +199,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                         }}
                         coachingData={gameData.coachingData}
                         initialTab={dashboardInitialTab}
+                        onCoachClick={handleViewCoach}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {
