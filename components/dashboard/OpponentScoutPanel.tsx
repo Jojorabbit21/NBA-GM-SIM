@@ -155,16 +155,16 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
                             </th>
                         </tr>
                         <tr className="text-xs font-black text-slate-500 uppercase tracking-widest h-10">
-                            <TableHeaderCell align="center" className="border-r border-slate-800/30 ko-normal">포지션</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-4 border-r border-slate-800/30 ko-normal">이름</TableHeaderCell>
-                            <TableHeaderCell align="center" className="border-r border-slate-700">OVR</TableHeaderCell>
+                            <TableHeaderCell align="center" className="border-r border-r-slate-800/30 ko-normal">포지션</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-4 border-r border-r-slate-800/30 ko-normal">이름</TableHeaderCell>
+                            <TableHeaderCell align="center" className="border-r border-r-slate-700">OVR</TableHeaderCell>
 
                             {ATTR_COLS.map((col, i) => (
-                                <TableHeaderCell key={col.label} align="center" className={i === ATTR_COLS.length - 1 ? 'border-r border-slate-700' : 'border-r border-slate-800/30'} title={col.tooltip}>{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className={i === ATTR_COLS.length - 1 ? 'border-r border-r-slate-700' : 'border-r border-r-slate-800/30'} title={col.tooltip}>{col.label}</TableHeaderCell>
                             ))}
 
                             {STAT_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className="text-slate-400 border-r border-slate-800/30 last:border-r-0">{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="text-slate-400 border-r border-r-slate-800/30 last:border-r-0">{col.label}</TableHeaderCell>
                             ))}
                         </tr>
                     </thead>
