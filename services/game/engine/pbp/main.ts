@@ -1,5 +1,6 @@
 
 import { Team, GameTactics, DepthChart, SimulationResult } from '../../../../types';
+import { LeagueCoachingData } from '../../../../types/coaching';
 import { SimSettings } from '../../../../types/simSettings';
 import { createGameState, stepPossession, extractSimResult } from './liveEngine';
 
@@ -18,13 +19,14 @@ export function runFullGameSimulation(
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): SimulationResult {
 
     const state = createGameState(
         homeTeam, awayTeam, userTeamId, userTactics,
         isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed,
-        simSettings
+        simSettings, coachingData
     );
 
     // 전체 경기를 동기적으로 완주 (배치 방식)

@@ -1,5 +1,6 @@
 
 import { Team, Game, PlayoffSeries, GameTactics, DepthChart, SimulationResult } from '../../types';
+import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateGame } from '../gameEngine';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
@@ -18,7 +19,8 @@ export const runUserSimulation = (
     currentSimDate: string,
     depthChart?: DepthChart | null,
     tendencySeed?: string,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): SimulationResult => {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -48,7 +50,8 @@ export const runUserSimulation = (
         homeDepth,
         awayDepth,
         tendencySeed,
-        simSettings
+        simSettings,
+        coachingData
     );
 };
 

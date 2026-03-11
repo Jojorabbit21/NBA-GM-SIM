@@ -1,5 +1,6 @@
 
 import { Team, Player, PlayerBoxScore, TacticalSnapshot, GameTactics, RosterUpdate, SimulationResult, DepthChart } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { SIM_CONFIG, POSITION_PENALTY_MAP } from './game/config/constants';
 import { stableSort, distributeMinutes } from './game/tactics/minutesManager';
@@ -26,7 +27,8 @@ export function simulateGame(
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): SimulationResult {
 
     // Call the new PbP engine
@@ -40,7 +42,8 @@ export function simulateGame(
         homeDepthChart,
         awayDepthChart,
         tendencySeed,
-        simSettings
+        simSettings,
+        coachingData
     );
     
     return result;

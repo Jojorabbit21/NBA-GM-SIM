@@ -1,5 +1,6 @@
 
 import { Team, Game, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent, PbpLog } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { simulateGame } from './gameEngine';
 
@@ -26,7 +27,8 @@ export const simulateCpuGames = (
     teams: Team[],
     date: string,
     excludeGameId?: string,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): CpuGameResult[] => {
     const results: CpuGameResult[] = [];
     
@@ -46,7 +48,7 @@ export const simulateCpuGames = (
             const simResult: SimulationResult = simulateGame(
                 homeTeam, awayTeam, null,
                 undefined, false, false, undefined, undefined, undefined,
-                simSettings
+                simSettings, coachingData
             );
 
             results.push({

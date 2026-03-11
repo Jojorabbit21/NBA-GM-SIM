@@ -5,6 +5,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
@@ -45,6 +46,7 @@ export const useFullSeasonSim = (
     hofId?: string | null,
     onHofSubmitted?: () => void,
     simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null,
 ) => {
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
     const cancelTokenRef = useRef({ cancelled: false });
@@ -85,7 +87,8 @@ export const useFullSeasonSim = (
                     );
                 },
                 cancelTokenRef.current,
-                simSettings
+                simSettings,
+                coachingData
             );
 
             // 3. DB 저장

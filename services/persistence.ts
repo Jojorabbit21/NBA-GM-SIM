@@ -14,7 +14,8 @@ export const saveCheckpoint = async (
     draftPicks?: { teams: Record<string, string[]>; picks: any[] } | null,
     tendencySeed?: string | null, // [New] Save-seeded hidden tendencies
     replaySnapshot?: ReplaySnapshot | null, // [New] Cached replay state
-    simSettings?: SimSettings | null // [New] User simulation settings
+    simSettings?: SimSettings | null, // [New] User simulation settings
+    coachingStaff?: Record<string, any> | null // [New] League coaching staff data
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -58,6 +59,11 @@ export const saveCheckpoint = async (
         payload.sim_settings = simSettings;
     }
 
+    // coaching_staff: 값이 있을 때만 저장
+    if (coachingStaff !== undefined) {
+        payload.coaching_staff = coachingStaff;
+    }
+
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     const { data, error } = await supabase
         .from('saves')
@@ -75,7 +81,7 @@ export const saveCheckpoint = async (
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings, coaching_staff')
         .eq('user_id', userId)
         .maybeSingle();
 

@@ -1,6 +1,8 @@
 
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { Team, Game, Player, GameTactics, DepthChart } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
+import { getCoachPreferences } from '../services/coachingStaff/coachGenerator';
 import { generateAutoTactics } from '../services/gameEngine';
 import { calculatePlayerOvr } from '../utils/constants';
 import { computeDefensiveStats } from '../utils/defensiveStats';
@@ -10,6 +12,7 @@ import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
 import { RosterGrid } from '../components/roster/RosterGrid';
+import { CoachProfileCard } from '../components/dashboard/CoachProfileCard';
 import { ScheduleView } from './ScheduleView';
 
 interface DashboardViewProps {
@@ -28,15 +31,16 @@ interface DashboardViewProps {
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   userId?: string;
   onViewGameResult?: (result: any) => void;
+  coachingData?: LeagueCoachingData | null;
 }
 
-type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule';
+type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule' | 'coaching';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating,
   depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer,
-  userId, onViewGameResult
+  userId, onViewGameResult, coachingData
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
 
@@ -77,9 +81,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [healthySorted, tactics.starters, tactics, onUpdateTactics]);
 
   const handleAutoSet = useCallback(() => {
-    const autoTactics = generateAutoTactics({ ...team, roster: effectiveRoster });
+    const coachPrefs = getCoachPreferences(coachingData, team.id);
+    const autoTactics = generateAutoTactics({ ...team, roster: effectiveRoster }, coachPrefs);
     onUpdateTactics(autoTactics);
-  }, [team, effectiveRoster, onUpdateTactics]);
+  }, [team, effectiveRoster, onUpdateTactics, coachingData]);
 
   if (!team) return null;
 
@@ -120,6 +125,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'opponent' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
                     >
                         <span>상대 전력 분석</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('coaching')}
+                        className={`flex items-center gap-2 transition-all h-full border-b-2 font-black tracking-tight uppercase text-sm ${activeTab === 'coaching' ? 'text-indigo-400 border-indigo-400' : 'text-slate-500 hover:text-slate-300 border-transparent'}`}
+                    >
+                        <span>코칭 스태프</span>
                     </button>
                     <button
                         onClick={() => setActiveTab('schedule')}
@@ -177,6 +188,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       oppHealthySorted={oppHealthySorted}
                       onViewPlayer={handlePlayerClick}
                   />
+              )}
+
+              {activeTab === 'coaching' && (
+                  <div className="animate-in fade-in duration-500 p-8">
+                    <CoachProfileCard coach={coachingData?.[team.id]?.headCoach} />
+                  </div>
               )}
 
               {activeTab === 'schedule' && userId && onViewGameResult && (

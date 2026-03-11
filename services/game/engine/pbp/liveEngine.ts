@@ -1,5 +1,6 @@
 
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, RosterUpdate } from '../../../../types';
+import { LeagueCoachingData } from '../../../../types/coaching';
 import { SimSettings, DEFAULT_SIM_SETTINGS } from '../../../../types/simSettings';
 import { GameState, TeamState, LivePlayer, ClutchContext } from './pbpTypes';
 import { initTeamState } from './initializer';
@@ -169,14 +170,15 @@ export function createGameState(
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
     tendencySeed?: string,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): GameState {
     const hTactics = (userTeamId === homeTeam.id && userTactics) ? userTactics : undefined;
     const aTactics = (userTeamId === awayTeam.id && userTactics) ? userTactics : undefined;
 
     const state: GameState = {
-        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed, simSettings?.archetypesEnabled),
-        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed, simSettings?.archetypesEnabled),
+        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData),
+        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed, simSettings?.archetypesEnabled, coachingData),
         quarter: 1,
         gameClock: 720,
         shotClock: 24,

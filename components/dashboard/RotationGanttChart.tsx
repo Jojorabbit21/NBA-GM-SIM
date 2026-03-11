@@ -580,11 +580,11 @@ const RotationGanttChartInner: React.FC<RotationGanttChartProps> = ({
                                                 <span className={`text-xs font-mono font-semibold ${cond < 70 ? 'text-red-500' : cond < 90 ? 'text-amber-500' : 'text-emerald-500'}`}>
                                                     {cond}
                                                 </span>
-                                                {delta !== undefined && delta !== 0 && (
+                                                {/* {delta !== undefined && delta !== 0 && (
                                                     <span className={`text-[9px] font-bold ${delta > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                                         {delta > 0 ? '+' : ''}{delta}
                                                     </span>
-                                                )}
+                                                )} */}
                                             </div>
                                         </td>
 

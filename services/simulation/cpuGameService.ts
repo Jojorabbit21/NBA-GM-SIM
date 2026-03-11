@@ -1,5 +1,6 @@
 
 import { Team, Game, PlayoffSeries } from '../../types';
+import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
@@ -21,11 +22,12 @@ export const processCpuGames = (
     userId: string | undefined,
     tendencySeed?: string,
     simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null,
 ): ProcessedCpuResults => {
     const growthRate = simSettings?.growthRate ?? 1.0;
     const declineRate = simSettings?.declineRate ?? 1.0;
     // These results are already in CpuGameResult (camelCase) format
-    const results = simulateCpuGames(schedule, teams, currentSimDate, userGameId, simSettings);
+    const results = simulateCpuGames(schedule, teams, currentSimDate, userGameId, simSettings, coachingData);
 
     const gameResultsToSave: any[] = [];
     const playoffResultsToSave: any[] = [];

@@ -4,6 +4,7 @@
  */
 
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../../types';
+import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames } from '../simulationService';
 import { runUserSimulation } from './userGameService';
@@ -50,7 +51,8 @@ export async function runBatchSeason(
     userId: string | undefined,
     onProgress: (current: number, total: number, date: string) => void,
     cancelToken: { cancelled: boolean },
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): Promise<BatchSeasonResult> {
     const allGameResultsToSave: any[] = [];
     const allPlayoffResultsToSave: any[] = [];
@@ -108,7 +110,7 @@ export async function runBatchSeason(
         // 1. CPU 경기 처리 (in-place)
         const cpuPayloads = processCpuGamesInPlace(
             teams, schedule, playoffSeries, date, userGame?.id, userId,
-            tendencySeed, simSettings?.growthRate ?? 1.0, simSettings?.declineRate ?? 1.0, simSettings
+            tendencySeed, simSettings?.growthRate ?? 1.0, simSettings?.declineRate ?? 1.0, simSettings, coachingData
         );
         allGameResultsToSave.push(...cpuPayloads.regular);
         allPlayoffResultsToSave.push(...cpuPayloads.playoff);
@@ -116,7 +118,7 @@ export async function runBatchSeason(
         // 2. 유저 경기 또는 휴식
         if (userGame) {
             const result = runUserSimulation(
-                userGame, teams, schedule, myTeamId, userTactics, date, depthChart, tendencySeed, simSettings
+                userGame, teams, schedule, myTeamId, userTactics, date, depthChart, tendencySeed, simSettings, coachingData
             );
 
             // 결과 적용 (in-place, DB/메시지 생략)
@@ -288,9 +290,10 @@ function processCpuGamesInPlace(
     tendencySeed?: string,
     growthRate: number = 1.0,
     declineRate: number = 1.0,
-    simSettings?: SimSettings
+    simSettings?: SimSettings,
+    coachingData?: LeagueCoachingData | null
 ): { regular: any[]; playoff: any[] } {
-    const results = simulateCpuGames(schedule, teams, date, userGameId, simSettings);
+    const results = simulateCpuGames(schedule, teams, date, userGameId, simSettings, coachingData);
     const regular: any[] = [];
     const playoff: any[] = [];
 

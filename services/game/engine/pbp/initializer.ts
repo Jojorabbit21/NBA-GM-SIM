@@ -1,9 +1,11 @@
 
 import { Team, GameTactics, DepthChart, Player } from '../../../../types';
+import { LeagueCoachingData } from '../../../../types/coaching';
 import { TeamState, LivePlayer } from './pbpTypes';
 import { calculatePlayerArchetypes } from './archetypeSystem';
 import { INITIAL_STATS, calculatePlayerOvr } from '../../../../utils/constants';
 import { generateAutoTactics } from '../../tactics/tacticGenerator';
+import { getCoachPreferences } from '../../../coachingStaff/coachGenerator';
 import { generateSaveTendencies, DEFAULT_TENDENCIES } from '../../../../utils/hiddenTendencies';
 import { DEFAULT_SLIDERS } from '../../config/tacticPresets';
 
@@ -40,11 +42,12 @@ function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three
     };
 }
 
-export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean): TeamState {
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean, coachingData?: LeagueCoachingData | null): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
     let safeTactics: GameTactics;
     if (!tactics || (!tactics.depthChart && !depthChart)) {
-        safeTactics = generateAutoTactics(team);
+        const coachPrefs = getCoachPreferences(coachingData, team.id);
+        safeTactics = generateAutoTactics(team, coachPrefs);
     } else {
         // [Safety Fix for User Tactics]
         // Ensure all slider keys exist even if user tactics are missing them

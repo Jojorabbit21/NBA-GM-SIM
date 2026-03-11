@@ -5,6 +5,7 @@ import { Team, Game, Player, Transaction } from '../types';
 import { generateScoutingReport } from './geminiService';
 import { mapPlayersToTeams, mapFreeAgents, mapDatabaseScheduleToRuntimeGame } from './dataMapper';
 import { populateTeamData } from '../data/teamData';
+import { populateCoachData } from './coachingStaff/coachGenerator';
 import { rebuildDerivedConstants } from '../utils/constants';
 
 // --- Fetch Base Data (Static Initial State) ---
@@ -14,11 +15,12 @@ export const useBaseData = () => {
         queryFn: async () => {
             console.log("🔄 Fetching Base Data from Supabase...");
 
-            // 3개 meta 테이블 병렬 fetch
-            const [teamsRes, playersRes, scheduleRes] = await Promise.all([
+            // 4개 meta 테이블 병렬 fetch
+            const [teamsRes, playersRes, scheduleRes, coachesRes] = await Promise.all([
                 supabase.from('meta_teams').select('*'),
                 supabase.from('meta_players').select('*'),
                 supabase.from('meta_schedule').select('*'),
+                supabase.from('meta_coaches').select('*'),
             ]);
 
             // 1. meta_teams → TEAM_DATA 갱신 (mapPlayersToTeams보다 먼저!)
@@ -27,6 +29,13 @@ export const useBaseData = () => {
                 rebuildDerivedConstants();
             } else {
                 console.warn("⚠️ 'meta_teams' empty/error, using fallback hardcoded data", teamsRes.error);
+            }
+
+            // 1-b. meta_coaches → COACH_DATA 갱신
+            if (!coachesRes.error && coachesRes.data && coachesRes.data.length > 0) {
+                populateCoachData(coachesRes.data);
+            } else {
+                console.warn("⚠️ 'meta_coaches' empty/error, using fallback hardcoded data", coachesRes.error);
             }
 
             // 2. meta_players
