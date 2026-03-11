@@ -8,7 +8,7 @@ import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames } from '../simulationService';
 import { runUserSimulation } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
-import { updateTeamStats, applyBoxToRoster, updateSeriesState } from '../../utils/simulationUtils';
+import { updateTeamStats, applyBoxToRoster, updateSeriesState, sumTeamBoxScore } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { buildScoutReportContent } from '../reportGenerator';
@@ -319,6 +319,8 @@ function processCpuGamesInPlace(
             schedule[gameIdx].played = true;
             schedule[gameIdx].homeScore = res.homeScore;
             schedule[gameIdx].awayScore = res.awayScore;
+            if (res.boxScore?.home) (schedule[gameIdx] as any).homeStats = sumTeamBoxScore(res.boxScore.home);
+            if (res.boxScore?.away) (schedule[gameIdx] as any).awayStats = sumTeamBoxScore(res.boxScore.away);
         }
 
         const resultData = userId ? {
@@ -386,6 +388,8 @@ function applyGameResultInPlace(
         schedule[idx].played = true;
         schedule[idx].homeScore = result.homeScore;
         schedule[idx].awayScore = result.awayScore;
+        (schedule[idx] as any).homeStats = sumTeamBoxScore(result.homeBox);
+        (schedule[idx] as any).awayStats = sumTeamBoxScore(result.awayBox);
     }
 
     // 플레이오프

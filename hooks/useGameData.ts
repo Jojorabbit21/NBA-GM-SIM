@@ -260,7 +260,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.changeLog && { changeLog: savedState.changeLog }),
                                     ...(savedState.seasonStartAttributes && { seasonStartAttributes: savedState.seasonStartAttributes }),
                                 };
-                                if (restored.attrDeltas) reapplyAttrDeltas(restored);
+                                // snapshot 경로에서 이미 reapplyAttrDeltas를 호출했으므로 이중 적용 방지
+                                if (!snapshotUsed && restored.attrDeltas) reapplyAttrDeltas(restored);
                                 return restored;
                             })
                         }));
