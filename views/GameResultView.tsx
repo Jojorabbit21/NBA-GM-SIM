@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Team, PlayerBoxScore, Game, TacticalSnapshot, PbpLog, RotationData, ShotEvent } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
 import { ShieldAlert, Clock, ChevronLeft } from 'lucide-react'; 
 import { CpuGameResult } from '../services/simulationService'; // [New] Import Type
 
@@ -50,8 +51,9 @@ export const GameResultView: React.FC<{
   };
   myTeamId: string;
   teams: Team[];
+  coachingData?: LeagueCoachingData | null;
   onFinish: () => void;
-}> = ({ result: initialResult, myTeamId, teams, onFinish }) => {
+}> = ({ result: initialResult, myTeamId, teams, coachingData, onFinish }) => {
   
   // [New] State to manage currently viewed game
   // Default to the user's game passed in props
@@ -132,7 +134,7 @@ export const GameResultView: React.FC<{
       { id: 'ShotChart', label: '샷 차트' },
       { id: 'PbpLog', label: '중계 로그' },
       { id: 'Rotation', label: '로테이션' },
-      // { id: 'Tactics', label: '전술 분석' }, // 디버그용 — 추후 재활성화
+      { id: 'Tactics', label: '전술 분석' },
   ];
 
   return (
@@ -272,13 +274,14 @@ export const GameResultView: React.FC<{
               )}
 
               {activeTab === 'Tactics' && (
-                  <GameTacticsTab 
+                  <GameTacticsTab
                       homeTeam={home}
                       awayTeam={away}
                       homeTactics={homeTactics}
                       awayTactics={awayTactics}
                       homeBox={homeBox}
                       awayBox={awayBox}
+                      coachingData={coachingData}
                   />
               )}
 

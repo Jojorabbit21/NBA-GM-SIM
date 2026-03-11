@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Team, TacticalSnapshot, PlayerBoxScore } from '../../../types';
+import { LeagueCoachingData } from '../../../types/coaching';
 import { TacticsAnalysis } from '../TacticsAnalysis';
 
 interface GameTacticsTabProps {
@@ -10,6 +11,7 @@ interface GameTacticsTabProps {
     awayTactics?: TacticalSnapshot;
     homeBox: PlayerBoxScore[];
     awayBox: PlayerBoxScore[];
+    coachingData?: LeagueCoachingData | null;
 }
 
 export const GameTacticsTab: React.FC<GameTacticsTabProps> = (props) => {
