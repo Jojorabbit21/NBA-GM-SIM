@@ -11,6 +11,7 @@ import { handleSeasonEventsSync } from './seasonService';
 import { updateTeamStats, applyBoxToRoster, updateSeriesState } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
+import { buildScoutReportContent } from '../reportGenerator';
 
 export interface BatchMessagePayload {
     user_id: string;
