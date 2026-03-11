@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { HeadCoach, HeadCoachPreferences } from '../../types/coaching';
+import { HeadCoach } from '../../types/coaching';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../common/Table';
 import { PREF_AXES, PREF_ORDER, getAxisResult } from '../../views/CoachDetailView';
 
@@ -12,7 +12,7 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach }) => {
     if (!coach) {
         return (
             <div className="flex items-center justify-center h-40">
-                <p className="text-slate-500 text-sm ko-normal">코치 데이터가 없습니다</p>
+                <p className="text-slate-500 text-xs ko-normal">코치 데이터가 없습니다</p>
             </div>
         );
     }
@@ -21,97 +21,100 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach }) => {
     const defenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'defense');
 
     return (
-        <div>
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500 mb-2 px-1">헤드코치</h3>
-            <Table fullHeight={false} className="!rounded-none">
-                <TableHead noRow>
-                    <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell colSpan={4} align="left" className="bg-slate-950">
-                            기본 정보
+        <Table fullHeight={false} className="!rounded-none">
+            <TableHead noRow>
+                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                    <TableHeaderCell colSpan={5} align="left" className="bg-slate-950">
+                        기본 정보
+                    </TableHeaderCell>
+                    <TableHeaderCell colSpan={offenseKeys.length} className="border-l border-slate-800 bg-slate-950">
+                        공격 전술
+                    </TableHeaderCell>
+                    <TableHeaderCell colSpan={defenseKeys.length} className="border-l border-slate-800 bg-slate-950">
+                        수비 전술
+                    </TableHeaderCell>
+                </tr>
+                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                    <TableHeaderCell align="left" style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
+                        직책
+                    </TableHeaderCell>
+                    <TableHeaderCell align="left" style={{ width: 180, minWidth: 180 }} className="bg-slate-950 ko-normal">
+                        이름
+                    </TableHeaderCell>
+                    <TableHeaderCell style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
+                        연봉
+                    </TableHeaderCell>
+                    <TableHeaderCell style={{ width: 50, minWidth: 50 }} className="bg-slate-950 ko-normal">
+                        계약
+                    </TableHeaderCell>
+                    <TableHeaderCell style={{ width: 50, minWidth: 50 }} className="bg-slate-950 border-r border-slate-800 ko-normal">
+                        잔여
+                    </TableHeaderCell>
+                    {offenseKeys.map((key, i) => (
+                        <TableHeaderCell
+                            key={key}
+                            align="center"
+                            className={`bg-slate-950 ko-normal ${i === 0 ? 'border-l border-slate-800' : ''}`}
+                        >
+                            {PREF_AXES[key].label}
                         </TableHeaderCell>
-                        <TableHeaderCell colSpan={offenseKeys.length} className="border-l border-slate-800 bg-slate-950">
-                            공격 전술
+                    ))}
+                    {defenseKeys.map((key, i) => (
+                        <TableHeaderCell
+                            key={key}
+                            align="center"
+                            className={`bg-slate-950 ko-normal ${i === 0 ? 'border-l border-slate-800' : ''}`}
+                        >
+                            {PREF_AXES[key].label}
                         </TableHeaderCell>
-                        <TableHeaderCell colSpan={defenseKeys.length} className="border-l border-slate-800 bg-slate-950">
-                            수비 전술
-                        </TableHeaderCell>
-                    </tr>
-                    <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                        <TableHeaderCell align="left" style={{ width: 200, minWidth: 200 }} className="bg-slate-950">
-                            이름
-                        </TableHeaderCell>
-                        <TableHeaderCell style={{ width: 70, minWidth: 70 }} className="bg-slate-950">
-                            연봉
-                        </TableHeaderCell>
-                        <TableHeaderCell style={{ width: 50, minWidth: 50 }} className="bg-slate-950">
-                            계약
-                        </TableHeaderCell>
-                        <TableHeaderCell style={{ width: 50, minWidth: 50 }} className="bg-slate-950 border-r border-slate-800">
-                            잔여
-                        </TableHeaderCell>
-                        {offenseKeys.map((key, i) => (
-                            <TableHeaderCell
+                    ))}
+                </tr>
+            </TableHead>
+            <TableBody>
+                <TableRow>
+                    <TableCell align="left" style={{ width: 70, minWidth: 70 }}>
+                        <span className="text-xs font-bold text-slate-500 ko-normal">감독</span>
+                    </TableCell>
+                    <TableCell align="left" style={{ width: 180, minWidth: 180 }}>
+                        <span className="text-xs font-semibold text-slate-200">{coach.name}</span>
+                    </TableCell>
+                    <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
+                        <span className="text-xs font-mono text-emerald-400">${coach.contractSalary}M</span>
+                    </TableCell>
+                    <TableCell align="center" style={{ width: 50, minWidth: 50 }}>
+                        <span className="text-xs font-mono text-slate-400">{coach.contractYears}년</span>
+                    </TableCell>
+                    <TableCell align="center" style={{ width: 50, minWidth: 50 }} className="border-r border-slate-800">
+                        <span className="text-xs font-mono text-slate-400">{coach.contractYearsRemaining}년</span>
+                    </TableCell>
+                    {offenseKeys.map((key, i) => {
+                        const axis = PREF_AXES[key];
+                        const { tag } = getAxisResult(axis, coach.preferences[key]);
+                        return (
+                            <TableCell
                                 key={key}
                                 align="center"
-                                className={`bg-slate-950 ko-normal ${i === 0 ? 'border-l border-slate-800' : ''}`}
+                                className={i === 0 ? 'border-l border-slate-800' : ''}
                             >
-                                {PREF_AXES[key].label}
-                            </TableHeaderCell>
-                        ))}
-                        {defenseKeys.map((key, i) => (
-                            <TableHeaderCell
+                                <span className={`text-xs font-black ko-normal ${axis.color}`}>{tag}</span>
+                            </TableCell>
+                        );
+                    })}
+                    {defenseKeys.map((key, i) => {
+                        const axis = PREF_AXES[key];
+                        const { tag } = getAxisResult(axis, coach.preferences[key]);
+                        return (
+                            <TableCell
                                 key={key}
                                 align="center"
-                                className={`bg-slate-950 ko-normal ${i === 0 ? 'border-l border-slate-800' : ''}`}
+                                className={i === 0 ? 'border-l border-slate-800' : ''}
                             >
-                                {PREF_AXES[key].label}
-                            </TableHeaderCell>
-                        ))}
-                    </tr>
-                </TableHead>
-                <TableBody>
-                    <TableRow>
-                        <TableCell align="left" style={{ width: 200, minWidth: 200 }}>
-                            <span className="text-xs font-semibold text-slate-200">{coach.name}</span>
-                        </TableCell>
-                        <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
-                            <span className="text-xs font-mono text-emerald-400">${coach.contractSalary}M</span>
-                        </TableCell>
-                        <TableCell align="center" style={{ width: 50, minWidth: 50 }}>
-                            <span className="text-xs font-mono text-slate-400">{coach.contractYears}년</span>
-                        </TableCell>
-                        <TableCell align="center" style={{ width: 50, minWidth: 50 }} className="border-r border-slate-800">
-                            <span className="text-xs font-mono text-slate-400">{coach.contractYearsRemaining}년</span>
-                        </TableCell>
-                        {offenseKeys.map((key, i) => {
-                            const axis = PREF_AXES[key];
-                            const { tag } = getAxisResult(axis, coach.preferences[key]);
-                            return (
-                                <TableCell
-                                    key={key}
-                                    align="center"
-                                    className={i === 0 ? 'border-l border-slate-800' : ''}
-                                >
-                                    <span className={`text-xs font-black ko-normal ${axis.color}`}>{tag}</span>
-                                </TableCell>
-                            );
-                        })}
-                        {defenseKeys.map((key, i) => {
-                            const axis = PREF_AXES[key];
-                            const { tag } = getAxisResult(axis, coach.preferences[key]);
-                            return (
-                                <TableCell
-                                    key={key}
-                                    align="center"
-                                    className={i === 0 ? 'border-l border-slate-800' : ''}
-                                >
-                                    <span className={`text-xs font-black ko-normal ${axis.color}`}>{tag}</span>
-                                </TableCell>
-                            );
-                        })}
-                    </TableRow>
-                </TableBody>
-            </Table>
-        </div>
+                                <span className={`text-xs font-black ko-normal ${axis.color}`}>{tag}</span>
+                            </TableCell>
+                        );
+                    })}
+                </TableRow>
+            </TableBody>
+        </Table>
     );
 };
