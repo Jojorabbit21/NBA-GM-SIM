@@ -39,7 +39,7 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
                     <TableHeaderCell align="center" style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
                         직책
                     </TableHeaderCell>
-                    <TableHeaderCell align="left" style={{ width: 180, minWidth: 180 }} className="bg-slate-950 ko-normal">
+                    <TableHeaderCell align="left" style={{ width: 180, minWidth: 180 }} className="bg-slate-950 ko-normal px-3">
                         이름
                     </TableHeaderCell>
                     <TableHeaderCell style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
