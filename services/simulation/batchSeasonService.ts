@@ -79,7 +79,7 @@ export async function runBatchSeason(
         // 1. CPU 경기 처리 (in-place)
         const cpuPayloads = processCpuGamesInPlace(
             teams, schedule, playoffSeries, date, userGame?.id, userId,
-            tendencySeed, simSettings?.tcr ?? 1.0, simSettings
+            tendencySeed, simSettings?.growthRate ?? 1.0, simSettings?.declineRate ?? 1.0, simSettings
         );
         allGameResultsToSave.push(...cpuPayloads.regular);
         allPlayoffResultsToSave.push(...cpuPayloads.playoff);
@@ -98,12 +98,13 @@ export async function runBatchSeason(
                 const homeT = teams.find(t => t.id === userGame.homeTeamId);
                 const awayT = teams.find(t => t.id === userGame.awayTeamId);
                 if (homeT && awayT) {
-                    const tcr = simSettings?.tcr ?? 1.0;
+                    const gr = simSettings?.growthRate ?? 1.0;
+                    const dr = simSettings?.declineRate ?? 1.0;
                     const leagueAvg = computeLeagueAverages(teams);
                     processGameDevelopment(
                         homeT.roster, awayT.roster,
                         result.homeBox, result.awayBox,
-                        tendencySeed, tcr, leagueAvg, date,
+                        tendencySeed, gr, dr, leagueAvg, date,
                     );
                 }
             }
@@ -256,7 +257,8 @@ function processCpuGamesInPlace(
     userGameId: string | undefined,
     userId: string | undefined,
     tendencySeed?: string,
-    tcr: number = 1.0,
+    growthRate: number = 1.0,
+    declineRate: number = 1.0,
     simSettings?: SimSettings
 ): { regular: any[]; playoff: any[] } {
     const results = simulateCpuGames(schedule, teams, date, userGameId, simSettings);
@@ -279,7 +281,7 @@ function processCpuGamesInPlace(
             processGameDevelopment(
                 home.roster, away.roster,
                 res.boxScore.home, res.boxScore.away,
-                tendencySeed, tcr, leagueAvg, date,
+                tendencySeed, growthRate, declineRate, leagueAvg, date,
             );
         }
 

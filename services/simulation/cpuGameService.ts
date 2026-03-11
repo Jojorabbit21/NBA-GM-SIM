@@ -22,10 +22,11 @@ export const processCpuGames = (
     tendencySeed?: string,
     simSettings?: SimSettings,
 ): ProcessedCpuResults => {
-    const tcr = simSettings?.tcr ?? 1.0;
+    const growthRate = simSettings?.growthRate ?? 1.0;
+    const declineRate = simSettings?.declineRate ?? 1.0;
     // These results are already in CpuGameResult (camelCase) format
     const results = simulateCpuGames(schedule, teams, currentSimDate, userGameId, simSettings);
-    
+
     const gameResultsToSave: any[] = [];
     const playoffResultsToSave: any[] = [];
     const viewData: any[] = [];
@@ -47,7 +48,7 @@ export const processCpuGames = (
                 processGameDevelopment(
                     home.roster, away.roster,
                     res.boxScore.home, res.boxScore.away,
-                    tendencySeed, tcr, leagueAvg, currentSimDate,
+                    tendencySeed, growthRate, declineRate, leagueAvg, currentSimDate,
                 );
             }
 
