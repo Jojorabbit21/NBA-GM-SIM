@@ -737,8 +737,9 @@ export function processOffseason(
             player.contractYears -= 1;
         }
 
-        // fractionalGrowth / changeLog 리셋 (새 시즌 0부터)
+        // fractionalGrowth / changeLog / attrDeltas 리셋 (새 시즌 0부터)
         player.fractionalGrowth = {};
+        player.attrDeltas = {};
         player.changeLog = [];
         player.seasonStartAttributes = undefined;
 
@@ -839,14 +840,13 @@ export function computeLeagueAverages(teams: { roster: Player[] }[]): LeagueAver
  * fractionalGrowth, changeLog도 Player에 머지.
  */
 export function applyDevelopmentResult(player: Player, result: PerGameResult): void {
-    // 1. 정수 변화 적용
+    // 1. 정수 변화 적용 + attrDeltas 누적
+    if (!player.attrDeltas) player.attrDeltas = {};
     for (const [attr, delta] of Object.entries(result.integerChanges)) {
         if (!delta) continue;
         const key = attr as SkillAttribute;
         (player as any)[key] = Math.max(35, Math.min(99, getAttr(player, key) + delta));
-
-        // attrDeltas 누적 (시즌 총 변화량 추적)
-        // SavedPlayerState에 저장될 값
+        player.attrDeltas[key] = (player.attrDeltas[key] ?? 0) + delta;
     }
 
     // 2. 카테고리 평균 재계산
@@ -892,8 +892,32 @@ export function initializeSeasonGrowth(players: Player[]): void {
         }
         player.seasonStartAttributes = snapshot;
         player.fractionalGrowth = {};
+        player.attrDeltas = {};
         player.changeLog = [];
     }
+}
+
+/**
+ * 저장된 attrDeltas를 Player 속성에 재적용 (로드 시 사용).
+ * meta_players 원본에서 시작하므로 시즌 내 정수 변화를 다시 반영.
+ */
+export function reapplyAttrDeltas(player: Player): void {
+    if (!player.attrDeltas) return;
+    for (const [attr, delta] of Object.entries(player.attrDeltas)) {
+        if (!delta) continue;
+        const key = attr as SkillAttribute;
+        (player as any)[key] = Math.max(35, Math.min(99, getAttr(player, key) + delta));
+    }
+    // 카테고리 평균 + OVR 재계산
+    for (const cat of ['ins', 'out', 'plm', 'def', 'reb', 'ath'] as CategoryKey[]) {
+        const attrs = CATEGORY_ATTRS[cat];
+        if (attrs) {
+            (player as any)[cat] = Math.round(
+                attrs.reduce((s: number, a: SkillAttribute) => s + getAttr(player, a), 0) / attrs.length,
+            );
+        }
+    }
+    player.ovr = calculateOvr(player, player.position);
 }
 
 // ═══════════════════════════════════════════════════════════════

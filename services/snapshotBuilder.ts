@@ -1,7 +1,8 @@
 
 import { Team, Game, ReplaySnapshot, PlayerStats } from '../types';
+import { reapplyAttrDeltas } from './playerDevelopment/playerAging';
 
-export const CURRENT_SNAPSHOT_VERSION = 3;
+export const CURRENT_SNAPSHOT_VERSION = 4;
 
 /**
  * Build a replay snapshot from the current in-memory state.
@@ -19,17 +20,21 @@ export const buildReplaySnapshot = (
         for (const player of team.roster) {
             const hasStats = player.stats || player.playoffStats;
             const hasGrowth = player.fractionalGrowth && Object.keys(player.fractionalGrowth).length > 0;
+            const hasAttrDeltas = player.attrDeltas && Object.keys(player.attrDeltas).length > 0;
             const hasChangeLog = player.changeLog && player.changeLog.length > 0;
+            const hasSeasonStart = player.seasonStartAttributes && Object.keys(player.seasonStartAttributes).length > 0;
+            const hasAnyGrowthData = hasGrowth || hasAttrDeltas || hasChangeLog || hasSeasonStart;
 
-            if (hasStats || hasGrowth || hasChangeLog) {
+            if (hasStats || hasAnyGrowthData) {
                 const entry: any = {};
                 if (player.stats) entry.stats = player.stats;
                 if (player.playoffStats) entry.playoffStats = player.playoffStats;
-                if (hasGrowth || hasChangeLog) {
+                if (hasAnyGrowthData) {
                     entry.growthState = {
-                        ...(player.fractionalGrowth && { fractionalGrowth: player.fractionalGrowth }),
-                        ...(player.changeLog && { changeLog: player.changeLog }),
-                        ...(player.seasonStartAttributes && { seasonStartAttributes: player.seasonStartAttributes }),
+                        ...(hasGrowth && { fractionalGrowth: player.fractionalGrowth }),
+                        ...(hasAttrDeltas && { attrDeltas: player.attrDeltas }),
+                        ...(hasChangeLog && { changeLog: player.changeLog }),
+                        ...(hasSeasonStart && { seasonStartAttributes: player.seasonStartAttributes }),
                     };
                 }
                 roster_stats[player.id] = entry;
@@ -143,8 +148,10 @@ export const hydrateFromSnapshot = (
             if ((pData as any).growthState) {
                 const gs = (pData as any).growthState;
                 if (gs.fractionalGrowth) player.fractionalGrowth = gs.fractionalGrowth;
+                if (gs.attrDeltas) player.attrDeltas = gs.attrDeltas;
                 if (gs.changeLog) player.changeLog = gs.changeLog;
                 if (gs.seasonStartAttributes) player.seasonStartAttributes = gs.seasonStartAttributes;
+                if (gs.attrDeltas) reapplyAttrDeltas(player);
             }
         }
     }
