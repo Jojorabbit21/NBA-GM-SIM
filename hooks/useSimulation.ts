@@ -13,7 +13,7 @@ import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
 import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
-import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats } from '../services/reportGenerator';
+import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent, FinalsMvpContent } from '../types/message';
@@ -334,6 +334,16 @@ export const useSimulation = (
                         newPlayoffSeries, newTeams, currentSimDate, transactions
                     );
 
+                    // 월간 스카우트 보고서 (월 경계 감지)
+                    if (!isGuestMode && session?.user?.id) {
+                        const nd = new Date(currentSimDate);
+                        nd.setDate(nd.getDate() + 1);
+                        const nextDateStr = nd.toISOString().split('T')[0];
+                        if (new Date(currentSimDate).getMonth() !== new Date(nextDateStr).getMonth()) {
+                            await maybeSendScoutReport(newTeams, myTeamId, session.user.id, currentSimDate, refreshUnreadCount);
+                        }
+                    }
+
                     // Commit State Updates
                     setTeams(newTeams);
                     setSchedule(newSchedule);
@@ -407,6 +417,13 @@ export const useSimulation = (
                 const d = new Date(currentSimDate);
                 d.setDate(d.getDate() + 1);
                 const nextDate = d.toISOString().split('T')[0];
+
+                // 월간 스카우트 보고서 (월 경계 감지)
+                if (!isGuestMode && session?.user?.id) {
+                    if (new Date(currentSimDate).getMonth() !== new Date(nextDate).getMonth()) {
+                        await maybeSendScoutReport(newTeams, myTeamId, session.user.id, currentSimDate, refreshUnreadCount);
+                    }
+                }
 
                 // 리그 일정에서 참관 요청 시 — 날짜 진행 보류, LiveGameView에서 경기 진행
                 if (spectateGameId) {
@@ -560,6 +577,16 @@ export const useSimulation = (
                 prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
                 newPlayoffSeries, newTeams, currentSimDate, transactions
             );
+
+            // 월간 스카우트 보고서 (월 경계 감지)
+            if (!isGuestMode && session?.user?.id && myTeamId) {
+                const nd = new Date(currentSimDate);
+                nd.setDate(nd.getDate() + 1);
+                const nextDateStr = nd.toISOString().split('T')[0];
+                if (new Date(currentSimDate).getMonth() !== new Date(nextDateStr).getMonth()) {
+                    await maybeSendScoutReport(newTeams, myTeamId, session.user.id, currentSimDate, refreshUnreadCount);
+                }
+            }
 
             // 상태 반영
             setTeams(newTeams);

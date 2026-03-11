@@ -4,7 +4,7 @@ import { PlayerBoxScore } from './engine';
 // SeasonAwardsContent는 utils/awardVoting.ts에서 직접 export됨
 export type { SeasonAwardsContent } from '../utils/awardVoting';
 
-export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM';
+export type MessageType = 'GAME_RECAP' | 'TRADE_ALERT' | 'INJURY_REPORT' | 'SEASON_REVIEW' | 'PLAYOFF_STAGE_REVIEW' | 'SEASON_AWARDS' | 'OWNER_LETTER' | 'HOF_QUALIFICATION' | 'FINALS_MVP' | 'REG_SEASON_CHAMPION' | 'PLAYOFF_CHAMPION' | 'SYSTEM' | 'SCOUT_REPORT';
 
 export interface Message {
     id: string;
@@ -282,6 +282,26 @@ export interface RegSeasonChampionContent {
         ftPct: number;
         pm: number;
     }[];
+}
+
+export interface ScoutReportPlayerEntry {
+    playerId: string;
+    playerName: string;
+    position: string;
+    age: number;
+    ovr: number;
+    changes: { attribute: string; attributeKr: string; totalDelta: number }[];
+    netDelta: number;
+}
+
+export interface ScoutReportContent {
+    monthLabel: string;
+    periodStart: string;
+    periodEnd: string;
+    teamId: string;
+    teamName: string;
+    players: ScoutReportPlayerEntry[];
+    hasAnyChanges: boolean;
 }
 
 export interface PlayoffChampionContent {

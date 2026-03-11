@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from './common/Modal';
 import { RotateCcw, Save } from 'lucide-react';
 import { SimSettings, DEFAULT_SIM_SETTINGS, SIM_SETTINGS_META, SimSettingMeta } from '../types/simSettings';
@@ -50,30 +50,25 @@ const NumberRow: React.FC<{
     // step에 따른 소수점 자릿수
     const decimals = step < 1 ? (step < 0.01 ? 3 : step < 0.1 ? 2 : 1) : 0;
 
+    // 채워진 비율 계산
+    const fillPercent = ((value - min) / (max - min)) * 100;
+
+    // 슬라이더 배경 (채워진 부분 + 빈 부분)
+    const sliderStyle = useMemo(() => ({
+        background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${fillPercent}%, #334155 ${fillPercent}%, #334155 100%)`,
+    }), [fillPercent]);
+
     return (
-        <div className="py-3">
-            <div className="flex items-center justify-between mb-2">
-                <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-200 ko-normal">{meta.label}</p>
-                    <p className="text-xs text-slate-500 mt-0.5">{meta.description}</p>
-                </div>
-                <div className="flex items-center gap-2 ml-4 flex-shrink-0">
-                    <span className={`text-sm font-mono font-bold tabular-nums ${isDefault ? 'text-slate-300' : 'text-indigo-400'}`}>
-                        {value.toFixed(decimals)}
-                    </span>
-                    {!isDefault && (
-                        <button
-                            onClick={() => onChange(defaultValue)}
-                            className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors"
-                            title="기본값으로 복원"
-                        >
-                            <RotateCcw size={11} />
-                        </button>
-                    )}
-                </div>
+        <div className="flex items-center gap-4 py-3">
+            {/* 좌측: 제목 + 설명 (50%) */}
+            <div className="w-1/2 min-w-0">
+                <p className="text-sm font-bold text-slate-200 ko-normal">{meta.label}</p>
+                <p className="text-xs text-slate-500 mt-0.5">{meta.description}</p>
             </div>
-            <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-600 font-mono w-8 text-right">{min.toFixed(decimals)}</span>
+
+            {/* 우측: 슬라이더 + 값 (50%) */}
+            <div className="w-1/2 flex items-center gap-2">
+                <span className="text-xs text-slate-600 font-mono w-8 text-right flex-shrink-0">{min.toFixed(decimals)}</span>
                 <input
                     type="range"
                     min={min}
@@ -81,14 +76,29 @@ const NumberRow: React.FC<{
                     step={step}
                     value={value}
                     onChange={(e) => onChange(parseFloat(e.target.value))}
-                    className="flex-1 h-1.5 rounded-full appearance-none bg-slate-700 accent-indigo-500 cursor-pointer
+                    style={sliderStyle}
+                    className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer
                         [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
                         [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500
                         [&::-webkit-slider-thumb]:shadow-[0_0_6px_rgba(99,102,241,0.5)]
                         [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all
                         [&::-webkit-slider-thumb]:hover:bg-indigo-400"
                 />
-                <span className="text-[10px] text-slate-600 font-mono w-8">{max.toFixed(decimals)}</span>
+                <span className="text-xs text-slate-600 font-mono w-8 flex-shrink-0">{max.toFixed(decimals)}</span>
+                <span className={`text-xs font-mono font-bold tabular-nums w-10 text-right flex-shrink-0 ${isDefault ? 'text-slate-300' : 'text-indigo-400'}`}>
+                    {value.toFixed(decimals)}
+                </span>
+                <div className="w-4 flex-shrink-0">
+                    {!isDefault && (
+                        <button
+                            onClick={() => onChange(defaultValue)}
+                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                            title="기본값으로 복원"
+                        >
+                            <RotateCcw size={12} />
+                        </button>
+                    )}
+                </div>
             </div>
         </div>
     );
@@ -158,7 +168,7 @@ export const SimSettingsModal: React.FC<SimSettingsModalProps> = ({
             <div className="p-6 space-y-6">
                 {Object.entries(categories).map(([category, metas]) => (
                     <div key={category}>
-                        <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                        <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
                             {category}
                         </h4>
                         <div className="divide-y divide-slate-800/50">
