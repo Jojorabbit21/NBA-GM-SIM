@@ -90,6 +90,7 @@ export interface SavedPlayerState {
     fractionalGrowth?: Record<string, number>;  // 소수점 누적값 (sparse)
     attrDeltas?: Record<string, number>;         // 시즌 내 정수 변화 합계 (sparse)
     changeLog?: AttributeChangeEvent[];          // 정수 변화 이벤트 로그
+    seasonStartAttributes?: Record<string, number>; // 시즌 시작 기준 속성값
 }
 
 export interface Player {
@@ -172,6 +173,7 @@ export interface Player {
     hiddenTendencies?: HiddenTendencies; // Fallback Hash Data
     // 성장/퇴화 시스템 (런타임 상태)
     fractionalGrowth?: Record<string, number>;       // 소수점 누적 (sparse, 경기마다 갱신)
+    attrDeltas?: Record<string, number>;             // 시즌 내 정수 변화 합계 (sparse, 저장/복원용)
     changeLog?: AttributeChangeEvent[];              // 시즌 내 정수 변화 이벤트 로그
     seasonStartAttributes?: Record<string, number>;  // 시즌 시작 시 속성 스냅샷 (delta 표시용)
 }

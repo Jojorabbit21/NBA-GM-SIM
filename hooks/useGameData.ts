@@ -16,7 +16,7 @@ import { generateNextPlayoffGames } from '../utils/playoffLogic';
 import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
-import { initializeSeasonGrowth } from '../services/playerDevelopment/playerAging';
+import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDevelopment/playerAging';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -247,15 +247,19 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 if (typeof savedState === 'number') {
                                     return { ...p, condition: savedState };
                                 }
-                                return {
+                                const restored = {
                                     ...p,
                                     condition: savedState.condition ?? 100,
                                     health: savedState.health || 'Healthy',
                                     injuryType: savedState.injuryType,
                                     returnDate: savedState.returnDate,
                                     ...(savedState.fractionalGrowth && { fractionalGrowth: savedState.fractionalGrowth }),
+                                    ...(savedState.attrDeltas && { attrDeltas: savedState.attrDeltas }),
                                     ...(savedState.changeLog && { changeLog: savedState.changeLog }),
+                                    ...(savedState.seasonStartAttributes && { seasonStartAttributes: savedState.seasonStartAttributes }),
                                 };
+                                if (restored.attrDeltas) reapplyAttrDeltas(restored);
+                                return restored;
                             })
                         }));
                     }
@@ -371,8 +375,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const isFatigued = p.condition !== undefined && p.condition < 100;
                         const hasGrowth = p.fractionalGrowth && Object.keys(p.fractionalGrowth).length > 0;
                         const hasChangeLog = p.changeLog && p.changeLog.length > 0;
+                        const hasAttrDeltas = p.attrDeltas && Object.keys(p.attrDeltas).length > 0;
+                        const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
 
-                        if (isInjured || isFatigued || hasGrowth || hasChangeLog) {
+                        if (isInjured || isFatigued || hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart) {
                             const state: SavedPlayerState = {
                                 condition: p.condition || 100,
                                 health: p.health,
@@ -380,7 +386,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                 returnDate: p.returnDate,
                             };
                             if (hasGrowth) state.fractionalGrowth = p.fractionalGrowth;
+                            if (hasAttrDeltas) state.attrDeltas = p.attrDeltas;
                             if (hasChangeLog) state.changeLog = p.changeLog;
+                            if (hasSeasonStart) state.seasonStartAttributes = p.seasonStartAttributes;
                             rosterState[p.id] = state;
                         }
                     });
@@ -450,7 +458,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             myTeamId: teamId,
             currentSimDate: INITIAL_DATE,
             userTactics: newTactics,
-            tendencySeed: newSeed
+            tendencySeed: newSeed,
+            teams,
         });
 
         // 시즌 시작 구단주 환영 서신 발송
