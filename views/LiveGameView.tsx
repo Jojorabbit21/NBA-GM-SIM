@@ -868,6 +868,8 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
     const isUserHome = !isSpectateMode && homeTeam.id === userTeamId;
     const homeData = TEAM_DATA[homeTeam.id];
     const awayData = TEAM_DATA[awayTeam.id];
+    const homeColor = homeData?.colors.primary || '#6366f1';
+    const awayColor = awayData?.colors.primary || '#f59e0b';
     const userTeam = isUserHome ? homeTeam : awayTeam;
     const userTimeoutsLeft = isUserHome ? timeoutsLeft.home : timeoutsLeft.away;
     const currentMinute = Math.min(47, Math.floor(((quarter - 1) * 720 + (720 - gameClock)) / 60));
