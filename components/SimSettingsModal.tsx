@@ -18,7 +18,7 @@ const ToggleRow: React.FC<{
     onChange: (v: boolean) => void;
 }> = ({ meta, value, onChange }) => (
     <div className="flex items-center justify-between py-3">
-        <div className="flex-1 min-w-0">
+        <div className="min-w-0">
             <p className="text-sm font-bold text-slate-200 ko-normal">{meta.label}</p>
             <p className="text-xs text-slate-500 mt-0.5">{meta.description}</p>
         </div>
@@ -48,7 +48,6 @@ const NumberRow: React.FC<{
     const isDefault = value === defaultValue;
     const isInteger = step >= 1;
 
-    // step에 따른 소수점 자릿수
     const decimals = isInteger ? 0 : (step < 0.01 ? 3 : step < 0.1 ? 2 : 1);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -61,31 +60,11 @@ const NumberRow: React.FC<{
     };
 
     return (
-        <div className="flex items-center gap-4 py-3">
-            {/* 좌측: 제목 + 설명 */}
-            <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-slate-200 ko-normal">{meta.label}</p>
-                <p className="text-xs text-slate-500 mt-0.5">{meta.description}</p>
-            </div>
-
-            {/* 우측: 인풋 + 리셋 */}
-            <div className="flex items-center gap-2 flex-shrink-0">
-                <input
-                    type="number"
-                    min={min}
-                    max={max}
-                    step={step}
-                    value={isInteger ? value : value.toFixed(decimals)}
-                    onChange={handleInputChange}
-                    className={`w-20 h-8 bg-slate-950 border rounded-lg px-2 text-xs font-mono font-bold tabular-nums text-center
-                        focus:outline-none focus:border-indigo-500 transition-colors
-                        [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none
-                        ${isDefault ? 'border-slate-700 text-slate-300' : 'border-indigo-500/50 text-indigo-400'}`}
-                />
-                <span className="text-xs text-slate-600 font-mono whitespace-nowrap">
-                    ({min.toFixed(decimals)}~{max.toFixed(decimals)})
-                </span>
-                <div className="w-5 flex-shrink-0">
+        <div className="flex items-center justify-between py-3">
+            {/* 좌측: 제목 + 리셋 / 설명(범위 포함) */}
+            <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-slate-200 ko-normal">{meta.label}</p>
                     {!isDefault && (
                         <button
                             onClick={() => onChange(defaultValue)}
@@ -96,7 +75,24 @@ const NumberRow: React.FC<{
                         </button>
                     )}
                 </div>
+                <p className="text-xs text-slate-500 mt-0.5">
+                    {meta.description} ({min.toFixed(decimals)}~{max.toFixed(decimals)})
+                </p>
             </div>
+
+            {/* 우측: 인풋 (고정 폭, 우측 정렬) */}
+            <input
+                type="number"
+                min={min}
+                max={max}
+                step={step}
+                value={isInteger ? value : value.toFixed(decimals)}
+                onChange={handleInputChange}
+                className={`w-20 h-8 bg-slate-950 border rounded-lg px-2 text-xs font-mono font-bold tabular-nums text-center flex-shrink-0 ml-4
+                    focus:outline-none focus:border-indigo-500 focus:text-white transition-colors
+                    [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none
+                    ${isDefault ? 'border-slate-700 text-slate-300' : 'border-indigo-500/50 text-indigo-400'}`}
+            />
         </div>
     );
 };
@@ -106,7 +102,6 @@ export const SimSettingsModal: React.FC<SimSettingsModalProps> = ({
 }) => {
     const [draft, setDraft] = useState<SimSettings>({ ...simSettings });
 
-    // 모달 열릴 때 최신 settings 반영
     useEffect(() => {
         if (isOpen) setDraft({ ...simSettings });
     }, [isOpen, simSettings]);
@@ -155,31 +150,29 @@ export const SimSettingsModal: React.FC<SimSettingsModalProps> = ({
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} size="md" title="시뮬레이션 설정" footer={footer} className="!rounded-2xl">
-            <div className="p-6">
-                <div className="space-y-0">
-                    {SIM_SETTINGS_META.map(meta => {
-                        const val = draft[meta.key];
-                        if (meta.type === 'toggle') {
-                            return (
-                                <ToggleRow
-                                    key={meta.key}
-                                    meta={meta}
-                                    value={val as boolean}
-                                    onChange={(v) => handleChange(meta.key, v)}
-                                />
-                            );
-                        }
+            <div className="px-8 py-4">
+                {SIM_SETTINGS_META.map(meta => {
+                    const val = draft[meta.key];
+                    if (meta.type === 'toggle') {
                         return (
-                            <NumberRow
+                            <ToggleRow
                                 key={meta.key}
                                 meta={meta}
-                                value={val as number}
-                                defaultValue={DEFAULT_SIM_SETTINGS[meta.key] as number}
+                                value={val as boolean}
                                 onChange={(v) => handleChange(meta.key, v)}
                             />
                         );
-                    })}
-                </div>
+                    }
+                    return (
+                        <NumberRow
+                            key={meta.key}
+                            meta={meta}
+                            value={val as number}
+                            defaultValue={DEFAULT_SIM_SETTINGS[meta.key] as number}
+                            onChange={(v) => handleChange(meta.key, v)}
+                        />
+                    );
+                })}
             </div>
         </Modal>
     );
