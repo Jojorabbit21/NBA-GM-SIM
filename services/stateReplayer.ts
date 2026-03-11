@@ -2,6 +2,7 @@
 import { Team, Game, Transaction, PlayerBoxScore } from '../types';
 import { INITIAL_STATS } from '../utils/constants';
 import { updateTeamTacticHistory } from '../utils/tacticUtils';
+import { sumTeamBoxScore } from '../utils/simulationUtils';
 
 /**
  * Replays history to reconstruct the current game state.
@@ -89,41 +90,6 @@ export const replayGameState = (
         currentSimDate: savedSimDate || '2025-10-20'
     };
 };
-
-function sumTeamBoxScore(box: PlayerBoxScore[]) {
-    return box.reduce((acc: Record<string, number>, s) => {
-        acc.fgm    += (s.fgm    || 0);
-        acc.fga    += (s.fga    || 0);
-        acc.p3m    += (s.p3m    || 0);
-        acc.p3a    += (s.p3a    || 0);
-        acc.ftm    += (s.ftm    || 0);
-        acc.fta    += (s.fta    || 0);
-        acc.reb    += (s.reb    || 0);
-        acc.offReb += (s.offReb || 0);
-        acc.defReb += (s.defReb || 0);
-        acc.ast    += (s.ast    || 0);
-        acc.stl    += (s.stl    || 0);
-        acc.blk    += (s.blk    || 0);
-        acc.tov    += (s.tov    || 0);
-        acc.pf     += (s.pf     || 0);
-        acc.techFouls += (s.techFouls || 0);
-        acc.flagrantFouls += (s.flagrantFouls || 0);
-        // Zone stats (flat keys from statLine + nested zoneData)
-        Object.keys(s).forEach(key => {
-            if (key.startsWith('zone_') && typeof (s as any)[key] === 'number') {
-                acc[key] = (acc[key] || 0) + ((s as any)[key] || 0);
-            }
-        });
-        if (s.zoneData) {
-            Object.keys(s.zoneData).forEach(key => {
-                if (typeof (s.zoneData as any)[key] === 'number') {
-                    acc[key] = (acc[key] || 0) + (s.zoneData as any)[key];
-                }
-            });
-        }
-        return acc;
-    }, { fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, reb: 0, offReb: 0, defReb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, techFouls: 0, flagrantFouls: 0 });
-}
 
 function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBoxScore[], isPlayoff = false) {
     const team = teamMap.get(teamId);

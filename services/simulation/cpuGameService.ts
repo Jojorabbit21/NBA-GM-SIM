@@ -2,7 +2,7 @@
 import { Team, Game, PlayoffSeries } from '../../types';
 import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames, CpuGameResult } from '../simulationService';
-import { updateTeamStats, updateSeriesState, applyBoxToRoster } from '../../utils/simulationUtils';
+import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 
 export interface ProcessedCpuResults {
@@ -58,6 +58,8 @@ export const processCpuGames = (
                 schedule[gameIdx].played = true;
                 schedule[gameIdx].homeScore = res.homeScore;
                 schedule[gameIdx].awayScore = res.awayScore;
+                if (res.boxScore?.home) (schedule[gameIdx] as any).homeStats = sumTeamBoxScore(res.boxScore.home);
+                if (res.boxScore?.away) (schedule[gameIdx] as any).awayStats = sumTeamBoxScore(res.boxScore.away);
             }
 
             // Common Result Data Payload for DB (snake_case)

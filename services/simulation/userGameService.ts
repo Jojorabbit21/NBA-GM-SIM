@@ -2,7 +2,7 @@
 import { Team, Game, PlayoffSeries, GameTactics, DepthChart, SimulationResult } from '../../types';
 import { SimSettings } from '../../types/simSettings';
 import { simulateGame } from '../gameEngine';
-import { updateTeamStats, updateSeriesState, applyBoxToRoster } from '../../utils/simulationUtils';
+import { updateTeamStats, updateSeriesState, applyBoxToRoster, sumTeamBoxScore } from '../../utils/simulationUtils';
 import { saveGameResults } from '../queries';
 import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
@@ -110,6 +110,8 @@ export const applyUserGameResult = async (
         schedule[uGameIdx].played = true;
         schedule[uGameIdx].homeScore = result.homeScore;
         schedule[uGameIdx].awayScore = result.awayScore;
+        (schedule[uGameIdx] as any).homeStats = sumTeamBoxScore(result.homeBox);
+        (schedule[uGameIdx] as any).awayStats = sumTeamBoxScore(result.awayBox);
     }
 
     // 4. Update Playoffs

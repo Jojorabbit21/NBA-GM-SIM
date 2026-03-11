@@ -11,7 +11,7 @@ import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
 import { applyRestDayRecovery } from '../services/game/engine/fatigueSystem';
 import { CpuGameResult } from '../services/simulationService';
-import { applyBoxToRoster, updateTeamStats } from '../utils/simulationUtils';
+import { applyBoxToRoster, updateTeamStats, sumTeamBoxScore } from '../utils/simulationUtils';
 import { sendMessage, hasMessageOfType } from '../services/messageService';
 import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterContent, buildPlayoffOwnerLetterContent, aggregateSeriesBoxScores, selectFinalsMvp, buildPlayoffChampionContent, computeAllTeamsStats, buildRosterStats, maybeSendScoutReport } from '../services/reportGenerator';
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
@@ -81,6 +81,8 @@ export const useSimulation = (
             const gameIdx = newSchedule.findIndex(g => g.id === spectateGame.id);
             if (gameIdx >= 0) {
                 newSchedule[gameIdx] = { ...newSchedule[gameIdx], played: true, homeScore: result.homeScore, awayScore: result.awayScore };
+                (newSchedule[gameIdx] as any).homeStats = sumTeamBoxScore(result.homeBox);
+                (newSchedule[gameIdx] as any).awayStats = sumTeamBoxScore(result.awayBox);
             }
 
             // DB 저장
