@@ -13,6 +13,7 @@ interface RotationManagerProps {
     onUpdateTactics: (t: GameTactics) => void;
     onViewPlayer: (p: Player) => void;
     onUpdateDepthChart?: (dc: DepthChart) => void;
+    coachName?: string;
 }
 
 export const RotationManager: React.FC<RotationManagerProps> = ({
@@ -22,7 +23,8 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
     healthySorted,
     onUpdateTactics,
     onViewPlayer,
-    onUpdateDepthChart
+    onUpdateDepthChart,
+    coachName
 }) => {
     return (
         <div className="flex flex-col bg-slate-950/20">
@@ -31,12 +33,13 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
                     <StartingLineup team={team} tactics={tactics} roster={team.roster} />
                 </div> */}
                 <div className="flex-col flex">
-                    <DepthChartEditor 
-                        team={team} 
-                        tactics={tactics} 
-                        depthChart={depthChart || null} 
-                        onUpdateDepthChart={onUpdateDepthChart || (() => {})} 
+                    <DepthChartEditor
+                        team={team}
+                        tactics={tactics}
+                        depthChart={depthChart || null}
+                        onUpdateDepthChart={onUpdateDepthChart || (() => {})}
                         onUpdateTactics={onUpdateTactics}
+                        coachName={coachName}
                     />
                 </div>
             </div>
@@ -48,6 +51,7 @@ export const RotationManager: React.FC<RotationManagerProps> = ({
                     healthySorted={healthySorted}
                     onUpdateTactics={onUpdateTactics}
                     onViewPlayer={onViewPlayer}
+                    coachName={coachName}
                 />
             </div>
         </div>

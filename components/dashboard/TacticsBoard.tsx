@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, memo } from 'react';
-import { Wand2, RotateCcw, Save, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-react';
+import { RotateCcw, Save, PenLine, Trash2, Copy, ClipboardPaste } from 'lucide-react';
 import { GameTactics, Player, Team, TacticPreset } from '../../types';
 import { DefensiveStats } from '../../utils/defensiveStats';
 import { TacticsSlidersPanel } from './tactics/TacticsSlidersPanel';
@@ -17,9 +17,10 @@ interface TacticsBoardProps {
   onAutoSet: () => void;
   onForceSave?: () => void;
   defensiveStats?: DefensiveStats;
+  coachName?: string;
 }
 
-const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats }) => {
+const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster, onUpdateTactics, onAutoSet, onForceSave, defensiveStats, coachName }) => {
     const [presets, setPresets] = useState<TacticPreset[]>([]);
     const [selectedSlot, setSelectedSlot] = useState<number>(1);
     const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
@@ -167,7 +168,7 @@ const TacticsBoardInner: React.FC<TacticsBoardProps> = ({ team, tactics, roster,
                         onClick={onAutoSet}
                         className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg flex items-center gap-2 font-bold uppercase text-xs tracking-wider transition-all active:scale-95"
                     >
-                        <Wand2 size={14} /> 코치에게 위임
+                        {coachName ? `${coachName}에게 위임` : '코치에게 위임'}
                     </button>
                     <button
                         onClick={handleReset}

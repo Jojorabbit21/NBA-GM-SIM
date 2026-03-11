@@ -126,8 +126,8 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
         return () => window.removeEventListener('keydown', handleKey);
     }, [onBack]);
 
-    const offenseKeys = PREF_ORDER.filter(k => PREF_TEXTS[k].group === 'offense');
-    const defenseKeys = PREF_ORDER.filter(k => PREF_TEXTS[k].group === 'defense');
+    const offenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'offense');
+    const defenseKeys = PREF_ORDER.filter(k => PREF_AXES[k].group === 'defense');
 
     return (
         <div className="flex flex-col h-full animate-in fade-in duration-300 overflow-hidden">

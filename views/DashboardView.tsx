@@ -154,6 +154,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       onUpdateTactics={onUpdateTactics}
                       onViewPlayer={handlePlayerClick}
                       onUpdateDepthChart={onUpdateDepthChart}
+                      coachName={coachingData?.[team.id]?.headCoach?.name}
                   />
               )}
 
@@ -167,6 +168,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                         onAutoSet={handleAutoSet}
                         onForceSave={onForceSave}
                         defensiveStats={defensiveStats}
+                        coachName={coachingData?.[team.id]?.headCoach?.name}
                     />
                   </div>
               )}
