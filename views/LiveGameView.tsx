@@ -264,7 +264,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
 
     return (
         <div className="flex flex-col min-h-0 overflow-hidden shrink">
-            <PlayerRowHeader label="현재 뛰는 중" teamColor={teamColor} />
+            <PlayerRowHeader label="현재 뛰는 중" teamColor={teamColor} teamTextColor={teamTextColor} />
             {/* 스크롤 영역 */}
             <div
                 className="flex-1 min-h-0 overflow-y-auto"
@@ -287,11 +287,9 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                         } : undefined}
                     />
                 ))}
-                {/* 출전/휴식 구분선 */}
-                <div className="border-t-2 border-slate-700/80 mt-1" />
                 {/* 휴식 중 헤더 */}
-                <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700" style={{ backgroundColor: teamColor ? `${teamColor}25` : 'rgba(30,41,59,0.6)' }}>
-                    <span className="text-xs text-slate-400 font-bold tracking-wider">휴식 중</span>
+                <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700" style={{ backgroundColor: teamColor || 'rgba(30,41,59,0.6)' }}>
+                    <span className="text-xs font-bold tracking-wider" style={{ color: teamTextColor || '#94a3b8' }}>휴식 중</span>
                     {isUser && (
                         <span className="text-xs text-slate-600 font-normal">← 드래그로 교체</span>
                     )}
@@ -312,10 +310,10 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                     <>
                         <div className="border-t border-slate-700/60" />
                         <div
-                            className="grid items-center gap-x-0.5 px-2 py-1.5 bg-slate-800/40"
-                            style={{ gridTemplateColumns: PLAYER_GRID }}
+                            className="grid items-center gap-x-0.5 px-2 py-1.5"
+                            style={{ gridTemplateColumns: PLAYER_GRID, backgroundColor: teamColor || 'rgba(30,41,59,0.4)' }}
                         >
-                            <span className="text-xs font-black text-slate-400 truncate">TEAM</span>
+                            <span className="text-xs font-black truncate" style={{ color: teamTextColor || '#94a3b8' }}>TEAM</span>
                             <span className="text-xs text-center" />
                             <span className="text-xs text-right" />
                             <span className="text-xs text-right" />
@@ -1191,6 +1189,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={!isSpectateMode && !isUserHome}
                                 onSubstitute={makeSubstitution}
                                 teamColor={awayColor}
+                                teamTextColor={awayData?.colors.text}
                             />
                             {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
                             <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
@@ -1389,6 +1388,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                 isUser={!isSpectateMode && isUserHome}
                                 onSubstitute={makeSubstitution}
                                 teamColor={homeColor}
+                                teamTextColor={homeData?.colors.text}
                             />
                             {/* 하단 패널: 사용자팀이면 팀스탯비교+리더+쿼터점수, 상대팀이면 WP 그래프 */}
                             <div className="flex-1 min-h-[160px] border-t border-slate-800 flex flex-col overflow-y-auto" style={{ scrollbarWidth: 'none' } as React.CSSProperties}>
