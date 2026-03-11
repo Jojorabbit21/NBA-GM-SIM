@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Team, Player, Game } from '../types';
+import { LeagueCoachingData } from '../types/coaching';
 import { RosterGrid } from '../components/roster/RosterGrid';
 import { RosterTabs } from '../components/roster/RosterTabs';
 import { TeamGameLog } from '../components/roster/TeamGameLog';
@@ -17,9 +18,11 @@ interface RosterViewProps {
   schedule?: Game[];
   onViewGameResult?: (result: any) => void;
   userId?: string;
+  coachingData?: LeagueCoachingData | null;
+  onCoachClick?: (teamId: string) => void;
 }
 
-export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId }) => {
+export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, initialTeamId, onViewPlayer, schedule = [], onViewGameResult, userId, coachingData, onCoachClick }) => {
   const [selectedTeamId, setSelectedTeamId] = useState(initialTeamId || myTeamId);
   const [tab, setTab] = useState<'roster' | 'records'>('roster');
 
@@ -32,6 +35,8 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
   const teamColors = TEAM_DATA[selectedTeam?.id]?.colors || null;
   const theme = getTeamTheme(selectedTeam?.id, teamColors);
 
+  const headCoach = coachingData?.[selectedTeam?.id]?.headCoach;
+
   if (!selectedTeam) return null;
 
   return (
@@ -42,6 +47,18 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               <TeamLogo teamId={selectedTeam.id} size="sm" />
               <span className="text-sm font-black uppercase tracking-wide" style={{ color: theme.text }}>{selectedTeam.city} {selectedTeam.name}</span>
               <span className="text-xs font-bold" style={{ color: theme.accent }}>{selectedTeam.wins}-{selectedTeam.losses}</span>
+              {headCoach && (
+                  <>
+                      <span className="text-slate-500 text-[10px]">|</span>
+                      <span className="text-[10px] text-slate-500 uppercase tracking-wider font-bold">HC</span>
+                      <span
+                          className="text-xs font-semibold text-slate-300 hover:text-indigo-400 cursor-pointer transition-colors"
+                          onClick={() => onCoachClick?.(selectedTeam.id)}
+                      >
+                          {headCoach.name}
+                      </span>
+                  </>
+              )}
           </div>
           <RosterTabs activeTab={tab} onTabChange={setTab} />
       </div>

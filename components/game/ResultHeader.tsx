@@ -61,11 +61,9 @@ export const ResultHeader: React.FC<ResultHeaderProps> = ({
 
     return (
         <div className="bg-slate-950 border-b border-slate-800 flex flex-col items-center justify-center relative overflow-hidden shadow-2xl z-20">
-            {/* Dynamic Background Gradient using Team Colors + Win/Loss Tint */}
-            <div className="absolute inset-0 pointer-events-none opacity-20" style={{
-                background: isWin 
-                    ? `linear-gradient(to right, ${awayColor}00, ${homeColor}66)` // Fade to Home Color
-                    : `linear-gradient(to right, ${awayColor}66, ${homeColor}00)` // Fade to Away Color
+            {/* Dynamic Background Gradient using Team Colors at both ends */}
+            <div className="absolute inset-0 pointer-events-none" style={{
+                background: `linear-gradient(to right, ${awayColor}40, transparent 30%, transparent 70%, ${homeColor}40)`
             }}></div>
             
             {/* Win/Loss Status Overlay */}
