@@ -216,7 +216,22 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                     style={{ top: teamDropdownPos.top, right: teamDropdownPos.right }}
                                 >
                                     <div className="p-2 max-h-80 overflow-y-auto custom-scrollbar space-y-1">
-                                        {teams.map(team => (
+                                        <div
+                                            className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors border-b border-slate-800 mb-1"
+                                            onClick={() => {
+                                                if (selectedTeams.length === teams.length) {
+                                                    setSelectedTeams([]);
+                                                } else {
+                                                    setSelectedTeams(teams.map(t => t.id));
+                                                }
+                                            }}
+                                        >
+                                            <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedTeams.length === teams.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                {selectedTeams.length === teams.length && <Check size={10} className="text-white" />}
+                                            </div>
+                                            <span className={`text-xs font-bold ${selectedTeams.length === teams.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
+                                        </div>
+                                        {[...teams].sort((a, b) => a.name.localeCompare(b.name)).map(team => (
                                             <div
                                                 key={team.id}
                                                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
@@ -258,6 +273,21 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                         style={{ top: posDropdownPos.top, right: posDropdownPos.right }}
                                     >
                                         <div className="p-2 space-y-1">
+                                            <div
+                                                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors border-b border-slate-800 mb-1"
+                                                onClick={() => {
+                                                    if (selectedPositions.length === POSITIONS.length) {
+                                                        setSelectedPositions([]);
+                                                    } else {
+                                                        setSelectedPositions([...POSITIONS]);
+                                                    }
+                                                }}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${selectedPositions.length === POSITIONS.length ? 'bg-indigo-600 border-indigo-600' : 'border-slate-600 bg-slate-950'}`}>
+                                                    {selectedPositions.length === POSITIONS.length && <Check size={10} className="text-white" />}
+                                                </div>
+                                                <span className={`text-xs font-bold ${selectedPositions.length === POSITIONS.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
+                                            </div>
                                             {POSITIONS.map(pos => (
                                                 <div
                                                     key={pos}
