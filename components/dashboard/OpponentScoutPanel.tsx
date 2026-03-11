@@ -146,11 +146,11 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                     <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                         <tr className="bg-slate-950 h-8">
-                            <th colSpan={3} className="py-1 px-4 border-r border-slate-700"></th>
-                            <th colSpan={6} className="py-1 px-2 text-center border-r border-slate-700">
+                            <th colSpan={3} className="py-1 px-4 border-b border-slate-800 border-r border-slate-700"></th>
+                            <th colSpan={6} className="py-1 px-2 text-center border-b border-slate-800 border-r border-slate-700">
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">주요 능력치</span>
                             </th>
-                            <th colSpan={9} className="py-1 px-2 text-center">
+                            <th colSpan={9} className="py-1 px-2 text-center border-b border-slate-800">
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">시즌 스탯</span>
                             </th>
                         </tr>
