@@ -24,8 +24,8 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
     return (
         <Table fullHeight={false} className="!rounded-none">
             <TableHead noRow>
-                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                    <TableHeaderCell colSpan={5} align="left" className="bg-slate-950">
+                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
+                    <TableHeaderCell colSpan={5} align="center" className="bg-slate-950">
                         기본 정보
                     </TableHeaderCell>
                     <TableHeaderCell colSpan={offenseKeys.length} className="border-l border-slate-800 bg-slate-950">
@@ -35,8 +35,8 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
                         수비 전술
                     </TableHeaderCell>
                 </tr>
-                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
-                    <TableHeaderCell align="left" style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
+                <tr className="text-slate-500 text-xs font-black uppercase tracking-widest h-10">
+                    <TableHeaderCell align="center" style={{ width: 70, minWidth: 70 }} className="bg-slate-950 ko-normal">
                         직책
                     </TableHeaderCell>
                     <TableHeaderCell align="left" style={{ width: 180, minWidth: 180 }} className="bg-slate-950 ko-normal">
@@ -73,7 +73,7 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachCl
             </TableHead>
             <TableBody>
                 <TableRow>
-                    <TableCell align="left" style={{ width: 70, minWidth: 70 }}>
+                    <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
                         <span className="text-xs font-bold text-slate-500 ko-normal">감독</span>
                     </TableCell>
                     <TableCell align="left" style={{ width: 180, minWidth: 180 }}>
