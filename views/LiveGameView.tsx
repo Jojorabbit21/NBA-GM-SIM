@@ -147,7 +147,7 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
 
 const PlayerRowHeader: React.FC<{ label?: string }> = ({ label = '선수' }) => (
     <div
-        className="grid gap-x-0.5 px-2 py-1 text-xs font-bold text-slate-600 uppercase tracking-wider border-b border-slate-800 shrink-0"
+        className="grid gap-x-0.5 px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider bg-slate-800/60 border-b border-slate-700 shrink-0"
         style={{ gridTemplateColumns: PLAYER_GRID }}
     >
         <span>{label}</span>
@@ -288,8 +288,8 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                 {/* 출전/휴식 구분선 */}
                 <div className="border-t-2 border-slate-700/80 mt-1" />
                 {/* 휴식 중 헤더 */}
-                <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700/60">
-                    <span className="text-xs text-slate-500 font-bold tracking-wider">휴식 중</span>
+                <div className="flex items-center gap-2 px-2 py-1 bg-slate-800/60 border-b border-slate-700">
+                    <span className="text-xs text-slate-400 font-bold tracking-wider">휴식 중</span>
                     {isUser && (
                         <span className="text-xs text-slate-600 font-normal">← 드래그로 교체</span>
                     )}
@@ -386,8 +386,8 @@ const TeamStatsCompare: React.FC<{
     }, [homeBox, awayBox]);
 
     return (
-        <div className="shrink-0 px-2 py-2">
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5 px-1">팀 스탯</p>
+        <div className="shrink-0 px-3 py-2">
+            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5">팀 스탯</p>
             <div className="flex flex-col gap-1">
                 {COMPARE_STATS.map(({ key, label, fmt }) => {
                     const { h, a } = stats[key as keyof typeof stats];
@@ -399,9 +399,9 @@ const TeamStatsCompare: React.FC<{
                     const bothZero = h === 0 && a === 0;
 
                     return (
-                        <div key={key} className="grid grid-cols-[1fr_32px_36px_32px_1fr] items-center gap-1">
+                        <div key={key} className="grid grid-cols-[1fr_36px_40px_36px_1fr] items-center gap-1.5">
                             {/* Away bar (grows right-to-left) */}
-                            <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-800/50">
+                            <div className="h-3 flex justify-end rounded-sm overflow-hidden bg-slate-950">
                                 {!bothZero && (
                                     <div
                                         className="h-full rounded-sm transition-all duration-300"
@@ -420,7 +420,7 @@ const TeamStatsCompare: React.FC<{
                                 {fmt(h)}
                             </span>
                             {/* Home bar (grows left-to-right) */}
-                            <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-800/50">
+                            <div className="h-3 flex justify-start rounded-sm overflow-hidden bg-slate-950">
                                 {!bothZero && (
                                     <div
                                         className="h-full rounded-sm transition-all duration-300"
@@ -472,8 +472,8 @@ const QuarterScores: React.FC<{
     };
 
     return (
-        <div className="shrink-0 px-2 py-2 border-t border-slate-800/50">
-            <table className="w-full text-xs font-mono border border-slate-700/60 rounded overflow-hidden">
+        <div className="shrink-0">
+            <table className="w-full text-xs font-mono">
                 <thead>
                     <tr className="text-xs text-slate-600 uppercase bg-slate-900/60">
                         <th className="text-left px-1.5 py-1 font-semibold w-12 border-r border-slate-700/60 text-slate-500 tracking-wider">쿼터별 득점</th>
@@ -955,6 +955,10 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
 
             {/* ── 스코어버그 헤더 ── */}
             <div className="relative bg-slate-900 border-b border-slate-800 py-5 px-[20%] shrink-0 overflow-hidden">
+                {/* 팀 컬러 그라데이션 */}
+                <div className="absolute inset-0 pointer-events-none" style={{
+                    background: `linear-gradient(to right, ${awayColor}40, transparent 30%, transparent 70%, ${homeColor}40)`
+                }} />
 
                 {/* 원정 로고 — 왼쪽 극단, 크롭 */}
                 <img
