@@ -50,9 +50,10 @@ export const RosterView: React.FC<RosterViewProps> = ({ allTeams, myTeamId, init
               {headCoach && (
                   <>
                       <span className="text-slate-500 text-[10px]">|</span>
-                      <span className="text-[10px] text-slate-500 tracking-wider font-bold ko-normal">헤드코치</span>
+                      <span className="text-[10px] tracking-wider font-bold ko-normal" style={{ color: theme.accent, opacity: 0.6 }}>헤드코치</span>
                       <span
-                          className="text-xs font-semibold text-slate-300 hover:text-indigo-400 cursor-pointer transition-colors"
+                          className="text-xs font-semibold cursor-pointer transition-opacity hover:opacity-80"
+                          style={{ color: theme.text }}
                           onClick={() => onCoachClick?.(selectedTeam.id)}
                       >
                           {headCoach.name}

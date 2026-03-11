@@ -5,6 +5,7 @@ import { HeadCoach } from '../types/coaching';
 import { TEAM_DATA } from '../data/teamData';
 import { getTeamTheme } from '../utils/teamTheme';
 import { getTeamLogoUrl } from '../utils/constants';
+import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../components/common/Table';
 
 interface CoachDetailViewProps {
     coach: HeadCoach;
@@ -18,6 +19,7 @@ type PrefKey = keyof HeadCoach['preferences'];
 interface PrefAxis {
     label: string;
     group: 'offense' | 'defense';
+    color: string;
     /** 값 범위별 [태그, 한 줄 설명] */
     tiers: [number, string, string][];  // [최대값, 태그, 설명]
 }
@@ -26,6 +28,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     offenseIdentity: {
         label: '공격 체계',
         group: 'offense',
+        color: 'text-indigo-400',
         tiers: [
             [2,  '프리랜스',         '에이스의 즉흥 플레이에 의존하는 히어로볼 성향'],
             [4,  '스타 중심',        '에이스에게 높은 자유도를 주되 최소한의 세트 플레이 병행'],
@@ -37,6 +40,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     tempo: {
         label: '경기 템포',
         group: 'offense',
+        color: 'text-emerald-400',
         tiers: [
             [2,  '그라인드',         '포제션을 끝까지 활용하는 하프코트 중심의 느린 페이스'],
             [4,  '슬로우 페이스',    '급하지 않게 좋은 슛 기회를 만들어내는 데 집중'],
@@ -48,6 +52,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     scoringFocus: {
         label: '득점 방식',
         group: 'offense',
+        color: 'text-amber-400',
         tiers: [
             [2,  '인사이드 헤비',    '림 어택과 포스트업이 주 무기, 외곽은 보조 수단'],
             [4,  '페인트 존 중심',   '안쪽 공략에 무게를 두되 오픈 3점은 허용'],
@@ -59,6 +64,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     pnrEmphasis: {
         label: '주요 플레이 타입',
         group: 'offense',
+        color: 'text-cyan-400',
         tiers: [
             [2,  'ISO / 포스트업',   '스크린 없이 개인 돌파와 로우포스트로 승부'],
             [4,  '개인기 중심',      '1:1 무브를 앞세우되 간헐적으로 스크린 활용'],
@@ -70,6 +76,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     defenseStyle: {
         label: '수비 압박',
         group: 'defense',
+        color: 'text-rose-400',
         tiers: [
             [2,  '드롭 커버리지',    '포지션을 유지하며 실수를 줄이는 보수적 셸 디펜스'],
             [4,  '컨서버티브',       '무리하지 않는 안정적 수비, 파울 관리 우선'],
@@ -81,6 +88,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     helpScheme: {
         label: '헬프 스킴',
         group: 'defense',
+        color: 'text-purple-400',
         tiers: [
             [2,  '스위치 올',        '맡은 선수를 끝까지 따라가며 개인 수비 책임 강조'],
             [4,  '제한적 헬프',      '1:1 수비 기본, 페인트 침투 시에만 최소한 헬프'],
@@ -92,6 +100,7 @@ const PREF_AXES: Record<PrefKey, PrefAxis> = {
     zonePreference: {
         label: '존 디펜스',
         group: 'defense',
+        color: 'text-yellow-400',
         tiers: [
             [2,  '순수 대인',        '존 디펜스를 거의 사용하지 않는 대인 수비 고집'],
             [4,  '대인 기본',        '대인 수비 중심, 극히 드물게 변칙 존 활용'],
@@ -192,48 +201,59 @@ export const CoachDetailView: React.FC<CoachDetailViewProps> = ({ coach, teamId,
                 </div>
 
                 {/* ═══ BODY ═══ */}
-                <div className="text-xs bg-slate-950">
+                <div className="bg-slate-950">
 
-                    {/* ═══ SECTION: 전술 성향 — 스카우팅 리포트 ═══ */}
-                    <div>
-                        {/* Offense */}
-                        <div className="px-6 py-3 bg-slate-700 flex items-center">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">Offense Philosophy</span>
-                        </div>
-                        <div className="divide-y divide-slate-800/50">
+                    {/* ═══ 공격 전술 ═══ */}
+                    <div className="px-4 py-2.5 bg-slate-800 border-b border-slate-700">
+                        <span className="text-xs font-black text-white uppercase tracking-widest">공격 전술</span>
+                    </div>
+                    <Table className="border-0 !rounded-none shadow-none">
+                        <TableHead>
+                            <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
+                            <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
+                            <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
+                        </TableHead>
+                        <TableBody>
                             {offenseKeys.map(key => {
                                 const axis = PREF_AXES[key];
                                 const { tag, desc } = getAxisResult(axis, coach.preferences[key]);
-                                return <PreferenceRow key={key} label={axis.label} tag={tag} desc={desc} />;
+                                return (
+                                    <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                        <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
+                                        <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                        <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
+                                    </TableRow>
+                                );
                             })}
-                        </div>
+                        </TableBody>
+                    </Table>
 
-                        {/* Defense */}
-                        <div className="px-6 py-3 bg-slate-700 flex items-center border-t-2 border-slate-700">
-                            <span className="text-sm font-black text-slate-300 uppercase tracking-widest">Defense Philosophy</span>
-                        </div>
-                        <div className="divide-y divide-slate-800/50">
+                    {/* ═══ 수비 전술 ═══ */}
+                    <div className="px-4 py-2.5 bg-slate-800 border-y border-slate-700">
+                        <span className="text-xs font-black text-white uppercase tracking-widest">수비 전술</span>
+                    </div>
+                    <Table className="border-0 !rounded-none shadow-none">
+                        <TableHead>
+                            <TableHeaderCell className="text-xs w-32 py-2 border-r border-slate-800/50">항목</TableHeaderCell>
+                            <TableHeaderCell className="text-xs w-40 py-2 border-r border-slate-800/50">성향</TableHeaderCell>
+                            <TableHeaderCell className="text-xs py-2">설명</TableHeaderCell>
+                        </TableHead>
+                        <TableBody>
                             {defenseKeys.map(key => {
                                 const axis = PREF_AXES[key];
                                 const { tag, desc } = getAxisResult(axis, coach.preferences[key]);
-                                return <PreferenceRow key={key} label={axis.label} tag={tag} desc={desc} />;
+                                return (
+                                    <TableRow key={key} className="hover:bg-slate-900/40 transition-colors">
+                                        <TableCell className="text-xs font-bold text-white py-2 border-r border-slate-800/50 ko-normal">{axis.label}</TableCell>
+                                        <TableCell className={`text-xs font-black py-2 border-r border-slate-800/50 ${axis.color}`}>{tag}</TableCell>
+                                        <TableCell className="text-xs text-slate-400 py-2 ko-normal">{desc}</TableCell>
+                                    </TableRow>
+                                );
                             })}
-                        </div>
-                    </div>
-
+                        </TableBody>
+                    </Table>
                 </div>
             </div>
         </div>
     );
 };
-
-// ── Preference Row Component ──
-const PreferenceRow: React.FC<{ label: string; tag: string; desc: string }> = ({ label, tag, desc }) => (
-    <div className="px-6 py-3.5 hover:bg-white/5 transition-colors flex items-baseline gap-3">
-        <span className="text-[11px] font-black text-slate-500 uppercase tracking-widest w-28 shrink-0 ko-normal">{label}</span>
-        <div className="flex items-baseline gap-2 min-w-0">
-            <span className="text-sm font-black text-slate-200 shrink-0">{tag}</span>
-            <span className="text-xs text-slate-500 ko-normal truncate">{desc}</span>
-        </div>
-    </div>
-);
