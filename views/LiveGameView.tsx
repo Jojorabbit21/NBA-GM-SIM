@@ -145,10 +145,10 @@ const PlayerRow: React.FC<PlayerRowProps> = ({
     );
 };
 
-const PlayerRowHeader: React.FC<{ label?: string; teamColor?: string }> = ({ label = '선수', teamColor }) => (
+const PlayerRowHeader: React.FC<{ label?: string; teamColor?: string; teamTextColor?: string }> = ({ label = '선수', teamColor, teamTextColor }) => (
     <div
-        className="grid gap-x-0.5 px-2 py-1 text-xs font-bold text-slate-400 uppercase tracking-wider border-b border-slate-700 shrink-0"
-        style={{ gridTemplateColumns: PLAYER_GRID, backgroundColor: teamColor ? `${teamColor}25` : 'rgba(30,41,59,0.6)' }}
+        className="grid gap-x-0.5 px-2 py-1 text-xs font-bold uppercase tracking-wider border-b border-slate-700 shrink-0"
+        style={{ gridTemplateColumns: PLAYER_GRID, backgroundColor: teamColor || 'rgba(30,41,59,0.6)', color: teamTextColor || '#94a3b8' }}
     >
         <span>{label}</span>
         <span className="text-center">P</span>
@@ -176,10 +176,11 @@ interface OnCourtPanelProps {
     isUser: boolean;
     onSubstitute: (outId: string, inId: string) => void;
     teamColor?: string;
+    teamTextColor?: string;
 }
 
 const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
-    onCourt, bench, isUser, onSubstitute, teamColor,
+    onCourt, bench, isUser, onSubstitute, teamColor, teamTextColor,
 }) => {
     const [draggedId, setDraggedId] = useState<string | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -1075,7 +1076,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     background: `linear-gradient(to right, ${awayColor}90, transparent 30%, transparent 70%, ${homeColor}90)`
                 }} />
                 {/* 왼쪽 */}
-                <div className="flex items-center gap-2 justify-start">
+                <div className="relative z-10 flex items-center gap-2 justify-start">
                     {(isSpectateMode || !isUserHome) && (
                         <>
                             <div className="flex rounded-lg overflow-hidden border border-slate-700">
@@ -1118,7 +1119,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     )}
                 </div>
                 {/* 중앙: 탭 */}
-                <div className="flex items-center justify-center gap-1">
+                <div className="relative z-10 flex items-center justify-center gap-1">
                     {TABS.map(({ key, label }) => (
                         <button
                             key={key}
@@ -1134,7 +1135,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                     ))}
                 </div>
                 {/* 오른쪽 */}
-                <div className="flex items-center gap-2 justify-end">
+                <div className="relative z-10 flex items-center gap-2 justify-end">
                     {!isSpectateMode && isUserHome && (
                         <>
                             <button

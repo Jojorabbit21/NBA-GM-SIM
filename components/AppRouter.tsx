@@ -138,6 +138,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 result={sim.lastGameResult}
                 myTeamId={gameData.myTeamId!}
                 teams={gameData.teams}
+                coachingData={gameData.coachingData}
                 onFinish={() => {
                     const resultDate = new Date(sim.lastGameResult.date);
                     const currentDate = new Date(gameData.currentSimDate);
