@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Mail, RefreshCw, CheckCircle2, ArrowRightLeft, ShieldAlert, Loader2, ArrowUp, ArrowDown, AlertTriangle, ChevronDown, ChevronRight, Crown, Trophy } from 'lucide-react';
-import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, Team, Player, PlayerBoxScore } from '../types';
+import { MessageListItem, MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team, Player, PlayerBoxScore } from '../types';
 import type { SeasonAwardsContent } from '../utils/awardVoting';
 import { fetchMessageList, fetchMessageContent, fetchTotalMessageCount, markMessageAsRead, markAllMessagesAsRead } from '../services/messageService';
 import { fetchFullGameResult } from '../services/queries';
@@ -1828,9 +1828,99 @@ const MessageContentRenderer: React.FC<{
             );
         }
 
+        case 'SCOUT_REPORT': {
+            const sc = content as ScoutReportContent;
+            return <ScoutReportRenderer content={sc} teams={teams} onPlayerClick={onPlayerClick} />;
+        }
+
         default:
             return <div className="text-slate-400 text-sm">표시할 내용이 없습니다.</div>;
     }
+};
+
+// --- Sub-Component: Scout Report Renderer ---
+
+const ScoutReportRenderer: React.FC<{
+    content: ScoutReportContent;
+    teams: Team[];
+    onPlayerClick: (id: string) => void;
+}> = ({ content, teams, onPlayerClick }) => {
+    const teamFullName = (() => {
+        const td = TEAM_DATA[content.teamId];
+        return td ? `${td.city} ${td.name}` : content.teamName;
+    })();
+
+    const growCount = content.players.filter(p => p.netDelta > 0).length;
+    const declineCount = content.players.filter(p => p.netDelta < 0).length;
+
+    return (
+        <div className="space-y-8 text-slate-300 leading-relaxed">
+            {/* 서신 본문 */}
+            <p>
+                단장님, {content.monthLabel} 선수단의 능력치 변화를 보고드립니다.
+                {content.players.length > 0 && (
+                    <> 이번 달 총 <span className="text-white font-bold">{content.players.length}명</span>의 선수에게서 변화가 감지되었습니다
+                    {growCount > 0 && <> (<span className="text-emerald-400 font-bold">성장 {growCount}명</span>{declineCount > 0 && <>, <span className="text-rose-400 font-bold">하락 {declineCount}명</span></>})</>}
+                    .</>
+                )}
+            </p>
+
+            {/* 테이블 */}
+            {content.players.length > 0 && (
+                <Table>
+                    <TableHead>
+                        <TableRow>
+                            <TableHeaderCell>선수명</TableHeaderCell>
+                            <TableHeaderCell className="text-center w-16">POS</TableHeaderCell>
+                            <TableHeaderCell className="text-center w-16">OVR</TableHeaderCell>
+                            <TableHeaderCell>변화 능력치</TableHeaderCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {content.players.map(player => (
+                            <TableRow key={player.playerId}>
+                                <TableCell>
+                                    <button
+                                        className="text-white hover:text-indigo-400 transition-colors font-medium text-left"
+                                        onClick={() => onPlayerClick(player.playerId)}
+                                    >
+                                        {player.playerName}
+                                    </button>
+                                    <span className="text-slate-500 text-xs ml-1.5">{player.age}세</span>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    <span className="text-xs text-slate-400">{player.position}</span>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                    <OvrBadge ovr={player.ovr} size="sm" />
+                                </TableCell>
+                                <TableCell>
+                                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                                        {player.changes.map(c => (
+                                            <span key={c.attribute} className="text-xs whitespace-nowrap">
+                                                <span className="text-slate-400">{c.attributeKr}</span>
+                                                {' '}
+                                                <span className={c.totalDelta > 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                                                    {c.totalDelta > 0 ? '+' : ''}{c.totalDelta}
+                                                </span>
+                                            </span>
+                                        ))}
+                                    </div>
+                                </TableCell>
+                            </TableRow>
+                        ))}
+                    </TableBody>
+                </Table>
+            )}
+
+            {/* 서명 */}
+            <div className="pt-4">
+                <p className="text-slate-400 text-sm">Best regards,</p>
+                <p className="text-white font-bold mt-1">{teamFullName} 스카우팅부</p>
+                <p className="text-slate-500 text-xs mt-0.5">Head of Scouting</p>
+            </div>
+        </div>
+    );
 };
 
 // --- Sub-Component: Awards Report Viewer ---
