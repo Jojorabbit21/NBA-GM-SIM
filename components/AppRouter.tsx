@@ -5,7 +5,7 @@ import { GameSimulatingView } from '../views/GameSimulationView';
 import { LiveGameView } from '../views/LiveGameView';
 import { GameResultView } from '../views/GameResultView';
 
-import { DashboardView } from '../views/DashboardView';
+import { DashboardView, DashboardTab } from '../views/DashboardView';
 import { RosterView } from '../views/RosterView';
 import { ScheduleView } from '../views/ScheduleView';
 import { StandingsView } from '../views/StandingsView';
@@ -19,6 +19,7 @@ import { FantasyDraftView } from '../views/FantasyDraftView';
 import { DraftHistoryView } from '../views/DraftHistoryView';
 import { DraftLotteryView } from '../views/DraftLotteryView';
 import { PlayerDetailView } from '../views/PlayerDetailView';
+import { CoachDetailView } from '../views/CoachDetailView';
 import { HallOfFameView } from '../views/HallOfFameView';
 import { calculatePlayerOvr } from '../utils/constants';
 import { Loader2 } from 'lucide-react';
@@ -42,9 +43,11 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
     const [draftOrder, setDraftOrder] = useState<string[] | null>(null);
     const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
+    const [viewCoachData, setViewCoachData] = useState<{ coach: any; teamId: string } | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
     const scheduleMonthRef = useRef<Date | null>(null);
     const leaderboardStateRef = useRef<LeaderboardFilterState | null>(null);
+    const [dashboardInitialTab, setDashboardInitialTab] = useState<DashboardTab | undefined>(undefined);
 
     const handleViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
         setViewPlayerData({ player, teamName, teamId });
@@ -52,10 +55,22 @@ const AppRouter: React.FC<AppRouterProps> = ({
         setView('PlayerDetail');
     }, [view, setView]);
 
+    const handleViewCoach = useCallback((teamId: string) => {
+        const coach = gameData.coachingData?.[teamId]?.headCoach;
+        if (!coach) return;
+        setViewCoachData({ coach, teamId });
+        previousViewRef.current = view;
+        setView('CoachDetail');
+    }, [view, setView, gameData.coachingData]);
+
     // Reset selected team when leaving Roster view (preserve when navigating to GameResult/PlayerDetail so back works)
     useEffect(() => {
         if (view !== 'Roster' && view !== 'GameResult' && view !== 'PlayerDetail') {
             setSelectedTeamId(null);
+        }
+        // Dashboard 탭 초기값은 한 번 소비 후 리셋
+        if (view !== 'Dashboard') {
+            setDashboardInitialTab(undefined);
         }
     }, [view]);
 
@@ -183,6 +198,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                             setView('GameResult');
                         }}
                         coachingData={gameData.coachingData}
+                        initialTab={dashboardInitialTab}
                     />
                 );
             } else if (myTeam && !gameData.userTactics) {
@@ -211,8 +227,23 @@ const AppRouter: React.FC<AppRouterProps> = ({
             }
             setView('Dashboard');
             return null;
+        case 'CoachDetail':
+            if (viewCoachData) {
+                return (
+                    <CoachDetailView
+                        coach={viewCoachData.coach}
+                        teamId={viewCoachData.teamId}
+                        onBack={() => {
+                            setViewCoachData(null);
+                            setView(previousViewRef.current);
+                        }}
+                    />
+                );
+            }
+            setView('Dashboard');
+            return null;
         case 'Roster':
-            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} schedule={gameData.schedule} userId={session?.user?.id} onViewGameResult={(result) => { previousViewRef.current = 'Roster'; sim.loadSavedGameResult(result); setView('GameResult'); }} />;
+            return <RosterView allTeams={gameData.teams} myTeamId={gameData.myTeamId!} initialTeamId={selectedTeamId} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} schedule={gameData.schedule} userId={session?.user?.id} onViewGameResult={(result) => { previousViewRef.current = 'Roster'; sim.loadSavedGameResult(result); setView('GameResult'); }} coachingData={gameData.coachingData} onCoachClick={(coachTeamId) => { handleViewCoach(coachTeamId); }} />;
         case 'Schedule':
             return (
                 <ScheduleView

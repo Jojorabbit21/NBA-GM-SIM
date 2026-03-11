@@ -12,7 +12,7 @@ import { RotationManager } from '../components/dashboard/RotationManager';
 import { OpponentScoutPanel } from '../components/dashboard/OpponentScoutPanel';
 import { TacticsBoard } from '../components/dashboard/TacticsBoard';
 import { RosterGrid } from '../components/roster/RosterGrid';
-import { CoachProfileCard } from '../components/dashboard/CoachProfileCard';
+import { HeadCoachTable } from '../components/dashboard/CoachProfileCard';
 import { ScheduleView } from './ScheduleView';
 
 interface DashboardViewProps {
@@ -32,17 +32,20 @@ interface DashboardViewProps {
   userId?: string;
   onViewGameResult?: (result: any) => void;
   coachingData?: LeagueCoachingData | null;
+  initialTab?: DashboardTab;
 }
 
-type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule' | 'coaching';
+export type DashboardTab = 'rotation' | 'tactics' | 'roster' | 'records' | 'opponent' | 'schedule' | 'coaching';
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   team, teams, schedule, onSim, tactics, onUpdateTactics,
   currentSimDate, isSimulating,
   depthChart, onUpdateDepthChart, onForceSave, tendencySeed, onViewPlayer,
-  userId, onViewGameResult, coachingData
+  userId, onViewGameResult, coachingData, initialTab
 }) => {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('rotation');
+  const [activeTab, setActiveTab] = useState<DashboardTab>(initialTab || 'rotation');
+
+  useEffect(() => { if (initialTab) setActiveTab(initialTab); }, [initialTab]);
 
   const nextGameDisplay = useMemo(() => {
       if (!team?.id) return undefined;
@@ -191,8 +194,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               )}
 
               {activeTab === 'coaching' && (
-                  <div className="animate-in fade-in duration-500 p-8">
-                    <CoachProfileCard coach={coachingData?.[team.id]?.headCoach} />
+                  <div className="animate-in fade-in duration-500 h-full">
+                    <HeadCoachTable coach={coachingData?.[team.id]?.headCoach} />
                   </div>
               )}
 
