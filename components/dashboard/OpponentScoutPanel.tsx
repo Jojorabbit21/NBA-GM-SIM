@@ -146,25 +146,25 @@ export const OpponentScoutPanel: React.FC<OpponentScoutPanelProps> = ({
 
                     <thead className="bg-slate-950 sticky top-0 z-40 shadow-sm">
                         <tr className="bg-slate-950 h-8">
-                            <th colSpan={3} className="py-1 px-4 border-b-2 border-slate-700 border-r border-slate-700"></th>
-                            <th colSpan={6} className="py-1 px-2 text-center border-b-2 border-slate-700 border-r border-slate-700">
+                            <th colSpan={3} className="py-1 px-4 border-b border-slate-700 border-r border-slate-700"></th>
+                            <th colSpan={6} className="py-1 px-2 text-center border-b border-slate-700 border-r border-slate-700">
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">주요 능력치</span>
                             </th>
-                            <th colSpan={9} className="py-1 px-2 text-center border-b-2 border-slate-700">
+                            <th colSpan={9} className="py-1 px-2 text-center border-b border-slate-700">
                                 <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">시즌 스탯</span>
                             </th>
                         </tr>
-                        <tr className="text-xs font-black text-slate-500 uppercase tracking-widest border-b border-slate-800 h-10">
-                            <TableHeaderCell align="center" className="border-r border-slate-800/30 ko-normal">포지션</TableHeaderCell>
-                            <TableHeaderCell align="left" className="px-4 border-r border-slate-800/30 ko-normal">이름</TableHeaderCell>
-                            <TableHeaderCell align="center" className="border-r border-slate-700">OVR</TableHeaderCell>
+                        <tr className="text-xs font-black text-slate-500 uppercase tracking-widest h-10">
+                            <TableHeaderCell align="center" className="border-b border-slate-800 border-r border-slate-800/30 ko-normal">포지션</TableHeaderCell>
+                            <TableHeaderCell align="left" className="px-4 border-b border-slate-800 border-r border-slate-800/30 ko-normal">이름</TableHeaderCell>
+                            <TableHeaderCell align="center" className="border-b border-slate-800 border-r border-slate-700">OVR</TableHeaderCell>
 
                             {ATTR_COLS.map((col, i) => (
-                                <TableHeaderCell key={col.label} align="center" className={i === ATTR_COLS.length - 1 ? 'border-r border-slate-700' : 'border-r border-slate-800/30'} title={col.tooltip}>{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className={`border-b border-slate-800 ${i === ATTR_COLS.length - 1 ? 'border-r border-slate-700' : 'border-r border-slate-800/30'}`} title={col.tooltip}>{col.label}</TableHeaderCell>
                             ))}
 
                             {STAT_COLS.map(col => (
-                                <TableHeaderCell key={col.label} align="center" className="text-slate-400 border-r border-slate-800/30 last:border-r-0">{col.label}</TableHeaderCell>
+                                <TableHeaderCell key={col.label} align="center" className="text-slate-400 border-b border-slate-800 border-r border-slate-800/30 last:border-r-0">{col.label}</TableHeaderCell>
                             ))}
                         </tr>
                     </thead>
