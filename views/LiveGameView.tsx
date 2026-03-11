@@ -291,7 +291,7 @@ const OnCourtPanel: React.FC<OnCourtPanelProps> = ({
                 <div className="flex items-center gap-2 px-2 py-1 border-b border-slate-700" style={{ backgroundColor: teamColor || 'rgba(30,41,59,0.6)' }}>
                     <span className="text-xs font-bold tracking-wider" style={{ color: teamTextColor || '#94a3b8' }}>휴식 중</span>
                     {isUser && (
-                        <span className="text-xs text-slate-600 font-normal">← 드래그로 교체</span>
+                        <span className="text-xs font-normal opacity-70" style={{ color: teamTextColor || '#94a3b8' }}>(드래그로 교체)</span>
                     )}
                 </div>
                 {/* 벤치 선수 */}
@@ -959,7 +959,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
             <div className="relative bg-slate-900 border-b border-slate-800 py-5 px-[20%] shrink-0 overflow-hidden">
                 {/* 팀 컬러 그라데이션 */}
                 <div className="absolute inset-0 pointer-events-none" style={{
-                    background: `linear-gradient(to right, ${awayColor}90, transparent 30%, transparent 70%, ${homeColor}90)`
+                    background: `linear-gradient(to right, ${awayColor}, transparent 30%, transparent 70%, ${homeColor})`
                 }} />
 
                 {/* 원정 로고 — 왼쪽 극단, 크롭 */}
@@ -1071,7 +1071,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
             {/* ── 탭 바 (3등분: 유저측 컨트롤 | 탭 | 빈칸 또는 반대) ── */}
             <div className="relative grid grid-cols-3 items-center px-3 py-1.5 bg-slate-900 border-b border-slate-800 shrink-0 overflow-hidden">
                 <div className="absolute inset-0 pointer-events-none" style={{
-                    background: `linear-gradient(to right, ${awayColor}90, transparent 30%, transparent 70%, ${homeColor}90)`
+                    background: `linear-gradient(to right, ${awayColor}, transparent 30%, transparent 70%, ${homeColor})`
                 }} />
                 {/* 왼쪽 */}
                 <div className="relative z-10 flex items-center gap-2 justify-start">
@@ -1238,9 +1238,9 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             {/* PBP 로그 */}
                             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
                                 {/* 헤더 + 필터 */}
-                                <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-900 border-b border-slate-800">
+                                <div className="shrink-0 px-3 pt-2 pb-1.5 bg-slate-800 border-b border-slate-700">
                                     <div className="flex items-center gap-3">
-                                        <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">
+                                        <p className="text-xs text-slate-300 font-semibold uppercase tracking-wider">
                                             플레이-바이-플레이
                                         </p>
                                         <div className="flex gap-1">
