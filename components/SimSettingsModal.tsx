@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal } from './common/Modal';
 import { RotateCcw, Save } from 'lucide-react';
 import { SimSettings, DEFAULT_SIM_SETTINGS, SIM_SETTINGS_META, SimSettingMeta } from '../types/simSettings';
@@ -37,7 +37,7 @@ const ToggleRow: React.FC<{
     </div>
 );
 
-// ── 개별 설정 행 (숫자 슬라이더) ──
+// ── 개별 설정 행 (숫자 인풋) ──
 const NumberRow: React.FC<{
     meta: SimSettingMeta;
     value: number;
@@ -46,53 +46,50 @@ const NumberRow: React.FC<{
 }> = ({ meta, value, onChange, defaultValue }) => {
     const { min = 0, max = 1, step = 0.1 } = meta;
     const isDefault = value === defaultValue;
+    const isInteger = step >= 1;
 
     // step에 따른 소수점 자릿수
-    const decimals = step < 1 ? (step < 0.01 ? 3 : step < 0.1 ? 2 : 1) : 0;
+    const decimals = isInteger ? 0 : (step < 0.01 ? 3 : step < 0.1 ? 2 : 1);
 
-    // 채워진 비율 계산
-    const fillPercent = ((value - min) / (max - min)) * 100;
-
-    // 슬라이더 배경 (채워진 부분 + 빈 부분)
-    const sliderStyle = useMemo(() => ({
-        background: `linear-gradient(to right, #6366f1 0%, #6366f1 ${fillPercent}%, #334155 ${fillPercent}%, #334155 100%)`,
-    }), [fillPercent]);
+    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const raw = e.target.value;
+        if (raw === '' || raw === '-') return;
+        const parsed = isInteger ? parseInt(raw, 10) : parseFloat(raw);
+        if (isNaN(parsed)) return;
+        const clamped = Math.min(max, Math.max(min, parsed));
+        onChange(isInteger ? clamped : parseFloat(clamped.toFixed(decimals)));
+    };
 
     return (
         <div className="flex items-center gap-4 py-3">
-            {/* 좌측: 제목 + 설명 (50%) */}
-            <div className="w-1/2 min-w-0">
+            {/* 좌측: 제목 + 설명 */}
+            <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-slate-200 ko-normal">{meta.label}</p>
                 <p className="text-xs text-slate-500 mt-0.5">{meta.description}</p>
             </div>
 
-            {/* 우측: 슬라이더 + 값 (50%) */}
-            <div className="w-1/2 flex items-center gap-2">
-                <span className="text-xs text-slate-600 font-mono w-8 text-right flex-shrink-0">{min.toFixed(decimals)}</span>
+            {/* 우측: 인풋 + 리셋 */}
+            <div className="flex items-center gap-2 flex-shrink-0">
                 <input
-                    type="range"
+                    type="number"
                     min={min}
                     max={max}
                     step={step}
-                    value={value}
-                    onChange={(e) => onChange(parseFloat(e.target.value))}
-                    style={sliderStyle}
-                    className="flex-1 h-1.5 rounded-full appearance-none cursor-pointer
-                        [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
-                        [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500
-                        [&::-webkit-slider-thumb]:shadow-[0_0_6px_rgba(99,102,241,0.5)]
-                        [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:transition-all
-                        [&::-webkit-slider-thumb]:hover:bg-indigo-400"
+                    value={isInteger ? value : value.toFixed(decimals)}
+                    onChange={handleInputChange}
+                    className={`w-20 h-8 bg-slate-950 border rounded-lg px-2 text-xs font-mono font-bold tabular-nums text-center
+                        focus:outline-none focus:border-indigo-500 transition-colors
+                        [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none
+                        ${isDefault ? 'border-slate-700 text-slate-300' : 'border-indigo-500/50 text-indigo-400'}`}
                 />
-                <span className="text-xs text-slate-600 font-mono w-8 flex-shrink-0">{max.toFixed(decimals)}</span>
-                <span className={`text-xs font-mono font-bold tabular-nums w-10 text-right flex-shrink-0 ${isDefault ? 'text-slate-300' : 'text-indigo-400'}`}>
-                    {value.toFixed(decimals)}
+                <span className="text-xs text-slate-600 font-mono whitespace-nowrap">
+                    ({min.toFixed(decimals)}~{max.toFixed(decimals)})
                 </span>
-                <div className="w-4 flex-shrink-0">
+                <div className="w-5 flex-shrink-0">
                     {!isDefault && (
                         <button
                             onClick={() => onChange(defaultValue)}
-                            className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                            className="text-slate-500 hover:text-slate-300 transition-colors"
                             title="기본값으로 복원"
                         >
                             <RotateCcw size={12} />
@@ -135,13 +132,6 @@ export const SimSettingsModal: React.FC<SimSettingsModalProps> = ({
         setDraft({ ...DEFAULT_SIM_SETTINGS });
     };
 
-    // 카테고리별 그룹화
-    const categories = SIM_SETTINGS_META.reduce<Record<string, SimSettingMeta[]>>((acc, meta) => {
-        if (!acc[meta.category]) acc[meta.category] = [];
-        acc[meta.category].push(meta);
-        return acc;
-    }, {});
-
     const footer = (
         <div className="flex items-center justify-between">
             <button
@@ -164,39 +154,32 @@ export const SimSettingsModal: React.FC<SimSettingsModalProps> = ({
     );
 
     return (
-        <Modal isOpen={isOpen} onClose={onClose} size="md" title="시뮬레이션 설정" footer={footer}>
-            <div className="p-6 space-y-6">
-                {Object.entries(categories).map(([category, metas]) => (
-                    <div key={category}>
-                        <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1">
-                            {category}
-                        </h4>
-                        <div className="divide-y divide-slate-800/50">
-                            {metas.map(meta => {
-                                const val = draft[meta.key];
-                                if (meta.type === 'toggle') {
-                                    return (
-                                        <ToggleRow
-                                            key={meta.key}
-                                            meta={meta}
-                                            value={val as boolean}
-                                            onChange={(v) => handleChange(meta.key, v)}
-                                        />
-                                    );
-                                }
-                                return (
-                                    <NumberRow
-                                        key={meta.key}
-                                        meta={meta}
-                                        value={val as number}
-                                        defaultValue={DEFAULT_SIM_SETTINGS[meta.key] as number}
-                                        onChange={(v) => handleChange(meta.key, v)}
-                                    />
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
+        <Modal isOpen={isOpen} onClose={onClose} size="md" title="시뮬레이션 설정" footer={footer} className="!rounded-2xl">
+            <div className="p-6">
+                <div className="space-y-0">
+                    {SIM_SETTINGS_META.map(meta => {
+                        const val = draft[meta.key];
+                        if (meta.type === 'toggle') {
+                            return (
+                                <ToggleRow
+                                    key={meta.key}
+                                    meta={meta}
+                                    value={val as boolean}
+                                    onChange={(v) => handleChange(meta.key, v)}
+                                />
+                            );
+                        }
+                        return (
+                            <NumberRow
+                                key={meta.key}
+                                meta={meta}
+                                value={val as number}
+                                defaultValue={DEFAULT_SIM_SETTINGS[meta.key] as number}
+                                onChange={(v) => handleChange(meta.key, v)}
+                            />
+                        );
+                    })}
+                </div>
             </div>
         </Modal>
     );
