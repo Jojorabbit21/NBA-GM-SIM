@@ -1025,7 +1025,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                             const runTeamData = activeRun.teamId === homeTeam.id ? homeData : awayData;
                             return (
                                 <div className="mt-1 text-center">
-                                    <span className="text-[10px] font-bold text-white whitespace-nowrap">
+                                    <span className="text-xs font-bold text-white whitespace-nowrap">
                                         🔥 {runTeamData?.name?.slice(0, 3).toUpperCase() ?? activeRun.teamId.slice(0, 3).toUpperCase()}{' '}
                                         {activeRun.teamPts}-{activeRun.oppPts}
                                         {diff >= 8 && ` · ${formatDuration(activeRun.durationSec)}`}
