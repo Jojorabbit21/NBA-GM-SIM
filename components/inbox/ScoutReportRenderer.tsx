@@ -22,10 +22,12 @@ export const ScoutReportRenderer: React.FC<ScoutReportRendererProps> = ({ conten
             {/* 서신 본문 */}
             <p>
                 단장님, {content.monthLabel} 선수단 현황을 정리하여 보고드립니다.
-                {content.players.length > 0 && (
+                {content.players.length > 0 ? (
                     <> 이번 달 <span className="text-white font-bold">{content.players.length}명</span>의 선수에게서 눈에 띄는 부분이 있었습니다
                     {growCount > 0 && <> (<span className="text-emerald-400 font-bold">성장세 {growCount}명</span>{declineCount > 0 && <>, <span className="text-rose-400 font-bold">하락세 {declineCount}명</span></>})</>}
                     .</>
+                ) : (
+                    <> 이번 달에는 눈에 띄는 능력치 변화가 관찰되지 않았습니다. 선수들이 안정적으로 경기를 소화하고 있으며, 다음 달 보고서에서 의미 있는 변화를 확인할 수 있을 것으로 보입니다.</>
                 )}
             </p>
 
