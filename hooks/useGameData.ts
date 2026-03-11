@@ -306,8 +306,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                     if (checkpoint.sim_settings) {
                         setSimSettings({ ...DEFAULT_SIM_SETTINGS, ...checkpoint.sim_settings });
                     } else if (checkpoint.tactics?.tcr !== undefined) {
-                        // 레거시 마이그레이션: tactics.tcr → simSettings.tcr
-                        setSimSettings({ ...DEFAULT_SIM_SETTINGS, tcr: checkpoint.tactics.tcr });
+                        // 레거시 마이그레이션: tactics.tcr → growthRate + declineRate
+                        const legacyTcr = checkpoint.tactics.tcr;
+                        setSimSettings({ ...DEFAULT_SIM_SETTINGS, tcr: legacyTcr, growthRate: legacyTcr, declineRate: legacyTcr });
                     }
 
                     if (checkpoint.hof_id) {

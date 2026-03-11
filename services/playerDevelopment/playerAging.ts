@@ -162,6 +162,15 @@ const DECLINE_GROUPS: Record<string, { peakAge: number; noiseStdev: number }> = 
 /** 성장 rate 기본 상수 */
 const BASE_GROWTH_RATE = 0.35;
 
+/** 경험 기반 성장 대상: IQ/정신적 속성 */
+const IQ_ATTRIBUTES = new Set<SkillAttribute>([
+    'shotIq', 'offConsist', 'passIq', 'passVision',
+    'helpDefIq', 'passPerc', 'defConsist',
+]);
+
+/** IQ 속성 경험 성장 기본값 (1경기당) */
+const EXP_GROWTH_RATE = 0.025;
+
 // ═══════════════════════════════════════════════════════════════
 // Seeded Random Helpers (hiddenTendencies.ts 패턴 복제)
 // ═══════════════════════════════════════════════════════════════
@@ -294,17 +303,19 @@ function calculatePerGameGrowth(
     player: Player,
     gameBoxScore: PlayerBoxScore,
     attrAffinities: Record<SkillAttribute, number>,
-    tcr: number,
+    growthRate: number,
     leagueAverages: LeagueAverages,
 ): Partial<Record<SkillAttribute, number>> {
     const age = player.age;
 
-    // 30세 이상: 성장 없음
-    if (age >= 30) return {};
+    const mpRatio = Math.min(1.0, gameBoxScore.mp / 36);
+    if (mpRatio <= 0) return {};
 
-    // 나이 계수
+    // 나이 계수 (퍼포먼스 기반 성장용, 30세 이상 0)
     let ageFactor: number;
-    if (age <= 21) {
+    if (age >= 30) {
+        ageFactor = 0;
+    } else if (age <= 21) {
         ageFactor = 1.0;
     } else if (age <= 26) {
         ageFactor = 1.0 - (age - 21) * (0.8 / 5);
@@ -312,15 +323,8 @@ function calculatePerGameGrowth(
         ageFactor = 0.1;
     }
 
-    const mpRatio = Math.min(1.0, gameBoxScore.mp / 36);
-    if (mpRatio <= 0) return {};
-
     // 카테고리별 퍼포먼스 배율
     const perfMultipliers = computeCatPerfMultipliers(gameBoxScore, leagueAverages, mpRatio);
-
-    // 고정 시즌 예산 (potGap에 비례하지 않음)
-    const seasonBudget = BASE_GROWTH_RATE * ageFactor * tcr;
-    const perGameBase = seasonBudget / 82;
 
     const deltas: Partial<Record<SkillAttribute, number>> = {};
 
@@ -328,23 +332,15 @@ function calculatePerGameGrowth(
         const cfg = ATTR_CONFIG[attr];
         if (!cfg.growable) continue;
 
+        const isIQ = IQ_ATTRIBUTES.has(attr);
+
+        // 비-IQ 속성: 30세 이상 성장 완전 차단
+        if (!isIQ && ageFactor <= 0) continue;
+
         const currentVal = getAttr(player, attr);
 
-        // 퍼포먼스 배율 (perfStats의 카테고리 평균)
-        // perfMult = 0 이면 해당 활동 안 함 → 성장 없음
-        let perfMult: number;
-        if (cfg.perfStats.length > 0) {
-            const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 0), 0);
-            perfMult = perfSum / cfg.perfStats.length;
-        } else {
-            // perfStats 없는 속성 (strength, stamina, hustle): 출전시간 비례만
-            perfMult = mpRatio;
-        }
-
-        if (perfMult <= 0) continue; // 리그 평균 이하 → 성장 없음
-
         // 천장 소프트캡: potential 근처에서 감속 → 정지
-        const ceiling = player.potential + 3; // potential보다 약간 높은 천장
+        const ceiling = player.potential + 3;
         let growthMult: number;
         if (currentVal <= ceiling - 8) {
             growthMult = 1.0;
@@ -354,13 +350,35 @@ function calculatePerGameGrowth(
             growthMult = 0.05 * Math.exp(-(currentVal - ceiling) * 0.3);
         }
 
-        const attrEnergy = perGameBase * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0) * growthMult;
-        if (attrEnergy < 0.0001) continue;
+        let totalDelta = 0;
+
+        // ── 퍼포먼스 기반 성장 (30세 미만만) ──
+        if (ageFactor > 0) {
+            let perfMult: number;
+            if (cfg.perfStats.length > 0) {
+                const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 0), 0);
+                perfMult = perfSum / cfg.perfStats.length;
+            } else {
+                perfMult = mpRatio;
+            }
+
+            if (perfMult > 0) {
+                const perGameBase = (BASE_GROWTH_RATE * ageFactor * growthRate) / 82;
+                totalDelta += perGameBase * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0) * growthMult;
+            }
+        }
+
+        // ── IQ 경험 성장 (나이 무관, 출전만 하면 발생) ──
+        if (isIQ) {
+            totalDelta += EXP_GROWTH_RATE * mpRatio * growthMult * growthRate;
+        }
+
+        if (totalDelta < 0.0001) continue;
 
         // 성장: maxPerGameGrowth로 캡
         const room = Math.max(0, 99 - currentVal);
         if (room <= 0) continue;
-        const delta = Math.min(cfg.maxPerGameGrowth, attrEnergy);
+        const delta = Math.min(cfg.maxPerGameGrowth, totalDelta);
         if (delta > 0.001) {
             deltas[attr] = (deltas[attr] ?? 0) + delta;
         }
@@ -378,7 +396,7 @@ function calculatePerGameDecline(
     tendencySeed: string,
     seasonNumber: number,
     athleticResilience: number,
-    tcr: number,
+    declineRate: number,
     mpRatio: number,
 ): Partial<Record<SkillAttribute, number>> {
     const age = player.age;
@@ -413,7 +431,7 @@ function calculatePerGameDecline(
 
             // 시드 기반 개인차 ±40%
             const variance = seededNormal(agingSeed, ai, 0, 0.4, -0.4, 0.4);
-            let seasonDecline = baseSeasonDecline * (1 + variance) * tcr;
+            let seasonDecline = baseSeasonDecline * (1 + variance) * declineRate;
 
             // 평균 회귀 (높을수록 더 떨어짐)
             const heightPenalty = Math.max(0, (currentValue - 70) * 0.03);
@@ -430,7 +448,7 @@ function calculatePerGameDecline(
             // ── 유지 노이즈 (peak ~ onset 사이) ──
             if (group.noiseStdev <= 0) continue;
 
-            const seasonNoise = seededNormal(agingSeed, ai + 100, 0, group.noiseStdev, -1.0, 1.0) * tcr;
+            const seasonNoise = seededNormal(agingSeed, ai + 100, 0, group.noiseStdev, -1.0, 1.0) * declineRate;
             const perGameNoise = (seasonNoise / 82) * mpRatio;
 
             if (perGameNoise < 0 && currentValue + perGameNoise < cfg.floor) continue;
@@ -531,18 +549,19 @@ export function calculatePerGameDevelopment(
     currentFractional: Partial<Record<SkillAttribute, number>>,
     tendencySeed: string,
     seasonNumber: number,
-    tcr: number,
+    growthRate: number,
+    declineRate: number,
     leagueAverages: LeagueAverages,
     gameDate: string,
 ): PerGameResult {
     const mpRatio = Math.min(1.0, gameBoxScore.mp / 36);
 
-    // 성장 delta (나이 < 30)
+    // 성장 delta
     const growthDeltas = calculatePerGameGrowth(
         player,
         gameBoxScore,
         attrAffinities,
-        tcr,
+        growthRate,
         leagueAverages,
     );
 
@@ -552,7 +571,7 @@ export function calculatePerGameDevelopment(
         tendencySeed,
         seasonNumber,
         athleticResilience,
-        tcr,
+        declineRate,
         mpRatio,
     );
 
@@ -822,7 +841,8 @@ export function processGameDevelopment(
     homeBox: PlayerBoxScore[],
     awayBox: PlayerBoxScore[],
     tendencySeed: string,
-    tcr: number,
+    growthRate: number,
+    declineRate: number,
     leagueAverages: LeagueAverages,
     gameDate: string,
     seasonNumber: number = 1,
@@ -849,7 +869,8 @@ export function processGameDevelopment(
                 player.fractionalGrowth ?? {},
                 tendencySeed,
                 seasonNumber,
-                tcr,
+                growthRate,
+                declineRate,
                 leagueAverages,
                 gameDate,
             );

@@ -12,8 +12,10 @@ export interface SimSettings {
     cpuTradeBaseProbability: number;  // 0.0~0.5, 기본 0.15
     cpuTradeMaxPerDay: number;       // 0~10, 기본 3
 
-    // 선수 성장
-    tcr: number;                 // 0.0~2.0, 기본 1.0
+    // 선수 성장/노화
+    tcr: number;                 // 레거시 (하위호환) — 사용하지 않음
+    growthRate: number;          // 0.0~2.0, 기본 1.0 — 성장 속도 배율
+    declineRate: number;         // 0.0~2.0, 기본 1.0 — 노화 속도 배율
 
     // 엔진 피처
     archetypesEnabled: boolean;  // 기본 false
@@ -27,6 +29,8 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     cpuTradeBaseProbability: 0.15,
     cpuTradeMaxPerDay: 3,
     tcr: 1.0,
+    growthRate: 1.0,
+    declineRate: 1.0,
     archetypesEnabled: false,
 };
 
@@ -97,12 +101,20 @@ export const SIM_SETTINGS_META: SimSettingMeta[] = [
         category: '트레이드',
         min: 0, max: 10, step: 1,
     },
-    // 선수 성장
+    // 선수 성장/노화
     {
-        key: 'tcr',
+        key: 'growthRate',
         type: 'number',
-        label: '성장/노화 속도 (TCR)',
-        description: '선수 성장 및 노화 속도 배율 (1.0 = 기본)',
+        label: '성장 속도',
+        description: '선수 능력치 성장 속도 배율 (1.0 = 기본)',
+        category: '선수 성장',
+        min: 0, max: 2.0, step: 0.1,
+    },
+    {
+        key: 'declineRate',
+        type: 'number',
+        label: '노화 속도',
+        description: '선수 능력치 노화/퇴화 속도 배율 (1.0 = 기본)',
         category: '선수 성장',
         min: 0, max: 2.0, step: 0.1,
     },

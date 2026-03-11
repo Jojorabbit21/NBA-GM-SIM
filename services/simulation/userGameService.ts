@@ -79,12 +79,13 @@ export const applyUserGameResult = async (
 
     // 1.5. 선수 성장/퇴화 (정규시즌만)
     if (tendencySeed && !isPlayoff) {
-        const tcr = simSettings?.tcr ?? 1.0;
+        const growthRate = simSettings?.growthRate ?? 1.0;
+        const declineRate = simSettings?.declineRate ?? 1.0;
         const leagueAvg = computeLeagueAverages(teams);
         processGameDevelopment(
             homeTeam.roster, awayTeam.roster,
             result.homeBox, result.awayBox,
-            tendencySeed, tcr, leagueAvg, currentSimDate,
+            tendencySeed, growthRate, declineRate, leagueAvg, currentSimDate,
         );
     }
 
