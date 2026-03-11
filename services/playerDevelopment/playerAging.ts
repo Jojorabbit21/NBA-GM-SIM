@@ -22,18 +22,12 @@ export type SkillAttribute =
 /** 6개 카테고리 키 */
 export type CategoryKey = 'ins' | 'out' | 'plm' | 'def' | 'reb' | 'ath';
 
-export interface CategoryPotentials {
-    ins: number; out: number; plm: number;
-    def: number; reb: number; ath: number;
-}
-
 export interface CategoryAverages {
     ins: number; out: number; plm: number;
     def: number; reb: number; ath: number;
 }
 
 export interface GrowthProfile {
-    categoryPotentials: CategoryPotentials;
     attrAffinities: Record<SkillAttribute, number>;
     athleticResilience: number;
 }
@@ -59,7 +53,6 @@ export interface OffseasonResult {
     players: Array<{
         playerId: string;
         newAge: number;
-        newCatPot: CategoryPotentials;
         seasonTotalDeltas: Partial<Record<SkillAttribute, number>>;
     }>;
 }
@@ -85,10 +78,8 @@ for (const [cat, attrs] of Object.entries(CATEGORY_ATTRS)) {
         ATTR_TO_CATEGORY[attr] = cat as CategoryKey;
     }
 }
-// intangibles는 어떤 카테고리에도 속하지 않음 — 별도 처리
-// (성장/퇴화 대상이되 카테고리 기반 로직에서는 제외)
 
-/** 전체 37개 능력치 목록 (에이징 그룹 배분용) */
+/** 전체 37개 능력치 목록 */
 const ALL_ATTRIBUTES: SkillAttribute[] = [
     'closeShot', 'midRange', 'threeCorner', 'three45', 'threeTop',
     'ft', 'shotIq', 'offConsist',
@@ -100,81 +91,76 @@ const ALL_ATTRIBUTES: SkillAttribute[] = [
     'intangibles',
 ];
 
-/** 에이징 그룹 정의 (4그룹, 37개 능력치 배분) */
-interface AgingGroup {
-    name: string;
-    peakAge: number;
-    declineOnset: number;
-    maxSeasonDecline: number;
-    floor: number;
-    attributes: SkillAttribute[];
+// ─── Per-Attribute Config (37개 속성별 설정) ───
+
+interface AttrConfig {
+    growable: boolean;          // 후천적 성장 가능 여부
+    maxPerGameGrowth: number;   // 1경기당 최대 성장 delta
+    perfStats: CategoryKey[];   // 성장에 영향을 주는 퍼포먼스 카테고리
+    declineOnset: number;       // 퇴화 시작 나이
+    maxSeasonDecline: number;   // 시즌당 최대 퇴화량
+    declineGroup: string;       // 퇴화 그룹 (peakAge/노이즈 참조용)
+    floor: number;              // 바닥값
 }
 
-const AGING_GROUPS: AgingGroup[] = [
-    {
-        name: 'earlyAthletic',
-        peakAge: 26,
-        declineOnset: 28,
-        maxSeasonDecline: 4.5,
-        floor: 40,
-        attributes: ['speed', 'agility', 'vertical', 'stamina', 'spdBall', 'dunk'],
-    },
-    {
-        name: 'midPhysical',
-        peakAge: 28,
-        declineOnset: 30,
-        maxSeasonDecline: 3.5,
-        floor: 38,
-        attributes: ['strength', 'durability', 'layup', 'closeShot', 'steal', 'blk', 'offReb'],
-    },
-    {
-        name: 'lateStable',
-        peakAge: 29,
-        declineOnset: 32,
-        maxSeasonDecline: 2.5,
-        floor: 38,
-        attributes: ['intDef', 'perDef', 'defReb', 'boxOut', 'drawFoul', 'hands', 'offBallMovement', 'hustle', 'postPlay'],
-    },
-    {
-        name: 'iqSkill',
-        peakAge: 32,
-        declineOnset: 33,
-        maxSeasonDecline: 2.0,
-        floor: 40,
-        attributes: ['midRange', 'threeCorner', 'three45', 'threeTop', 'ft', 'shotIq', 'offConsist', 'passAcc', 'handling', 'passIq', 'passVision', 'helpDefIq', 'passPerc', 'defConsist', 'intangibles'],
-    },
-];
-
-/** 속성 → 에이징 그룹 역매핑 */
-const ATTR_TO_AGING_GROUP: Record<SkillAttribute, AgingGroup> = {} as any;
-for (const group of AGING_GROUPS) {
-    for (const attr of group.attributes) {
-        ATTR_TO_AGING_GROUP[attr] = group;
-    }
-}
-
-/** 카테고리 POT 생성용 포지션 보너스 */
-const POSITION_BONUS: Record<string, Record<CategoryKey, number>> = {
-    PG: { ins: -2, out: +1, plm: +3, def: 0,  reb: -3, ath: +1 },
-    SG: { ins: 0,  out: +2, plm: 0,  def: 0,  reb: -2, ath: +1 },
-    SF: { ins: 0,  out: 0,  plm: 0,  def: +1, reb: 0,  ath: 0  },
-    PF: { ins: +2, out: -1, plm: -1, def: +1, reb: +2, ath: 0  },
-    C:  { ins: +3, out: -2, plm: -2, def: +1, reb: +3, ath: -1 },
+const ATTR_CONFIG: Record<SkillAttribute, AttrConfig> = {
+    // ── INSIDE ──
+    closeShot:       { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 35,  maxSeasonDecline: 3.0, declineGroup: 'lateStable',    floor: 38 },
+    layup:           { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 38,  maxSeasonDecline: 3.5, declineGroup: 'lateStable',    floor: 38 },
+    dunk:            { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 30,  maxSeasonDecline: 4.0, declineGroup: 'midPhysical',   floor: 40 },
+    postPlay:        { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['ins'],        declineOnset: 35,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
+    drawFoul:        { growable: true,  maxPerGameGrowth: 0.08, perfStats: ['ins'],        declineOnset: 38,  maxSeasonDecline: 1.5, declineGroup: 'lateStable',    floor: 38 },
+    hands:           { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['ins'],        declineOnset: 35,  maxSeasonDecline: 1.5, declineGroup: 'lateStable',    floor: 38 },
+    // ── OUTSIDE ──
+    midRange:        { growable: true,  maxPerGameGrowth: 0.15, perfStats: ['out'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    threeCorner:     { growable: true,  maxPerGameGrowth: 0.15, perfStats: ['out'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    three45:         { growable: true,  maxPerGameGrowth: 0.15, perfStats: ['out'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    threeTop:        { growable: true,  maxPerGameGrowth: 0.15, perfStats: ['out'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    ft:              { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['out'],        declineOnset: 34,  maxSeasonDecline: 1.0, declineGroup: 'iqSkill',       floor: 40 },
+    shotIq:          { growable: true,  maxPerGameGrowth: 0.05, perfStats: ['out'],        declineOnset: 38,  maxSeasonDecline: 1.0, declineGroup: 'iqSkill',       floor: 40 },
+    offConsist:      { growable: true,  maxPerGameGrowth: 0.05, perfStats: ['ins', 'out'], declineOnset: 32,  maxSeasonDecline: 1.0, declineGroup: 'iqSkill',       floor: 40 },
+    // ── PLAYMAKING ──
+    passAcc:         { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['plm'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    handling:        { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['plm'],        declineOnset: 32,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    spdBall:         { growable: true,  maxPerGameGrowth: 0.05, perfStats: ['plm'],        declineOnset: 30,  maxSeasonDecline: 2.5, declineGroup: 'midPhysical',   floor: 38 },
+    passIq:          { growable: true,  maxPerGameGrowth: 0.05, perfStats: ['plm'],        declineOnset: 38,  maxSeasonDecline: 1.0, declineGroup: 'iqSkill',       floor: 40 },
+    passVision:      { growable: true,  maxPerGameGrowth: 0.05, perfStats: ['plm'],        declineOnset: 38,  maxSeasonDecline: 1.0, declineGroup: 'iqSkill',       floor: 40 },
+    offBallMovement: { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['plm'],        declineOnset: 32,  maxSeasonDecline: 1.5, declineGroup: 'lateStable',    floor: 38 },
+    // ── DEFENSE ──
+    intDef:          { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['def'],        declineOnset: 32,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
+    perDef:          { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['def'],        declineOnset: 32,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
+    steal:           { growable: true,  maxPerGameGrowth: 0.06, perfStats: ['def'],        declineOnset: 36,  maxSeasonDecline: 2.5, declineGroup: 'lateStable',    floor: 38 },
+    blk:             { growable: true,  maxPerGameGrowth: 0.06, perfStats: ['def'],        declineOnset: 29,  maxSeasonDecline: 2.5, declineGroup: 'midPhysical',   floor: 38 },
+    helpDefIq:       { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['def'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    passPerc:        { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['def'],        declineOnset: 33,  maxSeasonDecline: 1.5, declineGroup: 'iqSkill',       floor: 40 },
+    defConsist:      { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['def'],        declineOnset: 34,  maxSeasonDecline: 1.0, declineGroup: 'iqSkill',       floor: 40 },
+    // ── REBOUND ──
+    offReb:          { growable: true,  maxPerGameGrowth: 0.06, perfStats: ['reb'],        declineOnset: 30,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 38 },
+    defReb:          { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['reb'],        declineOnset: 31,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
+    boxOut:          { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['reb'],        declineOnset: 31,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
+    // ── ATHLETIC ──
+    speed:           { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 5.0, declineGroup: 'earlyAthletic', floor: 40 },
+    agility:         { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 4.5, declineGroup: 'earlyAthletic', floor: 40 },
+    strength:        { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 30,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 38 },
+    vertical:        { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 4.5, declineGroup: 'earlyAthletic', floor: 40 },
+    stamina:         { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 29,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 38 },
+    hustle:          { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 31,  maxSeasonDecline: 2.0, declineGroup: 'midPhysical',   floor: 38 },
+    durability:      { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 30,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 40 },
+    // ── OTHER ──
+    intangibles:     { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 999, maxSeasonDecline: 0.0, declineGroup: 'never',         floor: 40 },
 };
 
-/** 성장 rate 기본 상수 (튜닝 대상) */
+/** 퇴화 그룹: peakAge(유지 노이즈 시작점)와 노이즈 크기만 정의 */
+const DECLINE_GROUPS: Record<string, { peakAge: number; noiseStdev: number }> = {
+    earlyAthletic: { peakAge: 25, noiseStdev: 0.4 },
+    midPhysical:   { peakAge: 27, noiseStdev: 0.4 },
+    lateStable:    { peakAge: 29, noiseStdev: 0.3 },
+    iqSkill:       { peakAge: 32, noiseStdev: 0.2 },
+    never:         { peakAge: 99, noiseStdev: 0.0 },
+};
+
+/** 성장 rate 기본 상수 */
 const BASE_GROWTH_RATE = 0.35;
-
-/** 경기 스탯 → 카테고리 매핑 */
-const PERF_STAT_TO_CATS: Record<string, CategoryKey[]> = {
-    pts:  ['ins', 'out'],
-    p3m:  ['out'],
-    rimM: ['ins'],
-    ast:  ['plm'],
-    stl:  ['def'],
-    blk:  ['def'],
-    reb:  ['reb'],
-};
 
 // ═══════════════════════════════════════════════════════════════
 // Seeded Random Helpers (hiddenTendencies.ts 패턴 복제)
@@ -200,7 +186,7 @@ function seededNormal(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Helper: Player 속성 읽기/쓰기
+// Helper: Player 속성 읽기
 // ═══════════════════════════════════════════════════════════════
 
 function getAttr(player: Player, attr: SkillAttribute): number {
@@ -225,49 +211,13 @@ function getCategoryAverages(player: Player): CategoryAverages {
     };
 }
 
-/** 포지션 문자열에서 주 포지션 키 추출 */
-function resolvePosKey(position: string): string {
-    if (position.includes('PG')) return 'PG';
-    if (position.includes('SG')) return 'SG';
-    if (position.includes('SF')) return 'SF';
-    if (position.includes('PF')) return 'PF';
-    if (position.includes('C')) return 'C';
-    return 'SF';
-}
-
 // ═══════════════════════════════════════════════════════════════
-// 4. generateCategoryPotentials
-// ═══════════════════════════════════════════════════════════════
-
-export function generateCategoryPotentials(
-    overallPot: number,
-    position: string,
-    categoryAverages: CategoryAverages,
-): CategoryPotentials {
-    const posKey = resolvePosKey(position);
-    const bonus = POSITION_BONUS[posKey] ?? POSITION_BONUS['SF'];
-
-    const cats: CategoryKey[] = ['ins', 'out', 'plm', 'def', 'reb', 'ath'];
-    const overallAvg = cats.reduce((s, c) => s + categoryAverages[c], 0) / cats.length;
-
-    const result: Partial<CategoryPotentials> = {};
-    for (const cat of cats) {
-        const relStrength = categoryAverages[cat] - overallAvg;
-        const raw = overallPot + relStrength * 0.6 + bonus[cat];
-        result[cat] = Math.max(50, Math.min(99, Math.round(raw)));
-    }
-
-    return result as CategoryPotentials;
-}
-
-// ═══════════════════════════════════════════════════════════════
-// 5. generateGrowthProfile (attrAffinity + athleticResilience)
+// generateGrowthProfile (attrAffinity + athleticResilience)
 // ═══════════════════════════════════════════════════════════════
 
 export function generateGrowthProfile(
     tendencySeed: string,
     playerId: string,
-    player: Player,
 ): GrowthProfile {
     const growthSeed = stringToHash(`growth_${tendencySeed}_${playerId}`);
 
@@ -280,25 +230,69 @@ export function generateGrowthProfile(
     // athleticResilience: -2 ~ +2 (earlyAthletic onset 조정)
     const athleticResilience = seededNormal(growthSeed, 100, 0, 1.0, -2, 2);
 
-    // catPot 생성
-    const catAvgs = getCategoryAverages(player);
-    const categoryPotentials = generateCategoryPotentials(
-        player.potential,
-        player.position,
-        catAvgs,
-    );
-
-    return { categoryPotentials, attrAffinities, athleticResilience };
+    return { attrAffinities, athleticResilience };
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 7. Per-Game 성장 계산
+// 카테고리별 퍼포먼스 배율 계산 (공통 헬퍼)
+// ═══════════════════════════════════════════════════════════════
+
+function computeCatPerfMultipliers(
+    gameBoxScore: PlayerBoxScore,
+    leagueAverages: LeagueAverages,
+    mpRatio: number,
+): Record<CategoryKey, number> {
+    const perfMultipliers: Record<CategoryKey, number> = {
+        ins: 1.0, out: 1.0, plm: 1.0, def: 1.0, reb: 1.0, ath: 1.0,
+    };
+
+    const zd = (gameBoxScore as any).zoneData || {};
+    const insideMakes = (zd.zone_rim_m || 0) + (zd.zone_paint_m || 0) + (gameBoxScore.rimM || 0);
+    const gameFgPct = gameBoxScore.fga > 0 ? gameBoxScore.fgm / gameBoxScore.fga : 0;
+
+    const perfCalcs: { stat: number; avg: number; std: number; cats: CategoryKey[] }[] = [
+        { stat: gameBoxScore.pts, avg: leagueAverages.pts, std: leagueAverages.ptsStd, cats: ['ins', 'out'] },
+        { stat: gameBoxScore.p3m, avg: leagueAverages.p3m, std: leagueAverages.p3mStd, cats: ['out'] },
+        { stat: insideMakes, avg: leagueAverages.pts * 0.3, std: leagueAverages.ptsStd * 0.3, cats: ['ins'] },
+        { stat: gameBoxScore.ast, avg: leagueAverages.ast, std: leagueAverages.astStd, cats: ['plm'] },
+        { stat: gameBoxScore.stl, avg: leagueAverages.stl, std: leagueAverages.stlStd, cats: ['def'] },
+        { stat: gameBoxScore.blk, avg: leagueAverages.blk, std: leagueAverages.blkStd, cats: ['def'] },
+        { stat: gameBoxScore.reb, avg: leagueAverages.reb, std: leagueAverages.rebStd, cats: ['reb'] },
+        { stat: gameFgPct, avg: leagueAverages.fgPct, std: leagueAverages.fgPctStd, cats: ['ins', 'out'] },
+        { stat: -gameBoxScore.tov, avg: -leagueAverages.tov, std: leagueAverages.tovStd, cats: ['plm', 'out'] },
+        { stat: -gameBoxScore.pf, avg: -leagueAverages.pf, std: leagueAverages.pfStd, cats: ['def'] },
+    ];
+
+    const catPerfScores: Record<CategoryKey, number[]> = { ins: [], out: [], plm: [], def: [], reb: [], ath: [] };
+    for (const pc of perfCalcs) {
+        if (pc.std <= 0) continue;
+        const z = (pc.stat - pc.avg) / pc.std;
+        for (const cat of pc.cats) {
+            catPerfScores[cat].push(z);
+        }
+    }
+
+    const cats: CategoryKey[] = ['ins', 'out', 'plm', 'def', 'reb', 'ath'];
+    for (const cat of cats) {
+        const scores = catPerfScores[cat];
+        if (scores.length > 0) {
+            const avgZ = scores.reduce((s, v) => s + v, 0) / scores.length;
+            perfMultipliers[cat] = Math.max(-0.5, Math.min(2.0, 1.0 + avgZ * 0.3));
+        }
+    }
+    // ath는 출전시간 비례
+    perfMultipliers['ath'] = Math.max(0.3, Math.min(2.0, 0.3 + mpRatio * 1.7));
+
+    return perfMultipliers;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Per-Game 성장 계산 (속성 단위)
 // ═══════════════════════════════════════════════════════════════
 
 function calculatePerGameGrowth(
     player: Player,
     gameBoxScore: PlayerBoxScore,
-    catPotentials: CategoryPotentials,
     attrAffinities: Record<SkillAttribute, number>,
     tcr: number,
     leagueAverages: LeagueAverages,
@@ -313,154 +307,81 @@ function calculatePerGameGrowth(
     if (age <= 21) {
         ageFactor = 1.0;
     } else if (age <= 26) {
-        // 22~26: 선형 감소 1.0 → 0.2
         ageFactor = 1.0 - (age - 21) * (0.8 / 5);
     } else {
-        // 27~29
         ageFactor = 0.1;
     }
 
-    // 출전시간 비례 계수 (0분이면 성장 없음)
     const mpRatio = Math.min(1.0, gameBoxScore.mp / 36);
     if (mpRatio <= 0) return {};
 
-    // 퍼포먼스 보정 계산
-    const perfMultipliers: Partial<Record<CategoryKey, number>> = {};
-    const cats: CategoryKey[] = ['ins', 'out', 'plm', 'def', 'reb', 'ath'];
+    // 카테고리별 퍼포먼스 배율
+    const perfMultipliers = computeCatPerfMultipliers(gameBoxScore, leagueAverages, mpRatio);
 
-    for (const cat of cats) {
-        perfMultipliers[cat] = 1.0;
-    }
-
-    // 경기 스탯 → 카테고리별 퍼포먼스 배율
-    // rimM/midM은 deprecated → zoneData에서 rim+paint 합산
-    const zd = (gameBoxScore as any).zoneData || {};
-    const insideMakes = (zd.zone_rim_m || 0) + (zd.zone_paint_m || 0) + (gameBoxScore.rimM || 0);
-    const gameFgPct = gameBoxScore.fga > 0 ? gameBoxScore.fgm / gameBoxScore.fga : 0;
-
-    const perfCalcs: { stat: number; avg: number; std: number; cats: CategoryKey[] }[] = [
-        // 긍정 지표 (높을수록 좋음)
-        { stat: gameBoxScore.pts, avg: leagueAverages.pts, std: leagueAverages.ptsStd, cats: ['ins', 'out'] },
-        { stat: gameBoxScore.p3m, avg: leagueAverages.p3m, std: leagueAverages.p3mStd, cats: ['out'] },
-        { stat: insideMakes, avg: leagueAverages.pts * 0.3, std: leagueAverages.ptsStd * 0.3, cats: ['ins'] },
-        { stat: gameBoxScore.ast, avg: leagueAverages.ast, std: leagueAverages.astStd, cats: ['plm'] },
-        { stat: gameBoxScore.stl, avg: leagueAverages.stl, std: leagueAverages.stlStd, cats: ['def'] },
-        { stat: gameBoxScore.blk, avg: leagueAverages.blk, std: leagueAverages.blkStd, cats: ['def'] },
-        { stat: gameBoxScore.reb, avg: leagueAverages.reb, std: leagueAverages.rebStd, cats: ['reb'] },
-        // 야투율 (높을수록 좋음)
-        { stat: gameFgPct, avg: leagueAverages.fgPct, std: leagueAverages.fgPctStd, cats: ['ins', 'out'] },
-        // 부정 지표 (반전: 낮을수록 좋음 → stat과 avg를 뒤집어서 높을수록 좋은 z-score)
-        { stat: -gameBoxScore.tov, avg: -leagueAverages.tov, std: leagueAverages.tovStd, cats: ['plm', 'out'] },
-        { stat: -gameBoxScore.pf, avg: -leagueAverages.pf, std: leagueAverages.pfStd, cats: ['def'] },
-    ];
-
-    // 카테고리별 퍼포먼스 z-score 누적
-    const catPerfScores: Record<CategoryKey, number[]> = { ins: [], out: [], plm: [], def: [], reb: [], ath: [] };
-    for (const pc of perfCalcs) {
-        if (pc.std <= 0) continue;
-        const z = (pc.stat - pc.avg) / pc.std;
-        for (const cat of pc.cats) {
-            catPerfScores[cat].push(z);
+    // 선수 전체 평균 (성장 가능한 속성만)
+    let playerAttrSum = 0;
+    let playerAttrCount = 0;
+    for (const attr of ALL_ATTRIBUTES) {
+        if (ATTR_CONFIG[attr].growable) {
+            playerAttrSum += getAttr(player, attr);
+            playerAttrCount++;
         }
     }
+    const playerAvg = playerAttrCount > 0 ? playerAttrSum / playerAttrCount : 70;
 
-    for (const cat of cats) {
-        const scores = catPerfScores[cat];
-        if (scores.length > 0) {
-            const avgZ = scores.reduce((s, v) => s + v, 0) / scores.length;
-            // 음수 허용: 끔찍한 경기 시 perfMultiplier < 0 → 능력치 하락
-            perfMultipliers[cat] = Math.max(-0.5, Math.min(2.0, 1.0 + avgZ * 0.3));
-        }
-    }
-
-    // ath는 출전시간 비례
-    perfMultipliers['ath'] = Math.max(0.3, Math.min(2.0, 0.3 + mpRatio * 1.7));
-
-    // 카테고리별 성장 에너지 → 속성별 분배
     const deltas: Partial<Record<SkillAttribute, number>> = {};
 
-    for (const cat of cats) {
-        const currentCatAvg = getCategoryAverage(player, cat);
-        const catPot = catPotentials[cat];
-        const catGap = Math.max(0, catPot - currentCatAvg);
+    for (const attr of ALL_ATTRIBUTES) {
+        const cfg = ATTR_CONFIG[attr];
+        if (!cfg.growable) continue;
+
+        const currentVal = getAttr(player, attr);
+
+        // 속성별 잠재력 천장
+        const attrPotCeiling = player.potential + (currentVal - playerAvg) * 0.5;
+        const potGap = Math.max(0, attrPotCeiling - currentVal);
 
         // POT 소프트 캡
         let growthMult: number;
-        if (currentCatAvg <= catPot - 5) {
+        if (currentVal <= attrPotCeiling - 5) {
             growthMult = 1.0;
-        } else if (currentCatAvg <= catPot) {
-            growthMult = 0.2 + 0.8 * ((catPot - currentCatAvg) / 5);
+        } else if (currentVal <= attrPotCeiling) {
+            growthMult = 0.2 + 0.8 * ((attrPotCeiling - currentVal) / 5);
         } else {
-            const overshoot = currentCatAvg - catPot;
+            const overshoot = currentVal - attrPotCeiling;
             growthMult = 0.15 * Math.exp(-overshoot * 0.3);
         }
 
-        // 시즌 총 성장 예산 → 1경기당
-        const effectiveGap = currentCatAvg <= catPot ? catGap : 5;
+        // 퍼포먼스 배율 (perfStats의 카테고리 평균)
+        let perfMult = 1.0;
+        if (cfg.perfStats.length > 0) {
+            const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 1.0), 0);
+            perfMult = perfSum / cfg.perfStats.length;
+        }
+
+        // 시즌 예산 → 1경기당
+        const effectiveGap = currentVal <= attrPotCeiling ? potGap : 5;
         const seasonBudget = effectiveGap * BASE_GROWTH_RATE * ageFactor * growthMult * tcr;
-        const perGameBase = seasonBudget / 82;
-        const perfMult = perfMultipliers[cat] ?? 1.0;
-        const catEnergy = perGameBase * perfMult * mpRatio;
+        const attrEnergy = (seasonBudget / 82) * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0);
 
-        if (Math.abs(catEnergy) < 0.0001) continue;
+        if (Math.abs(attrEnergy) < 0.0001) continue;
 
-        const attrs = CATEGORY_ATTRS[cat];
-
-        if (catEnergy > 0) {
-            // ── 성장: affinity × room 기반 분배 ──
-            let totalWeight = 0;
-            const weights: number[] = [];
-
-            for (const attr of attrs) {
-                const room = Math.max(0, 99 - getAttr(player, attr));
-                const w = (attrAffinities[attr] ?? 1.0) * room;
-                weights.push(w);
-                totalWeight += w;
-            }
-
-            if (totalWeight <= 0) continue;
-
-            for (let i = 0; i < attrs.length; i++) {
-                const share = weights[i] / totalWeight;
-                const delta = Math.min(0.4, catEnergy * share);
-                if (delta > 0.001) {
-                    deltas[attrs[i]] = (deltas[attrs[i]] ?? 0) + delta;
-                }
+        if (attrEnergy > 0) {
+            // 성장: maxPerGameGrowth로 캡
+            const room = Math.max(0, 99 - currentVal);
+            if (room <= 0) continue;
+            const delta = Math.min(cfg.maxPerGameGrowth, attrEnergy);
+            if (delta > 0.001) {
+                deltas[attr] = (deltas[attr] ?? 0) + delta;
             }
         } else {
-            // ── 부진 퇴화: 현재 값 비례 분배 (높은 능력치가 더 많이 떨어짐) ──
-            let totalWeight = 0;
-            const weights: number[] = [];
-            const PERF_DECLINE_FLOOR = 40; // 부진 퇴화 바닥
-
-            for (const attr of attrs) {
-                const val = getAttr(player, attr);
-                const room = Math.max(0, val - PERF_DECLINE_FLOOR);
-                weights.push(room);
-                totalWeight += room;
-            }
-
-            if (totalWeight <= 0) continue;
-
-            for (let i = 0; i < attrs.length; i++) {
-                const share = weights[i] / totalWeight;
-                const delta = Math.max(-0.3, catEnergy * share); // 속성당 최대 -0.3/경기
+            // 부진 퇴화 (perfMult < 0 → 끔찍한 경기)
+            if (currentVal > cfg.floor) {
+                const delta = Math.max(-0.3, attrEnergy);
                 if (delta < -0.001) {
-                    deltas[attrs[i]] = (deltas[attrs[i]] ?? 0) + delta;
+                    deltas[attr] = (deltas[attr] ?? 0) + delta;
                 }
             }
-        }
-    }
-
-    // intangibles: iqSkill 카테고리 에너지의 일부를 별도 적용
-    const iqCatAvg = getCategoryAverage(player, 'out'); // iqSkill 참조용
-    const iqPot = catPotentials.out;
-    const iqGap = Math.max(0, iqPot - iqCatAvg);
-    if (iqGap > 0 && ageFactor > 0) {
-        const intRoom = Math.max(0, 99 - getAttr(player, 'intangibles'));
-        const intDelta = (iqGap * BASE_GROWTH_RATE * ageFactor * tcr / 82) * mpRatio * 0.1;
-        if (intDelta > 0.001 && intRoom > 0) {
-            deltas['intangibles'] = (deltas['intangibles'] ?? 0) + Math.min(0.2, intDelta);
         }
     }
 
@@ -468,7 +389,7 @@ function calculatePerGameGrowth(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 8. Per-Game 퇴화 계산
+// Per-Game 퇴화 계산 (속성 단위)
 // ═══════════════════════════════════════════════════════════════
 
 function calculatePerGameDecline(
@@ -483,60 +404,59 @@ function calculatePerGameDecline(
     const agingSeed = stringToHash(`aging_${tendencySeed}_${player.id}_s${seasonNumber}`);
     const deltas: Partial<Record<SkillAttribute, number>> = {};
 
-    for (let gi = 0; gi < AGING_GROUPS.length; gi++) {
-        const group = AGING_GROUPS[gi];
+    for (let ai = 0; ai < ALL_ATTRIBUTES.length; ai++) {
+        const attr = ALL_ATTRIBUTES[ai];
+        const cfg = ATTR_CONFIG[attr];
+        const group = DECLINE_GROUPS[cfg.declineGroup];
+        if (!group) continue;
+
+        const currentValue = getAttr(player, attr);
 
         // earlyAthletic에만 athleticResilience 적용
-        const effectiveOnset = gi === 0
-            ? group.declineOnset + athleticResilience
-            : group.declineOnset;
+        const effectiveOnset = cfg.declineGroup === 'earlyAthletic'
+            ? cfg.declineOnset + athleticResilience
+            : cfg.declineOnset;
 
-        for (let ai = 0; ai < group.attributes.length; ai++) {
-            const attr = group.attributes[ai];
-            const currentValue = getAttr(player, attr);
-            const seedOffset = gi * 50 + ai;
+        if (age >= effectiveOnset) {
+            // ── 퇴화 ──
+            const yearsOver = age - effectiveOnset;
+            let baseSeasonDecline = Math.min(
+                cfg.maxSeasonDecline,
+                (yearsOver / 8) * cfg.maxSeasonDecline,
+            );
 
-            if (age >= effectiveOnset) {
-                // ── 퇴화 ──
-                const yearsOver = age - effectiveOnset;
-                let baseSeasonDecline = Math.min(
-                    group.maxSeasonDecline,
-                    (yearsOver / 8) * group.maxSeasonDecline,
-                );
+            // 33세+ 가속 (iqSkill, never 제외)
+            if (age >= 33 && cfg.declineGroup !== 'iqSkill' && cfg.declineGroup !== 'never') {
+                baseSeasonDecline *= 1.0 + (age - 33) * 0.15;
+            }
 
-                // 33세+ 가속 (iqSkill 제외)
-                if (age >= 33 && group.name !== 'iqSkill') {
-                    baseSeasonDecline *= 1.0 + (age - 33) * 0.15;
-                }
+            // 시드 기반 개인차 ±40%
+            const variance = seededNormal(agingSeed, ai, 0, 0.4, -0.4, 0.4);
+            let seasonDecline = baseSeasonDecline * (1 + variance) * tcr;
 
-                // 시드 기반 개인차 ±40%
-                const variance = seededNormal(agingSeed, seedOffset, 0, 0.4, -0.4, 0.4);
-                let seasonDecline = baseSeasonDecline * (1 + variance) * tcr;
+            // 평균 회귀 (높을수록 더 떨어짐)
+            const heightPenalty = Math.max(0, (currentValue - 70) * 0.03);
+            seasonDecline += heightPenalty;
 
-                // 평균 회귀 (높을수록 더 떨어짐)
-                const heightPenalty = Math.max(0, (currentValue - 70) * 0.03);
-                seasonDecline += heightPenalty;
+            // 1경기당 (82경기 분배), 바닥 체크
+            const perGameDecline = Math.min(0.3, seasonDecline / 82) * mpRatio;
+            const newValue = currentValue - perGameDecline;
 
-                // 1경기당 (82경기 분배), 바닥 체크
-                const perGameDecline = Math.min(0.3, seasonDecline / 82) * mpRatio;
-                const newValue = currentValue - perGameDecline;
+            if (newValue >= cfg.floor && perGameDecline > 0.001) {
+                deltas[attr] = (deltas[attr] ?? 0) - perGameDecline;
+            }
+        } else if (age > group.peakAge) {
+            // ── 유지 노이즈 (peak ~ onset 사이) ──
+            if (group.noiseStdev <= 0) continue;
 
-                if (newValue >= group.floor && perGameDecline > 0.001) {
-                    deltas[attr] = (deltas[attr] ?? 0) - perGameDecline;
-                }
-            } else if (age > group.peakAge) {
-                // ── 유지 노이즈 (peak ~ onset 사이) ──
-                const seasonNoise = seededNormal(agingSeed, seedOffset + 100, 0, 0.5, -1.0, 1.0) * tcr;
-                const perGameNoise = (seasonNoise / 82) * mpRatio;
+            const seasonNoise = seededNormal(agingSeed, ai + 100, 0, group.noiseStdev, -1.0, 1.0) * tcr;
+            const perGameNoise = (seasonNoise / 82) * mpRatio;
 
-                // 노이즈로 바닥 이하로 내려가지 않도록
-                if (perGameNoise < 0 && currentValue + perGameNoise < group.floor) continue;
-                // 노이즈로 99 초과하지 않도록
-                if (perGameNoise > 0 && currentValue >= 99) continue;
+            if (perGameNoise < 0 && currentValue + perGameNoise < cfg.floor) continue;
+            if (perGameNoise > 0 && currentValue >= 99) continue;
 
-                if (Math.abs(perGameNoise) > 0.001) {
-                    deltas[attr] = (deltas[attr] ?? 0) + perGameNoise;
-                }
+            if (Math.abs(perGameNoise) > 0.001) {
+                deltas[attr] = (deltas[attr] ?? 0) + perGameNoise;
             }
         }
     }
@@ -545,7 +465,7 @@ function calculatePerGameDecline(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 10. Fractional 누적 → 정수 변화 처리
+// Fractional 누적 → 정수 변화 처리
 // ═══════════════════════════════════════════════════════════════
 
 interface AccumulationResult {
@@ -590,8 +510,8 @@ function accumulateAndResolve(
 
         while (accumulated <= -1.0) {
             const currentVal = getAttr(player, attr) + (integerChanges[attr] ?? 0);
-            const group = ATTR_TO_AGING_GROUP[attr];
-            const floor = group?.floor ?? 35;
+            const cfg = ATTR_CONFIG[attr];
+            const floor = cfg?.floor ?? 35;
             if (currentVal <= floor) {
                 accumulated = Math.max(accumulated, -0.99);
                 break;
@@ -619,13 +539,12 @@ function accumulateAndResolve(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 7+8+10 통합: calculatePerGameDevelopment (메인 함수)
+// 통합: calculatePerGameDevelopment (메인 함수)
 // ═══════════════════════════════════════════════════════════════
 
 export function calculatePerGameDevelopment(
     player: Player,
     gameBoxScore: PlayerBoxScore,
-    catPotentials: CategoryPotentials,
     attrAffinities: Record<SkillAttribute, number>,
     athleticResilience: number,
     currentFractional: Partial<Record<SkillAttribute, number>>,
@@ -641,13 +560,12 @@ export function calculatePerGameDevelopment(
     const growthDeltas = calculatePerGameGrowth(
         player,
         gameBoxScore,
-        catPotentials,
         attrAffinities,
         tcr,
         leagueAverages,
     );
 
-    // 퇴화 delta (나이 > peakAge인 그룹에 적용)
+    // 퇴화 delta (나이 > peakAge인 속성에 적용)
     const declineDeltas = calculatePerGameDecline(
         player,
         tendencySeed,
@@ -688,12 +606,10 @@ export function calculatePerGameDevelopment(
         for (const attr of ALL_ATTRIBUTES) {
             tempAttrs[attr] = getAttr(player, attr) + (integerChanges[attr] ?? 0);
         }
-        // 카테고리 평균도 재계산
         for (const cat of ['ins', 'out', 'plm', 'def', 'reb', 'ath'] as CategoryKey[]) {
             const attrs = CATEGORY_ATTRS[cat];
             tempAttrs[cat] = attrs.reduce((s: number, a: SkillAttribute) => s + tempAttrs[a], 0) / attrs.length;
         }
-        // height도 넘겨줌 (OVR 가중치에 포함)
         tempAttrs.height = player.height;
         newOvr = calculateOvr(tempAttrs, player.position);
     }
@@ -708,13 +624,13 @@ export function calculatePerGameDevelopment(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 11. 오프시즌 처리
+// 오프시즌 처리
 // ═══════════════════════════════════════════════════════════════
 
 export function processOffseason(
     players: Player[],
-    tendencySeed: string,
-    seasonNumber: number,
+    _tendencySeed: string,
+    _seasonNumber: number,
 ): OffseasonResult {
     const result: OffseasonResult = { players: [] };
 
@@ -743,17 +659,9 @@ export function processOffseason(
         player.changeLog = [];
         player.seasonStartAttributes = undefined;
 
-        // catPot 재계산 (새 나이의 능력치 기준)
-        const newCatPot = generateCategoryPotentials(
-            player.potential,
-            player.position,
-            getCategoryAverages(player),
-        );
-
         result.players.push({
             playerId: player.id,
             newAge,
-            newCatPot,
             seasonTotalDeltas,
         });
     }
@@ -885,7 +793,6 @@ export function applyDevelopmentResult(player: Player, result: PerGameResult): v
  */
 export function initializeSeasonGrowth(players: Player[]): void {
     for (const player of players) {
-        // 현재 속성값 스냅샷
         const snapshot: Record<string, number> = {};
         for (const attr of ALL_ATTRIBUTES) {
             snapshot[attr] = getAttr(player, attr);
@@ -946,18 +853,16 @@ export function processGameDevelopment(
 
     for (const [roster, boxScores] of pairs) {
         for (const box of boxScores) {
-            if (box.mp <= 0) continue; // 미출전 선수 스킵
+            if (box.mp <= 0) continue;
 
             const player = roster.find(p => p.id === box.playerId);
             if (!player) continue;
 
-            // GrowthProfile은 시드 기반 결정론적 → 매번 재생성 가능
-            const profile = generateGrowthProfile(tendencySeed, player.id, player);
+            const profile = generateGrowthProfile(tendencySeed, player.id);
 
             const result = calculatePerGameDevelopment(
                 player,
                 box,
-                profile.categoryPotentials,
                 profile.attrAffinities,
                 profile.athleticResilience,
                 player.fractionalGrowth ?? {},
@@ -977,5 +882,5 @@ export function processGameDevelopment(
 // Exports: 상수 & 유틸
 // ═══════════════════════════════════════════════════════════════
 
-export { CATEGORY_ATTRS, AGING_GROUPS, ALL_ATTRIBUTES, ATTR_TO_CATEGORY, ATTR_TO_AGING_GROUP };
+export { CATEGORY_ATTRS, ALL_ATTRIBUTES, ATTR_TO_CATEGORY, ATTR_CONFIG, DECLINE_GROUPS };
 export { getCategoryAverages };

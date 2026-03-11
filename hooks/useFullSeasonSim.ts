@@ -5,6 +5,8 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../types';
+import { SimSettings } from '../types/simSettings';
+import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { runBatchSeason, BatchSeasonResult } from '../services/simulation/batchSeasonService';
 import { bulkSaveGameResults } from '../services/queries';
 import { savePlayoffState } from '../services/playoffService';
@@ -42,6 +44,7 @@ export const useFullSeasonSim = (
     tendencySeed: string | undefined,
     hofId?: string | null,
     onHofSubmitted?: () => void,
+    simSettings?: SimSettings,
 ) => {
     const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
     const cancelTokenRef = useRef({ cancelled: false });
@@ -59,6 +62,8 @@ export const useFullSeasonSim = (
         });
 
         try {
+            if (simSettings) applyTradeSimSettings(simSettings);
+
             // 1. 딥 클론 1회
             const workingTeams: Team[] = JSON.parse(JSON.stringify(teams));
             const workingSchedule: Game[] = JSON.parse(JSON.stringify(schedule));
@@ -79,7 +84,8 @@ export const useFullSeasonSim = (
                         prev ? { ...prev, current, total, currentDate: date } : null
                     );
                 },
-                cancelTokenRef.current
+                cancelTokenRef.current,
+                simSettings
             );
 
             // 3. DB 저장
@@ -216,7 +222,7 @@ export const useFullSeasonSim = (
         teams, schedule, playoffSeries, myTeamId, currentSimDate,
         userTactics, depthChart, tendencySeed, session, isGuestMode,
         setTeams, setSchedule, setPlayoffSeries, setCurrentSimDate,
-        setTransactions, forceSave, hofId, onHofSubmitted,
+        setTransactions, forceSave, hofId, onHofSubmitted, simSettings,
     ]);
 
     const handleCancelBatch = useCallback(() => {

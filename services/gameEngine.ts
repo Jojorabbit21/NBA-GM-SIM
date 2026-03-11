@@ -1,5 +1,6 @@
 
 import { Team, Player, PlayerBoxScore, TacticalSnapshot, GameTactics, RosterUpdate, SimulationResult, DepthChart } from '../types';
+import { SimSettings } from '../types/simSettings';
 import { SIM_CONFIG, POSITION_PENALTY_MAP } from './game/config/constants';
 import { stableSort, distributeMinutes } from './game/tactics/minutesManager';
 import { generateAutoTactics } from './game/tactics/tacticGenerator';
@@ -10,7 +11,7 @@ import { runFullGameSimulation } from './game/engine/pbp/main';
 //  Focus: Game Physics Loop & Stats Generation
 // ==========================================================================================
 
-export { generateAutoTactics }; 
+export { generateAutoTactics };
 
 /**
  * NEW ENTRY POINT: Uses the Play-by-Play Engine
@@ -24,7 +25,8 @@ export function simulateGame(
     isAwayB2B: boolean = false,
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
-    tendencySeed?: string
+    tendencySeed?: string,
+    simSettings?: SimSettings
 ): SimulationResult {
 
     // Call the new PbP engine
@@ -37,7 +39,8 @@ export function simulateGame(
         isAwayB2B,
         homeDepthChart,
         awayDepthChart,
-        tendencySeed
+        tendencySeed,
+        simSettings
     );
     
     return result;

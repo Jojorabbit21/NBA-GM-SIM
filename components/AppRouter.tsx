@@ -77,6 +77,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     homeDepthChart={homeDepthChart}
                     awayDepthChart={awayDepthChart}
                     tendencySeed={gameData.tendencySeed || undefined}
+                    simSettings={gameData.simSettings}
                     onGameEnd={async (result) => {
                         await sim.finalizeLiveGame(result);
                         setView('GameResult');
@@ -152,6 +153,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     homeTeam={sim.spectateTarget.homeTeam}
                     awayTeam={sim.spectateTarget.awayTeam}
                     userTeamId={null}
+                    simSettings={gameData.simSettings}
                     onGameEnd={async (result) => {
                         await sim.finalizeSpectateGame(result);
                         setView('Schedule');

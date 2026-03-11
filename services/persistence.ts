@@ -1,6 +1,7 @@
 
 import { supabase } from './supabaseClient';
 import { Transaction, GameTactics, DepthChart, SavedPlayerState, ReplaySnapshot } from '../types';
+import { SimSettings } from '../types/simSettings';
 
 // 1. Save Metadata (Pointer to current progress)
 export const saveCheckpoint = async (
@@ -12,7 +13,8 @@ export const saveCheckpoint = async (
     depthChart?: DepthChart | null, // [New] Depth Chart Data
     draftPicks?: { teams: Record<string, string[]>; picks: any[] } | null,
     tendencySeed?: string | null, // [New] Save-seeded hidden tendencies
-    replaySnapshot?: ReplaySnapshot | null // [New] Cached replay state
+    replaySnapshot?: ReplaySnapshot | null, // [New] Cached replay state
+    simSettings?: SimSettings | null // [New] User simulation settings
 ) => {
     if (!userId || !teamId || !simDate) return null;
 
@@ -51,6 +53,11 @@ export const saveCheckpoint = async (
         payload.replay_snapshot = replaySnapshot;
     }
 
+    // sim_settings: 값이 있을 때만 저장
+    if (simSettings !== undefined) {
+        payload.sim_settings = simSettings;
+    }
+
     // Direct upsert (Column 'roster_state' and 'depth_chart' confirmed to exist)
     const { data, error } = await supabase
         .from('saves')
@@ -68,7 +75,7 @@ export const saveCheckpoint = async (
 export const loadCheckpoint = async (userId: string) => {
     const { data, error } = await supabase
         .from('saves')
-        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at')
+        .select('team_id, sim_date, tactics, roster_state, depth_chart, tendency_seed, draft_picks, replay_snapshot, hof_id, updated_at, sim_settings')
         .eq('user_id', userId)
         .maybeSingle();
 

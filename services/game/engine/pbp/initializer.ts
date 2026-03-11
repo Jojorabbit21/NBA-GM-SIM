@@ -40,7 +40,7 @@ function buildZonePref(p: Player): { ra: number; itp: number; mid: number; three
     };
 }
 
-export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string): TeamState {
+export function initTeamState(team: Team, tactics: GameTactics | undefined, depthChart?: DepthChart | null, tendencySeed?: string, archetypesEnabled?: boolean): TeamState {
     // 1. 전술이 없거나 뎁스차트가 없는 경우(AI팀 등) 자동 생성
     let safeTactics: GameTactics;
     if (!tactics || (!tactics.depthChart && !depthChart)) {
@@ -121,7 +121,7 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             lastSubInTime: 0,
             conditionAtSubIn: currentCondition,
             attr,
-            archetypes: calculatePlayerArchetypes(attr, currentCondition),
+            archetypes: calculatePlayerArchetypes(attr, currentCondition, archetypesEnabled),
             tendencies: tendencySeed ? generateSaveTendencies(tendencySeed, p.id) : DEFAULT_TENDENCIES,
             zonePref: buildZonePref(p),
             zone_rim_m: 0, zone_rim_a: 0, zone_paint_m: 0, zone_paint_a: 0,

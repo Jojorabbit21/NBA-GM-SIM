@@ -2,6 +2,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, SimulationResult, DepthChart } from '../types';
+import { SimSettings } from '../types/simSettings';
+import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
 import { runUserSimulation, applyUserGameResult } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
@@ -37,7 +39,8 @@ export const useSimulation = (
     depthChart?: DepthChart | null,
     tendencySeed?: string,
     hofId?: string | null,
-    onHofSubmitted?: () => void
+    onHofSubmitted?: () => void,
+    simSettings?: SimSettings
 ) => {
     const queryClient = useQueryClient();
     const [isSimulating, setIsSimulating] = useState(false);
@@ -249,6 +252,9 @@ export const useSimulation = (
         setIsSimulating(true);
 
         try {
+            // Apply trade settings from simSettings
+            if (simSettings) applyTradeSimSettings(simSettings);
+
             // 1. Identify User's Game
             const userGame = schedule.find(g =>
                 !g.played &&
@@ -269,7 +275,7 @@ export const useSimulation = (
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
             const excludeGameId = userGame?.id || spectateGameId;
-            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, userTactics.tcr ?? 1.0);
+            const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings);
 
             // [Fix] Save CPU Game Results to DB
             if (!isGuestMode) {
@@ -286,7 +292,7 @@ export const useSimulation = (
             // 4. Handle User Game
             if (userGame) {
                 // Run Simulation (Pure Logic)
-                const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed);
+                const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed, simSettings);
                 
                 setTempSimulationResult(result);
 
@@ -301,7 +307,7 @@ export const useSimulation = (
                     await applyUserGameResult(
                         result, userGame, newTeams, newSchedule, newPlayoffSeries,
                         currentSimDate, session?.user?.id, myTeamId, userTactics, isGuestMode, refreshUnreadCount,
-                        tendencySeed,
+                        tendencySeed, simSettings,
                     );
 
                     // 5. Handle Season Events (Playoffs, Trades) - Post Game
@@ -428,7 +434,7 @@ export const useSimulation = (
             setIsSimulating(false);
             setToastMessage("시뮬레이션 중 오류가 발생했습니다.");
         }
-    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed, transactions, sendReviewMessages]);
+    }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, depthChart, playoffSeries, tendencySeed, transactions, sendReviewMessages, simSettings]);
 
     const clearLastGameResult = () => setLastGameResult(null);
     const loadSavedGameResult = (result: any) => setLastGameResult(result);
@@ -449,6 +455,8 @@ export const useSimulation = (
         setIsSimulating(true);
 
         try {
+            if (simSettings) applyTradeSimSettings(simSettings);
+
             const userGame = schedule.find(g =>
                 !g.played &&
                 g.date === currentSimDate &&
@@ -465,7 +473,7 @@ export const useSimulation = (
 
             const cpuData = processCpuGames(
                 newTeams, newSchedule, newPlayoffSeries, currentSimDate, userGame.id, session?.user?.id,
-                tendencySeed, userTactics.tcr ?? 1.0,
+                tendencySeed, simSettings,
             );
 
             if (!isGuestMode) {
@@ -499,7 +507,7 @@ export const useSimulation = (
             setToastMessage("라이브 경기 시작 중 오류가 발생했습니다.");
         }
     }, [teams, schedule, myTeamId, currentSimDate, isSimulating, isGuestMode, session, playoffSeries,
-        setTeams, setSchedule, setToastMessage]);
+        setTeams, setSchedule, setToastMessage, simSettings]);
 
     const clearLiveGameTarget = () => {
         setLiveGameTarget(null);
@@ -526,7 +534,7 @@ export const useSimulation = (
             await applyUserGameResult(
                 result, userGame, newTeams, newSchedule, newPlayoffSeries,
                 currentSimDate, session?.user?.id, myTeamId, liveUserTactics, isGuestMode, refreshUnreadCount,
-                tendencySeed,
+                tendencySeed, simSettings,
             );
 
             // 시즌 이벤트 처리 (트레이드, 플레이오프 등)
@@ -589,7 +597,7 @@ export const useSimulation = (
             setToastMessage("경기 결과 처리 중 오류가 발생했습니다.");
         }
     }, [liveGameTarget, myTeamId, teams, schedule, playoffSeries, currentSimDate, session, isGuestMode,
-        refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage, transactions, sendReviewMessages]);
+        refreshUnreadCount, setTeams, setSchedule, setPlayoffSeries, setTransactions, setNews, setToastMessage, transactions, sendReviewMessages, simSettings]);
 
     return {
         handleExecuteSim,

@@ -6,8 +6,8 @@ import { LivePlayer } from './pbpTypes';
 //  Calculates Role Suitability Scores (0-100+) based on attributes & CURRENT CONDITION.
 // ==========================================================================================
 
-// ★ TEMPORARY: 모든 아키타입 효과 비활성화 (true → 모든 선수 균등 아키타입 점수)
-const ARCHETYPES_DISABLED = true;
+// 아키타입 기본 비활성화 — SimSettings.archetypesEnabled로 오버라이드 가능
+let ARCHETYPES_DISABLED = true;
 
 export interface ArchetypeRatings {
     // Basic
@@ -33,10 +33,11 @@ export interface ArchetypeRatings {
  * @param attr - The player's attribute object
  * @param condition - Current stamina condition (0-100). Fatigue reduces effectiveness.
  */
-export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: number = 100): ArchetypeRatings {
+export function calculatePlayerArchetypes(attr: LivePlayer['attr'], condition: number = 100, archetypesEnabled?: boolean): ArchetypeRatings {
 
-    // ★ TEMPORARY: 모든 아키타입 비활성화 시 균등 점수 반환
-    if (ARCHETYPES_DISABLED) {
+    // archetypesEnabled가 명시적으로 전달되면 그 값 사용, 아니면 모듈 기본값
+    const disabled = archetypesEnabled !== undefined ? !archetypesEnabled : ARCHETYPES_DISABLED;
+    if (disabled) {
         return {
             handler: 50, spacer: 50, driver: 50, screener: 50,
             roller: 50, popper: 50, rebounder: 50, postScorer: 50,

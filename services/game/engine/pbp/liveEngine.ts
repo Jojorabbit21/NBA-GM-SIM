@@ -1,5 +1,6 @@
 
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, RosterUpdate } from '../../../../types';
+import { SimSettings, DEFAULT_SIM_SETTINGS } from '../../../../types/simSettings';
 import { GameState, TeamState, LivePlayer, ClutchContext } from './pbpTypes';
 import { initTeamState } from './initializer';
 import { updateOnCourtStates } from './stateUpdater';
@@ -167,14 +168,15 @@ export function createGameState(
     isAwayB2B: boolean = false,
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
-    tendencySeed?: string
+    tendencySeed?: string,
+    simSettings?: SimSettings
 ): GameState {
     const hTactics = (userTeamId === homeTeam.id && userTactics) ? userTactics : undefined;
     const aTactics = (userTeamId === awayTeam.id && userTactics) ? userTactics : undefined;
 
     const state: GameState = {
-        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed),
-        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed),
+        home: initTeamState(homeTeam, hTactics, homeDepthChart, tendencySeed, simSettings?.archetypesEnabled),
+        away: initTeamState(awayTeam, aTactics, awayDepthChart, tendencySeed, simSettings?.archetypesEnabled),
         quarter: 1,
         gameClock: 720,
         shotClock: 24,
@@ -200,6 +202,7 @@ export function createGameState(
             away: { total: 0, count: 0 },
         },
         courtSnapshot: null,
+        simSettings: simSettings ?? DEFAULT_SIM_SETTINGS,
     };
 
     // 원본 로테이션 맵 deep copy (경기 중 절대 수정 안함)
