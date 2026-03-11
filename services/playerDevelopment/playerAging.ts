@@ -1,7 +1,7 @@
 
 import { Player, AttributeChangeEvent } from '../../types/player';
 import { PlayerBoxScore } from '../../types/engine';
-import { stringToHash } from '../../utils/hiddenTendencies';
+import { stringToHash, generateSaveTendencies } from '../../utils/hiddenTendencies';
 import { calculateOvr } from '../../utils/ovrUtils';
 
 // ═══════════════════════════════════════════════════════════════
@@ -107,7 +107,7 @@ const ATTR_CONFIG: Record<SkillAttribute, AttrConfig> = {
     // ── INSIDE ──
     closeShot:       { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 35,  maxSeasonDecline: 3.0, declineGroup: 'lateStable',    floor: 38 },
     layup:           { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 38,  maxSeasonDecline: 3.5, declineGroup: 'lateStable',    floor: 38 },
-    dunk:            { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 30,  maxSeasonDecline: 4.0, declineGroup: 'midPhysical',   floor: 40 },
+    dunk:            { growable: true,  maxPerGameGrowth: 0.12, perfStats: ['ins'],        declineOnset: 30,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 40 },
     postPlay:        { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['ins'],        declineOnset: 35,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
     drawFoul:        { growable: true,  maxPerGameGrowth: 0.08, perfStats: ['ins'],        declineOnset: 38,  maxSeasonDecline: 1.5, declineGroup: 'lateStable',    floor: 38 },
     hands:           { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['ins'],        declineOnset: 35,  maxSeasonDecline: 1.5, declineGroup: 'lateStable',    floor: 38 },
@@ -139,13 +139,13 @@ const ATTR_CONFIG: Record<SkillAttribute, AttrConfig> = {
     defReb:          { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['reb'],        declineOnset: 31,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
     boxOut:          { growable: true,  maxPerGameGrowth: 0.10, perfStats: ['reb'],        declineOnset: 31,  maxSeasonDecline: 2.0, declineGroup: 'lateStable',    floor: 38 },
     // ── ATHLETIC ──
-    speed:           { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 5.0, declineGroup: 'earlyAthletic', floor: 40 },
-    agility:         { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 4.5, declineGroup: 'earlyAthletic', floor: 40 },
-    strength:        { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 30,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 38 },
-    vertical:        { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 4.5, declineGroup: 'earlyAthletic', floor: 40 },
-    stamina:         { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 29,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 38 },
-    hustle:          { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 31,  maxSeasonDecline: 2.0, declineGroup: 'midPhysical',   floor: 38 },
-    durability:      { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 30,  maxSeasonDecline: 3.0, declineGroup: 'midPhysical',   floor: 40 },
+    speed:           { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 3.5, declineGroup: 'earlyAthletic', floor: 40 },
+    agility:         { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 3.0, declineGroup: 'earlyAthletic', floor: 40 },
+    strength:        { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 30,  maxSeasonDecline: 2.0, declineGroup: 'midPhysical',   floor: 38 },
+    vertical:        { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 27,  maxSeasonDecline: 3.0, declineGroup: 'earlyAthletic', floor: 40 },
+    stamina:         { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 29,  maxSeasonDecline: 2.0, declineGroup: 'midPhysical',   floor: 38 },
+    hustle:          { growable: true,  maxPerGameGrowth: 0.05, perfStats: [],             declineOnset: 31,  maxSeasonDecline: 1.5, declineGroup: 'midPhysical',   floor: 38 },
+    durability:      { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 30,  maxSeasonDecline: 2.0, declineGroup: 'midPhysical',   floor: 40 },
     // ── OTHER ──
     intangibles:     { growable: false, maxPerGameGrowth: 0.0,  perfStats: [],             declineOnset: 999, maxSeasonDecline: 0.0, declineGroup: 'never',         floor: 40 },
 };
@@ -305,6 +305,8 @@ function calculatePerGameGrowth(
     attrAffinities: Record<SkillAttribute, number>,
     growthRate: number,
     leagueAverages: LeagueAverages,
+    consistencyMult: number,
+    focusDriftMult: number,
 ): Partial<Record<SkillAttribute, number>> {
     const age = player.age;
 
@@ -364,7 +366,7 @@ function calculatePerGameGrowth(
 
             if (perfMult > 0) {
                 const perGameBase = (BASE_GROWTH_RATE * ageFactor * growthRate) / 82;
-                totalDelta += perGameBase * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0) * growthMult;
+                totalDelta += perGameBase * perfMult * mpRatio * (attrAffinities[attr] ?? 1.0) * growthMult * consistencyMult;
             }
         }
 
@@ -373,7 +375,7 @@ function calculatePerGameGrowth(
             const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 0), 0);
             const iqPerfMult = perfSum / cfg.perfStats.length;
             if (iqPerfMult > 0) {
-                totalDelta += EXP_GROWTH_RATE * iqPerfMult * mpRatio * growthMult * growthRate;
+                totalDelta += EXP_GROWTH_RATE * iqPerfMult * mpRatio * growthMult * growthRate * focusDriftMult;
             }
         }
 
@@ -407,6 +409,11 @@ function calculatePerGameDecline(
     const agingSeed = stringToHash(`aging_${tendencySeed}_${player.id}_s${seasonNumber}`);
     const deltas: Partial<Record<SkillAttribute, number>> = {};
 
+    // 내구도 보호 팩터: durability가 높을수록 신체 퇴화 완화
+    // durability 40 → 1.1x (약간 가속), 50 → 1.0x, 70 → 0.8x, 90 → 0.6x
+    const durability = getAttr(player, 'durability');
+    const durabilityMult = Math.max(0.5, 1.5 - durability * 0.01);
+
     for (let ai = 0; ai < ALL_ATTRIBUTES.length; ai++) {
         const attr = ALL_ATTRIBUTES[ai];
         const cfg = ATTR_CONFIG[attr];
@@ -428,9 +435,16 @@ function calculatePerGameDecline(
                 (yearsOver / 8) * cfg.maxSeasonDecline,
             );
 
-            // 33세+ 가속 (iqSkill, never 제외)
+            // 33세+ 가속 (iqSkill, never 제외), 가속 후에도 max × 1.3 상한
             if (age >= 33 && cfg.declineGroup !== 'iqSkill' && cfg.declineGroup !== 'never') {
-                baseSeasonDecline *= 1.0 + (age - 33) * 0.15;
+                baseSeasonDecline *= 1.0 + (age - 33) * 0.08;
+                baseSeasonDecline = Math.min(baseSeasonDecline, cfg.maxSeasonDecline * 1.3);
+            }
+
+            // 신체 속성(earlyAthletic, midPhysical)에 내구도 보호 적용
+            const isPhysical = cfg.declineGroup === 'earlyAthletic' || cfg.declineGroup === 'midPhysical';
+            if (isPhysical) {
+                baseSeasonDecline *= durabilityMult;
             }
 
             // 시드 기반 개인차 ±40%
@@ -557,6 +571,8 @@ export function calculatePerGameDevelopment(
     declineRate: number,
     leagueAverages: LeagueAverages,
     gameDate: string,
+    consistencyMult: number = 1.0,
+    focusDriftMult: number = 1.0,
 ): PerGameResult {
     const mpRatio = Math.min(1.0, gameBoxScore.mp / 36);
 
@@ -567,6 +583,8 @@ export function calculatePerGameDevelopment(
         attrAffinities,
         growthRate,
         leagueAverages,
+        consistencyMult,
+        focusDriftMult,
     );
 
     // 퇴화 delta (나이 > peakAge인 속성에 적용)
@@ -865,6 +883,15 @@ export function processGameDevelopment(
 
             const profile = generateGrowthProfile(tendencySeed, player.id);
 
+            // 히든 텐던시 → 성장 보정
+            const tendencies = generateSaveTendencies(tendencySeed, player.id);
+            // consistency (0.0~1.0, mean 0.6): 꾸준한 선수일수록 스킬 성장 효율 ↑
+            // 0.0 → 0.8x, 0.6 → 1.0x, 1.0 → 1.13x
+            const consistencyMult = 0.8 + tendencies.consistency * 0.33;
+            // focusDrift (0.0~1.0): 집중력 부족할수록 IQ 경험 성장 ↓
+            // 0.0 → 1.0x, 0.5 → 0.85x, 1.0 → 0.7x
+            const focusDriftMult = 1.0 - tendencies.focusDrift * 0.3;
+
             const result = calculatePerGameDevelopment(
                 player,
                 box,
@@ -877,6 +904,8 @@ export function processGameDevelopment(
                 declineRate,
                 leagueAverages,
                 gameDate,
+                consistencyMult,
+                focusDriftMult,
             );
 
             applyDevelopmentResult(player, result);
