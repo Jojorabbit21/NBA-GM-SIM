@@ -158,26 +158,26 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                     <tr className="h-10">
                         <th colSpan={4} className="bg-slate-950 border-b border-r border-slate-800 sticky left-0 z-50 align-middle">
                             <div className="h-full flex items-center justify-center">
-                                <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
+                                <span className="text-xs font-black text-slate-500 uppercase tracking-widest ko-normal">선수 정보</span>
                             </div>
                         </th>
                         {tab === 'roster' && ATTR_GROUPS.map(g => (
                             <th key={g.id} colSpan={g.keys.length} className="bg-slate-950 border-b border-r border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
+                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest ko-normal">{GROUP_LABEL_KR[g.label] || g.label}</span>
                                 </div>
                             </th>
                         ))}
                         {tab === 'stats' && (
                             <th colSpan={STATS_COLS.length} className="bg-slate-950 border-b border-slate-800 px-2 align-middle">
                                 <div className="h-full flex items-center justify-center">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
+                                    <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Season Averages (Per Game)</span>
                                 </div>
                             </th>
                         )}
                     </tr>
                     {/* Header Row 2: Labels */}
-                    <tr className="h-10 text-slate-500 text-[10px] font-black uppercase tracking-widest">
+                    <tr className="h-10 text-slate-500 text-xs font-black uppercase tracking-widest">
                         {/* Use inline styles to force border removal and width locking */}
                         <TableHeaderCell 
                             style={{ ...getStickyStyle(0, WIDTHS.NAME), zIndex: 50 }} 
@@ -286,7 +286,7 @@ export const RosterGrid: React.FC<RosterGridProps> = ({ team, tab, onPlayerClick
                 <TableFoot className="bg-slate-900 border-t-2 border-slate-800 sticky bottom-0 z-50 shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                     <tr className="h-10">
                         {/* Use inline styles to force border removal and width locking */}
-                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-[10px] uppercase tracking-widest">팀 평균</TableCell>
+                        <TableCell style={getStickyStyle(0, WIDTHS.NAME)} className="pl-4 text-left bg-slate-950 font-black text-indigo-400 text-xs uppercase tracking-widest">팀 평균</TableCell>
                         <TableCell style={getStickyStyle(LEFT_POS, WIDTHS.POS)} className="bg-slate-950"></TableCell>
                         <TableCell style={getStickyStyle(LEFT_AGE, WIDTHS.AGE)} className="bg-slate-950 text-center font-semibold text-slate-500 text-xs">{averages.attr.age}</TableCell>
                         <TableCell 
