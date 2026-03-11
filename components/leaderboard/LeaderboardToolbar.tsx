@@ -232,7 +232,7 @@ export const LeaderboardToolbar: React.FC<LeaderboardToolbarProps> = ({
                                             <span className={`text-xs font-bold ${selectedTeams.length === teams.length ? 'text-white' : 'text-slate-400'}`}>모두 선택</span>
                                         </div>
                                         <div className="h-px bg-slate-800 mx-2 my-1" />
-                                        {[...teams].sort((a, b) => a.name.localeCompare(b.name)).map(team => (
+                                        {[...teams].sort((a, b) => a.id.localeCompare(b.id)).map(team => (
                                             <div
                                                 key={team.id}
                                                 className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer transition-colors"
