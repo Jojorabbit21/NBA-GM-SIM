@@ -5,7 +5,6 @@
 ## 개요
 
 37개 세부 능력치 각각에 대해 성장 가능 여부, 성장 한도, 퇴화 시점, 퇴화 속도를 개별 정의한다.
-기존 6개 카테고리 단위 에이징 그룹(AGING_GROUPS)을 대체.
 
 ## AttrConfig 인터페이스
 
@@ -27,7 +26,7 @@
 |------|------|---------|------|---------|-----------|---------|------|------|
 | closeShot | O | 0.12 | ins | 35 | 3.0 | lateStable | 38 | 테크닉 |
 | layup | O | 0.12 | ins | 38 | 3.5 | lateStable | 38 | 피니싱 기술, 매우 늦게 퇴화 |
-| dunk | O | 0.12 | ins | 30 | 4.0 | midPhysical | 40 | 성장 가능, 30세부터 퇴화 |
+| dunk | O | 0.12 | ins | 30 | 3.0 | midPhysical | 40 | 성장 가능, 30세부터 퇴화 |
 | postPlay | O | 0.10 | ins | 35 | 2.0 | lateStable | 38 | 풋워크, 경험으로 발전 |
 | drawFoul | O | 0.08 | ins | 38 | 1.5 | lateStable | 38 | 기교/영리함 |
 | hands | O | 0.10 | ins | 35 | 1.5 | lateStable | 38 | 연습으로 개선 |
@@ -79,13 +78,13 @@
 
 | 속성 | 성장 | max/경기 | perf | 퇴화onset | max퇴화/시즌 | 퇴화그룹 | 바닥 | 근거 |
 |------|------|---------|------|---------|-----------|---------|------|------|
-| speed | **X** | 0.0 | - | 27 | 5.0 | earlyAthletic | 40 | 유전적 한계 |
-| agility | **X** | 0.0 | - | 27 | 4.5 | earlyAthletic | 40 | 유전적 한계 |
-| strength | 제한 | 0.05 | - | 30 | 3.0 | midPhysical | 38 | 웨이트 트레이닝 제한적 |
-| vertical | **X** | 0.0 | - | 27 | 4.5 | earlyAthletic | 40 | 유전적 한계 |
-| stamina | 제한 | 0.05 | - | 29 | 3.0 | midPhysical | 38 | 컨디셔닝 소폭 개선 |
-| hustle | 제한 | 0.05 | - | 31 | 2.0 | midPhysical | 38 | 노력/모터 |
-| durability | **X** | 0.0 | - | 30 | 3.0 | midPhysical | 40 | 체질/유전 |
+| speed | **X** | 0.0 | - | 27 | 3.5 | earlyAthletic | 40 | 유전적 한계 |
+| agility | **X** | 0.0 | - | 27 | 3.0 | earlyAthletic | 40 | 유전적 한계 |
+| strength | 제한 | 0.05 | - | 30 | 2.0 | midPhysical | 38 | 웨이트 트레이닝 제한적 |
+| vertical | **X** | 0.0 | - | 27 | 3.0 | earlyAthletic | 40 | 유전적 한계 |
+| stamina | 제한 | 0.05 | - | 29 | 2.0 | midPhysical | 38 | 컨디셔닝 소폭 개선 |
+| hustle | 제한 | 0.05 | - | 31 | 1.5 | midPhysical | 38 | 노력/모터 |
+| durability | **X** | 0.0 | - | 30 | 2.0 | midPhysical | 40 | 체질/유전 |
 
 ## OTHER
 
