@@ -160,13 +160,6 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               </button>
               <div className="my-1 border-t border-slate-800" />
               <button
-                onClick={() => { onNavigate('Help'); setIsMenuOpen(false); }}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
-              >
-                <BookOpen size={15} />
-                <span className="text-xs font-bold">초보자 가이드</span>
-              </button>
-              <button
                 onClick={() => { onNavigate('DraftHistory'); setIsMenuOpen(false); }}
                 className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
               >
@@ -194,6 +187,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               >
                 <RotateCcw size={15} />
                 <span className="text-xs font-bold">데이터 초기화</span>
+              </button>
+              <button
+                onClick={() => { onNavigate('Help'); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+              >
+                <BookOpen size={15} />
+                <span className="text-xs font-bold">초보자 가이드</span>
               </button>
               <button
                 onClick={() => { setShowTermsModal(true); setIsMenuOpen(false); }}
