@@ -6,9 +6,10 @@ import { PREF_AXES, PREF_ORDER, getAxisResult } from '../../views/CoachDetailVie
 
 interface HeadCoachTableProps {
     coach: HeadCoach | null | undefined;
+    onCoachClick?: () => void;
 }
 
-export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach }) => {
+export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach, onCoachClick }) => {
     if (!coach) {
         return (
             <div className="flex items-center justify-center h-40">
@@ -76,7 +77,12 @@ export const HeadCoachTable: React.FC<HeadCoachTableProps> = ({ coach }) => {
                         <span className="text-xs font-bold text-slate-500 ko-normal">감독</span>
                     </TableCell>
                     <TableCell align="left" style={{ width: 180, minWidth: 180 }}>
-                        <span className="text-xs font-semibold text-slate-200">{coach.name}</span>
+                        <span
+                            className={`text-xs font-semibold text-slate-200 ${onCoachClick ? 'hover:text-indigo-400 cursor-pointer transition-colors' : ''}`}
+                            onClick={onCoachClick}
+                        >
+                            {coach.name}
+                        </span>
                     </TableCell>
                     <TableCell align="center" style={{ width: 70, minWidth: 70 }}>
                         <span className="text-xs font-mono text-emerald-400">${coach.contractSalary}M</span>
