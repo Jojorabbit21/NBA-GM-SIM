@@ -43,7 +43,6 @@ export interface GameTactics {
     stopperId?: string;
     minutesLimits: Record<string, number>;
     depthChart?: DepthChart;
-    tcr?: number; // Talent Change Rate (0.5~2.0, 기본값 1.0)
 }
 
 export interface TacticalSnapshot {

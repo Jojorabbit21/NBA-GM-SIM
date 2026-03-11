@@ -31,6 +31,7 @@ import MainLayout from './components/MainLayout';
 import AppRouter from './components/AppRouter';
 import { ResetDataModal } from './components/ResetDataModal';
 import { EditorModal } from './components/EditorModal';
+import { SimSettingsModal } from './components/SimSettingsModal';
 import { EndSeasonModal } from './components/EndSeasonModal';
 import { OnboardingView } from './views/OnboardingView';
 import { ModeSelectView } from './views/ModeSelectView';
@@ -53,6 +54,8 @@ const App: React.FC = () => {
     const [updateDismissed, setUpdateDismissed] = useState(false);
     const handleResetClick = useCallback(() => setIsResetModalOpen(true), []);
     const handleEditorClick = useCallback(() => setIsEditorModalOpen(true), []);
+    const [isSimSettingsOpen, setIsSimSettingsOpen] = useState(false);
+    const handleSimSettingsClick = useCallback(() => setIsSimSettingsOpen(true), []);
 
     const advanceDate = useCallback((newDate: string, overrides: any) => {
         gameData.setCurrentSimDate(newDate);
@@ -76,7 +79,8 @@ const App: React.FC = () => {
         session, isGuestMode, refreshUnreadCount, gameData.depthChart,
         gameData.tendencySeed || undefined,
         gameData.hofId,
-        () => setHasSubmittedHof(true)
+        () => setHasSubmittedHof(true),
+        gameData.simSettings
     );
 
     const { handleSimulateSeason, batchProgress, handleCancelBatch } = useFullSeasonSim(
@@ -88,7 +92,8 @@ const App: React.FC = () => {
         gameData.userTactics, gameData.depthChart,
         gameData.tendencySeed || undefined,
         gameData.hofId,
-        () => setHasSubmittedHof(true)
+        () => setHasSubmittedHof(true),
+        gameData.simSettings
     );
 
     // 인증 및 라우팅 상태 감시
@@ -194,6 +199,7 @@ const App: React.FC = () => {
                     onNavigate: setView,
                     onResetClick: handleResetClick,
                     onEditorClick: handleEditorClick,
+                    onSimSettingsClick: handleSimSettingsClick,
                     onLogout: () => handleLogout(() => {
                         gameData.cleanupData();
                         setRosterMode(null);
@@ -230,6 +236,12 @@ const App: React.FC = () => {
                 <EditorModal
                     isOpen={isEditorModalOpen}
                     onClose={() => setIsEditorModalOpen(false)}
+                />
+                <SimSettingsModal
+                    isOpen={isSimSettingsOpen}
+                    onClose={() => setIsSimSettingsOpen(false)}
+                    simSettings={gameData.simSettings}
+                    onUpdate={gameData.setSimSettings}
                 />
                 <EndSeasonModal
                     isOpen={isEndSeasonModalOpen}

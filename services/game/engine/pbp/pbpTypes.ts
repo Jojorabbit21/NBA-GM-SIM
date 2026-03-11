@@ -1,5 +1,6 @@
 
 import { Player, PlayerBoxScore, GameTactics, PbpLog, RotationData, DepthChart, PlayType, RosterUpdate, SaveTendencies } from '../../../../types';
+import { SimSettings } from '../../../../types/simSettings';
 import { ArchetypeRatings } from './archetypeSystem';
 
 export interface LivePlayer extends PlayerBoxScore {
@@ -219,6 +220,9 @@ export interface GameState {
 
     // [New] Court Position Snapshot (라이브 시각화용)
     courtSnapshot: CourtSnapshot | null;
+
+    // [New] User-adjustable simulation settings
+    simSettings: SimSettings;
 }
 
 // ── Court Position Visualization ──

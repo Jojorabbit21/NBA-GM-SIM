@@ -618,6 +618,7 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         isBotchedSwitch, isSwitch,
         options?.minHitRate,
         state.possession === 'home',
+        state.simSettings.homeAdvantage,
         options?.clutchContext,
         pnrCoverage,
         screenerDefender,

@@ -80,3 +80,23 @@ export const TRADE_CONFIG = {
         BAD_CONTRACT_DUMP_BONUS: 2.0,
     },
 };
+
+/**
+ * SimSettings의 트레이드 관련 값으로 TRADE_CONFIG를 런타임 오버라이드.
+ * 시뮬레이션 시작 전 또는 트레이드 실행 전에 호출.
+ */
+export function applyTradeSimSettings(settings: {
+    tradeMinValueRatio?: number;
+    cpuTradeBaseProbability?: number;
+    cpuTradeMaxPerDay?: number;
+}): void {
+    if (settings.tradeMinValueRatio !== undefined) {
+        TRADE_CONFIG.OFFERS.MIN_VALUE_RATIO = settings.tradeMinValueRatio;
+    }
+    if (settings.cpuTradeBaseProbability !== undefined) {
+        TRADE_CONFIG.CPU_TRADE.BASE_PROBABILITY = settings.cpuTradeBaseProbability;
+    }
+    if (settings.cpuTradeMaxPerDay !== undefined) {
+        TRADE_CONFIG.CPU_TRADE.MAX_TRADES_PER_DAY = settings.cpuTradeMaxPerDay;
+    }
+}

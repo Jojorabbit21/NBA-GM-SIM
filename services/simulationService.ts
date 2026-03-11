@@ -1,5 +1,6 @@
 
 import { Team, Game, SimulationResult, PlayerBoxScore, TacticalSnapshot, RotationData, ShotEvent, PbpLog } from '../types';
+import { SimSettings } from '../types/simSettings';
 import { simulateGame } from './gameEngine';
 
 export interface CpuGameResult {
@@ -24,7 +25,8 @@ export const simulateCpuGames = (
     schedule: Game[],
     teams: Team[],
     date: string,
-    excludeGameId?: string
+    excludeGameId?: string,
+    simSettings?: SimSettings
 ): CpuGameResult[] => {
     const results: CpuGameResult[] = [];
     
@@ -41,7 +43,11 @@ export const simulateCpuGames = (
 
         if (homeTeam && awayTeam) {
             // Simple Simulation for CPU vs CPU
-            const simResult: SimulationResult = simulateGame(homeTeam, awayTeam, null);
+            const simResult: SimulationResult = simulateGame(
+                homeTeam, awayTeam, null,
+                undefined, false, false, undefined, undefined, undefined,
+                simSettings
+            );
 
             results.push({
                 gameId: game.id,

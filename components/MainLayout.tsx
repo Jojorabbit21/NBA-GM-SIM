@@ -20,6 +20,7 @@ interface MainLayoutProps {
         onNavigate: (view: AppView) => void;
         onResetClick: () => void;
         onEditorClick: () => void;
+        onSimSettingsClick: () => void;
         onLogout: () => void;
         onSimulateSeason?: () => void;
         isBatchRunning?: boolean;

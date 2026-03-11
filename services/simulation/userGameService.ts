@@ -1,5 +1,6 @@
 
 import { Team, Game, PlayoffSeries, GameTactics, DepthChart, SimulationResult } from '../../types';
+import { SimSettings } from '../../types/simSettings';
 import { simulateGame } from '../gameEngine';
 import { updateTeamStats, updateSeriesState, applyBoxToRoster } from '../../utils/simulationUtils';
 import { saveGameResults } from '../queries';
@@ -16,7 +17,8 @@ export const runUserSimulation = (
     userTactics: GameTactics,
     currentSimDate: string,
     depthChart?: DepthChart | null,
-    tendencySeed?: string
+    tendencySeed?: string,
+    simSettings?: SimSettings
 ): SimulationResult => {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -45,7 +47,8 @@ export const runUserSimulation = (
         isAwayB2B,
         homeDepth,
         awayDepth,
-        tendencySeed
+        tendencySeed,
+        simSettings
     );
 };
 
@@ -62,6 +65,7 @@ export const applyUserGameResult = async (
     isGuestMode: boolean,
     refreshUnreadCount: () => void,
     tendencySeed?: string,
+    simSettings?: SimSettings,
 ) => {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -75,7 +79,7 @@ export const applyUserGameResult = async (
 
     // 1.5. 선수 성장/퇴화 (정규시즌만)
     if (tendencySeed && !isPlayoff) {
-        const tcr = userTactics.tcr ?? 1.0;
+        const tcr = simSettings?.tcr ?? 1.0;
         const leagueAvg = computeLeagueAverages(teams);
         processGameDevelopment(
             homeTeam.roster, awayTeam.roster,

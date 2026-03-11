@@ -11,7 +11,8 @@ export function calculateIncrementalFatigue(
     timeTakenSeconds: number,
     sliders: TacticalSliders,
     isB2B: boolean,
-    isStopper: boolean
+    isStopper: boolean,
+    injuryFrequency: number = 1.0
 ) {
     const C = SIM_CONFIG.FATIGUE;
     let drain = (timeTakenSeconds / 60) * C.DRAIN_BASE;
@@ -37,22 +38,15 @@ export function calculateIncrementalFatigue(
     const cumulativeFatiguePenalty = 1.0 + Math.max(0, (100 - effectiveCondition) * 0.012);
     drain *= cumulativeFatiguePenalty;
 
-    // Injury Check (Micro-roll)
+    // Injury Check (Micro-roll) — injuriesEnabled는 stateUpdater에서 체크
     let injuryOccurred = false;
-    
-    // [Disabled] Injury logic temporarily disabled per user request
-    /*
-    // [Update] Lowered threshold from 30 to 15 to reduce injury frequency
     if (effectiveCondition < 15) {
         const roll = Math.random() * 10000;
-        // Adjusted multiplier to 5.0:
-        // At condition 14: (15-14)*5 = 5/10000 = 0.05%
-        // At condition 0:  (15-0)*5  = 75/10000 = 0.75% (Same peak risk as before, but safer zone is larger)
-        if (roll < (15 - effectiveCondition) * 5.0) {
+        // injuryFrequency 배율 적용 (기본 1.0, 높을수록 부상 잘 발생)
+        if (roll < (15 - effectiveCondition) * 5.0 * injuryFrequency) {
             injuryOccurred = true;
         }
     }
-    */
 
     return { drain, injuryOccurred };
 }

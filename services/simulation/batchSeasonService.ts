@@ -4,6 +4,7 @@
  */
 
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../../types';
+import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames } from '../simulationService';
 import { runUserSimulation } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
@@ -47,7 +48,8 @@ export async function runBatchSeason(
     tendencySeed: string | undefined,
     userId: string | undefined,
     onProgress: (current: number, total: number, date: string) => void,
-    cancelToken: { cancelled: boolean }
+    cancelToken: { cancelled: boolean },
+    simSettings?: SimSettings
 ): Promise<BatchSeasonResult> {
     const allGameResultsToSave: any[] = [];
     const allPlayoffResultsToSave: any[] = [];
@@ -77,7 +79,7 @@ export async function runBatchSeason(
         // 1. CPU 경기 처리 (in-place)
         const cpuPayloads = processCpuGamesInPlace(
             teams, schedule, playoffSeries, date, userGame?.id, userId,
-            tendencySeed, userTactics.tcr ?? 1.0
+            tendencySeed, simSettings?.tcr ?? 1.0, simSettings
         );
         allGameResultsToSave.push(...cpuPayloads.regular);
         allPlayoffResultsToSave.push(...cpuPayloads.playoff);
@@ -85,7 +87,7 @@ export async function runBatchSeason(
         // 2. 유저 경기 또는 휴식
         if (userGame) {
             const result = runUserSimulation(
-                userGame, teams, schedule, myTeamId, userTactics, date, depthChart, tendencySeed
+                userGame, teams, schedule, myTeamId, userTactics, date, depthChart, tendencySeed, simSettings
             );
 
             // 결과 적용 (in-place, DB/메시지 생략)
@@ -96,7 +98,7 @@ export async function runBatchSeason(
                 const homeT = teams.find(t => t.id === userGame.homeTeamId);
                 const awayT = teams.find(t => t.id === userGame.awayTeamId);
                 if (homeT && awayT) {
-                    const tcr = userTactics.tcr ?? 1.0;
+                    const tcr = simSettings?.tcr ?? 1.0;
                     const leagueAvg = computeLeagueAverages(teams);
                     processGameDevelopment(
                         homeT.roster, awayT.roster,
@@ -254,9 +256,10 @@ function processCpuGamesInPlace(
     userGameId: string | undefined,
     userId: string | undefined,
     tendencySeed?: string,
-    tcr: number = 1.0
+    tcr: number = 1.0,
+    simSettings?: SimSettings
 ): { regular: any[]; playoff: any[] } {
-    const results = simulateCpuGames(schedule, teams, date, userGameId);
+    const results = simulateCpuGames(schedule, teams, date, userGameId, simSettings);
     const regular: any[] = [];
     const playoff: any[] = [];
 

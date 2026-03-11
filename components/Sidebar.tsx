@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Trophy, BarChart3, Swords,
   Calendar as CalendarIcon, ArrowLeftRight,
   RotateCcw, LogOut, Mail, Gavel, User, MoreHorizontal,
-  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown,
+  PanelLeftClose, PanelLeftOpen, BookOpen, FileText, Wand2, FastForward, Crown, Settings,
 } from 'lucide-react';
 import { Team, AppView } from '../types';
 import { TEAM_DATA } from '../data/teamData';
@@ -28,6 +28,7 @@ interface SidebarProps {
   onNavigate: (view: AppView) => void;
   onResetClick: () => void;
   onEditorClick: () => void;
+  onSimSettingsClick: () => void;
   onLogout: () => void;
   onSimulateSeason?: () => void;
   isBatchRunning?: boolean;
@@ -95,6 +96,7 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
   onNavigate,
   onResetClick,
   onEditorClick,
+  onSimSettingsClick,
   onLogout,
   onSimulateSeason,
   isBatchRunning,
@@ -177,6 +179,13 @@ export const Sidebar: React.FC<SidebarProps> = React.memo(({
               >
                 <Wand2 size={15} />
                 <span className="text-xs font-bold">에디터</span>
+              </button>
+              <button
+                onClick={() => { onSimSettingsClick(); setIsMenuOpen(false); }}
+                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-all text-left"
+              >
+                <Settings size={15} />
+                <span className="text-xs font-bold">시뮬레이션 설정</span>
               </button>
               <div className="my-1 border-t border-slate-800" />
               <button

@@ -88,7 +88,7 @@ supabase.from('user_game_results')
 
 ```typescript
 interface ReplaySnapshot {
-  version: number;            // 스키마 버전
+  version: number;            // 스키마 버전 (현재 v4)
   game_count: number;         // 정규시즌 경기 수
   playoff_game_count: number; // 플레이오프 경기 수
   transaction_count: number;  // 트랜잭션 수
@@ -97,8 +97,16 @@ interface ReplaySnapshot {
     [teamId]: {
       wins, losses,           // 승패 기록
       tacticHistory,          // 전술 사용 이력
-      roster_stats: {         // 선수별 누적 스탯
-        [playerId]: { stats, playoffStats }
+      roster_stats: {         // 선수별 누적 스탯 + 성장 상태
+        [playerId]: {
+          stats, playoffStats,
+          growthState?: {                                // v4: 성장/퇴화 시스템
+            fractionalGrowth?: Record<string, number>,   // 소수점 누적 (sparse)
+            attrDeltas?: Record<string, number>,         // 시즌 내 정수 변화 합계
+            changeLog?: AttributeChangeEvent[],          // 정수 변화 이벤트 로그
+            seasonStartAttributes?: Record<string, number> // 시즌 시작 기준 속성값
+          }
+        }
       }
     }
   };
@@ -110,6 +118,8 @@ interface ReplaySnapshot {
   playoff_schedule: [...];    // 플레이오프 경기 목록
 }
 ```
+
+> **v4 변경점**: `roster_stats`에 `growthState` 추가. `hydrateFromSnapshot()` 시 `attrDeltas`를 기반으로 `reapplyAttrDeltas(player)`를 호출하여 `meta_players` 원본 능력치에 시즌 내 정수 변화를 재적용한다.
 
 ### 저장 위치
 
@@ -163,6 +173,7 @@ HEAD 요청은 응답 본문이 없어 데이터 전송량이 0에 가깝다.
     │        ])
     │         → version 일치 && 3개 카운트 모두 일치?
     │           ├─ YES → ⚡ hydrateFromSnapshot() — replay 스킵!
+    │           │         (growthState에서 attrDeltas → reapplyAttrDeltas로 능력치 복원)
     │           └─ NO  → 🔄 loadUserHistory() → replayGameState()
     │                     → 새 스냅샷 빌드 & 저장
     │
@@ -182,6 +193,20 @@ HEAD 요청은 응답 본문이 없어 데이터 전송량이 0에 가깝다.
 
 Fallback 경로에서는 `loadPlayoffState`가 스냅샷 블록에서 이미 로드되었으면 재사용하고, 아니면 그때 로드한다.
 
+### 공통 후처리: roster_state 패치
+
+스냅샷/리플레이 양쪽 경로 모두, 마지막에 `checkpoint.roster_state`를 적용한다:
+
+```
+roster_state[playerId] = {
+  condition, health, injuryType, returnDate,        // 피로/부상
+  fractionalGrowth?, attrDeltas?, changeLog?,       // 성장/퇴화 누적 상태
+  seasonStartAttributes?                            // 시즌 시작 기준 속성값
+}
+```
+
+`attrDeltas`가 있으면 `reapplyAttrDeltas(player)`를 호출하여 `meta_players` 원본에 정수 변화를 재적용한다. 이 이중 경로(스냅샷 + roster_state) 덕분에 어느 쪽으로 로드하든 성장 데이터가 보존된다.
+
 ### 트랜잭션은 왜 별도로 로드하나?
 
 스냅샷은 선수 스탯과 팀 승패를 저장하지만, **어떤 선수가 어떤 팀에 있는지**(로스터 구성)는 저장하지 않는다. 트레이드로 선수가 팀을 옮긴 경우, 트랜잭션 내역을 적용해야 올바른 로스터가 복원된다.
@@ -194,9 +219,10 @@ Fallback 경로에서는 `loadPlayoffState`가 스냅샷 블록에서 이미 로
 
 | 파일 | 역할 |
 |---|---|
-| `services/snapshotBuilder.ts` | `buildReplaySnapshot()`, `hydrateFromSnapshot()` |
+| `services/snapshotBuilder.ts` | `buildReplaySnapshot()`, `hydrateFromSnapshot()` + `reapplyAttrDeltas()` 호출 |
+| `services/playerDevelopment/playerAging.ts` | `reapplyAttrDeltas()` — 로드 시 능력치 재적용, `initializeSeasonGrowth()` |
 | `services/persistence.ts` | `saveCheckpoint()` (스냅샷 저장), `countUserData()` (검증), `loadUserTransactions()` |
-| `hooks/useGameData.ts` | `initializeGame()` 분기 로직, `forceSave()` 스냅샷 빌드 |
+| `hooks/useGameData.ts` | `initializeGame()` 분기 로직, `forceSave()` 스냅샷 빌드 + roster_state에 성장 데이터 포함 |
 | `hooks/useSimulation.ts` | 경기 후 `forceSave({ withSnapshot: true })` 호출 |
 | `hooks/useFullSeasonSim.ts` | 풀시즌 시뮬 후 스냅샷 저장 |
 | `components/AppRouter.tsx` | 경기 결과 dismiss 후 스냅샷 저장 |

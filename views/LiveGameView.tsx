@@ -28,6 +28,7 @@ interface LiveGameViewProps {
     homeDepthChart?: DepthChart | null;
     awayDepthChart?: DepthChart | null;
     tendencySeed?: string;
+    simSettings?: import('../types/simSettings').SimSettings;
     onGameEnd: (result: SimulationResult) => void;
 }
 
@@ -826,7 +827,7 @@ const LiveShotChart: React.FC<{
 
 export const LiveGameView: React.FC<LiveGameViewProps> = ({
     homeTeam, awayTeam, userTeamId, userTactics,
-    isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, onGameEnd,
+    isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings, onGameEnd,
 }) => {
     const {
         displayState, callTimeout, applyTactics, applyRotationMap,
@@ -834,7 +835,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
         setSpeed, skipToEnd,
     } = useLiveGame(
         homeTeam, awayTeam, userTeamId, userTactics,
-        isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed
+        isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings
     );
 
     const {

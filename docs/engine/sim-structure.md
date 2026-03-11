@@ -190,8 +190,18 @@ simulateGame(
   team_id: string,
   sim_date: string,
   tactics: GameTactics (JSON),
-  roster_state: Record<playerId, { condition, health, injuryType, returnDate }>,
-  depth_chart: DepthChart (JSON)
+  roster_state: Record<playerId, SavedPlayerState>,
+  depth_chart: DepthChart (JSON),
+  replay_snapshot: ReplaySnapshot (JSON)
+}
+
+// SavedPlayerState 구조:
+{
+  condition, health, injuryType, returnDate,        // 피로/부상
+  fractionalGrowth?: Record<string, number>,        // 소수점 성장 누적 (sparse)
+  attrDeltas?: Record<string, number>,              // 시즌 내 정수 변화 합계 (sparse)
+  changeLog?: AttributeChangeEvent[],               // 정수 변화 이벤트 로그
+  seasonStartAttributes?: Record<string, number>    // 시즌 시작 기준 속성값
 }
 ```
 
@@ -266,10 +276,13 @@ Supabase
     ├─ user_playoffs → loadPlayoffState() → 플레이오프 브래킷
     └─ user_playoffs_results → loadPlayoffGameResults() → 플레이오프 경기 결과
 
-replayGameState(baseTeams, baseSchedule, transactions, allGameResults, simDate)
-    └─ 누적된 박스스코어 → player.stats (선수 시즌 통계)
+replay_snapshot 유효?
+  → YES: hydrateFromSnapshot() — stats + growthState(attrDeltas → reapplyAttrDeltas) 복원
+  → NO:  replayGameState(baseTeams, baseSchedule, transactions, allGameResults, simDate)
+           └─ 누적된 박스스코어 → player.stats (선수 시즌 통계)
 
-+ checkpoint.roster_state → 피로도/부상 상태 복원
++ checkpoint.roster_state → 피로도/부상 + 성장 상태(attrDeltas, changeLog 등) 복원
+  → attrDeltas 존재 시 reapplyAttrDeltas(player) 호출하여 능력치 재적용
 + checkpoint.depth_chart  → 깊이 차트 복원
 ```
 

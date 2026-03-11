@@ -14,15 +14,7 @@ const PNR_STEPS = [
     { value: 2, label: '블리츠' },
 ];
 
-const TCR_STEPS = [
-    { value: 0.5, label: '0.5' },
-    { value: 0.75, label: '0.75' },
-    { value: 1.0, label: '1.0' },
-    { value: 1.25, label: '1.25' },
-    { value: 1.5, label: '1.5' },
-    { value: 1.75, label: '1.75' },
-    { value: 2.0, label: '2.0' },
-];
+
 
 interface TacticsSlidersPanelProps {
     tactics: GameTactics;
@@ -117,16 +109,6 @@ export const TacticsSlidersPanel: React.FC<TacticsSlidersPanelProps> = ({ tactic
                     </div>
                 </div>
 
-                {/* ── Divider ── */}
-                <div className="h-px bg-slate-700 my-4" />
-
-                {/* ── 시뮬레이션 설정 ── */}
-                <h4 className="text-sm font-black text-white uppercase tracking-widest">시뮬레이션</h4>
-                <SliderControl label="재능 변동 폭 (TCR)" value={tactics.tcr ?? 1.0}
-                    onChange={v => onUpdateTactics({ ...tactics, tcr: v })}
-                    steps={TCR_STEPS}
-                    tooltip="선수 능력치의 시즌 내 변동 폭을 조절합니다. 1.0이 표준이며, 높을수록 성장/퇴화가 극적으로 발생합니다."
-                    fillColor="#f59e0b" />
 
             </div>
 

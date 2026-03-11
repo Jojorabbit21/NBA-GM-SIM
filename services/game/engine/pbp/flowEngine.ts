@@ -56,6 +56,7 @@ export function calculateHitRate(
     isSwitch: boolean = false,
     minHitRate?: number, // [New] Buzzer beater: enforce hit rate lower bound
     isHome: boolean = false,
+    homeAdvantage: number = 0.02,
     clutchContext?: ClutchContext,
     pnrCoverage: PnrCoverage = 'none',
     screenerDefender?: LivePlayer,
@@ -336,9 +337,9 @@ export function calculateHitRate(
         hitRate -= (offSliders.pace - 5) * 0.01;
     }
 
-    // 6. Home Court Advantage
+    // 6. Home Court Advantage — homeAdvantage는 호출부에서 state.simSettings로 주입
     if (isHome) {
-        hitRate += SIM_CONFIG.GAME_ENV.HOME_ADVANTAGE;
+        hitRate += homeAdvantage;
     }
 
     // 7. Clutch Modifier (Q4 접전 상황)

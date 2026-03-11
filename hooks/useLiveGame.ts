@@ -1,6 +1,7 @@
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { Team, GameTactics, DepthChart, SimulationResult, PbpLog, PlayerBoxScore } from '../types';
+import { SimSettings } from '../types/simSettings';
 import { GameState, LivePlayer, ShotEvent, CourtSnapshot } from '../services/game/engine/pbp/pbpTypes';
 import {
     createGameState,
@@ -86,13 +87,14 @@ export function useLiveGame(
     isAwayB2B: boolean = false,
     homeDepthChart?: DepthChart | null,
     awayDepthChart?: DepthChart | null,
-    tendencySeed?: string
+    tendencySeed?: string,
+    simSettings?: SimSettings
 ): UseLiveGameReturn {
 
     // ── GameState는 ref로 보유 (리렌더 방지) ──
     const gameStateRef = useRef<GameState>(
         createGameState(homeTeam, awayTeam, userTeamId, userTactics,
-            isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed)
+            isHomeB2B, isAwayB2B, homeDepthChart, awayDepthChart, tendencySeed, simSettings)
     );
 
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);

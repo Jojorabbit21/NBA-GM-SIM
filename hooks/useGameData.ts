@@ -17,6 +17,7 @@ import { calculateOvr } from '../utils/ovrUtils';
 import { BoardPick } from '../components/draft/DraftBoard';
 import { DraftPoolType } from '../types';
 import { initializeSeasonGrowth, reapplyAttrDeltas } from '../services/playerDevelopment/playerAging';
+import { SimSettings, DEFAULT_SIM_SETTINGS } from '../types/simSettings';
 
 export const INITIAL_DATE = '2025-10-20';
 
@@ -40,6 +41,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const [depthChart, setDepthChart] = useState<DepthChart | null>(null); // [New] Depth Chart
     const [tendencySeed, setTendencySeed] = useState<string | null>(null); // [New] Save-seeded hidden tendencies
     const [hofId, setHofId] = useState<string | null>(null); // HoF 제출용 세이브 식별자
+    const [simSettings, setSimSettings] = useState<SimSettings>(DEFAULT_SIM_SETTINGS);
     const [news, setNews] = useState<any[]>([]);
 
     // --- Flags & Loading ---
@@ -51,10 +53,10 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
     const draftPicksRef = useRef<{ order?: string[]; poolType?: DraftPoolType; teams?: Record<string, string[]>; picks?: any[] } | null>(null);
     
     // Refs to avoid stale closures in callbacks
-    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed });
+    const gameStateRef = useRef({ myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings });
     useEffect(() => {
-        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed };
-    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed]);
+        gameStateRef.current = { myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings };
+    }, [myTeamId, currentSimDate, userTactics, depthChart, teams, schedule, tendencySeed, simSettings]);
 
     // --- Base Data Query ---
     const { data: baseData, isLoading: isBaseDataLoading } = useBaseData();
@@ -300,6 +302,14 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         saveCheckpoint(userId, checkpoint.team_id, checkpoint.sim_date, undefined, undefined, undefined, undefined, newSeed);
                     }
 
+                    // SimSettings 로드 (기존 tactics.tcr 마이그레이션 포함)
+                    if (checkpoint.sim_settings) {
+                        setSimSettings({ ...DEFAULT_SIM_SETTINGS, ...checkpoint.sim_settings });
+                    } else if (checkpoint.tactics?.tcr !== undefined) {
+                        // 레거시 마이그레이션: tactics.tcr → simSettings.tcr
+                        setSimSettings({ ...DEFAULT_SIM_SETTINGS, tcr: checkpoint.tactics.tcr });
+                    }
+
                     if (checkpoint.hof_id) {
                         setHofId(checkpoint.hof_id);
                     }
@@ -416,7 +426,8 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
             }
 
             if (teamId && date) {
-                const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot);
+                const currentSimSettings = overrides?.simSettings || gameStateRef.current.simSettings;
+                const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, depthChart, draftPicksRef.current, seed, snapshot, currentSimSettings);
                 // hofId를 DB 응답에서 동기화 (최초 세이브 시 DB가 gen_random_uuid()로 생성)
                 if (result?.[0]?.hof_id) {
                     setHofId(result[0].hof_id);
@@ -604,6 +615,27 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         };
     }, [userTactics, depthChart]);
 
+    // simSettings 변경 시 디바운스 자동 저장 (1.5초)
+    const simSettingsAutoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isInitialSimSettingsLoad = useRef(true);
+
+    useEffect(() => {
+        if (isInitialSimSettingsLoad.current) {
+            isInitialSimSettingsLoad.current = false;
+            return;
+        }
+        if (!myTeamId || isResettingRef.current) return;
+
+        if (simSettingsAutoSaveTimer.current) clearTimeout(simSettingsAutoSaveTimer.current);
+        simSettingsAutoSaveTimer.current = setTimeout(() => {
+            forceSave();
+        }, 1500);
+
+        return () => {
+            if (simSettingsAutoSaveTimer.current) clearTimeout(simSettingsAutoSaveTimer.current);
+        };
+    }, [simSettings]);
+
     const cleanupData = () => {
          setMyTeamId(null);
          setTeams([]);
@@ -615,9 +647,11 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
          setDepthChart(null);
          setTendencySeed(null);
          setHofId(null);
+         setSimSettings(DEFAULT_SIM_SETTINGS);
          setNews([]);
          draftPicksRef.current = null;
          isInitialTacticsLoad.current = true;
+         isInitialSimSettingsLoad.current = true;
          hasInitialLoadRef.current = false;
          queryClient.removeQueries({ predicate: q => q.queryKey[0] !== 'baseData' });
          Object.keys(localStorage).forEach((key) => {
@@ -637,6 +671,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
         depthChart, setDepthChart, // [New]
         tendencySeed,
         hofId,
+        simSettings, setSimSettings,
         news, setNews,
         
         isBaseDataLoading,
