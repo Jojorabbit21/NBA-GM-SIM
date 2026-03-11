@@ -159,8 +159,8 @@ const DECLINE_GROUPS: Record<string, { peakAge: number; noiseStdev: number }> = 
     never:         { peakAge: 99, noiseStdev: 0.0 },
 };
 
-/** 성장 rate 기본 상수 */
-const BASE_GROWTH_RATE = 0.35;
+/** 성장 rate 기본 상수 (시즌당 속성별 기대 성장량, ageFactor/perfMult/affinity 곱셈 전) */
+const BASE_GROWTH_RATE = 1.5;
 
 /** 경험 기반 성장 대상: IQ/정신적 속성 */
 const IQ_ATTRIBUTES = new Set<SkillAttribute>([
@@ -370,12 +370,14 @@ function calculatePerGameGrowth(
             }
         }
 
-        // ── IQ 경험 성장 (나이 무관, 관련 카테고리 퍼포먼스 비례) ──
+        // ── IQ 경험 성장 (나이 무관, 리그 평균 초과 퍼포먼스만 반영) ──
         if (isIQ && cfg.perfStats.length > 0) {
             const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 0), 0);
             const iqPerfMult = perfSum / cfg.perfStats.length;
-            if (iqPerfMult > 0) {
-                totalDelta += EXP_GROWTH_RATE * iqPerfMult * mpRatio * growthMult * growthRate * focusDriftMult;
+            // 평균(1.0) 초과분만 경험 성장에 반영 — 평균 이하 카테고리는 IQ 성장 없음
+            const excessPerf = Math.max(0, iqPerfMult - 1.0);
+            if (excessPerf > 0) {
+                totalDelta += EXP_GROWTH_RATE * excessPerf * mpRatio * growthMult * growthRate * focusDriftMult;
             }
         }
 

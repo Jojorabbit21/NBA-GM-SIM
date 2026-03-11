@@ -32,7 +32,7 @@ delta = (BASE_GROWTH_RATE × ageFactor × growthRate / 82)
 
 | 변수 | 값/범위 | 설명 |
 |------|--------|------|
-| `BASE_GROWTH_RATE` | 0.35 | 기본 성장 상수 |
+| `BASE_GROWTH_RATE` | 1.5 | 기본 성장 상수 (시즌당 기대 성장량) |
 | `ageFactor` | 0.0~1.0 | 나이 계수 (아래 표 참조) |
 | `growthRate` | 0.0~2.0 | 사용자 설정 성장 속도 배율 |
 | `perfMult` | 0.0~2.5 | 카테고리별 퍼포먼스 배율 |
