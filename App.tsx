@@ -154,8 +154,9 @@ const App: React.FC = () => {
         setView('Onboarding' as any);
         const success = await gameData.handleSelectTeam(teamId);
         if (!success) setView('Dashboard');
+        else await refreshUnreadCount(); // 구단주 서신 발송 후 배지 갱신
         return success;
-    }, [gameData.handleSelectTeam, gameData.setMyTeamId, rosterMode]);
+    }, [gameData.handleSelectTeam, gameData.setMyTeamId, rosterMode, refreshUnreadCount]);
 
     // 전역 상태에 따른 가드 렌더링
     // 1. authLoading: 인증 확인 중 → 정적 메세지

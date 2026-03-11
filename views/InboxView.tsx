@@ -10,7 +10,7 @@ interface InboxViewProps {
   myTeamId: string;
   userId: string;
   teams: Team[];
-  onUpdateUnreadCount: () => void;
+  onUpdateUnreadCount: () => void | Promise<void>;
   tendencySeed?: string;
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   onViewGameResult: (result: any) => void;
@@ -44,9 +44,9 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
       }
 
       if (!msg.is_read) {
-          markMessageAsRead(msg.id);
+          await markMessageAsRead(msg.id);
           setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, is_read: true } : m));
-          onUpdateUnreadCount();
+          await onUpdateUnreadCount();
       }
   }, [onUpdateUnreadCount]);
 
@@ -76,7 +76,7 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   const handleMarkAllRead = async () => {
       await markAllMessagesAsRead(userId, myTeamId);
       setMessages(prev => prev.map(m => ({ ...m, is_read: true })));
-      onUpdateUnreadCount();
+      await onUpdateUnreadCount();
   };
 
   const handlePlayerClick = (playerId: string) => {

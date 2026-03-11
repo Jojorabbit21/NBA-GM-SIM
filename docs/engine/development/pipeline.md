@@ -15,9 +15,14 @@
     ↓
 processGameDevelopment()          ← 외부 진입점 (3곳에서 호출)
     ├── generateGrowthProfile()   ← 시드 기반 attrAffinity + athleticResilience
+    ├── generateSaveTendencies()  ← 히든 텐던시 → consistencyMult, focusDriftMult
     ├── calculatePerGameDevelopment()
     │       ├── calculatePerGameGrowth()     ← 성장 delta 계산
+    │       │       ├── 퍼포먼스 기반 성장 (age < 30, perfMult > 0)
+    │       │       └── IQ 경험 성장 (나이 무관, excessPerf > 0)
     │       ├── calculatePerGameDecline()    ← 퇴화 delta 계산
+    │       │       ├── 퇴화 구간 (age ≥ onset, durabilityMult 적용)
+    │       │       └── 유지 노이즈 (peak ~ onset)
     │       ├── (합산)
     │       └── accumulateAndResolve()       ← fractional 누적 → 정수 변환
     └── applyDevelopmentResult()  ← Player 객체에 반영
@@ -40,6 +45,13 @@ processGameDevelopment(
     leagueAverages, gameDate, seasonNumber
 )
 ```
+
+### 내부 보정값 (processGameDevelopment에서 생성)
+
+| 보정값 | 소스 | 공식 | 대상 경로 |
+|--------|------|------|----------|
+| `consistencyMult` | `tendencies.consistency` | `0.8 + consistency × 0.33` | 퍼포먼스 기반 성장 |
+| `focusDriftMult` | `tendencies.focusDrift` | `1.0 - focusDrift × 0.3` | IQ 경험 성장 |
 
 ---
 
@@ -111,11 +123,17 @@ currentFractional[attr] + newDelta
 - `changeLog` — 이벤트 이력
 - `seasonStartAttributes` — 시즌 시작 스냅샷
 
+두 곳에 저장됨:
+- **`roster_state`** (saves 테이블 컬럼) — 선수별 상태 직접 저장
+- **`snapshot`** (saves 테이블 컬럼) — ReplaySnapshot 내 growthState
+
 ### 복원 (로드 시)
 
 1. `meta_players`에서 원본 능력치 로드
-2. `reapplyAttrDeltas(player)` 호출 → `attrDeltas`를 원본에 재적용
-3. 카테고리 평균 + OVR 재계산
+2. **스냅샷 경로** (우선): `hydrateFromSnapshot()` → `reapplyAttrDeltas()` 호출
+3. **roster_state 후처리**: condition/injury 복원 + 성장 필드 덮어쓰기
+   - 스냅샷 사용 시: `reapplyAttrDeltas()` 중복 호출 방지 (`!snapshotUsed` 체크)
+   - 스냅샷 미사용 시: `reapplyAttrDeltas()` 호출하여 원본에 delta 재적용
 4. `fractionalGrowth`는 저장된 값 그대로 사용 (이어서 누적)
 
 ---
@@ -137,5 +155,6 @@ currentFractional[attr] + newDelta
 
 같은 `tendencySeed` → 같은 결과:
 - `generateGrowthProfile()` → 동일한 attrAffinity, athleticResilience
+- `generateSaveTendencies()` → 동일한 consistency, focusDrift
 - `calculatePerGameDecline()` → 동일한 variance, noiseStdev
 - 시드 구성: `growth_{tendencySeed}_{playerId}`, `aging_{tendencySeed}_{playerId}_s{seasonNumber}`
