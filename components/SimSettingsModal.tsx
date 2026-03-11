@@ -88,10 +88,10 @@ const NumberRow: React.FC<{
                 step={step}
                 value={isInteger ? value : value.toFixed(decimals)}
                 onChange={handleInputChange}
-                className={`w-20 h-8 bg-slate-950 border rounded-lg px-2 text-xs font-mono font-bold tabular-nums text-center flex-shrink-0 ml-4
+                className={`w-20 h-8 bg-slate-950 border border-slate-700 rounded-lg px-2 text-xs font-mono font-bold tabular-nums text-center flex-shrink-0 ml-4
                     focus:outline-none focus:border-indigo-500 focus:text-white transition-colors
                     [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none
-                    ${isDefault ? 'border-slate-700 text-slate-300' : 'border-indigo-500/50 text-indigo-400'}`}
+                    ${isDefault ? 'text-slate-300' : 'text-red-400'}`}
             />
         </div>
     );
