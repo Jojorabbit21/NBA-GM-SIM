@@ -49,10 +49,10 @@ export interface PerGameResult {
 export interface LeagueAverages {
     pts: number; p3m: number; ast: number;
     stl: number; blk: number; reb: number;
-    mp: number;
+    mp: number; tov: number; pf: number; fgPct: number;
     ptsStd: number; p3mStd: number; astStd: number;
     stlStd: number; blkStd: number; rebStd: number;
-    mpStd: number;
+    mpStd: number; tovStd: number; pfStd: number; fgPctStd: number;
 }
 
 export interface OffseasonResult {
@@ -163,7 +163,7 @@ const POSITION_BONUS: Record<string, Record<CategoryKey, number>> = {
 };
 
 /** 성장 rate 기본 상수 (튜닝 대상) */
-const BASE_GROWTH_RATE = 0.12;
+const BASE_GROWTH_RATE = 0.35;
 
 /** 경기 스탯 → 카테고리 매핑 */
 const PERF_STAT_TO_CATS: Record<string, CategoryKey[]> = {
@@ -333,14 +333,25 @@ function calculatePerGameGrowth(
     }
 
     // 경기 스탯 → 카테고리별 퍼포먼스 배율
+    // rimM/midM은 deprecated → zoneData에서 rim+paint 합산
+    const zd = (gameBoxScore as any).zoneData || {};
+    const insideMakes = (zd.zone_rim_m || 0) + (zd.zone_paint_m || 0) + (gameBoxScore.rimM || 0);
+    const gameFgPct = gameBoxScore.fga > 0 ? gameBoxScore.fgm / gameBoxScore.fga : 0;
+
     const perfCalcs: { stat: number; avg: number; std: number; cats: CategoryKey[] }[] = [
+        // 긍정 지표 (높을수록 좋음)
         { stat: gameBoxScore.pts, avg: leagueAverages.pts, std: leagueAverages.ptsStd, cats: ['ins', 'out'] },
         { stat: gameBoxScore.p3m, avg: leagueAverages.p3m, std: leagueAverages.p3mStd, cats: ['out'] },
-        { stat: gameBoxScore.rimM, avg: leagueAverages.pts * 0.3, std: leagueAverages.ptsStd * 0.3, cats: ['ins'] },
+        { stat: insideMakes, avg: leagueAverages.pts * 0.3, std: leagueAverages.ptsStd * 0.3, cats: ['ins'] },
         { stat: gameBoxScore.ast, avg: leagueAverages.ast, std: leagueAverages.astStd, cats: ['plm'] },
         { stat: gameBoxScore.stl, avg: leagueAverages.stl, std: leagueAverages.stlStd, cats: ['def'] },
         { stat: gameBoxScore.blk, avg: leagueAverages.blk, std: leagueAverages.blkStd, cats: ['def'] },
         { stat: gameBoxScore.reb, avg: leagueAverages.reb, std: leagueAverages.rebStd, cats: ['reb'] },
+        // 야투율 (높을수록 좋음)
+        { stat: gameFgPct, avg: leagueAverages.fgPct, std: leagueAverages.fgPctStd, cats: ['ins', 'out'] },
+        // 부정 지표 (반전: 낮을수록 좋음 → stat과 avg를 뒤집어서 높을수록 좋은 z-score)
+        { stat: -gameBoxScore.tov, avg: -leagueAverages.tov, std: leagueAverages.tovStd, cats: ['plm', 'out'] },
+        { stat: -gameBoxScore.pf, avg: -leagueAverages.pf, std: leagueAverages.pfStd, cats: ['def'] },
     ];
 
     // 카테고리별 퍼포먼스 z-score 누적
@@ -357,12 +368,13 @@ function calculatePerGameGrowth(
         const scores = catPerfScores[cat];
         if (scores.length > 0) {
             const avgZ = scores.reduce((s, v) => s + v, 0) / scores.length;
-            perfMultipliers[cat] = Math.max(0.5, Math.min(2.0, 1.0 + avgZ * 0.25));
+            // 음수 허용: 끔찍한 경기 시 perfMultiplier < 0 → 능력치 하락
+            perfMultipliers[cat] = Math.max(-0.5, Math.min(2.0, 1.0 + avgZ * 0.3));
         }
     }
 
     // ath는 출전시간 비례
-    perfMultipliers['ath'] = Math.max(0.5, Math.min(2.0, 0.5 + mpRatio * 1.5));
+    perfMultipliers['ath'] = Math.max(0.3, Math.min(2.0, 0.3 + mpRatio * 1.7));
 
     // 카테고리별 성장 에너지 → 속성별 분배
     const deltas: Partial<Record<SkillAttribute, number>> = {};
@@ -384,32 +396,58 @@ function calculatePerGameGrowth(
         }
 
         // 시즌 총 성장 예산 → 1경기당
-        const effectiveGap = currentCatAvg <= catPot ? catGap : 5; // 초과 시에도 최소 gap 부여
+        const effectiveGap = currentCatAvg <= catPot ? catGap : 5;
         const seasonBudget = effectiveGap * BASE_GROWTH_RATE * ageFactor * growthMult * tcr;
         const perGameBase = seasonBudget / 82;
-        const catEnergy = perGameBase * (perfMultipliers[cat] ?? 1.0) * mpRatio;
+        const perfMult = perfMultipliers[cat] ?? 1.0;
+        const catEnergy = perGameBase * perfMult * mpRatio;
 
-        if (catEnergy <= 0) continue;
+        if (Math.abs(catEnergy) < 0.0001) continue;
 
-        // 속성별 분배 (affinity × room)
         const attrs = CATEGORY_ATTRS[cat];
-        let totalWeight = 0;
-        const weights: number[] = [];
 
-        for (const attr of attrs) {
-            const room = Math.max(0, 99 - getAttr(player, attr));
-            const w = (attrAffinities[attr] ?? 1.0) * room;
-            weights.push(w);
-            totalWeight += w;
-        }
+        if (catEnergy > 0) {
+            // ── 성장: affinity × room 기반 분배 ──
+            let totalWeight = 0;
+            const weights: number[] = [];
 
-        if (totalWeight <= 0) continue;
+            for (const attr of attrs) {
+                const room = Math.max(0, 99 - getAttr(player, attr));
+                const w = (attrAffinities[attr] ?? 1.0) * room;
+                weights.push(w);
+                totalWeight += w;
+            }
 
-        for (let i = 0; i < attrs.length; i++) {
-            const share = weights[i] / totalWeight;
-            const delta = Math.min(0.4, catEnergy * share); // 속성당 최대 0.4/경기
-            if (delta > 0.001) {
-                deltas[attrs[i]] = (deltas[attrs[i]] ?? 0) + delta;
+            if (totalWeight <= 0) continue;
+
+            for (let i = 0; i < attrs.length; i++) {
+                const share = weights[i] / totalWeight;
+                const delta = Math.min(0.4, catEnergy * share);
+                if (delta > 0.001) {
+                    deltas[attrs[i]] = (deltas[attrs[i]] ?? 0) + delta;
+                }
+            }
+        } else {
+            // ── 부진 퇴화: 현재 값 비례 분배 (높은 능력치가 더 많이 떨어짐) ──
+            let totalWeight = 0;
+            const weights: number[] = [];
+            const PERF_DECLINE_FLOOR = 40; // 부진 퇴화 바닥
+
+            for (const attr of attrs) {
+                const val = getAttr(player, attr);
+                const room = Math.max(0, val - PERF_DECLINE_FLOOR);
+                weights.push(room);
+                totalWeight += room;
+            }
+
+            if (totalWeight <= 0) continue;
+
+            for (let i = 0; i < attrs.length; i++) {
+                const share = weights[i] / totalWeight;
+                const delta = Math.max(-0.3, catEnergy * share); // 속성당 최대 -0.3/경기
+                if (delta < -0.001) {
+                    deltas[attrs[i]] = (deltas[attrs[i]] ?? 0) + delta;
+                }
             }
         }
     }
@@ -730,8 +768,10 @@ export function processOffseason(
 const DEFAULT_LEAGUE_AVERAGES: LeagueAverages = {
     pts: 14.0, p3m: 1.8, ast: 3.2,
     stl: 0.9, blk: 0.5, reb: 5.5, mp: 24.0,
+    tov: 1.5, pf: 2.0, fgPct: 0.46,
     ptsStd: 8.0, p3mStd: 1.5, astStd: 2.5,
     stlStd: 0.8, blkStd: 0.6, rebStd: 3.5, mpStd: 10.0,
+    tovStd: 1.0, pfStd: 1.0, fgPctStd: 0.12,
 };
 
 /**
@@ -739,7 +779,7 @@ const DEFAULT_LEAGUE_AVERAGES: LeagueAverages = {
  * 10경기 이상 출전한 선수만 포함. 데이터 부족 시 기본값 반환.
  */
 export function computeLeagueAverages(teams: { roster: Player[] }[]): LeagueAverages {
-    const samples: { pts: number; p3m: number; ast: number; stl: number; blk: number; reb: number; mp: number }[] = [];
+    const samples: { pts: number; p3m: number; ast: number; stl: number; blk: number; reb: number; mp: number; tov: number; pf: number; fgPct: number }[] = [];
 
     for (const team of teams) {
         for (const p of team.roster) {
@@ -753,6 +793,9 @@ export function computeLeagueAverages(teams: { roster: Player[] }[]): LeagueAver
                 blk: p.stats.blk / g,
                 reb: p.stats.reb / g,
                 mp: p.stats.mp / g,
+                tov: p.stats.tov / g,
+                pf: p.stats.pf / g,
+                fgPct: p.stats.fga > 0 ? p.stats.fgm / p.stats.fga : 0,
             });
         }
     }
@@ -771,13 +814,18 @@ export function computeLeagueAverages(teams: { roster: Player[] }[]): LeagueAver
     const blkMean = mean('blk');
     const rebMean = mean('reb');
     const mpMean = mean('mp');
+    const tovMean = mean('tov');
+    const pfMean = mean('pf');
+    const fgPctMean = mean('fgPct');
 
     return {
         pts: ptsMean, p3m: p3mMean, ast: astMean,
         stl: stlMean, blk: blkMean, reb: rebMean, mp: mpMean,
+        tov: tovMean, pf: pfMean, fgPct: fgPctMean,
         ptsStd: std('pts', ptsMean), p3mStd: std('p3m', p3mMean), astStd: std('ast', astMean),
         stlStd: std('stl', stlMean), blkStd: std('blk', blkMean), rebStd: std('reb', rebMean),
-        mpStd: std('mp', mpMean),
+        mpStd: std('mp', mpMean), tovStd: std('tov', tovMean), pfStd: std('pf', pfMean),
+        fgPctStd: std('fgPct', fgPctMean),
     };
 }
 

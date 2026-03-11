@@ -9,7 +9,7 @@ import { DashboardView } from '../views/DashboardView';
 import { RosterView } from '../views/RosterView';
 import { ScheduleView } from '../views/ScheduleView';
 import { StandingsView } from '../views/StandingsView';
-import { LeaderboardView } from '../views/LeaderboardView';
+import { LeaderboardView, LeaderboardFilterState } from '../views/LeaderboardView';
 import { TransactionsView } from '../views/TransactionsView';
 import { PlayoffsView } from '../views/PlayoffsView';
 import { HelpView } from '../views/HelpView';
@@ -44,6 +44,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
     const [viewPlayerData, setViewPlayerData] = useState<{ player: Player; teamName?: string; teamId?: string } | null>(null);
     const previousViewRef = useRef<AppView>('Dashboard');
     const scheduleMonthRef = useRef<Date | null>(null);
+    const leaderboardStateRef = useRef<LeaderboardFilterState | null>(null);
 
     const handleViewPlayer = useCallback((player: Player, teamId?: string, teamName?: string) => {
         setViewPlayerData({ player, teamName, teamId });
@@ -250,7 +251,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                 />
             );
         case 'Leaderboard':
-            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} onTeamClick={(id) => { setSelectedTeamId(id); setView('Roster'); }} />;
+            return <LeaderboardView teams={gameData.teams} schedule={gameData.schedule} tendencySeed={gameData.tendencySeed || undefined} onViewPlayer={handleViewPlayer} onTeamClick={(id) => { setSelectedTeamId(id); setView('Roster'); }} savedState={leaderboardStateRef.current} onStateChange={(s) => { leaderboardStateRef.current = s; }} />;
         case 'Transactions':
             return (
                 <TransactionsView
