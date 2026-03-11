@@ -1,8 +1,10 @@
 
 import React from 'react';
-import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat, RegSeasonChampionContent, PlayoffChampionContent } from '../types';
+import { Team, Player, Transaction, PlayoffSeries, Game, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, SeriesPlayerStat, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, ScoutReportPlayerEntry } from '../types';
 import { TEAM_DATA } from '../data/teamData';
+import { ATTR_KR_LABEL } from '../data/attributeConfig';
 import { calculatePlayerOvr } from '../utils/constants';
+import { sendMessage } from './messageService';
 import { createTiebreakerComparator } from '../utils/tiebreaker';
 import { computeStandingsStats } from '../utils/standingsStats';
 import { ROUND_NAMES } from '../utils/playoffLogic';
@@ -1027,4 +1029,107 @@ function buildPlayoffRosterStats(team: Team) {
             };
         })
         .sort((a, b) => b.pts - a.pts);
+}
+
+// --- Scout Report (월간 성장/퇴화 보고서) ---
+
+export function buildScoutReportContent(
+    roster: Player[],
+    teamId: string,
+    teamName: string,
+    periodStart: string,
+    periodEnd: string,
+    monthLabel: string,
+): ScoutReportContent {
+    const players: ScoutReportPlayerEntry[] = [];
+
+    for (const player of roster) {
+        const log = player.changeLog;
+        if (!log || log.length === 0) continue;
+
+        // 해당 월의 이벤트만 필터
+        const monthEvents = log.filter(e => e.date >= periodStart && e.date <= periodEnd);
+        if (monthEvents.length === 0) continue;
+
+        // 능력치별 delta 합산
+        const deltaMap = new Map<string, number>();
+        for (const ev of monthEvents) {
+            deltaMap.set(ev.attribute, (deltaMap.get(ev.attribute) || 0) + ev.delta);
+        }
+
+        // 상쇄되어 0이 된 능력치 제거
+        const changes: ScoutReportPlayerEntry['changes'] = [];
+        let netDelta = 0;
+        for (const [attr, totalDelta] of deltaMap) {
+            if (totalDelta === 0) continue;
+            changes.push({
+                attribute: attr,
+                attributeKr: ATTR_KR_LABEL[attr] || attr,
+                totalDelta,
+            });
+            netDelta += totalDelta;
+        }
+
+        if (changes.length === 0) continue;
+
+        // |totalDelta| 내림차순 정렬
+        changes.sort((a, b) => Math.abs(b.totalDelta) - Math.abs(a.totalDelta));
+
+        players.push({
+            playerId: player.id,
+            playerName: player.name,
+            position: player.position,
+            age: player.age,
+            ovr: calculatePlayerOvr(player),
+            changes,
+            netDelta,
+        });
+    }
+
+    // |netDelta| 내림차순
+    players.sort((a, b) => Math.abs(b.netDelta) - Math.abs(a.netDelta));
+
+    return {
+        monthLabel,
+        periodStart,
+        periodEnd,
+        teamId,
+        teamName,
+        players,
+        hasAnyChanges: players.length > 0,
+    };
+}
+
+export async function maybeSendScoutReport(
+    teams: Team[],
+    myTeamId: string,
+    userId: string,
+    closingDate: string,
+    refreshUnreadCount?: () => void,
+): Promise<void> {
+    const myTeam = teams.find(t => t.id === myTeamId);
+    if (!myTeam) return;
+
+    const d = new Date(closingDate);
+    const year = d.getFullYear();
+    const month = d.getMonth(); // 0-indexed
+
+    const periodStart = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+    const periodEnd = closingDate;
+    const monthLabel = `${year}년 ${month + 1}월`;
+
+    const content = buildScoutReportContent(
+        myTeam.roster, myTeam.id, myTeam.name,
+        periodStart, periodEnd, monthLabel,
+    );
+
+    if (!content.hasAnyChanges) return;
+
+    await sendMessage(
+        userId, myTeamId, closingDate,
+        'SCOUT_REPORT',
+        `[스카우트 보고서] ${monthLabel}`,
+        content,
+    );
+    refreshUnreadCount?.();
 }

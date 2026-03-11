@@ -368,9 +368,13 @@ function calculatePerGameGrowth(
             }
         }
 
-        // ── IQ 경험 성장 (나이 무관, 출전만 하면 발생) ──
-        if (isIQ) {
-            totalDelta += EXP_GROWTH_RATE * mpRatio * growthMult * growthRate;
+        // ── IQ 경험 성장 (나이 무관, 관련 카테고리 퍼포먼스 비례) ──
+        if (isIQ && cfg.perfStats.length > 0) {
+            const perfSum = cfg.perfStats.reduce((s, cat) => s + (perfMultipliers[cat] ?? 0), 0);
+            const iqPerfMult = perfSum / cfg.perfStats.length;
+            if (iqPerfMult > 0) {
+                totalDelta += EXP_GROWTH_RATE * iqPerfMult * mpRatio * growthMult * growthRate;
+            }
         }
 
         if (totalDelta < 0.0001) continue;
