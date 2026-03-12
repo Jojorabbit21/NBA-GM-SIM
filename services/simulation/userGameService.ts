@@ -14,6 +14,17 @@ import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 /** duration 문자열 → 일수 변환 */
 function durationToDays(dur: string): number {
     switch (dur) {
+        // 경증
+        case '당일 복귀': return 2;
+        case '3일': return 3;
+        case '1주': return 7;
+        // 중증
+        case '2주': return 14;
+        case '3주': return 21;
+        case '1개월': return 30;
+        // 시즌아웃
+        case '시즌아웃': return 180;
+        // 레거시 호환
         case 'Day-to-Day': return 2;
         case '3 Days': return 3;
         case '1 Week': return 7;
@@ -222,7 +233,6 @@ export const applyUserGameResult = async (
         if (result.injuries && result.injuries.length > 0) {
             const myInjuries = result.injuries.filter(inj => inj.teamId === myTeamId);
             for (const inj of myInjuries) {
-                const isMajor = inj.durationDesc === '1 Month' || inj.durationDesc === '2 Weeks';
                 const returnDateStr = computeReturnDate(currentSimDate, inj.durationDesc);
                 await sendMessage(userId, myTeamId, currentSimDate, 'INJURY_REPORT',
                     `[부상 보고] ${inj.playerName} — ${inj.injuryType}`,
@@ -230,7 +240,7 @@ export const applyUserGameResult = async (
                         playerId: inj.playerId,
                         playerName: inj.playerName,
                         injuryType: inj.injuryType,
-                        severity: isMajor ? 'Major' : 'Minor',
+                        severity: inj.severity,
                         duration: inj.durationDesc,
                         returnDate: returnDateStr,
                         isRecovery: false,

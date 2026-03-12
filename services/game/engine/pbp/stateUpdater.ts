@@ -38,16 +38,40 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
 
             // Injury Check — state.simSettings.injuriesEnabled로 제어
             if (state.simSettings.injuriesEnabled && fatigueRes.injuryOccurred && p.health === 'Healthy') {
-                const injuryTypes = ['Ankle Sprain', 'Hamstring Strain', 'Knee Soreness', 'Calf Strain', 'Back Spasms'];
-                const durations = ['1 Week', '2 Weeks', '1 Month', 'Day-to-Day', '3 Days'];
-                
-                const type = injuryTypes[Math.floor(Math.random() * injuryTypes.length)];
-                const duration = durations[Math.floor(Math.random() * durations.length)];
+                // durability 기반 부상 등급 결정
+                const dur = p.attr?.durability ?? 70;
+                const tierRoll = Math.random() * 100;
+                // dur 50: 60/30/10, dur 70: 72/24/4, dur 90: 84/14/2
+                const seThreshold = Math.max(1, 12 - dur * 0.12);
+                const majorThreshold = seThreshold + Math.max(10, 40 - dur * 0.3);
+
+                let severity: 'Minor' | 'Major' | 'Season-Ending';
+                let type: string;
+                let duration: string;
+
+                if (tierRoll < seThreshold) {
+                    severity = 'Season-Ending';
+                    const seInjuries = ['전방십자인대(ACL) 파열', '아킬레스건 파열', '골절', '반월판 파열'];
+                    type = seInjuries[Math.floor(Math.random() * seInjuries.length)];
+                    duration = '시즌아웃';
+                } else if (tierRoll < majorThreshold) {
+                    severity = 'Major';
+                    const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
+                    const majorDurations = ['2주', '3주', '1개월'];
+                    type = majorInjuries[Math.floor(Math.random() * majorInjuries.length)];
+                    duration = majorDurations[Math.floor(Math.random() * majorDurations.length)];
+                } else {
+                    severity = 'Minor';
+                    const minorInjuries = ['발목 염좌', '무릎 통증', '허리 경직', '타박상', '손가락 염좌'];
+                    const minorDurations = ['당일 복귀', '3일', '1주'];
+                    type = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
+                    duration = minorDurations[Math.floor(Math.random() * minorDurations.length)];
+                }
 
                 p.health = 'Injured';
                 p.injuryType = type;
-                p.returnDate = duration; // Storing duration string temporarily as returnDate for simple display
-                
+                p.returnDate = duration;
+
                 // Add Log
                 const timeStr = formatTime(state.gameClock);
                 state.logs.push({
@@ -58,13 +82,14 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                     type: 'info'
                 });
 
-                // [New] Record Structural Injury Event
+                // Record Structural Injury Event
                 state.injuries.push({
                     playerId: p.playerId,
                     playerName: p.playerName,
                     teamId: team.id,
                     injuryType: type,
                     durationDesc: duration,
+                    severity,
                     quarter: state.quarter,
                     timeRemaining: timeStr
                 });

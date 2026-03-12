@@ -212,7 +212,6 @@ export async function runBatchSeason(
                 if (result.injuries && result.injuries.length > 0) {
                     const myInjuries = result.injuries.filter(inj => inj.teamId === myTeamId);
                     for (const inj of myInjuries) {
-                        const isMajor = inj.durationDesc === '1 Month' || inj.durationDesc === '2 Weeks';
                         const actualReturnDate = computeReturnDate(date, inj.durationDesc);
                         allMessages.push({
                             user_id: userId,
@@ -224,7 +223,7 @@ export async function runBatchSeason(
                                 playerId: inj.playerId,
                                 playerName: inj.playerName,
                                 injuryType: inj.injuryType,
-                                severity: isMajor ? 'Major' : 'Minor',
+                                severity: inj.severity,
                                 duration: inj.durationDesc,
                                 returnDate: actualReturnDate,
                             },
