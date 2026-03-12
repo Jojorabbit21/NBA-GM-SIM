@@ -6,7 +6,7 @@ import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
-import { runUserSimulation, applyUserGameResult, processInjuryRecovery } from '../services/simulation/userGameService';
+import { runUserSimulation, applyUserGameResult, processInjuryRecovery, computeReturnDate } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
@@ -413,8 +413,32 @@ export const useSimulation = (
             } else {
                 // No User Game - Advance Day Only
 
-                // 비경기일 체력 회복 (모든 팀 선수)
-                applyRestDayRecovery(newTeams);
+                // 비경기일 체력 회복 + 훈련 중 부상 체크
+                const injuriesOn = simSettings?.injuriesEnabled ?? false;
+                const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
+                const trainingInjuries = applyRestDayRecovery(newTeams, injFreq);
+
+                // 훈련 부상 returnDate 변환 + 메시지 전송
+                for (const ti of trainingInjuries) {
+                    const injured = newTeams.flatMap(t => t.roster).find(p => p.id === ti.playerId);
+                    if (injured) {
+                        injured.returnDate = computeReturnDate(currentSimDate, ti.duration);
+                    }
+                    if (ti.teamId === myTeamId && session?.user?.id && !isGuestMode) {
+                        await sendMessage(session.user.id, myTeamId, currentSimDate, 'INJURY_REPORT',
+                            `[부상 보고] ${ti.playerName} — ${ti.injuryType} (훈련 중)`,
+                            {
+                                playerId: ti.playerId,
+                                playerName: ti.playerName,
+                                injuryType: ti.injuryType,
+                                severity: ti.severity,
+                                duration: ti.duration,
+                                returnDate: computeReturnDate(currentSimDate, ti.duration),
+                                isTrainingInjury: true,
+                            }
+                        );
+                    }
+                }
 
                 // Handle Season Events
                 const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
