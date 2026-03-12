@@ -11,7 +11,7 @@ interface DraftPoolSelectViewProps {
 
 export const DraftPoolSelectView: React.FC<DraftPoolSelectViewProps> = ({ onSelectPool, onBack }) => {
     return (
-        <div className="fixed inset-0 bg-slate-950 flex flex-col items-center justify-center gap-12 pretendard selection:bg-indigo-500/30 z-50">
+        <div className="fixed inset-0 bg-[#0f172a] flex flex-col items-center justify-center gap-12 pretendard selection:bg-indigo-500/30 z-50">
             {/* Back button */}
             <button
                 onClick={onBack}
