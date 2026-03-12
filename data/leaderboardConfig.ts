@@ -284,6 +284,7 @@ export const TEAM_COLUMNS: ColumnDef[] = [
     { key: 'stl', label: 'STL', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'blk', label: 'BLK', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'tov', label: 'TOV', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Traditional', format: 'number' },
+    { key: 'pf', label: 'PF', width: WIDTHS.STAT, sortable: true, isHeatmap: true, isInverse: true, category: 'Traditional', format: 'number' },
     { key: 'fgm', label: 'FGM', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'fga', label: 'FGA', width: WIDTHS.STAT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'number' },
     { key: 'fg%', label: 'FG%', width: WIDTHS.PCT, sortable: true, isHeatmap: true, category: 'Traditional', format: 'percent' },
