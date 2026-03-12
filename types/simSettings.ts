@@ -10,7 +10,6 @@ export interface SimSettings {
     // 트레이드
     tradeMinValueRatio: number;      // 0.70~1.20, 기본 0.95
     cpuTradeBaseProbability: number;  // 0.0~0.5, 기본 0.15
-    cpuTradeMaxPerDay: number;       // 0~10, 기본 3
 
     // 선수 성장/노화
     tcr: number;                 // 레거시 (하위호환) — 사용하지 않음
@@ -27,7 +26,6 @@ export const DEFAULT_SIM_SETTINGS: SimSettings = {
     injuryFrequency: 1.0,
     tradeMinValueRatio: 0.95,
     cpuTradeBaseProbability: 0.15,
-    cpuTradeMaxPerDay: 3,
     tcr: 1.0,
     growthRate: 1.0,
     declineRate: 1.0,
@@ -92,14 +90,6 @@ export const SIM_SETTINGS_META: SimSettingMeta[] = [
         description: 'CPU 팀 간 일일 트레이드 발생 기본 확률',
         category: '트레이드',
         min: 0, max: 0.5, step: 0.05,
-    },
-    {
-        key: 'cpuTradeMaxPerDay',
-        type: 'number',
-        label: '일일 최대 CPU 트레이드',
-        description: '하루에 발생할 수 있는 최대 CPU 트레이드 수',
-        category: '트레이드',
-        min: 0, max: 10, step: 1,
     },
     // 선수 성장/노화
     {

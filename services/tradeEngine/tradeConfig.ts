@@ -52,10 +52,10 @@ export const TRADE_CONFIG = {
         MAX_PACKAGE_SIZE: 4,
     },
     CPU_TRADE: {
-        // 점진적 확률 곡선
-        BASE_PROBABILITY: 0.15,
-        MAX_PROBABILITY: 0.40,
-        PROBABILITY_EXPONENT: 2.2,
+        // 점진적 확률 곡선 — 데드라인 근처에서 폭발적 증가 (실제 NBA 패턴)
+        BASE_PROBABILITY: 0.08,
+        MAX_PROBABILITY: 0.85,
+        PROBABILITY_EXPONENT: 4.0,
 
         // 매칭 & 가치
         MIN_VALUE_RATIO: 0.85,
@@ -70,7 +70,6 @@ export const TRADE_CONFIG = {
 
         // 매칭 후보
         MAX_CANDIDATE_PAIRS: 15,
-        MAX_TRADES_PER_DAY: 2,
         NEAR_DEADLINE_DAYS: 14,
 
         // 보너스 점수
@@ -88,15 +87,11 @@ export const TRADE_CONFIG = {
 export function applyTradeSimSettings(settings: {
     tradeMinValueRatio?: number;
     cpuTradeBaseProbability?: number;
-    cpuTradeMaxPerDay?: number;
 }): void {
     if (settings.tradeMinValueRatio !== undefined) {
         TRADE_CONFIG.OFFERS.MIN_VALUE_RATIO = settings.tradeMinValueRatio;
     }
     if (settings.cpuTradeBaseProbability !== undefined) {
         TRADE_CONFIG.CPU_TRADE.BASE_PROBABILITY = settings.cpuTradeBaseProbability;
-    }
-    if (settings.cpuTradeMaxPerDay !== undefined) {
-        TRADE_CONFIG.CPU_TRADE.MAX_TRADES_PER_DAY = settings.cpuTradeMaxPerDay;
     }
 }

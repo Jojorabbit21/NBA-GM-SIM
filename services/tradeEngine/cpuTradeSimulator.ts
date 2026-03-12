@@ -497,7 +497,7 @@ export function runCPUTradeRound(
 
     const CC = C.CPU_TRADE;
     const daysLeft = getDaysUntilDeadline(currentDate);
-    const maxTradesToday = daysLeft <= CC.NEAR_DEADLINE_DAYS ? CC.MAX_TRADES_PER_DAY : 1;
+    // 제한 없이 호환 쌍이 있는 만큼 트레이드 허용
 
     // CPU 팀 프로필 구축 (유저 팀 제외)
     const cpuTeams = teams.filter(t => t.id !== myTeamId);
@@ -536,7 +536,6 @@ export function runCPUTradeRound(
     const tradedTeamIds = new Set<string>();
 
     for (const pair of candidatePairs) {
-        if (transactions.length >= maxTradesToday) break;
 
         // 이미 오늘 트레이드한 팀은 건너뜀
         if (tradedTeamIds.has(pair.a.team.id) || tradedTeamIds.has(pair.b.team.id)) continue;
@@ -557,7 +556,7 @@ export function runCPUTradeRound(
         tradedTeamIds.add(pair.b.team.id);
 
         // 멀티 트레이드 시 프로필 재구축 (로스터 변경 반영)
-        if (transactions.length < maxTradesToday) {
+        if (candidatePairs.length > 0) {
             profiles = cpuTeams
                 .filter(t => !tradedTeamIds.has(t.id))
                 .map(t => buildTeamTradeProfile(t));
