@@ -38,7 +38,7 @@ const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>
     // BG_SEC_ACCENT_TEXT: header bg=secondary → primary 버튼
     'det': { bg: 'primary', text: 'text', glow: 'primary' },
     'ind': { bg: 'secondary', text: '#000000', glow: 'secondary' },
-    'mia': { bg: '#41B6E6', text: '#DB3EB1', glow: '#41B6E6' },
+    'mia': { bg: '#DB3EB1', text: '#41B6E6', glow: '#41B6E6' },
     'mil': { bg: '#0057B7', text: 'text', glow: '#0057B7'},
     'nyk': { bg: 'secondary', text: 'text', glow: 'secondary'},
     'orl': { bg: '#FFFFFF', text: 'primary', glow: '#FFFFFF'},
