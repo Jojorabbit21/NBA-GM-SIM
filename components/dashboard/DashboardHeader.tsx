@@ -59,9 +59,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                       : undefined, // breathing animation handles idle via CSS var
               '--glow-color': `${glowColor}50`,
               '--glow-dim': `${glowColor}18`,
-              transform: isPressed ? 'translateY(2px) scale(0.97)' : isHovered ? 'translateY(-1px)' : 'translateY(0)',
+              transform: isPressed ? 'scale(0.97)' : 'scale(1)',
               transition: 'all 0.15s ease',
-              filter: isHovered && !isPressed ? 'brightness(1.15)' : 'brightness(1)',
+              filter: isHovered && !isPressed ? 'brightness(1.2)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
           } as React.CSSProperties,
           onMouseDown: () => !isSimulating && setPressedBtn(id),
           onMouseUp: () => setPressedBtn(null),
@@ -80,7 +80,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
               color: 'rgba(255,255,255,0.85)',
               border: isHovered ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(255,255,255,0.12)',
               boxShadow: isPressed ? 'none' : isHovered ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
-              transform: isPressed ? 'translateY(1px) scale(0.97)' : 'translateY(0)',
+              transform: isPressed ? 'scale(0.97)' : 'scale(1)',
               transition: 'all 0.15s ease',
               backdropFilter: 'blur(8px)',
           } as React.CSSProperties,
@@ -99,7 +99,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
     <div className="w-full border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
         {/* Dark overlay for readability */}
         <div className="absolute inset-0 bg-black/10 pointer-events-none" />
-        <div className="px-8 py-3 flex items-center gap-8 h-20 relative z-10">
+        <div className="pl-8 pr-0 py-0 flex items-center gap-8 h-20 relative z-10">
             {/* Date + Team Status */}
             <div className="flex-1 flex flex-col gap-1.5">
                 <div className="flex items-center gap-2">
@@ -179,35 +179,53 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
             </div>
             )}
 
-            {/* Right: Simulation Action */}
+            {/* Right: Simulation Action — flush to top/bottom/right edges */}
             {!isSeasonOver && (
-            <div className="flex-1 flex items-center justify-end gap-3">
-                {isGameToday && onAutoSimClick && (
+            <div className="self-stretch flex flex-col w-[220px] shrink-0 ml-auto"
+                 style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
+                {isGameToday && onAutoSimClick ? (
+                    <>
+                        {/* 경기 시작 — 70% */}
+                        <button
+                            onClick={onSimClick}
+                            disabled={isSimulating}
+                            {...primaryBtn('sim')}
+                            className={`flex-[7] flex items-center justify-center gap-2.5 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
+                        >
+                            {isSimulating ? (
+                                <><Loader2 size={18} className="animate-spin" /> 처리 중</>
+                            ) : (
+                                <><Play size={16} fill="currentColor" /> 경기 시작</>
+                            )}
+                        </button>
+                        {/* 구분선 */}
+                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                        {/* 자동 진행 — 30% */}
+                        <button
+                            onClick={onAutoSimClick}
+                            disabled={isSimulating}
+                            {...secondaryBtn('auto')}
+                            className="flex-[3] flex items-center justify-center gap-2 px-6 font-bold text-xs uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                        >
+                            <FastForward size={13} />
+                            자동 진행
+                        </button>
+                    </>
+                ) : (
+                    /* 내일로 이동 — full height */
                     <button
-                        onClick={onAutoSimClick}
+                        onClick={onSimClick}
                         disabled={isSimulating}
-                        {...secondaryBtn('auto')}
-                        className="flex items-center justify-center gap-2 px-5 h-10 rounded-xl font-bold text-xs uppercase tracking-wider min-w-[130px] disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                        {...primaryBtn('sim')}
+                        className="flex-1 flex items-center justify-center gap-2.5 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                     >
-                        <FastForward size={14} />
-                        자동 진행
+                        {isSimulating ? (
+                            <><Loader2 size={18} className="animate-spin" /> 처리 중</>
+                        ) : (
+                            <><ChevronRight size={18} /> 내일로 이동</>
+                        )}
                     </button>
                 )}
-
-                <button
-                    onClick={onSimClick}
-                    disabled={isSimulating}
-                    {...primaryBtn('sim')}
-                    className={`flex items-center justify-center gap-2.5 px-8 h-12 rounded-2xl font-black text-sm uppercase tracking-wider min-w-[200px] disabled:opacity-40 disabled:cursor-not-allowed select-none ${isGameToday && !isSimulating ? 'animate-btn-breathe' : ''}`}
-                >
-                    {isSimulating ? (
-                        <><Loader2 size={18} className="animate-spin" /> 처리 중</>
-                    ) : isGameToday ? (
-                        <><Play size={16} fill="currentColor" /> 경기 시작</>
-                    ) : (
-                        <><ChevronRight size={18} /> 내일로 이동</>
-                    )}
-                </button>
             </div>
             )}
         </div>
