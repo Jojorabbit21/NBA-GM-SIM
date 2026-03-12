@@ -289,12 +289,14 @@ function constructTradePackage(
     const teamA = profileA.team;
     const teamB = profileB.team;
 
+    const label = `${teamA.name} ↔ ${teamB.name}`;
+
     // A→B: A의 tradeable 중 B의 니즈에 맞는 선수 선택
     const aToB = selectPlayersForNeeds(profileA.tradeableAssets, profileB.acquisitionPriorities);
-    if (aToB.length === 0) return null;
+    if (aToB.length === 0) { console.log(`  [pkg] ${label} FAIL: aToB empty (A assets=${profileA.tradeableAssets.length}, B priorities=${profileB.acquisitionPriorities.length})`); return null; }
 
     const aToBValue = calculatePackageTrueValue(aToB);
-    if (aToBValue <= 0) return null;
+    if (aToBValue <= 0) { console.log(`  [pkg] ${label} FAIL: aToBValue=0`); return null; }
 
     // B→A: B의 tradeable 중 A의 니즈에 맞고, 가치가 aToBValue의 95%~110% 범위인 패키지
     const bToA = buildMatchingPackage(
@@ -302,30 +304,30 @@ function constructTradePackage(
         profileA.acquisitionPriorities,
         aToBValue
     );
-    if (bToA.length === 0) return null;
+    if (bToA.length === 0) { console.log(`  [pkg] ${label} FAIL: bToA empty (targetValue=${aToBValue.toFixed(1)}, B assets=${profileB.tradeableAssets.length})`); return null; }
 
     const bToAValue = calculatePackageTrueValue(bToA);
 
     // 가치 비율 검증
-    const ratioA = bToAValue / aToBValue; // A가 받는 가치 / A가 주는 가치
-    const ratioB = aToBValue / bToAValue; // B가 받는 가치 / B가 주는 가치
+    const ratioA = bToAValue / aToBValue;
+    const ratioB = aToBValue / bToAValue;
 
-    if (ratioA < CC.MIN_VALUE_RATIO || ratioA > CC.MAX_VALUE_RATIO) return null;
-    if (ratioB < CC.MIN_VALUE_RATIO || ratioB > CC.MAX_VALUE_RATIO) return null;
+    if (ratioA < CC.MIN_VALUE_RATIO || ratioA > CC.MAX_VALUE_RATIO) { console.log(`  [pkg] ${label} FAIL: ratioA=${ratioA.toFixed(3)} (need ${CC.MIN_VALUE_RATIO}~${CC.MAX_VALUE_RATIO})`); return null; }
+    if (ratioB < CC.MIN_VALUE_RATIO || ratioB > CC.MAX_VALUE_RATIO) { console.log(`  [pkg] ${label} FAIL: ratioB=${ratioB.toFixed(3)}`); return null; }
 
     // 샐러리 합법성 양방향 체크
-    if (!checkTradeLegality(teamA, bToA, aToB)) return null;
-    if (!checkTradeLegality(teamB, aToB, bToA)) return null;
+    if (!checkTradeLegality(teamA, bToA, aToB)) { console.log(`  [pkg] ${label} FAIL: salary illegal (teamA)`); return null; }
+    if (!checkTradeLegality(teamB, aToB, bToA)) { console.log(`  [pkg] ${label} FAIL: salary illegal (teamB)`); return null; }
 
     // 로스터 최소 인원 체크
-    if (teamA.roster.length - aToB.length + bToA.length < C.DEPTH.MIN_ROSTER_SIZE) return null;
-    if (teamB.roster.length - bToA.length + aToB.length < C.DEPTH.MIN_ROSTER_SIZE) return null;
+    if (teamA.roster.length - aToB.length + bToA.length < C.DEPTH.MIN_ROSTER_SIZE) { console.log(`  [pkg] ${label} FAIL: roster min (teamA)`); return null; }
+    if (teamB.roster.length - bToA.length + aToB.length < C.DEPTH.MIN_ROSTER_SIZE) { console.log(`  [pkg] ${label} FAIL: roster min (teamB)`); return null; }
 
     // 팀력 개선도 체크
     const improvA = calculateTeamImprovement(teamA, bToA, aToB);
     const improvB = calculateTeamImprovement(teamB, aToB, bToA);
 
-    if (improvA < CC.IMPROVEMENT_THRESHOLD || improvB < CC.IMPROVEMENT_THRESHOLD) return null;
+    if (improvA < CC.IMPROVEMENT_THRESHOLD || improvB < CC.IMPROVEMENT_THRESHOLD) { console.log(`  [pkg] ${label} FAIL: improvement (A=${(improvA*100).toFixed(2)}%, B=${(improvB*100).toFixed(2)}%, need ${(CC.IMPROVEMENT_THRESHOLD*100).toFixed(2)}%)`); return null; }
 
     // 분석 메시지 생성
     const analysis: string[] = [];
