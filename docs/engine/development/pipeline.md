@@ -158,3 +158,16 @@ currentFractional[attr] + newDelta
 - `generateSaveTendencies()` → 동일한 consistency, focusDrift
 - `calculatePerGameDecline()` → 동일한 variance, noiseStdev
 - 시드 구성: `growth_{tendencySeed}_{playerId}`, `aging_{tendencySeed}_{playerId}_s{seasonNumber}`
+
+---
+
+## 8. 멀티시즌 과제 (미구현)
+
+현재 파이프라인은 단일 시즌 전제. 멀티시즌 도입 시 해결해야 할 핵심 과제:
+
+- **크로스시즌 베이스라인**: `meta_players`는 시즌 1 원본만 보유. 시즌 2+ 로드 시 이전 시즌 성장분을 반영한 베이스라인이 필요.
+- **`processOffseason()` 연결**: 함수 존재하나 호출자 없음. `handleStartNextSeason()`에서 호출해야 함.
+- **`seasonNumber` 전달**: 현재 항상 `1` 전달 → 시드 기반 variance가 매 시즌 동일해지는 문제.
+- **이중/삼중 `reapplyAttrDeltas` 방지**: 크로스시즌 베이스라인 추가 시 로드 경로 복잡도 증가.
+
+상세 계획: `docs/plan/multi-season-plan.md` § 6단계 참조.
