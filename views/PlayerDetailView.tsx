@@ -681,8 +681,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
 
                         {/* Row 2, Col 2: 최근 경기 본문 — 샷 차트 높이에 맞춰 스크롤 */}
-                        <div className="relative overflow-hidden">
-                            <div className="absolute inset-0 overflow-y-auto">
+                        <div className="relative overflow-hidden" style={{ contain: 'strict' }}>
+                            <div className="absolute inset-0 overflow-y-auto" style={{ willChange: 'transform' }}>
                             {gameLogLoading && teamId && (
                                 <div className="flex items-center justify-center py-8">
                                     <Loader2 size={16} className="text-slate-500 animate-spin" />
