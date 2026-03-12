@@ -79,7 +79,7 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                     timeRemaining: timeStr,
                     teamId: team.id,
                     text: `🚨 ${p.playerName} 선수가 고통을 호소하며 쓰러졌습니다. (${type})`,
-                    type: 'info'
+                    type: 'injury'
                 });
 
                 // Record Structural Injury Event

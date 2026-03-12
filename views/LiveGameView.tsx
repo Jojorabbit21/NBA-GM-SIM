@@ -1276,6 +1276,7 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             const isTurnover = log.type === 'turnover';
                                             const isBlock = log.type === 'block';
                                             const isInfo = log.type === 'info';
+                                            const isInjury = log.type === 'injury';
                                             const isFlowEvent = log.text.includes('경기 시작') || log.text.includes('종료') || log.text.includes('하프 타임');
 
                                             if (isFlowEvent) {
@@ -1326,14 +1327,15 @@ export const LiveGameView: React.FC<LiveGameViewProps> = ({
                                             }
 
                                             let textColor = 'text-slate-400';
-                                            if (isInfo) textColor = 'text-slate-300';
+                                            if (isInjury) textColor = 'text-red-400 font-bold';
+                                            else if (isInfo) textColor = 'text-slate-300';
                                             else if (isScore) textColor = 'text-slate-200';
                                             else if (isFT) textColor = 'text-cyan-400';
                                             else if (isFoul) textColor = 'text-orange-400';
                                             else if (isTurnover) textColor = 'text-red-400';
                                             else if (isBlock) textColor = 'text-blue-400';
 
-                                            const bgClass = i % 2 === 0 ? 'bg-slate-800/30' : '';
+                                            const bgClass = isInjury ? 'bg-red-900/20 border-y border-red-900/30' : i % 2 === 0 ? 'bg-slate-800/30' : '';
 
                                             return (
                                                 <div key={i} className={`flex items-center py-2 px-3 gap-3 ${bgClass}`}>

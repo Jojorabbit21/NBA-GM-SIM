@@ -42,7 +42,7 @@ export interface PbpLog {
     timeRemaining: string;
     teamId: string;
     text: string;
-    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info';
+    type: 'score' | 'miss' | 'turnover' | 'foul' | 'block' | 'freethrow' | 'info' | 'injury';
     points?: 1 | 2 | 3;
     homeScore?: number;   // 이 이벤트 시점의 홈팀 누적 점수
     awayScore?: number;   // 이 이벤트 시점의 원정팀 누적 점수

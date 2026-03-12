@@ -70,12 +70,11 @@ export const GameSimulatingView: React.FC<{
           const isScoreEvent = (log.type === 'score' || log.type === 'freethrow');
           const hasPoints = (log.points ?? 0) > 0;
           
-          const isUrgent = log.type === 'info' && (
-              log.text.includes('부상') || 
-              log.text.includes('퇴장') || 
-              log.text.includes('6반칙') || 
+          const isUrgent = log.type === 'injury' || (log.type === 'info' && (
+              log.text.includes('퇴장') ||
+              log.text.includes('6반칙') ||
               log.text.includes('버저비터')
-          );
+          ));
           
           const isPeriodEnd = log.timeRemaining === '0:00';
           const isLast = index === pbpLogs.length - 1; 

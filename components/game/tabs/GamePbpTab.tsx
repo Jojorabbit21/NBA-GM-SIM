@@ -152,6 +152,7 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         const isHome = log.teamId === homeTeam.id;
                         const isScore = log.type === 'score';
                         const isImportant = log.type === 'info';
+                        const isInjury = log.type === 'injury';
                         const isFT = log.type === 'freethrow';
                         const isFoul = log.type === 'foul';
                         const isTurnover = log.type === 'turnover';
@@ -172,15 +173,17 @@ export const GamePbpTab: React.FC<GamePbpTabProps> = ({ logs, homeTeam, awayTeam
                         
                         // Text Color
                         let textColor = 'text-slate-400';
-                        if (isImportant) textColor = 'text-slate-300';
-                        else if (isScore) textColor = 'text-slate-200'; 
+                        if (isInjury) textColor = 'text-red-400 font-bold';
+                        else if (isImportant) textColor = 'text-slate-300';
+                        else if (isScore) textColor = 'text-slate-200';
                         else if (isFT) textColor = 'text-cyan-400';
                         else if (isFoul) textColor = 'text-orange-400';
                         else if (isTurnover) textColor = 'text-red-400';
 
                         // Background
                         let bgClass = 'hover:bg-white/5 transition-colors';
-                        if (isImportant) bgClass = 'bg-slate-800/30 border-y border-slate-800/50';
+                        if (isInjury) bgClass = 'bg-red-900/20 border-y border-red-900/30';
+                        else if (isImportant) bgClass = 'bg-slate-800/30 border-y border-slate-800/50';
                         
                         const timeDisplay = (log.timeRemaining || '-');
 
