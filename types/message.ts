@@ -63,6 +63,8 @@ export interface InjuryReportContent {
     returnDate: string;
     /** true면 복귀 보고서 */
     isRecovery?: boolean;
+    /** true면 훈련 중 부상 */
+    isTrainingInjury?: boolean;
 }
 
 export interface SeasonReviewContent {

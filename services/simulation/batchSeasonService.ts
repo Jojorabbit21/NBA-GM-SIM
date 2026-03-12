@@ -232,7 +232,38 @@ export async function runBatchSeason(
                 }
             }
         } else {
-            applyRestDayRecovery(teams);
+            // 비경기일: 체력 회복 + 훈련 중 부상 체크
+            const injuriesOn = simSettings?.injuriesEnabled ?? false;
+            const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
+            const trainingInjuries = applyRestDayRecovery(teams, injFreq);
+
+            // 훈련 부상 returnDate 변환 + 메시지 생성
+            for (const ti of trainingInjuries) {
+                // duration 문자열 → 실제 복귀 날짜
+                const injured = teams.flatMap(t => t.roster).find(p => p.id === ti.playerId);
+                if (injured) {
+                    injured.returnDate = computeReturnDate(date, ti.duration);
+                }
+
+                if (userId && ti.teamId === myTeamId) {
+                    allMessages.push({
+                        user_id: userId,
+                        team_id: myTeamId,
+                        date,
+                        type: 'INJURY_REPORT',
+                        title: `[부상 보고] ${ti.playerName} — ${ti.injuryType} (훈련 중)`,
+                        content: {
+                            playerId: ti.playerId,
+                            playerName: ti.playerName,
+                            injuryType: ti.injuryType,
+                            severity: ti.severity,
+                            duration: ti.duration,
+                            returnDate: computeReturnDate(date, ti.duration),
+                            isTrainingInjury: true,
+                        },
+                    });
+                }
+            }
         }
 
         // 3. 시즌 이벤트 (동기)

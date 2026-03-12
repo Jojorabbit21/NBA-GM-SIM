@@ -90,36 +90,131 @@ export function calculateRecovery(player: LivePlayer, baseAmount: number): numbe
     return baseAmount * multiplier;
 }
 
+export interface TrainingInjury {
+    playerId: string;
+    playerName: string;
+    teamId: string;
+    injuryType: string;
+    duration: string;
+    severity: 'Minor' | 'Major' | 'Season-Ending';
+}
+
 /**
  * 비경기일 휴식 회복: 모든 팀의 모든 선수에게 REST_DAY_RECOVERY 적용.
  * stamina/durability가 높을수록 더 빠르게 회복.
+ *
+ * 훈련 중 부상: 건강한 선수 중 durability가 낮은 선수는 훈련/일상 활동 중 부상 가능.
+ * 경기 중 부상 확률의 ~1/5 수준. 3단계 등급 (Minor/Major/Season-Ending).
+ * 경기 중보다 중증(SE/Major) 비율 절반으로 감소.
+ * dur 90+: 거의 0%, dur 55 이하: 급증 (비선형 커브 동일)
  *
  * 기본 40pt 회복 기준:
  *   stamina 50 / durability 50 → 40 회복
  *   stamina 90 / durability 90 → 48 회복
  *   stamina 30 / durability 30 → 36 회복
  */
-export function applyRestDayRecovery(teams: Team[]): void {
+export function applyRestDayRecovery(teams: Team[], injuryFrequency: number = 1.0): TrainingInjury[] {
     const C = SIM_CONFIG.FATIGUE;
     const base = C.REST_DAY_RECOVERY;
+    const trainingInjuries: TrainingInjury[] = [];
 
     for (const team of teams) {
         for (const player of team.roster) {
+            // 체력 회복
             const current = player.condition ?? 100;
-            if (current >= 100) continue;
+            if (current < 100) {
+                const staminaBonus = ((player.stamina ?? 50) - 50) / 100;
+                const durabilityBonus = ((player.durability ?? 50) - 50) / 100;
+                const multiplier = 1
+                    + staminaBonus * C.RECOVERY_STAMINA_FACTOR
+                    + durabilityBonus * C.RECOVERY_DURABILITY_FACTOR;
 
-            const staminaBonus = ((player.stamina ?? 50) - 50) / 100;
-            const durabilityBonus = ((player.durability ?? 50) - 50) / 100;
-            const multiplier = 1
-                + staminaBonus * C.RECOVERY_STAMINA_FACTOR
-                + durabilityBonus * C.RECOVERY_DURABILITY_FACTOR;
+                const recovery = base * multiplier;
+                const newCondition = Math.min(100, current + recovery);
+                const delta = newCondition - current;
 
-            const recovery = base * multiplier;
-            const newCondition = Math.min(100, current + recovery);
-            const delta = newCondition - current;
+                player.condition = parseFloat(newCondition.toFixed(1));
+                player.conditionDelta = parseFloat(delta.toFixed(1));
+            }
 
-            player.condition = parseFloat(newCondition.toFixed(1));
-            player.conditionDelta = parseFloat(delta.toFixed(1));
+            // 훈련 중 부상 체크 (건강한 선수만)
+            if (player.health !== 'Healthy') continue;
+
+            const durability = player.durability ?? 70;
+            const clampedDur = Math.max(40, durability);
+            let baseChance: number;
+            if (clampedDur >= 55) {
+                // dur 55~99: 완만 (경기 중의 1/5)
+                baseChance = Math.max(0.01, (0.8 - clampedDur * 0.009)) * 0.2;
+            } else {
+                // dur 40~55: 이차함수 급등 (경기 중의 1/5)
+                const gap = 55 - clampedDur;
+                baseChance = (0.305 + gap * gap * 0.04) * 0.2;
+            }
+
+            const totalChance = baseChance * injuryFrequency;
+            const roll = Math.random() * 10000;
+            if (roll >= totalChance) continue;
+
+            // 부상 등급 결정 (Minor / Major / Season-Ending)
+            // 경기 중보다 중증 비율 낮춤: SE 절반, Major 절반
+            const tierRoll = Math.random() * 100;
+            const seThreshold = Math.max(0.5, (12 - durability * 0.12)) * 0.5;
+            const majorThreshold = seThreshold + Math.max(5, (40 - durability * 0.3)) * 0.5;
+
+            let type: string;
+            let duration: string;
+            let severity: 'Minor' | 'Major' | 'Season-Ending';
+
+            // pickWeighted: 낮은 durability → 긴 기간에 가중
+            const pickWeighted = (options: string[], dur: number): string => {
+                const n = options.length;
+                const bias = (70 - dur) * 0.05;
+                const weights = options.map((_, i) => {
+                    const normalized = i / (n - 1);
+                    return Math.max(0.1, 1 + bias * (normalized * 2 - 1));
+                });
+                const wTotal = weights.reduce((a, b) => a + b, 0);
+                let r = Math.random() * wTotal;
+                for (let i = 0; i < n; i++) {
+                    r -= weights[i];
+                    if (r <= 0) return options[i];
+                }
+                return options[n - 1];
+            };
+
+            if (tierRoll < seThreshold) {
+                severity = 'Season-Ending';
+                const seInjuries = ['전방십자인대(ACL) 파열', '아킬레스건 파열', '골절', '반월판 파열'];
+                type = seInjuries[Math.floor(Math.random() * seInjuries.length)];
+                duration = '시즌아웃';
+            } else if (tierRoll < majorThreshold) {
+                severity = 'Major';
+                const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
+                type = majorInjuries[Math.floor(Math.random() * majorInjuries.length)];
+                duration = pickWeighted(['2주', '3주', '1개월'], durability);
+            } else {
+                severity = 'Minor';
+                const minorInjuries = ['근육 경직', '타박상', '발목 염좌', '무릎 통증', '허리 경직'];
+                type = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
+                duration = pickWeighted(['당일 복귀', '3일', '1주'], durability);
+            }
+
+            player.health = 'Injured';
+            player.injuryType = type;
+            // returnDate는 호출측에서 computeReturnDate로 변환
+            player.returnDate = duration;
+
+            trainingInjuries.push({
+                playerId: player.id,
+                playerName: player.name,
+                teamId: team.id,
+                injuryType: type,
+                duration,
+                severity,
+            });
         }
     }
+
+    return trainingInjuries;
 }
