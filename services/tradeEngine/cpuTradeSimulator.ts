@@ -488,12 +488,18 @@ export function runCPUTradeRound(
     currentDate: string
 ): { updatedTeams: Team[]; transactions: Transaction[] } | null {
     // 데드라인 체크
-    if (new Date(currentDate) > new Date(TRADE_DEADLINE)) return null;
-    if (new Date(currentDate) < new Date(SEASON_START_DATE)) return null;
+    if (new Date(currentDate) > new Date(TRADE_DEADLINE)) {
+        return null;
+    }
+    if (new Date(currentDate) < new Date(SEASON_START_DATE)) {
+        return null;
+    }
 
     // 확률 계산 & 주사위
     const chance = calculateTradeChance(currentDate);
-    if (Math.random() > chance) return null;
+    const roll = Math.random();
+    console.log(`[CPU Trade] ${currentDate} | chance=${(chance * 100).toFixed(1)}% | roll=${(roll * 100).toFixed(1)}%`);
+    if (roll > chance) return null;
 
     const CC = C.CPU_TRADE;
     const daysLeft = getDaysUntilDeadline(currentDate);
@@ -517,6 +523,7 @@ export function runCPUTradeRound(
         }
     }
 
+    console.log(`[CPU Trade] ${currentDate} | profiles=${profiles.length} | compatible pairs=${pairs.length}`);
     if (pairs.length === 0) return null;
 
     // 호환성 내림차순 + 약간의 랜덤성 (상위 쌍만 무조건 성사되지 않도록)
@@ -541,7 +548,10 @@ export function runCPUTradeRound(
         if (tradedTeamIds.has(pair.a.team.id) || tradedTeamIds.has(pair.b.team.id)) continue;
 
         const pkg = constructTradePackage(pair.a, pair.b);
-        if (!pkg) continue;
+        if (!pkg) {
+            console.log(`[CPU Trade] Package failed: ${pair.a.team.name} ↔ ${pair.b.team.name}`);
+            continue;
+        }
 
         // 트레이드 실행
         executeRosterSwap(pair.a.team, pair.b.team, pkg.teamAPlayers, pkg.teamBPlayers);
@@ -563,7 +573,11 @@ export function runCPUTradeRound(
         }
     }
 
-    if (transactions.length === 0) return null;
+    if (transactions.length === 0) {
+        console.log(`[CPU Trade] ${currentDate} | All packages failed, no trades executed`);
+        return null;
+    }
+    console.log(`[CPU Trade] ${currentDate} | ✅ ${transactions.length} trade(s) executed!`);
 
     return { updatedTeams: teams, transactions };
 }
