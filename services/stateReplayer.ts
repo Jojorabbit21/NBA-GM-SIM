@@ -103,7 +103,7 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
                 ? (player.playoffStats ??= INITIAL_STATS())
                 : (player.stats ??= INITIAL_STATS());
 
-            target.g += 1;
+            target.g += (statLine.g ?? 1);
             target.gs += (statLine.gs || 0);
             target.mp += (statLine.mp || 0);
             target.pts += (statLine.pts || 0);
