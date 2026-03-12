@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft, ShieldCheck } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { AuthInput } from '../components/AuthInput';
 import { OtpInput } from '../components/OtpInput';
 import { APP_NAME, APP_YEAR } from '../utils/constants';
@@ -185,25 +185,27 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10">
-        <div className="text-center mb-10">
+        <div className={`text-center ${mode === 'verify' ? 'mb-6' : 'mb-10'}`}>
           <h1 className="text-2xl font-black text-white leading-tight tracking-tighter uppercase pretendard">
             {APP_NAME}<br />{APP_YEAR}
           </h1>
         </div>
 
         {mode === 'verify' ? (
-          <div className="space-y-6">
-            <div className="text-center space-y-2">
-              <ShieldCheck size={32} className="mx-auto text-indigo-400" />
-              <p className="text-sm text-slate-400 pretendard font-medium">
-                <span className="text-white">{signupEmail}</span> 으로<br />
-                인증번호 8자리가 발송되었습니다.
-              </p>
-            </div>
-
-            {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
-
+          <div className="space-y-5">
             <OtpInput length={8} value={otp} onChange={handleOtpChange} disabled={loading || isOtpLocked} />
+
+            <div className="text-center space-y-1">
+              {message ? (
+                <p className={`text-sm pretendard font-medium ${message.type === 'error' ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {message.text}
+                </p>
+              ) : (
+                <p className="text-sm text-slate-400 pretendard font-medium">
+                  <span className="text-white">{signupEmail}</span> 으로 인증번호가 발송되었습니다.
+                </p>
+              )}
+            </div>
 
             {loading && (
               <div className="flex justify-center">
@@ -211,14 +213,14 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
               </div>
             )}
 
-            <div className="text-center pt-2">
+            <div className="text-center">
               <button
                 type="button"
                 onClick={handleResendOtp}
                 disabled={loading || resendCooldown > 0}
                 className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all disabled:opacity-50"
               >
-                {resendCooldown > 0 ? `재발송 대기 (${resendCooldown}초)` : '인증번호 재발송'}
+                {resendCooldown > 0 ? <span className="text-slate-300">재발송 대기 ({resendCooldown}초)</span> : '인증번호 재발송'}
               </button>
             </div>
 

@@ -197,13 +197,13 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             )}
                         </button>
                         {/* 구분선 */}
-                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)' }} />
+                        <div style={{ height: '1px', background: 'rgba(255,255,255,0.25)' }} />
                         {/* 자동 진행 — 40% */}
                         <button
                             onClick={onAutoSimClick}
                             disabled={isSimulating}
                             {...primaryBtn('auto')}
-                            className="flex-[4] flex items-center justify-center gap-2 px-6 font-black text-xs uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                            className="flex-[4] flex items-center justify-center gap-2 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                         >
                             <FastForward size={14} />
                             자동 진행
