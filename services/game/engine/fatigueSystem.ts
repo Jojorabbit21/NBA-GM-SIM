@@ -39,13 +39,23 @@ export function calculateIncrementalFatigue(
     drain *= cumulativeFatiguePenalty;
 
     // Injury Check (Micro-roll) — injuriesEnabled는 stateUpdater에서 체크
+    // 기본 확률(0.03%) + 체력 저하 시 추가 확률 (durability 반영)
     let injuryOccurred = false;
+    const durability = player.attr?.durability ?? 70;
+    // 기본 부상 확률: durability 높을수록 낮음 (dur 70: 3/10000, dur 90: 1/10000, dur 50: 5/10000)
+    const baseInjuryChance = Math.max(0.5, 5 - durability * 0.04);
+    // 체력 저하 추가 확률: 체력 50 이하부터 점진적 증가, 15 이하에서 급등
+    let fatigueBonus = 0;
+    if (effectiveCondition < 50) {
+        fatigueBonus = (50 - effectiveCondition) * 0.8;
+    }
     if (effectiveCondition < 15) {
-        const roll = Math.random() * 10000;
-        // injuryFrequency 배율 적용 (기본 1.0, 높을수록 부상 잘 발생)
-        if (roll < (15 - effectiveCondition) * 5.0 * injuryFrequency) {
-            injuryOccurred = true;
-        }
+        fatigueBonus += (15 - effectiveCondition) * 3.0;
+    }
+    const totalChance = (baseInjuryChance + fatigueBonus) * injuryFrequency;
+    const roll = Math.random() * 10000;
+    if (roll < totalChance) {
+        injuryOccurred = true;
     }
 
     return { drain, injuryOccurred };

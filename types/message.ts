@@ -57,7 +57,7 @@ export interface InjuryReportContent {
     playerId: string;
     playerName: string;
     injuryType: string;
-    severity: 'Minor' | 'Major';
+    severity: 'Minor' | 'Major' | 'Season-Ending';
     duration: string;
     /** 복귀 예정 날짜 (YYYY-MM-DD) */
     returnDate: string;

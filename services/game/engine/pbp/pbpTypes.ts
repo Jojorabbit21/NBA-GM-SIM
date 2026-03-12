@@ -139,7 +139,8 @@ export interface InjuryEvent {
     playerName: string;
     teamId: string;
     injuryType: string;
-    durationDesc: string; // e.g., "2 Weeks", "Day-to-Day"
+    durationDesc: string; // e.g., "2주", "당일 복귀"
+    severity: 'Minor' | 'Major' | 'Season-Ending';
     quarter: number;
     timeRemaining: string;
 }

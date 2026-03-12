@@ -183,7 +183,7 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                             </p>
                             <div className="pl-3 space-y-1 text-sm">
                                 <p><span className="text-slate-500">부상명:</span> <span className="text-white font-bold">{injuryData.injuryType}</span></p>
-                                <p><span className="text-slate-500">부상 정도:</span> <span className={injuryData.severity === 'Major' ? 'text-rose-400 font-bold' : 'text-slate-300 font-bold'}>{injuryData.severity === 'Major' ? '중상' : '경상'}</span></p>
+                                <p><span className="text-slate-500">부상 정도:</span> <span className={injuryData.severity === 'Season-Ending' ? 'text-red-500 font-black' : injuryData.severity === 'Major' ? 'text-rose-400 font-bold' : 'text-slate-300 font-bold'}>{injuryData.severity === 'Season-Ending' ? '시즌아웃' : injuryData.severity === 'Major' ? '중상' : '경상'}</span></p>
                                 <p><span className="text-slate-500">예상 결장 기간:</span> <span className="text-white font-bold">{injuryData.duration}</span></p>
                                 <p><span className="text-slate-500">복귀 예정일:</span> <span className="text-white font-bold">{injuryData.returnDate}</span></p>
                             </div>
