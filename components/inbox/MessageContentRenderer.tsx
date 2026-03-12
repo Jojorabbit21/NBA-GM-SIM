@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRightLeft, ShieldAlert, Trophy } from 'lucide-react';
+import { ArrowRightLeft, Trophy } from 'lucide-react';
 import { MessageType, GameRecapContent, TradeAlertContent, InjuryReportContent, SeasonReviewContent, PlayoffStageReviewContent, OwnerLetterContent, HofQualificationContent, FinalsMvpContent, RegSeasonChampionContent, PlayoffChampionContent, ScoutReportContent, Team } from '../../types';
 import type { SeasonAwardsContent } from '../../utils/awardVoting';
 import { fetchFullGameResult } from '../../services/queries';
@@ -164,42 +164,38 @@ export const MessageContentRenderer: React.FC<MessageContentRendererProps> = ({ 
                 </div>
             );
 
-        case 'INJURY_REPORT':
+        case 'INJURY_REPORT': {
             const injuryData = content as InjuryReportContent;
-            const isMajor = injuryData.severity === 'Major';
+            const isRecovery = !!injuryData.isRecovery;
             return (
-                <div className={`p-8 rounded-3xl border relative overflow-hidden ${isMajor ? 'bg-red-950/20 border-red-500/30' : 'bg-slate-900 border-slate-800'}`}>
-                    <div className="flex items-start gap-6 relative z-10">
-                         <div className={`p-4 rounded-2xl ${isMajor ? 'bg-red-500/20 text-red-500' : 'bg-slate-800 text-slate-400'}`}>
-                             <ShieldAlert size={32} />
-                         </div>
-                         <div className="flex-1">
-                             <h3 className="text-2xl font-black text-white cursor-pointer hover:underline decoration-red-500 underline-offset-4" onClick={() => onPlayerClick(injuryData.playerId)}>
-                                 {injuryData.playerName}
-                             </h3>
-                             <div className="flex items-center gap-3 mt-2">
-                                 <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wide ${isMajor ? 'bg-red-500 text-white' : 'bg-slate-700 text-slate-300'}`}>
-                                     {isMajor ? 'MAJOR INJURY' : 'MINOR INJURY'}
-                                 </span>
-                                 <p className="text-sm font-bold text-slate-400">
-                                     {injuryData.injuryType}
-                                 </p>
-                             </div>
-                         </div>
-                    </div>
-
-                    <div className="mt-8 pt-6 border-t border-white/5 grid grid-cols-2 gap-8 relative z-10">
-                        <div>
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Estimated Absence</span>
-                            <span className="text-lg font-black text-white">{injuryData.duration}</span>
-                        </div>
-                        <div>
-                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Return Date</span>
-                            <span className="text-lg font-black text-white">{injuryData.returnDate}</span>
-                        </div>
+                <div className="space-y-8 text-slate-300 leading-relaxed">
+                    {isRecovery ? (
+                        <p>
+                            단장님, <button className="text-white font-bold hover:text-indigo-400 transition-colors" onClick={() => onPlayerClick(injuryData.playerId)}>{injuryData.playerName}</button> 선수가
+                            <span className="text-emerald-400 font-bold"> {injuryData.injuryType}</span> 부상에서 완전히 회복하여
+                            오늘부로 팀 훈련에 정상 복귀하였음을 알려드립니다.
+                        </p>
+                    ) : (
+                        <>
+                            <p>
+                                단장님, <button className="text-white font-bold hover:text-indigo-400 transition-colors" onClick={() => onPlayerClick(injuryData.playerId)}>{injuryData.playerName}</button> 선수의
+                                부상 상태를 보고드립니다.
+                            </p>
+                            <div className="pl-3 space-y-1 text-sm">
+                                <p><span className="text-slate-500">부상명:</span> <span className="text-white font-bold">{injuryData.injuryType}</span></p>
+                                <p><span className="text-slate-500">부상 정도:</span> <span className={injuryData.severity === 'Major' ? 'text-rose-400 font-bold' : 'text-slate-300 font-bold'}>{injuryData.severity === 'Major' ? '중상' : '경상'}</span></p>
+                                <p><span className="text-slate-500">예상 결장 기간:</span> <span className="text-white font-bold">{injuryData.duration}</span></p>
+                                <p><span className="text-slate-500">복귀 예정일:</span> <span className="text-white font-bold">{injuryData.returnDate}</span></p>
+                            </div>
+                        </>
+                    )}
+                    <div className="pt-4">
+                        <p className="text-white font-bold">수석 트레이너</p>
+                        <p className="text-slate-500 text-xs mt-0.5">Head Athletic Trainer</p>
                     </div>
                 </div>
             );
+        }
 
         case 'SEASON_REVIEW': {
             const sr = content as SeasonReviewContent;
