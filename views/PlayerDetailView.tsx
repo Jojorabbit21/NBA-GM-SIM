@@ -1,5 +1,5 @@
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { Player, PlayerStats, Team } from '../types';
 import { getTeamLogoUrl, calculatePlayerOvr } from '../utils/constants';
@@ -262,6 +262,107 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
         { val: pmStr, color: pmVal > 0 ? 'text-emerald-400' : pmVal < 0 ? 'text-red-400' : undefined },
     ];
 }
+
+const ROW_HEIGHT = 40; // h-10 = 40px
+const OVERSCAN = 5;
+
+const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boolean; teamId?: string }> = React.memo(({ gameLog, gameLogLoading, teamId }) => {
+    const scrollRef = useRef<HTMLDivElement>(null);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [containerHeight, setContainerHeight] = useState(0);
+
+    const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+        setScrollTop(e.currentTarget.scrollTop);
+    }, []);
+
+    useEffect(() => {
+        const el = scrollRef.current;
+        if (!el) return;
+        const ro = new ResizeObserver(([entry]) => setContainerHeight(entry.contentRect.height));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, []);
+
+    const processedRows = useMemo(() => {
+        if (!gameLog || gameLog.length === 0) return [];
+        return gameLog.map((g: any) => buildGameLogCells(g));
+    }, [gameLog]);
+
+    const totalRows = processedRows.length;
+    const headerHeight = ROW_HEIGHT; // thead height
+    const totalHeight = headerHeight + totalRows * ROW_HEIGHT;
+
+    // visible range (account for sticky header)
+    const scrollOffset = Math.max(0, scrollTop - headerHeight);
+    const startIdx = Math.max(0, Math.floor(scrollOffset / ROW_HEIGHT) - OVERSCAN);
+    const visibleCount = Math.ceil(containerHeight / ROW_HEIGHT) + OVERSCAN * 2;
+    const endIdx = Math.min(totalRows, startIdx + visibleCount);
+
+    return (
+        <div className="relative overflow-hidden" style={{ contain: 'strict' }}>
+            <div
+                ref={scrollRef}
+                className="absolute inset-0 overflow-y-auto"
+                onScroll={handleScroll}
+            >
+                {gameLogLoading && teamId && (
+                    <div className="flex items-center justify-center py-8">
+                        <Loader2 size={16} className="text-slate-500 animate-spin" />
+                    </div>
+                )}
+                {!gameLogLoading && (!gameLog || gameLog.length === 0) && (
+                    <div className="flex items-center justify-center py-8">
+                        <span className="text-xs text-slate-600">경기 기록이 없습니다</span>
+                    </div>
+                )}
+                {totalRows > 0 && (
+                    <div style={{ height: totalHeight, position: 'relative' }}>
+                        <table className="w-full text-left border-separate border-spacing-0">
+                            <thead className="bg-slate-900 sticky top-0 z-40 border-b border-slate-800 shadow-sm">
+                                <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
+                                    {GAME_LOG_COLS.map((c, i) => (
+                                        <th
+                                            key={c.key}
+                                            className={`py-3 px-1.5 whitespace-nowrap border-b border-slate-800 text-center ${i < GAME_LOG_COLS.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                        >
+                                            <div className="flex items-center gap-1 justify-center">
+                                                <span className="truncate min-w-0">{c.label}</span>
+                                            </div>
+                                        </th>
+                                    ))}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {/* top spacer */}
+                                {startIdx > 0 && (
+                                    <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: startIdx * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
+                                )}
+                                {processedRows.slice(startIdx, endIdx).map((cells, vi) => (
+                                    <tr key={startIdx + vi} className="transition-colors hover:bg-white/5" style={{ height: ROW_HEIGHT }}>
+                                        {cells.map((cell, ci) => (
+                                            <td
+                                                key={ci}
+                                                className={`py-2 px-1.5 text-center ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                            >
+                                                <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
+                                                    {cell.val}
+                                                </span>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))}
+                                {/* bottom spacer */}
+                                {endIdx < totalRows && (
+                                    <tr><td colSpan={GAME_LOG_COLS.length} style={{ height: (totalRows - endIdx) * ROW_HEIGHT, padding: 0, border: 'none' }} /></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+});
 
 export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, teamName, teamId, allTeams, tendencySeed, onBack }) => {
     const teamColors = teamId ? (TEAM_DATA[teamId]?.colors || null) : null;
@@ -681,55 +782,11 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         </div>
 
                         {/* Row 2, Col 2: 최근 경기 본문 — 샷 차트 높이에 맞춰 스크롤 */}
-                        <div className="relative overflow-hidden" style={{ contain: 'strict' }}>
-                            <div className="absolute inset-0 overflow-y-auto" style={{ willChange: 'transform' }}>
-                            {gameLogLoading && teamId && (
-                                <div className="flex items-center justify-center py-8">
-                                    <Loader2 size={16} className="text-slate-500 animate-spin" />
-                                </div>
-                            )}
-                            {!gameLogLoading && (!gameLog || gameLog.length === 0) && (
-                                <div className="flex items-center justify-center py-8">
-                                    <span className="text-xs text-slate-600">경기 기록이 없습니다</span>
-                                </div>
-                            )}
-                            {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent !overflow-visible [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false}>
-                                    <TableHead>
-                                        {GAME_LOG_COLS.map((c, i) => (
-                                            <TableHeaderCell
-                                                key={c.key}
-                                                align="center"
-                                                className={i < GAME_LOG_COLS.length - 1 ? 'border-r border-r-slate-800/30' : ''}
-                                            >
-                                                {c.label}
-                                            </TableHeaderCell>
-                                        ))}
-                                    </TableHead>
-                                    <TableBody>
-                                        {gameLog.map((g: any, i: number) => {
-                                            const cells = buildGameLogCells(g);
-                                            return (
-                                                <TableRow key={i} className="h-10">
-                                                    {cells.map((cell, ci) => (
-                                                        <TableCell
-                                                            key={ci}
-                                                            align="center"
-                                                            className={ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}
-                                                        >
-                                                            <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
-                                                                {cell.val}
-                                                            </span>
-                                                        </TableCell>
-                                                    ))}
-                                                </TableRow>
-                                            );
-                                        })}
-                                    </TableBody>
-                                </Table>
-                            )}
-                            </div>
-                        </div>
+                        <VirtualGameLog
+                            gameLog={gameLog}
+                            gameLogLoading={gameLogLoading}
+                            teamId={teamId}
+                        />
 
                     </div>
 
