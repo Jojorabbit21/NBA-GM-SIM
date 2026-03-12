@@ -116,14 +116,14 @@ export function calculateHitRate(
     const fatigueDef = defender.currentCondition / 100;
 
     // 피로도 → FG% 보정
-    // 공격자: condition 0 → -7%, condition 70 → 0, condition 100 → +3%
-    hitRate += (fatigueOff - 0.70) * 0.10;
-    // [SaveTendency] focusDrift: extra FG% loss when heavily fatigued (condition < 60%)
-    if (fatigueOff < 0.60) {
-        hitRate -= (actor.tendencies?.focusDrift ?? 0) * (0.60 - fatigueOff) * 0.05;
+    // 공격자: condition 0 → -7%, condition 30 → 0, condition 100 → +7%
+    hitRate += (fatigueOff - 0.30) * 0.10;
+    // [SaveTendency] focusDrift: extra FG% loss when heavily fatigued (condition < 30%)
+    if (fatigueOff < 0.30) {
+        hitRate -= (actor.tendencies?.focusDrift ?? 0) * (0.30 - fatigueOff) * 0.05;
     }
-    // 수비자: condition 0 → +3.5%, condition 70 → 0, condition 100 → -1.5%
-    hitRate -= (fatigueDef - 0.70) * 0.05;
+    // 수비자: condition 0 → +1.5%, condition 30 → 0, condition 100 → -3.5%
+    hitRate -= (fatigueDef - 0.30) * 0.05;
 
     const offRating = zoneOffRating;
     const baseDefRating = preferredZone === '3PT' ? defender.attr.perDef : defender.attr.intDef;

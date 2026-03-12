@@ -102,17 +102,8 @@ export async function runBatchSeason(
             prevMonthKey = currentMonthKey;
         }
 
-        // [DEBUG] 부상 현황 로그 (매일)
-        const injuredCount = teams.reduce((sum, t) => sum + t.roster.filter(p => p.health === 'Injured').length, 0);
-        if (injuredCount > 0) {
-            console.log(`[INJURY DEBUG] ${date} | 리그 부상 선수: ${injuredCount}명`);
-        }
-
         // 부상 복귀 체크 (매일 경기 전에 실행)
         const recoveredPlayers = processInjuryRecovery(teams, date, myTeamId);
-        if (recoveredPlayers.length > 0) {
-            console.log(`[INJURY DEBUG] ${date} | 복귀: ${recoveredPlayers.map(r => r.playerName).join(', ')}`);
-        }
         if (recoveredPlayers.length > 0 && userId) {
             for (const rec of recoveredPlayers) {
                 allMessages.push({
@@ -381,7 +372,6 @@ function processCpuGamesInPlace(
                     if (update) {
                         if (update.condition !== undefined) p.condition = update.condition;
                         if (update.health) {
-                            console.log(`[INJURY DEBUG] ${date} | CPU 부상: ${p.name} (${t.name}) | ${update.injuryType} | duration="${update.returnDate}" → returnDate=${computeReturnDate(date, update.returnDate)}`);
                             p.health = update.health;
                         }
                         if (update.injuryType) p.injuryType = update.injuryType;
@@ -453,7 +443,6 @@ function applyGameResultInPlace(
                 if (update) {
                     if (update.condition !== undefined) p.condition = update.condition;
                     if (update.health) {
-                        console.log(`[INJURY DEBUG] ${date} | 부상 발생: ${p.name} (${t.name}) | ${update.injuryType} | duration="${update.returnDate}" → returnDate=${computeReturnDate(date, update.returnDate)}`);
                         p.health = update.health;
                     }
                     if (update.injuryType) p.injuryType = update.injuryType;
