@@ -93,9 +93,16 @@ export const SIM_CONFIG = {
         POST_OFFENSIVE_FOUL_RATE: 0.025,
         SCREEN_FOUL_RATE: 0.008,
 
-        // 테크니컬 파울
-        TECHNICAL_FOUL_CHANCE: 0.003,
-        FLAGRANT_CONVERT_RATE: 0.05,
+        // 테크니컬 파울 (수비팀 전원 중 temperament 가중 선택)
+        TECHNICAL_FOUL_BASE: 0.003,
+        TECH_TEMPERAMENT_POWER: 2.0,     // 커브 지수: temperament 높을수록 급격히 증가
+
+        // 플래그런트 파울 (독립 이벤트, foulProneness 주 영향 + temperament 보조)
+        FLAGRANT_BASE: 0.003,
+        FLAGRANT_FOULPRONE_WEIGHT: 0.7,  // foulProneness 기여 비중
+        FLAGRANT_TEMPER_WEIGHT: 0.3,     // temperament 기여 비중
+        FLAGRANT_CURVE_POWER: 2.5,       // 커브 지수: 높을수록 고값 선수에 집중
+        FLAGRANT_MAX_RATE: 0.012,        // 실링 1.2%
         FLAGRANT_2_CHANCE: 0.10,
 
         // 샷클락 바이올레이션 (수비 전술 + 공격 볼무브 트레이드-오프)

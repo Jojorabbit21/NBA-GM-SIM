@@ -421,16 +421,6 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
     shootingFoulRate = Math.max(sFoulCfg.MIN_RATE, Math.min(sFoulCfg.MAX_RATE, shootingFoulRate));
 
     if (Math.random() < shootingFoulRate) {
-        // ★ Flagrant Foul Conversion (수비 파울 중 일부가 플래그런트로 전환)
-        if (Math.random() < offFoulConfig.FLAGRANT_CONVERT_RATE) {
-            const isFlagrant2 = Math.random() < offFoulConfig.FLAGRANT_2_CHANCE;
-            return {
-                type: 'flagrantFoul' as const,
-                offTeam, defTeam, actor, defender, points: 0 as const,
-                isAndOne: false, playType: selectedPlayType, isSwitch,
-                isFlagrant2, isZone,
-            };
-        }
         return {
             type: 'freethrow',
             offTeam, defTeam, actor, defender, points: 0, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
@@ -470,16 +460,72 @@ export function simulatePossession(state: GameState, options?: { minHitRate?: nu
         };
     }
 
-    // 3.6 Technical Foul Check (독립 이벤트, 낮은 확률)
-    // [SaveTendency] temperament: hot-headed(+1.0) → 1.8x tech foul chance, cool(-1.0) → 0.2x
-    const techChance = offFoulConfig.TECHNICAL_FOUL_CHANCE
-        * (1 + (defender.tendencies?.temperament ?? 0) * 0.8);
-    if (Math.random() < techChance) {
+    // 3.6 Technical Foul Check (독립 이벤트)
+    // 수비팀 코트 전원 중 temperament 가중 랜덤 선택 (센터 편중 방지)
+    // 커브 적용: weight = max(0.05, normalize(temperament))^POWER → 다혈질일수록 급격히 증가
+    if (Math.random() < offFoulConfig.TECHNICAL_FOUL_BASE) {
+        const techPower = offFoulConfig.TECH_TEMPERAMENT_POWER;
+        const techWeights = defTeam.onCourt.map(p => {
+            const t = p.tendencies?.temperament ?? 0;
+            // temperament -1~+1 → 0~1 정규화 후 커브 적용
+            const normalized = Math.max(0.05, (t + 1) / 2);
+            return Math.pow(normalized, techPower);
+        });
+        const techTotalW = techWeights.reduce((a, b) => a + b, 0);
+        let techRoll = Math.random() * techTotalW;
+        let techFouler = defTeam.onCourt[0];
+        for (let i = 0; i < defTeam.onCourt.length; i++) {
+            techRoll -= techWeights[i];
+            if (techRoll <= 0) { techFouler = defTeam.onCourt[i]; break; }
+        }
         return {
             type: 'technicalFoul' as const,
-            offTeam, defTeam, actor, defender,
+            offTeam, defTeam, actor, defender: techFouler,
             points: 0 as const, isAndOne: false, playType: selectedPlayType, isSwitch, isZone
         };
+    }
+
+    // 3.6.1 Flagrant Foul Check (독립 이벤트)
+    // foulProneness(70%) + temperament(30%) 복합 가중, 커브 적용
+    // 수비팀 전원 중 가중 랜덤 선택 → 선택된 선수의 합산값으로 최종 확률 결정
+    {
+        const ffCfg = offFoulConfig;
+        const ffPower = ffCfg.FLAGRANT_CURVE_POWER;
+        const ffWeights = defTeam.onCourt.map(p => {
+            const fp = p.tendencies?.foulProneness ?? 0;
+            const tp = p.tendencies?.temperament ?? 0;
+            // 가중 합산 (-1~+1) → 0~1 정규화 → 커브
+            const combined = fp * ffCfg.FLAGRANT_FOULPRONE_WEIGHT + tp * ffCfg.FLAGRANT_TEMPER_WEIGHT;
+            const normalized = Math.max(0.02, (combined + 1) / 2);
+            return Math.pow(normalized, ffPower);
+        });
+        const ffTotalW = ffWeights.reduce((a, b) => a + b, 0);
+        let ffRoll = Math.random() * ffTotalW;
+        let ffFoulerIdx = 0;
+        for (let i = 0; i < defTeam.onCourt.length; i++) {
+            ffRoll -= ffWeights[i];
+            if (ffRoll <= 0) { ffFoulerIdx = i; break; }
+        }
+
+        // 선택된 선수의 합산값으로 최종 발동 확률 결정
+        const ffFouler = defTeam.onCourt[ffFoulerIdx];
+        const fp = ffFouler.tendencies?.foulProneness ?? 0;
+        const tp = ffFouler.tendencies?.temperament ?? 0;
+        const combined = fp * ffCfg.FLAGRANT_FOULPRONE_WEIGHT + tp * ffCfg.FLAGRANT_TEMPER_WEIGHT;
+        const normalized = Math.max(0.02, (combined + 1) / 2);
+        // base × 커브 배율 (normalized^power로 0.003~ceiling 범위)
+        const ffChance = Math.min(ffCfg.FLAGRANT_MAX_RATE,
+            ffCfg.FLAGRANT_BASE * (1 + Math.pow(normalized, ffPower) * 3));
+
+        if (Math.random() < ffChance) {
+            const isFlagrant2 = Math.random() < ffCfg.FLAGRANT_2_CHANCE;
+            return {
+                type: 'flagrantFoul' as const,
+                offTeam, defTeam, actor, defender: ffFouler, points: 0 as const,
+                isAndOne: false, playType: selectedPlayType, isSwitch,
+                isFlagrant2, isZone,
+            };
+        }
     }
 
     // 3.7 Shot Clock Violation Check (수비 전술 + 공격 볼무브 트레이드-오프)
