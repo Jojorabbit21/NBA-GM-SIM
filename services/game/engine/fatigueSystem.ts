@@ -42,15 +42,15 @@ export function calculateIncrementalFatigue(
     // 기본 확률(0.03%) + 체력 저하 시 추가 확률 (durability 반영)
     let injuryOccurred = false;
     const durability = player.attr?.durability ?? 70;
-    // 기본 부상 확률: durability 높을수록 낮음 (dur 70: 1.1/10000, dur 90: 0.7/10000, dur 50: 1.5/10000)
-    const baseInjuryChance = Math.max(0.3, 2.5 - durability * 0.02);
-    // 체력 저하 추가 확률: 체력 50 이하부터 점진적 증가, 15 이하에서 급등
+    // 기본 부상 확률: durability 높을수록 낮음 (dur 70: 0.36/10000, dur 90: 0.12/10000, dur 50: 0.60/10000)
+    const baseInjuryChance = Math.max(0.1, 1.2 - durability * 0.012);
+    // 체력 저하 추가 확률: 체력 35 이하부터 완만 증가, 10 이하에서 소폭 급등
     let fatigueBonus = 0;
-    if (effectiveCondition < 50) {
-        fatigueBonus = (50 - effectiveCondition) * 0.5;
+    if (effectiveCondition < 35) {
+        fatigueBonus = (35 - effectiveCondition) * 0.15;
     }
-    if (effectiveCondition < 15) {
-        fatigueBonus += (15 - effectiveCondition) * 2.0;
+    if (effectiveCondition < 10) {
+        fatigueBonus += (10 - effectiveCondition) * 0.5;
     }
     const totalChance = (baseInjuryChance + fatigueBonus) * injuryFrequency;
     const roll = Math.random() * 10000;

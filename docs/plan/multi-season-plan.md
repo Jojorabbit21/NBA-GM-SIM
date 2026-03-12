@@ -289,6 +289,85 @@ Pro 플랜 (8 GB): 유저 30명 × ~10시즌까지 여유
 
 ---
 
+## 6단계: 선수 성장/퇴화 크로스시즌 과제
+
+현재 성장/퇴화 시스템(`playerAging.ts`)은 단일 시즌 전제로 설계되어 있다. 멀티시즌 도입 시 아래 구조적 갭을 해결해야 한다.
+
+### 6-1. 현재 구조의 한계
+
+| 갭 | 현재 상태 | 문제 |
+|----|----------|------|
+| **크로스시즌 베이스라인 없음** | `meta_players`가 항상 시즌 1 원본 | 시즌 2 로드 시 `reapplyAttrDeltas()`로 시즌 2의 delta만 적용하면 시즌 1 성장분이 소실됨 |
+| **`processOffseason()` 미호출** | 함수 존재하나 호출자 없음 | `age += 1`, `contractYears -= 1`, 성장 필드 리셋이 실행되지 않음 |
+| **season 컬럼 부재** | `user_game_results`에 시즌 구분 없음 | `stateReplayer`가 전체 시즌 데이터를 무차별 리플레이 |
+| **age 비영속** | `player.age`가 `meta_players` 고정값 | 오프시즌 `age += 1`이 메모리에서만 동작, 리로드 시 원래 나이로 복귀 |
+| **seasonNumber 고정** | `processGameDevelopment()`에 항상 `1` 전달 | 시드 기반 `variance` 계산에서 시즌별 분산이 동일해짐 (결정론 깨짐) |
+| **stateReplayer 성장 미지원** | 스탯(pts, reb 등)만 리플레이, 성장 미처리 | game results로부터 성장을 재구성할 수 없음 (growth는 snapshot/roster_state에만 존재) |
+
+### 6-2. 해결 방안: 시즌 종료 베이스라인 스냅샷
+
+**권장 방안**: 시즌 종료 시 선수별 "성장 반영 완료 베이스라인"을 저장.
+
+```
+시즌 N 종료:
+  1. processOffseason() 호출
+     - age += 1, contractYears -= 1
+     - fractionalGrowth/attrDeltas/changeLog/seasonStartAttributes 리셋
+  2. 현재 선수 능력치를 시즌 종료 베이스라인으로 저장
+     → user_season_history.player_overrides에 포함
+     → 또는 saves.season_end_snapshot에 저장
+
+시즌 N+1 로드:
+  1. meta_players 원본 로드
+  2. user_season_history에서 시즌 N 베이스라인 로드
+  3. 베이스라인 능력치를 meta_players 위에 덮어쓰기 (age, 모든 속성값)
+  4. 시즌 N+1의 attrDeltas 적용 (현재 시즌 내 성장분)
+  5. fractionalGrowth 복원 (이어서 누적)
+```
+
+### 6-3. `user_season_history.player_overrides` 확장
+
+기존 계획(1-1)의 `player_overrides` JSONB에 성장 베이스라인 필드 추가:
+
+```typescript
+// player_overrides[playerId] 구조
+{
+    age: number;                          // 오프시즌 age+1 반영된 나이
+    contractYears: number;                // 계약 잔여 년수
+    ovr: number;                          // 시즌 종료 시점 OVR
+    attributes: Record<string, number>;   // 37개 속성의 시즌 종료 값 (성장/퇴화 모두 반영)
+    retired?: boolean;                    // 은퇴 여부
+    seasonStats: { ... };                 // 시즌 스탯 아카이브
+}
+```
+
+### 6-4. 구현 시 주의사항
+
+1. **`reapplyAttrDeltas` 기준값 변경**: 시즌 2+에서는 `meta_players` 원본이 아닌 `user_season_history`의 베이스라인이 기준. `reapplyAttrDeltas()`가 참조하는 원본 능력치를 시즌별로 분기해야 함.
+
+2. **`seasonNumber` 전달**: `processGameDevelopment()` 호출 시 현재 `seasonNumber`를 정확히 전달해야 시드 기반 variance가 시즌별로 다르게 동작. 현재는 하드코딩 `1`.
+
+3. **`processOffseason()` 호출 시점**: `handleStartNextSeason()` (2-3) Step 1~2 사이에 호출. 에이징 미리보기 UI(Step 2)는 processOffseason 결과를 표시.
+
+4. **이중 적용 방지**: 현재 snapshot + roster_state 이중 로드에서 `snapshotUsed` 플래그로 방지 중. 크로스시즌 베이스라인 추가 시 3중 적용 가능성 주의. 로드 경로를 명확하게 단일화할 것.
+
+5. **fractionalGrowth 처리**: 오프시즌에서 리셋하되, 시즌 마지막 경기의 소수 누적분은 버림. (정수 반영 완료분만 베이스라인에 포함)
+
+6. **결정론 보장**: 같은 시드 + 같은 경기 결과 → 동일한 성장 결과. 시즌 종료 베이스라인을 저장하면 리플레이 필요 없이 결정론이 유지됨.
+
+### 6-5. 대안: 누적 attrDeltas (비권장)
+
+시즌 종료 시 attrDeltas를 리셋하지 않고 전체 시즌에 걸쳐 누적하는 방식. `meta_players` 원본 + 누적 delta = 현재 능력치.
+
+**장점**: 구현 단순 (processOffseason에서 리셋 안 하면 됨)
+**단점**:
+- delta 값이 시즌이 쌓일수록 커져서 디버깅 어려움
+- "이번 시즌 성장량"을 보려면 별도 계산 필요 (시즌 시작 스냅샷 대비)
+- 부동소수점 누적 오차 위험
+- 오프시즌 에이징(체계적 퇴화)이 delta에 섞여 구분 불가
+
+---
+
 ## 주요 설계 결정
 
 | 결정 | 선택 | 이유 |
