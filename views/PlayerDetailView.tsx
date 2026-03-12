@@ -72,6 +72,7 @@ const GAME_LOG_COLS = [
     { key: 'pts', label: 'PTS' }, { key: 'oreb', label: 'OREB' }, { key: 'dreb', label: 'DREB' },
     { key: 'reb', label: 'REB' }, { key: 'ast', label: 'AST' }, { key: 'stl', label: 'STL' },
     { key: 'blk', label: 'BLK' }, { key: 'tov', label: 'TOV' }, { key: 'pf', label: 'PF' },
+    { key: 'tf', label: 'TF' }, { key: 'ff', label: 'FF' },
     { key: 'fg%', label: 'FG%' }, { key: '3p%', label: '3P%' }, { key: 'ft%', label: 'FT%' },
     { key: 'ts%', label: 'TS%' }, { key: 'pm', label: '+/-' },
 ];
@@ -179,8 +180,8 @@ function resolveStatVal(st: PlayerStats, key: string): { display: string; color:
             val = (v !== undefined && v > 0) ? (v * 100).toFixed(1) + '%' : '-';
             break;
         }
-        case 'tf': val = ((st.techFouls || 0) / gp).toFixed(1); break;
-        case 'ff': val = ((st.flagrantFouls || 0) / gp).toFixed(1); break;
+        case 'tf': val = String(st.techFouls || 0); break;
+        case 'ff': val = String(st.flagrantFouls || 0); break;
         default:
             if (['pts', 'reb', 'ast', 'stl', 'blk', 'tov'].includes(key)) {
                 val = ((st as any)[key] / gp).toFixed(1);
@@ -252,6 +253,8 @@ function buildGameLogCells(g: any): { val: string; color?: string }[] {
         { val: String(g.blk || 0) },
         { val: String(g.tov || 0) },
         { val: String(g.pf || 0) },
+        { val: String(g.techFouls || 0) },
+        { val: String(g.flagrantFouls || 0) },
         { val: fgPct },
         { val: p3Pct },
         { val: ftPct },

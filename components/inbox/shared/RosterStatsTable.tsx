@@ -25,6 +25,8 @@ interface RosterStatRow {
     ftm: number;
     fta: number;
     ftPct: number;
+    tf: number;
+    ff: number;
     pm: number;
 }
 
@@ -57,6 +59,8 @@ export const RosterStatsTable: React.FC<RosterStatsTableProps> = ({ rosterStats,
                             <TableHeaderCell align="center" className="w-12">STL</TableHeaderCell>
                             <TableHeaderCell align="center" className="w-12">BLK</TableHeaderCell>
                             <TableHeaderCell align="center" className="w-12">TOV</TableHeaderCell>
+                            <TableHeaderCell align="center" className="w-12">TF</TableHeaderCell>
+                            <TableHeaderCell align="center" className="w-12">FF</TableHeaderCell>
                             <TableHeaderCell align="center" className="w-12">FGM</TableHeaderCell>
                             <TableHeaderCell align="center" className="w-12">FGA</TableHeaderCell>
                             <TableHeaderCell align="center" className="w-12">FG%</TableHeaderCell>
@@ -88,6 +92,8 @@ export const RosterStatsTable: React.FC<RosterStatsTableProps> = ({ rosterStats,
                                     <TableCell align="center" className="text-xs font-mono text-slate-300">{p.stl}</TableCell>
                                     <TableCell align="center" className="text-xs font-mono text-slate-300">{p.blk}</TableCell>
                                     <TableCell align="center" className="text-xs font-mono text-slate-300">{p.tov}</TableCell>
+                                    <TableCell align="center" className="text-xs font-mono text-slate-400">{p.tf}</TableCell>
+                                    <TableCell align="center" className="text-xs font-mono text-slate-400">{p.ff}</TableCell>
                                     <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fgm}</TableCell>
                                     <TableCell align="center" className="text-xs font-mono text-slate-400">{p.fga}</TableCell>
                                     <TableCell align="center" className="text-xs font-mono text-slate-400">{fmtStatVal(p.fgPct, 'pct')}</TableCell>
