@@ -49,6 +49,25 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                 let type: string;
                 let duration: string;
 
+                // durability 기반 가중치 랜덤 선택 (낮을수록 긴 기간에 가중)
+                // dur 40: 긴 기간 가중, dur 90: 짧은 기간 가중
+                const pickWeighted = (options: string[], dur: number): string => {
+                    const n = options.length;
+                    // dur 40 → bias 1.5 (긴 쪽 가중), dur 70 → bias 0 (균등), dur 90 → bias -0.6 (짧은 쪽 가중)
+                    const bias = (70 - dur) * 0.05;
+                    const weights = options.map((_, i) => {
+                        const normalized = i / (n - 1); // 0(짧)~1(긴)
+                        return Math.max(0.1, 1 + bias * (normalized * 2 - 1));
+                    });
+                    const total = weights.reduce((a, b) => a + b, 0);
+                    let roll = Math.random() * total;
+                    for (let i = 0; i < n; i++) {
+                        roll -= weights[i];
+                        if (roll <= 0) return options[i];
+                    }
+                    return options[n - 1];
+                };
+
                 if (tierRoll < seThreshold) {
                     severity = 'Season-Ending';
                     const seInjuries = ['전방십자인대(ACL) 파열', '아킬레스건 파열', '골절', '반월판 파열'];
@@ -57,15 +76,15 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                 } else if (tierRoll < majorThreshold) {
                     severity = 'Major';
                     const majorInjuries = ['햄스트링 부상', '종아리 부상', '발목 인대 손상', '허리 경련', '어깨 부상', '사타구니 부상'];
-                    const majorDurations = ['2주', '3주', '1개월'];
+                    const majorDurations = ['2주', '3주', '1개월']; // 짧→긴 순
                     type = majorInjuries[Math.floor(Math.random() * majorInjuries.length)];
-                    duration = majorDurations[Math.floor(Math.random() * majorDurations.length)];
+                    duration = pickWeighted(majorDurations, dur);
                 } else {
                     severity = 'Minor';
                     const minorInjuries = ['발목 염좌', '무릎 통증', '허리 경직', '타박상', '손가락 염좌'];
-                    const minorDurations = ['당일 복귀', '3일', '1주'];
+                    const minorDurations = ['당일 복귀', '3일', '1주']; // 짧→긴 순
                     type = minorInjuries[Math.floor(Math.random() * minorInjuries.length)];
-                    duration = minorDurations[Math.floor(Math.random() * minorDurations.length)];
+                    duration = pickWeighted(minorDurations, dur);
                 }
 
                 p.health = 'Injured';
