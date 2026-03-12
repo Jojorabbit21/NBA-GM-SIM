@@ -71,6 +71,7 @@ export function updateOnCourtStates(state: GameState, timeTaken: number) {
                 p.health = 'Injured';
                 p.injuryType = type;
                 p.returnDate = duration;
+                p.injuredThisGame = true;
 
                 // Add Log
                 const timeStr = formatTime(state.gameClock);

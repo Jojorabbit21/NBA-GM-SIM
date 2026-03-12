@@ -173,7 +173,7 @@ export function checkSubstitutionsV2(
         const isScheduled = tactics.rotationMap?.[p.playerId]?.[currentMinute];
 
         // --- Priority 1: 영구 긴급 (맵 무시) ---
-        if (p.health === 'Injured') {
+        if (p.health === 'Injured' && p.injuredThisGame) {
             requests.push({ outPlayer: p, reason: '부상', exitType: 'permanent', benchReason: 'injury' });
             return;
         }

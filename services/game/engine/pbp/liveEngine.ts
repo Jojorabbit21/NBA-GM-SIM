@@ -533,7 +533,8 @@ export function extractSimResult(state: GameState): SimulationResult {
             rosterUpdates[p.playerId] = {
                 condition: parseFloat(p.currentCondition.toFixed(1)),
             };
-            if (p.health !== 'Healthy') {
+            // 경기 중 새로 부상당한 선수만 rosterUpdates에 포함 (기존 부상 returnDate 무한 연장 방지)
+            if (p.health !== 'Healthy' && p.injuredThisGame) {
                 rosterUpdates[p.playerId].health = p.health;
                 rosterUpdates[p.playerId].injuryType = p.injuryType;
                 rosterUpdates[p.playerId].returnDate = p.returnDate;

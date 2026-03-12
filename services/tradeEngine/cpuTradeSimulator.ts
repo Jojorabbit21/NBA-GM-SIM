@@ -8,6 +8,27 @@ import { analyzeTeamSituation, TeamNeeds } from './teamAnalysis';
 import { checkTradeLegality } from './salaryRules';
 
 // ──────────────────────────────────────────────
+// 인접 포지션 매핑 (SG↔SF, PF↔C 등)
+// ──────────────────────────────────────────────
+
+const ADJACENT_POSITIONS: Record<string, string[]> = {
+    'PG': ['SG'],
+    'SG': ['PG', 'SF'],
+    'SF': ['SG', 'PF'],
+    'PF': ['SF', 'C'],
+    'C': ['PF'],
+};
+
+function matchesPosition(playerPositions: string, needPosition: string): 'exact' | 'adjacent' | 'none' {
+    if (playerPositions.includes(needPosition)) return 'exact';
+    const adjacent = ADJACENT_POSITIONS[needPosition] || [];
+    for (const adj of adjacent) {
+        if (playerPositions.includes(adj)) return 'adjacent';
+    }
+    return 'none';
+}
+
+// ──────────────────────────────────────────────
 // Types
 // ──────────────────────────────────────────────
 
@@ -57,12 +78,6 @@ function calculateTradeChance(currentDate: string): number {
     const { BASE_PROBABILITY, MAX_PROBABILITY, PROBABILITY_EXPONENT } = C.CPU_TRADE;
 
     return BASE_PROBABILITY + (MAX_PROBABILITY - BASE_PROBABILITY) * Math.pow(progress, PROBABILITY_EXPONENT);
-}
-
-function getDaysUntilDeadline(currentDate: string): number {
-    const current = new Date(currentDate).getTime();
-    const deadline = new Date(TRADE_DEADLINE).getTime();
-    return Math.max(0, Math.floor((deadline - current) / (1000 * 60 * 60 * 24)));
 }
 
 // ──────────────────────────────────────────────
@@ -169,6 +184,38 @@ function buildTeamTradeProfile(team: Team): TeamTradeProfile {
         }
     });
 
+    // ── 추가 동기 1: 컨텐더의 업그레이드 욕구 ──
+    if (needs.isContender) {
+        positions.forEach(pos => {
+            const depth = positionDepth[pos] || [];
+            const bestOvr = depth.length > 0 ? calculatePlayerOvr(depth[0]) : 0;
+            if (bestOvr > 0 && bestOvr < 80 && !acquisitionPriorities.some(t => t.position === pos && t.priority >= 3)) {
+                acquisitionPriorities.push({ position: pos, minOvr: bestOvr + 3, priority: 2 });
+            }
+        });
+    }
+
+    // ── 추가 동기 2: 셀러 팀의 리빌딩 (젊은 선수 확보) ──
+    if (needs.isSeller) {
+        positions.forEach(pos => {
+            if (!acquisitionPriorities.some(t => t.position === pos)) {
+                acquisitionPriorities.push({ position: pos, minOvr: 65, priority: 1 });
+            }
+        });
+    }
+
+    // ── 추가 동기 3: 나쁜 계약 교체 ──
+    roster.forEach(p => {
+        const ovr = calculatePlayerOvr(p);
+        if (ovr < CC.LOW_VALUE_DUMP_OVR && p.salary > CC.BAD_CONTRACT_SALARY_FLOOR) {
+            for (const pos of positions) {
+                if (p.position.includes(pos) && !acquisitionPriorities.some(t => t.position === pos && t.priority >= 3)) {
+                    acquisitionPriorities.push({ position: pos, minOvr: 68, priority: 3 });
+                }
+            }
+        }
+    });
+
     return { team, needs, tradeableAssets, acquisitionPriorities };
 }
 
@@ -185,8 +232,10 @@ function calculateCompatibility(profileA: TeamTradeProfile, profileB: TeamTradeP
     for (const asset of profileA.tradeableAssets) {
         const ovr = calculatePlayerOvr(asset.player);
         for (const need of profileB.acquisitionPriorities) {
-            if (asset.player.position.includes(need.position) && ovr >= need.minOvr) {
-                scoreAtoB += need.priority * CC.POSITION_NEED_BONUS;
+            const posMatch = matchesPosition(asset.player.position, need.position);
+            if (posMatch !== 'none' && ovr >= need.minOvr) {
+                const posMultiplier = posMatch === 'exact' ? 1.0 : 0.6;
+                scoreAtoB += need.priority * CC.POSITION_NEED_BONUS * posMultiplier;
 
                 if (need.statPreference) {
                     const stat = need.statPreference === 'DEF' ? asset.player.def
@@ -202,8 +251,10 @@ function calculateCompatibility(profileA: TeamTradeProfile, profileB: TeamTradeP
     for (const asset of profileB.tradeableAssets) {
         const ovr = calculatePlayerOvr(asset.player);
         for (const need of profileA.acquisitionPriorities) {
-            if (asset.player.position.includes(need.position) && ovr >= need.minOvr) {
-                scoreBtoA += need.priority * CC.POSITION_NEED_BONUS;
+            const posMatch = matchesPosition(asset.player.position, need.position);
+            if (posMatch !== 'none' && ovr >= need.minOvr) {
+                const posMultiplier = posMatch === 'exact' ? 1.0 : 0.6;
+                scoreBtoA += need.priority * CC.POSITION_NEED_BONUS * posMultiplier;
 
                 if (need.statPreference) {
                     const stat = need.statPreference === 'DEF' ? asset.player.def
@@ -289,45 +340,40 @@ function constructTradePackage(
     const teamA = profileA.team;
     const teamB = profileB.team;
 
-    const label = `${teamA.name} ↔ ${teamB.name}`;
+    // ── 1단계: 니즈 기반 1차 선택 ──
+    let aToB = selectPlayersForNeeds(profileA.tradeableAssets, profileB.acquisitionPriorities);
+    if (aToB.length === 0) return null;
 
-    // A→B: A의 tradeable 중 B의 니즈에 맞는 선수 선택
-    const aToB = selectPlayersForNeeds(profileA.tradeableAssets, profileB.acquisitionPriorities);
-    if (aToB.length === 0) { console.log(`  [pkg] ${label} FAIL: aToB empty (A assets=${profileA.tradeableAssets.length}, B priorities=${profileB.acquisitionPriorities.length})`); return null; }
+    let bToA = selectPlayersForNeeds(profileB.tradeableAssets, profileA.acquisitionPriorities);
+    if (bToA.length === 0) return null;
 
-    const aToBValue = calculatePackageTrueValue(aToB);
-    if (aToBValue <= 0) { console.log(`  [pkg] ${label} FAIL: aToBValue=0`); return null; }
+    // 동일 선수 교환 방지
+    const aToBIds = new Set(aToB.map(p => p.id));
+    if (bToA.some(p => aToBIds.has(p.id))) return null;
 
-    // B→A: B의 tradeable 중 A의 니즈에 맞고, 가치가 aToBValue의 95%~110% 범위인 패키지
-    const bToA = buildMatchingPackage(
-        profileB.tradeableAssets,
-        profileA.acquisitionPriorities,
-        aToBValue
-    );
-    if (bToA.length === 0) { console.log(`  [pkg] ${label} FAIL: bToA empty (targetValue=${aToBValue.toFixed(1)}, B assets=${profileB.tradeableAssets.length})`); return null; }
+    // ── 2단계: CBA 샐러리 밸런싱 ──
+    const legalA = checkTradeLegality(teamA, bToA, aToB);
+    const legalB = checkTradeLegality(teamB, aToB, bToA);
 
-    const bToAValue = calculatePackageTrueValue(bToA);
-
-    // 가치 비율 검증
-    const ratioA = bToAValue / aToBValue;
-    const ratioB = aToBValue / bToAValue;
-
-    if (ratioA < CC.MIN_VALUE_RATIO || ratioA > CC.MAX_VALUE_RATIO) { console.log(`  [pkg] ${label} FAIL: ratioA=${ratioA.toFixed(3)} (need ${CC.MIN_VALUE_RATIO}~${CC.MAX_VALUE_RATIO})`); return null; }
-    if (ratioB < CC.MIN_VALUE_RATIO || ratioB > CC.MAX_VALUE_RATIO) { console.log(`  [pkg] ${label} FAIL: ratioB=${ratioB.toFixed(3)}`); return null; }
-
-    // 샐러리 합법성 양방향 체크
-    if (!checkTradeLegality(teamA, bToA, aToB)) { console.log(`  [pkg] ${label} FAIL: salary illegal (teamA)`); return null; }
-    if (!checkTradeLegality(teamB, aToB, bToA)) { console.log(`  [pkg] ${label} FAIL: salary illegal (teamB)`); return null; }
+    if (!legalA || !legalB) {
+        const balanced = trySalaryBalance(profileA, profileB, aToB, bToA);
+        if (!balanced) return null;
+        aToB = balanced.aToB;
+        bToA = balanced.bToA;
+    }
 
     // 로스터 최소 인원 체크
-    if (teamA.roster.length - aToB.length + bToA.length < C.DEPTH.MIN_ROSTER_SIZE) { console.log(`  [pkg] ${label} FAIL: roster min (teamA)`); return null; }
-    if (teamB.roster.length - bToA.length + aToB.length < C.DEPTH.MIN_ROSTER_SIZE) { console.log(`  [pkg] ${label} FAIL: roster min (teamB)`); return null; }
+    if (teamA.roster.length - aToB.length + bToA.length < C.DEPTH.MIN_ROSTER_SIZE) return null;
+    if (teamB.roster.length - bToA.length + aToB.length < C.DEPTH.MIN_ROSTER_SIZE) return null;
 
-    // 팀력 개선도 체크
+    // ── 3단계: 팀력 개선도 체크 (seller 완화) ──
     const improvA = calculateTeamImprovement(teamA, bToA, aToB);
     const improvB = calculateTeamImprovement(teamB, aToB, bToA);
 
-    if (improvA < CC.IMPROVEMENT_THRESHOLD || improvB < CC.IMPROVEMENT_THRESHOLD) { console.log(`  [pkg] ${label} FAIL: improvement (A=${(improvA*100).toFixed(2)}%, B=${(improvB*100).toFixed(2)}%, need ${(CC.IMPROVEMENT_THRESHOLD*100).toFixed(2)}%)`); return null; }
+    const threshA = profileA.needs.isSeller ? CC.SELLER_IMPROVEMENT_FLOOR : CC.IMPROVEMENT_THRESHOLD;
+    const threshB = profileB.needs.isSeller ? CC.SELLER_IMPROVEMENT_FLOOR : CC.IMPROVEMENT_THRESHOLD;
+
+    if (improvA < threshA || improvB < threshB) return null;
 
     // 분석 메시지 생성
     const analysis: string[] = [];
@@ -343,12 +389,68 @@ function constructTradePackage(
     return {
         teamAPlayers: aToB,
         teamBPlayers: bToA,
-        teamAValue: aToBValue,
-        teamBValue: bToAValue,
+        teamAValue: calculatePackageTrueValue(aToB),
+        teamBValue: calculatePackageTrueValue(bToA),
         teamAImprovement: improvA,
         teamBImprovement: improvB,
         analysis: [...new Set(analysis)],
     };
+}
+
+// ──────────────────────────────────────────────
+// 5-1. 샐러리 밸런싱 (filler 추가로 CBA 통과 시도)
+// ──────────────────────────────────────────────
+
+function trySalaryBalance(
+    profileA: TeamTradeProfile,
+    profileB: TeamTradeProfile,
+    origAToB: Player[],
+    origBToA: Player[]
+): { aToB: Player[]; bToA: Player[] } | null {
+    let aToB = [...origAToB];
+    let bToA = [...origBToA];
+    const maxFiller = C.CPU_TRADE.SALARY_FILLER_MAX;
+    const maxPkgSize = C.DEPTH.MAX_PACKAGE_SIZE + maxFiller; // filler 포함 최대 패키지
+
+    const selectedIds = new Set([...aToB.map(p => p.id), ...bToA.map(p => p.id)]);
+
+    // teamA가 illegal → A의 outgoing(aToB)에 filler 추가하여 outSalary 증가
+    if (!checkTradeLegality(profileA.team, bToA, aToB)) {
+        const fillerCandidates = profileA.tradeableAssets
+            .filter(a => !selectedIds.has(a.player.id))
+            .sort((a, b) => b.player.salary - a.player.salary); // 높은 연봉 우선
+
+        let added = 0;
+        for (const filler of fillerCandidates) {
+            if (added >= maxFiller || aToB.length >= maxPkgSize) break;
+            aToB.push(filler.player);
+            selectedIds.add(filler.player.id);
+            added++;
+            if (checkTradeLegality(profileA.team, bToA, aToB)) break;
+        }
+    }
+
+    // teamB가 illegal → B의 outgoing(bToA)에 filler 추가
+    if (!checkTradeLegality(profileB.team, aToB, bToA)) {
+        const fillerCandidates = profileB.tradeableAssets
+            .filter(a => !selectedIds.has(a.player.id))
+            .sort((a, b) => b.player.salary - a.player.salary);
+
+        let added = 0;
+        for (const filler of fillerCandidates) {
+            if (added >= maxFiller || bToA.length >= maxPkgSize) break;
+            bToA.push(filler.player);
+            selectedIds.add(filler.player.id);
+            added++;
+            if (checkTradeLegality(profileB.team, aToB, bToA)) break;
+        }
+    }
+
+    // 최종 양팀 legality 확인
+    if (!checkTradeLegality(profileA.team, bToA, aToB)) return null;
+    if (!checkTradeLegality(profileB.team, aToB, bToA)) return null;
+
+    return { aToB, bToA };
 }
 
 function selectPlayersForNeeds(
@@ -357,85 +459,45 @@ function selectPlayersForNeeds(
 ): Player[] {
     const selected: Player[] = [];
     const usedPriorities = new Set<number>();
+    const usedAssetIds = new Set<string>();
 
+    // 1차: 정확한 포지션 매치
     for (const asset of assets) {
         if (selected.length >= C.DEPTH.MAX_PACKAGE_SIZE) break;
+        if (usedAssetIds.has(asset.player.id)) continue;
 
         const ovr = calculatePlayerOvr(asset.player);
         for (let i = 0; i < priorities.length; i++) {
             if (usedPriorities.has(i)) continue;
             const need = priorities[i];
-            if (asset.player.position.includes(need.position) && ovr >= need.minOvr) {
+            if (matchesPosition(asset.player.position, need.position) === 'exact' && ovr >= need.minOvr) {
                 selected.push(asset.player);
                 usedPriorities.add(i);
+                usedAssetIds.add(asset.player.id);
+                break;
+            }
+        }
+    }
+
+    // 2차: 인접 포지션 fallback
+    for (const asset of assets) {
+        if (selected.length >= C.DEPTH.MAX_PACKAGE_SIZE) break;
+        if (usedAssetIds.has(asset.player.id)) continue;
+
+        const ovr = calculatePlayerOvr(asset.player);
+        for (let i = 0; i < priorities.length; i++) {
+            if (usedPriorities.has(i)) continue;
+            const need = priorities[i];
+            if (matchesPosition(asset.player.position, need.position) === 'adjacent' && ovr >= need.minOvr) {
+                selected.push(asset.player);
+                usedPriorities.add(i);
+                usedAssetIds.add(asset.player.id);
                 break;
             }
         }
     }
 
     return selected;
-}
-
-function buildMatchingPackage(
-    assets: ScoredAsset[],
-    priorities: AcquisitionTarget[],
-    targetValue: number
-): Player[] {
-    const CC = C.CPU_TRADE;
-    const minTarget = targetValue * CC.MIN_VALUE_RATIO;
-    const maxTarget = targetValue * CC.MAX_VALUE_RATIO;
-
-    // 우선: 니즈 매칭 자산으로 구성 시도
-    const needMatched = selectPlayersForNeeds(assets, priorities);
-    const needMatchedValue = calculatePackageTrueValue(needMatched);
-
-    if (needMatchedValue >= minTarget && needMatchedValue <= maxTarget) {
-        return needMatched;
-    }
-
-    // 가치가 부족하면 추가 자산 보충
-    if (needMatchedValue < minTarget) {
-        const usedIds = new Set(needMatched.map(p => p.id));
-        const pkg = [...needMatched];
-
-        for (const asset of assets) {
-            if (usedIds.has(asset.player.id)) continue;
-            if (pkg.length >= C.DEPTH.MAX_PACKAGE_SIZE) break;
-
-            pkg.push(asset.player);
-            usedIds.add(asset.player.id);
-
-            const pkgValue = calculatePackageTrueValue(pkg);
-            if (pkgValue >= minTarget) {
-                if (pkgValue <= maxTarget) return pkg;
-                // 초과 → 이 선수 빼고 다음 시도
-                pkg.pop();
-                usedIds.delete(asset.player.id);
-            }
-        }
-
-        // 보충 후에도 범위 내 도달 시 반환
-        const finalValue = calculatePackageTrueValue(pkg);
-        if (finalValue >= minTarget && finalValue <= maxTarget) return pkg;
-    }
-
-    // 가치가 과하면 더 작은 패키지 시도
-    if (needMatchedValue > maxTarget && needMatched.length > 1) {
-        // 가장 가치 낮은 선수 하나로 시도
-        for (const asset of assets) {
-            const singleValue = getPlayerTradeValue(asset.player);
-            if (singleValue >= minTarget && singleValue <= maxTarget) {
-                // 니즈 매칭 확인
-                const matches = priorities.some(
-                    need => asset.player.position.includes(need.position) &&
-                        calculatePlayerOvr(asset.player) >= need.minOvr
-                );
-                if (matches) return [asset.player];
-            }
-        }
-    }
-
-    return [];
 }
 
 // ──────────────────────────────────────────────
@@ -500,12 +562,9 @@ export function runCPUTradeRound(
     // 확률 계산 & 주사위
     const chance = calculateTradeChance(currentDate);
     const roll = Math.random();
-    console.log(`[CPU Trade] ${currentDate} | chance=${(chance * 100).toFixed(1)}% | roll=${(roll * 100).toFixed(1)}%`);
     if (roll > chance) return null;
 
     const CC = C.CPU_TRADE;
-    const daysLeft = getDaysUntilDeadline(currentDate);
-    // 제한 없이 호환 쌍이 있는 만큼 트레이드 허용
 
     // CPU 팀 프로필 구축 (유저 팀 제외)
     const cpuTeams = teams.filter(t => t.id !== myTeamId);
@@ -525,7 +584,6 @@ export function runCPUTradeRound(
         }
     }
 
-    console.log(`[CPU Trade] ${currentDate} | profiles=${profiles.length} | compatible pairs=${pairs.length}`);
     if (pairs.length === 0) return null;
 
     // 호환성 내림차순 + 약간의 랜덤성 (상위 쌍만 무조건 성사되지 않도록)
@@ -550,14 +608,10 @@ export function runCPUTradeRound(
         if (tradedTeamIds.has(pair.a.team.id) || tradedTeamIds.has(pair.b.team.id)) continue;
 
         const pkg = constructTradePackage(pair.a, pair.b);
-        if (!pkg) {
-            console.log(`[CPU Trade] Package failed: ${pair.a.team.name} ↔ ${pair.b.team.name}`);
-            continue;
-        }
+        if (!pkg) continue;
 
         // 트레이드 실행
         executeRosterSwap(pair.a.team, pair.b.team, pkg.teamAPlayers, pkg.teamBPlayers);
-
         const tx = createTradeTransaction(
             pair.a.team, pair.b.team,
             pkg.teamAPlayers, pkg.teamBPlayers,
@@ -575,11 +629,7 @@ export function runCPUTradeRound(
         }
     }
 
-    if (transactions.length === 0) {
-        console.log(`[CPU Trade] ${currentDate} | All packages failed, no trades executed`);
-        return null;
-    }
-    console.log(`[CPU Trade] ${currentDate} | ✅ ${transactions.length} trade(s) executed!`);
+    if (transactions.length === 0) return null;
 
     return { updatedTeams: teams, transactions };
 }

@@ -13,6 +13,7 @@ export interface LivePlayer extends PlayerBoxScore {
     health: 'Healthy' | 'Injured' | 'Day-to-Day'; 
     injuryType?: string; // [Added] For runtime injury tracking
     returnDate?: string; // [Added] For runtime injury tracking
+    injuredThisGame?: boolean; // 경기 중 신규 부상 여부 (기존 부상과 구분)
     
     // [New] Rotation Stability & Fatigue Tracking
     lastSubInTime: number; // Game clock seconds when they entered (720 -> 0)
