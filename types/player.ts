@@ -71,6 +71,16 @@ export interface SaveTendencies {
     ego: number;                     // -1.0(겸손)~+1.0(자존심) 옵션 순위별 퍼포먼스
 }
 
+// [New] 부상 이력 기록 (부상 발생 시마다 push)
+export interface InjuryHistoryEntry {
+    injuryType: string;
+    severity: 'Minor' | 'Major' | 'Season-Ending';
+    duration: string;
+    date: string;
+    returnDate: string;
+    isTraining: boolean;
+}
+
 // [New] 능력치 변화 이벤트 (성장/퇴화 시 |fractional| >= 1.0 도달마다 기록)
 export interface AttributeChangeEvent {
     date: string;           // 경기 날짜 (예: '2025-12-15')
@@ -91,6 +101,7 @@ export interface SavedPlayerState {
     attrDeltas?: Record<string, number>;         // 시즌 내 정수 변화 합계 (sparse)
     changeLog?: AttributeChangeEvent[];          // 정수 변화 이벤트 로그
     seasonStartAttributes?: Record<string, number>; // 시즌 시작 기준 속성값
+    injuryHistory?: InjuryHistoryEntry[];
 }
 
 export interface Player {
@@ -176,6 +187,7 @@ export interface Player {
     attrDeltas?: Record<string, number>;             // 시즌 내 정수 변화 합계 (sparse, 저장/복원용)
     changeLog?: AttributeChangeEvent[];              // 시즌 내 정수 변화 이벤트 로그
     seasonStartAttributes?: Record<string, number>;  // 시즌 시작 시 속성 스냅샷 (delta 표시용)
+    injuryHistory?: InjuryHistoryEntry[];
 }
 
 export interface RosterUpdate {

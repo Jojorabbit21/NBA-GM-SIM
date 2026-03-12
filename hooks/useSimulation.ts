@@ -418,11 +418,21 @@ export const useSimulation = (
                 const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
                 const trainingInjuries = applyRestDayRecovery(newTeams, injFreq);
 
-                // 훈련 부상 returnDate 변환 + 메시지 전송
+                // 훈련 부상 returnDate 변환 + 히스토리 기록 + 메시지 전송
                 for (const ti of trainingInjuries) {
                     const injured = newTeams.flatMap(t => t.roster).find(p => p.id === ti.playerId);
                     if (injured) {
                         injured.returnDate = computeReturnDate(currentSimDate, ti.duration);
+                        // 부상 히스토리 기록
+                        if (!injured.injuryHistory) injured.injuryHistory = [];
+                        injured.injuryHistory.push({
+                            injuryType: ti.injuryType,
+                            severity: ti.severity,
+                            duration: ti.duration,
+                            date: currentSimDate,
+                            returnDate: injured.returnDate,
+                            isTraining: true,
+                        });
                     }
                     if (ti.teamId === myTeamId && session?.user?.id && !isGuestMode) {
                         await sendMessage(session.user.id, myTeamId, currentSimDate, 'INJURY_REPORT',

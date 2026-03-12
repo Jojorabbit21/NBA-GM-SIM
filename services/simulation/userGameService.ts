@@ -134,6 +134,19 @@ export const applyUserGameResult = async (
                     if (update.injuryType) p.injuryType = update.injuryType;
                     // duration 문자열 → 실제 복귀 날짜로 변환
                     if (update.returnDate) p.returnDate = computeReturnDate(currentSimDate, update.returnDate);
+                    // 부상 히스토리 기록
+                    if (update.health === 'Injured' && update.injuryType && update.returnDate) {
+                        if (!p.injuryHistory) p.injuryHistory = [];
+                        const inj = result.injuries?.find((i: any) => i.playerId === p.id);
+                        p.injuryHistory.push({
+                            injuryType: update.injuryType,
+                            severity: inj?.severity || 'Minor',
+                            duration: update.returnDate,
+                            date: currentSimDate,
+                            returnDate: computeReturnDate(currentSimDate, update.returnDate),
+                            isTraining: false,
+                        });
+                    }
                 }
             });
         });
