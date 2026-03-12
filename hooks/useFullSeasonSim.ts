@@ -93,6 +93,7 @@ export const useFullSeasonSim = (
 
             // 3. DB 저장
             setBatchProgress(prev => prev ? { ...prev, phase: 'saving' } : null);
+            console.log(`[BatchSim] messages=${result.allMessages.length}, userId=${session?.user?.id}, isGuest=${isGuestMode}`);
             if (!isGuestMode && session?.user?.id) {
                 if (result.allGameResultsToSave.length > 0) {
                     await bulkSaveGameResults(result.allGameResultsToSave);
@@ -114,7 +115,7 @@ export const useFullSeasonSim = (
                                 user_id: session.user.id,
                                 team_id: myTeamId,
                                 date: result.finalDate,
-                                type: 'SEASON_REVIEW' as any,
+                                type: 'SEASON_REVIEW',
                                 title: '[시즌 보고서] 2025-26 정규시즌 리뷰',
                                 content,
                             });
@@ -123,7 +124,7 @@ export const useFullSeasonSim = (
                                 user_id: session.user.id,
                                 team_id: myTeamId,
                                 date: result.finalDate,
-                                type: 'OWNER_LETTER' as any,
+                                type: 'OWNER_LETTER',
                                 title: `[서신] ${ownerLetter.title}`,
                                 content: ownerLetter,
                             });
@@ -158,7 +159,7 @@ export const useFullSeasonSim = (
                                     };
                                     result.allMessages.push({
                                         user_id: session.user.id, team_id: myTeamId, date: result.finalDate,
-                                        type: 'HOF_QUALIFICATION' as any,
+                                        type: 'HOF_QUALIFICATION',
                                         title: seriesResult === 'WON' ? '[명예의 전당] 챔피언십 우승' : '[명예의 전당] 파이널 준우승',
                                         content: hofContent,
                                     });
@@ -170,7 +171,9 @@ export const useFullSeasonSim = (
 
                 // 경기 보고서 메시지 bulk insert
                 if (result.allMessages.length > 0) {
-                    await bulkSendMessages(result.allMessages);
+                    console.log(`[BatchSim] Sending ${result.allMessages.length} messages...`);
+                    const msgResult = await bulkSendMessages(result.allMessages);
+                    console.log(`[BatchSim] bulkSendMessages result: ${msgResult}`);
                 }
                 // 플레이오프 상태 저장
                 if (result.finalPlayoffSeries.length > 0) {

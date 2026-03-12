@@ -4,6 +4,7 @@
  */
 
 import { Team, Game, PlayoffSeries, Transaction, GameTactics, DepthChart } from '../../types';
+import { MessageType } from '../../types/message';
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames } from '../simulationService';
@@ -18,7 +19,7 @@ export interface BatchMessagePayload {
     user_id: string;
     team_id: string;
     date: string;
-    type: string;
+    type: MessageType;
     title: string;
     content: any;
 }
