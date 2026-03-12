@@ -513,6 +513,7 @@ function applyGameResultInPlace(
                             isTraining: false,
                         });
                     }
+                }
             });
         });
     }
