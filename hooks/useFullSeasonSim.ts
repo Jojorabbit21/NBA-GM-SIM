@@ -93,7 +93,6 @@ export const useFullSeasonSim = (
 
             // 3. DB 저장
             setBatchProgress(prev => prev ? { ...prev, phase: 'saving' } : null);
-            console.log(`[BatchSim] messages=${result.allMessages.length}, userId=${session?.user?.id}, isGuest=${isGuestMode}`);
             if (!isGuestMode && session?.user?.id) {
                 if (result.allGameResultsToSave.length > 0) {
                     await bulkSaveGameResults(result.allGameResultsToSave);
@@ -171,9 +170,7 @@ export const useFullSeasonSim = (
 
                 // 경기 보고서 메시지 bulk insert
                 if (result.allMessages.length > 0) {
-                    console.log(`[BatchSim] Sending ${result.allMessages.length} messages...`);
-                    const msgResult = await bulkSendMessages(result.allMessages);
-                    console.log(`[BatchSim] bulkSendMessages result: ${msgResult}`);
+                    await bulkSendMessages(result.allMessages);
                 }
                 // 플레이오프 상태 저장
                 if (result.finalPlayoffSeries.length > 0) {

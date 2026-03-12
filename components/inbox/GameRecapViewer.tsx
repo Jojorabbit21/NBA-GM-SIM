@@ -130,6 +130,25 @@ export const GameRecapViewer: React.FC<GameRecapViewerProps> = ({ gameData, team
                     </p>
                 )}
 
+                {/* Playoff Series Info */}
+                {gameData.playoffInfo && (
+                    <div className="flex items-center gap-2 text-xs">
+                        <span className="font-black text-indigo-400 uppercase tracking-wider">
+                            {gameData.playoffInfo.roundName}
+                        </span>
+                        <span className="text-slate-600">|</span>
+                        <span className="font-bold text-slate-400">
+                            {gameData.playoffInfo.lowerSeedName}
+                        </span>
+                        <span className="font-black text-slate-300 tabular-nums">
+                            {gameData.playoffInfo.lowerSeedWins}–{gameData.playoffInfo.higherSeedWins}
+                        </span>
+                        <span className="font-bold text-slate-400">
+                            {gameData.playoffInfo.higherSeedName}
+                        </span>
+                    </div>
+                )}
+
                 {/* Matchup Row — plain text layout */}
                 <div className="flex items-center gap-3 flex-wrap">
                     <TeamLogo teamId={awayTeam?.id || ''} size="sm" />

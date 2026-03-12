@@ -15,9 +15,10 @@ interface InboxViewProps {
   onViewPlayer: (player: Player, teamId?: string, teamName?: string) => void;
   onViewGameResult: (result: any) => void;
   onNavigateToHof: () => void;
+  currentSimDate?: string;
 }
 
-export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof }) => {
+export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, onUpdateUnreadCount, tendencySeed, onViewPlayer, onViewGameResult, onNavigateToHof, currentSimDate }) => {
   const [messages, setMessages] = useState<MessageListItem[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<MessageListItem | null>(null);
   const [selectedContent, setSelectedContent] = useState<any>(null);
@@ -72,6 +73,19 @@ export const InboxView: React.FC<InboxViewProps> = ({ myTeamId, userId, teams, o
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
+
+  // 시뮬레이션 날짜 변경 시 (배치 시뮬 완료 등) 메시지 목록 새로고침
+  const prevSimDateRef = useRef(currentSimDate);
+  useEffect(() => {
+    if (currentSimDate && currentSimDate !== prevSimDateRef.current) {
+      prevSimDateRef.current = currentSimDate;
+      setPage(0);
+      setSelectedMessage(null);
+      setSelectedContent(null);
+      contentCache.current.clear();
+      loadMessages();
+    }
+  }, [currentSimDate, loadMessages]);
 
   const handleMarkAllRead = async () => {
       await markAllMessagesAsRead(userId, myTeamId);
