@@ -45,27 +45,39 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const glowColor = btnTheme.glow;
 
   // Primary button (경기 시작 / 내일로 이동) — glossy glass gradient
+  // 밝은 배경(흰색 등)은 black overlay, 어두운 배경은 white overlay
+  const isLightBg = (() => {
+      const hex = btnTheme.bg.replace('#', '');
+      if (hex.length < 6) return false;
+      const r = parseInt(hex.slice(0, 2), 16);
+      const g = parseInt(hex.slice(2, 4), 16);
+      const b = parseInt(hex.slice(4, 6), 16);
+      return (r * 0.299 + g * 0.587 + b * 0.114) > 160;
+  })();
+
   const primaryBtn = (id: string) => {
       const isPressed = pressedBtn === id;
       const isHovered = hoveredBtn === id;
+      const hl = isLightBg ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.35)';
+      const hlMid = isLightBg ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.12)';
+      const shBot = isLightBg ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.1)';
       return {
           style: {
               backgroundColor: btnTheme.bg,
               backgroundImage: isPressed
-                  ? `linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
-                  : `linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 45%, transparent 50%, rgba(0,0,0,0.1) 100%)`,
+                  ? `linear-gradient(180deg, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
+                  : `linear-gradient(180deg, ${hl} 0%, ${hlMid} 45%, transparent 50%, ${shBot} 100%)`,
               color: btnTheme.text,
-              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
               boxShadow: isPressed
                   ? `inset 0 1px 2px rgba(0,0,0,0.2), 0 1px 4px ${glowColor}20`
                   : isHovered
-                      ? `inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 24px ${glowColor}60, 0 0 48px ${glowColor}20`
+                      ? `inset 0 1px 0 rgba(255,255,255,0.3), 0 4px 24px ${glowColor}60, 0 0 48px ${glowColor}20`
                       : undefined, // breathing animation handles idle via CSS var
               '--glow-color': `${glowColor}50`,
               '--glow-dim': `${glowColor}18`,
               transform: isPressed ? 'scale(0.97)' : 'scale(1)',
               transition: 'all 0.15s ease',
-              filter: isHovered && !isPressed ? 'brightness(1.15)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
+              filter: isHovered && !isPressed ? 'brightness(1.05)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
           } as React.CSSProperties,
           onMouseDown: () => !isSimulating && setPressedBtn(id),
           onMouseUp: () => setPressedBtn(null),
@@ -192,7 +204,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             onClick={onSimClick}
                             disabled={isSimulating}
                             {...primaryBtn('sim')}
-                            className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
+                            className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
                         >
                             {isSimulating ? (
                                 <><Loader2 size={18} className="animate-spin" /> 처리 중</>
@@ -207,9 +219,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                             onClick={onAutoSimClick}
                             disabled={isSimulating}
                             {...primaryBtn('auto')}
-                            className="flex-[4] flex items-center justify-center gap-2 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                            className="flex-[4] flex items-center justify-center gap-2 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                         >
-                            <FastForward size={14} />
+                            <FastForward size={14} fill="currentColor" />
                             자동 진행
                         </button>
                     </>
@@ -219,7 +231,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         onClick={onSimClick}
                         disabled={isSimulating}
                         {...primaryBtn('sim')}
-                        className="flex-1 flex items-center justify-center gap-2.5 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                        className="flex-1 flex items-center justify-center gap-2.5 px-6 font-semibold text-lg tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                     >
                         {isSimulating ? (
                             <><Loader2 size={18} className="animate-spin" /> 처리 중</>
