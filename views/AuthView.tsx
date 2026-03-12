@@ -1,8 +1,9 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { LogIn, UserPlus, Loader2, AlertCircle } from 'lucide-react';
+import { LogIn, UserPlus, Loader2, AlertCircle, ArrowLeft, ShieldCheck } from 'lucide-react';
 import { AuthInput } from '../components/AuthInput';
+import { OtpInput } from '../components/OtpInput';
 import { APP_NAME, APP_YEAR } from '../utils/constants';
 
 const EMAIL_REGEX = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -27,7 +28,11 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
+  const [mode, setMode] = useState<'login' | 'signup' | 'verify'>('login');
+  const [otp, setOtp] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [otpAttempts, setOtpAttempts] = useState(0);
+  const [resendCooldown, setResendCooldown] = useState(0);
   const [message, setMessage] = useState<{ type: 'error' | 'success', text: string | React.ReactNode } | null>(null);
 
   const isEmailValid = useMemo(() => email === '' || EMAIL_REGEX.test(email), [email]);
@@ -41,6 +46,27 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
       confirmPassword !== '' && password === confirmPassword
     );
   }, [email, password, confirmPassword]);
+
+  const MAX_OTP_ATTEMPTS = 5;
+  const RESEND_COOLDOWN_SEC = 60;
+  const isOtpLocked = otpAttempts >= MAX_OTP_ATTEMPTS;
+
+  // 재발송 쿨다운 타이머
+  const cooldownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (resendCooldown > 0) {
+      cooldownRef.current = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            if (cooldownRef.current) clearInterval(cooldownRef.current);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+      return () => { if (cooldownRef.current) clearInterval(cooldownRef.current); };
+    }
+  }, [resendCooldown > 0]);
 
   const ensureProfileExists = async (userId: string, userEmail?: string) => {
     const { data } = await supabase.from('profiles').select('id').eq('id', userId).maybeSingle();
@@ -70,10 +96,12 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
         const { data, error } = await (supabase.auth as any).signUp({ email, password });
         if (error) throw error;
         if (data.user) await ensureProfileExists(data.user.id, data.user.email);
-        setMessage({ type: 'success', text: '회원가입 성공! 로그인해주세요.' });
-        setMode('login');
-        setPassword('');
-        setConfirmPassword('');
+        setSignupEmail(email);
+        setOtp('');
+        setOtpAttempts(0);
+        setResendCooldown(RESEND_COOLDOWN_SEC);
+        setMessage({ type: 'success', text: '인증번호가 이메일로 발송되었습니다.' });
+        setMode('verify');
       } else {
         const { data, error } = await (supabase.auth as any).signInWithPassword({ email, password });
         if (error) throw error;
@@ -88,6 +116,55 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
     }
   };
 
+  const handleResendOtp = async () => {
+    if (resendCooldown > 0) return;
+    setLoading(true);
+    setMessage(null);
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: signupEmail });
+      if (error) throw error;
+      setOtp('');
+      setOtpAttempts(0);
+      setResendCooldown(RESEND_COOLDOWN_SEC);
+      setMessage({ type: 'success', text: '인증번호가 재발송되었습니다.' });
+    } catch (error: any) {
+      setMessage({ type: 'error', text: error.message || '재발송에 실패했습니다.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // OTP 8자리 입력 완료 시 자동 인증
+  const handleOtpChange = (val: string) => {
+    if (isOtpLocked) return;
+    setOtp(val);
+    if (val.length === 8) {
+      setTimeout(() => {
+        setLoading(true);
+        setMessage(null);
+        (supabase.auth as any).verifyOtp({
+          email: signupEmail,
+          token: val,
+          type: 'signup',
+        }).then(({ error }: any) => {
+          if (error) {
+            const nextAttempts = otpAttempts + 1;
+            setOtpAttempts(nextAttempts);
+            if (nextAttempts >= MAX_OTP_ATTEMPTS) {
+              setMessage({ type: 'error', text: `인증 시도 ${MAX_OTP_ATTEMPTS}회 초과. 인증번호를 재발송해주세요.` });
+            } else {
+              let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
+              if (errorMsg.includes('Token has expired')) errorMsg = '인증번호가 만료되었습니다. 다시 시도해주세요.';
+              if (errorMsg.includes('invalid')) errorMsg = `인증번호가 올바르지 않습니다. (${nextAttempts}/${MAX_OTP_ATTEMPTS})`;
+              setMessage({ type: 'error', text: errorMsg });
+            }
+            setOtp('');
+          }
+        }).finally(() => setLoading(false));
+      }, 100);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-4 relative overflow-hidden font-sans text-slate-200">
       <div className="w-full max-w-md bg-slate-900/80 border border-slate-800 backdrop-blur-md rounded-3xl p-8 shadow-2xl relative z-10">
@@ -97,31 +174,77 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
           </h1>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-0">
-          <AuthInput label="이메일" type="email" placeholder="이메일 주소" value={email} onChange={setEmail} isValid={isEmailValid} errorMsg="올바른 이메일 형식이 아닙니다." showError={email !== ''} />
-          <AuthInput label="비밀번호" type="password" placeholder="비밀번호" value={password} onChange={setPassword} isValid={mode === 'login' ? true : isPasswordValid} errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수" showError={mode === 'signup' && password !== ''} />
-          {mode === 'signup' && (
-            <AuthInput label="비밀번호 확인" type="password" placeholder="비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} isValid={isConfirmValid} errorMsg="비밀번호가 일치하지 않습니다." showError={confirmPassword !== ''} />
-          )}
+        {mode === 'verify' ? (
+          <div className="space-y-6">
+            <div className="text-center space-y-2">
+              <ShieldCheck size={32} className="mx-auto text-indigo-400" />
+              <p className="text-sm text-slate-400 pretendard font-medium">
+                <span className="text-white">{signupEmail}</span> 으로<br />
+                인증번호 8자리가 발송되었습니다.
+              </p>
+            </div>
 
-          {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
+            {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
 
-          <div className="space-y-3 pt-2">
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
-            >
-              {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span className="pretendard font-medium">로그인</span></> : <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>)}
-            </button>
+            <OtpInput length={8} value={otp} onChange={handleOtpChange} disabled={loading || isOtpLocked} />
+
+            {loading && (
+              <div className="flex justify-center">
+                <Loader2 className="animate-spin text-indigo-400" size={24} />
+              </div>
+            )}
+
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={loading || resendCooldown > 0}
+                className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all disabled:opacity-50"
+              >
+                {resendCooldown > 0 ? `재발송 대기 (${resendCooldown}초)` : '인증번호 재발송'}
+              </button>
+            </div>
+
+            <div className="border-t border-slate-800 pt-4">
+              <button
+                type="button"
+                onClick={() => { setMode('login'); setMessage(null); setOtp(''); setPassword(''); setConfirmPassword(''); }}
+                className="w-full flex items-center justify-center gap-2 text-slate-500 hover:text-slate-300 pretendard font-medium text-sm transition-all"
+              >
+                <ArrowLeft size={14} />
+                로그인으로 돌아가기
+              </button>
+            </div>
           </div>
-        </form>
+        ) : (
+          <>
+            <form onSubmit={handleAuth} className="space-y-0">
+              <AuthInput label="이메일" type="email" placeholder="이메일 주소" value={email} onChange={setEmail} isValid={isEmailValid} errorMsg="올바른 이메일 형식이 아닙니다." showError={email !== ''} />
+              <AuthInput label="비밀번호" type="password" placeholder="비밀번호" value={password} onChange={setPassword} isValid={mode === 'login' ? true : isPasswordValid} errorMsg="6~12자, 대문자, 숫자, 특수문자 포함 필수" showError={mode === 'signup' && password !== ''} />
+              {mode === 'signup' && (
+                <AuthInput label="비밀번호 확인" type="password" placeholder="비밀번호 확인" value={confirmPassword} onChange={setConfirmPassword} isValid={isConfirmValid} errorMsg="비밀번호가 일치하지 않습니다." showError={confirmPassword !== ''} />
+              )}
 
-        <div className="mt-8 text-center border-t border-slate-800 pt-6">
-          <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
-            {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
-          </button>
-        </div>
+              {message && <AuthAlert type={message.type}>{message.text}</AuthAlert>}
+
+              <div className="space-y-3 pt-2">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 text-white font-black py-4 rounded-xl uppercase tracking-widest transition-all shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-3 active:scale-[0.98]"
+                >
+                  {loading ? <Loader2 className="animate-spin" /> : (mode === 'login' ? <><LogIn size={20} /> <span className="pretendard font-medium">로그인</span></> : <><UserPlus size={20} /> <span className="pretendard font-medium">회원가입</span></>)}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-8 text-center border-t border-slate-800 pt-6">
+              <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setMessage(null); }} className="text-slate-500 hover:text-indigo-400 pretendard font-medium text-sm transition-all">
+                {mode === 'login' ? '계정이 없으신가요? 회원가입' : '이미 계정이 있으신가요? 로그인'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
