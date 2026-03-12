@@ -167,27 +167,30 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
     const rosterIdSet = new Set(sortedRoster.map(p => p.id));
     startingIds = startingIds.filter(id => rosterIdSet.has(id));
 
+    // [Fix] 부상 선수는 선발에서 제외
+    const injuredIds = new Set(sortedRoster.filter(p => p.health === 'Injured').map(p => p.id));
+    startingIds = startingIds.filter(id => !injuredIds.has(id));
+
     // [Step 2] 유효성 검사 및 보정 (정확히 5명이 아니면 뎁스차트/OVR순으로 채움)
     // 로테이션 차트가 비어있거나, 5명이 안되는 경우를 대비한 안전 장치
     if (startingIds.length !== 5) {
         const depthChartStarters = Object.values(safeTactics.starters).filter(id => id !== '');
         
-        // 부족하면 뎁스 차트 주전에서 충원
+        // 부족하면 뎁스 차트 주전에서 충원 (부상 선수 제외)
         if (startingIds.length < 5) {
             for (const id of depthChartStarters) {
                 if (startingIds.length >= 5) break;
-                // 이미 로테이션 차트로 뽑힌 선수가 아니면 추가
-                if (!startingIds.includes(id)) {
+                if (!startingIds.includes(id) && !injuredIds.has(id)) {
                     startingIds.push(id);
                 }
             }
         }
 
-        // 그래도 부족하면(AI팀 등) OVR 높은 순으로 충원
+        // 그래도 부족하면(AI팀 등) OVR 높은 순으로 충원 (부상 선수 제외)
         if (startingIds.length < 5) {
             for (const p of sortedRoster) {
                 if (startingIds.length >= 5) break;
-                if (!startingIds.includes(p.id)) {
+                if (!startingIds.includes(p.id) && !injuredIds.has(p.id)) {
                     startingIds.push(p.id);
                 }
             }
@@ -199,6 +202,59 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
         }
     }
     
+    // 3.5. 부상 선수의 로테이션 시간을 뎁스차트 기반으로 백업에게 승계
+    if (safeTactics.rotationMap && effectiveDepthChart && injuredIds.size > 0) {
+        const positions: (keyof DepthChart)[] = ['PG', 'SG', 'SF', 'PF', 'C'];
+        for (const injuredId of injuredIds) {
+            const injuredMap = safeTactics.rotationMap[injuredId];
+            if (!injuredMap || !injuredMap.some(Boolean)) continue;
+
+            // 해당 선수의 뎁스차트 포지션 및 순번 찾기
+            let rolePos: keyof DepthChart | null = null;
+            let depthIndex = -1;
+            for (const pos of positions) {
+                const chart = effectiveDepthChart[pos];
+                if (!chart) continue;
+                const idx = chart.indexOf(injuredId);
+                if (idx !== -1) { rolePos = pos; depthIndex = idx; break; }
+            }
+
+            // 승계 대상 찾기: 같은 포지션의 다음 순번 → 없으면 OVR 높은 건강한 선수
+            let successorId: string | null = null;
+            if (rolePos) {
+                const chart = effectiveDepthChart[rolePos];
+                for (let i = depthIndex + 1; i < chart.length; i++) {
+                    if (chart[i] && !injuredIds.has(chart[i])) {
+                        successorId = chart[i];
+                        break;
+                    }
+                }
+            }
+            if (!successorId) {
+                // 뎁스차트에 대체자가 없으면 OVR순 건강한 선수
+                const fallback = sortedRoster.find(p =>
+                    p.health !== 'Injured' && p.id !== injuredId &&
+                    !safeTactics.rotationMap![p.id]?.some(Boolean)
+                );
+                if (fallback) successorId = fallback.id;
+            }
+
+            if (successorId) {
+                if (!safeTactics.rotationMap[successorId]) {
+                    safeTactics.rotationMap[successorId] = Array(48).fill(false);
+                }
+                // 부상 선수의 출전 시간을 승계자에게 이전
+                for (let i = 0; i < 48; i++) {
+                    if (injuredMap[i]) {
+                        safeTactics.rotationMap[successorId][i] = true;
+                    }
+                }
+            }
+            // 부상 선수의 맵 비움
+            for (let i = 0; i < 48; i++) injuredMap[i] = false;
+        }
+    }
+
     // 4. 결정된 ID를 기반으로 코트/벤치 배정
     liveRoster.forEach(p => {
         if (startingIds.includes(p.playerId)) {
