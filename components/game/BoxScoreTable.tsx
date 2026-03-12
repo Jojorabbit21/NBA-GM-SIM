@@ -25,7 +25,7 @@ interface BoxScoreTableProps {
     leaders: GameStatLeaders;
 }
 
-type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
+type SortKey = 'default' | 'mp' | 'pts' | 'reb' | 'ast' | 'stl' | 'blk' | 'tov' | 'pf' | 'tf' | 'ff' | 'fgm' | 'fg%' | 'p3m' | '3p%' | 'ftm' | 'ft%' | 'pm';
 
 export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst, mvpId, leaders }) => {
     // Default sort state preserves the "Starters First, then Minutes" logic
@@ -48,6 +48,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             case 'blk': return p.blk;
             case 'tov': return p.tov;
             case 'pf': return p.pf;
+            case 'tf': return p.techFouls || 0;
+            case 'ff': return p.flagrantFouls || 0;
             case 'fgm': return p.fgm;
             case 'fg%': return p.fga > 0 ? p.fgm / p.fga : 0;
             case 'p3m': return p.p3m;
@@ -89,6 +91,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             blk: acc.blk + p.blk,
             tov: acc.tov + p.tov,
             pf: acc.pf + (p.pf || 0),
+            tf: acc.tf + (p.techFouls || 0),
+            ff: acc.ff + (p.flagrantFouls || 0),
             fgm: acc.fgm + p.fgm,
             fga: acc.fga + p.fga,
             p3m: acc.p3m + p.p3m,
@@ -98,7 +102,7 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
             offReb: acc.offReb + (p.offReb || 0),
             defReb: acc.defReb + (p.defReb || 0),
         }), {
-            mp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0,
+            mp: 0, pts: 0, reb: 0, ast: 0, stl: 0, blk: 0, tov: 0, pf: 0, tf: 0, ff: 0,
             fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0, offReb: 0, defReb: 0
         });
     }, [box]);
@@ -156,7 +160,9 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                     <SortableHeader label="BLK" sKey="blk" />
                     <SortableHeader label="TOV" sKey="tov" />
                     <SortableHeader label="PF" sKey="pf" />
-                    
+                    <SortableHeader label="TF" sKey="tf" />
+                    <SortableHeader label="FF" sKey="ff" />
+
                     <SortableHeader label="FG" sKey="fgm" width="16" />
                     <SortableHeader label="FG%" sKey="fg%" width="14" />
                     <SortableHeader label="3P" sKey="p3m" width="16" />
@@ -237,6 +243,8 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                                 <TableCell align="center" className={sc}>{p.blk}</TableCell>
                                 <TableCell align="center" className={sc}>{p.tov}</TableCell>
                                 <TableCell align="center" className={sc}>{p.pf}</TableCell>
+                                <TableCell align="center" className={sc}>{p.techFouls || 0}</TableCell>
+                                <TableCell align="center" className={sc}>{p.flagrantFouls || 0}</TableCell>
                                 <TableCell align="center" className={sc}>{p.fgm}/{p.fga}</TableCell>
                                 <TableCell align="center" className={sc}>{formatPct(p.fgm, p.fga)}</TableCell>
                                 <TableCell align="center" className={sc}>{p.p3m}/{p.p3a}</TableCell>
@@ -266,7 +274,9 @@ export const BoxScoreTable: React.FC<BoxScoreTableProps> = ({ team, box, isFirst
                         <td className={totalCellClass}>{totals.blk}</td>
                         <td className={totalCellClass}>{totals.tov}</td>
                         <td className={totalCellClass}>{totals.pf}</td>
-                        
+                        <td className={totalCellClass}>{totals.tf}</td>
+                        <td className={totalCellClass}>{totals.ff}</td>
+
                         <td className={totalCellClass}>{totals.fgm}/{totals.fga}</td>
                         <td className={totalCellClass}>{formatPct(totals.fgm, totals.fga)}</td>
                         
