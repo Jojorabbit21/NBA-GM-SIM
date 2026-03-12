@@ -44,24 +44,28 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const btnTheme = getButtonTheme(team.id, teamColors);
   const glowColor = btnTheme.glow;
 
-  // Primary button (경기 시작 / 내일로 이동)
+  // Primary button (경기 시작 / 내일로 이동) — glossy glass gradient
   const primaryBtn = (id: string) => {
       const isPressed = pressedBtn === id;
       const isHovered = hoveredBtn === id;
       return {
           style: {
               backgroundColor: btnTheme.bg,
+              backgroundImage: isPressed
+                  ? `linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 40%, transparent 50%, rgba(0,0,0,0.15) 100%)`
+                  : `linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.12) 45%, transparent 50%, rgba(0,0,0,0.1) 100%)`,
               color: btnTheme.text,
+              textShadow: '0 1px 2px rgba(0,0,0,0.3)',
               boxShadow: isPressed
-                  ? `0 2px 8px ${glowColor}30`
+                  ? `inset 0 1px 2px rgba(0,0,0,0.2), 0 1px 4px ${glowColor}20`
                   : isHovered
-                      ? `0 4px 24px ${glowColor}60, 0 0 48px ${glowColor}20`
+                      ? `inset 0 1px 0 rgba(255,255,255,0.2), 0 4px 24px ${glowColor}60, 0 0 48px ${glowColor}20`
                       : undefined, // breathing animation handles idle via CSS var
               '--glow-color': `${glowColor}50`,
               '--glow-dim': `${glowColor}18`,
               transform: isPressed ? 'scale(0.97)' : 'scale(1)',
               transition: 'all 0.15s ease',
-              filter: isHovered && !isPressed ? 'brightness(1.2)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
+              filter: isHovered && !isPressed ? 'brightness(1.15)' : isPressed ? 'brightness(0.9)' : 'brightness(1)',
           } as React.CSSProperties,
           onMouseDown: () => !isSimulating && setPressedBtn(id),
           onMouseUp: () => setPressedBtn(null),

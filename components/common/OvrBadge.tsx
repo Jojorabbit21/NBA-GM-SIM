@@ -26,7 +26,7 @@ export const OvrBadge: React.FC<OvrBadgeProps> = ({ value, size = 'md', classNam
     else if (value >= 82)  colorStyles = 'bg-gradient-to-br from-red-400 via-red-600 to-red-800 text-white shadow-red-500/30 border border-red-400/40';
     else if (value >= 79)  colorStyles = 'bg-gradient-to-br from-orange-400 via-orange-600 to-orange-800 text-white shadow-orange-600/30 border border-orange-400/30';
     else if (value >= 76)  colorStyles = 'bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-900 text-white shadow-amber-700/20 border border-amber-400/30';
-    else if (value >= 73)  colorStyles = 'bg-gradient-to-br from-stone-400 via-stone-600 to-zinc-700 text-stone-100 shadow-stone-700/20 border border-stone-400/30';
+    else if (value >= 73)  colorStyles = 'bg-gradient-to-br from-amber-500 via-amber-700 to-amber-900 text-white shadow-amber-800/20 border border-amber-500/30';
     else                   colorStyles = 'bg-gradient-to-br from-stone-500 via-stone-600 to-stone-700 text-white shadow-stone-700/20 border border-stone-400/30';
 
     return (
