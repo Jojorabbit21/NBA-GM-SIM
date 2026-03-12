@@ -98,11 +98,12 @@ export const SIM_CONFIG = {
         TECH_TEMPERAMENT_POWER: 2.0,     // 커브 지수: temperament 높을수록 급격히 증가
 
         // 플래그런트 파울 (독립 이벤트, foulProneness 주 영향 + temperament 보조)
-        FLAGRANT_BASE: 0.003,
+        // 목표: 팀당 시즌 ~4-5개 (8200포제션 기준)
+        FLAGRANT_BASE: 0.0004,           // 포제션당 0.04% (중립 팀 ~5개/시즌)
         FLAGRANT_FOULPRONE_WEIGHT: 0.7,  // foulProneness 기여 비중
         FLAGRANT_TEMPER_WEIGHT: 0.3,     // temperament 기여 비중
         FLAGRANT_CURVE_POWER: 2.5,       // 커브 지수: 높을수록 고값 선수에 집중
-        FLAGRANT_MAX_RATE: 0.012,        // 실링 1.2%
+        FLAGRANT_MAX_RATE: 0.0015,       // 실링 0.15% (더티 팀 ~12개/시즌)
         FLAGRANT_2_CHANCE: 0.10,
 
         // 샷클락 바이올레이션 (수비 전술 + 공격 볼무브 트레이드-오프)
