@@ -17,7 +17,7 @@ export const applyBoxToRoster = (team: Team, box: PlayerBoxScore[], isPlayoff = 
                 ? (player.playoffStats ??= INITIAL_STATS())
                 : (player.stats ??= INITIAL_STATS());
 
-            target.g           += 1;
+            target.g           += (statLine.g || 0);
             target.gs          += (statLine.gs       || 0);
             target.mp          += (statLine.mp       || 0);
             target.pts         += (statLine.pts      || 0);
