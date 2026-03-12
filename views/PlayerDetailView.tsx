@@ -600,41 +600,12 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                         {/* Row 1, Col 1: 샷 차트 헤더 */}
                         <div className="px-6 py-3 bg-slate-700 flex items-center justify-between border-r border-slate-800">
                             <span className="text-sm font-black text-slate-300 uppercase tracking-widest">샷 차트</span>
-                            <div className="flex items-center gap-3">
-                                <div className="flex rounded-lg overflow-hidden border border-slate-600">
-                                    <button
-                                        onClick={() => setShotChartMode('efficiency')}
-                                        className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'efficiency' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
-                                    >
-                                        성공률
-                                    </button>
-                                    <button
-                                        onClick={() => setShotChartMode('volume')}
-                                        className={`px-2.5 py-1 text-[10px] font-bold transition-colors ${shotChartMode === 'volume' ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-400'}`}
-                                    >
-                                        시도수
-                                    </button>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[9px] text-slate-500">
-                                    <span>LOW</span>
-                                    <div className="flex gap-0.5">
-                                        {shotChartMode === 'efficiency' ? (
-                                            <>
-                                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/10" />
-                                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/25" />
-                                                <div className="w-3 h-2.5 rounded-sm bg-emerald-500/50" />
-                                            </>
-                                        ) : (
-                                            <>
-                                                <div className="w-3 h-2.5 rounded-sm bg-indigo-500/10" />
-                                                <div className="w-3 h-2.5 rounded-sm bg-indigo-500/25" />
-                                                <div className="w-3 h-2.5 rounded-sm bg-indigo-500/50" />
-                                            </>
-                                        )}
-                                    </div>
-                                    <span>HIGH</span>
-                                </div>
-                            </div>
+                            <button
+                                onClick={() => setShotChartMode(shotChartMode === 'efficiency' ? 'volume' : 'efficiency')}
+                                className="px-2.5 py-1 text-[10px] font-bold rounded-lg border border-slate-600 bg-slate-600 text-white transition-colors hover:bg-slate-500"
+                            >
+                                {shotChartMode === 'efficiency' ? '성공률' : '시도수'}
+                            </button>
                         </div>
 
                         {/* Row 1, Col 2: 최근 경기 헤더 */}
@@ -761,20 +732,15 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     {/* ── SECTION 4: 부상 이력 ── */}
                     <div className="border-t-2 border-slate-700">
-                        <div className="px-6 py-3 bg-slate-700 flex items-center gap-3">
+                        <div className="px-6 py-3 bg-slate-700">
                             <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
-                            {(player.injuryHistory?.length ?? 0) > 0 && (
-                                <span className="text-[10px] font-bold text-slate-300 bg-slate-600 px-2 py-0.5 rounded-full">
-                                    {player.injuryHistory!.length}건
-                                </span>
-                            )}
                         </div>
+                        <div className="overflow-x-auto custom-scrollbar min-h-[440px]">
                         {!player.injuryHistory || player.injuryHistory.length === 0 ? (
-                            <div className="flex items-center justify-center py-8">
+                            <div className="flex items-center justify-center h-[400px]">
                                 <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
                             </div>
                         ) : (
-                            <div className="overflow-x-auto custom-scrollbar">
                                 <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent [&_table]:table-fixed" fullHeight={false}>
                                     <TableHead>
                                         {['날짜', '부상 유형', '기간', '경위'].map((h, i) => (
@@ -799,16 +765,16 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 return (
                                                     <TableRow key={idx} className="h-10">
                                                         <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-slate-300">{dateStr}</span>
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{dateStr}</span>
                                                         </TableCell>
                                                         <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className={`font-mono font-medium tabular-nums ${severityColor}`}>{entry.injuryType}</span>
+                                                            <span className={`font-mono font-medium tabular-nums text-xs ${severityColor}`}>{entry.injuryType}</span>
                                                         </TableCell>
                                                         <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                            <span className="font-mono font-medium tabular-nums text-slate-300">{entry.duration}</span>
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{entry.duration}</span>
                                                         </TableCell>
                                                         <TableCell align="center">
-                                                            <span className={`font-mono font-medium tabular-nums ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
+                                                            <span className={`font-mono font-medium tabular-nums text-xs ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
                                                                 {entry.isTraining ? '훈련' : '경기'}
                                                             </span>
                                                         </TableCell>
@@ -817,8 +783,8 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             })}
                                     </TableBody>
                                 </Table>
-                            </div>
                         )}
+                        </div>
                     </div>
 
                 </div>
