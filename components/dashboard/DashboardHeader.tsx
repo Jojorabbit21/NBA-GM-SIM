@@ -115,9 +115,9 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 </div>
             </div>
 
-            {/* Matchup */}
+            {/* Matchup — absolute center */}
             {nextGame ? (
-            <div className="flex items-center gap-8 shrink-0">
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex items-center gap-8 z-20">
                 {/* Away Team */}
                 <div className="flex items-center gap-3">
                     {awayTeam ? (
@@ -134,7 +134,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     )}
                 </div>
 
-                {/* Center: Match Info (Replaced VS with Date/Series) */}
+                {/* Center: Match Info */}
                 <div className="flex flex-col items-center justify-center px-4 border-x border-white/5 min-w-[160px]">
                     {currentSeries ? (
                         <div className="flex flex-col items-center">
@@ -172,10 +172,8 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 </div>
             </div>
             ) : (
-            <div className="flex items-center gap-4 shrink-0">
-                <div className="flex flex-col items-center justify-center px-6 min-w-[160px]">
-                    <span className="text-sm font-bold" style={{ color: theme.text, opacity: 0.5 }}>다음 일정 없음</span>
-                </div>
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20">
+                <span className="text-sm font-bold" style={{ color: theme.text, opacity: 0.5 }}>다음 일정 없음</span>
             </div>
             )}
 
@@ -185,12 +183,12 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                  style={{ borderLeft: '1px solid rgba(255,255,255,0.06)' }}>
                 {isGameToday && onAutoSimClick ? (
                     <>
-                        {/* 경기 시작 — 70% */}
+                        {/* 경기 시작 — 60% */}
                         <button
                             onClick={onSimClick}
                             disabled={isSimulating}
                             {...primaryBtn('sim')}
-                            className={`flex-[7] flex items-center justify-center gap-2.5 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
+                            className={`flex-[6] flex items-center justify-center gap-2.5 px-6 font-black text-sm uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none ${!isSimulating ? 'animate-btn-breathe' : ''}`}
                         >
                             {isSimulating ? (
                                 <><Loader2 size={18} className="animate-spin" /> 처리 중</>
@@ -200,14 +198,14 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                         </button>
                         {/* 구분선 */}
                         <div style={{ height: '1px', background: 'rgba(255,255,255,0.1)' }} />
-                        {/* 자동 진행 — 30% */}
+                        {/* 자동 진행 — 40% */}
                         <button
                             onClick={onAutoSimClick}
                             disabled={isSimulating}
-                            {...secondaryBtn('auto')}
-                            className="flex-[3] flex items-center justify-center gap-2 px-6 font-bold text-xs uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
+                            {...primaryBtn('auto')}
+                            className="flex-[4] flex items-center justify-center gap-2 px-6 font-black text-xs uppercase tracking-wider disabled:opacity-40 disabled:cursor-not-allowed select-none"
                         >
-                            <FastForward size={13} />
+                            <FastForward size={14} />
                             자동 진행
                         </button>
                     </>
