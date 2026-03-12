@@ -231,10 +231,18 @@ export function checkAndApplyRotation(state: GameState, teamState: TeamState, cu
 
         // 2단계(비상): 인원이 부족하면 탈진한 선수라도 포함 (기권패 방지)
         if (validSelectedIds.size + allAvailable.length < 5) {
-            const tiredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p => 
+            const tiredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p =>
                 p.health === 'Healthy' && p.pf < 6 && p.isShutdown && !validSelectedIds.has(p.playerId)
             );
             allAvailable = [...allAvailable, ...tiredPlayers];
+        }
+
+        // 3단계(최후): 건강한 선수가 5명이 안 될 때 부상 선수라도 포함
+        if (validSelectedIds.size + allAvailable.length < 5) {
+            const injuredPlayers = [...teamState.onCourt, ...teamState.bench].filter(p =>
+                p.health === 'Injured' && p.pf < 6 && !validSelectedIds.has(p.playerId)
+            );
+            allAvailable.push(...injuredPlayers);
         }
 
         // 안정성 정렬: 코트 위 선수 우선 > OVR > 체력
@@ -326,6 +334,10 @@ export function forceSubstitution(state: GameState, team: TeamState, outPlayer: 
     // 비상시: 셧다운된 선수라도 데려옴
     if (available.length === 0) {
         available = team.bench.filter(p => p.health === 'Healthy' && p.pf < 6);
+    }
+    // 3차 비상: 건강한 선수가 없으면 부상 선수라도 투입
+    if (available.length === 0) {
+        available = team.bench.filter(p => p.pf < 6);
     }
     
     let inPlayer: LivePlayer | undefined;

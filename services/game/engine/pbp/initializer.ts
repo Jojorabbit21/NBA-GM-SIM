@@ -196,6 +196,16 @@ export function initTeamState(team: Team, tactics: GameTactics | undefined, dept
             }
         }
 
+        // [EMERGENCY] 건강한 선수 5명 미만 시 부상 선수라도 기용 (기권패 방지)
+        if (startingIds.length < 5) {
+            for (const p of sortedRoster) {
+                if (startingIds.length >= 5) break;
+                if (!startingIds.includes(p.id)) {
+                    startingIds.push(p.id);
+                }
+            }
+        }
+
         // 5명 초과면(실수로 6명 체크 등) 앞에서부터 5명만 자름
         if (startingIds.length > 5) {
             startingIds = startingIds.slice(0, 5);
