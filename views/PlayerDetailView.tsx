@@ -317,7 +317,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                 )}
                 {totalRows > 0 && (
                     <div style={{ height: totalHeight, position: 'relative' }}>
-                        <table className="w-full text-left border-separate border-spacing-0">
+                        <table className="w-full text-left border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
                             <thead className="bg-slate-900 sticky top-0 z-40 border-b border-slate-800 shadow-sm">
                                 <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
                                     {GAME_LOG_COLS.map((c, i) => (
