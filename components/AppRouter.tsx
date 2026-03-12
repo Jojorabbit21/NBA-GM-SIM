@@ -324,6 +324,7 @@ const AppRouter: React.FC<AppRouterProps> = ({
                     teams={gameData.teams}
                     onUpdateUnreadCount={refreshUnreadCount}
                     tendencySeed={gameData.tendencySeed || undefined}
+                    currentSimDate={gameData.currentSimDate}
                     onViewPlayer={handleViewPlayer}
                     onViewGameResult={(result) => {
                         previousViewRef.current = 'Inbox';

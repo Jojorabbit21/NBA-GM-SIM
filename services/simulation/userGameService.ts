@@ -9,6 +9,7 @@ import { savePlayoffGameResult } from '../playoffService';
 import { generateGameRecapNews } from '../geminiService';
 import { sendMessage } from '../messageService';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
+import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 
 export const runUserSimulation = (
     userGame: Game,
@@ -156,6 +157,29 @@ export const applyUserGameResult = async (
             userTactics, myTeamId
         });
 
+        // 플레이오프 시리즈 정보 조회
+        let playoffInfo: any = undefined;
+        if (userGame.isPlayoff && userGame.seriesId) {
+            const series = playoffSeries.find(s => s.id === userGame.seriesId);
+            if (series) {
+                const higherTeam = teams.find(t => t.id === series.higherSeedId);
+                const lowerTeam = teams.find(t => t.id === series.lowerSeedId);
+                const confPrefix = series.round < 4 && series.conference !== 'BPL'
+                    ? (CONF_NAMES[series.conference] || series.conference) + ' '
+                    : '';
+                playoffInfo = {
+                    conference: CONF_NAMES[series.conference] || series.conference,
+                    roundName: confPrefix + (ROUND_NAMES[series.round] || `${series.round}라운드`),
+                    higherSeedId: series.higherSeedId,
+                    lowerSeedId: series.lowerSeedId,
+                    higherSeedName: higherTeam?.name || '',
+                    lowerSeedName: lowerTeam?.name || '',
+                    higherSeedWins: series.higherSeedWins,
+                    lowerSeedWins: series.lowerSeedWins,
+                };
+            }
+        }
+
         await sendMessage(
             userId,
             myTeamId,
@@ -169,7 +193,8 @@ export const applyUserGameResult = async (
                 homeScore: result.homeScore,
                 awayScore: result.awayScore,
                 userBoxScore: isHome ? result.homeBox : result.awayBox,
-                recap: recapNews
+                recap: recapNews,
+                playoffInfo,
             }
         );
         refreshUnreadCount();

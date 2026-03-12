@@ -28,6 +28,17 @@ export interface GameRecapContent {
     homeScore: number;
     awayScore: number;
     userBoxScore: PlayerBoxScore[];
+    /** 플레이오프 경기인 경우에만 존재 */
+    playoffInfo?: {
+        conference: string;
+        roundName: string;
+        higherSeedId: string;
+        lowerSeedId: string;
+        higherSeedName: string;
+        lowerSeedName: string;
+        higherSeedWins: number;
+        lowerSeedWins: number;
+    };
 }
 
 export interface TradeAlertContent {
