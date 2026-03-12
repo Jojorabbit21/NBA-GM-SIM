@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 import { Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { MessageListItem } from '../../types';
 
@@ -23,6 +23,26 @@ export const MessageList: React.FC<MessageListProps> = ({
     onRefresh,
     onLoadMore,
 }) => {
+    const hasMore = messages.length > 0 && messages.length < totalCount;
+    const sentinelRef = useRef<HTMLDivElement>(null);
+
+    const handleIntersect = useCallback(
+        (entries: IntersectionObserverEntry[]) => {
+            if (entries[0].isIntersecting && hasMore && !loading) {
+                onLoadMore();
+            }
+        },
+        [hasMore, loading, onLoadMore]
+    );
+
+    useEffect(() => {
+        const el = sentinelRef.current;
+        if (!el) return;
+        const observer = new IntersectionObserver(handleIntersect, { threshold: 0.1 });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [handleIntersect]);
+
     return (
         <div className="w-[280px] flex flex-col border-r border-slate-800 bg-slate-950/30 flex-shrink-0">
             {/* Header with title & actions */}
@@ -74,13 +94,13 @@ export const MessageList: React.FC<MessageListProps> = ({
                     </div>
                 ))}
 
-                {messages.length > 0 && messages.length % 20 === 0 && (
-                    <button
-                        onClick={onLoadMore}
-                        className="w-full py-4 text-xs font-bold text-slate-500 hover:text-indigo-400 transition-colors border-t border-slate-800"
-                    >
-                        {loading ? '로딩 중...' : '더 보기'}
-                    </button>
+                {/* Infinite scroll sentinel */}
+                {hasMore && (
+                    <div ref={sentinelRef} className="py-4 flex justify-center">
+                        {loading && (
+                            <span className="text-xs font-bold text-slate-500">로딩 중...</span>
+                        )}
+                    </div>
                 )}
 
                 {messages.length === 0 && !loading && (
