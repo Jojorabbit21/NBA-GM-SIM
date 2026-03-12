@@ -112,7 +112,7 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
       : null;
 
   return (
-    <div className="w-full border-b border-white/5 backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative overflow-hidden" style={{ backgroundColor: theme.bg }}>
+    <div className="w-full backdrop-blur-xl sticky top-0 z-[100] flex flex-col relative" style={{ backgroundColor: theme.bg, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
         {/* Dark overlay for readability */}
         <div className="absolute inset-0 bg-black/10 pointer-events-none" />
         <div className="pl-8 pr-0 py-0 flex items-center gap-8 h-20 relative z-10">
