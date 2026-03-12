@@ -275,8 +275,8 @@ export const useSimulation = (
 
             // 2. Prepare mutable clones for the pipeline
             let newTeams: Team[] = JSON.parse(JSON.stringify(teams));
-            let newSchedule: Game[] = [...schedule];
-            let newPlayoffSeries: PlayoffSeries[] = [...playoffSeries];
+            let newSchedule: Game[] = JSON.parse(JSON.stringify(schedule));
+            let newPlayoffSeries: PlayoffSeries[] = JSON.parse(JSON.stringify(playoffSeries));
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
             const excludeGameId = userGame?.id || spectateGameId;
