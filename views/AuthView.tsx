@@ -93,9 +93,8 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
     try {
       if (mode === 'signup') {
         if (!isSignupFormValid) throw new Error("입력 정보를 다시 확인해주세요.");
-        const { data, error } = await (supabase.auth as any).signUp({ email, password });
+        const { error } = await (supabase.auth as any).signUp({ email, password });
         if (error) throw error;
-        if (data.user) await ensureProfileExists(data.user.id, data.user.email);
         setSignupEmail(email);
         setOtp('');
         setOtpAttempts(0);
@@ -110,6 +109,21 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
     } catch (error: any) {
       let errorMsg = error.message || '인증 중 오류가 발생했습니다.';
       if (errorMsg.includes("Invalid login credentials")) errorMsg = "이메일 또는 비밀번호가 올바르지 않습니다.";
+      if (errorMsg.includes("Email not confirmed")) {
+        setSignupEmail(email);
+        setOtp('');
+        setOtpAttempts(0);
+        setMode('verify');
+        // 인증번호 재발송
+        try {
+          await supabase.auth.resend({ type: 'signup', email });
+          setResendCooldown(RESEND_COOLDOWN_SEC);
+          setMessage({ type: 'success', text: '이메일 인증이 필요합니다. 인증번호가 재발송되었습니다.' });
+        } catch {
+          setMessage({ type: 'error', text: '이메일 인증이 필요합니다. 인증번호 재발송 버튼을 눌러주세요.' });
+        }
+        return;
+      }
       setMessage({ type: 'error', text: errorMsg });
     } finally {
       setLoading(false);
@@ -146,7 +160,10 @@ export const AuthView: React.FC<AuthViewProps> = ({ onGuestLogin: _onGuestLogin 
           email: signupEmail,
           token: val,
           type: 'signup',
-        }).then(({ error }: any) => {
+        }).then(async ({ data, error }: any) => {
+          if (!error && data?.user) {
+            await ensureProfileExists(data.user.id, data.user.email);
+          }
           if (error) {
             const nextAttempts = otpAttempts + 1;
             setOtpAttempts(nextAttempts);

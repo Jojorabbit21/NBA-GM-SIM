@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Play, ChevronRight, FastForward } from 'lucide-react';
 import { Team, Game, PlayoffSeries } from '../../types';
 import { OvrBadge } from '../common/OvrBadge';
 import { TeamLogo } from '../common/TeamLogo';
@@ -37,41 +37,59 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
   const awayOvr = isHome ? opponentOvrValue : myOvr;
 
   const [pressedBtn, setPressedBtn] = useState<string | null>(null);
+  const [hoveredBtn, setHoveredBtn] = useState<string | null>(null);
 
   const teamColors = TEAM_DATA[team.id]?.colors || null;
   const theme = getTeamTheme(team.id, teamColors);
-
-  // Frosted glass + neon glow button
   const btnTheme = getButtonTheme(team.id, teamColors);
-
   const glowColor = btnTheme.glow;
-  const SHADOW_NORMAL = [
-      `inset 0 1px 1px rgba(255,255,255,0.2)`,
-      `inset 0 -1px 1px rgba(0,0,0,0.15)`,
-      `0 0 16px ${glowColor}40`,
-      `0 4px 12px rgba(0,0,0,0.3)`,
-  ].join(', ');
 
-  const SHADOW_PRESSED = [
-      `inset 0 1px 3px rgba(0,0,0,0.3)`,
-      `inset 0 -1px 1px rgba(255,255,255,0.05)`,
-      `0 0 8px ${glowColor}25`,
-      `0 1px 3px rgba(0,0,0,0.2)`,
-  ].join(', ');
+  // Primary button (경기 시작 / 내일로 이동)
+  const primaryBtn = (id: string) => {
+      const isPressed = pressedBtn === id;
+      const isHovered = hoveredBtn === id;
+      return {
+          style: {
+              backgroundColor: btnTheme.bg,
+              color: btnTheme.text,
+              boxShadow: isPressed
+                  ? `0 2px 8px ${glowColor}30`
+                  : isHovered
+                      ? `0 4px 24px ${glowColor}60, 0 0 48px ${glowColor}20`
+                      : undefined, // breathing animation handles idle via CSS var
+              '--glow-color': `${glowColor}50`,
+              '--glow-dim': `${glowColor}18`,
+              transform: isPressed ? 'translateY(2px) scale(0.97)' : isHovered ? 'translateY(-1px)' : 'translateY(0)',
+              transition: 'all 0.15s ease',
+              filter: isHovered && !isPressed ? 'brightness(1.15)' : 'brightness(1)',
+          } as React.CSSProperties,
+          onMouseDown: () => !isSimulating && setPressedBtn(id),
+          onMouseUp: () => setPressedBtn(null),
+          onMouseEnter: () => !isSimulating && setHoveredBtn(id),
+          onMouseLeave: () => { setPressedBtn(null); setHoveredBtn(null); },
+      };
+  };
 
-  const btn3d = (id: string) => ({
-      style: {
-          backgroundColor: btnTheme.bg,
-          color: btnTheme.text,
-          boxShadow: pressedBtn === id ? SHADOW_PRESSED : SHADOW_NORMAL,
-          transform: pressedBtn === id ? 'translateY(1px) scale(0.98)' : 'translateY(0) scale(1)',
-          transition: 'all 0.1s ease',
-          border: '1px solid rgba(255,255,255,0.15)',
-      } as React.CSSProperties,
-      onMouseDown: () => !isSimulating && setPressedBtn(id),
-      onMouseUp: () => setPressedBtn(null),
-      onMouseLeave: () => setPressedBtn(null),
-  });
+  // Secondary button (자동 진행)
+  const secondaryBtn = (id: string) => {
+      const isPressed = pressedBtn === id;
+      const isHovered = hoveredBtn === id;
+      return {
+          style: {
+              backgroundColor: isHovered ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+              color: 'rgba(255,255,255,0.85)',
+              border: isHovered ? '1px solid rgba(255,255,255,0.25)' : '1px solid rgba(255,255,255,0.12)',
+              boxShadow: isPressed ? 'none' : isHovered ? '0 2px 8px rgba(0,0,0,0.2)' : 'none',
+              transform: isPressed ? 'translateY(1px) scale(0.97)' : 'translateY(0)',
+              transition: 'all 0.15s ease',
+              backdropFilter: 'blur(8px)',
+          } as React.CSSProperties,
+          onMouseDown: () => !isSimulating && setPressedBtn(id),
+          onMouseUp: () => setPressedBtn(null),
+          onMouseEnter: () => !isSimulating && setHoveredBtn(id),
+          onMouseLeave: () => { setPressedBtn(null); setHoveredBtn(null); },
+      };
+  };
 
   const playoffRoundName = currentSeries
       ? (currentSeries.round === 4 ? '' : `${CONF_NAMES[currentSeries.conference] || currentSeries.conference} `) + (ROUND_NAMES[currentSeries.round] || `${currentSeries.round}라운드`)
@@ -168,9 +186,10 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                     <button
                         onClick={onAutoSimClick}
                         disabled={isSimulating}
-                        {...btn3d('auto')}
-                        className="flex items-center justify-center gap-2 px-5 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[130px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                        {...secondaryBtn('auto')}
+                        className="flex items-center justify-center gap-2 px-5 h-10 rounded-xl font-bold text-xs uppercase tracking-wider min-w-[130px] disabled:opacity-40 disabled:cursor-not-allowed select-none"
                     >
+                        <FastForward size={14} />
                         자동 진행
                     </button>
                 )}
@@ -178,13 +197,15 @@ export const DashboardHeader: React.FC<DashboardHeaderProps> = ({
                 <button
                     onClick={onSimClick}
                     disabled={isSimulating}
-                    {...btn3d('sim')}
-                    className="flex items-center justify-center gap-2 px-6 h-10 rounded-xl font-black text-sm uppercase tracking-wider min-w-[180px] disabled:opacity-50 disabled:cursor-not-allowed select-none"
+                    {...primaryBtn('sim')}
+                    className={`flex items-center justify-center gap-2.5 px-8 h-12 rounded-2xl font-black text-sm uppercase tracking-wider min-w-[200px] disabled:opacity-40 disabled:cursor-not-allowed select-none ${isGameToday && !isSimulating ? 'animate-btn-breathe' : ''}`}
                 >
                     {isSimulating ? (
-                        <><Loader2 size={16} className="animate-spin" /> 처리 중</>
+                        <><Loader2 size={18} className="animate-spin" /> 처리 중</>
+                    ) : isGameToday ? (
+                        <><Play size={16} fill="currentColor" /> 경기 시작</>
                     ) : (
-                        isGameToday ? '경기 시작' : '내일로 이동'
+                        <><ChevronRight size={18} /> 내일로 이동</>
                     )}
                 </button>
             </div>

@@ -30,6 +30,15 @@ body {
 }
 .animate-pulse-subtle { animation: pulse-subtle 3s infinite ease-in-out; }
 
+/* Dashboard Header - Primary Button Breathing Glow */
+@keyframes btn-breathe {
+    0%, 100% { box-shadow: 0 4px 16px var(--glow-color); }
+    50%      { box-shadow: 0 4px 28px var(--glow-color), 0 0 48px var(--glow-dim); }
+}
+.animate-btn-breathe {
+    animation: btn-breathe 2.5s ease-in-out infinite;
+}
+
 .text-shadow-ovr { text-shadow: 0px 1.5px 3px rgba(0, 0, 0, 0.5); }
 .ko-tight { letter-spacing: -0.025em; }
 .ko-normal { letter-spacing: -0.01em; }
