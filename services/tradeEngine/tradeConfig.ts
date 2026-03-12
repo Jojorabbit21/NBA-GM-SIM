@@ -57,10 +57,9 @@ export const TRADE_CONFIG = {
         MAX_PROBABILITY: 0.85,
         PROBABILITY_EXPONENT: 4.0,
 
-        // 매칭 & 가치
-        MIN_VALUE_RATIO: 0.85,
-        MAX_VALUE_RATIO: 1.20,
-        IMPROVEMENT_THRESHOLD: 0.005,
+        // 팀력 개선도 (양팀 모두 이 수치 이상 개선되어야 성사)
+        IMPROVEMENT_THRESHOLD: 0.002,
+        SELLER_IMPROVEMENT_FLOOR: -0.01,
 
         // 트레이드 가능 선수 기준
         UNTOUCHABLE_OVR: 97,
@@ -71,6 +70,9 @@ export const TRADE_CONFIG = {
         // 매칭 후보
         MAX_CANDIDATE_PAIRS: 15,
         NEAR_DEADLINE_DAYS: 14,
+
+        // 샐러리 밸런싱
+        SALARY_FILLER_MAX: 2,
 
         // 보너스 점수
         POSITION_NEED_BONUS: 3.0,
