@@ -50,7 +50,7 @@ const BTN_OVERRIDES: Record<string, Partial<Record<keyof ButtonTheme, ColorRef>>
     // INVERTED: header bg=secondary → primary 대비
     'law': { bg: 'primary', text: '#FFFFFF', glow: 'primary' },
     'min': { bg: '#78BE21', text: 'text', glow: '#78BE21' },
-    'sa': { bg: 'primary', text: 'text', glow: 'secondary' },
+    'sa': { bg: 'secondary', text: 'primary', glow: 'secondary' },
     'sac': { bg: 'text', text: 'primary', glow: 'primary' },
     // secondary 너무 어두워 글로우 안 보임
     'mem': { bg: 'text', text: 'secondary', glow: 'primary' },
@@ -110,7 +110,7 @@ const THEME_OVERRIDES: Record<string, Partial<Record<keyof TeamTheme, ColorRef>>
     // inverted
     'law': { bg: 'secondary', text: 'text', accent: 'text' },
     'min': { bg: 'primary', text: 'text', accent: '#78BE21' },
-    'sa': { bg: 'secondary', text: 'primary', accent: 'primary' },
+    'sa': { bg: 'primary', text: 'text', accent: 'text' },
 };
 
 export function getTeamTheme(
