@@ -43,7 +43,8 @@ export const useLeaderboardData = (
         const filteredSchedule = schedule.filter(g => g.played && (isPlayoffMode ? g.isPlayoff : !g.isPlayoff));
 
         teams.forEach(t => {
-            const gamesPlayed = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id).length || 1;
+            const teamGames = filteredSchedule.filter(g => g.homeTeamId === t.id || g.awayTeamId === t.id);
+            const gamesPlayed = teamGames.length || 1;
             allGameCounts.set(t.id, gamesPlayed);
 
             const totals = t.roster.reduce((acc: any, p) => {
@@ -78,6 +79,23 @@ export const useLeaderboardData = (
                 fgm: 0, fga: 0, p3m: 0, p3a: 0, ftm: 0, fta: 0,
                 rimM: 0, rimA: 0, midM: 0, midA: 0
             });
+
+            // TF/FF: schedule의 경기별 homeStats/awayStats에서 직접 합산 (선수 스탯과 불일치 방지)
+            let scheduleTF = 0, scheduleFF = 0;
+            teamGames.forEach(g => {
+                const isHome = g.homeTeamId === t.id;
+                const myStats = isHome ? (g as any).homeStats : (g as any).awayStats;
+                if (myStats) {
+                    scheduleTF += (myStats.techFouls || 0);
+                    scheduleFF += (myStats.flagrantFouls || 0);
+                }
+            });
+            // schedule 데이터가 있으면 우선 사용
+            if (scheduleTF > 0 || scheduleFF > 0) {
+                totals.techFouls = scheduleTF;
+                totals.flagrantFouls = scheduleFF;
+            }
+
             allRawTotals.set(t.id, totals);
         });
 
@@ -164,6 +182,9 @@ export const useLeaderboardData = (
                 stl:  totals.stl    / playedCount,
                 blk:  totals.blk    / playedCount,
                 tov:  totals.tov    / playedCount,
+                pf:   totals.pf     / playedCount,
+                tf:   totals.techFouls || 0,
+                ff:   totals.flagrantFouls || 0,
 
                 fgm: totals.fgm / playedCount,
                 fga: totals.fga / playedCount,

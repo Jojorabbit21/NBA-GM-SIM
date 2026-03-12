@@ -694,7 +694,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                 </div>
                             )}
                             {gameLog && gameLog.length > 0 && (
-                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false}>
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent !overflow-visible [&_thead]:!bg-slate-900 [&_tbody]:!bg-transparent" fullHeight={false}>
                                     <TableHead>
                                         {GAME_LOG_COLS.map((c, i) => (
                                             <TableHeaderCell

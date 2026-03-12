@@ -121,8 +121,8 @@ function applyBoxScore(teamMap: Map<string, Team>, teamId: string, box: PlayerBo
             target.ftm += (statLine.ftm || 0);
             target.fta += (statLine.fta || 0);
             target.pf += (statLine.pf || 0);
-            target.techFouls += (statLine.techFouls || 0);
-            target.flagrantFouls += (statLine.flagrantFouls || 0);
+            target.techFouls = (target.techFouls || 0) + (statLine.techFouls || 0);
+            target.flagrantFouls = (target.flagrantFouls || 0) + (statLine.flagrantFouls || 0);
             target.plusMinus += (statLine.plusMinus || 0);
 
             // [Fix] Aggregate Zone Stats (Flat Legacy Keys)
