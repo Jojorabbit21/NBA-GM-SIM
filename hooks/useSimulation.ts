@@ -6,7 +6,7 @@ import { LeagueCoachingData } from '../types/coaching';
 import { SimSettings } from '../types/simSettings';
 import { applyTradeSimSettings } from '../services/tradeEngine/tradeConfig';
 import { processCpuGames } from '../services/simulation/cpuGameService';
-import { runUserSimulation, applyUserGameResult } from '../services/simulation/userGameService';
+import { runUserSimulation, applyUserGameResult, processInjuryRecovery } from '../services/simulation/userGameService';
 import { handleSeasonEvents } from '../services/simulation/seasonService';
 import { saveGameResults } from '../services/queries';
 import { savePlayoffGameResult, fetchPlayoffSeriesResults } from '../services/playoffService';
@@ -277,6 +277,26 @@ export const useSimulation = (
             let newTeams: Team[] = JSON.parse(JSON.stringify(teams));
             let newSchedule: Game[] = JSON.parse(JSON.stringify(schedule));
             let newPlayoffSeries: PlayoffSeries[] = JSON.parse(JSON.stringify(playoffSeries));
+
+            // 2.5. 부상 복귀 체크
+            const recoveredPlayers = processInjuryRecovery(newTeams, currentSimDate, myTeamId);
+            if (recoveredPlayers.length > 0 && !isGuestMode && session?.user?.id) {
+                for (const rec of recoveredPlayers) {
+                    await sendMessage(session.user.id, myTeamId, currentSimDate, 'INJURY_REPORT',
+                        `[복귀 보고] ${rec.playerName} — 훈련 복귀`,
+                        {
+                            playerId: rec.playerId,
+                            playerName: rec.playerName,
+                            injuryType: rec.injuryType,
+                            severity: 'Minor',
+                            duration: '',
+                            returnDate: currentSimDate,
+                            isRecovery: true,
+                        }
+                    );
+                }
+                refreshUnreadCount();
+            }
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
             const excludeGameId = userGame?.id || spectateGameId;
@@ -556,8 +576,8 @@ export const useSimulation = (
             );
 
             let newTeams: Team[] = JSON.parse(JSON.stringify(teams));
-            let newSchedule: Game[] = [...schedule];
-            let newPlayoffSeries: PlayoffSeries[] = [...playoffSeries];
+            let newSchedule: Game[] = JSON.parse(JSON.stringify(schedule));
+            let newPlayoffSeries: PlayoffSeries[] = JSON.parse(JSON.stringify(playoffSeries));
 
             // 경기 결과 적용 (스탯 누적, DB 저장, 메시지 전송)
             await applyUserGameResult(

@@ -59,7 +59,10 @@ export interface InjuryReportContent {
     injuryType: string;
     severity: 'Minor' | 'Major';
     duration: string;
+    /** 복귀 예정 날짜 (YYYY-MM-DD) */
     returnDate: string;
+    /** true면 복귀 보고서 */
+    isRecovery?: boolean;
 }
 
 export interface SeasonReviewContent {

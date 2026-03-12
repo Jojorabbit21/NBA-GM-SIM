@@ -11,6 +11,25 @@ import { sendMessage } from '../messageService';
 import { processGameDevelopment, computeLeagueAverages } from '../playerDevelopment/playerAging';
 import { ROUND_NAMES, CONF_NAMES } from '../../utils/playoffLogic';
 
+/** duration 문자열 → 일수 변환 */
+function durationToDays(dur: string): number {
+    switch (dur) {
+        case 'Day-to-Day': return 2;
+        case '3 Days': return 3;
+        case '1 Week': return 7;
+        case '2 Weeks': return 14;
+        case '1 Month': return 30;
+        default: return 7;
+    }
+}
+
+/** currentDate + duration → 복귀 예정 날짜 (YYYY-MM-DD) */
+export function computeReturnDate(currentDate: string, duration: string): string {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() + durationToDays(duration));
+    return d.toISOString().split('T')[0];
+}
+
 export const runUserSimulation = (
     userGame: Game,
     teams: Team[],
@@ -102,7 +121,8 @@ export const applyUserGameResult = async (
                     if (update.condition !== undefined) p.condition = update.condition;
                     if (update.health) p.health = update.health;
                     if (update.injuryType) p.injuryType = update.injuryType;
-                    if (update.returnDate) p.returnDate = update.returnDate;
+                    // duration 문자열 → 실제 복귀 날짜로 변환
+                    if (update.returnDate) p.returnDate = computeReturnDate(currentSimDate, update.returnDate);
                 }
             });
         });
@@ -197,6 +217,28 @@ export const applyUserGameResult = async (
                 playoffInfo,
             }
         );
+
+        // 유저 팀 선수 부상 보고서 발송
+        if (result.injuries && result.injuries.length > 0) {
+            const myInjuries = result.injuries.filter(inj => inj.teamId === myTeamId);
+            for (const inj of myInjuries) {
+                const isMajor = inj.durationDesc === '1 Month' || inj.durationDesc === '2 Weeks';
+                const returnDateStr = computeReturnDate(currentSimDate, inj.durationDesc);
+                await sendMessage(userId, myTeamId, currentSimDate, 'INJURY_REPORT',
+                    `[부상 보고] ${inj.playerName} — ${inj.injuryType}`,
+                    {
+                        playerId: inj.playerId,
+                        playerName: inj.playerName,
+                        injuryType: inj.injuryType,
+                        severity: isMajor ? 'Major' : 'Minor',
+                        duration: inj.durationDesc,
+                        returnDate: returnDateStr,
+                        isRecovery: false,
+                    }
+                );
+            }
+        }
+
         refreshUnreadCount();
     }
 
@@ -205,3 +247,38 @@ export const applyUserGameResult = async (
         away: awayTeam
     };
 };
+
+/** 부상 복귀 체크: returnDate <= currentDate인 선수를 회복시키고, 복귀 보고서용 데이터를 반환 */
+export function processInjuryRecovery(
+    teams: Team[],
+    currentDate: string,
+    myTeamId: string,
+): { playerId: string; playerName: string; injuryType: string }[] {
+    const recovered: { playerId: string; playerName: string; injuryType: string }[] = [];
+    for (const team of teams) {
+        if (team.id !== myTeamId) {
+            // CPU 팀도 회복은 시키되 메시지는 유저 팀만
+            for (const p of team.roster) {
+                if (p.health === 'Injured' && p.returnDate && p.returnDate <= currentDate) {
+                    p.health = 'Healthy';
+                    p.injuryType = undefined;
+                    p.returnDate = undefined;
+                }
+            }
+            continue;
+        }
+        for (const p of team.roster) {
+            if (p.health === 'Injured' && p.returnDate && p.returnDate <= currentDate) {
+                recovered.push({
+                    playerId: p.id,
+                    playerName: p.name,
+                    injuryType: p.injuryType || 'Unknown',
+                });
+                p.health = 'Healthy';
+                p.injuryType = undefined;
+                p.returnDate = undefined;
+            }
+        }
+    }
+    return recovered;
+}

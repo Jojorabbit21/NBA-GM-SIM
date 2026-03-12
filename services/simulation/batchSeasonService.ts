@@ -8,7 +8,7 @@ import { MessageType } from '../../types/message';
 import { LeagueCoachingData } from '../../types/coaching';
 import { SimSettings } from '../../types/simSettings';
 import { simulateCpuGames } from '../simulationService';
-import { runUserSimulation } from './userGameService';
+import { runUserSimulation, processInjuryRecovery, computeReturnDate } from './userGameService';
 import { handleSeasonEventsSync } from './seasonService';
 import { updateTeamStats, applyBoxToRoster, updateSeriesState, sumTeamBoxScore } from '../../utils/simulationUtils';
 import { applyRestDayRecovery } from '../game/engine/fatigueSystem';
@@ -102,6 +102,29 @@ export async function runBatchSeason(
             prevMonthKey = currentMonthKey;
         }
 
+        // 부상 복귀 체크 (매일 경기 전에 실행)
+        const recoveredPlayers = processInjuryRecovery(teams, date, myTeamId);
+        if (recoveredPlayers.length > 0 && userId) {
+            for (const rec of recoveredPlayers) {
+                allMessages.push({
+                    user_id: userId,
+                    team_id: myTeamId,
+                    date,
+                    type: 'INJURY_REPORT',
+                    title: `[복귀 보고] ${rec.playerName} — 훈련 복귀`,
+                    content: {
+                        playerId: rec.playerId,
+                        playerName: rec.playerName,
+                        injuryType: rec.injuryType,
+                        severity: 'Minor' as const,
+                        duration: '',
+                        returnDate: date,
+                        isRecovery: true,
+                    },
+                });
+            }
+        }
+
         // 유저 경기 찾기
         const userGame = schedule.find(g =>
             !g.played && g.date === date && !g.isPlayoff &&
@@ -123,7 +146,7 @@ export async function runBatchSeason(
             );
 
             // 결과 적용 (in-place, DB/메시지 생략)
-            applyGameResultInPlace(result, userGame, teams, schedule, playoffSeries);
+            applyGameResultInPlace(result, userGame, teams, schedule, playoffSeries, date);
 
             // 선수 성장/퇴화
             if (tendencySeed) {
@@ -184,6 +207,30 @@ export async function runBatchSeason(
                         userBoxScore: isHome ? result.homeBox : result.awayBox,
                     },
                 });
+
+                // 유저 팀 선수 부상 보고서
+                if (result.injuries && result.injuries.length > 0) {
+                    const myInjuries = result.injuries.filter(inj => inj.teamId === myTeamId);
+                    for (const inj of myInjuries) {
+                        const isMajor = inj.durationDesc === '1 Month' || inj.durationDesc === '2 Weeks';
+                        const actualReturnDate = computeReturnDate(date, inj.durationDesc);
+                        allMessages.push({
+                            user_id: userId,
+                            team_id: myTeamId,
+                            date,
+                            type: 'INJURY_REPORT',
+                            title: `[부상 보고] ${inj.playerName} — ${inj.injuryType}`,
+                            content: {
+                                playerId: inj.playerId,
+                                playerName: inj.playerName,
+                                injuryType: inj.injuryType,
+                                severity: isMajor ? 'Major' : 'Minor',
+                                duration: inj.durationDesc,
+                                returnDate: actualReturnDate,
+                            },
+                        });
+                    }
+                }
             }
         } else {
             applyRestDayRecovery(teams);
@@ -361,7 +408,8 @@ function applyGameResultInPlace(
     userGame: Game,
     teams: Team[],
     schedule: Game[],
-    playoffSeries: PlayoffSeries[]
+    playoffSeries: PlayoffSeries[],
+    date: string
 ): void {
     const homeTeam = teams.find(t => t.id === userGame.homeTeamId)!;
     const awayTeam = teams.find(t => t.id === userGame.awayTeamId)!;
@@ -380,7 +428,7 @@ function applyGameResultInPlace(
                     if (update.condition !== undefined) p.condition = update.condition;
                     if (update.health) p.health = update.health;
                     if (update.injuryType) p.injuryType = update.injuryType;
-                    if (update.returnDate) p.returnDate = update.returnDate;
+                    if (update.returnDate) p.returnDate = computeReturnDate(date, update.returnDate);
                 }
             });
         });
