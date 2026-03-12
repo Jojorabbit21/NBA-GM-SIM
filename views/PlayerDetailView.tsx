@@ -317,7 +317,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                 )}
                 {totalRows > 0 && (
                     <div style={{ height: totalHeight, position: 'relative' }}>
-                        <table className="w-full text-left border-separate border-spacing-0" style={{ tableLayout: 'fixed' }}>
+                        <table className="w-full text-left border-separate border-spacing-0">
                             <thead className="bg-slate-900 sticky top-0 z-40 border-b border-slate-800 shadow-sm">
                                 <tr className="text-slate-500 text-[10px] font-black uppercase tracking-widest h-10">
                                     {GAME_LOG_COLS.map((c, i) => (
@@ -342,7 +342,7 @@ const VirtualGameLog: React.FC<{ gameLog: any[] | undefined; gameLogLoading: boo
                                         {cells.map((cell, ci) => (
                                             <td
                                                 key={ci}
-                                                className={`py-2 px-1.5 text-center ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                className={`py-2 px-1.5 text-center whitespace-nowrap ${ci < cells.length - 1 ? 'border-r border-r-slate-800/30' : ''}`}
                                             >
                                                 <span className={`font-mono font-medium tabular-nums ${cell.color || 'text-white'}`}>
                                                     {cell.val}
