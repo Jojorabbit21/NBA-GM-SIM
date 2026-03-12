@@ -83,10 +83,10 @@ export function calculateRecovery(player: LivePlayer, baseAmount: number): numbe
  * 비경기일 휴식 회복: 모든 팀의 모든 선수에게 REST_DAY_RECOVERY 적용.
  * stamina/durability가 높을수록 더 빠르게 회복.
  *
- * 기본 25pt 회복 기준:
- *   stamina 50 / durability 50 → 25 회복
- *   stamina 90 / durability 90 → 30 회복
- *   stamina 30 / durability 30 → 22.5 회복
+ * 기본 40pt 회복 기준:
+ *   stamina 50 / durability 50 → 40 회복
+ *   stamina 90 / durability 90 → 48 회복
+ *   stamina 30 / durability 30 → 36 회복
  */
 export function applyRestDayRecovery(teams: Team[]): void {
     const C = SIM_CONFIG.FATIGUE;

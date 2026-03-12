@@ -7,7 +7,7 @@ export const SIM_CONFIG = {
         SCORING_MODIFIER: 0.94, 
     },
     FATIGUE: {
-        DRAIN_BASE: 2.5,
+        DRAIN_BASE: 1.5,
         BENCH_RECOVERY_RATE: 3.0,
         TIMEOUT_RECOVERY: 1,        // 타임아웃 시 전 선수 기본 회복량
         QUARTER_BREAK_RECOVERY: 1.5,// 쿼터 휴식(1Q→2Q, 3Q→4Q) 시 전 선수 기본 회복량
@@ -19,7 +19,7 @@ export const SIM_CONFIG = {
         FATIGUE_PENALTY_LOW: 0.02,
         FATIGUE_PENALTY_MED: 0.10,
         FATIGUE_PENALTY_HIGH: 0.25,
-        REST_DAY_RECOVERY: 25,          // 비경기일 1일 휴식 시 기본 회복량 (stamina/durability 보정 적용)
+        REST_DAY_RECOVERY: 40,          // 비경기일 1일 휴식 시 기본 회복량 (stamina/durability 보정 적용)
     },
     STATS: {
         STL_BASE_FACTOR: 0.08,
