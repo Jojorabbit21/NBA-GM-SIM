@@ -43,17 +43,17 @@ export function calculateIncrementalFatigue(
     let injuryOccurred = false;
     const durability = player.attr?.durability ?? 70;
     // 기본 부상 확률: durability 비선형 커브
-    // dur 90+: 0.05/10000 (철인), dur 70: 0.17, dur 55: 0.31 (경계)
-    // dur 55 이하: 이차함수 급등 (dur 50: 1.31, dur 45: 4.31, dur 40: 9.31)
+    // dur 99: 0.12, dur 90: 0.15, dur 80: 0.20, dur 70: 0.25, dur 60: 0.30, dur 55: 0.325 (경계)
+    // dur 55 이하: 이차함수 급등 (dur 50: 1.325, dur 45: 4.325, dur 40: 9.325)
     // dur 40 미만은 40으로 취급 (바닥)
     const clampedDur = Math.max(40, durability);
     let baseInjuryChance: number;
     if (clampedDur >= 55) {
-        baseInjuryChance = Math.max(0.05, 0.8 - clampedDur * 0.009);
+        baseInjuryChance = Math.max(0.12, 0.6 - clampedDur * 0.005);
     } else {
         // 55~40: 전 구간 급경사 (gap² × 0.04)
         const gap = 55 - clampedDur;
-        baseInjuryChance = 0.305 + gap * gap * 0.04;
+        baseInjuryChance = 0.325 + gap * gap * 0.04;
     }
     // 체력 저하 추가 확률: 체력 35 이하부터 완만 증가, 10 이하에서 소폭 급등
     let fatigueBonus = 0;
@@ -145,11 +145,11 @@ export function applyRestDayRecovery(teams: Team[], injuryFrequency: number = 1.
             let baseChance: number;
             if (clampedDur >= 55) {
                 // dur 55~99: 완만 (경기 중의 1/5)
-                baseChance = Math.max(0.01, (0.8 - clampedDur * 0.009)) * 0.2;
+                baseChance = Math.max(0.024, (0.6 - clampedDur * 0.005)) * 0.2;
             } else {
                 // dur 40~55: 이차함수 급등 (경기 중의 1/5)
                 const gap = 55 - clampedDur;
-                baseChance = (0.305 + gap * gap * 0.04) * 0.2;
+                baseChance = (0.325 + gap * gap * 0.04) * 0.2;
             }
 
             const totalChance = baseChance * injuryFrequency;

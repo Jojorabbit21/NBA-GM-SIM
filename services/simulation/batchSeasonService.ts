@@ -237,12 +237,22 @@ export async function runBatchSeason(
             const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
             const trainingInjuries = applyRestDayRecovery(teams, injFreq);
 
-            // 훈련 부상 returnDate 변환 + 메시지 생성
+            // 훈련 부상 returnDate 변환 + 히스토리 기록 + 메시지 생성
             for (const ti of trainingInjuries) {
                 // duration 문자열 → 실제 복귀 날짜
                 const injured = teams.flatMap(t => t.roster).find(p => p.id === ti.playerId);
                 if (injured) {
                     injured.returnDate = computeReturnDate(date, ti.duration);
+                    // 부상 히스토리 기록
+                    if (!injured.injuryHistory) injured.injuryHistory = [];
+                    injured.injuryHistory.push({
+                        injuryType: ti.injuryType,
+                        severity: ti.severity,
+                        duration: ti.duration,
+                        date,
+                        returnDate: injured.returnDate,
+                        isTraining: true,
+                    });
                 }
 
                 if (userId && ti.teamId === myTeamId) {
@@ -395,7 +405,7 @@ function processCpuGamesInPlace(
             );
         }
 
-        // [DEBUG] CPU 경기 부상 로그 + 로스터 업데이트 적용
+        // CPU 경기 로스터 업데이트 적용 (체력/부상)
         if (res.rosterUpdates) {
             [home, away].forEach(t => {
                 t.roster.forEach((p: any) => {
@@ -407,6 +417,18 @@ function processCpuGamesInPlace(
                         }
                         if (update.injuryType) p.injuryType = update.injuryType;
                         if (update.returnDate) p.returnDate = computeReturnDate(date, update.returnDate);
+                        // 부상 히스토리 기록
+                        if (update.health === 'Injured' && update.injuryType && update.returnDate) {
+                            if (!p.injuryHistory) p.injuryHistory = [];
+                            p.injuryHistory.push({
+                                injuryType: update.injuryType,
+                                severity: 'Minor',
+                                duration: update.returnDate,
+                                date,
+                                returnDate: computeReturnDate(date, update.returnDate),
+                                isTraining: false,
+                            });
+                        }
                     }
                 });
             });
@@ -478,7 +500,19 @@ function applyGameResultInPlace(
                     }
                     if (update.injuryType) p.injuryType = update.injuryType;
                     if (update.returnDate) p.returnDate = computeReturnDate(date, update.returnDate);
-                }
+                    // 부상 히스토리 기록
+                    if (update.health === 'Injured' && update.injuryType && update.returnDate) {
+                        if (!p.injuryHistory) p.injuryHistory = [];
+                        const inj = result.injuries?.find((i: any) => i.playerId === p.id);
+                        p.injuryHistory.push({
+                            injuryType: update.injuryType,
+                            severity: inj?.severity || 'Minor',
+                            duration: update.returnDate,
+                            date,
+                            returnDate: computeReturnDate(date, update.returnDate),
+                            isTraining: false,
+                        });
+                    }
             });
         });
     }

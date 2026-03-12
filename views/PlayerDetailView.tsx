@@ -759,6 +759,75 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
 
                     </div>
 
+                    {/* ── SECTION 4: 부상 이력 ── */}
+                    <div className="border-t-2 border-slate-700">
+                        <div className="px-6 py-3 bg-slate-700 flex items-center justify-between">
+                            <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
+                            {(player.injuryHistory?.length ?? 0) > 0 && (
+                                <span className="text-[10px] font-bold text-slate-300 bg-slate-600 px-2 py-0.5 rounded-full">
+                                    {player.injuryHistory!.length}건
+                                </span>
+                            )}
+                        </div>
+                        <div className="max-h-[240px] overflow-y-auto custom-scrollbar">
+                            {!player.injuryHistory || player.injuryHistory.length === 0 ? (
+                                <div className="flex items-center justify-center py-8">
+                                    <span className="text-slate-500 text-sm">부상 이력이 없습니다</span>
+                                </div>
+                            ) : (
+                                <Table className="!rounded-none !border-0 !shadow-none !bg-transparent">
+                                    <TableHead className="!bg-slate-900 sticky top-0 z-10">
+                                        <TableRow className="h-10">
+                                            {['날짜', '부상 유형', '등급', '기간', '경위'].map((h, i) => (
+                                                <TableHeaderCell
+                                                    key={h}
+                                                    align="center"
+                                                    className={`text-[10px] font-black uppercase tracking-widest ${i < 4 ? 'border-r border-r-slate-800/30' : ''}`}
+                                                >
+                                                    {h}
+                                                </TableHeaderCell>
+                                            ))}
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {[...player.injuryHistory]
+                                            .sort((a, b) => b.date.localeCompare(a.date))
+                                            .map((entry, idx) => {
+                                                const severityStyle =
+                                                    entry.severity === 'Season-Ending' ? 'text-red-400 bg-red-950/50' :
+                                                    entry.severity === 'Major' ? 'text-amber-400 bg-amber-950/50' :
+                                                    'text-slate-400 bg-slate-800/50';
+                                                const dateStr = entry.date.slice(5).replace('-', '/');
+                                                return (
+                                                    <TableRow key={idx} className="h-10 border-b border-slate-800/50 hover:bg-white/5">
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="font-mono text-xs text-slate-300">{dateStr}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="text-xs text-white">{entry.injuryType}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${severityStyle}`}>
+                                                                {entry.severity}
+                                                            </span>
+                                                        </TableCell>
+                                                        <TableCell align="center" className="border-r border-r-slate-800/30">
+                                                            <span className="text-xs text-slate-300">{entry.duration}</span>
+                                                        </TableCell>
+                                                        <TableCell align="center">
+                                                            <span className={`text-[10px] font-medium ${entry.isTraining ? 'text-amber-400' : 'text-sky-400'}`}>
+                                                                {entry.isTraining ? '훈련 중' : '경기 중'}
+                                                            </span>
+                                                        </TableCell>
+                                                    </TableRow>
+                                                );
+                                            })}
+                                    </TableBody>
+                                </Table>
+                            )}
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>

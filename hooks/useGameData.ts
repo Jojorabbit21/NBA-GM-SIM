@@ -262,6 +262,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                                     ...(savedState.attrDeltas && { attrDeltas: savedState.attrDeltas }),
                                     ...(savedState.changeLog && { changeLog: savedState.changeLog }),
                                     ...(savedState.seasonStartAttributes && { seasonStartAttributes: savedState.seasonStartAttributes }),
+                                    ...(savedState.injuryHistory && { injuryHistory: savedState.injuryHistory }),
                                 };
                                 // snapshot 경로에서 이미 reapplyAttrDeltas를 호출했으므로 이중 적용 방지
                                 if (!snapshotUsed && restored.attrDeltas) reapplyAttrDeltas(restored);
@@ -404,8 +405,9 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                         const hasChangeLog = p.changeLog && p.changeLog.length > 0;
                         const hasAttrDeltas = p.attrDeltas && Object.keys(p.attrDeltas).length > 0;
                         const hasSeasonStart = p.seasonStartAttributes && Object.keys(p.seasonStartAttributes).length > 0;
+                        const hasInjuryHistory = p.injuryHistory && p.injuryHistory.length > 0;
 
-                        if (isInjured || isFatigued || hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart) {
+                        if (isInjured || isFatigued || hasGrowth || hasChangeLog || hasAttrDeltas || hasSeasonStart || hasInjuryHistory) {
                             const state: SavedPlayerState = {
                                 condition: p.condition || 100,
                                 health: p.health,
@@ -416,6 +418,7 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                             if (hasAttrDeltas) state.attrDeltas = p.attrDeltas;
                             if (hasChangeLog) state.changeLog = p.changeLog;
                             if (hasSeasonStart) state.seasonStartAttributes = p.seasonStartAttributes;
+                            if (hasInjuryHistory) state.injuryHistory = p.injuryHistory;
                             rosterState[p.id] = state;
                         }
                     });
