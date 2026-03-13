@@ -4,7 +4,7 @@ import { TEAM_FINANCE_DATA } from '../../data/teamFinanceData';
 import { Team } from '../../types/team';
 import { LEAGUE_FINANCIALS } from '../../utils/constants';
 import { calculateGameAttendance, calculateGateRevenue, calculateMerchandiseRevenue } from './attendanceModel';
-import { initializeTeamFinance } from './revenueCalculator';
+import { initializeTeamFinance, calculateScoutingExpense, calculateMarketingExpense, calculateAdministrationExpense } from './revenueCalculator';
 
 /**
  * 리그 전체 재정 상태 관리
@@ -165,9 +165,15 @@ export class BudgetManager {
      */
     loadFromSaveData(data: SavedTeamFinances): void {
         for (const [teamId, saved] of Object.entries(data)) {
+            // 구세이브 호환: 새 지출 필드 없으면 재계산
+            const expenses = { ...saved.expenses };
+            if (expenses.scouting === undefined) expenses.scouting = calculateScoutingExpense(teamId);
+            if (expenses.marketing === undefined) expenses.marketing = calculateMarketingExpense(teamId);
+            if (expenses.administration === undefined) expenses.administration = calculateAdministrationExpense(teamId);
+
             this.finances[teamId] = {
                 revenue: { ...saved.revenue },
-                expenses: { ...saved.expenses },
+                expenses,
                 operatingIncome: 0,
                 budget: saved.budget,
             };

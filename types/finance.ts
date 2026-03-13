@@ -41,6 +41,9 @@ export interface TeamFinance {
         luxuryTax: number;         // 예상 택스 ($M, 시즌 종료 시 확정)
         operations: number;        // 구장 운영비/스태프 등 고정비 ($M)
         coachSalary: number;       // 감독/코치 연봉 ($M)
+        scouting: number;          // 스카우팅/선수 개발비 ($M)
+        marketing: number;         // 마케팅/홍보비 ($M)
+        administration: number;    // 일반 관리비 — 프런트오피스+원정경비+보험 ($M)
     };
     operatingIncome: number;       // 수익 - 지출 ($M)
     budget: number;                // 시즌 지출 가능 예산 ($M, 구단주 승인)

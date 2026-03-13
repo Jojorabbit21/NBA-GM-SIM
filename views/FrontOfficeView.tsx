@@ -223,21 +223,39 @@ const ClubTab: React.FC<{
                         <td className={`${tdClass} ${rL}`}>도시</td>
                         <td className={`${tdValClass} font-bold text-white`}>{TEAM_DATA[myTeamId]?.city}</td>
                     </tr>
-                    {/* Row 13: 총 지출 / 광역 인구 */}
+                    {/* Row 13: 스카우팅/선수 개발 / 광역 인구 */}
                     <tr>
-                        <td className={`${tdClass} font-bold`}>총 지출</td>
-                        <td className={`${tdValClass} text-red-400 font-bold`}>{fmtFull(totalExpenses)}</td>
+                        <td className={`${tdClass} pl-4 text-slate-400`}>스카우팅/선수 개발</td>
+                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.scouting)}</td>
                         <td className={`${tdClass} ${rL}`}>광역 인구</td>
                         <td className={`${tdValClass} font-bold`}>{(market.metroPopulation * 10000).toLocaleString()}명</td>
                     </tr>
-                    {/* Row 14: 손익 / 마켓 티어 */}
+                    {/* Row 14: 마케팅/홍보 / 마켓 티어 */}
+                    <tr>
+                        <td className={`${tdClass} pl-4 text-slate-400`}>마케팅/홍보</td>
+                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.marketing)}</td>
+                        <td className={`${tdClass} ${rL}`}>마켓 티어</td>
+                        <td className={`${tdValClass} font-bold text-white`}>{tierLabels[market.marketTier]}</td>
+                    </tr>
+                    {/* Row 15: 일반 관리비 */}
+                    <tr>
+                        <td className={`${tdClass} pl-4 text-slate-400`}>일반 관리비</td>
+                        <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.administration)}</td>
+                        <td colSpan={2} className={`${tdClass} ${rL}`} />
+                    </tr>
+                    {/* Row 16: 총 지출 */}
+                    <tr>
+                        <td className={`${tdClass} font-bold`}>총 지출</td>
+                        <td className={`${tdValClass} text-red-400 font-bold`}>{fmtFull(totalExpenses)}</td>
+                        <td colSpan={2} className={`${tdClass} ${rL}`} />
+                    </tr>
+                    {/* Row 17: 손익 */}
                     <tr>
                         <td className={`${tdClass} font-bold text-white border-t border-slate-600`}>손익</td>
                         <td className={`${tdValClass} font-bold border-t border-slate-600 ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {finance.operatingIncome >= 0 ? '+' : ''}{fmtFull(finance.operatingIncome)}
                         </td>
-                        <td className={`${tdClass} ${rL}`}>마켓 티어</td>
-                        <td className={`${tdValClass} font-bold text-white`}>{tierLabels[market.marketTier]}</td>
+                        <td colSpan={2} className={`${tdClass} ${rL} border-t border-slate-600`} />
                     </tr>
                     {/* ── 관중 통계 헤더 ── */}
                     <tr>
