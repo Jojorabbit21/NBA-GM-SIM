@@ -225,10 +225,6 @@ export const useLeaderboardData = (
                 '3par': totals.fga > 0 ? totals.p3a / totals.fga : 0,
                 'ftr':  totals.fga > 0 ? totals.fta / totals.fga : 0,
 
-                // --- Technical / Flagrant Fouls (시즌 합계) ---
-                'tf': totals.techFouls || 0,
-                'ff': totals.flagrantFouls || 0,
-
                 // --- POSS / PACE ---
                 // POSS: 팀 포제션 수 per game (FGA + 0.44×FTA + TOV - ORB)
                 'poss': teamPoss / playedCount,
