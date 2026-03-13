@@ -133,28 +133,28 @@ const ClubTab: React.FC<{
 
                             {/* 수익 */}
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">관중 입장료</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.gate)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">관중 입장료</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.gate)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">중앙 방송 분배금</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.broadcasting)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">중앙 방송 분배금</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.broadcasting)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">로컬 미디어</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.localMedia)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">로컬 미디어</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.localMedia)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">스폰서십</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.sponsorship)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">스폰서십</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.sponsorship)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">MD 판매</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.merchandise)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">MD 판매</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.merchandise)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">기타</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.other)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">기타</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-emerald-400">{fmtFull(finance.revenue.other)}</td>
                             </tr>
                             <tr>
                                 <td className={`${tdClass} font-bold`}>총 수익</td>
@@ -163,20 +163,20 @@ const ClubTab: React.FC<{
 
                             {/* 지출 */}
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">선수 연봉</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.payroll)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">선수 연봉</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.payroll)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">럭셔리 택스</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.luxuryTax)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">럭셔리 택스</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.luxuryTax)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">경기장 운영비</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.operations)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">경기장 운영비</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.operations)}</td>
                             </tr>
                             <tr>
-                                <td className="py-1.5 px-2 text-xs font-medium pl-4 text-slate-400">코칭 스태프</td>
-                                <td className="py-1.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.coachSalary)}</td>
+                                <td className="py-2.5 px-2 text-xs font-medium pl-4 text-slate-400">코칭 스태프</td>
+                                <td className="py-2.5 px-2 text-xs font-medium font-mono tabular-nums text-right text-red-400">{fmtFull(finance.expenses.coachSalary)}</td>
                             </tr>
                             <tr>
                                 <td className={`${tdClass} font-bold`}>총 지출</td>
@@ -185,7 +185,7 @@ const ClubTab: React.FC<{
 
                             {/* 손익 */}
                             <tr>
-                                <td className={`${tdClass} font-bold text-white border-t border-slate-600`}>영업 수입</td>
+                                <td className={`${tdClass} font-bold text-white border-t border-slate-600`}>손익</td>
                                 <td className={`${tdValClass} font-bold border-t border-slate-600 ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                     {finance.operatingIncome >= 0 ? '+' : ''}{fmtFull(finance.operatingIncome)}
                                 </td>
