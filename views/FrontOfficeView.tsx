@@ -242,86 +242,44 @@ const ClubTab: React.FC<{
                     {/* ── 관중 통계 헤더 ── */}
                     <tr>
                         <th colSpan={2} className={`${thClass} text-left`}>관중 통계</th>
-                        <th colSpan={2} className={`${thClass} text-left ${rL}`}>월별 관중 추이</th>
+                        <td colSpan={2} className={`${tdClass} ${rL}`} />
                     </tr>
-                    {/* 시즌 총 관중 / 월별 1행 */}
+                    {/* 시즌 총 관중 */}
                     <tr>
                         <td className={`${tdClass} text-slate-400`}>시즌 총 관중</td>
                         <td className={`${tdValClass} font-bold text-white`}>
                             {hasGames ? attendanceStats.totalAttendance.toLocaleString() + '명' : '-'}
                         </td>
-                        {monthKeys.length > 0 ? (() => {
-                            const mk = monthKeys[0];
-                            const m = attendanceStats.monthlyAttendance[mk];
-                            const avg = Math.round(m.total / m.games);
-                            const occ = avg / market.arenaCapacity;
-                            return (<>
-                                <td className={`${tdClass} ${rL} text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
-                                <td className={`${tdValClass}`}>
-                                    <AttendanceBar occupancy={occ} avg={avg} />
-                                </td>
-                            </>);
-                        })() : (<>
-                            <td className={`${tdClass} ${rL} text-slate-500`} colSpan={2}>아직 홈 경기 없음</td>
-                        </>)}
+                        <td colSpan={2} className={`${tdClass} ${rL}`} />
                     </tr>
-                    {/* 경기당 평균 / 월별 2행~ */}
+                    {/* 경기당 평균 */}
                     <tr>
                         <td className={`${tdClass} text-slate-400`}>경기당 평균</td>
                         <td className={`${tdValClass} font-bold text-white`}>
                             {hasGames ? attendanceStats.averageAttendance.toLocaleString() + '명' : '-'}
                         </td>
-                        {monthKeys.length > 1 ? (() => {
-                            const mk = monthKeys[1];
-                            const m = attendanceStats.monthlyAttendance[mk];
-                            const avg = Math.round(m.total / m.games);
-                            const occ = avg / market.arenaCapacity;
-                            return (<>
-                                <td className={`${tdClass} ${rL} text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
-                                <td className={`${tdValClass}`}>
-                                    <AttendanceBar occupancy={occ} avg={avg} />
-                                </td>
-                            </>);
-                        })() : (<>
-                            <td className={`${tdClass} ${rL}`} />
-                            <td className={`${tdValClass}`} />
-                        </>)}
+                        <td colSpan={2} className={`${tdClass} ${rL}`} />
                     </tr>
-                    {/* 평균 점유율 / 월별 3행~ */}
+                    {/* 평균 점유율 */}
                     <tr>
                         <td className={`${tdClass} text-slate-400`}>평균 점유율</td>
                         <td className={`${tdValClass} font-bold ${hasGames ? (attendanceStats.averageOccupancy >= 0.85 ? 'text-emerald-400' : attendanceStats.averageOccupancy >= 0.70 ? 'text-yellow-400' : 'text-red-400') : 'text-white'}`}>
                             {hasGames ? (attendanceStats.averageOccupancy * 100).toFixed(1) + '%' : '-'}
                         </td>
-                        {monthKeys.length > 2 ? (() => {
-                            const mk = monthKeys[2];
-                            const m = attendanceStats.monthlyAttendance[mk];
-                            const avg = Math.round(m.total / m.games);
-                            const occ = avg / market.arenaCapacity;
-                            return (<>
-                                <td className={`${tdClass} ${rL} text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
-                                <td className={`${tdValClass}`}>
-                                    <AttendanceBar occupancy={occ} avg={avg} />
-                                </td>
-                            </>);
-                        })() : (<>
-                            <td className={`${tdClass} ${rL}`} />
-                            <td className={`${tdValClass}`} />
-                        </>)}
+                        <td colSpan={2} className={`${tdClass} ${rL}`} />
                     </tr>
-                    {/* 나머지 월별 행 (4행~7행) */}
-                    {monthKeys.slice(3).map((mk, i) => {
+                    {/* 월별 관중 추이 */}
+                    {monthKeys.map((mk) => {
                         const m = attendanceStats.monthlyAttendance[mk];
                         const avg = Math.round(m.total / m.games);
                         const occ = avg / market.arenaCapacity;
                         return (
                             <tr key={mk}>
-                                <td className={`${tdClass}`} />
-                                <td className={`${tdValClass}`} />
-                                <td className={`${tdClass} ${rL} text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
+                                <td className={`${tdClass} pl-4 text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
                                 <td className={`${tdValClass}`}>
                                     <AttendanceBar occupancy={occ} avg={avg} />
                                 </td>
+                                <td colSpan={2} className={`${tdClass} ${rL}`} />
                             </tr>
                         );
                     })}

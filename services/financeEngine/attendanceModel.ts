@@ -94,10 +94,18 @@ const MD_PER_CAPITA: Record<number, number> = {
 export function calculateMerchandiseRevenue(
     homeTeamId: string,
     attendance: number,
+    roster?: Team['roster'],
 ): number {
     const finData = TEAM_FINANCE_DATA[homeTeamId];
     if (!finData) return 0;
 
-    const mdSpend = MD_PER_CAPITA[finData.market.marketTier] ?? 7;
+    let mdSpend = MD_PER_CAPITA[finData.market.marketTier] ?? 7;
+
+    // 스타 선수 머천다이즈 보정: OVR 90+ 선수 1인당 +$2 (최대 +$8)
+    if (roster) {
+        const starCount = roster.filter(p => p.ovr >= 90).length;
+        mdSpend += Math.min(starCount * 2, 8);
+    }
+
     return (attendance * mdSpend) / 1_000_000; // $M 단위
 }
