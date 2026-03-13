@@ -100,6 +100,7 @@ export interface PlayerAwardEntry {
     type: PlayerAwardType;
     season: string;   // e.g. '2025-26'
     teamId: string;
+    rank?: number;    // MVP 1~10위, DPOY 1~5위 (없으면 수상/선정)
 }
 
 // [New] Interface for saving player state (Condition + Health + Growth)

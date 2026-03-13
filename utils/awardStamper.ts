@@ -8,10 +8,12 @@ import { PlayerAwardType, PlayerAwardEntry } from '../types/player';
 import { SeasonAwardsContent } from './awardVoting';
 
 /** 선수에 award push (없으면 초기화, 중복 방지) */
-function pushAward(player: { awards?: PlayerAwardEntry[] }, type: PlayerAwardType, season: string, teamId: string) {
+function pushAward(player: { awards?: PlayerAwardEntry[] }, type: PlayerAwardType, season: string, teamId: string, rank?: number) {
     if (!player.awards) player.awards = [];
     if (player.awards.some(a => a.type === type && a.season === season)) return;
-    player.awards.push({ type, season, teamId });
+    const entry: PlayerAwardEntry = { type, season, teamId };
+    if (rank !== undefined) entry.rank = rank;
+    player.awards.push(entry);
 }
 
 /** 팀 로스터 전체에서 playerId → Player 맵 생성 */
@@ -31,18 +33,20 @@ function buildPlayerMap(teams: Team[]) {
 export function stampSeasonAwards(teams: Team[], awardContent: SeasonAwardsContent, season: string): void {
     const map = buildPlayerMap(teams);
 
-    // MVP
-    if (awardContent.mvpRanking.length > 0) {
-        const mvp = awardContent.mvpRanking[0];
-        const p = map.get(mvp.playerId);
-        if (p) pushAward(p, 'MVP', season, mvp.teamId);
+    // MVP (1~10위)
+    const mvpTop = Math.min(awardContent.mvpRanking.length, 10);
+    for (let i = 0; i < mvpTop; i++) {
+        const r = awardContent.mvpRanking[i];
+        const p = map.get(r.playerId);
+        if (p) pushAward(p, 'MVP', season, r.teamId, i + 1);
     }
 
-    // DPOY
-    if (awardContent.dpoyRanking.length > 0) {
-        const dpoy = awardContent.dpoyRanking[0];
-        const p = map.get(dpoy.playerId);
-        if (p) pushAward(p, 'DPOY', season, dpoy.teamId);
+    // DPOY (1~5위)
+    const dpoyTop = Math.min(awardContent.dpoyRanking.length, 5);
+    for (let i = 0; i < dpoyTop; i++) {
+        const r = awardContent.dpoyRanking[i];
+        const p = map.get(r.playerId);
+        if (p) pushAward(p, 'DPOY', season, r.teamId, i + 1);
     }
 
     // All-NBA (tier 1/2/3)
