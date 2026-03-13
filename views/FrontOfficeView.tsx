@@ -69,7 +69,6 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
 const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
 const tdClass = "py-1.5 px-2 text-xs text-slate-300 whitespace-nowrap border-b border-slate-700/60";
 const tdValClass = "py-1.5 px-2 text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60 text-right";
-const gridFrame = "border border-slate-600 rounded-lg overflow-hidden";
 
 // ── 구단주 성향 자연어 변환 ──
 function getSpendingLabel(v: number): string {
@@ -116,11 +115,10 @@ const ClubTab: React.FC<{
     ];
 
     return (
-        <div className="p-6">
-            <div className="grid grid-cols-2 gap-6">
-                {/* ── 좌측: 재정 현황 ── */}
-                <div className={gridFrame}>
-                    <table className="w-full border-collapse text-xs">
+        <div className="grid grid-cols-2">
+            {/* ── 좌측: 재정 현황 ── */}
+            <div className="border-r border-slate-700/60">
+                <table className="w-full border-collapse text-xs">
                         <thead>
                             <tr>
                                 <th colSpan={2} className={`${thClass} text-left`}>재정 현황</th>
@@ -192,11 +190,11 @@ const ClubTab: React.FC<{
                             </tr>
                         </tbody>
                     </table>
-                </div>
+            </div>
 
-                {/* ── 우측: 구단주 / 경기장 / 연고지 (연결된 3개 섹션) ── */}
-                <div className={gridFrame}>
-                    <table className="w-full border-collapse text-xs">
+            {/* ── 우측: 구단주 / 경기장 / 연고지 (연결된 3개 섹션) ── */}
+            <div>
+                <table className="w-full border-collapse text-xs">
                         {/* 구단주 */}
                         <thead>
                             <tr>
@@ -262,7 +260,6 @@ const ClubTab: React.FC<{
                             </tr>
                         </tbody>
                     </table>
-                </div>
             </div>
         </div>
     );
