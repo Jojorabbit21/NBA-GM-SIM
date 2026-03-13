@@ -25,14 +25,20 @@ export const fetchUnreadMessageCount = async (userId: string, teamId: string): P
 /**
  * Fetch total message count
  */
-export const fetchTotalMessageCount = async (userId: string, teamId: string): Promise<number> => {
+export const fetchTotalMessageCount = async (userId: string, teamId: string, typeFilter?: MessageType[]): Promise<number> => {
     if (!userId || !teamId) return 0;
 
-    const { count, error } = await supabase
+    let query = supabase
         .from('user_messages')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', userId)
         .eq('team_id', teamId);
+
+    if (typeFilter && typeFilter.length > 0) {
+        query = query.in('type', typeFilter);
+    }
+
+    const { count, error } = await query;
 
     if (error) {
         console.error("Error fetching total message count:", error);
@@ -68,15 +74,21 @@ export const fetchMessages = async (userId: string, teamId: string, page: number
  * Fetch message metadata (no content JSONB) with pagination.
  * Used for the sidebar list where only title/type/date/is_read are needed.
  */
-export const fetchMessageList = async (userId: string, teamId: string, page: number = 0, limit: number = 20): Promise<MessageListItem[]> => {
+export const fetchMessageList = async (userId: string, teamId: string, page: number = 0, limit: number = 20, typeFilter?: MessageType[]): Promise<MessageListItem[]> => {
     const from = page * limit;
     const to = from + limit - 1;
 
-    const { data, error } = await supabase
+    let query = supabase
         .from('user_messages')
         .select('id, user_id, team_id, date, type, title, is_read, created_at')
         .eq('user_id', userId)
-        .eq('team_id', teamId)
+        .eq('team_id', teamId);
+
+    if (typeFilter && typeFilter.length > 0) {
+        query = query.in('type', typeFilter);
+    }
+
+    const { data, error } = await query
         .order('date', { ascending: false })
         .order('created_at', { ascending: false })
         .range(from, to);

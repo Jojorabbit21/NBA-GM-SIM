@@ -1,12 +1,16 @@
 import React, { useRef, useCallback, useEffect } from 'react';
 import { Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
-import { MessageListItem } from '../../types';
+import { MessageListItem, MessageFilterCategory, MESSAGE_FILTER_LABELS } from '../../types';
+
+const FILTER_CATEGORIES: MessageFilterCategory[] = ['ALL', 'GAME', 'TRANSACTION', 'LEAGUE', 'SYSTEM'];
 
 interface MessageListProps {
     messages: MessageListItem[];
     selectedMessageId: string | null;
     loading: boolean;
     totalCount: number;
+    filterCategory: MessageFilterCategory;
+    onFilterChange: (category: MessageFilterCategory) => void;
     onSelectMessage: (msg: MessageListItem) => void;
     onMarkAllRead: () => void;
     onRefresh: () => void;
@@ -18,6 +22,8 @@ export const MessageList: React.FC<MessageListProps> = ({
     selectedMessageId,
     loading,
     totalCount,
+    filterCategory,
+    onFilterChange,
     onSelectMessage,
     onMarkAllRead,
     onRefresh,
@@ -68,9 +74,22 @@ export const MessageList: React.FC<MessageListProps> = ({
                     </button>
                 </div>
             </div>
-            {/* Message Count */}
-            <div className="px-4 py-2 border-b border-slate-800/50">
-                <span className="text-[10px] font-bold text-slate-600">총 {totalCount}개</span>
+            {/* Filter Tabs + Count */}
+            <div className="px-3 py-2 border-b border-slate-800/50 flex items-center gap-1.5 flex-wrap">
+                {FILTER_CATEGORIES.map((cat) => (
+                    <button
+                        key={cat}
+                        onClick={() => onFilterChange(cat)}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full transition-colors ${
+                            filterCategory === cat
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-800/50 text-slate-500 hover:text-slate-300'
+                        }`}
+                    >
+                        {MESSAGE_FILTER_LABELS[cat]}
+                    </button>
+                ))}
+                <span className="text-[10px] font-bold text-slate-600 ml-auto">{totalCount}</span>
             </div>
 
             <div className="flex-1 overflow-y-auto custom-scrollbar">
