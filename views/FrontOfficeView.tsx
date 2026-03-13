@@ -5,7 +5,6 @@ import { TeamFinance } from '../types/finance';
 import { TEAM_FINANCE_DATA } from '../data/teamFinanceData';
 import { TEAM_DATA } from '../data/teamData';
 import { getBudgetManager } from '../services/financeEngine';
-import { Building2, DollarSign, Users, Landmark } from 'lucide-react';
 
 type FrontOfficeTab = 'club' | 'finance';
 
@@ -66,7 +65,37 @@ export const FrontOfficeView: React.FC<FrontOfficeViewProps> = ({
     );
 };
 
-// ── 구단 탭 (재정 요약 + 구단주 + 경기장을 2×2 그리드로) ──
+// ── 공통 엑셀 그리드 스타일 ──
+const thClass = "py-1.5 px-2 text-xs font-bold uppercase tracking-wide text-slate-300 whitespace-nowrap border-b border-slate-600 bg-slate-800/80";
+const tdClass = "py-1.5 px-2 text-xs text-slate-300 whitespace-nowrap border-b border-slate-700/60";
+const tdValClass = "py-1.5 px-2 text-xs font-mono tabular-nums text-slate-300 whitespace-nowrap border-b border-slate-700/60 text-right";
+const gridFrame = "border border-slate-600 rounded-lg overflow-hidden";
+
+// ── 구단주 성향 자연어 변환 ──
+function getSpendingLabel(v: number): string {
+    if (v <= 3) return '구두쇠';
+    if (v <= 6) return '보통';
+    if (v <= 8) return '협조적';
+    return '소비광';
+}
+function getWinNowLabel(v: number): string {
+    if (v <= 3) return '장기성과 우선';
+    if (v <= 7) return '중립';
+    return '단기성과 우선';
+}
+function getPatienceLabel(v: number): string {
+    if (v <= 3) return '인내심 없음';
+    if (v <= 7) return '보통';
+    return '현자';
+}
+function getMarketingLabel(v: number): string {
+    if (v <= 3) return '수익 우선';
+    if (v <= 6) return '중립';
+    if (v <= 8) return '지출에 관대';
+    return '지역 사회에 환원';
+}
+
+// ── 구단 탭 (재정 현황 + 구단주 + 경기장 — 엑셀 그리드) ──
 const ClubTab: React.FC<{
     finData: (typeof TEAM_FINANCE_DATA)[string];
     finance: TeamFinance;
@@ -79,121 +108,131 @@ const ClubTab: React.FC<{
     const totalRevenue = Object.values(finance.revenue).reduce((s, v) => s + v, 0);
     const totalExpenses = Object.values(finance.expenses).reduce((s, v) => s + v, 0);
 
+    const traitRows: { label: string; value: number; desc: string }[] = [
+        { label: '지출 의지', value: ownerProfile.spendingWillingness, desc: getSpendingLabel(ownerProfile.spendingWillingness) },
+        { label: '우승 의지', value: ownerProfile.winNowPriority, desc: getWinNowLabel(ownerProfile.winNowPriority) },
+        { label: '마케팅 중시', value: ownerProfile.marketingFocus, desc: getMarketingLabel(ownerProfile.marketingFocus) },
+        { label: '인내심', value: ownerProfile.patience, desc: getPatienceLabel(ownerProfile.patience) },
+    ];
+
     return (
         <div className="p-6 space-y-6">
-            {/* Row 1: 재정 요약 (left) + 구단주 (right) */}
+            {/* Row 1: 재정 현황 (left) + 구단주 (right) */}
             <div className="grid grid-cols-2 gap-6">
-                {/* 재정 요약 테이블 */}
-                <div className="rounded-3xl bg-slate-900 border border-slate-800 p-5">
-                    <h3 className="text-sm font-bold ko-tight text-slate-300 mb-4 flex items-center gap-2">
-                        <DollarSign size={16} className="text-emerald-400" />
-                        재정 현황
-                    </h3>
-                    <table className="w-full text-sm">
+                {/* 재정 현황 */}
+                <div className={gridFrame}>
+                    <table className="w-full border-collapse text-xs">
+                        <thead>
+                            <tr>
+                                <th colSpan={2} className={`${thClass} text-left`}>재정 현황</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <StatRow label="총 수익" value={totalRevenue} color="text-emerald-400" />
-                            <StatRow label="총 지출" value={totalExpenses} color="text-red-400" />
-                            <tr className="border-t border-slate-700">
-                                <td className="py-2.5 text-slate-300 font-bold ko-tight">영업 수입</td>
-                                <td className={`py-2.5 text-right font-black text-base ${
-                                    finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'
-                                }`}>
-                                    {finance.operatingIncome >= 0 ? '+' : ''}{fmtM(finance.operatingIncome)}
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>총 수익</td>
+                                <td className={`${tdValClass} text-emerald-400 font-bold`}>{fmtFull(totalRevenue)}</td>
+                            </tr>
+                            <tr>
+                                <td className={tdClass}>총 지출</td>
+                                <td className={`${tdValClass} text-red-400 font-bold`}>{fmtFull(totalExpenses)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={`${tdClass} font-bold text-slate-200`}>영업 수입</td>
+                                <td className={`${tdValClass} font-black ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {finance.operatingIncome >= 0 ? '+' : ''}{fmtFull(finance.operatingIncome)}
                                 </td>
                             </tr>
-                            <StatRow label="시즌 예산" value={finance.budget} color="text-indigo-400" />
-                            <StatRow label="선수 연봉 (Payroll)" value={finance.expenses.payroll} color="text-white" />
-                            <StatRow label="럭셔리 택스" value={finance.expenses.luxuryTax} color={finance.expenses.luxuryTax > 0 ? 'text-orange-400' : 'text-slate-500'} />
+                            <tr>
+                                <td className={tdClass}>시즌 예산</td>
+                                <td className={`${tdValClass} text-indigo-400 font-bold`}>{fmtFull(finance.budget)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>선수 연봉 (Payroll)</td>
+                                <td className={`${tdValClass} font-bold`}>{fmtFull(finance.expenses.payroll)}</td>
+                            </tr>
+                            <tr>
+                                <td className={tdClass}>럭셔리 택스</td>
+                                <td className={`${tdValClass} font-bold ${finance.expenses.luxuryTax > 0 ? 'text-orange-400' : 'text-slate-500'}`}>{fmtFull(finance.expenses.luxuryTax)}</td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>경기장 운영비</td>
+                                <td className={`${tdValClass} font-bold`}>{fmtFull(finance.expenses.operations)}</td>
+                            </tr>
+                            <tr>
+                                <td className={tdClass}>로컬 미디어 수입</td>
+                                <td className={`${tdValClass} font-bold`}>{fmtFull(market.localMediaDeal)}<span className="text-slate-500">/년</span></td>
+                            </tr>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>스폰서 기본 수입</td>
+                                <td className={`${tdValClass} font-bold`}>{fmtFull(market.sponsorshipBase)}<span className="text-slate-500">/년</span></td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
 
-                {/* 구단주 정보 테이블 */}
-                <div className="rounded-3xl bg-slate-900 border border-slate-800 p-5">
-                    <h3 className="text-sm font-bold ko-tight text-slate-300 mb-4 flex items-center gap-2">
-                        <Landmark size={16} className="text-indigo-400" />
-                        구단주
-                    </h3>
-                    <table className="w-full text-sm">
+                {/* 구단주 */}
+                <div className={gridFrame}>
+                    <table className="w-full border-collapse text-xs">
+                        <thead>
+                            <tr>
+                                <th colSpan={2} className={`${thClass} text-left`}>구단주</th>
+                            </tr>
+                        </thead>
                         <tbody>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">이름</td>
-                                <td className="py-2.5 text-right text-white font-bold">{ownerProfile.name}</td>
+                            <tr className="bg-slate-800/30">
+                                <td className={tdClass}>이름</td>
+                                <td className={`${tdValClass} font-bold text-white`}>{ownerProfile.name}</td>
                             </tr>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">순자산</td>
-                                <td className="py-2.5 text-right text-emerald-400 font-bold">${ownerProfile.netWorth}B</td>
+                            <tr>
+                                <td className={tdClass}>순자산</td>
+                                <td className={`${tdValClass} font-bold text-emerald-400`}>{fmtFullB(ownerProfile.netWorth)}</td>
                             </tr>
-                            <TraitRow label="지출 의지" value={ownerProfile.spendingWillingness} desc="택스 납부 및 FA 투자 의지" />
-                            <TraitRow label="우승 우선" value={ownerProfile.winNowPriority} desc="단기 우승 vs 장기 육성" />
-                            <TraitRow label="마케팅 중시" value={ownerProfile.marketingFocus} desc="수익 극대화 vs 팬 서비스" />
-                            <TraitRow label="인내심" value={ownerProfile.patience} desc="리빌딩 인내심" />
+                            {traitRows.map((t, i) => (
+                                <tr key={t.label} className={i % 2 === 0 ? 'bg-slate-800/30' : ''}>
+                                    <td className={tdClass}>{t.label}</td>
+                                    <td className={`${tdValClass} font-bold text-indigo-400`}>{t.desc}</td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
             </div>
 
-            {/* Row 2: 경기장 정보 (full width) */}
-            <div className="rounded-3xl bg-slate-900 border border-slate-800 p-5">
-                <h3 className="text-sm font-bold ko-tight text-slate-300 mb-4 flex items-center gap-2">
-                    <Building2 size={16} className="text-sky-400" />
-                    경기장 & 연고지
-                </h3>
-                <div className="grid grid-cols-2 gap-6">
-                    {/* 경기장 */}
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr><th colSpan={2} className="text-left text-xs text-slate-500 pb-2 font-bold uppercase tracking-wider">경기장</th></tr>
-                        </thead>
-                        <tbody>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">경기장명</td>
-                                <td className="py-2.5 text-right text-white font-bold">{market.arenaName}</td>
-                            </tr>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">좌석 수</td>
-                                <td className="py-2.5 text-right text-white font-bold">{market.arenaCapacity.toLocaleString()}석</td>
-                            </tr>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">평균 입장료</td>
-                                <td className="py-2.5 text-right text-white font-bold">${market.baseTicketPrice}</td>
-                            </tr>
-                            <tr>
-                                <td className="py-2.5 text-slate-400">운영비</td>
-                                <td className="py-2.5 text-right text-white font-bold">{fmtM(finance.expenses.operations)}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    {/* 연고지 */}
-                    <table className="w-full text-sm">
-                        <thead>
-                            <tr><th colSpan={2} className="text-left text-xs text-slate-500 pb-2 font-bold uppercase tracking-wider">연고지</th></tr>
-                        </thead>
-                        <tbody>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">도시</td>
-                                <td className="py-2.5 text-right text-white font-bold">{TEAM_DATA[myTeamId]?.city}</td>
-                            </tr>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">광역 인구</td>
-                                <td className="py-2.5 text-right text-white font-bold">{(market.metroPopulation / 100).toFixed(1)}M</td>
-                            </tr>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">마켓 티어</td>
-                                <td className="py-2.5 text-right text-white font-bold">Tier {market.marketTier} <span className="text-slate-500 text-xs ml-1">{tierLabels[market.marketTier]}</span></td>
-                            </tr>
-                            <tr className="border-b border-slate-800">
-                                <td className="py-2.5 text-slate-400">로컬 미디어</td>
-                                <td className="py-2.5 text-right text-white font-bold">${market.localMediaDeal}M<span className="text-slate-500 text-xs ml-1">/년</span></td>
-                            </tr>
-                            <tr>
-                                <td className="py-2.5 text-slate-400">스폰서 기본</td>
-                                <td className="py-2.5 text-right text-white font-bold">${market.sponsorshipBase}M<span className="text-slate-500 text-xs ml-1">/년</span></td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+            {/* Row 2: 경기장 & 연고지 (단일 컬럼) */}
+            <div className={gridFrame}>
+                <table className="w-full border-collapse text-xs">
+                    <thead>
+                        <tr>
+                            <th colSpan={2} className={`${thClass} text-left`}>경기장 & 연고지</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr className="bg-slate-800/30">
+                            <td className={tdClass}>경기장명</td>
+                            <td className={`${tdValClass} font-bold text-white`}>{market.arenaName}</td>
+                        </tr>
+                        <tr>
+                            <td className={tdClass}>좌석 수</td>
+                            <td className={`${tdValClass} font-bold`}>{market.arenaCapacity.toLocaleString()}석</td>
+                        </tr>
+                        <tr className="bg-slate-800/30">
+                            <td className={tdClass}>평균 입장료</td>
+                            <td className={`${tdValClass} font-bold`}>${market.baseTicketPrice}</td>
+                        </tr>
+                        <tr>
+                            <td className={tdClass}>도시</td>
+                            <td className={`${tdValClass} font-bold text-white`}>{TEAM_DATA[myTeamId]?.city}</td>
+                        </tr>
+                        <tr className="bg-slate-800/30">
+                            <td className={tdClass}>광역 인구</td>
+                            <td className={`${tdValClass} font-bold`}>{(market.metroPopulation / 100).toFixed(1)}M</td>
+                        </tr>
+                        <tr>
+                            <td className={tdClass}>마켓 티어</td>
+                            <td className={`${tdValClass} font-bold`}>Tier {market.marketTier} <span className="text-slate-500">{tierLabels[market.marketTier]}</span></td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
     );
@@ -213,13 +252,13 @@ const FinanceStatementTab: React.FC<{
             <div className="rounded-3xl bg-slate-900 border border-slate-800 p-6">
                 {/* 제목 */}
                 <div className="text-center mb-6">
-                    <h2 className="text-base font-black ko-tight text-white uppercase tracking-wider">
+                    <h2 className="text-xs font-black ko-tight text-white uppercase tracking-wider">
                         {TEAM_DATA[team.id]?.city} {TEAM_DATA[team.id]?.name}
                     </h2>
                     <p className="text-xs text-slate-500 mt-1">시즌 손익계산서 (Income Statement)</p>
                 </div>
 
-                <table className="w-full text-sm">
+                <table className="w-full text-xs">
                     <thead>
                         <tr className="border-b-2 border-slate-600">
                             <th className="text-left py-2 text-slate-400 font-bold text-xs uppercase tracking-wider">항목</th>
@@ -257,8 +296,8 @@ const FinanceStatementTab: React.FC<{
 
                         {/* 영업 수입 */}
                         <tr className="border-t-2 border-slate-600">
-                            <td className="py-3 text-white font-black ko-tight text-base">영업 수입 (Operating Income)</td>
-                            <td className={`py-3 text-right font-black text-lg ${
+                            <td className="py-3 text-white font-black ko-tight text-xs">영업 수입 (Operating Income)</td>
+                            <td className={`py-3 text-right font-black text-xs ${
                                 finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'
                             }`}>
                                 {finance.operatingIncome >= 0 ? '+' : ''}{fmtM(finance.operatingIncome)}
@@ -283,31 +322,17 @@ function fmtM(v: number): string {
     return `$${v.toFixed(1)}M`;
 }
 
-/** 재정 요약 테이블 행 */
-const StatRow: React.FC<{ label: string; value: number; color: string }> = ({ label, value, color }) => (
-    <tr className="border-b border-slate-800">
-        <td className="py-2.5 text-slate-400">{label}</td>
-        <td className={`py-2.5 text-right font-bold ${color}`}>{fmtM(value)}</td>
-    </tr>
-);
+/** $M 값을 전체 달러 표기로 변환 (예: 155.3 → $155,300,000) */
+function fmtFull(v: number): string {
+    const dollars = Math.round(v * 1_000_000);
+    return `$${dollars.toLocaleString()}`;
+}
 
-/** 구단주 성향 행 (게이지 바 포함) */
-const TraitRow: React.FC<{ label: string; value: number; desc: string }> = ({ label, value, desc }) => (
-    <tr className="border-b border-slate-800">
-        <td className="py-2.5">
-            <span className="text-slate-400">{label}</span>
-            <span className="text-[10px] text-slate-600 ml-1.5">{desc}</span>
-        </td>
-        <td className="py-2.5">
-            <div className="flex items-center justify-end gap-2">
-                <div className="w-20 h-1.5 bg-slate-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${value * 10}%` }} />
-                </div>
-                <span className="text-indigo-400 font-bold text-xs w-8 text-right">{value}/10</span>
-            </div>
-        </td>
-    </tr>
-);
+/** $B 값을 전체 달러 표기로 변환 (예: 120 → $120,000,000,000) */
+function fmtFullB(v: number): string {
+    const dollars = Math.round(v * 1_000_000_000);
+    return `$${dollars.toLocaleString()}`;
+}
 
 /** 재무제표 행 */
 const FSRow: React.FC<{ label: string; value: number; indent?: boolean }> = ({ label, value, indent }) => (
