@@ -490,16 +490,19 @@ export const useGameData = (session: any, isGuestMode: boolean, rosterMode?: Ros
                 const seed = ov?.tendencySeed || gameStateRef.current.tendencySeed;
 
                 if (teamId && date) {
+                    const _saveStart = performance.now();
                     const currentSimSettings = ov?.simSettings || gameStateRef.current.simSettings;
                     const coaching = ov?.coachingData || gameStateRef.current.coachingData;
                     const result = await saveCheckpoint(session.user.id, teamId, date, tactics, rosterState, dc, draftPicksRef.current, seed, snapshot, currentSimSettings, coaching);
+                    const rosterKeys = Object.keys(rosterState).length;
+                    console.log(`💾 [forceSave] ${date} saved in ${(performance.now() - _saveStart).toFixed(0)}ms (snapshot: ${snapshot ? 'yes' : 'no'}, roster_state: ${rosterKeys} players)`);
                     if (result?.[0]?.hof_id) {
                         setHofId(result[0].hof_id);
                     }
                 }
             }
         } catch (err) {
-            console.warn("Save error:", err);
+            console.warn("❌ [forceSave] Save error:", err);
         } finally {
             isSavingRef.current = false;
             setIsSaving(false);
