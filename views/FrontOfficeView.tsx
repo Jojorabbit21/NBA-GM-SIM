@@ -128,8 +128,8 @@ const ClubTab: React.FC<{
         { label: '인내심', value: ownerProfile.patience, desc: getPatienceLabel(ownerProfile.patience) },
     ];
 
-    // 우측 컬럼 border 클래스 (중앙 구분선)
-    const rL = "border-l border-slate-600";
+    // 우측 컬럼 border 클래스 (중앙 구분선 — 밝은 색)
+    const rL = "border-l-2 border-slate-400/60";
 
     return (
         <div className="border-b-2 border-b-slate-500">
@@ -237,67 +237,52 @@ const ClubTab: React.FC<{
                         <td className={`${tdClass} ${rL}`}>마켓 티어</td>
                         <td className={`${tdValClass} font-bold text-white`}>{tierLabels[market.marketTier]}</td>
                     </tr>
-                    {/* Row 15: 일반 관리비 */}
+                    {/* Row 15: 일반 관리비 / 관중 통계 헤더 */}
                     <tr>
                         <td className={`${tdClass} pl-4 text-slate-400`}>일반 관리비</td>
                         <td className={`${tdValClass} text-red-400`}>{fmtFull(finance.expenses.administration)}</td>
-                        <td colSpan={2} className={`${tdClass} ${rL}`} />
+                        <th colSpan={2} className={`${thClass} text-left ${rL}`}>관중 통계</th>
                     </tr>
-                    {/* Row 16: 총 지출 */}
+                    {/* Row 16: 총 지출 / 시즌 총 관중 */}
                     <tr>
                         <td className={`${tdClass} font-bold`}>총 지출</td>
                         <td className={`${tdValClass} text-red-400 font-bold`}>{fmtFull(totalExpenses)}</td>
-                        <td colSpan={2} className={`${tdClass} ${rL}`} />
+                        <td className={`${tdClass} ${rL} text-slate-400`}>시즌 총 관중</td>
+                        <td className={`${tdValClass} font-bold text-white`}>
+                            {hasGames ? attendanceStats.totalAttendance.toLocaleString() + '명' : '-'}
+                        </td>
                     </tr>
-                    {/* Row 17: 손익 */}
+                    {/* Row 17: 손익 / 경기당 평균 */}
                     <tr>
                         <td className={`${tdClass} font-bold text-white border-t border-slate-600`}>손익</td>
                         <td className={`${tdValClass} font-bold border-t border-slate-600 ${finance.operatingIncome >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                             {finance.operatingIncome >= 0 ? '+' : ''}{fmtFull(finance.operatingIncome)}
                         </td>
-                        <td colSpan={2} className={`${tdClass} ${rL} border-t border-slate-600`} />
-                    </tr>
-                    {/* ── 관중 통계 헤더 ── */}
-                    <tr>
-                        <th colSpan={2} className={`${thClass} text-left`}>관중 통계</th>
-                        <td colSpan={2} className={`${tdClass} ${rL}`} />
-                    </tr>
-                    {/* 시즌 총 관중 */}
-                    <tr>
-                        <td className={`${tdClass} text-slate-400`}>시즌 총 관중</td>
-                        <td className={`${tdValClass} font-bold text-white`}>
-                            {hasGames ? attendanceStats.totalAttendance.toLocaleString() + '명' : '-'}
-                        </td>
-                        <td colSpan={2} className={`${tdClass} ${rL}`} />
-                    </tr>
-                    {/* 경기당 평균 */}
-                    <tr>
-                        <td className={`${tdClass} text-slate-400`}>경기당 평균</td>
+                        <td className={`${tdClass} ${rL} text-slate-400`}>경기당 평균</td>
                         <td className={`${tdValClass} font-bold text-white`}>
                             {hasGames ? attendanceStats.averageAttendance.toLocaleString() + '명' : '-'}
                         </td>
-                        <td colSpan={2} className={`${tdClass} ${rL}`} />
                     </tr>
-                    {/* 평균 점유율 */}
+                    {/* Row 18: (좌측 빈칸) / 평균 점유율 */}
                     <tr>
-                        <td className={`${tdClass} text-slate-400`}>평균 점유율</td>
+                        <td colSpan={2} className={`${tdClass}`} />
+                        <td className={`${tdClass} ${rL} text-slate-400`}>평균 점유율</td>
                         <td className={`${tdValClass} font-bold ${hasGames ? (attendanceStats.averageOccupancy >= 0.85 ? 'text-emerald-400' : attendanceStats.averageOccupancy >= 0.70 ? 'text-yellow-400' : 'text-red-400') : 'text-white'}`}>
                             {hasGames ? (attendanceStats.averageOccupancy * 100).toFixed(1) + '%' : '-'}
                         </td>
-                        <td colSpan={2} className={`${tdClass} ${rL}`} />
                     </tr>
-                    {/* 월별 관중 추이 */}
+                    {/* 월별 관중 추이 (우측) */}
                     {monthKeys.map((mk) => {
                         const m = attendanceStats.monthlyAttendance[mk];
                         const avg = Math.round(m.total / m.games);
                         const occ = avg / market.arenaCapacity;
                         return (
                             <tr key={mk}>
-                                <td className={`${tdClass} pl-4 text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
+                                <td colSpan={2} className={`${tdClass}`} />
+                                <td className={`${tdClass} ${rL} pl-4 text-slate-400`}>{MONTH_LABELS[mk.slice(5)] ?? mk}</td>
                                 <td className={`${tdValClass}`}>
                                     <AttendanceBar occupancy={occ} avg={avg} />
                                 </td>
-                                <td colSpan={2} className={`${tdClass} ${rL}`} />
                             </tr>
                         );
                     })}
