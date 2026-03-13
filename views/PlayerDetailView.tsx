@@ -1004,19 +1004,19 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                         </TableRow>
                                         {/* 연차별 연봉 */}
                                         {player.contract.years.map((yearSalary, idx) => {
-                                            const isCurrent = idx === player.contract!.currentYear;
-                                            const isPast = idx < player.contract!.currentYear;
+                                            const seasonStart = 2025 - player.contract!.currentYear + idx;
+                                            const seasonLabel = `${seasonStart}-${String(seasonStart + 1).slice(-2)}`;
                                             const isOption = player.contract!.option && idx === player.contract!.option.year;
                                             const optionLabel = isOption ? (player.contract!.option!.type === 'player' ? ' (PO)' : ' (TO)') : '';
                                             return (
-                                                <TableRow key={idx} className={`h-10 ${isCurrent ? 'bg-indigo-500/10' : ''}`}>
+                                                <TableRow key={idx} className="h-10">
                                                     <TableCell align="center" className="border-r border-r-slate-800/30">
-                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCurrent ? 'text-indigo-300 font-bold' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
-                                                            Year {idx + 1}{isCurrent ? ' *' : ''}{optionLabel}
+                                                        <span className="font-mono font-medium tabular-nums text-xs text-slate-300">
+                                                            {seasonLabel}{optionLabel}
                                                         </span>
                                                     </TableCell>
                                                     <TableCell align="center">
-                                                        <span className={`font-mono font-medium tabular-nums text-xs ${isCurrent ? 'text-white font-bold' : isPast ? 'text-slate-500' : 'text-slate-300'}`}>
+                                                        <span className="font-mono font-medium tabular-nums text-xs text-slate-300">
                                                             {formatSalary(yearSalary)}
                                                         </span>
                                                     </TableCell>
