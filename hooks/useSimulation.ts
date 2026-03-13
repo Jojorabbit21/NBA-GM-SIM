@@ -261,10 +261,14 @@ export const useSimulation = (
         }
     }, [session, myTeamId, refreshUnreadCount, hofId, isGuestMode, onHofSubmitted]);
 
+    // UI 렌더링 기회를 주는 마이크로 yield
+    const yieldToUI = () => new Promise<void>(r => setTimeout(r, 0));
+
     const handleExecuteSim = useCallback(async (userTactics: GameTactics, skipAnimation: boolean = false, spectateGameId?: string) => {
         if (isSimulating || !myTeamId) return;
         setIsSimulating(true);
         setSimProgress({ percent: 5, label: '준비 중...' });
+        await yieldToUI();
 
         try {
             const _t0 = performance.now();
@@ -297,6 +301,7 @@ export const useSimulation = (
 
             // 2.5. 부상 복귀 체크
             setSimProgress({ percent: 10, label: '부상 체크...' });
+            await yieldToUI();
             _t1 = performance.now();
             const recoveredPlayers = processInjuryRecovery(newTeams, currentSimDate, myTeamId);
             if (recoveredPlayers.length > 0 && !isGuestMode && session?.user?.id) {
@@ -320,6 +325,7 @@ export const useSimulation = (
 
             // 3. Process CPU Games (참관 경기는 제외 — LiveGameView에서 실시간 진행)
             setSimProgress({ percent: 25, label: 'CPU 경기 처리...' });
+            await yieldToUI();
             _t1 = performance.now();
             const excludeGameId = userGame?.id || spectateGameId;
             const cpuData = processCpuGames(newTeams, newSchedule, newPlayoffSeries, currentSimDate, excludeGameId, session?.user?.id, tendencySeed, simSettings, coachingData);
@@ -327,6 +333,7 @@ export const useSimulation = (
 
             // [Fix] Save CPU Game Results to DB
             setSimProgress({ percent: 40, label: '결과 저장...' });
+            await yieldToUI();
             _t1 = performance.now();
             if (!isGuestMode) {
                 if (cpuData.gameResultsToSave.length > 0) {
@@ -344,6 +351,7 @@ export const useSimulation = (
             if (userGame) {
                 // Run Simulation (Pure Logic)
                 setSimProgress({ percent: 55, label: '경기 시뮬레이션...' });
+                await yieldToUI();
                 _t1 = performance.now();
                 const result = runUserSimulation(userGame, newTeams, newSchedule, myTeamId, userTactics, currentSimDate, depthChart, tendencySeed, simSettings, coachingData);
                 _perf['6_userSimulation'] = performance.now() - _t1;
@@ -365,6 +373,7 @@ export const useSimulation = (
 
                     // Apply Results (Mutates newTeams/Schedule/Playoffs)
                     setSimProgress({ percent: 65, label: '결과 반영...' });
+                    await yieldToUI();
                     let _ft1 = performance.now();
                     await applyUserGameResult(
                         result, userGame, newTeams, newSchedule, newPlayoffSeries,
@@ -375,6 +384,7 @@ export const useSimulation = (
 
                     // 5. Handle Season Events (Playoffs, Trades) - Post Game
                     setSimProgress({ percent: 80, label: '시즌 이벤트...' });
+                    await yieldToUI();
                     _ft1 = performance.now();
                     const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
                     _fPerf['2_seasonEvents'] = performance.now() - _ft1;
@@ -465,6 +475,7 @@ export const useSimulation = (
 
                 // 비경기일 체력 회복 + 훈련 중 부상 체크
                 setSimProgress({ percent: 20, label: '훈련 진행...' });
+                await yieldToUI();
                 _t1 = performance.now();
                 const injuriesOn = simSettings?.injuriesEnabled ?? false;
                 const injFreq = injuriesOn ? (simSettings?.injuryFrequency ?? 1.0) : 0;
@@ -505,6 +516,7 @@ export const useSimulation = (
 
                 // Handle Season Events
                 setSimProgress({ percent: 60, label: '시즌 이벤트...' });
+                await yieldToUI();
                 _t1 = performance.now();
                 const seasonEvents = await handleSeasonEvents(newTeams, newSchedule, newPlayoffSeries, currentSimDate, myTeamId, session?.user?.id, isGuestMode, tendencySeed);
                 _perf['7_seasonEvents'] = performance.now() - _t1;
@@ -525,6 +537,7 @@ export const useSimulation = (
 
                 // 시즌/플레이오프 리뷰 메시지 자동 발송
                 setSimProgress({ percent: 80, label: '보고서 생성...' });
+                await yieldToUI();
                 _t1 = performance.now();
                 await sendReviewMessages(
                     prevScheduleSnapshot as any, newSchedule, prevFinishedSeriesIds,
@@ -607,6 +620,7 @@ export const useSimulation = (
         if (isSimulating || !myTeamId) return;
         setIsSimulating(true);
         setSimProgress({ percent: 5, label: '준비 중...' });
+        await yieldToUI();
 
         try {
             if (simSettings) applyTradeSimSettings(simSettings);
@@ -627,6 +641,7 @@ export const useSimulation = (
             let newPlayoffSeries: PlayoffSeries[] = [...playoffSeries];
 
             setSimProgress({ percent: 30, label: 'CPU 경기 처리...' });
+            await yieldToUI();
             const cpuData = processCpuGames(
                 newTeams, newSchedule, newPlayoffSeries, currentSimDate, userGame.id, session?.user?.id,
                 tendencySeed, simSettings,
