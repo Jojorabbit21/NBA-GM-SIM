@@ -90,6 +90,18 @@ export interface AttributeChangeEvent {
     newValue: number;
 }
 
+// [New] 수상 내역 (멀티시즌 대비 배열 구조)
+export type PlayerAwardType =
+    | 'MVP' | 'DPOY' | 'FINALS_MVP' | 'CHAMPION'
+    | 'ALL_NBA_1' | 'ALL_NBA_2' | 'ALL_NBA_3'
+    | 'ALL_DEF_1' | 'ALL_DEF_2';
+
+export interface PlayerAwardEntry {
+    type: PlayerAwardType;
+    season: string;   // e.g. '2025-26'
+    teamId: string;
+}
+
 // [New] Interface for saving player state (Condition + Health + Growth)
 export interface SavedPlayerState {
     condition: number;
@@ -102,6 +114,7 @@ export interface SavedPlayerState {
     changeLog?: AttributeChangeEvent[];          // 정수 변화 이벤트 로그
     seasonStartAttributes?: Record<string, number>; // 시즌 시작 기준 속성값
     injuryHistory?: InjuryHistoryEntry[];
+    awards?: PlayerAwardEntry[];
 }
 
 export interface Player {
@@ -188,6 +201,7 @@ export interface Player {
     changeLog?: AttributeChangeEvent[];              // 시즌 내 정수 변화 이벤트 로그
     seasonStartAttributes?: Record<string, number>;  // 시즌 시작 시 속성 스냅샷 (delta 표시용)
     injuryHistory?: InjuryHistoryEntry[];
+    awards?: PlayerAwardEntry[];
 }
 
 export interface RosterUpdate {

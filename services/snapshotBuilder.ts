@@ -24,9 +24,10 @@ export const buildReplaySnapshot = (
             const hasChangeLog = player.changeLog && player.changeLog.length > 0;
             const hasSeasonStart = player.seasonStartAttributes && Object.keys(player.seasonStartAttributes).length > 0;
             const hasInjuryHistory = player.injuryHistory && player.injuryHistory.length > 0;
+            const hasAwards = player.awards && player.awards.length > 0;
             const hasAnyGrowthData = hasGrowth || hasAttrDeltas || hasChangeLog || hasSeasonStart;
 
-            if (hasStats || hasAnyGrowthData || hasInjuryHistory) {
+            if (hasStats || hasAnyGrowthData || hasInjuryHistory || hasAwards) {
                 const entry: any = {};
                 if (player.stats) entry.stats = player.stats;
                 if (player.playoffStats) entry.playoffStats = player.playoffStats;
@@ -39,6 +40,7 @@ export const buildReplaySnapshot = (
                     };
                 }
                 if (hasInjuryHistory) entry.injuryHistory = player.injuryHistory;
+                if (hasAwards) entry.awards = player.awards;
                 roster_stats[player.id] = entry;
             }
         }
@@ -156,6 +158,7 @@ export const hydrateFromSnapshot = (
                 if (gs.attrDeltas) reapplyAttrDeltas(player);
             }
             if ((pData as any).injuryHistory) player.injuryHistory = (pData as any).injuryHistory;
+            if ((pData as any).awards) player.awards = (pData as any).awards;
         }
     }
 

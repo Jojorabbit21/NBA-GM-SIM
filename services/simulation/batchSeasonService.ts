@@ -208,6 +208,43 @@ export async function runBatchSeason(
                     },
                 });
 
+                // 유저 팀 선수 출장정지 보고서 (싸움)
+                if (result.suspensions && result.suspensions.length > 0) {
+                    for (const susp of result.suspensions) {
+                        // 내 팀 선수가 관련된 경우만 메시지
+                        const isMyFighter = susp.teamId === myTeamId;
+                        const isMyOpponent = susp.opponentTeamId === myTeamId;
+                        if (isMyFighter || isMyOpponent) {
+                            const myPlayerId = isMyFighter ? susp.playerId : susp.opponentPlayerId;
+                            const myPlayerName = isMyFighter ? susp.playerName : susp.opponentPlayerName;
+                            const mySusp = isMyFighter ? susp.suspensionGames : susp.opponentSuspensionGames;
+                            const oppTeamId = isMyFighter ? susp.opponentTeamId : susp.teamId;
+                            const oppName = isMyFighter ? susp.opponentPlayerName : susp.playerName;
+                            const oppTeam = teams.find(t => t.id === oppTeamId);
+                            const returnDate = computeReturnDate(date, `${mySusp * 2}일`);
+
+                            allMessages.push({
+                                user_id: userId,
+                                team_id: myTeamId,
+                                date,
+                                type: 'SUSPENSION' as MessageType,
+                                title: `[출장정지] ${myPlayerName} — ${mySusp}경기 출장정지`,
+                                content: {
+                                    playerId: myPlayerId,
+                                    playerName: myPlayerName,
+                                    teamId: myTeamId,
+                                    opponentPlayerId: isMyFighter ? susp.opponentPlayerId : susp.playerId,
+                                    opponentPlayerName: oppName,
+                                    opponentTeamId: oppTeamId,
+                                    opponentTeamName: oppTeam?.name || '',
+                                    suspensionGames: mySusp,
+                                    returnDate,
+                                },
+                            });
+                        }
+                    }
+                }
+
                 // 유저 팀 선수 부상 보고서
                 if (result.injuries && result.injuries.length > 0) {
                     const myInjuries = result.injuries.filter(inj => inj.teamId === myTeamId);

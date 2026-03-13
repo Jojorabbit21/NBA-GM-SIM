@@ -106,6 +106,14 @@ export const SIM_CONFIG = {
         FLAGRANT_MAX_RATE: 0.0015,       // 실링 0.15% (더티 팀 ~12개/시즌)
         FLAGRANT_2_CHANCE: 0.10,
 
+        // 싸움 → 출장정지 (temperament >= 0.5인 선수만 대상)
+        // 목표: 리그 전체 시즌 ~5-10건 (246,000포제션 기준)
+        FIGHT_TEMPERAMENT_THRESHOLD: 0.5,   // 이 이상만 싸움 후보
+        FIGHT_BASE_CHANCE: 0.00003,          // 포제션당 0.003%
+        FIGHT_TEMPERAMENT_SCALE: 3.0,        // temperament 스케일링 (0.5→1x, 1.0→2.5x)
+        FIGHT_SUSPENSION_MIN: 1,             // 출장정지 최소
+        FIGHT_SUSPENSION_MAX: 5,             // 출장정지 최대
+
         // 샷클락 바이올레이션 (수비 전술 + 공격 볼무브 트레이드-오프)
         SHOT_CLOCK_BASE: 0.003,
         SHOT_CLOCK_DEF_INTENSITY_FACTOR: 0.001,

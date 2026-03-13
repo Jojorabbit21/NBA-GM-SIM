@@ -18,6 +18,7 @@ import { buildSeasonReviewContent, buildPlayoffStageContent, buildOwnerLetterCon
 import { calculateHallOfFameScore, createRosterSnapshot, maskEmail } from '../utils/hallOfFameScorer';
 import { submitHallOfFameEntry, checkUserHasSubmitted } from '../services/hallOfFameService';
 import { HofQualificationContent, FinalsMvpContent } from '../types/message';
+import { stampPlayoffAwards } from '../utils/awardStamper';
 
 export const useSimulation = (
     teams: Team[],
@@ -216,37 +217,43 @@ export const useSimulation = (
                 }
             }
             // 파이널 MVP 뉴스 기사 발송 + 플레이오프 우승 보고서
-            if (series.round === 4 && series.winnerId && userId && userId !== 'guest') {
-                const seriesResultsForMvp = await fetchPlayoffSeriesResults(series.id, userId);
-                if (seriesResultsForMvp.length > 0) {
-                    const mvpResult = selectFinalsMvp(seriesResultsForMvp, series.winnerId);
-                    if (mvpResult) {
-                        const winnerTeam = newTeams.find(t => t.id === series.winnerId);
-                        const loserId = series.winnerId === series.higherSeedId ? series.lowerSeedId : series.higherSeedId;
-                        const loserTeam = newTeams.find(t => t.id === loserId);
-                        const winnerWins = series.winnerId === series.higherSeedId ? series.higherSeedWins : series.lowerSeedWins;
-                        const loserWins = series.winnerId === series.higherSeedId ? series.lowerSeedWins : series.higherSeedWins;
-                        const fmvpContent: FinalsMvpContent = {
-                            mvpPlayerId: mvpResult.mvp.playerId,
-                            mvpPlayerName: mvpResult.mvp.playerName,
-                            mvpTeamId: series.winnerId,
-                            mvpTeamName: winnerTeam?.name || 'Unknown',
-                            opponentTeamId: loserId,
-                            opponentTeamName: loserTeam?.name || 'Unknown',
-                            seriesScore: `${winnerWins}-${loserWins}`,
-                            stats: mvpResult.mvp,
-                            leaderboard: mvpResult.leaderboard,
-                        };
-                        await sendMessage(userId, myTeamId, date, 'FINALS_MVP', `[속보] 파이널 MVP 발표`, fmvpContent);
+            if (series.round === 4 && series.winnerId) {
+                let finalsMvpPlayerId: string | undefined;
+                if (userId && userId !== 'guest') {
+                    const seriesResultsForMvp = await fetchPlayoffSeriesResults(series.id, userId);
+                    if (seriesResultsForMvp.length > 0) {
+                        const mvpResult = selectFinalsMvp(seriesResultsForMvp, series.winnerId);
+                        if (mvpResult) {
+                            finalsMvpPlayerId = mvpResult.mvp.playerId;
+                            const winnerTeam = newTeams.find(t => t.id === series.winnerId);
+                            const loserId = series.winnerId === series.higherSeedId ? series.lowerSeedId : series.higherSeedId;
+                            const loserTeam = newTeams.find(t => t.id === loserId);
+                            const winnerWins = series.winnerId === series.higherSeedId ? series.higherSeedWins : series.lowerSeedWins;
+                            const loserWins = series.winnerId === series.higherSeedId ? series.lowerSeedWins : series.higherSeedWins;
+                            const fmvpContent: FinalsMvpContent = {
+                                mvpPlayerId: mvpResult.mvp.playerId,
+                                mvpPlayerName: mvpResult.mvp.playerName,
+                                mvpTeamId: series.winnerId,
+                                mvpTeamName: winnerTeam?.name || 'Unknown',
+                                opponentTeamId: loserId,
+                                opponentTeamName: loserTeam?.name || 'Unknown',
+                                seriesScore: `${winnerWins}-${loserWins}`,
+                                stats: mvpResult.mvp,
+                                leaderboard: mvpResult.leaderboard,
+                            };
+                            await sendMessage(userId, myTeamId, date, 'FINALS_MVP', `[속보] 파이널 MVP 발표`, fmvpContent);
+                        }
+                    }
+                    // 플레이오프 우승 보고서
+                    const champTeam = newTeams.find(t => t.id === series.winnerId);
+                    if (champTeam) {
+                        const champContent = buildPlayoffChampionContent(champTeam, newTeams, newSchedule, newPlayoffSeries);
+                        await sendMessage(userId, myTeamId, date, 'PLAYOFF_CHAMPION',
+                            `[속보] 2025-26 플레이오프 우승: ${champTeam.name}`, champContent);
                     }
                 }
-                // 플레이오프 우승 보고서
-                const champTeam = newTeams.find(t => t.id === series.winnerId);
-                if (champTeam) {
-                    const champContent = buildPlayoffChampionContent(champTeam, newTeams, newSchedule, newPlayoffSeries);
-                    await sendMessage(userId, myTeamId, date, 'PLAYOFF_CHAMPION',
-                        `[속보] 2025-26 플레이오프 우승: ${champTeam.name}`, champContent);
-                }
+                // ★ 챔피언 + 파이널 MVP stamp (게스트 포함)
+                stampPlayoffAwards(newTeams, '2025-26', series.winnerId, finalsMvpPlayerId);
             }
             refreshUnreadCount();
         }
