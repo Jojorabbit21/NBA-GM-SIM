@@ -799,7 +799,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                     {/* ── SECTION 4: 부상 이력 + 수상 내역 (좌우 분할) ── */}
                     <div className="border-t-2 border-slate-700 grid grid-cols-2">
                         {/* 좌측: 부상 이력 */}
-                        <div className="border-r border-slate-700">
+                        <div>
                             <div className="px-6 py-3 bg-slate-700">
                                 <span className="text-xs font-black text-white uppercase tracking-widest">부상 이력</span>
                             </div>
@@ -815,7 +815,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                 <TableHeaderCell
                                                     key={h}
                                                     align="center"
-                                                    className={i < 3 ? 'border-r border-r-slate-800/30' : ''}
+                                                    className={`text-xs ${i < 3 ? 'border-r border-r-slate-800/30' : ''}`}
                                                 >
                                                     {h}
                                                 </TableHeaderCell>
@@ -855,7 +855,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                             </div>
                         </div>
                         {/* 우측: 수상 내역 */}
-                        <div>
+                        <div className="border-l border-slate-600">
                             <div className="px-6 py-3 bg-slate-700">
                                 <span className="text-xs font-black text-white uppercase tracking-widest">수상 내역</span>
                             </div>
@@ -871,7 +871,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             <TableHeaderCell
                                                 key={h}
                                                 align="center"
-                                                className={i < 2 ? 'border-r border-r-slate-800/30' : ''}
+                                                className={`text-xs ${i < 2 ? 'border-r border-r-slate-800/30' : ''}`}
                                             >
                                                 {h}
                                             </TableHeaderCell>
@@ -890,17 +890,24 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                             })
                                             .map((entry, idx) => {
                                                 const nameMap: Record<string, string> = {
-                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: 'MVP',
-                                                    FINALS_MVP: '파이널 MVP', DPOY: 'DPOY',
+                                                    CHAMPION: '챔피언', REG_SEASON_CHAMPION: '정규시즌 우승', MVP: '올해의 선수',
+                                                    FINALS_MVP: '파이널 MVP', DPOY: '올해의 수비수',
                                                     ALL_NBA_1: '올-오펜시브 팀', ALL_NBA_2: '올-오펜시브 팀', ALL_NBA_3: '올-오펜시브 팀',
                                                     ALL_DEF_1: '올-디펜시브 팀', ALL_DEF_2: '올-디펜시브 팀',
                                                 };
                                                 const detailMap: Record<string, string> = {
-                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승', MVP: '수상',
-                                                    FINALS_MVP: '수상', DPOY: '수상',
+                                                    CHAMPION: '우승', REG_SEASON_CHAMPION: '우승',
+                                                    FINALS_MVP: '수상',
                                                     ALL_NBA_1: '1st', ALL_NBA_2: '2nd', ALL_NBA_3: '3rd',
                                                     ALL_DEF_1: '1st', ALL_DEF_2: '2nd',
                                                 };
+                                                // MVP/DPOY: rank 기반 표시
+                                                let detail: string;
+                                                if ((entry.type === 'MVP' || entry.type === 'DPOY') && entry.rank != null) {
+                                                    detail = entry.rank === 1 ? '1위 (수상)' : `${entry.rank}위`;
+                                                } else {
+                                                    detail = detailMap[entry.type] ?? '-';
+                                                }
                                                 return (
                                                     <TableRow key={idx} className="h-10">
                                                         <TableCell align="center" className="border-r border-r-slate-800/30">
@@ -910,7 +917,7 @@ export const PlayerDetailView: React.FC<PlayerDetailViewProps> = ({ player, team
                                                             <span className="font-mono font-medium tabular-nums text-xs text-white">{nameMap[entry.type] ?? entry.type}</span>
                                                         </TableCell>
                                                         <TableCell align="center">
-                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detailMap[entry.type] ?? '-'}</span>
+                                                            <span className="font-mono font-medium tabular-nums text-xs text-slate-300">{detail}</span>
                                                         </TableCell>
                                                     </TableRow>
                                                 );

@@ -94,7 +94,12 @@ const HeaderTrophy: React.FC<{ award: AggregatedAward }> = ({ award }) => {
 
 export const HeaderAwardTrophies: React.FC<{ awards: PlayerAwardEntry[] }> = ({ awards }) => {
     const headerTypes: PlayerAwardType[] = ['CHAMPION', 'MVP', 'FINALS_MVP', 'DPOY'];
-    const headerAwards = aggregateAwards(awards).filter(a => headerTypes.includes(a.type));
+    // MVP/DPOY는 1위(수상)만 헤더 트로피에 표시 (후보 제외)
+    const winnersOnly = awards.filter(a => {
+        if (a.type === 'MVP' || a.type === 'DPOY') return a.rank === 1 || a.rank == null;
+        return true;
+    });
+    const headerAwards = aggregateAwards(winnersOnly).filter(a => headerTypes.includes(a.type));
     if (headerAwards.length === 0) return null;
 
     return (
